@@ -4,6 +4,7 @@ downloads that install those sources."""
 
 import gzip
 import io
+import json
 import os
 import re
 import subprocess
@@ -13,7 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, run_wgsextract
+from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -247,6 +249,7 @@ def test_clinvar_picks_the_builds_file_and_filters_pathogenic_classes(tmp_path):
             info=("CLNSIG", "CLNDN"),
         )
     sample = _sample(tmp_path, rows, length=HG19_CHR1)
+    reference_for_vcf(tmp_path / "lib" / "genomes" / "hg19.fa.gz", sample)
     outdir = tmp_path / "out"
     run_wgsextract("vcf", "clinvar", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir))  # fmt: skip
@@ -454,6 +457,7 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
     outdir = tmp_path / "out"
     # gerp isn't installed: skipped with a warning, not a failure.
+    reference_for_vcf(tmp_path / "lib" / "genomes" / "hg38.fa.gz", sample)
     run_wgsextract("vcf", "chain-annotate", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir),
                    "--annotations", "clinvar, gerp ,REVEL")  # fmt: skip
@@ -475,6 +479,7 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
 
     class Lib:
         clinvar_vcf = "present"
+        fasta = "present"
 
         def __init__(self, *_a, **_k):
             pass
@@ -766,8 +771,9 @@ def test_multiallelic_site_gets_each_alleles_vcf_annotation(tmp_path, command):
                   [f"200 . A G . . {g_value} GT 0/1", f"200 . A T . . {t_value} GT 0/1"],
                   contig="1", info=info)  # fmt: skip
     outdir = tmp_path / "out"
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
     run_wgsextract("vcf", command, "--input", sample, f"--{command}-file", source,
-                   "--outdir", str(outdir))  # fmt: skip
+                   "--outdir", str(outdir), "--ref", str(reference))  # fmt: skip
     # Split into one record per ALT, each with its own allele's value.
     tag = {"clinvar": "CLNSIG", "spliceai": "SpliceAI", "gnomad": "GNOMAD_AF"}[command]
     values = [v.split("=", 1)[1].split(";")[0] for v in (g_value, t_value)]
@@ -832,8 +838,18 @@ def test_annotating_an_output_onto_itself_is_refused(tmp_path):
     clinvar = _vcf(tmp_path / "clinvar_new.vcf.gz",
                    ["100 c1 C T . . CLNSIG=Benign;CLNDN=x GT 0/1"],
                    info=("CLNSIG", "CLNDN"))  # fmt: skip
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", previous)
     with pytest.raises(WGSExtractError, match="would overwrite its input.*--outdir"):
-        run_wgsextract("vcf", "clinvar", "--input", previous, "--clinvar-file", clinvar)
+        run_wgsextract(
+            "vcf",
+            "clinvar",
+            "--input",
+            previous,
+            "--clinvar-file",
+            clinvar,
+            "--ref",
+            str(reference),
+        )
     assert Path(previous).read_bytes() == before
 
 
@@ -861,3 +877,83 @@ def test_interrupted_table_compression_is_redone(tmp_path):
     prepared = annotation_helpers.prepare_tabix_annotation(str(plain), "REVEL")
     with gzip.open(prepared, "rt") as f:
         assert len(f.read().splitlines()) == 1 + len(rows)
+
+
+# --- a missing resource file (issue 894) ----------------------------------------
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "command, flag, manifest",
+    [
+        ("clinvar", "--clinvar-file", "clinvar_pathogenic.vcf.failed.manifest.json"),
+        # Named even with no CADD SNV resource installed.
+        ("cadd", "--cadd-indel-file", "cadd_annotated.vcf.failed.manifest.json"),
+        ("sv-freq", "--gnomad-sv-file", "sv_freq_annotated.vcf.failed.manifest.json"),
+    ],
+)  # fmt: skip
+def test_issue_894_missing_resource_is_a_usage_error_with_a_failed_manifest(
+    tmp_path, command, flag, manifest
+):
+    """A missing --clinvar-file was "An unexpected error occurred: [Errno 2]"
+    (exit 1) and left nothing in the output folder for report to find."""
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    missing = tmp_path / "res" / "missing.vcf.gz"
+    outdir = tmp_path / "out"
+    rc, _, stderr = run_cli(
+        ["vcf", command, flag, str(missing), "--vcf-input", sample,
+         "--outdir", str(outdir)]
+    )  # fmt: skip
+    assert rc == 2, stderr
+    assert "unexpected error" not in stderr
+    assert f"{flag} file not found: {missing}" in stderr
+    assert os.listdir(outdir) == [manifest]
+    document = json.loads((outdir / manifest).read_text())
+    assert document["status"] == "failed"
+    assert document["exit_code"] == 2
+    assert document["error"]["kind"] == "usage"
+    assert flag in document["error"]["message"]
+    # report links the failed attempt to the sample through its input.
+    assert [i["path"] for i in document["inputs"]] == [sample]
+
+
+@needs_bcftools
+def test_issue_894_failed_attempt_keeps_the_earlier_result_until_a_rerun(tmp_path):
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    clinvar = _vcf(tmp_path / "clinvar.vcf.gz",
+                   ["100 c1 C T . . CLNSIG=Pathogenic;CLNDN=x GT 0/1"],
+                   info=("CLNSIG", "CLNDN"))  # fmt: skip
+    outdir = tmp_path / "out"
+    ok = outdir / "clinvar_pathogenic.vcf.manifest.json"
+    failed = outdir / "clinvar_pathogenic.vcf.failed.manifest.json"
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
+
+    def run(resource: Path | str) -> int:
+        argv = ["vcf", "clinvar", "--clinvar-file", str(resource),
+                "--vcf-input", sample, "--outdir", str(outdir),
+                "--ref", str(reference)]  # fmt: skip
+        return run_cli(argv)[0]
+
+    assert run(clinvar) == 0
+    earlier = ok.read_text()
+    assert run(tmp_path / "missing.vcf.gz") == 2
+    assert ok.read_text() == earlier
+    assert json.loads(failed.read_text())["status"] == "failed"
+    assert run(clinvar) == 0
+    assert json.loads(ok.read_text())["status"] == "ok"
+    assert not failed.exists()
+
+
+@needs_bcftools
+def test_issue_894_missing_configured_resource_names_its_setting(tmp_path):
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    missing = tmp_path / "missing.vcf.gz"
+    config = tmp_path / "config.toml"
+    config.write_text(f"clinvar_vcf_path = {json.dumps(str(missing))}\n")
+    rc, _, stderr = run_cli(
+        ["--config", str(config), "vcf", "clinvar", "--vcf-input", sample,
+         "--outdir", str(tmp_path / "out")]
+    )  # fmt: skip
+    assert rc == 2, stderr
+    assert f"--clinvar-file file not found: {missing}" in stderr
+    assert "clinvar_vcf_path in config.toml" in stderr

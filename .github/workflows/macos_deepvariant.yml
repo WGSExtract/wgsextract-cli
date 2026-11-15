@@ -8,6 +8,7 @@ name: macOS DeepVariant
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - native/deepvariant/**
@@ -16,6 +17,11 @@ on:
       - "!**/*.md"
   push:
     branches: [main]
+    paths:
+      - native/deepvariant/**
+      - native/tests/seeded_random.sh
+      - .github/workflows/macos_deepvariant.yml
+      - "!**/*.md"
   schedule:
     - cron: "47 6 * * *"
   workflow_dispatch:
@@ -29,9 +35,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # A newer push supersedes a PR's build; a release run is never cancelled.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: macos-deepvariant-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  # Nightly and release dispatches must not compete with main pushes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 env:
   # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
@@ -39,6 +45,7 @@ env:
 
 jobs:
   weights:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -59,6 +66,7 @@ jobs:
           if-no-files-found: error
 
   build:
+    if: ${{ github.event.pull_request.draft != true }}
     needs: weights
     # The port needs the macOS 26 SDK (MPSGraph's reducedPrecisionFastMath,
     # used only on macOS 26+); the binary still runs on macOS 14.
@@ -74,6 +82,11 @@ jobs:
 
       - name: Install the smoke test's samtools
         run: brew install samtools
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          scope: deepvariant-metal
+          recipe: ${{ hashFiles('native/deepvariant/**/CMakeLists.txt', '.github/workflows/macos_deepvariant.yml') }}
 
       - name: Build
         run: |
@@ -110,6 +123,12 @@ jobs:
           name: macos-deepvariant
           path: out/packages/*.tar.gz
           if-no-files-found: error
+
+      - uses: ./.github/actions/compiler-cache
+        with:
+          phase: save
+          scope: deepvariant-metal
+          recipe: ${{ hashFiles('native/deepvariant/**/CMakeLists.txt', '.github/workflows/macos_deepvariant.yml') }}
 
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''

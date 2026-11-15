@@ -83,6 +83,66 @@ the new one is complete. `vep verify` checks every file against the
 checksums the builder wrote, and `vep delete` removes the cache and any
 unfinished download.
 
+## T2T-CHM13v2.0
+
+vep-rs also annotates T2T-CHM13v2.0 (`chm13v2.0`) VCFs; Ensembl VEP has no
+CHM13 cache here, so `--engine ensembl` refuses the assembly.
+
+```bash
+wgsextract vep download --assembly T2T-CHM13v2.0
+wgsextract vep run --input sample.chm13.vcf.gz   # the assembly is read from the VCF
+```
+
+`vep download` builds the cache from Ensembl's T2T-CHM13v2.0 gene set
+(GCA_009914755.4, rapid release `2022_07`, GENCODE 38 projected onto CHM13 for
+the HPRC; Ensembl data, free to use without restriction): its GFF3, GTF,
+protein and genome FASTA, about 1 GB of downloads, each checked against the
+folder's `md5sum.txt`. The build takes seconds, peaks at 2.8 GB of memory and
+writes a 1.2 GB cache in `<vep cache>/vep-rs/homo_sapiens/116_T2T-CHM13v2.0`.
+`vep run` takes the assembly from the reference library's build, else from the
+VCF's contig lengths; `--assembly T2T-CHM13v2.0` names it outright.
+
+What a CHM13 cache lacks, beyond the GRCh38 gaps below:
+
+- **Known variants** (`Existing_variation`, frequencies, ClinVar columns):
+  Ensembl publishes none in a form the builder reads. `vep download` warns
+  `vep_variations_unavailable` and `vep run` warns `vep_cache_gaps`.
+- **MANE, CCDS, protein domains, `GENE_PHENO`**: these come from Ensembl's
+  table dumps, which the rapid release doesn't have. The canonical transcript
+  is flagged.
+- **chrM**: Ensembl doesn't annotate CHM13's mitochondrion.
+- **Gene set age**: GENCODE 38 (2021). GRCh38's release 116 is GENCODE 50,
+  with many more lncRNA transcripts. A third of its genes, nearly all
+  non-coding (0.7% of protein-coding ones), have no symbol: `SYMBOL` is empty
+  and `Gene` holds the CHM13 stable ID (`ENSG0522…`).
+
+### How CHM13 annotation compares with GRCh38's
+
+HG002's GIAB v5.0q small-variant calls on CHM13 (5,829,374 records) were
+annotated on CHM13, then lifted to GRCh38 with the reference library's
+`chm13v2-grch38.chain` (CrossMap) and annotated there with vep-rs caches of
+Ensembl 116 and of Ensembl 104 (GENCODE 38, the set CHM13's is projected
+from). Agreement of the `vcf table` row of the same call (gene, consequence
+and impact of the transcript the table picks) over the 2,491,092 table rows
+on both, and of all CSQ entries over the 2,577,520 lifted records:
+
+| | vs Ensembl 104 (same gene set) | vs Ensembl 116 |
+| --- | --- | --- |
+| Gene | 96.8% | 91.5% |
+| Consequence | 96.0% | 83.5% |
+| Impact | 99.9% | 99.9% |
+| Most severe consequence, all entries | 98.0% | 82.8% |
+| Same set of genes, all entries | 97.8% | 89.7% |
+
+Against release 116 most differences are lncRNA transcripts GENCODE has
+added since 38 (`intergenic_variant` on CHM13, `intron_variant` of a new
+non-coding transcript on GRCh38). Against 104 they are paralogs
+(RGPD5/RGPD6, LIMS3/LIMS4), a different canonical transcript, and indels at
+splice sites placed differently. Annotating on CHM13 also keeps calls a lift
+to GRCh38 loses: 1.26 million of the 5.83 million (mostly centromeric
+satellites, 61,000 in genes) don't lift, and 2.0 million match GRCh38's
+reference there. A whole genome took 82 s on 4 threads and 3.5 GB of memory.
+
 ## Where vep-rs differs from Ensembl VEP
 
 Agreement per (variant, transcript) pair, where Ensembl VEP has a value:

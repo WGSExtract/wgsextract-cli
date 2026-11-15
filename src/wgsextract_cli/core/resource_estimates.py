@@ -1,5 +1,6 @@
 """Read-only, GUI-reusable resource estimates; all sizes are bytes."""
 
+import json
 import logging
 import math
 import shutil
@@ -369,6 +370,10 @@ def estimate_resources(
     deepvariant_native: bool = False,
     bcftools_contigs: dict[str, int] | None = None,
     alignment_header: str | None = None,
+    staged: bool = False,
+    keep_fastq: bool = False,
+    retire_fastqs: tuple[str, ...] = (),
+    staged_workspace: str | None = None,
 ) -> PreflightEstimate:
     """Estimate a resolved command without creating files or running tools.
 
@@ -385,6 +390,8 @@ def estimate_resources(
     ``postprocess_plan`` and the ``available_ram`` it was sized against (for
     example capped by Docker's VM); otherwise both are derived here.
     """
+    if staged:
+        threads = str(min(3, int(threads)))
     count = int(threads)
     if (
         count < 1
@@ -429,6 +436,7 @@ def estimate_resources(
         except OSError:
             available_memory = None
     demands: list[tuple[str, str, int | None]] = []
+    staged_phases: list[list[tuple[str, str, int | None]]] | None = None
     memory_components: dict[str, int]
     output: int | None
     temporary: int | None = 0
@@ -450,6 +458,7 @@ def estimate_resources(
             input_bytes=size if aligner == "minimap2" else None,
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=dense_sa_bytes,
+            staged=staged,
         )
         if gpu_bytes:
             notes.append(
@@ -475,7 +484,12 @@ def estimate_resources(
             notes.append(
                 f"BWA working memory uses {platform or 'short-read'} / {length:g} bp "
                 f"({'sampled/provided' if read_length is not None else 'fallback'}), "
-                "requested threads and fixed -K 100000000; threads are not auto-capped."
+                "fixed -K 100000000; "
+                + (
+                    "staged Metal uses at most three alignment workers."
+                    if staged
+                    else "threads are not auto-capped."
+                )
             )
         memory_components = dict(zip(mapping._fields, mapping, strict=True))
         if additional_ram_bytes:
@@ -495,6 +509,106 @@ def estimate_resources(
             * (CRAM_BYTES_PER_READ if output_format == "CRAM" else BAM_BYTES_PER_READ)
         )
         temporary = None if disk_reads is None else disk_reads * SORT_BYTES_PER_READ
+        if staged and disk_reads is not None:
+            scale = max(1, (read_length or 150) / 150)
+            raw = math.ceil(disk_reads * 108 * scale)
+            parts = math.ceil(disk_reads * 115 * scale)
+            merge_group = min(parts, math.ceil(64 * 2_000_000 * 115 * scale))
+            scratch = 2 * GIB
+            temporary = raw + parts + scratch
+            place = temp_dir or output_dir
+            fq: list[tuple[str, str, int | None]] = (
+                [
+                    (
+                        fastq_dir or output_dir,
+                        "extracted_fastqs",
+                        disk_reads * FASTQ_BYTES_PER_READ,
+                    )
+                ]
+                if extract_fastq
+                else []
+            )
+            staged_retained = fq if keep_fastq else []
+            staged_phases = [
+                [*fq, (place, "raw_alignment", raw)],
+                [
+                    *staged_retained,
+                    (place, "raw_alignment", raw),
+                    (place, "sorted_parts", parts),
+                    (place, "rolling_sort", scratch),
+                ],
+                [
+                    *staged_retained,
+                    (place, "sorted_parts", parts),
+                    (place, "merge_generation", merge_group),
+                ],
+                [
+                    *staged_retained,
+                    (place, "sorted_parts", parts),
+                    (output_dir, "output", output),
+                ],
+            ]
+            if extract_fastq:
+                from wgsextract_cli.core.warnings import get_free_space_needed
+
+                spill, final = get_free_space_needed(
+                    size or 0, sort_type="Name", is_cram=cram_input, reads=disk_reads
+                )
+                staged_phases.insert(
+                    0,
+                    [
+                        (place, "extraction_collate", spill * GIB),
+                        (fastq_dir or output_dir, "extracted_fastqs", final * GIB),
+                    ],
+                )
+            if staged_workspace:
+                work = Path(staged_workspace)
+                checkpoint = work / "parts.json"
+                complete = False
+                if checkpoint.is_file():
+                    try:
+                        saved_parts = json.loads(checkpoint.read_text())
+                        complete = (
+                            isinstance(saved_parts, dict)
+                            and saved_parts.get("complete") is True
+                        )
+                    except (OSError, ValueError):
+                        pass
+                if complete:
+                    staged_phases = [
+                        fq,
+                        [*staged_retained, (place, "merge_generation", merge_group)],
+                        [*staged_retained, (output_dir, "output", output)],
+                    ]
+                elif (work / "alignment.json").is_file() and (
+                    work / "unsorted.bam"
+                ).is_file():
+                    credit = (work / "unsorted.bam").stat().st_size
+                    for phase in staged_phases:
+                        phase.append((str(work), "existing_checkpoint", -credit))
+            for path in retire_fastqs:
+                if Path(path).is_file():
+                    for phase in staged_phases[1:]:
+                        phase.append(
+                            (path, "retired_fastqs", -Path(path).stat().st_size)
+                        )
+            notes.append(
+                "Staged Metal peaks are per phase, not concurrent sums: alignment "
+                "has no samblaster/sort; compressed marked parts replace the raw BAM "
+                "before final merge. Generated FASTQs retire after alignment unless kept. "
+                "Disk allows 108/115 bytes per short input read for raw/marked checkpoints "
+                "and 2 GiB rolling scratch (HG002 35x calibration)."
+            )
+            from wgsextract_cli.core.staged_alignment import safety_reserve
+
+            reserve = safety_reserve(reads)
+            for phase in staged_phases:
+                devices: set[object] = set()
+                for path in (place, output_dir):
+                    device, _ = _disk_space(path)
+                    if device not in devices:
+                        phase.append((path, "disk_safety_reserve", reserve))
+                        devices.add(device)
         if long_read is not None:
             output, temporary = long_read.output, long_read.spill
             notes.append(
@@ -537,7 +651,19 @@ def estimate_resources(
                     (
                         str(Path(reference).parent),
                         "reference_indexes",
-                        mapping.index_resident * 2,
+                        (
+                            alignment_memory.estimate_mapping_memory(
+                                reference,
+                                aligner,
+                                threads=threads,
+                                memory=memory,
+                                samblaster=samblaster,
+                                reads=reads,
+                            ).index_resident
+                            if staged
+                            else mapping.index_resident
+                        )
+                        * 2,
                     )
                 )
                 notes.append(
@@ -754,7 +880,7 @@ def estimate_resources(
             (gatk_staging_dir or output_dir, "scatter_parts", output),
             (gatk_staging_dir or output_dir, "scatter_indexes", indexes),
         ]
-    demands += [
+    final_demands = [
         (output_dir, "output", output),
         (output_dir, "indexes", indexes),
         (
@@ -765,6 +891,12 @@ def estimate_resources(
             temporary,
         ),
     ]
+    if staged_phases is None:
+        demands += final_demands
+    else:
+        demands = [entry for entry in demands if entry[1] != "extracted_fastqs"]
+        for phase in staged_phases:
+            phase.append((output_dir, "indexes", indexes))
     grouped: dict[object, tuple[int | None, dict[str, int], list[str], bool]] = {}
     for path, component, needed in demands:
         if needed == 0:
@@ -783,6 +915,31 @@ def estimate_resources(
             else None
         )
         grouped[device] = (free, components, paths, unknown or needed is None)
+    if staged_phases is not None:
+        for phase in staged_phases:
+            totals: dict[object, int | None] = {}
+            for path, _, needed in phase:
+                device, available = _disk_space(path)
+                if device not in grouped:
+                    grouped[device] = (available, {}, [], False)
+                old_available, components, paths, unknown = grouped[device]
+                if path not in paths:
+                    paths.append(path)
+                total = totals.get(device, 0)
+                totals[device] = (
+                    None if total is None or needed is None else total + needed
+                )
+                free = (
+                    min(old_available, available)
+                    if old_available is not None and available is not None
+                    else None
+                )
+                grouped[device] = (free, components, paths, unknown or needed is None)
+            for device, total in totals.items():
+                if total is not None:
+                    grouped[device][1]["staged_peak"] = max(
+                        grouped[device][1].get("staged_peak", 0), total
+                    )
     resources = [
         ResourceEstimate(
             "memory",
@@ -1329,6 +1486,15 @@ VEP_RS_GENOME_BYTES = int(3.0 * GIB)
 VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: 17 * GIB}
 # vep-cache-builder peaked at 8.5 GB RSS without variations, 11 GB with.
 VEP_RS_BUILD_MEMORY = 12 * GIB
+# Its T2T-CHM13v2.0 cache (#630), from Ensembl's rapid-release gene set: 0.95
+# GB of downloads, a 3.0 GB genome, a 1.2 GB cache, 2.8 GB peak RSS; no
+# variations.
+VEP_RS_CHM13_BYTES = {
+    "downloads": int(1.0 * GIB),
+    "genome": int(3.0 * GIB),
+    "cache": int(1.3 * GIB),
+}
+VEP_RS_CHM13_BUILD_MEMORY = 4 * GIB
 # Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
 # threads, HG002), Ensembl VEP (6 forks).
 VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}
@@ -1348,22 +1514,30 @@ CLAIR3_ASSUMED_DEPTH = 30.0
 CLAIR3_CPU_BYTES_PER_BASE = 2.0
 
 
-def estimate_vep_download(cache_dir: str, variations: bool) -> PreflightEstimate:
+def estimate_vep_download(
+    cache_dir: str, variations: bool, assembly: str = "GRCh38"
+) -> PreflightEstimate:
     """Disk and memory a vep-rs cache build needs: the downloads and the
     unpacked genome stay until the cache beside them is complete."""
+    from wgsextract_cli.commands._vep_engines import CHM13
+
     _, free = _disk_space(cache_dir)
-    components = {
-        "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
-        "genome": VEP_RS_GENOME_BYTES,
-        "cache": VEP_RS_CACHE_BYTES[variations],
-    }
+    if assembly == CHM13:
+        components, memory = dict(VEP_RS_CHM13_BYTES), VEP_RS_CHM13_BUILD_MEMORY
+    else:
+        components = {
+            "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
+            "genome": VEP_RS_GENOME_BYTES,
+            "cache": VEP_RS_CACHE_BYTES[variations],
+        }
+        memory = VEP_RS_BUILD_MEMORY
     return PreflightEstimate(
         "vep-download",
         (
             ResourceEstimate(
                 "disk", sum(components.values()), free, components, (cache_dir,)
             ),
-            ResourceEstimate("memory", VEP_RS_BUILD_MEMORY, _available_memory(), {}),
+            ResourceEstimate("memory", memory, _available_memory(), {}),
         ),
         (),
     )

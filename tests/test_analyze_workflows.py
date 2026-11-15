@@ -26,7 +26,7 @@ from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
+from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5, pinned_sequences
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -186,8 +186,11 @@ class FakeSteps:
         data = home / "data"
         data.mkdir()
         self.config = get_config_path().read_text()
-        # An empty library, so only the configured data counts as installed.
+        # The FASTA is installed; annotation availability comes from config.
         (home / "library").mkdir()
+        genomes = home / "library" / "genomes"
+        genomes.mkdir()
+        (genomes / "hg38.fa").write_text(">chr1\n" + "A" * 1000 + "\n")
         self.settings: dict[str, object] = {"reference_library": str(home / "library")}
         for ann, key in _ANNOTATION_DATA.items():
             (data / ann).write_text(f"{ann} release 1")
@@ -534,18 +537,24 @@ def test_failed_y_haplogroup_warns_and_still_calls_variants(
 
 
 @needs_bcftools
-def test_chm13_chrm_skips_the_mt_haplogroup_but_still_calls_variants_827(
-    fake: FakeSteps, tmp_path: Path
+@pytest.mark.parametrize("reference", ["CHM13", "rCRS"])
+def test_chm13_chrm_runs_the_mt_haplogroup_on_its_reference_832(
+    fake: FakeSteps, tmp_path: Path, reference: str
 ) -> None:
-    # #827: mt-haplogroup now refuses CHM13's rotated chrM; that refusal
-    # mustn't stop a comprehensive run of a CHM13 genome.
+    # #827 skipped the mt step on a CHM13 genome; #832 maps CHM13's chrM onto
+    # the rCRS, given the reference it was aligned to. With another reference
+    # the step is still skipped, and the run still calls variants.
+    rcrs, chm13 = pinned_sequences()
+    fasta = tmp_path / "chm13.fa"
+    fasta.write_text(f">chrM\n{chm13 if reference == 'CHM13' else rcrs}\n")
     chrm = f"@SQ\tSN:chrM\tLN:16569\tM5:{CHM13_CHRM_MD5}"
     bam = _bam(tmp_path / "in" / "chm13.bam", "S", chrm)
-    run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"))
+    run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"), "--ref", str(fasta))
     assert run.code == 0
-    assert run.ran == [step for step in _ALL_STEPS if step != "mt-haplogroup"]
+    skipped = reference == "rCRS"
+    assert run.ran == [s for s in _ALL_STEPS if not (skipped and s == "mt-haplogroup")]
     codes = [w["code"] for w in run.document.get("warnings") or []]
-    assert "mt_haplogroup_skipped" in codes
+    assert ("mt_haplogroup_skipped" in codes) is skipped
 
 
 # --- analyze comprehensive: resuming ---------------------------------------------
@@ -929,6 +938,9 @@ def test_vcf_input_end_to_end_with_clinvar(
         tmp_path / "me.vcf.gz",
         [(100, "a", "50", "."), (200, "b", "50", "."), (300, "c", "50", ".")],
     )
+    from tests.htslib_helpers import reference_for_vcf
+
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", calls)
     out = tmp_path / "out"
     main(["--config", str(cfg), "analyze", "comprehensive", "--vcf-inputs", calls,
           "--outdir", str(out), "--threads", "1"])  # fmt: skip

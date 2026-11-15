@@ -10,6 +10,11 @@ Trimmed GitHub REST API responses recorded on 2026-11-13:
 Tests change branch, attempt, conclusion and resource IDs to replay cancellation,
 recovery and red-main scenarios without changing production GitHub resources.
 
+`superseded_main_runs.json` is a counterfactual based on `main_run.json` for
+issue 903 (main-push macOS backlog): a new queued main push supersedes a
+cancelled retry of the older push. Tests vary the newer run's status and SHA
+and replay mixed failed, recovered and unstarted jobs in the old run.
+
 The `lost_upstream_*` fixtures were recorded on 2026-11-14 from Install Lab run
 43443418565 at commit `fca3bb08f9066b230aade01098c2f767dbabedae`, attempts 1 and 2.
 Each jobs fixture retains all 12 job outcomes, runner identity and step
@@ -18,3 +23,8 @@ producer before its first step; the tree-app consumer then failed to download
 `tauri-macos-arm64`. The annotation responses and selected error log lines are
 recorded separately. Counterfactual regressions alter only the relevant job,
 step or failure message.
+
+`cancelled_draft_gate.json` records selected run/job fields from draft run
+43579850651 on the worktree-cleanup PR, retrieved on 2026-11-14. Concurrency
+cancelled its dependencies, but the `always()` summary reported failure.
+Readiness tests replay that stale rollup alongside counterfactual replacements.

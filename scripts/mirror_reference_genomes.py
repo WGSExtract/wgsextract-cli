@@ -46,7 +46,7 @@ CATALOG = (
     / "src/wgsextract_cli/assets/reference/seed_genomes.csv"
 )
 # The GUI shows the catalog rows up to this one; later rows are Advanced only
-# (gui/examples/WGSExtract/scripts/shared/list_reference_genomes.py).
+# (gui/examples/WGSExtract/transforms/reference-genomes.mjs).
 LAST_BASIC_CODE = "THGySeqp"
 # GitHub's limit on one release asset is 2 GiB.
 MAX_ASSET_BYTES = 2 * 1024**3 - 1

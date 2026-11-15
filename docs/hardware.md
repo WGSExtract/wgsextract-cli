@@ -367,7 +367,12 @@ the check, or is older than the oldest supported release, raises the
   then 256M; sorting more often doesn't change the output). This also applies
   when realignment extracts FASTQs rather than streaming them.
   An oversized CPU estimate does **not** make an oversized GPU plan safe.
-  If no GPU plan fits, `wgse-bwa` runs on the CPU. If its pipeline with the
+  Without a speed override, paired Metal BWA tries a staged plan next:
+  at most three BWA workers write a compressed checkpoint, then duplicate
+  marking and bounded compressed sorting run after the aligner exits.
+  This plan must also fit the same physical-RAM budget. Its manifest mode is
+  `alignment_mode="staged_metal"`, reason `memory_budget_metal_staged`.
+  If even staging cannot fit (or for CUDA), `wgse-bwa` runs on the CPU. If its pipeline with the
   requested sort memory is also over budget, sort memory is capped at 256M
   per thread; an already smaller budget is retained. The conservative CPU
   estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
@@ -376,7 +381,8 @@ the check, or is older than the oldest supported release, raises the
   CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
   To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
   **`prefer_native_gpu = true`** in `config.toml`. Normal GPU-fit sort step-down
-  runs first. Only when none fits does the preference replace CPU fallback:
+  runs first. Only when none fits does the preference permit the concurrent
+  GPU plan instead of RAM-safe staging/CPU fallback:
   explicit `--memory` is retained, while default/config memory is capped at
   256M, subject to general sort limits. `--no-prefer-native-gpu` overrides config.
   The manifest records `native_aligner_backend_reason="memory_budget_cpu"` on
@@ -408,13 +414,15 @@ the check, or is older than the oldest supported release, raises the
 - **Dense suffix-array file (optional).** `wgse-bwa` 0.11.0 and later can
   read a side file beside the reference's BWA index that holds the
   suffix-array position of every 16th row, so it locates seeds with shorter
-  walks: the same alignments, 11.5% faster on the CPU and 7.7% faster on the
-  GPU for 5M read pairs on hs38. The file takes 0.80 GB on disk for hs38 and
-  as much RAM while aligning. It is opt-in and never built or used
-  automatically:
+  walks: the same alignments for 5M read pairs on hs38, 11.5% faster on the
+  CPU and 7.7% faster with `--metal` on an M1 Pro, and 7.7% faster on the CPU
+  but only 1.3% with `--cuda` on a Ryzen 5 5600X with an RTX 3090. The file
+  takes 0.80 GB on disk for hs38 and as much RAM while aligning. It is opt-in
+  and never built or used automatically:
   - `wgsextract ref dense-sa --ref <fasta>` builds it with `wgse-bwa
     densify-sa` (it shows the disk it will take first; `--interval 8`, `4` or
-    `2` makes a larger, faster file), `--list` shows the FASTA's files and the
+    `2` makes a larger file with shorter walks; on x86 Linux interval 8 wasn't
+    clearly faster than 16), `--list` shows the FASTA's files and the
     one `wgse-bwa` would read here, and `--delete` removes them.
   - `align` and `realign` read it with `--dense-suffix-array`, or
     `dense_suffix_array = true` in `config.toml` (`--no-dense-suffix-array`

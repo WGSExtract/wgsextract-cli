@@ -22,6 +22,7 @@ import pytest
 from tests.htslib_helpers import needs_htslib, needs_tools
 from tests.http_server import serving
 from wgsextract_cli.commands.ref import library_commands
+from wgsextract_cli.core import library_removal
 from wgsextract_cli.core import reference_processing as rp
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
@@ -342,7 +343,7 @@ def test_reference_tool_cancel_stops_the_process(tmp_path):
         rp._run_reference_tool(["false"], None)
 
 
-# --- delete_genome / has_ref_ns ----------------------------------------------
+# --- remove_genome / has_ref_ns ----------------------------------------------
 
 
 def _touch(*paths: Path) -> None:
@@ -351,7 +352,7 @@ def _touch(*paths: Path) -> None:
         path.write_text("x")
 
 
-def test_delete_genome_removes_every_sidecar_and_nothing_else(tmp_path):
+def test_remove_genome_removes_every_sidecar_and_nothing_else(tmp_path):
     g = tmp_path / "genomes"
     ours = [
         g / name
@@ -362,27 +363,28 @@ def test_delete_genome_removes_every_sidecar_and_nothing_else(tmp_path):
             "hs38.fa.gz.gzi",
             "hs38.fa.gz.dict",
             "hs38.dict",
-            "hs38_ncnt.csv",
-            "hs38_nbin.csv",
-            "hs38.wgse",
+            "hs38.fa.manifest.json",
+            "hs38.dict.manifest.json",
         )
     ]
-    others = [g / "hs38d1.fna.gz", g / "hs38d1.dict", g / "hs38d1_ncnt.csv"]
+    # #825: the N counts stay, as the bootstrap ships them for every genome.
+    others = [g / "hs38d1.fna.gz", g / "hs38d1.dict", g / "hs38_ncnt.csv"]
     _touch(*ours, *others)
-    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
 
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))
+    assert set(library_removal.remove_genome(g, "hs38.fa.gz")) == set(ours)
     assert sorted(p.name for p in g.iterdir()) == sorted(p.name for p in others)
     assert get_genome_status("hs38.fa.gz", str(tmp_path)) == "missing"
-    assert not rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))  # nothing left: still fine
+    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
+    assert library_removal.remove_genome(g, "hs38.fa.gz") == {}  # nothing left
 
 
-def test_delete_genome_removes_download_state_and_aligner_indexes(tmp_path):
+def test_remove_genome_removes_download_state_and_aligner_indexes(tmp_path):
     g = tmp_path / "genomes"
-    suffixes = [".partial.segments", ".bwt", ".sa", ".0123", ".bwt.2bit.64", ".alt"]
+    suffixes = [".partial.segments", ".bwt", ".sa", ".0123", ".bwt.2bit.64", ".alt",
+                ".bwa.complete", ".bwa-mem2.pending", ".wgse-sa16"]  # fmt: skip
     _touch(*(g / f"hs38.fa.gz{s}" for s in suffixes))
-    rp.delete_genome("hs38.fa.gz", str(tmp_path))
+    _touch(g / ".hs38.fa.gz.bwa-index-1234" / "index.bwt")  # a killed build's
+    library_removal.remove_genome(g, "hs38.fa.gz")
     assert not list(g.iterdir())
 
 
@@ -508,12 +510,12 @@ def test_an_old_bootstrap_is_recognized_only_when_complete(tmp_path):
 
 
 def test_deleting_a_genome_keeps_an_old_bootstrap_installed_review_514(tmp_path):
-    """Deleting hs38 removes genomes/hs38_ncnt.csv, which a v0.1.0 bootstrap
-    also shipped; the library must stay bootstrapped."""
+    """genomes/hs38_ncnt.csv, which a v0.1.0 bootstrap also shipped, stays
+    when hs38 is deleted; the library stays bootstrapped."""
     for name in [*_BOOTSTRAP, "genomes/hs38_ncnt.csv", "genomes/hs38.fa.gz"]:
         _touch(tmp_path / name)
-    assert rp.delete_genome("hs38.fa.gz", str(tmp_path))
-    assert not (tmp_path / "genomes" / "hs38_ncnt.csv").exists()
+    library_removal.remove_genome(tmp_path / "genomes", "hs38.fa.gz")
+    assert not (tmp_path / "genomes" / "hs38.fa.gz").exists()
     assert rp.bootstrap_has_support_assets(str(tmp_path))
 
 

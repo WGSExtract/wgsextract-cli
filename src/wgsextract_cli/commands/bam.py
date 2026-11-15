@@ -25,6 +25,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -394,9 +395,10 @@ def run_unalign(params: BamUnalignParams) -> None:
         )
 
     logging.info(LOG_MESSAGES["unaligning_reads"])
+    stem = input_stem(input_path)
     fastqs = {
-        "fastq_r1": named_output_path(params.r1, outdir),
-        "fastq_r2": named_output_path(params.r2, outdir),
+        "fastq_r1": named_output_path(params.r1 or f"{stem}_R1.fastq.gz", outdir),
+        "fastq_r2": named_output_path(params.r2 or f"{stem}_R2.fastq.gz", outdir),
     }
     if params.se:
         fastqs["fastq_single"] = named_output_path(params.se, outdir)

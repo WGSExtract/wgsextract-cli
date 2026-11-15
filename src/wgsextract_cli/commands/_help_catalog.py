@@ -64,10 +64,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "_coverage_bins.tsv (depth bands, or .parquet with --format parquet) "
         "instead; with --with-bins both .tsv files. With --by, <input>_<bed>_target_coverage.tsv (depth per "
         "target) and <input>_<bed>_target_summary.txt (on- and off-target "
-        "depth, enrichment and targets below --min-depth).",
+        "depth, enrichment and targets below --min-depth). --status writes nothing.",
         "wgsextract info calculate-coverage --input sample.cram",
         "wgsextract info calculate-coverage --input sample.cram --bins --format parquet",
         "wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20",
+        "wgsextract info calculate-coverage --input sample.cram --status",
     ),
     "info coverage-sample": _h(
         "<input file name>_samplecvg.json; a whole-file run also updates the "
@@ -359,6 +360,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref test-genome": _h(
+        "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
+        "genome-config.toml, and the verified zip in .downloads (--delete "
+        "removes both). Without --install or --delete, prints its status.",
+        "wgsextract ref test-genome --install",
+        "wgsextract --json ref test-genome",
+    ),
     "ref needs": _h(
         "Prints the missing reference genome or annotation data and the command "
         "that installs each; writes no files. With --json, the result's "
@@ -549,9 +557,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract bam to-bam --input sample.cram",
     ),
     "bam unalign": _h(
-        "The FASTQ files named by --r1/--r2 (or --se).",
-        "wgsextract bam unalign --input sample.cram --r1 sample_R1.fastq.gz "
-        "--r2 sample_R2.fastq.gz",
+        "<input stem>_R1.fastq.gz and _R2.fastq.gz, or the FASTQs --r1/--r2 "
+        "name (and --se).",
+        "wgsextract bam unalign --input sample.cram",
     ),
     "bam merge": _h(
         "merged.bam or merged.cram (+ index), or the --output path; each run "
@@ -567,8 +575,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     # advanced: qc, repair
     "qc fastqc": _h(
-        "FastQC's <input>_fastqc.html and .zip.",
+        "FastQC's <input>_fastqc.html and .zip (and --r2's); with --r2 and "
+        "--multiqc, multiqc_report.html too.",
         "wgsextract qc fastqc --input sample_R1.fastq.gz",
+        "wgsextract qc fastqc --input s_R1.fastq.gz --r2 s_R2.fastq.gz --multiqc",
     ),
     "qc fastp": _h(
         "<stem>_fp_1.fastq.gz (and _fp_2), <stem>_fastp.html and <stem>_fastp.json.",

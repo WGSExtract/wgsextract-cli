@@ -38,13 +38,13 @@ GERP_ANNOTATED = "gerp_annotated.vcf.gz"
 def run_cadd(params: VcfCaddParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, CADD_ANNOTATED)
     logging.info(LOG_MESSAGES["vcf_cadd_start"].format(input=input_file))
 
+    indel_file = resource(params, "cadd_indel_file", lib.cadd_indel_file)
     snv_file = require_annotation_file(
-        resource(params.cadd_file, lib.cadd_file), "vcf_cadd_missing", "cadd"
+        resource(params, "cadd_file", lib.cadd_file), "vcf_cadd_missing", "cadd"
     )
-    indel_file = resource(params.cadd_indel_file, lib.cadd_indel_file)
     logging.info(LOG_MESSAGES["vcf_cadd_resolve"].format(path=snv_file))
     if indel_file:
         logging.info(LOG_MESSAGES["vcf_cadd_resolve"].format(path=indel_file))
@@ -64,6 +64,7 @@ def run_cadd(params: VcfCaddParams) -> None:
             "CADD",
             _CADD_HEADER,
             threads=params.threads,
+            reference=lib.fasta,
         )
     else:
         indel_tsv = prepare_tabix_annotation(indel_file, "CADD indel")
@@ -79,6 +80,7 @@ def run_cadd(params: VcfCaddParams) -> None:
                 "CADD",
                 _CADD_HEADER,
                 threads=params.threads,
+                reference=lib.fasta,
             )
             annotate_vcf(
                 snv_out,
@@ -87,7 +89,9 @@ def run_cadd(params: VcfCaddParams) -> None:
                 ann_out,
                 work,
                 "CADD indel",
+                _CADD_HEADER,
                 threads=params.threads,
+                reference=lib.fasta,
             )
 
     run_min_score_filter(
@@ -104,11 +108,11 @@ def run_cadd(params: VcfCaddParams) -> None:
 def run_gerp(params: VcfGerpParams) -> None:
     verify_dependencies(["bcftools", "tabix", "bgzip"])
     log_dependency_info(["bcftools", "tabix", "bgzip"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, GERP_ANNOTATED)
     logging.info(LOG_MESSAGES["vcf_gerp_start"].format(input=input_file))
 
     gerp_file = require_annotation_file(
-        resource(params.gerp_file, lib.gerp_file), "vcf_gerp_missing", "gerp"
+        resource(params, "gerp_file", lib.gerp_file), "vcf_gerp_missing", "gerp"
     )
     logging.info(LOG_MESSAGES["vcf_gerp_resolve"].format(path=gerp_file))
     ann_out = str(Path(outdir, GERP_ANNOTATED))

@@ -93,7 +93,9 @@ class VcfSnpParams(_SmallVariantParams):
     """Call SNPs from a BAM/CRAM into ``snps.vcf.gz``.
 
     Ploidy comes from ``ploidy`` or ``ploidy_file``, else the reference
-    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table.
+    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
+    the build of the input, or of a FASTA outside any library (its chr1
+    length, ``.dict`` assembly, header description or file name).
     """
 
     COMMAND = "vcf snp"
@@ -372,7 +374,12 @@ class VcfTrioParams(_VcfFileParams):
 class VcfClinvarParams(_AnnotatorParams):
     """ClinVar significance and disease (CLNSIG, CLNDN) as
     ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
-    with confidence labels, as ``clinvar_pathogenic.vcf.gz``."""
+    with sequencing confidence labels, as ``clinvar_pathogenic.vcf.gz``.
+    Matching requires an indexed reference FASTA (``ref``, else the library).
+    Both copies are reference-normalized; phase-supported SNVs can match MNVs.
+    Review status, stars and ClinVar identity remain separate from sequencing
+    confidence. Conflicting assertions go to ``clinvar_conflicts.vcf.gz`` and
+    their own confidence table, not the consensus pathogenic subset."""
 
     COMMAND = "vcf clinvar"
 
@@ -1015,8 +1022,11 @@ class VcfFreebayesParams(_CallerParams):
 
     COMMAND = "vcf freebayes"
 
-    region: str | None = _region_param(
-        "Chromosomal region (e.g. chrM, chrY:10000-20000)"
+    region: str | None = param(
+        None,
+        help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
+        flags=("-r", "--region"),
+        splits=_comma_items,
     )
     qc_min_depth: float | None = depth_param()
 
@@ -1032,8 +1042,7 @@ class VcfGatkParams(_CallerParams):
         None,
         help="Chromosomal region (e.g. chrM)",
         flags=("-r", "--region"),
-        doc="Comma-separated region(s) to call (e.g. chrM); with gpu, an item "
-        "may be a BED file of them.",
+        doc="Comma-separated region(s) to call (e.g. chrM), or a BED file.",
         splits=_comma_items,
     )
     scatter: bool = param(
@@ -1126,7 +1135,12 @@ class VcfClair3Params(_CallerParams):
 
     COMMAND = "vcf clair3"
 
-    region: str | None = _region_param("Chromosomal region (e.g. chr20:1-1000000)")
+    region: str | None = param(
+        None,
+        help="Chromosomal region (e.g. chr20:1-1000000)",
+        flags=("-r", "--region"),
+        splits=_comma_items,
+    )
     model: str | None = param(
         None,
         help="Clair3 model directory, or the name of a bundled model, matching the "

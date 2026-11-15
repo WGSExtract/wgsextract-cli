@@ -5,6 +5,11 @@ void wgse_mem3_seed_set_enabled(bool) {}
 void wgse_mem3_seed_set_verify(bool) {}
 void wgse_mem3_seed_set_wait(bool) {}
 void wgse_mem3_seed_inject_failure() {}
+void wgse_mem3_seed_set_sa(bool) {}
+bool wgse_mem3_sa_resolve(const FMI_search *, const int64_t *, const int64_t *, int64_t, int64_t *,
+    int) {
+    return false;
+}
 bool wgse_mem3_seed_finish() { return false; }
 void wgse_mem3_seed_preseed(FMI_search *, const mem_opt_t *, const bseq1_t *, int) {}
 void wgse_mem3_seed_chunk(FMI_search *, const mem_opt_t *, const bseq1_t *, int) {}

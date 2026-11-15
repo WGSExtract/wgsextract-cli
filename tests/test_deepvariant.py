@@ -124,6 +124,24 @@ def call(dv, *options, reads=None, out=None, threads="4"):
     )  # fmt: skip
 
 
+@pytest.mark.parametrize("contig", ["chrM", "chrY", "chrX"])
+@pytest.mark.parametrize("bounded", [False, True])
+def test_963_par_free_haploid_calls_do_not_pass_an_empty_par_bed(dv, contig, bounded):
+    dv.sample = snp_sample(dv.tmp / "hg38", contig=contig)
+    if contig != "chrM":
+        run_wgsextract("sample", "set", "--input", dv.sample.bam, "--sex", "Male")
+    call(dv, *(["--region", contig] if bounded else []))
+    calls = [
+        (*row[:-1], row[-1].replace("|", "/"))
+        for row in vcf_calls(dv.out / "deepvariant.vcf.gz")
+    ]
+    assert calls == dv.sample.calls
+    plan = dv.deepvariant.runs("run_deepvariant")[-1]["opts"]
+    # contract: PAR-free haploid selections need haploid control, not an empty BED.
+    assert plan["haploid_contigs"] == contig
+    assert "par_regions_bed" not in plan
+
+
 def rerun(dv, *options, **kwargs):
     """Forget earlier runs, stop failing and call again."""
     dv.deepvariant.fail(None)
@@ -320,6 +338,28 @@ def test_apple_arm_refuses_ont_including_automatic_selection(apple, selection):
 # CRAM 3.1 staging -----------------------------------------------------------
 
 
+def test_691_calling_profile_reaches_deepvariant_without_a_compatibility_copy(dv):
+    from wgsextract_cli.commands.align import run_streamed_alignment
+
+    output = dv.tmp / "calling.cram"
+    run_streamed_alignment(
+        ["samtools", "view", "-h", dv.sample.bam],
+        str(output),
+        threads="1",
+        memory="64M",
+        fmt="CRAM",
+        ref=dv.sample.ref,
+        duplicates=None,
+        output_profile="calling",
+    )
+    call(dv, reads=str(output))
+    (examples,) = dv.deepvariant.runs("make_examples")
+    assert Path(examples["reads"]).resolve() == output.resolve()
+    assert examples["cram_version"] == [3, 0]
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert not (dv.out / deepvariant.WORK_DIRECTORY).exists()
+
+
 @pytest.mark.parametrize("reads", ["bam", "3.0", "3.1", "3.1 named .bam"])
 def test_only_cram_31_is_staged_as_indexed_cram_30(dv, caplog, reads):
     """The images' htslib can't decode CRAM 3.1 (the fake fails on it), so
@@ -439,7 +479,7 @@ def test_a_relative_region_bed_in_its_own_folder_reaches_the_image(dv, monkeypat
     (dv.tmp / "targets" / "panel.bed").write_text("chr1\t899\t1100\n")
     monkeypatch.chdir(dv.tmp / "targets")
     call(dv, "-r", "panel.bed")
-    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls[:1]
     assert dv_flags(dv)["regions"] == str(dv.tmp / "targets" / "panel.bed")
 
 
@@ -515,7 +555,9 @@ def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, inde
         call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)
 
 
-def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
+def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(
+    dv, monkeypatch
+):
     """Slices of 1 GiB units: chrM and chr20 share the first one."""
     work = dv.tmp / "two"
     work.mkdir()
@@ -525,6 +567,9 @@ def test_crai_slices_follow_the_header_order_and_shared_slices_count_once(dv):
     lines += ["@SQ\tSN:chr20\tLN:1000", "r1\t0\tchrM\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"]
     sample = SimpleNamespace(ref=str(ref), bam=sam_to_bam(lines, work / "two.bam"))
     cram = as_cram(sample, "3.1")
+    dv.out.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[dv.out] = 350
     Path(f"{cram}.crai").write_text(
         f"0\t1\t100\t100\t10\t{200 * GIB}\n"
         f"1\t1\t100\t100\t10\t{200 * GIB}\n"

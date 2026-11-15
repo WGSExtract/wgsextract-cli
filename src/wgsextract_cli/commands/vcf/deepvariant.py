@@ -683,6 +683,12 @@ def _deepvariant_parabricks(
     setup = caller or setup_caller(params)
     outdir, ref = setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
+    from .caller_ploidy import calling_ploidy, require_diploid
+
+    require_diploid(
+        calling_ploidy(input_file, ref, setup.lib, outdir, region),
+        "Parabricks DeepVariant",
+    )
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
         _warn_ont_chemistry(input_file, ref)
@@ -941,6 +947,31 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     out_vcf = str(Path(outdir, "deepvariant.vcf.gz"))
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
+    from .caller_ploidy import calling_ploidy, require_diploid, write_intervals
+
+    ploidy = calling_ploidy(input_file, ref, caller.lib, outdir, region, commas=False)
+    if native:
+        require_diploid(ploidy, "wgse-deepvariant")
+    if not any(i.ploidy for i in ploidy):
+        raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
+    if any(i.ploidy == 0 for i in ploidy):
+        region = " ".join(
+            f"{i.chrom}:{i.start + 1}-{i.end}" for i in ploidy if i.ploidy
+        )
+        if len(region.encode()) > 500_000:
+            raise WGSExtractError(
+                "Ploidy exclusions require too many calling intervals; "
+                "select a smaller --region."
+            )
+    haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
+    par = None
+    if haploid:
+        par_intervals = [i for i in ploidy if i.chrom in haploid and i.ploidy == 2]
+        if par_intervals:
+            par = write_intervals(
+                absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
+                par_intervals,
+            )
     # wgse-deepvariant's htslib (1.25, ARM) decodes CRAM 3.1 correctly.
     staged_reads = not native and needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
@@ -951,7 +982,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         local_dv,
         arm64_image or image,
         bool(arm64_image),
-        [ref, input_file, out_vcf, str(work), checkpoint, *region_files],
+        [ref, input_file, out_vcf, str(work), checkpoint, *region_files, par],
         work,
         preflight=(lambda: _native_gpu_preflight(native)) if native_gpu else None,
         gpu_check=(
@@ -973,6 +1004,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     inputs: dict[str, str | None] = {
         "alignment": input_file,
         "reference": ref,
+        "ploidy_par": par,
         "launcher": local_dv if launcher.image is None else None,
         **{f"regions:{i}": path for i, path in enumerate(region_files)},
         **_checkpoint_files(checkpoint),
@@ -994,6 +1026,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
                 region, checkpoint, batch_size, postprocess, int(threads),
             )  # fmt: skip
+            if haploid:
+                dv_args += ["--haploid_contigs", ",".join(haploid)]
+                if par is not None:
+                    dv_args += ["--par_regions_bed", host_path(par)]
         if not journal.dry_run:
             # A rerun with finished stages needs less than this: it warns.
             fresh = not any(journal.recorded(s) for s in STEPS)

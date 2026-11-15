@@ -7,6 +7,7 @@ import logging
 import random
 import sys
 import textwrap
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,13 +23,15 @@ from tests.htslib_helpers import (
     write_fasta,
 )
 from tests.yleaf_helpers import native_tables as native_tables
+from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
 from wgsextract_cli.core.mito_reference import (
     CHM13_CHRM_MD5,
     RCRS_MD5,
     pinned_sequences,
 )
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.results import CommandResult, collecting
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.ydna.yleaf_native.trees import MANIFEST
 
 # Haplogrep's trees are downloaded; serve a tiny one instead.
@@ -114,6 +117,260 @@ _KIT_BODY = (
 # --- y-haplogroup ------------------------------------------------------------
 
 
+def _y_rows(output: Path, suffix: str) -> list[dict[str, str]]:
+    with (output / f"yleaf/kit/kit.{suffix}").open() as stream:
+        return list(csv.DictReader(stream, delimiter="\t"))
+
+
+def test_855_unfiltered_caller_vcf_needs_explicit_quality_assessment(
+    tmp_path, native_tables
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Block minimum">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t120\t.\tA\tG\t5\t.\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t135\t.\tA\t<NON_REF>\t60\t.\tEND=160\tGT:MIN_DP:GQ\t0:20:60\n"
+    )
+    raw = _vcf(tmp_path / "raw.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    with pytest.raises(WGSExtractError, match="could not predict"):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            raw,
+            "--build",
+            "hg38",
+            "--ref",
+            str(reference),
+            "--outdir",
+            str(tmp_path / "unassessed"),
+        )
+    assessed = tmp_path / "kit.vcf.gz"
+    run_command(
+        [
+            "bcftools",
+            "filter",
+            "--exclude",
+            "QUAL<20",
+            "--soft-filter",
+            "LowQual",
+            "--mode",
+            "+",
+            "-Oz",
+            "-o",
+            str(assessed),
+            raw,
+        ]
+    )
+    run_command(["bcftools", "index", str(assessed)])
+    output = tmp_path / "assessed"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        str(assessed),
+        "--build",
+        "hg38",
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    assert Counter(row["state"] for row in _y_rows(output, "out")) == {"D": 2, "A": 5}
+    assert {row["pos"] for row in _y_rows(output, "fmf")} == {"120", "130"}
+
+
+@pytest.mark.parametrize("heterozygote", ["0/1", "1/0", "0|1", "1|0"])
+@pytest.mark.parametrize("with_ad", [False, True])
+def test_855_y_no_call_filtered_and_gt_order_are_unknown(
+    tmp_path, native_tables, heterozygote, with_ad
+):
+    meta = (
+        '##FILTER=<ID=LowQual,Description="Failed quality">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    if with_ad:
+        meta += '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">\n'
+    records = [
+        (100, "PASS", "1", "20", "60", "0,20"),
+        (110, "PASS", "1/1", "20", "60", "0,20"),
+        (120, "LowQual", "1/1", "20", "60", "0,20"),
+        (130, "PASS", "./.", "20", "60", "0,20"),
+        (140, "PASS", heterozygote, "20", "60", "0,20"),
+        (150, "PASS", ".", "20", "60", "20,0"),
+        (160, "PASS", "1", "20", "5", "0,20"),
+    ]
+    body = "".join(
+        f"chrY\t{pos}\t.\tA\tG\t60\t{flt}\t.\tGT:DP:GQ"
+        + (":AD" if with_ad else "")
+        + f"\t{gt}:{dp}:{gq}"
+        + (f":{ad}" if with_ad else "")
+        + "\n"
+        for pos, flt, gt, dp, gq, ad in records
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    panel = tmp_path / "positions.txt"
+    panel.write_text(
+        (native_tables / "hg38/new_positions.txt")
+        .read_text()
+        .replace("150\tA>G\tA\tG", "150\tG>A\tG\tA")
+        .replace("151\tA>G\tA\tG", "151\tG>A\tG\tA")
+    )
+    output = tmp_path / "output"
+    result = CommandResult(command="lineage y-haplogroup")
+    with collecting(result):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            vcf,
+            "--build",
+            "hg38",
+            "--ref",
+            str(reference),
+            "--outdir",
+            str(output),
+            "--pos-file",
+            str(panel),
+        )
+    passing = _y_rows(output, "out")
+    failed = _y_rows(output, "fmf")
+    assert [(r["pos"], r["state"]) for r in passing] == [("100", "D"), ("110", "D")]
+    assert len(failed) == 7
+    assert {r["state"] for r in failed} == {"NA"}
+    assert (
+        next(r for r in failed if r["pos"] == "151")["Description"]
+        == "Unassessed position"
+    )
+    assert any(w.code == "y_evidence_rejected" for w in result.warnings)
+
+
+@pytest.mark.parametrize("build", ["hg19", "hg38", "t2t"])
+def test_855_y_callable_reference_block_not_fasta_absence(
+    tmp_path, native_tables, build
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1/1:20:60\n"
+        "chrY\t135\t.\tA\t<NON_REF>\t60\tPASS\tEND=160\tGT:MIN_DP:GQ\t0/0:20:60\n"
+        "chrY\t150\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t./.:20:60\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    output = tmp_path / "output"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        vcf,
+        "--build",
+        build,
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    passing = _y_rows(output, "out")
+    assert Counter(r["state"] for r in passing) == {"D": 2, "A": 4}
+    assert {r["pos"] for r in _y_rows(output, "fmf")} == {"120", "130", "150"}
+    assert all(int(r["reads"]) == 20 for r in passing)
+
+
+@pytest.mark.parametrize(
+    ("minimum", "expected_ancestral"),
+    [("", 0), (";MIN_DP=3", 0), (";MIN_DP=20", 5)],
+)
+@pytest.mark.parametrize(
+    "depth_format,depth_sample", [("GT:DP:GQ", "0:20:60"), ("GT:GQ", "0:60")]
+)
+def test_855_y_reference_block_point_depth_is_not_interior_evidence(
+    tmp_path, native_tables, minimum, expected_ancestral, depth_format, depth_sample
+):
+    meta = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        '##INFO=<ID=MIN_DP,Number=1,Type=Integer,Description="Block minimum depth">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Point or average depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    )
+    body = (
+        "chrY\t100\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        "chrY\t110\t.\tA\tG\t60\tPASS\t.\tGT:DP:GQ\t1:20:60\n"
+        f"chrY\t135\t.\tA\t<NON_REF>\t60\tPASS\tEND=160{minimum}\t{depth_format}\t{depth_sample}\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {"chrY": 1000}, body, meta)
+    reference = write_fasta(tmp_path / "reference.fa", {"chrY": "A" * 1000})
+    output = tmp_path / "output"
+    run_wgsextract(
+        "lineage",
+        "y-haplogroup",
+        "--input",
+        vcf,
+        "--build",
+        "hg38",
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(output),
+    )
+    states = Counter(r["state"] for r in _y_rows(output, "out"))
+    assert states["D"] == 2
+    assert states["A"] == expected_ancestral
+
+
+@pytest.mark.parametrize(
+    ("format_field", "sample"),
+    [
+        ("GT:DP", "1:."),
+        ("GT:DP", "1:0"),
+        ("GT:DP", "1:9"),
+        ("GT:AD:DP", "0/0:0,20:20"),
+        ("GT:AD:DP", "1:.:."),
+    ],
+)
+def test_855_y_missing_depth_and_ad_gt_disagreement_cannot_predict(
+    tmp_path, native_tables, format_field, sample
+):
+    meta = (
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allele depths">\n'
+    )
+    vcf = _vcf(
+        tmp_path / "kit.vcf.gz",
+        {"chrY": 1000},
+        f"chrY\t100\t.\tA\tG\t60\tPASS\t.\t{format_field}\t{sample}\n",
+        meta,
+    )
+    output = tmp_path / "output"
+    with pytest.raises(WGSExtractError, match="could not predict"):
+        run_wgsextract(
+            "lineage",
+            "y-haplogroup",
+            "--input",
+            vcf,
+            "--build",
+            "hg38",
+            "--no-ref-inference",
+            "--outdir",
+            str(output),
+        )
+    assert not _y_rows(output, "out")
+
+
 @pytest.mark.parametrize("tree_links", [False, True])
 def test_y_haplogroup_from_vcf_uses_native_markers_only_on_chry(
     tmp_path,
@@ -125,7 +382,12 @@ def test_y_haplogroup_from_vcf_uses_native_markers_only_on_chry(
         f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t{gt}\n"
         for pos, gt in ((100, 1), (110, 1), (120, 1), (130, 1), (140, 0), (150, 0))
     )
-    vcf = _vcf(tmp_path / "kit.vcf.gz", _HG38, body, "##reference=GRCh38.fa\n")
+    vcf = _vcf(
+        tmp_path / "kit.vcf.gz",
+        _HG38,
+        body.replace("\tGT\t", "\tGT:DP\t").replace("\n", ":20\n"),
+        '##reference=GRCh38.fa\n##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n',
+    )
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", vcf, "--outdir", str(tmp_path / "o"),
         "--no-ref-inference",
@@ -319,11 +581,18 @@ def test_y_haplogroup_fastq_requires_explicit_alignment(tmp_path):
         run_wgsextract(*argv)
 
 
-def _reads(chrom: str, genome: str, n: int, start: int = 0, snp: int | None = None):
-    """``n`` 50 bp reads at ``start``, with ALT C at 0-based ``snp`` if given."""
+def _reads(
+    chrom: str,
+    genome: str,
+    n: int,
+    start: int = 0,
+    snp: int | None = None,
+    alt: str = "C",
+):
+    """``n`` 50 bp reads at ``start``, with ``alt`` at 0-based ``snp`` if given."""
     seq = genome[start : start + 50]
     if snp is not None:
-        seq = seq[: snp - start] + "C" + seq[snp - start + 1 :]
+        seq = seq[: snp - start] + alt + seq[snp - start + 1 :]
     return [
         f"{chrom}_{i}\t0\t{chrom}\t{start + 1}\t60\t50M\t*\t0\t0\t{seq}\t{'I' * 50}"
         for i in range(n)
@@ -347,6 +616,7 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
         "lineage", "y-haplogroup", "--input", bam, "--ref", str(ref),
     )  # fmt: skip
     bam_prediction = (tmp_path / "yleaf/hg_prediction.hg").read_text()
+    assert _y_rows(tmp_path, "fmf") == []
 
     from wgsextract_cli.core.utils import run_command
 
@@ -357,6 +627,7 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
         "lineage", "y-haplogroup", "--input", cram, "--ref", str(ref),
     )  # fmt: skip
     assert (tmp_path / "yleaf/hg_prediction.hg").read_text() == bam_prediction
+    assert _y_rows(tmp_path, "fmf") == []
 
 
 def test_y_haplogroup_from_cram_without_a_reference_fails(
@@ -537,26 +808,29 @@ def _mito_on(tmp_path: Path, mito: str, m5: str = "") -> tuple[str, Path]:
     return sam_to_bam([sq, *reads], tmp_path / "kit.bam"), ref
 
 
-@pytest.mark.parametrize("chrm", ["CHM13", "rotated", "origin split", "M5"])
+@pytest.mark.parametrize("chrm", ["rotated", "origin split", "M5"])
 def test_mt_haplogroup_refuses_a_chrm_that_is_not_rcrs_positions_827(tmp_path, chrm):
     """#827: CHM13's chrM is the rCRS's length but rotated 576 bp, so it passed
-    the length check and Haplogrep classified shifted positions."""
-    rcrs, chm13 = pinned_sequences()
+    the length check and Haplogrep classified shifted positions. Since #832
+    CHM13's own chrM is mapped onto the rCRS; other rotations are refused."""
+    rcrs = pinned_sequences()[0]
     mito = {
-        "CHM13": chm13,
         "rotated": rcrs[576:] + rcrs[:576],
         "origin split": rcrs[1:] + rcrs[:1],  # its first 40 bp cross the end
         "M5": rcrs,
     }[chrm]
     # M5: the header says CHM13 even though --ref is (wrongly) an rCRS FASTA.
     bam, ref = _mito_on(tmp_path, mito, m5=CHM13_CHRM_MD5 if chrm == "M5" else "")
-    with pytest.raises(WGSExtractError, match="not the rCRS") as error:
+    with pytest.raises(WGSExtractError) as error:
         run_wgsextract(
             "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
             "--haplogrep-path", _haplogrep(tmp_path),
         )  # fmt: skip
-    assert ("is CHM13v2.0's chrM" in str(error.value)) is (chrm in ("CHM13", "M5"))
-    assert "realign" in str(error.value)
+    if chrm == "M5":
+        assert "CHM13v2.0's chrM in the alignment's header" in str(error.value)
+        assert "--ref" in str(error.value)
+    else:
+        assert "not the rCRS" in str(error.value) and "realign" in str(error.value)
     assert not (tmp_path / "calls.jsonl").exists()  # Haplogrep never ran
 
 
@@ -600,7 +874,8 @@ def test_mt_haplogroup_refuses_a_vcf_called_against_chm13_827(tmp_path, evidence
         plain = tmp_path / "plain.vcf"  # can't be indexed, so its chrM is a guess
         plain.write_bytes(gzip.decompress(Path(vcf).read_bytes()))
         vcf = str(plain)
-    with pytest.raises(WGSExtractError, match="CHM13v2.0's chrM, not the rCRS"):
+    # #832: a variants-only VCF can't be mapped onto the rCRS (10208).
+    with pytest.raises(WGSExtractError, match="CHM13v2.0's chrM.*variants only"):
         run_wgsextract(
             "lineage", "mt-haplogroup", "--input", vcf,
             "--haplogrep-path", _haplogrep(tmp_path),
@@ -621,6 +896,199 @@ def test_mt_haplogroup_refuses_mtdna_split_over_two_contigs_827(tmp_path):
             "lineage", "mt-haplogroup", "--input", str(plain),
             "--haplogrep-path", _haplogrep(tmp_path),
         )  # fmt: skip
+
+
+@pytest.mark.parametrize("at_10208", ["C", "T"])
+def test_mt_haplogroup_maps_a_chm13_chrm_onto_rcrs_positions_832(tmp_path, at_10208):
+    """#832: an alignment on CHM13's chrM was refused. It is mapped onto the
+    rCRS now: HG00096's 750G sits at CHM13 174, and a sample matching CHM13
+    at 10208 has no variant there yet carries 10208C against the rCRS."""
+    chm13 = pinned_sequences()[1]
+    assert (chm13[173], chm13[9630]) == ("A", "C")
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 12, start=150, snp=173, alt="G")
+    snp = 9630 if at_10208 == "T" else None
+    reads += _reads("chrM", chm13, 12, start=9600, snp=snp, alt="T")
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    result = _classify(
+        bam, tmp_path / "o", ref=ref, haplogrep_path=_haplogrep(tmp_path)
+    )
+    (call,) = _calls(tmp_path)
+    expected = [["chrM", "750", "A", "G"]]
+    expected += [["chrM", "10208", "T", "C"]] if at_10208 == "C" else []
+    assert [r[:4] for r in call["records"]] == expected
+    assert f"md5={RCRS_MD5}" in "".join(call["contigs"])
+    assert "rCRS" in result.details["mt_reference"]
+    assert not result.warnings
+
+
+_POLY_C = {  # CHM13 16294-16310 is rCRS 302-316 with a C after 310
+    "HG00096": (
+        "16294\t.\tACCCCCCC\tACCCCCCCC",
+        [("302", "A", "AC"), ("310", "T", "TC")],
+    ),
+    "CHM13's C": ("", [("310", "T", "TC")]),
+    "the rCRS's": ("16302\t.\tTC\tT", []),
+    # A shorter allele keeps the longer one's REF padding (GATK, DeepVariant).
+    "the rCRS's, padded": ("16302\t.\tTCC\tT,TC", []),
+}
+
+
+@pytest.mark.parametrize("sample", _POLY_C)
+def test_mt_haplogroup_renormalises_chm13_indels_against_rcrs_832(tmp_path, sample):
+    """#832: indels in the poly-C run by rCRS 310 are restated against the
+    rCRS, left-aligned as bcftools calls them there; CHM13's extra C counts
+    only when the sample has it."""
+    indel, expected = _POLY_C[sample]
+    chm13 = pinned_sequences()[1]
+    rows = [
+        (q, f"chrM\t{q}\t.\t{chm13[q - 1]}\t.\t50\tPASS\t.\tGT\t0\n")
+        for q in range(16280, 16321)
+    ]
+    if indel:  # after the reference call at its position
+        gt = len(indel.split()[3].split(","))  # the last ALT
+        rows.append((int(indel.split()[0]), f"chrM\t{indel}\t50\tPASS\t.\tGT\t{gt}\n"))
+    body = "".join(row for _q, row in sorted(rows, key=lambda r: r[0]))
+    meta = f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    (call,) = _calls(tmp_path)
+    assert [tuple(r[1:4]) for r in call["records"]] == expected
+
+
+def test_mt_haplogroup_contamination_needs_the_alignment_on_chm13_832(tmp_path):
+    chm13 = pinned_sequences()[1]
+    meta = f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    body = f"chrM\t174\t.\t{chm13[173]}\t.\t50\tPASS\t.\tGT\t0\n"
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    with pytest.raises(WGSExtractError, match="--contamination.*BAM or CRAM"):
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", vcf, "--contamination",
+            "--haplogrep-path", _haplogrep(tmp_path),
+            "--haplocheck-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+_CHM13_META = (
+    f"##contig=<ID=chrM,length=16569,md5={CHM13_CHRM_MD5}>\n"
+    '##INFO=<ID=END,Number=1,Type=Integer,Description="end">\n'
+)
+
+
+@pytest.mark.parametrize(
+    ("site", "af", "expected"),
+    [
+        (9631, "", None),
+        (9631, "0.5", None),
+        # Mutect2 writes 0/1 even for a homoplasmy; Haplogrep's level decides.
+        (9631, "0.99", []),
+        (9631, "0.05", [["10208", "T", "C"]]),
+        (174, "", [["750", "A", "G"]]),
+    ],
+)
+def test_mt_haplogroup_refuses_a_mixed_call_at_rcrs_10208_on_chm13_832(
+    tmp_path, site, af, expected
+):
+    """PR #927 review: a CHM13 0/1 9631 C>T read as T, so the sample's C
+    vanished at rCRS 10208. A mixture there is refused unless its level
+    (FORMAT/AF) puts one allele above Haplogrep's 0.9; one elsewhere still
+    reads as its ALT, as on an rCRS VCF."""
+    chm13 = pinned_sequences()[1]
+    alt = "T" if site == 9631 else "G"
+    fmt, level = ("GT:AF", f":{af}") if af else ("GT", "")
+    body = (
+        f"chrM\t{site - 1}\t.\t{chm13[site - 2]}\t.\t50\tPASS\t.\tGT\t0/0\n"
+        f"chrM\t{site}\t.\t{chm13[site - 1]}\t{alt}\t50\tPASS\t.\t{fmt}\t0/1{level}\n"
+    )
+    meta = _CHM13_META + '##FORMAT=<ID=AF,Number=A,Type=Float,Description="l">\n'
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, meta)
+    if expected is None:
+        with pytest.raises(CommandFailed, match=r"mixed call.*rCRS 10208"):
+            _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+        assert not (tmp_path / "calls.jsonl").exists()
+    else:
+        _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+        (call,) = _calls(tmp_path)
+        assert [r[1:4] for r in call["records"]] == expected
+
+
+@pytest.mark.parametrize("alt", ["CA", "C"])
+def test_mt_haplogroup_keeps_the_anchor_of_a_chm13_gvcf_record_832(tmp_path, alt):
+    """PR #927 review: a gVCF's 9631 CT>CA (or CT>C) keeps CHM13's C at
+    9631, but with no reference block over it that C was dropped, and with it
+    rCRS 10208C."""
+    chm13 = pinned_sequences()[1]
+    assert chm13[9630:9632] == "CT"
+    body = (
+        f"chrM\t1\t.\t{chm13[0]}\t<NON_REF>\t.\tPASS\tEND=100\tGT\t0/0\n"
+        f"chrM\t9631\t.\tCT\t{alt},<NON_REF>\t50\tPASS\t.\tGT\t1/1\n"
+    )
+    vcf = _vcf(tmp_path / "kit.vcf.gz", {}, body, _CHM13_META)
+    _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    (call,) = _calls(tmp_path)
+    assert ["10208", "T", "C"] in [r[1:4] for r in call["records"]]
+    if alt == "CA":
+        assert ["10209", "T", "A"] in [r[1:4] for r in call["records"]]
+
+
+def _chm13_vcf(path: Path, samples: list[str], refcall: str) -> str:
+    """A CHM13 chrM VCF of ``samples`` with 750G (at CHM13 174) and a 9631
+    C>T row each sample calls ``refcall``; sites only without samples."""
+    chm13 = pinned_sequences()[1]
+    rows = [(174, chm13[173], "G", "1"), (9631, "C", "T", refcall)]
+    header = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"
+    if samples:
+        header += "\tFORMAT\t" + "\t".join(samples)
+    body = "".join(
+        f"chrM\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t."
+        + ("\tGT" + f"\t{gt}" * len(samples) if samples else "")
+        + "\n"
+        for pos, ref, alt, gt in rows
+    )
+    plain = path.with_suffix("")
+    plain.write_text(
+        "##fileformat=VCFv4.2\n" + _CHM13_META
+        + '##FORMAT=<ID=GT,Number=1,Type=String,Description="g">\n'
+        + header + "\n" + body
+    )  # fmt: skip
+    return bgzip_index(plain, path)
+
+
+@pytest.mark.parametrize(
+    ("shape", "error"),
+    [
+        ("RefCall", "variants only"),
+        ("two samples", "single-sample VCF.*has 2 samples"),
+        ("sites only", "single-sample VCF.*has no samples"),
+    ],
+)
+def test_mt_haplogroup_needs_reference_only_records_on_chm13_832(
+    tmp_path, shape, error
+):
+    """PR #927 review: a 0/0 on a real ALT (a DeepVariant RefCall, a cohort
+    subset) passed for all-sites calls and dropped 10208C; multi-sample and
+    sites-only VCFs crashed unpacking genotypes."""
+    samples = {"RefCall": ["kit"], "two samples": ["kit", "mum"], "sites only": []}
+    vcf = _chm13_vcf(tmp_path / "kit.vcf.gz", samples[shape], "0/0")
+    with pytest.raises(CommandFailed, match=error):
+        _classify(vcf, tmp_path / "o", haplogrep_path=_haplogrep(tmp_path))
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+def test_mt_haplogroup_refuses_an_rcrs_header_on_a_chm13_reference_832(tmp_path):
+    """PR #927 review: an alignment whose header gives the rCRS's M5, run with
+    a CHM13 --ref, was called against CHM13 and mapped as if aligned to it."""
+    chm13 = pinned_sequences()[1]
+    bam, ref = _mito_on(tmp_path, chm13, m5=RCRS_MD5)
+    with pytest.raises(WGSExtractError) as error:
+        run_wgsextract(
+            "lineage", "mt-haplogroup", "--input", bam, "--ref", str(ref),
+            "--haplogrep-path", _haplogrep(tmp_path),
+        )  # fmt: skip
+    assert "rCRS in the alignment's header" in str(error.value)
+    assert "CHM13v2.0's chrM" in str(error.value) and "--ref" in str(error.value)
+    assert not (tmp_path / "calls.jsonl").exists()
 
 
 @pytest.mark.parametrize(
@@ -823,3 +1291,45 @@ def test_contamination_check_on_a_bam_calls_heteroplasmies(tmp_path, mini_tree):
         (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
     )
     assert row["Sample Coverage"] == "12" and row["Overall Homoplasmies"] == "1"
+
+
+@needs_haplogrep3
+@needs_tools("haplocheck")
+def test_contamination_check_maps_chm13_heteroplasmies_onto_rcrs_832(
+    tmp_path, mini_tree
+):
+    """#832: haplocheck reads rCRS positions too, so mutserve's CHM13 calls are
+    mapped, and 10208C, where the sample matches CHM13, is added."""
+    chm13 = pinned_sequences()[1]
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 12, start=150, snp=173, alt="G")
+    reads += _reads("chrM", chm13, 12, start=9600)
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    result = _classify(bam, tmp_path / "o", ref=ref, contamination=True)
+    assert result.metrics["mt_contamination"] == "ND"
+    (row,) = csv.DictReader(
+        (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
+    )
+    assert row["Overall Homoplasmies"] == "2"  # 750G and 10208C
+
+
+@needs_haplogrep3
+@needs_tools("haplocheck")
+def test_contamination_check_refuses_a_third_allele_mixture_at_10208_832(
+    tmp_path, mini_tree
+):
+    """PR #927 review: mutserve's CHM13 9631 C>A at 10% became rCRS 10208
+    T>A at 10%, so haplocheck read 90% T where the sample has 90% C."""
+    chm13 = pinned_sequences()[1]
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chm13})
+    reads = _reads("chrM", chm13, 90, start=9600)
+    mixed = _reads("chrM", chm13, 10, start=9600, snp=9630, alt="A")
+    reads += [read.replace("chrM_", "mixed_", 1) for read in mixed]
+    # mutserve calls a heteroplasmy only when both strands carry it.
+    reads = [
+        r.replace("\t0\t", "\t16\t", 1) if i % 2 else r for i, r in enumerate(reads)
+    ]
+    bam = sam_to_bam([f"@SQ\tSN:chrM\tLN:{len(chm13)}", *reads], tmp_path / "k.bam")
+    with pytest.raises(CommandFailed, match=r"mixture of C and A.*rCRS has T"):
+        _classify(bam, tmp_path / "o", ref=ref, contamination=True)
+    assert not (tmp_path / "o" / "haplocheck_contamination.raw.txt").exists()

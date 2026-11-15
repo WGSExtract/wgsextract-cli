@@ -79,6 +79,8 @@ def skip_reason(ann: str, lib: ReferenceLibrary) -> str | None:
             "required reference data not found. "
             f"Run 'wgsextract ref {ann}' to download."
         )
+    if ann == "clinvar" and not getattr(lib, "fasta", None):
+        return "matching reference FASTA not found; pass --ref with an indexed FASTA."
     return None
 
 

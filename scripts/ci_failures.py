@@ -35,6 +35,14 @@ def is_pr_area_run(run: dict[str, Any]) -> bool:
     return run.get("path") == ".github/workflows/pr_ci.yml"
 
 
+def is_main_validation(run: dict[str, Any], repository: str) -> bool:
+    return (
+        run["head_branch"] == "main"
+        and run["event"] in {"push", "schedule"}
+        and run["head_repository"]["full_name"] == repository
+    )
+
+
 class Observer(IssueReports):
     def __init__(self, github: GitHub) -> None:
         super().__init__(github)
@@ -61,10 +69,11 @@ class Observer(IssueReports):
     def latest(
         self, run: dict[str, Any], branch: str | None = None
     ) -> dict[str, Any] | None:
+        main = branch is not None or is_main_validation(run, self.gh.repository)
         query = urlencode(
             {
                 "branch": branch or run["head_branch"],
-                "event": "push" if branch else run["event"],
+                **({} if main else {"event": run["event"]}),
                 **({"status": "completed"} if branch else {}),
             }
         )
@@ -77,8 +86,13 @@ class Observer(IssueReports):
             )
             if item["head_repository"]["full_name"] != repository:
                 continue
-            if branch and item["conclusion"] not in {"failure", "success"}:
+            if main and item["event"] not in {"push", "schedule"}:
                 continue
+            if branch:
+                conclusive = self.conclusive_attempt(item)
+                if conclusive is None:
+                    continue
+                return conclusive
             if (
                 not branch
                 and is_pr_area_run(run)
@@ -88,6 +102,21 @@ class Observer(IssueReports):
             ):
                 continue
             return item
+        return None
+
+    def conclusive_attempt(self, run: dict[str, Any]) -> dict[str, Any] | None:
+        if run["conclusion"] in {"failure", "success"}:
+            return run
+        if run["conclusion"] != "cancelled":
+            return None
+        # The run list contains only the latest attempt. Cancellation of a
+        # retry cannot erase an already observed red-main failure.
+        for attempt in range(run["run_attempt"] - 1, 0, -1):
+            previous: dict[str, Any] = self.gh.api(
+                "GET", f"actions/runs/{run['id']}/attempts/{attempt}"
+            )
+            if previous["conclusion"] in {"failure", "success"}:
+                return previous
         return None
 
     def failures(self, run: dict[str, Any], *, history: bool = False) -> list[Failure]:
@@ -225,6 +254,21 @@ class Observer(IssueReports):
             return []
         return self.non_flaky(self.failures(main))
 
+    def retry_head_current(self, run: dict[str, Any]) -> bool:
+        """A historical ready payload must not restart a now-draft PR."""
+        prs = run.get("pull_requests", [])
+        if not prs:
+            return str(run["event"]) != "pull_request"
+        for pr in prs:
+            pull = self.gh.api("GET", f"pulls/{int(pr['number'])}")
+            if (
+                pull["state"] == "open"
+                and pull.get("draft") is False
+                and pull["head"]["sha"] == run["head_sha"]
+            ):
+                return True
+        return False
+
     def audit_retry(self, run: dict[str, Any], failures: list[Failure]) -> None:
         if len(failures) == 1 and failures[0].source_attempt == run["run_attempt"]:
             endpoint = f"actions/jobs/{failures[0].job_id}/rerun"
@@ -260,13 +304,7 @@ class Observer(IssueReports):
             or latest["id"] != run["id"]
             or latest["status"] != "completed"
             or latest["run_attempt"] != run["run_attempt"]
-            or (
-                run.get("pull_requests")
-                and not any(
-                    Quarantine(self.gh).head(int(pr["number"])) == run["head_sha"]
-                    for pr in run["pull_requests"]
-                )
-            )
+            or not self.retry_head_current(run)
         ):
             self.finish_retry_audit(
                 receipt,
@@ -280,11 +318,20 @@ class Observer(IssueReports):
         )
 
     def process(self, run: dict[str, Any], *, rerun_tests: bool = False) -> int:
-        self.report_recoveries(run)
         latest = self.latest(run)
-        if latest is None or latest["id"] != run["id"]:
+        superseded = latest is None or latest["id"] != run["id"]
+        # Partial passes in a cancelled, superseded run must not create flake
+        # exemptions. Completed successful retries still report recoveries.
+        if not (
+            superseded
+            and run["conclusion"] == "cancelled"
+            and run["event"] in {"push", "pull_request", "merge_group"}
+        ):
+            self.report_recoveries(run)
+        if superseded:
             print("Superseded run; not rerunning or changing main status.")
             return 0
+        assert latest is not None
         if (
             latest["run_attempt"] != run["run_attempt"]
             or latest["status"] != "completed"
@@ -292,12 +339,7 @@ class Observer(IssueReports):
             print("Attempt is no longer current.")
             return 0
         failures = self.failures(run) if run["conclusion"] != "success" else []
-        is_main = (
-            run["head_branch"] == "main"
-            and run["event"] == "push"
-            and run["head_repository"]["full_name"] == self.gh.repository
-        )
-        if is_main:
+        if is_main_validation(run, self.gh.repository):
             self.red_main(run, failures)
         elif failures:
             baselines: dict[str, list[Failure]] = {}
@@ -330,6 +372,9 @@ class Observer(IssueReports):
         # A mixed run needs a code fix, not an infrastructure retry that will
         # strand old job IDs or restart deliberately cancelled queued siblings.
         if not all(retryable(failure, rerun_tests=rerun_tests) for failure in failures):
+            return 0
+        if not self.retry_head_current(run):
+            print("PR head is no longer ready; not restarting historical CI.")
             return 0
         self.audit_retry(run, failures)
         return 0

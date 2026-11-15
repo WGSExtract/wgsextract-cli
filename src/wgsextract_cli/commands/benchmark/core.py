@@ -29,6 +29,13 @@ def _run_core_benchmark_analysis_steps(
     region: str | None,
     region_allowed: bool,
 ) -> Path:
+    # Synthetic/scaled and mini references cannot support WGS sex inference.
+    # Their timing workload uses explicit diploid calling, not inferred sex.
+    calling_ploidy = (
+        "2"
+        if real_dataset is None or job.dataset == "real"
+        else ploidy_for_build(benchmark_build)
+    )
     subset_dir = steps_dir / "bam-subset"
     subset_bam = subset_dir / f"{analysis_bam.stem}_subset.bam"
     subset_cmd = [
@@ -194,7 +201,7 @@ def _run_core_benchmark_analysis_steps(
         "--outdir",
         str(snp_dir),
         "--ploidy",
-        ploidy_for_build(benchmark_build),
+        calling_ploidy,
     ]
     if region and region_allowed:
         snp_cmd += ["--region", str(region)]
@@ -221,7 +228,7 @@ def _run_core_benchmark_analysis_steps(
         "--outdir",
         str(indel_dir),
         "--ploidy",
-        ploidy_for_build(benchmark_build),
+        calling_ploidy,
     ]
     if region and region_allowed:
         indel_cmd += ["--region", str(region)]
@@ -255,6 +262,10 @@ def _run_core_benchmark_analysis_steps(
         "--formats",
         "all",
     ]
+    if calling_ploidy == "2":
+        ploidy_file = steps_dir / "benchmark-diploid.ploidy"
+        ploidy_file.write_text("* * * * 2\n", encoding="utf-8", newline="\n")
+        microarray_cmd += ["--ploidy-file", str(ploidy_file)]
     if region and region_allowed:
         microarray_cmd += ["--region", str(region)]
     record(
