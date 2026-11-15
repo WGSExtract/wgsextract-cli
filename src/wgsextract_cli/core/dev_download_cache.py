@@ -13,16 +13,17 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import typed_settings
+from wgsextract_cli.core.settings_schema import DevSettings
 
-CACHE_TTL_SECONDS = 7 * 24 * 60 * 60
+CACHE_TTL_SECONDS = DevSettings().download_cache_ttl_seconds
 _REPLACE_ATTEMPTS = 5
 _REPLACE_RETRY_SECONDS = 0.1
 
 
 def dev_download_cache_enabled() -> bool:
-    """Enabled by the dev_download_cache = true config.toml setting."""
-    return settings.get("dev_download_cache") is True
+    """Enabled by download_cache = true in config.toml's [dev] table."""
+    return typed_settings().dev.download_cache
 
 
 def xdg_cache_home() -> Path:
@@ -256,13 +257,4 @@ def _cache_filename(url: str, destination: Path) -> str:
 
 
 def _cache_ttl_seconds() -> int:
-    value = settings.get("dev_download_cache_ttl_seconds")
-    if value is None:
-        return CACHE_TTL_SECONDS
-    try:
-        return max(0, int(str(value)))
-    except ValueError:
-        logging.warning(
-            "Ignoring invalid dev_download_cache_ttl_seconds=%r in config.", value
-        )
-        return CACHE_TTL_SECONDS
+    return typed_settings().dev.download_cache_ttl_seconds

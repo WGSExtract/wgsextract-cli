@@ -16,6 +16,7 @@ GENERATED = (
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
+    "docs/configuration.md",
 )
 
 
@@ -46,6 +47,7 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/regen.py",
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
+        "scripts/gen_config_docs.py",
         "tests/cli_snapshot.py",
         "site_src/cli.md",
     ):
@@ -129,7 +131,10 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     )
     for name in ("docs/commands.md", "site_src/cli.md"):
         assert "microarray" in (regen_repo / name).read_text(encoding="utf-8")
-    for generator in ("gen_api_docs.py", "gen_command_docs.py"):
+    assert "server_max_jobs" in (regen_repo / "docs/configuration.md").read_text(
+        encoding="utf-8"
+    )
+    for generator in ("gen_api_docs.py", "gen_command_docs.py", "gen_config_docs.py"):
         checked = subprocess.run(
             [sys.executable, f"scripts/{generator}", "--check"],
             cwd=regen_repo,

@@ -20,6 +20,7 @@ Value: TypeAlias = Path | str | None
 IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_modules"}
 DOCS_TEST_TARGETS = (
     "tests/test_api.py::test_api_docs_are_up_to_date",
+    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
     "tests/test_api_cli_parity.py",
     "tests/test_cli_help.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
@@ -36,6 +37,7 @@ GENERATED_DOCS = frozenset(
     {
         "docs/api.md",
         "docs/commands.md",
+        "docs/configuration.md",
         "site_src/cli.md",
         "tests/fixtures/api_cli_snapshot.json",
         "src/wgsextract_cli/assets/cli/help-index.json",
@@ -46,6 +48,12 @@ DOCS_TARGET_INPUTS = {
         "src/wgsextract_cli/api/**",
         "scripts/gen_api_docs.py",
         "docs/api.md",
+    ),
+    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date": (
+        "src/wgsextract_cli/core/config.py",
+        "src/wgsextract_cli/core/settings_schema.py",
+        "scripts/gen_config_docs.py",
+        "docs/configuration.md",
     ),
     "tests/test_api_cli_parity.py": (
         "src/wgsextract_cli/**",
@@ -62,6 +70,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/regen*",
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
+        "scripts/gen_config_docs.py",
         "tests/cli_snapshot.py",
         "justfile",
     ),
@@ -90,6 +99,7 @@ DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
+        "scripts/gen_config_docs.py",
         "scripts/regen.py",
         "scripts/bump_version.py",
         "gui/scripts/bump-wgsextract-cli.py",

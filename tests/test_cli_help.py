@@ -26,8 +26,8 @@ from wgsextract_cli.commands.registry import (
     JOURNEYS,
     Deprecation,
 )
-from wgsextract_cli.core.config import KNOWN_SETTINGS
 from wgsextract_cli.core.results import CommandResult, FileRecord
+from wgsextract_cli.core.settings_schema import Settings
 from wgsextract_cli.main import main
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -519,8 +519,8 @@ def test_help_topics_are_listed_readable_and_their_examples_parse(capsys, root):
 def test_coverage_topic_quotes_the_default_depth_thresholds(capsys):
     main(["help", "coverage"])
     text = " ".join(capsys.readouterr().out.split())
-    diploid = KNOWN_SETTINGS["qc_min_diploid_depth"][0]
-    haploid = KNOWN_SETTINGS["qc_min_haploid_depth"][0]
+    diploid = Settings().qc_min_diploid_depth
+    haploid = Settings().qc_min_haploid_depth
     assert f"warn below {diploid:g}x on autosomes and {haploid:g}x on chrY" in text
 
 

@@ -17,7 +17,7 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
 from wgsextract_cli.core.cram_counts import cram_container_totals, multi_ref_contigs
 from wgsextract_cli.core.microarray_utils import GenotypeTally, is_autosome
@@ -34,14 +34,12 @@ MIN_QC_SITES = 1000
 GUIDE = "docs/genotype-qc.md"
 
 
-def _setting(key: str, override: float | None = None) -> float:
-    """A threshold; config loading has already checked its range."""
-    if override is not None:
-        return override
-    value = settings.get(key)
-    if not isinstance(value, int | float):
-        value = KNOWN_SETTINGS[key][0]
-    return float(value) if isinstance(value, int | float) else 0.0
+def _depth_thresholds(min_depth: float | None) -> tuple[float, float]:
+    """(diploid, haploid) mean depths to warn below; ``min_depth`` sets both."""
+    if min_depth is not None:
+        return min_depth, min_depth
+    configured = typed_settings()
+    return configured.qc_min_diploid_depth, configured.qc_min_haploid_depth
 
 
 DEPTH_HELP = (
@@ -359,8 +357,7 @@ def low_depth_targets(
     below what its genotypes need: qc_min_diploid_depth for autosomes and a
     woman's chrX, qc_min_haploid_depth for chrY, mtDNA and a man's chrX;
     `min_depth` overrides both. `male` defaults to what `depths` suggest."""
-    diploid = _setting("qc_min_diploid_depth", min_depth)
-    haploid = _setting("qc_min_haploid_depth", min_depth)
+    diploid, haploid = _depth_thresholds(min_depth)
     if male is None:
         male = _is_male(depths)
     low = []
@@ -508,9 +505,7 @@ def warn_low_depth(
     if not targets or not alignment.lower().endswith((".bam", ".cram")):
         return None
     warn_if_contaminated(alignment)
-    if not _setting("qc_min_diploid_depth", min_depth) and not _setting(
-        "qc_min_haploid_depth", min_depth
-    ):
+    if not any(_depth_thresholds(min_depth)):
         return None
     found = _depths_to_judge(alignment, targets, outdir, ref, min_depth, region)
     if found is None or not any(t in found[0] for t in targets):
@@ -579,8 +574,9 @@ def warn_about_genotypes(
             f"Autosomal genotypes: {tally.called:,} called, "
             f"{tally.homozygosity:.1%} homozygous, het/hom {ratio}"
         )
-    low = _setting("qc_min_autosomal_homozygosity")
-    high = _setting("qc_max_autosomal_homozygosity")
+    configured = typed_settings()
+    low = configured.qc_min_autosomal_homozygosity
+    high = configured.qc_max_autosomal_homozygosity
     if tally.called >= MIN_QC_SITES:
         if tally.homozygosity > high:
             warn(
@@ -604,7 +600,7 @@ def warn_about_genotypes(
                 homozygosity=round(tally.homozygosity, 4),
                 threshold=low,
             )
-    max_no_calls = _setting("qc_max_no_call_rate")
+    max_no_calls = configured.qc_max_no_call_rate
     noisy = {
         name: t.no_call_rate
         for name, t in (outputs or {}).items()

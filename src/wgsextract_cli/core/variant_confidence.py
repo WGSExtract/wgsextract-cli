@@ -32,7 +32,7 @@ from typing import IO, Any
 
 from wgsextract_cli.core import clinical_evidence
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
@@ -122,22 +122,16 @@ class Thresholds:
             )
 
 
-def _setting(key: str) -> float:
-    value = settings.get(key)
-    if not isinstance(value, int | float) or isinstance(value, bool):
-        value = KNOWN_SETTINGS[key][0]
-    return float(value) if isinstance(value, int | float) else 0.0
-
-
 def thresholds_from(args: object | None = None) -> Thresholds:
     """Thresholds from config.toml, overridden by --confidence-depth/-gq."""
     depth = getattr(args, "confidence_depth", None)
     gq = getattr(args, "confidence_gq", None)
+    configured = typed_settings()
     return Thresholds(
-        min_depth=depth[0] if depth else _setting("confidence_min_depth"),
-        high_depth=depth[1] if depth else _setting("confidence_high_depth"),
-        min_gq=gq[0] if gq else _setting("confidence_min_gq"),
-        high_gq=gq[1] if gq else _setting("confidence_high_gq"),
+        min_depth=depth[0] if depth else configured.confidence_min_depth,
+        high_depth=depth[1] if depth else configured.confidence_high_depth,
+        min_gq=gq[0] if gq else configured.confidence_min_gq,
+        high_gq=gq[1] if gq else configured.confidence_high_gq,
     )
 
 

@@ -4,15 +4,15 @@ import os
 import pytest
 
 from tests.smoke_utils import check_tool, run_cli, verify_bam, verify_vcf
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import typed_settings
+
+_DEV = typed_settings().dev
 
 
 @pytest.mark.real_config
 @pytest.mark.skipif(
-    not settings.get("pet_r1_fastq")
-    or not settings.get("pet_r2_fastq")
-    or not settings.get("pet_reference_fasta"),
-    reason="pet_r1_fastq/pet_r2_fastq/pet_reference_fasta settings not set",
+    not _DEV.pet_r1_fastq or not _DEV.pet_r2_fastq or not _DEV.pet_reference_fasta,
+    reason="[dev] pet_r1_fastq/pet_r2_fastq/pet_reference_fasta settings not set",
 )
 class TestPetAlignSmoke:
     """Ported from test_pet_align_full.sh"""
@@ -20,9 +20,10 @@ class TestPetAlignSmoke:
     @pytest.fixture(autouse=True)
     def setup_pet(self, tmp_path, pytestconfig):
         self.outdir = str(tmp_path)
-        self.r1 = settings.get("pet_r1_fastq")
-        self.r2 = settings.get("pet_r2_fastq")
-        self.ref = settings.get("pet_reference_fasta")
+        dev = typed_settings().dev
+        self.r1 = dev.pet_r1_fastq
+        self.r2 = dev.pet_r2_fastq
+        self.ref = dev.pet_reference_fasta
         self.species = pytestconfig.getoption("pet_species")
 
     @pytest.mark.skipif(

@@ -2,15 +2,25 @@ import difflib
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, TypeVar, overload
+from typing import Any, TypeVar, cast, overload
 
 from platformdirs import user_config_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
+from wgsextract_cli.core.settings_schema import (
+    DEV_SETTINGS,
+    DEV_TABLE,
+    MOVED_TO_DEV,
+    SETTINGS,
+    DevSettings,
+    InvalidSetting,
+    Settings,
+    check_values,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 # For Python < 3.11, use tomli
@@ -24,364 +34,11 @@ APP_AUTHOR = "theontho"
 T = TypeVar("T")
 _warned_unknown_keys: set[tuple[str, str]] = set()
 
-KNOWN_SETTINGS = {
-    "input_path": (None, "Default input BAM/CRAM or FASTQ file"),
-    "output_directory": (None, "Default output directory"),
-    "temp_directory": (
-        None,
-        "Optional volume for sort spills, GATK and realign staging",
-    ),
-    "atomic_outputs": (
-        False,
-        "Publish completed main outputs by rename (changes tool provenance paths)",
-    ),
-    "reference_fasta": (None, "Path to the reference genome FASTA"),
-    "reference_library": (
-        None,
-        "Reference data directory (annotation data, gene maps, VEP caches)",
-    ),
-    "reference_genome_library": (
-        None,
-        "Folder holding only the reference genomes (FASTAs) and the files made "
-        "from them, for reference_library (default: genomes/ in it)",
-    ),
-    "dataset_library": (
-        None,
-        "Directory of user datasets, one folder per person or sample "
-        "(formerly genome_library)",
-    ),
-    "cpu_threads": (
-        "auto",
-        "CPU threads: a positive integer, or auto (Apple Silicon performance "
-        "cores, otherwise all cores)",
-    ),
-    "memory_limit": (
-        "auto",
-        "Memory limit per thread, e.g. 2G (auto: 25% of RAM split across threads)",
-    ),
-    "debug_mode": (False, "Enable verbose debug logging"),
-    "quiet_mode": (False, "Enable quiet mode (errors only)"),
-    "log_dir": (
-        None,
-        "Opt-in directory for unique persistent DEBUG run logs and provenance; "
-        "it keeps the newest 100 runs",
-    ),
-    "state_directory": (
-        None,
-        "Folder for the last-run record and saved bug reports (report-issue); "
-        "default: state/ in the data folder",
-    ),
-    "server_port": (
-        0,
-        "Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port)",
-    ),
-    "server_allowed_paths": (
-        None,
-        "Folders (a string or an array) `wgsextract serve` requests may read "
-        "and write, besides dataset_library, reference_library, "
-        "reference_genome_library and output_directory",
-    ),
-    "server_mcp_transport": (
-        "stdio",
-        "How `wgsextract serve --mcp` speaks MCP: stdio, or http (streamable "
-        "HTTP on 127.0.0.1 with a per-launch token; needs the optional 'mcp' "
-        "package)",
-    ),
-    "server_mcp_port": (
-        0,
-        "Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 "
-        "(0: any free port)",
-    ),
-    "server_max_jobs": (
-        1,
-        "Long `wgsextract serve` jobs that run at once; more wait in a queue",
-    ),
-    "keep_awake": (False, "Best-effort sleep inhibition while commands run (opt-in)"),
-    "haplogrep_executable": (None, "Path to the Haplogrep 3 executable or JAR"),
-    "dorado_executable": (None, "Path to ONT's dorado executable for `basecall`"),
-    "native_aligners": (
-        None,
-        "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
-        "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
-    ),
-    "prefer_native_gpu": (
-        False,
-        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
-        "budget after normal sort step-down; retain explicit memory, otherwise "
-        "cap default/config sort at 256M (may swap heavily)",
-    ),
-    "dense_suffix_array": (
-        False,
-        "`align`/`realign`: wgse-bwa reads the reference's dense suffix-array "
-        "file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; "
-        "holds it in RAM, 0.8 GB for hs38)",
-    ),
-    "dorado_models_directory": (
-        None,
-        "Folder `basecall` downloads Dorado models into (default: the "
-        "wgsextract cache's dorado-models)",
-    ),
-    "mimalloc": (
-        None,
-        "Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's "
-        "wgse-mimalloc allocator when it's installed (auto, the default) or "
-        "never (off)",
-    ),
-    "haplocheck_executable": (None, "Path to the haplocheck executable or JAR"),
-    "report_gene_list": (
-        None,
-        "`report`: genes of the ClinVar section, a built-in list "
-        "(acmg-sf-3.3, the default, or acmg-sf-3.2) or a TSV or BED file",
-    ),
-    "haplogrep_tree": (
-        None,
-        "Haplogrep 3 tree for mtDNA haplogroups: phylotree-fu-rcrs "
-        "(default), phylotree-rcrs or mitotree-rcrs",
-    ),
-    "y_tree": (
-        None,
-        "Y haplogroup tree for `lineage y-haplogroup`: yfull (default), "
-        "yfull_v10, ftdna, isogg or a [y_trees] id",
-    ),
-    "y_trees": (
-        None,
-        "Your own Y haplogroup trees, one [y_trees.<id>] table each "
-        "(see the Yleaf README)",
-    ),
-    "jar_directory": (None, "Directory for JAR tools"),
-    "vep_cache_directory": (None, "Path to VEP cache"),
-    "vep_engine": (
-        None,
-        "Engine `vep run` annotates with: vep-rs (default) or ensembl",
-    ),
-    "pharmcat_directory": (None, "Extracted PharmCAT pipeline release"),
-    "parabricks_image": (
-        None,
-        "NVIDIA Parabricks Docker image for GPU alignment and calling "
-        "(default nvcr.io/nvidia/clara/clara-parabricks:4.8.0-1)",
-    ),
-    "deepvariant_image": (
-        None,
-        "DeepVariant Docker image for CPU calling (default "
-        "google/deepvariant:1.10.0 on x64; local "
-        "localhost/wgsextract-deepvariant:1.10.0-arm64 on Linux ARM64)",
-    ),
-    "deepvariant_native": (
-        None,
-        "`vcf deepvariant` runs wgse-deepvariant (Apple Silicon, Linux x86-64) "
-        "when it is on PATH (auto, the default) or never (off)",
-    ),
-    "deepvariant_weights": (
-        None,
-        "Folder of the weights wgse-deepvariant calls with (from its "
-        "macos-deepvariant or linux-deepvariant release)",
-    ),
-    "deepvariant_ultima_image": (
-        None,
-        "DeepVariant Docker image with the ULTIMA model, for Ultima reads "
-        "(default google/deepvariant:gh1100-ultima)",
-    ),
-    "deepvariant_ultima_gpu_image": (
-        None,
-        "DeepVariant GPU Docker image with the ULTIMA model, for `vcf "
-        "deepvariant --gpu` on Ultima reads (default "
-        "google/deepvariant:gh1100-ultima-gpu, pinned by digest)",
-    ),
-    "clair3_model": (
-        None,
-        "Clair3 ONT model for `vcf clair3`: a model directory or the name of one "
-        "Clair3 bundles (default: chosen from the reads' basecaller metadata)",
-    ),
-    "clair3_gpu_image": (
-        None,
-        "Clair3 GPU Docker image for `vcf clair3 --gpu` (default "
-        "hkubal/clair3:v2.0.5_gpu, pinned by digest)",
-    ),
-    "methylation_context": (
-        "cpg",
-        "`methylation pileup` context: cpg (CpG sites) or all (every cytosine)",
-    ),
-    "methylation_5hmc": (
-        False,
-        "`methylation pileup`: also report 5hmC (Nanopore 5mCG_5hmCG models)",
-    ),
-    "methylation_combine_strands": (
-        True,
-        "`methylation pileup`: sum both strands of each CpG into one row",
-    ),
-    "default_input_vcf": (None, "Default input VCF file"),
-    "microarray_min_gq": (20, "Microarray minimum sample GQ (0 disables filtering)"),
-    "microarray_min_dp": (10, "Microarray minimum sample DP (0 disables filtering)"),
-    "microarray_assume_hom_ref": (
-        False,
-        "Treat absent VCF markers on represented contigs as homozygous reference",
-    ),
-    "microarray_exclude_filtered": (
-        True,
-        "Write microarray no-calls for VCF FILTER values other than PASS or .",
-    ),
-    "microarray_call_reasons": (
-        False,
-        "Write a companion CombinedKit_reasons.tsv with explicit call/no-call reasons",
-    ),
-    "microarray_strand_ambiguous": (
-        "keep",
-        "Keep or no-call known biallelic A/T and C/G input SNP sites",
-    ),
-    "microarray_resolve_rsids": (
-        False,
-        "Resolve packaged dbSNP rsID aliases and no-call retired/ambiguous IDs",
-    ),
-    "microarray_quirks": (
-        "corrected",
-        "Write microarray calls on the forward strand (corrected) or as the "
-        "vendor reported known reverse-strand markers (vendor)",
-    ),
-    "qc_min_diploid_depth": (
-        15.0,
-        "Warn before microarray/VCF genotypes below this mean autosomal depth "
-        "(0 disables)",
-    ),
-    "qc_min_haploid_depth": (
-        3.0,
-        "Warn before chrY/mtDNA haplogroups below this mean depth (0 disables)",
-    ),
-    "qc_min_autosomal_homozygosity": (
-        0.6,
-        "Warn when fewer microarray autosomal calls are homozygous (contamination)",
-    ),
-    "qc_max_autosomal_homozygosity": (
-        0.88,
-        "Warn when more microarray autosomal calls are homozygous (low-pass "
-        "or heavily imputed input)",
-    ),
-    "qc_max_no_call_rate": (
-        0.1,
-        "Warn when a microarray output has more autosomal no-calls than this",
-    ),
-    "qc_max_contamination": (
-        0.03,
-        "Warn, and cap confidence labels at moderate, when `qc contamination` "
-        "estimates more of the reads (FREEMIX) come from another person",
-    ),
-    "confidence_min_depth": (
-        10.0,
-        "Label rare/clinical variant calls below this read depth low confidence "
-        "(halved for haploid calls)",
-    ),
-    "confidence_high_depth": (
-        20.0,
-        "Label rare/clinical variant calls below this read depth (and at least "
-        "confidence_min_depth) moderate confidence",
-    ),
-    "confidence_min_gq": (
-        20.0,
-        "Label rare/clinical variant calls below this genotype quality low confidence",
-    ),
-    "confidence_high_gq": (
-        30.0,
-        "Label rare/clinical variant calls below this genotype quality (and at "
-        "least confidence_min_gq) moderate confidence",
-    ),
-    "mother_vcf_path": (None, "Default Mother VCF for trios"),
-    "father_vcf_path": (None, "Default Father VCF for trios"),
-    "batch_file_path": (None, "Path to batch processing CSV/TSV"),
-    "vcf_input_paths": (None, "Multiple VCF inputs"),
-    "clinvar_vcf_path": (None, "Path to ClinVar VCF data"),
-    "revel_tsv_path": (None, "Path to REVEL TSV data"),
-    "phylop_tsv_path": (None, "Path to PhyloP bigWig (or TSV/VCF) data"),
-    "cadd_tsv_path": (None, "Path to CADD whole-genome SNV TSV data"),
-    "cadd_indel_tsv_path": (None, "Path to CADD indel TSV data"),
-    "gerp_bigwig_path": (None, "Path to GERP++ RS bigWig data"),
-    "gnomad_vcf_path": (None, "Path to gnomAD VCF data"),
-    "gnomad_sv_path": (None, "Path to a gnomAD-SV sites table (ref gnomad-sv)"),
-    "gnomad_lr_sv_path": (
-        None,
-        "Path to a gnomAD-LR SV sites table (ref gnomad-sv --source lr)",
-    ),
-    "spliceai_vcf_path": (None, "Path to SpliceAI VCF data"),
-    "alphamissense_vcf_path": (None, "Path to AlphaMissense VCF data"),
-    "pharmgkb_vcf_path": (None, "Path to PharmGKB data"),
-    "signing_key": (None, "OpenSSH private key used by `sign create`"),
-    "pgs_scoring_file": (None, "Custom scoring TSV[.gz], overriding Catalog weights"),
-    "pgs_min_match": (0.75, "Minimum PGS match fraction for percentile eligibility"),
-    "pgs_keep_ambiguous": (
-        False,
-        "Keep palindromic SNPs only with independently verified forward-strand alleles",
-    ),
-    "pet_r1_fastq": (None, "Test: Path to PET R1 reads"),
-    "pet_r2_fastq": (None, "Test: Path to PET R2 reads"),
-    "pet_reference_fasta": (None, "Test: Path to PET reference genome"),
-    "real_genome_test_path": (None, "Test: Path to a local real genome dataset"),
-    "real_genome_tests_enabled": (
-        False,
-        "Test: Enable real smoke tests from real_genome_test_path",
-    ),
-    "dev_download_cache": (
-        False,
-        "Dev: Cache downloads under $XDG_CACHE_HOME/wgsextract for reuse",
-    ),
-    "dev_download_cache_ttl_seconds": (
-        7 * 24 * 60 * 60,
-        "Dev: Seconds before an unused dev download cache item is pruned",
-    ),
-}
-
-# Float settings that are proportions; other float settings are non-negative.
-FRACTION_SETTINGS = frozenset(
-    {
-        "qc_min_autosomal_homozygosity",
-        "qc_max_autosomal_homozygosity",
-        "qc_max_no_call_rate",
-        "qc_max_contamination",
-        "pgs_min_match",
-    }
+# The settings whose leading ~ loading expands (core/settings_schema.py).
+PATH_SETTINGS = frozenset(name for name, item in SETTINGS.items() if item.info.path)
+DEV_PATH_SETTINGS = frozenset(
+    name for name, item in DEV_SETTINGS.items() if item.info.path
 )
-
-PATH_SETTINGS = {
-    "log_dir",
-    "state_directory",
-    "temp_directory",
-    "input_path",
-    "output_directory",
-    "reference_fasta",
-    "reference_library",
-    "reference_genome_library",
-    "dataset_library",
-    "haplogrep_executable",
-    "haplocheck_executable",
-    "dorado_executable",
-    "dorado_models_directory",
-    "deepvariant_weights",
-    "jar_directory",
-    "vep_cache_directory",
-    "pharmcat_directory",
-    "default_input_vcf",
-    "mother_vcf_path",
-    "father_vcf_path",
-    "batch_file_path",
-    "vcf_input_paths",
-    "server_allowed_paths",
-    "clinvar_vcf_path",
-    "revel_tsv_path",
-    "phylop_tsv_path",
-    "cadd_tsv_path",
-    "cadd_indel_tsv_path",
-    "gerp_bigwig_path",
-    "gnomad_vcf_path",
-    "gnomad_sv_path",
-    "gnomad_lr_sv_path",
-    "spliceai_vcf_path",
-    "alphamissense_vcf_path",
-    "pharmgkb_vcf_path",
-    "signing_key",
-    "pgs_scoring_file",
-    "pet_r1_fastq",
-    "pet_r2_fastq",
-    "pet_reference_fasta",
-    "real_genome_test_path",
-}
 
 
 def _normalize_path_setting(value: Any) -> Any:
@@ -396,6 +53,10 @@ def normalize_config_paths(config: dict[str, Any]) -> dict[str, Any]:
     for key in PATH_SETTINGS:
         if key in config:
             config[key] = _normalize_path_setting(config[key])
+    dev = config.get(DEV_TABLE)
+    if isinstance(dev, dict):
+        for key in DEV_PATH_SETTINGS & dev.keys():
+            dev[key] = _normalize_path_setting(dev[key])
     return config
 
 
@@ -433,61 +94,63 @@ LEGACY_SETTINGS = {
 
 
 def _validate_config_types(
-    config: dict[str, Any], config_path: Path, *, allow_invalid_threads: bool = False
+    config: Mapping[str, Any],
+    config_path: Path,
+    *,
+    allow_invalid_threads: bool = False,
 ) -> None:
-    for key, value in config.items():
-        canonical = CONFIG_ALIASES.get(key, key)
-        if canonical not in KNOWN_SETTINGS:
-            continue
-        default = KNOWN_SETTINGS[canonical][0]
-        if canonical == "cpu_threads":
-            if allow_invalid_threads:
-                continue
-            from wgsextract_cli.core.resource_policy import parse_thread_count
-
-            expected = "a positive TOML integer, positive integer string, or 'auto'"
-            valid = type(value) is int or isinstance(value, str)
-            if valid:
-                try:
-                    parse_thread_count(value)
-                except ValueError:
-                    valid = False
-        elif canonical in ("vcf_input_paths", "server_allowed_paths"):
-            expected = "a TOML string or an array of TOML strings"
-            valid = isinstance(value, str) or (
-                isinstance(value, list) and all(isinstance(path, str) for path in value)
-            )
-        elif canonical == "y_trees":
-            # Each entry's own fields are checked when the tree is used.
-            expected = "a TOML table of [y_trees.<id>] tables"
-            valid = isinstance(value, dict) and all(
-                isinstance(entry, dict) for entry in value.values()
-            )
-        elif type(default) is bool:
-            expected = "a TOML boolean (true or false)"
-            valid = type(value) is bool
-        elif type(default) is int:
-            expected = "a TOML integer"
-            valid = type(value) is int
-        elif type(default) is float:
-            fraction = canonical in FRACTION_SETTINGS
-            expected = (
-                "a TOML number from 0 to 1"
-                if fraction
-                else "a non-negative TOML number"
-            )
-            valid = type(value) in (int, float) and 0 <= value <= (
-                1 if fraction else float("inf")
-            )
-        else:
-            expected = "a TOML string"
-            valid = isinstance(value, str)
-        if not valid:
-            alias = f" ({canonical})" if canonical != key else ""
+    for key, new_key in MOVED_TO_DEV.items():
+        if key in config:
             raise WGSExtractError(
-                f"Invalid setting {key!r}{alias} in {config_path}: "
-                f"expected {expected}; got {type(value).__name__}."
+                f"Setting {key!r} in {config_path} moved to the [{DEV_TABLE}] "
+                f"table: write it as {new_key} = ... under a [{DEV_TABLE}] line "
+                "at the end of the file."
             )
+    try:
+        for _ in check_values(
+            config,
+            SETTINGS,
+            _canonical,
+            strict_threads=not allow_invalid_threads,
+        ):
+            pass
+    except InvalidSetting as error:
+        canonical = _canonical(error.key)
+        alias = f" ({canonical})" if canonical != error.key else ""
+        raise WGSExtractError(
+            f"Invalid setting {error.key!r}{alias} in {config_path}: {error}"
+        ) from None
+    dev = config.get(DEV_TABLE)
+    if dev is None:
+        return
+    if not isinstance(dev, Mapping):
+        raise WGSExtractError(
+            f"Invalid setting {DEV_TABLE!r} in {config_path}: expected a "
+            f"[{DEV_TABLE}] table; got {type(dev).__name__}."
+        )
+    try:
+        for _ in check_values(dev, DEV_SETTINGS):
+            pass
+    except InvalidSetting as error:
+        raise WGSExtractError(
+            f"Invalid setting '{DEV_TABLE}.{error.key}' in {config_path}: {error}"
+        ) from None
+
+
+def _canonical(key: str) -> str:
+    return CONFIG_ALIASES.get(key, key)
+
+
+def _warn_unknown(keys: Iterable[str], known: Iterable[str], where: str) -> None:
+    known = list(known)
+    for key in sorted(keys):
+        identity = (where, key)
+        if identity in _warned_unknown_keys:
+            continue
+        _warned_unknown_keys.add(identity)
+        matches = difflib.get_close_matches(key, known, n=1)
+        hint = f" Did you mean {matches[0]!r}?" if matches else ""
+        logging.warning(f"Unknown setting {key!r} in {where}.{hint}")
 
 
 def get_config_dir() -> Path:
@@ -560,14 +223,22 @@ def load_config() -> dict[str, Any]:
         if old_key in config and new_key not in config:
             config[new_key] = config[old_key]
 
-    for key in config.keys() - KNOWN_SETTINGS.keys() - CONFIG_ALIASES.keys():
-        identity = (str(config_path), key)
-        if identity in _warned_unknown_keys:
-            continue
-        _warned_unknown_keys.add(identity)
-        matches = difflib.get_close_matches(key, KNOWN_SETTINGS, n=1)
-        hint = f" Did you mean {matches[0]!r}?" if matches else ""
-        logging.warning(f"Unknown setting {key!r} in {config_path}.{hint}")
+    _warn_unknown(
+        config.keys()
+        - SETTINGS.keys()
+        - CONFIG_ALIASES.keys()
+        - MOVED_TO_DEV.keys()
+        - {DEV_TABLE},
+        [*SETTINGS, *CONFIG_ALIASES],
+        str(config_path),
+    )
+    dev = config.get(DEV_TABLE)
+    if isinstance(dev, dict):
+        _warn_unknown(
+            dev.keys() - DEV_SETTINGS.keys(),
+            DEV_SETTINGS,
+            f"the [{DEV_TABLE}] table of {config_path}",
+        )
 
     _validate_config_types(config, config_path, allow_invalid_threads=True)
     return normalize_config_paths(config)
@@ -595,6 +266,37 @@ def ensure_settings_loaded() -> None:
     loaded settings or filled them itself."""
     if not _settings_loaded and not settings:
         reload_settings()
+
+
+def typed_settings() -> Settings:
+    """The loaded settings, checked, with defaults for those not set: typed
+    attribute access (``typed_settings().cpu_threads``)."""
+    return settings_from(settings)
+
+
+def settings_from(values: Mapping[str, object]) -> Settings:
+    """``values`` (config.toml's top level) as Settings. An alias counts only
+    when its setting isn't given; an invalid cpu_threads reads as auto, which
+    the parser warns about."""
+    source = get_config_path()
+    _validate_config_types(values, source, allow_invalid_threads=True)
+    given = {
+        name: value
+        for key, name, value in check_values(
+            values, SETTINGS, _canonical, strict_threads=False
+        )
+        if key == name or name not in values
+    }
+    dev = values.get(DEV_TABLE)
+    dev_values = (
+        {name: value for _, name, value in check_values(dev, DEV_SETTINGS)}
+        if isinstance(dev, Mapping)
+        else {}
+    )
+    return Settings(
+        **cast(dict[str, Any], given),
+        dev=DevSettings(**cast(dict[str, Any], dev_values)),
+    )
 
 
 @contextmanager
@@ -633,7 +335,7 @@ def save_config(updates: dict[str, Any]) -> None:
     for legacy_key in LEGACY_SETTINGS:
         current_config.pop(legacy_key, None)
     for key, value in updates.items():
-        if key not in KNOWN_SETTINGS:
+        if key not in SETTINGS:
             continue
         # Aliases are mapped onto the canonical key on load, so a stale alias
         # would resurrect a cleared value or shadow nothing but confuse users.
@@ -662,6 +364,15 @@ def get(key: str, default: T) -> object | T: ...
 def get(key: str, default: object | None = None) -> object | None:
     """Get a configuration value with an optional default."""
     return settings.get(key, default)
+
+
+def configured_paths() -> list[object]:
+    """Every path setting's value, the [dev] table's too (for redaction)."""
+    values = [settings.get(key) for key in sorted(PATH_SETTINGS)]
+    dev = settings.get(DEV_TABLE)
+    if isinstance(dev, Mapping):
+        values += [dev.get(key) for key in sorted(DEV_PATH_SETTINGS)]
+    return values
 
 
 def dataset_library() -> str | None:

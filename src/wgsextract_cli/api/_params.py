@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
 
 from wgsextract_cli.core.remote_input import is_url
+from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import UsageError
 
 PathKind = Literal["file", "directory", "file_or_directory"]
@@ -127,6 +128,8 @@ def param(
     ``help`` is the CLI help text (an argparse %-template); ``doc`` documents
     the field for API users where the CLI help is missing or CLI-specific.
     """
+    if config_key is not None and config_key not in SETTINGS:
+        raise ValueError(f"config_key {config_key!r} is not a config.toml setting.")
     spec = ParamSpec(
         help=help,
         flags=flags,

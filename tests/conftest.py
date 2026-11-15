@@ -177,7 +177,9 @@ def _isolate(
     isolate_home(monkeypatch, home)
     config = get_config_path()
     config.parent.mkdir(parents=True, exist_ok=True)
-    config.write_text(config_text + state_directory_setting(home))
+    # First: a top-level key after config_text's [dev] or [y_trees.*] tables
+    # would land in the last table.
+    config.write_text(state_directory_setting(home) + config_text)
     monkeypatch.setattr(
         "wgsextract_cli.core.last_run._default_state_directory",
         lambda: home / "state",

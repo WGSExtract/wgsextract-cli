@@ -110,7 +110,7 @@ def test_benchmark_md5_failure_drops_unchecked_shared_cache(
     from wgsextract_cli.commands.benchmark.models import BenchmarkRemoteFile
     from wgsextract_cli.core.utils import WGSExtractError
 
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setattr(
         dev_download_cache, "download_cache_root", lambda: tmp_path / "dev-cache"
     )
@@ -246,7 +246,7 @@ def test_md5_download_is_not_published_unchecked_during_verification(
     from wgsextract_cli.commands.benchmark import datasets
     from wgsextract_cli.commands.benchmark.models import BenchmarkRemoteFile
 
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setattr(
         dev_download_cache, "download_cache_root", lambda: tmp_path / "dev-cache"
     )
@@ -286,7 +286,7 @@ def test_forced_example_download_bypasses_cache_read_and_publication(
 ):
     from wgsextract_cli.commands import examples
 
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setattr(
         dev_download_cache, "download_cache_root", lambda: tmp_path / "dev-cache"
     )
@@ -666,7 +666,7 @@ def test_curl_resumes_into_the_partial_and_finishes_at_dest(
 def test_a_poisoned_dev_cache_item_is_dropped_and_fetched_again(
     server, tmp_path, monkeypatch
 ):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
     digest = hashlib.sha256(DATA).hexdigest()
     monkeypatch.setattr(

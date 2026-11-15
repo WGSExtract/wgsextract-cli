@@ -14,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import current_result, warn
 
@@ -25,10 +25,7 @@ WARNING = "sample_contamination"
 
 def max_contamination() -> float:
     """``qc_max_contamination``; 0 disables the warning and the cap."""
-    value = settings.get("qc_max_contamination")
-    if not isinstance(value, int | float) or isinstance(value, bool):
-        value = KNOWN_SETTINGS["qc_max_contamination"][0]
-    return float(value) if isinstance(value, int | float) else 0.0
+    return typed_settings().qc_max_contamination
 
 
 def sample_contamination(file: PathInput | None) -> sample_workspace.Fact | None:

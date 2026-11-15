@@ -13,6 +13,7 @@ GENERATED = (
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
+    "docs/configuration.md",
 )
 
 
@@ -34,6 +35,7 @@ def main() -> None:
         "tests/cli_snapshot.py",
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
+        "scripts/gen_config_docs.py",
     ):
         subprocess.run([sys.executable, script], cwd=ROOT, check=True)
     if args.resolve:
