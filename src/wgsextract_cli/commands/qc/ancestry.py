@@ -28,6 +28,7 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 import numpy as np
 
@@ -64,7 +65,7 @@ from ._relate_vcf import (
     record_density,
 )
 
-FACT = "ancestry"
+FACT: Final = "ancestry"
 GUIDE = "docs/ancestry.md"
 # Sites with data below which the proportions are refused, and below which
 # they are reported with a warning (docs/ancestry.md, measured in #620).

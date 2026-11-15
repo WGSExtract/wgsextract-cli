@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core.output_schema import output_schema  # noqa: E402
 from wgsextract_cli.core.sample_document import (  # noqa: E402
+    SAMPLE_SHAPES,
     SCHEMA_DESCRIPTION,
     SampleDocument,
 )
@@ -26,6 +27,7 @@ def main() -> None:
     args = parser.parse_args()
     document = output_schema(
         SampleDocument,
+        shapes=SAMPLE_SHAPES,
         schema_id=f"urn:wgsextract:schema:sample:{SCHEMA_ID.rsplit('/', 1)[1]}",
         title=SCHEMA_ID,
         description=SCHEMA_DESCRIPTION,

@@ -1,17 +1,20 @@
 """The wgsextract.sample/1 TOML document, distinct from sample-show JSON."""
 
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, TypedDict
 
-from .output_schema import Constraints, shape
-from .sample_types import Confidence, Platform, SampleSchema, Sex, Status
+from .output_schema import Constraints, Shape
+from .sample_types import (
+    Confidence,
+    Platform,
+    SampleSchema,
+    Sex,
+    Status,
+    Superpopulation,
+)
 
 Time = Annotated[str, Constraints(format="date-time")]
 Nonnegative = Annotated[float, Constraints(minimum=0)]
 Fraction = Annotated[float, Constraints(minimum=0, maximum=1)]
-
-# Preserve the public version 1 enum definition references.
-shape("sex")(Sex)
-shape("platform")(Platform)
 
 
 class FactMetadata(TypedDict):
@@ -30,47 +33,38 @@ class FactMetadata(TypedDict):
     ]
 
 
-@shape("fact")
 class RecordedFact(FactMetadata):
     value: object
 
 
-@shape("sex_fact")
 class SexFact(FactMetadata):
     value: Sex
 
 
-@shape("platform_fact")
 class PlatformFact(FactMetadata):
     value: Platform
 
 
-@shape("build_fact")
 class BuildFact(FactMetadata):
     value: str
 
 
-@shape("superpopulation_fact")
 class SuperpopulationFact(FactMetadata):
-    value: Literal["AFR", "AMR", "EAS", "EUR", "SAS"]
+    value: Superpopulation
 
 
-@shape("nonnegative_fact")
 class NonnegativeFact(FactMetadata):
     value: Nonnegative
 
 
-@shape("fraction_fact")
 class FractionFact(FactMetadata):
     value: Fraction
 
 
-@shape("ancestry_fact")
 class AncestryFact(FactMetadata):
     value: dict[str, Fraction]
 
 
-@shape("depths_fact")
 class DepthsFact(FactMetadata):
     value: dict[str, Nonnegative]
 
@@ -85,7 +79,6 @@ class FileFingerprint(TypedDict):
     ]
 
 
-@shape("file", additional=RecordedFact)
 class DetectedFile(FileFingerprint, total=False):
     sex: SexFact
     platform: PlatformFact
@@ -103,19 +96,16 @@ class OverrideFingerprint(TypedDict):
     fingerprint: str
 
 
-@shape("file_override", additional=False)
 class FileOverride(OverrideFingerprint, total=False):
     sex: Sex
     platform: Platform
 
 
-@shape("override", additional=FileOverride)
 class Overrides(TypedDict, total=False):
     sex: Sex
     platform: Platform
 
 
-@shape("output")
 class WorkspaceOutput(TypedDict):
     command: str
     status: Status
@@ -126,7 +116,6 @@ class SampleHeader(TypedDict):
     schema: SampleSchema
 
 
-@shape("sample")
 class SampleDocument(SampleHeader, total=False):
     override: Annotated[
         Overrides,
@@ -147,6 +136,25 @@ class SampleDocument(SampleHeader, total=False):
         ),
     ]
 
+
+SAMPLE_SHAPES: dict[object, Shape] = {
+    Sex: Shape("sex"),
+    Platform: Shape("platform"),
+    RecordedFact: Shape("fact"),
+    SexFact: Shape("sex_fact"),
+    PlatformFact: Shape("platform_fact"),
+    BuildFact: Shape("build_fact"),
+    SuperpopulationFact: Shape("superpopulation_fact"),
+    NonnegativeFact: Shape("nonnegative_fact"),
+    FractionFact: Shape("fraction_fact"),
+    AncestryFact: Shape("ancestry_fact"),
+    DepthsFact: Shape("depths_fact"),
+    DetectedFile: Shape("file", additional=RecordedFact),
+    FileOverride: Shape("file_override", additional=False),
+    Overrides: Shape("override", additional=FileOverride),
+    WorkspaceOutput: Shape("output"),
+    SampleDocument: Shape("sample"),
+}
 
 SCHEMA_DESCRIPTION = (
     "A sample workspace: wgsextract.sample.toml in a genome folder, as parsed from TOML. "

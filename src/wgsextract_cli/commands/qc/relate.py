@@ -47,6 +47,7 @@ from wgsextract_cli.core.reference_resolver import (
     library_roots,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.sample_types import Superpopulation, is_sex, is_superpopulation
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.table_writer import (
     Column,
@@ -125,7 +126,7 @@ class Sample:
     sex_confidence: Confidence = "low"
     recorded_sex: str | None = None
     called_only: bool = False
-    superpopulation: str | None = None
+    superpopulation: Superpopulation | None = None
     probability: float | None = None
 
 
@@ -591,7 +592,7 @@ def _recorded_sex(item: Input) -> str | None:
 
 def _check_sample(sample: Sample, ped_sex: str | None) -> None:
     """Record the facts of a BAM/CRAM and warn where the sex disagrees."""
-    if sample.sex in sample_workspace.SEXES and sample.input.kind == "alignment":
+    if is_sex(sample.sex) and sample.input.kind == "alignment":
         sample_workspace.record(
             "somalier_sex",
             sample.input.path,
@@ -803,7 +804,8 @@ def run_relate(params: RelateParams) -> None:
             sample.called_only = called_sites_only(sample.stats)
         sample.recorded_sex = _recorded_sex(item)
         prediction = predictions.get(name, {})
-        sample.superpopulation = prediction.get("predicted_ancestry") or None
+        population = prediction.get("predicted_ancestry")
+        sample.superpopulation = population if is_superpopulation(population) else None
         if sample.superpopulation:
             p = _float(prediction, f"{sample.superpopulation}_prob")
             sample.probability = _number(p)

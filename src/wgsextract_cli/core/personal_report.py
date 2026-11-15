@@ -1846,7 +1846,7 @@ def build_report(
     alignment, vcf = _choose_inputs(folder, input_file, sources, workspace)
     main_file = alignment or vcf
     described = workspace.describe(folder / main_file if main_file else None)
-    ctx = _Context(folder, sources, described, alignment, vcf, gene_list)
+    ctx = _Context(folder, sources, dict(described), alignment, vcf, gene_list)
     info = latest(sources, _command("info"))
     name = (
         input_stem(alignment or vcf or "")

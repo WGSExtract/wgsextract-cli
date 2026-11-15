@@ -211,6 +211,20 @@ def test_typed_sample_schema_preserves_version_one_extensions(folder):
     schema = sample_workspace.load_schema()
     jsonschema.validate(raw, schema)
 
+    workspace.path.write_text(sample_workspace.render(raw))
+    (folder / "run.manifest.json").write_text("{}")
+    workspace.record("sex", reads, "Male", method="reads", confidence="high")
+    workspace.set_overrides({"platform": "nanopore"}, reads)
+    workspace.record_output(folder / "next.manifest.json", "info", "ok")
+    retained = sample_workspace.tomllib.loads(workspace.path.read_text())
+    assert retained["future_top_level"] == raw["future_top_level"]
+    assert (
+        retained["detected"]["s.bam"]["future_fact"]
+        == raw["detected"]["s.bam"]["future_fact"]
+    )
+    assert retained["outputs"]["run.manifest.json"]["future_metadata"] == "kept"
+    jsonschema.validate(retained, schema)
+
     raw["override"]["s.bam"]["future_override"] = "not an allowed fact"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(raw, schema)

@@ -32,6 +32,7 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import is_fasta_path
 from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import (
     mixed_platforms_message,
@@ -319,7 +320,7 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
             confidence="high",
         )
     platform = platform_from_metadata(header, data.get("first_qname"))
-    if platform:
+    if is_platform(platform):
         has_pl = any(group.get("PL") for group in read_groups(header))
         sample_workspace.record(
             "platform",

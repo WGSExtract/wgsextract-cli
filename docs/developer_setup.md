@@ -94,6 +94,13 @@ compact discovery index, and the generated command cards in `site_src/cli.md`.
 It also generates the public sample-workspace JSON Schema from the output
 types in `core/sample_document.py`. Output types use `TypedDict` and
 `Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
+Its supported subset is TypedDict, Literal, Annotated, primitives, unions,
+lists and string-keyed dicts; dataclasses, Enum, tuple and Mapping fields are
+not yet supported. Definition names and extension-key policies are supplied
+explicitly to each generation call, never registered globally. Workspace
+reads retain unrecognised TOML data in `WorkspaceState`; new fact/override/output
+records are written through the typed document models rather than casting
+unvalidated loaded data to those types.
 Keep these committed: readers,
 release archives and freshness tests need them without running Python.
 

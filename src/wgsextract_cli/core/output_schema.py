@@ -7,13 +7,12 @@ Generation is a development operation; writers need only their type definitions.
 from __future__ import annotations
 
 import types
-from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import (
     Annotated,
     Literal,
     Protocol,
-    TypeVar,
     Union,
     cast,
     get_args,
@@ -22,7 +21,6 @@ from typing import (
     is_typeddict,
 )
 
-T = TypeVar("T")
 Schema = dict[str, object]
 
 
@@ -42,33 +40,23 @@ class Shape:
     additional: object = True
 
 
-_SHAPES: dict[object, Shape] = {}
-
-
 class _TypedDictKeys(Protocol):
     __required_keys__: frozenset[str]
 
 
-def shape(
-    name: str, *, description: str | None = None, additional: object = True
-) -> Callable[[T], T]:
-    """Name a reusable type and declare an object's extension-key policy."""
-
-    def decorate(cls: T) -> T:
-        spec = Shape(name, description, additional)
-        previous = _SHAPES.get(cls)
-        if previous is not None and previous != spec:
-            raise TypeError(f"Output type already has a different shape: {cls!r}")
-        _SHAPES[cls] = spec
-        return cls
-
-    return decorate
-
-
 def output_schema(
-    document: object, *, schema_id: str, title: str, description: str
+    document: object,
+    *,
+    shapes: Mapping[object, Shape],
+    schema_id: str,
+    title: str,
+    description: str,
 ) -> Schema:
-    """JSON Schema 2020-12; reject unmodelled annotations rather than widening."""
+    """Generate from TypedDict, Literal, Annotated, primitives, lists and dicts.
+
+    Naming is scoped to this call. Dataclasses, Enum, tuple and Mapping fields
+    are not supported; unsupported annotations fail instead of widening.
+    """
     definitions: dict[str, Schema] = {}
     owners: dict[str, object] = {}
 
@@ -78,7 +66,7 @@ def output_schema(
         owners[spec.name] = tp
 
     def describe(tp: object, *, inline: bool = False) -> Schema:
-        spec = _SHAPES.get(tp)
+        spec = shapes.get(tp)
         if spec is not None and not is_typeddict(tp) and not inline:
             claim(tp, spec)
             if spec.name not in definitions:
@@ -118,7 +106,7 @@ def output_schema(
         if tp in primitive:
             return {"type": primitive[tp]}
         if is_typeddict(tp):
-            spec = _SHAPES.get(tp)
+            spec = shapes.get(tp)
             if spec is None:
                 raise TypeError(f"Output shape needs an explicit name: {tp!r}")
             claim(tp, spec)
@@ -149,10 +137,10 @@ def output_schema(
             )
         return result
 
-    if not is_typeddict(document) or document not in _SHAPES:
+    if not is_typeddict(document) or document not in shapes:
         raise TypeError(f"Expected a named output TypedDict: {document!r}")
-    claim(document, _SHAPES[document])
-    root = describe_object(document, _SHAPES[document])
+    claim(document, shapes[document])
+    root = describe_object(document, shapes[document])
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": schema_id,
