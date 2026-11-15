@@ -1126,10 +1126,12 @@ zero-copy fix rather than adding more synchronization machinery.
 
 The earlier 2.7× kernel result compared against scalar extension. Current AVX2
 extension is only about 13% of CPU time in the local chr20 profile. After the
-cache fix, tracing, finishing and shared-batch packing cost about 21.3 CPU s,
-versus 21.5 CPU s for
-the CPU backend's whole mapping worker after seeding: the offload has not removed
-meaningful CPU work. This is not a synchronous-fence bottleneck.
+cache fix, tracing, finishing and shared-batch packing cost about 21.3 CPU s
+in the instrumented run, versus 21.5 CPU s for the CPU backend's mapping worker
+after seeding. These counters include profiler overhead, so they are not a
+cycle-accurate attribution of the remaining slowdown. Independently, unprofiled
+process CPU time increases from 103.8 to 116.7 CPU s. The remaining loss is not
+a synchronous-fence bottleneck.
 
 For discrete GPUs, retain cached host staging, transfer in bulk to device-local
 VRAM, and keep the existing asynchronous batches. First reduce trace/replay and
