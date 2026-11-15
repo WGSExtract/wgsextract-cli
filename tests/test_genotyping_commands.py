@@ -2,6 +2,7 @@
 with T1K, Cyrius and ExpansionHunter replaced by scripts that log their command
 line and write output in each tool's format."""
 
+import csv
 import json
 import logging
 import random
@@ -952,7 +953,12 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     out = tmp_path / "out"
     result = api.genotyping.repeats(
         api.TypingStrParams(
-            input=Path(path), ref=eh.ref, catalog=eh.catalog, outdir=out, threads=2
+            input=Path(path),
+            ref=eh.ref,
+            catalog=eh.catalog,
+            outdir=out,
+            threads=2,
+            sex="male",
         )
     )
 
@@ -963,10 +969,9 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
         "--reference": str(eh.ref),
         "--variant-catalog": str(eh.catalog),
         "--output-prefix": str(out / "NA12878.str"),
-        "--sex": "male",  # 2 chrY pairs to 10 chrX
+        "--sex": "male",
         "--threads": "2",
     }
-    assert "Sample sex: male (from chrX/chrY coverage)" in caplog.text
 
     rows = [
         line.split("\t") for line in (out / "NA12878.str.tsv").read_text().splitlines()
@@ -993,6 +998,8 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
     assert "isn't a diagnosis" in caplog.text
     assert {"NA12878.str.json", "NA12878.str.vcf", "NA12878.str.tsv"} <= outputs(out)
     assert (result.metrics["sex"], result.metrics["flagged_repeats"]) == ("male", 2)
+    assert result.metrics["observed_sex"] == "Unknown"
+    assert result.metrics["declared_sex"] == result.metrics["effective_sex"] == "male"
     assert {w.code for w in result.warnings} == {"repeat_outside_normal_range"}
 
 
@@ -1009,6 +1016,190 @@ def test_str_all_normal_has_no_warnings(tmp_path, eh, caplog):
                    "--catalog", str(eh.catalog), "--sex", "female")  # fmt: skip
     assert "1 of 1 disease repeats are in the normal range." in caplog.text
     assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+@pytest.mark.parametrize(
+    ("locus", "alleles", "reads", "coverage", "sex", "status", "uncertain"),
+    [
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            100,
+            "female",
+            "unresolved",
+            True,
+            id="all-weak-FXN",
+        ),
+        pytest.param(
+            "FXN",
+            [400],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-recessive-call",
+        ),
+        pytest.param(
+            "FXN",
+            [9],
+            [],
+            30,
+            "female",
+            "unresolved",
+            True,
+            id="incomplete-normal-call",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [10, 10],
+            20,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-biallelic",
+        ),
+        pytest.param(
+            "FXN",
+            [304, 304],
+            [1, 1],
+            1,
+            "female",
+            "pathogenic",
+            False,
+            id="thin-but-supported-biallelic",
+        ),
+        pytest.param(
+            "DMPK",
+            [12, 463],
+            [245, 2],
+            247,
+            "female",
+            "pathogenic",
+            False,
+            id="supported-dominant",
+        ),
+        pytest.param("AR", [45], [10], 10, "male", "pathogenic", False, id="male-XR"),
+        pytest.param(
+            "AR",
+            [45],
+            [10],
+            10,
+            "female",
+            "unresolved",
+            True,
+            id="female-incomplete-XR",
+        ),
+        pytest.param(
+            "AR",
+            [21, 45],
+            [10, 10],
+            20,
+            "female",
+            "carrier",
+            False,
+            id="female-XR-carrier",
+        ),
+    ],
+)
+@pytest.mark.parametrize("clipped", [False, True], ids=["unclipped", "clipped"])
+def test_issue_846_all_weak_fxn_and_incomplete_recessive_typing_output(
+    tmp_path,
+    monkeypatch,
+    eh,
+    caplog,
+    locus,
+    alleles,
+    reads,
+    coverage,
+    sex,
+    status,
+    uncertain,
+    clipped,
+):
+    """Keep caller sizes, but never diagnose from all-weak or missing copies."""
+    template = tmp_path / "strkit.json"
+    template.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "locus_id": locus,
+                        "motif": "GAA",
+                        "contig": "chr1",
+                        "start": 1000,
+                        "end": 1060,
+                        "call": alleles,
+                        "reads": {str(n): {} for n in range(coverage)},
+                        "peaks": {"n_reads": reads},
+                    }
+                ]
+            }
+        )
+    )
+    fake_tools(
+        monkeypatch,
+        tmp_path,
+        {
+            "strkit": f"""
+pathlib.Path(opt("--json")).write_text(pathlib.Path({str(template)!r}).read_text())
+pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
+"""
+        },
+    )
+    catalog = tmp_path / "strkit.bed"
+    catalog.write_text(f"chr1\t1000\t1060\tID={locus};MOTIF=GAA\n")
+    caplog.set_level(logging.INFO)
+    alignments = pair("p", "chr1", 1000)
+    if clipped:
+        alignments += [
+            f"clip{i}\t0\tchr1\t1001\t60\t100S100M\t*\t0\t0\t{SEQ * 2}\t{'I' * 200}"
+            for i in range(3)
+        ]
+    path = bam(tmp_path / "s.bam", alignments)
+    out = tmp_path / "out"
+    result = api.genotyping.repeats(
+        api.TypingStrParams(
+            input=Path(path),
+            ref=eh.ref,
+            catalog=catalog,
+            outdir=out,
+            caller="strkit",
+            sex=sex,
+            threads=1,
+        )
+    )
+    with (out / "s.str.tsv").open() as stream:
+        [row] = csv.DictReader(stream, delimiter="\t")
+    assert row["genotype"] == "/".join(map(str, alleles))
+    assert row["status"].split(" (")[0] == status
+    assert result.metrics["unconfirmed_repeats"] == int(uncertain)
+    if uncertain:
+        assert result.metrics["flagged_repeats"] == int(clipped)
+        warnings = {w.code: w for w in result.warnings}
+        assert set(warnings) == (
+            {"repeat_unconfirmed", "repeat_outside_normal_range"}
+            if clipped
+            else {"repeat_unconfirmed"}
+        )
+        warning = warnings["repeat_unconfirmed"]
+        assert locus in warning.message and "unresolved" in warning.message
+        assert "0 of 1 disease repeats" in caplog.text
+        if clipped:
+            assert "3 reads clipped" in row["status"]
+            assert "isn't a diagnosis" in caplog.text
+        report_warnings = build_report(out)["sections"]["overview"]["warnings"]
+        assert any(
+            w["code"] == "repeat_unconfirmed" and "unresolved" in w["message"]
+            for w in report_warnings
+        )
+        assert (
+            "low read support" in row["status"]
+            if reads and len(alleles) == 2
+            else ("incomplete call" in row["status"])
+        )
 
 
 @pytest.mark.skipif(
@@ -1034,21 +1225,20 @@ def test_str_on_hg19_says_notch2nlc_is_unavailable(tmp_path, eh):
 
 
 @pytest.mark.parametrize(
-    ("x", "y", "sex", "warned"),
+    ("x", "y"),
     [
-        (10, 0, "female", True),  # chrX alone, with no chrY or chr7 to compare
-        (0, 0, "female", True),
-        (30, 1, "female", False),
-        (10, 2, "male", False),
+        (10, 0),
+        (0, 0),
+        (30, 1),
+        (10, 2),
     ],
 )
-def test_str_infers_sex_from_chrx_chry_reads(tmp_path, eh, caplog, x, y, sex, warned):
+def test_issue_856_str_refuses_unknown_sex_from_sparse_capture(tmp_path, eh, x, y):
     path = bam(tmp_path / "s.bam", _sex_reads(x, y) or pair("p", "chr1", 1000))
-    run_wgsextract("typing", "str", "-i", path, "--ref", str(eh.ref),
-                   "--catalog", str(eh.catalog))  # fmt: skip
-    [command] = eh.calls("ExpansionHunter")
-    assert command[command.index("--sex") + 1] == sex
-    assert ("Couldn't infer the sample's sex" in caplog.text) == warned
+    with pytest.raises(WGSExtractError, match="Unknown sample sex"):
+        run_wgsextract("typing", "str", "-i", path, "--ref", str(eh.ref),
+                       "--catalog", str(eh.catalog))  # fmt: skip
+    assert not eh.calls("ExpansionHunter")
 
 
 def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
@@ -1057,6 +1247,7 @@ def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
     (tmp_path / "s.bam.wgse_info.json").write_text(
         json.dumps({
             "md5_signature": calculate_bam_md5(path, None), "gender": "Male",
+            "sex_call": ["Male", "non-PAR screening", "medium"],
             "sex_inference_version": SEX_INFERENCE_VERSION,
             "input_signature": {"size": st.st_size, "mtime_ns": st.st_mtime_ns},
         })

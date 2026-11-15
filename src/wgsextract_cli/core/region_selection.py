@@ -2,6 +2,7 @@
 
 import gzip
 import re
+from pathlib import Path
 
 Intervals = dict[str, list[tuple[int, int]]]
 
@@ -51,6 +52,8 @@ def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
 def region_items(region: str, *, commas: bool) -> list[str]:
     """The regions and BED files in a ``--region`` list: GATK and Parabricks
     separate them with commas, DeepVariant on the CPU with whitespace."""
+    if Path(region).is_file():
+        return [region]
     if commas:
         return [item.strip() for item in region.split(",") if item.strip()]
     return region.split()

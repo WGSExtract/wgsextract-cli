@@ -24,7 +24,7 @@ from wgsextract_cli.core.utils import (
     get_resource_defaults,
     run_command,
 )
-from wgsextract_cli.core.variant_confidence import SPLIT_TAG
+from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
@@ -231,6 +231,9 @@ def annotate_vcf(
     header_lines: Sequence[str] = (),
     threads: int | str | None = None,
     remove: Sequence[str] = (),
+    reference: str | None = None,
+    compose_mnvs: bool = False,
+    compose_thresholds: Thresholds | None = None,
 ) -> None:
     """Run bcftools annotate after matching the input's contig naming to the
     resource, first removing the input's ``remove`` annotations."""
@@ -240,6 +243,7 @@ def annotate_vcf(
             "pass --outdir to write it to another folder."
         )
     n_threads = int(get_resource_defaults(threads)[0])
+    original_chromosomes = vcf_chromosomes(input_vcf)
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_annotate_") as work:
         cmd = ["bcftools", "annotate", "-a", annotation, "-c", columns]
         # No resource value can apply to gVCF reference blocks, and looking up
@@ -259,6 +263,22 @@ def annotate_vcf(
             # (bcftools transfers only one per multiallelic record). The tag
             # marks split records, whose PL/DP4 confidence labels can't judge.
             split = str(Path(work, "split.vcf.gz"))
+            if reference:
+                from .matching import normalized_inputs
+
+                input_vcf, annotation, columns = normalized_inputs(
+                    input_vcf,
+                    annotation,
+                    reference,
+                    work,
+                    compose_mnvs,
+                    compose_thresholds,
+                    columns,
+                    header_lines,
+                    label in {"CADD", "REVEL", "AlphaMissense"},
+                )
+                cmd[cmd.index("-a") + 1] = annotation
+                cmd[cmd.index("-c") + 1] = columns
             run_command(
                 ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
                  "-Oz", "-o", split, input_vcf],
@@ -270,11 +290,11 @@ def annotate_vcf(
             )
             _run_annotate(cmd, normalized, annotated, work, n_threads)
             ensure_vcf_indexed(annotated)
-            if normalized != split:
+            if vcf_chromosomes(annotated) != original_chromosomes:
                 # Back to the input's contig names (chr1 vs 1), so a chain of
                 # annotations keeps them whatever each resource uses.
                 annotated = normalize_vcf_chromosomes(
-                    annotated, vcf_chromosomes(input_vcf), work
+                    annotated, original_chromosomes, work
                 )
             # Renamed into place only once complete (work is beside ann_out).
             _move_into_place(annotated, ann_out)

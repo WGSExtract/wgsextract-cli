@@ -19,6 +19,7 @@ it instead of parsing log text or guessing output file names.
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
   Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
+  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -61,6 +62,10 @@ it instead of parsing log text or guessing output file names.
 Tool versions are probed only when a document is emitted, and only for tools the
 run actually launched.
 
+`align` and `realign` report the effective lossless output profile
+(`default`, `archive` or `calling`) in `metrics.output_profile`; see
+[output profiles](ont.md#lossless-output-profiles).
+
 ### Fingerprints
 
 Inputs, outputs and the reference carry a `wgse-fp1:<sha256 hex>` fingerprint.
@@ -71,6 +76,8 @@ would take minutes. The mtime is not hashed, so a copied file keeps its
 fingerprint. Only regular files are read. A named pipe, `/dev/stdin` or a process
 substitution is recorded with `size_bytes` and `fingerprint` set to `null` and
 is never opened, so the command still gets its whole stream.
+`align` separately spools one-shot read streams before validating and mapping
+them; fingerprint collection itself still never consumes stream input.
 
 A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the
@@ -91,6 +98,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `mapped_read_fraction_unavailable` | `info --detailed` | Long reads' mapped percentage could not be estimated: no read starts in the sampled windows (a small targeted file). |
 | `alt_unaware`, `duplicates_unmarked` | `info`, `vcf snp`/`indel`, `microarray` | The alignment has ALT contigs without ALT-aware mapping, or its duplicates are not marked. |
 | `high_homozygosity`, `low_homozygosity`, `high_no_call_rate` | `microarray` | Genotype statistics outside the expected range. |
+| `liftover_ambiguous` | `microarray` on hg38 | Sites the hg38-to-hg19 chain places more than once (`ambiguous`), or distinct sites that land on one hg19 position (`collision`), are exported as no-calls rather than placed arbitrarily. The run's `liftover_*` metrics count every outcome. |
 | `alignment_memory` | `align`, `realign` | minimap2 is estimated to need more RAM than is available (`aligner`, `estimated_gib`, `available_gib`, and `suggested_threads`/`suggested_memory` that fit, or `null`). The run continues. |
 | `aligner_stalled` | `align`, `realign` | The aligner reported no progress, and no stage of its pipeline used CPU, for 15 minutes (`tool`, `minutes`): it is waiting on its input or output. A quiet aligner whose pipeline is busy (a slow batch of centromeric long reads, or samtools collate reading the whole input first) is not stalled. |
 | `dense_suffix_array_unused` | `align`, `realign` asked to use the dense suffix-array file; `ref dense-sa` | It wasn't used (`reason`: `other_aligner` with the `aligner` that ran, `missing`, `unusable`, `wgse_bwa_too_old` or `no_wgse_bwa`; `path`, `version`); the alignment ran without it, with the same records. |
@@ -125,7 +133,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
-| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | Only a low-support allele (one read) puts the repeat outside its normal range; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
 | `dict_missing` | `ref verify` | The reference has no sequence dictionary. |
@@ -234,7 +242,7 @@ Other commands' metrics:
   its `read_groups`.
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
-  sequences; `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
+  sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
   ts/tv).
 - `analyze` reads each step's result document (the steps still print their
   tables and results) and includes the step's manifest (role
@@ -249,6 +257,13 @@ Other commands' metrics:
   combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
+  CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
+  `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than
+  one placement) and `liftover_collision` (sharing an hg19 position with a
+  different site, or with one of its several placements). Each vendor kit and
+  the kept `combined_kit_hg19` carry the same counts, so a rerun that reuses
+  them reports them too.
 - `vep` records `inputs`, `succeeded`, `skipped` and `failed`, and `variants`
   per annotated VCF; a directory of inputs writes `vep.manifest.json`.
 - Reference installers (`ref library --install`, `ref bootstrap`, the

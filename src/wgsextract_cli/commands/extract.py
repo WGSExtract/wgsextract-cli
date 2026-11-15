@@ -163,15 +163,15 @@ def _call_haploid_variants(bam: str, ref: str, out_vcf: str) -> int | None:
     return count
 
 
-def _warn_if_female(input_path: str, outdir: str) -> None:
+def _warn_if_female(input_path: str, outdir: str, reference: str | None = None) -> None:
     """A female sample's chrY reads are mismapped (PAR, X-transposed regions):
     the extraction succeeds but holds no Y DNA, so say so."""
     from .info.metrics import sample_sex
 
-    if sample_sex(input_path, outdir) == "Female":
+    if sample_sex(input_path, outdir, reference=reference) == "Female":
         warn(
             "sample_female",
-            f"{input_path} appears female (chrY has under 5% of chrX's reads), so "
+            f"{input_path} appears female from sampled non-PAR depth, so "
             "its chrY reads are mismapped ones: this output holds no Y-DNA.",
         )
 
@@ -291,7 +291,7 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
     input_path = str(params.input)
 
     print_warning("ButtonYOnlyBAM", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     use_poz = params.poz
@@ -344,7 +344,7 @@ def run_ydna_vcf(params: YdnaVcfParams) -> None:
     ref = require_reference(base.ref, "Y extraction", input_path)
 
     print_warning("ButtonYOnlyVCF", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     out_bam = derive_output_path(input_path, base.outdir, "_Y_temp.bam")
@@ -369,7 +369,7 @@ def run_y_mt_extract(params: YMtExtractParams) -> None:
     input_path = str(params.input)
 
     print_warning("ButtonYMTBAM", threads=base.threads)
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, base.ref)
 
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     chr_m = get_chr_name(input_path, "MT", base.cram_opt)

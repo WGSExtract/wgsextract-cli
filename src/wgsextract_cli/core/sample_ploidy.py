@@ -6,14 +6,13 @@ so a man's chrY gets ploidy 0 (no calls at all) and his chrX is diploid.
 """
 
 import contextlib
-import logging
 import re
 import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import UsageError, run_command
 
 
 def alignment_samples(alignment: str) -> list[str]:
@@ -46,11 +45,16 @@ def _region_contigs(region: str | None) -> set[str] | None:
     return contigs
 
 
-def _sex_aware(ploidy_args: list[str], region: str | None = None) -> bool:
+def sex_dependent_ploidy(
+    ploidy_args: list[str],
+    region: str | None = None,
+    *,
+    contigs: set[str] | None = None,
+) -> bool:
     """Whether the ploidy distinguishes the sexes: a predefined assembly or a
     file with M lines. bcftools rejects a samples file declaring a sex the
     ploidy doesn't (a numeric --ploidy 1 or 2)."""
-    contigs = _region_contigs(region)
+    contigs = _region_contigs(region) if region else contigs
     if "--ploidy" in ploidy_args:
         preset = ploidy_args[ploidy_args.index("--ploidy") + 1]
         if preset.isdigit():
@@ -73,7 +77,7 @@ def _sex_aware(ploidy_args: list[str], region: str | None = None) -> bool:
         if not any(row[3:4] == ["M"] for row in rows):
             return False
         if contigs is None:
-            return True
+            contigs = {row[0] for row in rows if row}
         for contig in contigs:
             relevant = [row for row in rows if row[0] in {"*", contig}]
             # Be conservative about malformed/custom tables and overlapping
@@ -97,27 +101,53 @@ def _sex_aware(ploidy_args: list[str], region: str | None = None) -> bool:
     return False
 
 
+def _sex_aware(ploidy_args: list[str], region: str | None = None) -> bool:
+    return sex_dependent_ploidy(ploidy_args, region)
+
+
 @contextlib.contextmanager
 def sex_samples_args(
-    alignment: str, directory: str, ploidy_args: list[str], *, region: str | None = None
+    alignment: str,
+    directory: str,
+    ploidy_args: list[str],
+    *,
+    region: str | None = None,
+    reference: str | None = None,
 ) -> Iterator[list[str]]:
     """`--samples-file` listing a male alignment's samples as M (none for a
-    female or unknown one, which bcftools already calls as F). Regions whose
+    female). Unknown sex refuses sex-dependent calling. Regions whose
     ploidy is the same for both sexes need no whole-alignment sex scan."""
-    from wgsextract_cli.commands.info.metrics import sample_sex
+    from wgsextract_cli.commands.info.metrics import sample_sex_evidence
+    from wgsextract_cli.core.reference_models import sequence_lengths
+    from wgsextract_cli.core.results import current_result
 
-    if not alignment.lower().endswith((".bam", ".cram")) or not _sex_aware(
-        ploidy_args, region
-    ):
+    if not alignment.lower().endswith((".bam", ".cram")):
         yield []
         return
-    sex = sample_sex(alignment, directory)
-    if sex != "Male":
-        if sex != "Female":
-            logging.warning(
-                f"Couldn't tell the sex of {alignment}; chrX/chrY are called as for "
-                "a woman."
-            )
+    contigs = None
+    if not region:
+        header = run_command(["samtools", "view", "-H", alignment], capture_output=True)
+        contigs = set(sequence_lengths(header.stdout))
+    if not sex_dependent_ploidy(ploidy_args, region, contigs=contigs):
+        yield []
+        return
+    sex, observed, declared = sample_sex_evidence(
+        alignment, directory, reference=reference
+    )
+    current_result().add_metrics(
+        effective_sex=sex,
+        declared_sex=declared,
+        observed_sex=observed.sex,
+        sex_method=observed.method,
+        sex_confidence=observed.confidence,
+    )
+    if sex not in {"Male", "Female"}:
+        raise UsageError(
+            f"Unknown sex for {alignment}: refusing sex-dependent ploidy. "
+            "Declare sex with `sample set --input FILE --sex Male|Female`, "
+            "or explicitly choose numeric --ploidy or a sex-independent ploidy file."
+        )
+    if sex == "Female":
         yield []
         return
     with tempfile.NamedTemporaryFile(

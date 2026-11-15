@@ -89,6 +89,14 @@ def _table(path: Path) -> list[dict[str, str]]:
 
 def _run(tmp_path: Path, *argv: str) -> dict:
     """Run a command as `wgsextract` does and return its result manifest."""
+    if argv[:2] == ("vcf", "clinvar"):
+        from tests.htslib_helpers import reference_for_vcf
+
+        sample = argv[argv.index("--vcf-input") + 1]
+        reference = reference_for_vcf(
+            tmp_path / "ref.fa.gz", sample, argv[argv.index("--clinvar-file") + 1]
+        )
+        argv = (*argv, "--ref", str(reference))
     args, _ = parse_args(*build_parser(), list(argv))
     try:
         dispatch_command(args, set())
@@ -208,6 +216,93 @@ def test_command_line_thresholds_override_the_defaults(tmp_path):
 def test_thresholds_must_not_cross():
     with pytest.raises(UsageError, match="LOW <= HIGH"):
         Thresholds(min_depth=20, high_depth=10, min_gq=20, high_gq=30)
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=Mutect2\n",
+        "##GATKCommandLine=<ID=Mutect2,CommandLine=Mutect2>\n",
+        '##GATKCommandLine=<ID="Mutect2",CommandLine=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2, --argument",ID=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2",ID="Mutect2">\n',
+        "##source=HaplotypeCaller\n##source=Mutect2\n",
+    ],
+)
+def test_bug_862_mutect2_germline_policy_is_explicit(tmp_path, header):
+    sample = _vcf(
+        tmp_path / "somatic.vcf.gz",
+        [
+            "100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10",
+            "200 balanced A G 99 PASS . GT:DP:GQ:AD 0/1:100:99:50,50",
+        ],
+        header=header,
+    )
+    out = tmp_path / "out"
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(out),
+    )
+    assert _labels(out / "clinvar_pathogenic.vcf.gz") == [
+        "100:low:unsupported_somatic",
+        "200:low:unsupported_somatic",
+    ]
+    rows = _table(out / "clinvar_pathogenic.confidence.tsv")
+    assert float(rows[0]["alt_fraction"]) == pytest.approx(0.1)
+    assert rows[0]["zygosity"] == "unassessed"
+    confidence = document["details"]["confidence"][0]
+    assert confidence["caller"] == "mutect2"
+    assert confidence["policy"] == "unsupported_somatic"
+    warnings = {w["code"]: w for w in document["warnings"]}
+    assert warnings["unsupported_somatic_confidence"]["details"]["policy"] == (
+        "unsupported_somatic"
+    )
+    assert (
+        sum(w["code"] == "unsupported_somatic_confidence" for w in document["warnings"])
+        == 1
+    )
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=HaplotypeCaller\n",
+        '##GATKCommandLine=<CommandLine="example,ID=Mutect2",ID=HaplotypeCaller>\n',
+    ],
+)
+def test_bug_862_germline_gatk_keeps_imbalance_safeguard(tmp_path, header):
+    sample = _vcf(
+        tmp_path / "germline.vcf.gz",
+        ["100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10"],
+        header=header,
+    )
+    document = _run(
+        tmp_path,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        sample,
+        "--clinvar-file",
+        _clinvar(tmp_path),
+        "--outdir",
+        str(tmp_path / "out"),
+    )
+    assert _labels(tmp_path / "out/clinvar_pathogenic.vcf.gz") == [
+        "100:low:allele_imbalance"
+    ]
+    assert document["details"]["confidence"][0]["policy"] == "germline"
+    assert "unsupported_somatic_confidence" not in {
+        w["code"] for w in document["warnings"]
+    }
 
 
 @needs_bcftools

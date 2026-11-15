@@ -8,7 +8,7 @@ import os
 import subprocess
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, TextIO
@@ -17,7 +17,7 @@ from wgsextract_cli.core.imputed_vcf import imputation_info
 from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_quality import MicroarrayQuality, quality_policy
 from wgsextract_cli.core.microarray_utils import GenotypeTally, sort_alleles
-from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result
+from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -320,7 +320,7 @@ def _write_alignment_mode_kit(
     rows = called = 0
     query = "%ID\t%CHROM\t%POS\t[%TGT]\n"
     if fields:
-        query = "%ID\t%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%FILTER\n"
+        query = "%ID\t%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%QUAL\t%FILTER\n"
     for line in _command_lines(
         [
             "bcftools",
@@ -345,8 +345,14 @@ def _write_alignment_mode_kit(
             if normalized is None
             else ("missing_gt" if genotype == "--" else "called")
         )
-        if fields and len(parts) >= 9:
-            rejection = policy.rejection(parts[4], parts[5], parts[-1])
+        if fields and len(parts) >= 10:
+            # bcftools call omits GQ at monomorphic sites. For this
+            # single-sample, internally called VCF, QUAL with ALT "." is
+            # confidence in the reference call, not variant confidence.
+            gq = parts[5]
+            if gq == "." and parts[7] == "." and genotype == parts[6] * 2:
+                gq = parts[8]
+            rejection = policy.rejection(parts[4], gq, parts[-1])
             if rejection:
                 genotype, reason = "--", rejection
             rejection = identity.rejection(snp_id, parts[6], parts[7])
@@ -463,6 +469,7 @@ def _write_reason_report(
     evidence = {} if is_vcf else _read_evidence(params, targets, outdir, ref_fasta)
     report = str(Path(combined).with_name(Path(combined).stem + "_reasons.tsv"))
     staged = report + ".tmp"
+    counts: dict[str, int] = {}
     try:
         with open(staged, "w", newline="\n") as destination:
             destination.write("# RSID\tCHROM\tPOS\tRESULT\tCALL_REASON\n")
@@ -478,7 +485,11 @@ def _write_reason_report(
                 if not is_vcf and genotype == "--" and reason == "missing_gt":
                     reason = evidence.get(key, "no_reads")
                 destination.write(f"{rsid}\t{key[0]}\t{pos}\t{genotype}\t{reason}\n")
+                counts[reason] = counts.get(reason, 0) + 1
         Path(staged).replace(report)
+        current_result().add_metrics(
+            **{f"call_reason_{reason}": count for reason, count in counts.items()}
+        )
     finally:
         Path(staged).unlink(missing_ok=True)
 
@@ -545,8 +556,14 @@ def _write_microarray_combined_kit(
     return combined_kit_txt
 
 
-def record_kit(path: str, fmt: str, tally: GenotypeTally) -> None:
-    """Register one vendor-format kit and its genotype counts."""
+def record_kit(
+    path: str,
+    fmt: str,
+    tally: GenotypeTally,
+    liftover: Mapping[str, int] | None = None,
+) -> None:
+    """Register one vendor-format kit, its genotype counts and the liftover
+    outcomes it was made with."""
     current_result().add_output(
         path,
         "vendor_kit",
@@ -555,8 +572,42 @@ def record_kit(path: str, fmt: str, tally: GenotypeTally) -> None:
             "sites": tally.sites,
             "called": tally.called,
             "no_call_rate": round(tally.no_call_rate, 6),
+            **(liftover or {}),
         },
     )
+
+
+def record_liftover(liftover: Mapping[str, int]) -> None:
+    """Record the hg38-to-hg19 liftover outcomes (``liftover_*`` counts) as run
+    metrics, warning when sites were dropped as ambiguous or colliding."""
+    result = current_result()
+    if "liftover_lifted" in result.metrics:
+        return
+    result.add_metrics(**liftover)
+    ambiguous = liftover.get("liftover_ambiguous", 0)
+    collision = liftover.get("liftover_collision", 0)
+    if ambiguous or collision:
+        warn(
+            "liftover_ambiguous",
+            f"{ambiguous:,} sites have more than one hg19 placement and "
+            f"{collision:,} share an hg19 position with another site; they are "
+            "exported as no-calls rather than placed arbitrarily.",
+            ambiguous=ambiguous,
+            collision=collision,
+        )
+
+
+def replay_liftover() -> None:
+    """Restore the run's liftover outcomes from reused outputs that carry them."""
+    for record in current_result().outputs:
+        liftover = {
+            key: int(value)
+            for key, value in record.metrics.items()
+            if key.startswith("liftover_") and isinstance(value, int)
+        }
+        if "liftover_lifted" in liftover:
+            record_liftover(liftover)
+            return
 
 
 def record_aadr(outdir: str, base_name: str, panel: str) -> None:
@@ -567,14 +618,19 @@ def record_aadr(outdir: str, base_name: str, panel: str) -> None:
             current_result().add_output(path, "aadr", metrics={"panel": panel})
 
 
-def record_kept(path: str | None, outdir: str, role: str) -> None:
+def record_kept(
+    path: str | None,
+    outdir: str,
+    role: str,
+    metrics: Mapping[str, int] | None = None,
+) -> None:
     """Register a file this run left in ``outdir`` (not a scratch-dir copy)."""
     if (
         path
         and Path(path).is_file()
         and (Path(path).parent.resolve() == Path(outdir).resolve())
     ):
-        current_result().add_output(path, role)
+        current_result().add_output(path, role, metrics=metrics)
 
 
 def record_microarray_run(

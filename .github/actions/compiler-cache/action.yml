@@ -1,0 +1,129 @@
+name: Native compiler cache
+description: Bounded ccache objects, with split restore/save and trusted writers only.
+inputs:
+  phase:
+    description: restore before compilation, save after a successful build.
+    default: restore
+  scope:
+    description: Build family, separating incompatible toolchains and recipes.
+    required: true
+  recipe:
+    description: Hash of the build recipe and compiler/SDK selection.
+    required: true
+  source:
+    description: Source content hash; defaults to the native and packaging trees.
+    default: ""
+  compiler:
+    description: Compiler executable whose version and target identify the toolchain.
+    default: cc
+  executable:
+    description: ccache executable (MSYS2 UCRT64 absolute path on Windows).
+    default: ccache
+outputs:
+  cache-hit:
+    description: Exact cache hit.
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Install ccache on hosted Unix runners
+      if: inputs.phase == 'restore' && runner.os != 'Windows'
+      shell: bash
+      run: |
+        if ! command -v ccache >/dev/null; then
+          case "$RUNNER_OS" in
+            Linux) sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ccache ;;
+            macOS) brew install ccache ;;
+          esac
+        fi
+    - name: Identify compiler and cache namespace
+      id: key
+      shell: bash
+      env:
+        COMPILER: ${{ inputs.compiler }}
+        CCACHE: ${{ inputs.executable }}
+        SCOPE: ${{ inputs.scope }}
+        RECIPE: ${{ inputs.recipe }}
+        SOURCE: ${{ inputs.source || hashFiles('native/**', 'packaging/**') }}
+        PHASE: ${{ inputs.phase }}
+      run: |
+        cd "$GITHUB_WORKSPACE"
+        if command -v sha256sum >/dev/null; then hash=(sha256sum); else hash=(shasum -a 256); fi
+        compiler_hash=$({ "$COMPILER" --version; "$COMPILER" -dumpmachine; if [ "$RUNNER_OS" = macOS ]; then xcrun --show-sdk-version; fi; } | "${hash[@]}" | cut -d' ' -f1)
+        namespace=compiler-v1
+        # The owner-authorized dispatch experiment is branch-scoped by GitHub,
+        # and has no production restore prefix. PRs cannot publish even here.
+        if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] &&
+           [ "$GITHUB_REF" = refs/heads/ci/916-compiler-cache ] &&
+           [ "$GITHUB_ACTOR" = theontho ]; then
+          namespace=measure-916-compiler-v1
+        fi
+        prefix="${namespace}-${RUNNER_OS}-${RUNNER_ARCH}-${SCOPE}-${compiler_hash}-${RECIPE}-"
+        echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+        echo "key=${prefix}${SOURCE}" >> "$GITHUB_OUTPUT"
+        if [ "$PHASE" = restore ]; then
+          mkdir -p out/compiler-cache
+          if [ "$RUNNER_OS" = Windows ]; then
+            mkdir -p out/compiler-wrappers
+            cp "$CCACHE" out/compiler-wrappers/gcc.exe
+            cp "$CCACHE" out/compiler-wrappers/g++.exe
+          fi
+          {
+            echo "CCACHE_DIR=$GITHUB_WORKSPACE/out/compiler-cache"
+            echo "CMAKE_C_COMPILER_LAUNCHER=$CCACHE"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=$CCACHE"
+            echo "CMAKE_OBJC_COMPILER_LAUNCHER=$CCACHE"
+            echo "CMAKE_OBJCXX_COMPILER_LAUNCHER=$CCACHE"
+          } >> "$GITHUB_ENV"
+        fi
+    - name: Restore trusted compiler objects
+      if: inputs.phase == 'restore'
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: out/compiler-cache
+        key: ${{ steps.key.outputs.key }}
+        # A source edit can extend a trusted cache without crossing recipe,
+        # toolchain, OS, architecture or measurement namespaces.
+        restore-keys: ${{ steps.key.outputs.prefix }}
+    - name: Start this build's compiler statistics
+      if: inputs.phase == 'restore'
+      shell: bash
+      env:
+        CCACHE: ${{ inputs.executable }}
+        KEY: ${{ steps.key.outputs.key }}
+        HIT: ${{ steps.restore.outputs.cache-hit == 'true' }}
+      run: |
+        # A restored directory includes its old statistics. Reset after restore,
+        # not before it, so the summary describes this run's compilation only.
+        export CCACHE_DIR="$GITHUB_WORKSPACE/out/compiler-cache"
+        "$CCACHE" --set-config=max_size=128M
+        "$CCACHE" --set-config=base_dir="$GITHUB_WORKSPACE"
+        # Revalidate compiler contents; never allow stale timestamps/sloppiness
+        # in a restored configuration to alter release compilation semantics.
+        "$CCACHE" --set-config=compiler_check=content
+        "$CCACHE" --set-config=sloppiness=
+        "$CCACHE" --zero-stats
+        echo "Compiler cache hit=${HIT}; key=${KEY}" >> "$GITHUB_STEP_SUMMARY"
+    - name: Report and bound compiler objects
+      if: inputs.phase == 'save'
+      shell: bash
+      env:
+        CCACHE: ${{ inputs.executable }}
+      run: |
+        "$CCACHE" --max-size=128M
+        "$CCACHE" --cleanup
+        "$CCACHE" --show-stats | tee -a "$GITHUB_STEP_SUMMARY"
+    # GitHub scopes caches to refs: releases can see main, never a PR merge
+    # ref. Main-only production writers make tagged artifacts safe consumers.
+    - name: Save successful compiler objects
+      if: >-
+        inputs.phase == 'save' &&
+        github.event_name != 'pull_request' && github.event_name != 'pull_request_target' &&
+        (github.ref == 'refs/heads/main' ||
+         (github.event_name == 'workflow_dispatch' &&
+          github.ref == 'refs/heads/ci/916-compiler-cache' && github.actor == 'theontho'))
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: out/compiler-cache
+        key: ${{ steps.key.outputs.key }}

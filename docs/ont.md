@@ -48,6 +48,58 @@ signature matches, **before** its read names are probed. A failed CRAM read-name
 is an error, never a silent fallback to paired short-read extraction.
 The usual realignment disk-space preflight also applies to streamed ONT reads.
 
+### Lossless output profiles
+
+`align` and `realign` accept `--output-profile default|archive|calling`.
+The default leaves `--format` and the installed encoder's defaults unchanged.
+The other profiles select CRAM when `--format` is omitted. An explicit
+profile conflicts with `--format BAM` and is refused; use
+`--output-profile default` for BAM. When the profile comes from config.toml
+instead, explicit `--format BAM` wins and the effective profile is default
+(logged at info level), including in the desktop app and Python API:
+
+| Profile | Encoding | Readers |
+| --- | --- | --- |
+| `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
+| `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+
+Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+tags are retained. Archive trades encoding time for smaller files; savings
+depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+copy, not every caller's other staging requirements. Native pbmm2 only
+writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
+`--aligner pbmm2` is refused with a profile-specific message.
+GPU alignment writes BAM first and converts it with samtools for these
+profiles, so it needs temporary space for that BAM too.
+
+On one 5M-pair HG002 short-read observation, archive reduced size by **9.4%**,
+but writing was **1.9× slower**, SNP calling took **12% longer**, and peak
+RSS during writing/calling was **2.71 vs 1.53 GB (about 1.8×)** compared
+with default CRAM 3.1. These are single warm-cache observations on a shared
+M1 Pro, not established performance guarantees; the trade-off depends on
+the reads and reader.
+
+```bash
+wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive
+wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
+  --ref hs38.fa --output-profile calling
+```
+
+Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+persistent default; `--output-profile default` overrides it. The typed API
+and server expose the same `output_profile` option. The result manifest
+records the effective profile in `metrics.output_profile`. Changing the
+profile invalidates realign's completed alignment and chunk resume state.
+Installed samtools is checked for the requested options and version before
+mapping; WGS Extract does not install it.
+
+`info`, extraction and bcftools calling read both profiles. Older
+DeepVariant/Clair3 builds use the existing temporary compatible copy for
+archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+calling with an identified older GATK is refused before making a .dict. Use
+calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
+--region` for the existing regional BAM conversion.
+
 ### Chunked realignment
 
 A whole-genome ONT realignment runs for days. In one pass, its sort spills
@@ -549,6 +601,18 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   `repeat_unconfirmed` warning. The limits are low because true expansions
   are thinly read: on the PureTarget set below, STRkit read a 1.2 kb DMPK
   expansion in 2 of 247 reads, and LongTR an FXN one in 1 of 1.
+  When every called allele is low support, the status is `unresolved`, not
+  pathogenic or normal. Expected ploidy is two autosomal copies and one X
+  copy for males or two for females (the explicit or inferred `--sex`).
+  A missing allele is not evidence of homozygosity: incomplete recessive
+  calls are `unresolved`, even when the observed allele is expanded.
+  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
+  range or `flagged_repeats`, and appear in the personal report's overview
+  warnings.
+  If clipped reads independently suggest an unsized expansion, the unresolved
+  call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
+  and the clinical-confirmation warning.
 - LongTR has no threads; `--threads` runs chromosomes in parallel. It drops
   reads below mean base quality 30, which leaves most ONT R9.4.1 loci
   uncalled; R9 reads (named in the header) get an `r9_reads` warning
@@ -625,6 +689,18 @@ contig counts as neither on nor off target unless the BED names it. Depth
 follows `samtools depth`'s defaults, like `--bins`: deletions and duplicates
 don't count, overlapping mates do. BED contig names may use `chr1` or `1`
 style either way.
+
+The assessed scope defaults to **the whole alignment header**, not just contigs
+with reads. For a regional BAM retaining a full reference header, explicitly
+declare the assessed contig or 1-based inclusive interval with `--region chr20`
+or `--region chr20:100001-200000`. With `--by`, every target must fit inside
+that scope (outside targets are refused rather than silently clipped).
+The off-target depth sum and denominator then use only assessed nuclear bases
+outside the merged targets. Capture and whole-genome BAMs should retain the
+whole-header default: unsequenced off-target contigs still count in the assay.
+The scope is recorded in the manifest's `provenance.params.region`, the
+`assessed_scope` metric and the text summary; regional output names include
+the scope so they do not overwrite whole-header reports.
 
 ## Validation on GIAB HG002
 
@@ -723,6 +799,11 @@ whole-genome ONT run from these numbers:
 | `vcf deepvariant --ont` (Google's 1.10.0 CPU image) | Ryzen 5 5600X; 10 | 11.3 h: make_examples 4.9 h, call_variants 6.2 h, postprocess_variants 12 min | not recorded | work directory not recorded (fitted in 150 GB); VCF 231 MB |
 | `vcf clair3 --gpu` (Clair3 2.0.5 GPU image) | Ryzen 5 5600X, RTX 3090; 6 | 2.5 h: pileup 76 min, WhatsHap phasing 42 min, full-alignment 29 min | 15.2 GiB; GPU 6.1 GiB | **about 100 GiB** of temporary files in the output directory (below); VCF 79 MB |
 
+- **Before you start.** `realign`, `vcf deepvariant` and `vcf clair3` print
+  this computer's requirement in one line, and refuse to start without the
+  disk, or the least RAM, it needs (`--no-preflight` overrides): for this CRAM
+  on 7 threads, realign asks for about 221 GiB, 26 GiB of RAM and 21 h
+  ([host requirement](resource_estimates.md#whole-genome-host-requirement)).
 - **Slow chunks.** Most realign chunks took about 30 min; those holding
   pericentromeric satellite reads (chr1 q12, the chr4 centromere, chrX q with
   chrY and the alts) took about 2 h each.

@@ -748,12 +748,18 @@ def test_commands_report_before_work(
         monkeypatch.setattr(module, "require_native_tool", lambda _tool: None)
     monkeypatch.setattr(module, "log_dependency_info", lambda *_: None, raising=False)
     ref = None
-    if module in (bam, basic):
+    if module in (bam, basic, callers):
         source, ref = _tiny_bam(tmp_path)
     if module is not bam:
+        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+
         setup = basic.CallerSetup(
-            "1", str(tmp_path), "", ref if module is basic else None, None
-        )  # type: ignore[arg-type]
+            "1",
+            str(tmp_path),
+            str(ref),
+            ReferenceLibrary(str(ref), input_path=str(source)),
+            None,
+        )
         monkeypatch.setattr(module, "setup_caller", lambda _params: setup)
 
     def reported(build):
@@ -902,3 +908,9 @@ def test_long_read_disk_covers_the_measured_spills_and_cram_output():
         "PAO83395.pass.cram", 10_728_434_251, "CRAM", 4 * 192 * mib
     )
     assert genome.spill > 42_570_898_460
+    # measured (#431, #690): realigned whole, the 103.7 GB CRAM came to
+    # 185.5 GB of CRAM, 1.79x where 1.7x was first budgeted.
+    whole = resources.long_read_disk(
+        "PAO83395.pass.cram", 103_700_000_000, "CRAM", 7 * 512 * mib
+    )
+    assert whole.output >= 185_500_000_000

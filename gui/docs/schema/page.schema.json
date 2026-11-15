@@ -289,12 +289,28 @@
           "items": { "type": "string" },
           "default": []
         },
+        "optionalArguments": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "default": [],
+          "description": "Argument groups added after arguments; a group is left out when any placeholder in it is empty."
+        },
         "environment": {
           "type": "object",
           "additionalProperties": { "type": "string" },
           "default": {}
         },
-        "workingDirectory": { "$ref": "#/$defs/bundledRelativePath" }
+        "workingDirectory": { "$ref": "#/$defs/bundledRelativePath" },
+        "transform": {
+          "type": "object",
+          "required": ["module", "export"],
+          "additionalProperties": false,
+          "description": "Maps the JSON the command prints to the payload: the app calls the named export of the bundle's ES module with the parsed output and shows what it returns.",
+          "properties": {
+            "module": { "$ref": "#/$defs/bundledRelativePath" },
+            "export": { "type": "string", "minLength": 1 }
+          }
+        }
       }
     },
     "bundledRelativePath": {

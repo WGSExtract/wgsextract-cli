@@ -58,7 +58,9 @@ def run_phylop(params: VcfPhylopParams) -> None:
             threads=params.threads,
         )
     else:
-        _annotate_from_phylop_table(params, input_file, phylop_file, ann_out, outdir)
+        _annotate_from_phylop_table(
+            params, input_file, phylop_file, ann_out, outdir, lib.fasta
+        )
 
     run_min_score_filter(
         ann_out,
@@ -77,6 +79,7 @@ def _annotate_from_phylop_table(
     phylop_file: str,
     ann_out: str,
     outdir: str,
+    reference: str | None = None,
 ) -> None:
     """A PhyloP VCF, or a TSV of #Chr, Start, End, Score, the user supplied."""
     phylop_vcf = prepare_tabix_annotation(phylop_file, "PhyloP")
@@ -89,6 +92,7 @@ def _annotate_from_phylop_table(
             outdir,
             "PhyloP",
             threads=params.threads,
+            reference=reference,
         )
     else:
         # Annovar PhyloP TSV: #Chr, Start, End, Score
@@ -139,6 +143,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         "gnomAD",
         header,
         threads=params.threads,
+        reference=lib.fasta,
     )
 
     record_annotated(ann_out)
