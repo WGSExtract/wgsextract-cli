@@ -65,8 +65,8 @@ def _run(capsys, datasets: Path, *flags: str) -> dict:
     return json.loads(capsys.readouterr().out)
 
 
-def _tree(root: Path) -> list[str]:
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+def _tree(root: Path) -> list[Path]:
+    return sorted(p.relative_to(root) for p in root.rglob("*"))
 
 
 def test_install_status_and_delete(tmp_path, published, capsys):
@@ -149,8 +149,31 @@ def test_issue_947_a_zip_with_an_unsafe_entry_installs_nothing(
         result = _run(capsys, datasets, "--install")
 
     assert "Unsafe dataset zip entry" in result["error"]["message"]
-    zip_name = f".downloads/{mini_genome.DATASET_ID}.zip"
-    assert _tree(datasets) == [".downloads", zip_name]
+    zip_name = Path(".downloads") / f"{mini_genome.DATASET_ID}.zip"
+    assert _tree(datasets) == [Path(".downloads"), zip_name]
+
+
+@pytest.mark.parametrize("unsafe", ["outside", "link"])
+def test_issue_960_refused_zip_can_be_deleted_and_replaced(
+    tmp_path, monkeypatch, capsys, unsafe
+):
+    """Refusal keeps only the cached archive, with no open Windows handles."""
+    datasets = tmp_path / "datasets"
+    with _published(monkeypatch, _dataset_zip(unsafe)):
+        refused = _run(capsys, datasets, "--install")
+
+    assert refused["status"] == "failed"
+    assert _run(capsys, datasets)["details"]["status"] == "missing"
+    assert _run(capsys, datasets, "--delete")["details"]["deleted"] == [
+        str(datasets / ".downloads" / f"{mini_genome.DATASET_ID}.zip")
+    ]
+    assert _tree(datasets) == []
+
+    with _published(monkeypatch, _dataset_zip()):
+        installed = _run(capsys, datasets, "--install")
+
+    assert installed["details"]["status"] == "installed"
+    assert (datasets / mini_genome.DATASET_ID / "S.bam").read_text() == "S.bam"
 
 
 def test_install_and_delete_together_is_a_usage_error(tmp_path, capsys):
