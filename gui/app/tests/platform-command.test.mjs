@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,7 +9,8 @@ const { runAction } = await import("../dist/web/src/server/action-runner.js");
 
 /** A bundle whose POSIX scripts folder holds one Python helper. */
 async function pythonHelperBundle(t) {
-  const bundleRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-python-helper-"));
+  // The resolver reports real paths; on macOS tmpdir() is a /var -> /private/var symlink.
+  const bundleRoot = await realpath(await mkdtemp(path.join(tmpdir(), "wgsextract-gui-python-helper-")));
   t.after(() => rm(bundleRoot, { force: true, recursive: true }));
   await mkdir(path.join(bundleRoot, "scripts", "posix"), { recursive: true });
   await writeFile(path.join(bundleRoot, "scripts", "posix", "helper.py"), "#!/usr/bin/env python3\n");
