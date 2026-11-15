@@ -259,8 +259,11 @@ EOF
         exit 1
     fi
 
-    if ! /usr/bin/xcrun --find clang >/dev/null 2>&1; then
-        developer_dir="$(/usr/bin/xcode-select -p 2>/dev/null || true)"
+    developer_dir="$(/usr/bin/xcode-select -p)"
+    # xcrun can initialize full Xcode (including CoreSimulator state) just to
+    # locate clang. Check the selected CLT or Xcode toolchain without launching it.
+    if [ ! -x "$developer_dir/usr/bin/clang" ] &&
+       [ ! -x "$developer_dir/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang" ]; then
         cat >&2 <<EOF
 Error: Xcode Command Line Tools are selected but clang is not available.
 Selected developer directory: ${developer_dir:-unknown}
@@ -269,7 +272,6 @@ EOF
         exit 1
     fi
 
-    developer_dir="$(/usr/bin/xcode-select -p)"
     log "Xcode Command Line Tools are available: $developer_dir"
 }
 

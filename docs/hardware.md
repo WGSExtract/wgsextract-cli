@@ -370,7 +370,12 @@ the check, or is older than the oldest supported release, raises the
   then 256M; sorting more often doesn't change the output). This also applies
   when realignment extracts FASTQs rather than streaming them.
   An oversized CPU estimate does **not** make an oversized GPU plan safe.
-  If no GPU plan fits, `wgse-bwa` runs on the CPU. If its pipeline with the
+  Without a speed override, paired Metal BWA tries a staged plan next:
+  at most three BWA workers write a compressed checkpoint, then duplicate
+  marking and bounded compressed sorting run after the aligner exits.
+  This plan must also fit the same physical-RAM budget. Its manifest mode is
+  `alignment_mode="staged_metal"`, reason `memory_budget_metal_staged`.
+  If even staging cannot fit (or for CUDA), `wgse-bwa` runs on the CPU. If its pipeline with the
   requested sort memory is also over budget, sort memory is capped at 256M
   per thread; an already smaller budget is retained. The conservative CPU
   estimate can still report `LOW`: this is not a reservation or a guarantee of RAM fit.
@@ -379,7 +384,8 @@ the check, or is older than the oldest supported release, raises the
   CPU fallback was about **2.5× slower** on the measured 16 GB M1 whole genome.
   To favor speed despite the swap risk, pass **`--prefer-native-gpu`** or set
   **`prefer_native_gpu = true`** in `config.toml`. Normal GPU-fit sort step-down
-  runs first. Only when none fits does the preference replace CPU fallback:
+  runs first. Only when none fits does the preference permit the concurrent
+  GPU plan instead of RAM-safe staging/CPU fallback:
   explicit `--memory` is retained, while default/config memory is capped at
   256M, subject to general sort limits. `--no-prefer-native-gpu` overrides config.
   The manifest records `native_aligner_backend_reason="memory_budget_cpu"` on
