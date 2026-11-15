@@ -264,7 +264,7 @@ def _run_core_benchmark_analysis_steps(
     ]
     if calling_ploidy == "2":
         ploidy_file = steps_dir / "benchmark-diploid.ploidy"
-        ploidy_file.write_text("* * * * 2\n", encoding="utf-8")
+        ploidy_file.write_text("* * * * 2\n", encoding="utf-8", newline="\n")
         microarray_cmd += ["--ploidy-file", str(ploidy_file)]
     if region and region_allowed:
         microarray_cmd += ["--region", str(region)]

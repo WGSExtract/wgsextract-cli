@@ -23,6 +23,7 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from tests.http_server import serving
 from wgsextract_cli.core import alignment_splice
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
+from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.resource_estimates import GIB
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -159,6 +160,39 @@ def test_chunked_realign_writes_the_records_of_a_single_pass(
     assert os.path.isfile(index)
     assert _view("idxstats", chunked) == _view("idxstats", whole)
     assert not (tmp_path / "chunked" / f"x_aligned.{ext}.chunks").exists()
+
+
+@needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("profile", ["archive", "calling"])
+def test_691_chunked_profiles_keep_supplementary_sequence_qualities_and_modifications(
+    tmp_path, ont, profile
+):
+    ref, source = ont["ref"], ont["bam"]
+    _realign(source, ref, tmp_path / "default", "--format", "CRAM",
+             "--chunk-size", _chunk_size(source))  # fmt: skip
+    _realign(source, ref, tmp_path / profile, "--output-profile", profile,
+             "--chunk-size", _chunk_size(source))  # fmt: skip
+    output = tmp_path / profile / "x_aligned.cram"
+    assert cram_version(str(output)) == (3, 1 if profile == "archive" else 0)
+
+    def records(path):
+        return [
+            (*fields[:11], tuple(sorted(fields[11:])))
+            for line in _view("view", "-T", ref, str(path)).splitlines()
+            if (fields := line.split("\t"))
+        ]
+
+    actual = records(output)
+    assert actual == records(tmp_path / "default" / "x_aligned.cram")
+    supplementary = [r for r in actual if int(r[1]) & 0x800]
+    assert supplementary and all(len(r[9]) == len(r[10]) == 4000 for r in supplementary)
+    assert all(any(tag.startswith("MM:Z:") for tag in r[11]) for r in supplementary)
+    _view("quickcheck", str(output))
+    if profile == "archive":
+        assert (
+            output.stat().st_size
+            < (tmp_path / "default" / "x_aligned.cram").stat().st_size
+        )
 
 
 def _lines(ont, region):

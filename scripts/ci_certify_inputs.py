@@ -33,11 +33,15 @@ def check_wheel(
 ) -> None:
     expected = package.get("sha256")
     if not expected or not re.fullmatch(r"[a-f0-9]{64}", expected):
-        raise ValueError(f"{package['name']}: pinned wheel provenance is unavailable")
+        raise ValueError(
+            f"{package['name']}: pinned wheel SHA-256 is missing from pixi list; "
+            f"use CI's Pixi version and run just certify-setup -e {prefix.name}"
+        )
     wheel = Path("out/certify/inputs/wheels") / f"{expected}.whl"
     if not wheel.is_file() or digest(wheel) != expected:
         raise ValueError(
-            f"{package['name']}: retain the pinned wheel at {wheel} before certification"
+            f"{package['name']}: retain the pinned wheel at {wheel} before certification; "
+            f"missing or corrupt wheel archive; run just certify-setup -e {prefix.name}"
         )
     with zipfile.ZipFile(wheel) as archive:
         for member in archive.infolist():
@@ -143,18 +147,25 @@ def check_packages(prefix: Path, packages: list[dict[str, Any]]) -> None:
                     raise ValueError(f"{name}: installed wheel file changed: {file}")
 
 
+def locked_packages(name: str) -> list[dict[str, Any]]:
+    prefix = Path(".pixi/envs") / name
+    if not (prefix / "conda-meta/pixi").is_file():
+        raise ValueError(
+            f"Missing CI environment: {prefix}; run pixi install --locked -e {name}, "
+            f"then just certify-setup -e {name}"
+        )
+    packages: list[dict[str, Any]] = json.loads(
+        subprocess.check_output(
+            ["pixi", "list", "--locked", "--json", "-e", name], text=True
+        )
+    )
+    return packages
+
+
 def validate_environments(environments: list[str]) -> None:
     for name in environments:
         prefix = Path(".pixi/envs") / name
-        metadata = prefix / "conda-meta/pixi"
-        if not metadata.is_file():
-            raise ValueError(f"Prepare the {name} CI environment before certification")
-        packages = json.loads(
-            subprocess.check_output(
-                ["pixi", "list", "--locked", "--json", "-e", name],
-                text=True,
-            )
-        )
+        packages = locked_packages(name)
         check_packages(prefix, packages)
         print(f"Verified locked installed packages: {name}", flush=True)
 
@@ -163,7 +174,8 @@ def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
     archive = root / archive_name
     if not archive.is_file() or digest(archive) != expected:
         raise ValueError(
-            "Prepared reference bootstrap archive is missing or not pinned"
+            f"Prepared reference bootstrap archive is missing or not pinned: {archive}; "
+            "run just certify-setup --reference"
         )
     with tarfile.open(archive, "r:gz") as stream:
         checked = 0
@@ -192,7 +204,8 @@ def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
             expected_digest = digest_stream(source)
             if not destination.is_file() or digest(destination) != expected_digest:
                 raise ValueError(
-                    f"Prepared reference input differs from bootstrap: {relative}"
+                    f"Prepared reference input differs from bootstrap: {destination}; "
+                    "move the conflicting file aside, then run just certify-setup --reference"
                 )
             checked += 1
     if not checked:
@@ -210,7 +223,10 @@ def validate_reference() -> None:
     validate_bootstrap(root, str(retained.resolve()), BOOTSTRAP_SHA256)
     chain = root / HG19_TO_HG38_CHAIN.name
     if not chain.is_file() or digest(chain) != HG19_TO_HG38_CHAIN.sha256:
-        raise ValueError("Prepared pinned hg19-to-hg38 chain is missing or corrupt")
+        raise ValueError(
+            f"Prepared pinned hg19-to-hg38 chain is missing or corrupt: {chain}; "
+            "run just certify-setup --reference"
+        )
     hs38 = next(
         (genome for genome in get_available_genomes() if genome["code"] == "hs38"), None
     )
@@ -222,7 +238,11 @@ def validate_reference() -> None:
     if not any(
         path.is_file() and digest(path) == hs38["sha256"] for path in candidates
     ):
-        raise ValueError("Prepared pinned hs38 reference is missing or corrupt")
+        raise ValueError(
+            f"Prepared pinned hs38 reference is missing or corrupt in {root / 'genomes'}; "
+            f"move any existing {hs38['final']} FASTA and its indexes aside, "
+            "then run just certify-setup --reference to obtain the pinned copy"
+        )
 
 
 if __name__ == "__main__":

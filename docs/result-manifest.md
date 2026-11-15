@@ -54,6 +54,10 @@ it instead of parsing log text or guessing output file names.
 Tool versions are probed only when a document is emitted, and only for tools the
 run actually launched.
 
+`align` and `realign` report the effective lossless output profile
+(`default`, `archive` or `calling`) in `metrics.output_profile`; see
+[output profiles](ont.md#lossless-output-profiles).
+
 ### Fingerprints
 
 Inputs, outputs and the reference carry a `wgse-fp1:<sha256 hex>` fingerprint.

@@ -80,6 +80,20 @@ fmt:
 typecheck:
     pixi run typecheck
 
+# Retain verified wheels; add --reference for full Ubuntu/macOS reference inputs
+[positional-arguments]
+[unix]
+certify-setup *args:
+    pixi run --no-install python scripts/ci_certify_setup.py "$@"
+
+[extension(".ps1")]
+[positional-arguments]
+[script("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File")]
+[windows]
+certify-setup *args:
+    pixi run --no-install python scripts/ci_certify_setup.py @args
+    exit $LASTEXITCODE
+
 # Attest the clean pushed PR head; reserve shared-host resources around this recipe
 [positional-arguments]
 [unix]

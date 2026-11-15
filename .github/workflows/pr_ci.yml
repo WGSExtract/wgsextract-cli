@@ -319,7 +319,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, required, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&
@@ -345,12 +345,11 @@ jobs:
           echo "All area-selected checks passed for this non-draft PR run."
 
   # The one required check for main's ruleset and merge queue (#758, merge queue). Path
-  # routing skips jobs, so require this summary rather than each job. The
-  # macOS, Windows, ARM64, smoke and Install Lab jobs stay advisory on PRs
-  # (more runner losses) and don't run in the queue.
+  # routing skips jobs, so require this summary rather than each job. PRs
+  # also require the area verdict; queue groups retain their smaller matrix.
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages, ready-gate]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     # Draft events allocate no runner, including this summary.
@@ -362,6 +361,7 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           ROUTED: ${{ needs.changes.outputs.routed }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json, os, sys
@@ -369,6 +369,9 @@ jobs:
           print("\n".join(f"{job}: {result}" for job, result in results.items()))
           # Path routing may skip a job only when routing itself succeeded.
           bad = [job for job, result in results.items() if result not in {"success", "skipped"}]
+          # A PR must have an actual area verdict, not a skipped summary.
+          if os.environ["EVENT_NAME"] == "pull_request" and results.get("ready-gate") != "success":
+              bad.append("ready-gate")
           if results["changes"] != "success" or os.environ["ROUTED"] != "true" or bad:
               sys.exit(f"::error::Required checks did not pass: {', '.join(bad) or 'changes'}")
           PY
