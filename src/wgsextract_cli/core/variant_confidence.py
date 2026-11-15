@@ -80,6 +80,8 @@ RARE_IMPUTED_AF = 0.01
 SPLIT_TAG = "OLD_MULTIALLELIC"
 
 LOW_REASONS = {
+    "unsupported_somatic": "Mutect2 somatic calls are not assessable by the "
+    "germline confidence scheme",
     "filtered": "the caller's FILTER did not pass",
     "low_depth": "read depth below the minimum",
     "low_gq": "genotype quality below the minimum",
@@ -164,13 +166,17 @@ GQ_HELP = (
 
 
 _CALLER_MARKERS = (
+    (
+        "mutect2",
+        re.compile(r'^##source="?Mutect2\b', re.I),
+    ),
     ("deepvariant", re.compile(r"^##DeepVariant_version", re.I)),
     ("dragen", re.compile(r"^##(DRAGENCommandLine|source=DRAGEN)", re.I)),
     ("clair3", re.compile(r"^##source=Clair3|^##clair3", re.I)),
     (
         "gatk",
         re.compile(
-            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs|Mutect2))", re.I
+            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs))", re.I
         ),
     ),  # fmt: skip
     ("freebayes", re.compile(r"^##source=freeBayes", re.I)),
@@ -193,10 +199,28 @@ def mapping_quality_kind(header_lines: Iterable[str]) -> str:
 def detect_caller(header_lines: Iterable[str]) -> str:
     """The variant caller named in a VCF header, or "unknown"."""
     lines = list(header_lines)
+    for line in lines:
+        if line.lower().startswith("##gatkcommandline=<") and line.endswith(">"):
+            # Consume quoted values whole, so text such as ",ID=Mutect2"
+            # inside CommandLine is not mistaken for an attribute.
+            attributes = re.findall(
+                r'(?:^|,)\s*([^=,]+)=(?:"((?:\\.|[^"\\])*)"|([^,]*))',
+                line.partition("<")[2][:-1],
+            )
+            if any(
+                key.strip().lower() == "id"
+                and (quoted or plain).strip().lower() == "mutect2"
+                for key, quoted, plain in attributes
+            ):
+                return "mutect2"
     for caller, marker in _CALLER_MARKERS:
         if any(marker.match(line) for line in lines):
             return caller
     return "unknown"
+
+
+def _confidence_policy(caller: str) -> str:
+    return "unsupported_somatic" if caller == "mutect2" else "germline"
 
 
 def _number(value: str | None) -> float | None:
@@ -325,6 +349,19 @@ def classify(
 
     if filters not in {"PASS", "."}:
         low.append("filtered")
+    if caller == "mutect2":
+        # Preserve descriptive counts, but never interpret somatic GT/GQ/VAF
+        # against germline genotype expectations or hard-filter thresholds.
+        split = SPLIT_TAG in info
+        counts_info = info if samples == 1 else {}
+        return CallConfidence(
+            LOW,
+            [*low, "unsupported_somatic"],
+            "unassessed",
+            _depth(fmt, counts_info, split),
+            _number(fmt.get("GQ")),
+            _alt_fraction(alt, n_alts, fmt, counts_info, split),
+        )
     if IMPUTED_TAG in info:
         # No reads behind it to judge: its own probability is in FORMAT/GP.
         return CallConfidence(LOW, [*low, "imputed"], zygosity, None, None, None)
@@ -498,6 +535,7 @@ class ConfidenceSummary:
             "output": None if output is None else str(Path(output).absolute()),
             "sample": self.sample,
             "caller": self.caller,
+            "policy": _confidence_policy(self.caller),
             "thresholds": asdict(self.thresholds),
             "contamination": self.contamination,
             "counts": {label: self.counts[label] for label in LABELS},
@@ -523,6 +561,7 @@ def _header_lines(
         f'##INFO=<ID={REASONS_TAG},Number=A,Type=String,Description="Reason codes '
         f'behind {CONF_TAG}, joined by | ({GUIDE})">',
         f"##wgsextract_confidence=<Scheme={SCHEME},Caller={caller},"
+        f"Policy={_confidence_policy(caller)},"
         f"MinDepth={t.min_depth:g},HighDepth={t.high_depth:g},"
         f"MinGQ={t.min_gq:g},HighGQ={t.high_gq:g}{freemix}>",
     ]
@@ -589,6 +628,19 @@ def label_records(
                 sample=columns[9] if len(columns) > 9 else None,
                 contamination=contamination,
             )
+            if caller == "mutect2" and not any(
+                warning.code == "unsupported_somatic_confidence"
+                for warning in current_result().warnings
+            ):
+                warn(
+                    "unsupported_somatic_confidence",
+                    "Mutect2 somatic calls cannot be assessed by the germline "
+                    "confidence scheme; carried calls are labelled low with "
+                    "unsupported_somatic, not germline allele-imbalance reasons. "
+                    "This is not a CHIP or tumour diagnosis.",
+                    caller=caller,
+                    policy="unsupported_somatic",
+                )
             if len(columns) > 10:
                 warn(
                     "confidence_first_sample_only",
