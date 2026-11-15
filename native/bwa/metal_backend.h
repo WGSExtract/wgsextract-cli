@@ -98,11 +98,11 @@ int wgse_bwa_main(int argc, char *argv[]);
 enum class Backend { cpu, metal, cuda, vulkan, automatic };
 
 // Whether the GPU backend's device can run the kernels (automatic: this
-// build's GPU, Metal on macOS and CUDA elsewhere), with the reason if not.
+// build's GPU, Metal on macOS, otherwise CUDA then Vulkan), with the reason if not.
 bool wgse_gpu_available(Backend backend, std::string &reason);
 bool wgse_gpu_probe(Backend backend, std::string &reason, std::string *description = nullptr);
 bool wgse_gpu_hardware_supported(Backend backend);
-// "Metal" or "CUDA": the selected device, or the backend's.
+// "Metal", "CUDA" or "Vulkan": the selected device, or the backend's.
 const char *wgse_gpu_name(Backend backend);
 // Writes <prefix>.wgse-sa<interval> from the index's samples; returns an exit status.
 int wgse_densify_sa(const char *prefix, unsigned interval, unsigned threads);

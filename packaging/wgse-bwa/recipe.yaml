@@ -22,7 +22,7 @@ source:
     target_directory: mem3
 
 build:
-  number: 0
+  number: 1
   string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
   # linux-64 with the CUDA backend; linux-aarch64 with the CPU backend (#672).
   skip:
@@ -46,6 +46,7 @@ requirements:
     - ${{ stdlib('c') }}
     - cmake >=3.24
     - ninja
+    - shaderc
   host:
     - if: x86_64
       then:
@@ -53,6 +54,10 @@ requirements:
         - cuda-cudart-dev
         - cuda-cudart-static
     - zlib
+    - vulkan-headers
+    - libvulkan-loader
+  run:
+    - libvulkan-loader
   # Statically linked: neither the shared runtime cuda-cudart-dev exports nor a
   # CUDA version is needed at run time.
   ignore_run_exports:
@@ -68,6 +73,7 @@ tests:
       - test -s "$PREFIX/share/licenses/wgse-bwa/BWA-MEM3-LICENSE"
       - wgse-bwa capabilities --json
       - wgse-bwa capabilities --json | grep -q '"cuda_hardware_supported":'
+      - wgse-bwa capabilities --json | grep -q '"vulkan_available":'
   - files:
       source:
         - native/tests/smoke.sh
@@ -91,5 +97,5 @@ about:
     - native/bwa/SEEDING-LICENSE
   summary: >-
     BWA 0.7.19 rebuilt by WGS Extract with exact faster CPU steps (NEON on
-    ARM64, SSE2 and AVX2 on x86-64) and, on x86-64, an experimental CUDA
-    backend (--cuda, --backend auto); it writes BWA's exact alignments.
+    ARM64, SSE2 and AVX2 on x86-64), experimental Vulkan seed extension
+    (--vulkan), and CUDA on x86-64 (--cuda); it writes BWA's exact alignments.

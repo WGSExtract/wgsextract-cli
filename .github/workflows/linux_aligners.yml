@@ -61,9 +61,22 @@ jobs:
           recipe: ${{ hashFiles('native/**/CMakeLists.txt', '.github/workflows/linux_aligners.yml') }}
       - name: Build and test (development build)
         run: |
-          cmake -S native -B out/build-test -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
+          cmake -S native -B out/build-test -DCMAKE_BUILD_TYPE=Release -DWGSE_VULKAN=OFF -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
           cmake --build out/build-test -j "$(nproc)"
           ctest --test-dir out/build-test --output-on-failure
+      - name: Vulkan build prerequisites (no GPU required)
+        if: matrix.runner == 'ubuntu-24.04'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: libvulkan-dev glslc
+      - name: Compile Vulkan and test CPU fallback
+        if: matrix.runner == 'ubuntu-24.04'
+        run: |
+          cmake -S native -B out/build-vulkan -DCMAKE_BUILD_TYPE=Release \
+            -DWGSE_VULKAN=ON -DWGSE_BWA_MEM3=OFF -DWGSE_MINIMAP2=OFF \
+            -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
+          cmake --build out/build-vulkan -j "$(nproc)"
+          ctest --test-dir out/build-vulkan --output-on-failure
       - uses: ./.github/actions/compiler-cache
         with:
           phase: save

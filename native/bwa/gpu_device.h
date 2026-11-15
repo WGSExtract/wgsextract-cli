@@ -1,7 +1,7 @@
 #pragma once
 
 // The GPU operations wgse-bwa's scheduling (backend.cpp) asks of a device. Each
-// device (Metal, CUDA) runs the same exact kernels; the scheduling, the CPU's
+// device (Metal, CUDA, Vulkan) runs the same exact kernels; the scheduling, the CPU's
 // share of the work and the matching of GPU results to upstream's calls are
 // shared. Every operation throws std::runtime_error when the GPU fails; the
 // caller then finishes the work on the CPU.
@@ -249,14 +249,15 @@ struct DeviceOptions {
     // as interrupted even if it completed, so its kernels run twice.
     size_t interrupt_every = 0;
     // The watchdog's floor: a wait for the GPU fails after the larger of this
-    // and 20 times the slowest batch of its stage (CUDA).
+    // and 20 times the slowest batch of its stage (CUDA and Vulkan).
     double watchdog_seconds = 60;
     // Test the discrete-memory path on a unified-memory GPU.
     bool force_staging = false;
     // Test hook: hang the first GPU work of the stage this names (a prefix of
     // collect_seeds, locate_rows, rescue_align or extend) as a hung GPU would.
     // Metal withholds the command and gives up after 2 s; CUDA, which hangs only
-    // rescue_align, occupies the GPU for twice the watchdog's limit.
+    // rescue_align, occupies the GPU for twice the watchdog's limit. Vulkan
+    // withholds the first extension submission, so testing cannot hang a shader.
     std::string hang_label;
 };
 std::unique_ptr<Device> make_metal_device(const DeviceOptions &options, std::string &reason);

@@ -3,6 +3,8 @@
 These builds are for Apple Silicon. `wgse-bwa` is also built for Linux x86-64,
 with an experimental NVIDIA GPU backend (see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
+An unreleased experimental Vulkan seed-extension backend also supports AMD,
+Intel and NVIDIA GPUs on Linux (see [Vulkan](#linux-gpus-vulkan-experimental)).
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -1014,6 +1016,61 @@ and these 5M pairs of 150 bp reads are 1.5 Gbp. That slightly overstates it,
 since a whole genome loads the index once rather than 62 times. Each run's
 directory in the benchmark's output keeps its samples, idle baseline and load
 average (`power.txt`, `power-samples.tsv`).
+
+## Linux GPUs (Vulkan, experimental)
+
+`wgse-bwa --vulkan mem ...` (or `--backend vulkan`) offloads seed extension
+only. Seeding, suffix-array locate and mate rescue keep their exact CPU
+implementations. This is the first part of #675 (AMD GPU aligner backend),
+not a HIP/ROCm backend. It is not yet a recommendation for integrated GPUs.
+
+The loader, headers and `glslc` (shaderc) at configure time enable Vulkan
+automatically; `-DWGSE_VULKAN=ON|OFF` overrides that detection. SPIR-V is
+compiled and embedded at build time, never compiled or downloaded at runtime.
+For example:
+
+```bash
+cmake -S native -B out/build-vulkan -DCMAKE_BUILD_TYPE=Release \
+  -DWGSE_VULKAN=ON -DWGSE_BWA_MEM3=OFF -DWGSE_MINIMAP2=OFF
+cmake --build out/build-vulkan --parallel 4
+ctest --test-dir out/build-vulkan --output-on-failure
+out/build-vulkan/bwa/wgse-bwa capabilities --json
+out/build-vulkan/bwa/wgse-bwa --vulkan mem -t 4 ref.fa R1.fq.gz R2.fq.gz
+```
+
+The conda build includes `vulkan-headers` and `shaderc`, and ships the
+`libvulkan-loader` runtime dependency. Users need an existing vendor Vulkan
+driver; nothing installs or changes their GPU driver. A CPU-only build needs
+none of those dependencies. CUDA and Vulkan can be built into one executable.
+
+Device selection prefers a discrete GPU, then an integrated GPU. The capability
+check requires Vulkan 1.1, compute subgroup vote/shuffle/shuffle-relative support,
+and full compute subgroups (core Vulkan 1.3 or
+`VK_EXT_subgroup_size_control`). The default fixed subgroup size must be divisible
+by 16 and at most 64, or subgroup-size control must supply such a size.
+This keeps each job's shuffle segment intact. Software Vulkan devices are
+rejected. `capabilities --json` reports `vulkan_available`,
+`vulkan_hardware_supported` and `vulkan_device` (a device name or `null`).
+
+On UMA, the scheduler packs jobs directly into coherent, mapped device-local
+buffers and reads results there, without staging copies. Discrete GPUs use
+device-local copies and coherent host staging buffers. The default pool uses
+roughly 80 MiB on UMA (about twice that with staging), independent of index
+size. Buffers above the device's `maxStorageBufferRange` fail cleanly.
+Submissions contain at most 8,192 jobs. The fence watchdog bounds waits by
+the larger of 60 seconds and 20 times the slowest successful batch. On timeout
+or device loss, pending work finishes on the CPU; potentially in-flight GPU
+allocations are retained until process exit, avoiding a blocking driver free.
+
+Like `--cuda`, explicit `--vulkan` fails when unavailable, or exits 1 after
+finishing correct CPU output if GPU execution fails. `--backend auto` tries
+Metal on macOS, otherwise CUDA then Vulkan, and falls back to CPU with exit 0.
+The default remains `--backend cpu`.
+
+The GPU extension parity tests select whichever backend is available; Vulkan
+also has explicit mapped/staged kernel tests against upstream `ksw_extend2`,
+and tests for watchdog recovery and a missing driver. Linux CI compile-checks
+Vulkan and tests CPU fallback without requiring a GPU.
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
