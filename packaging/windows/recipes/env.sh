@@ -12,7 +12,8 @@ export PATH="/ucrt64/bin:/usr/bin:$PATH"
 # Masquerading wrappers also cover upstream Makefiles that hard-code gcc/g++.
 cache_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/out
 if [ -f "$cache_root/compiler-cache/ccache.conf" ]; then
-    export CCACHE_DIR="$(cygpath -m "$cache_root/compiler-cache")"
+    CCACHE_DIR=$(cygpath -m "$cache_root/compiler-cache")
+    export CCACHE_DIR
     export PATH="$cache_root/compiler-wrappers:$PATH"
 fi
 
@@ -58,11 +59,13 @@ install_exe() {
     done
 }
 
-# build_htslib DIR: configure and build a static libhts in DIR (htslib's own
+# build_htslib DIR [CODEC_LINK_LIBS]: build static libhts and test its codecs
+# with any additional allocator link libraries. Uses htslib's own
 # MinGW support; regex from libsystre). Remote file access (libcurl, S3, GCS)
 # and plugins are off: the CLI reads local files only.
 HTS_LIBS="-lsystre -ltre -lintl -liconv $COMPAT_LIBS"
 build_htslib() {
+    local codec_libs="$HTS_LIBS ${2:-}"
     # Keep these measured flags scoped to HTS tools; other recipes retain OPT.
     OPT="$OPT -flto -minline-stringops-dynamically -minline-all-stringops"
     (
@@ -84,6 +87,6 @@ MAKEFILE
         make -f .wgse-cram-stop.mk codec-test CC=gcc CFLAGS="$OPT $STATIC_LDFLAGS" \
             CODEC_TEST="$COMPAT/../tests/cram_stop.c" \
             SEQ_TEST="$COMPAT/../tests/bam_seq.c" \
-            BUFFER_TEST="$COMPAT/../tests/cram_buffers.c" CODEC_LIBS="$HTS_LIBS"
+            BUFFER_TEST="$COMPAT/../tests/cram_buffers.c" CODEC_LIBS="$codec_libs"
     )
 }

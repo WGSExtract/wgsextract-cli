@@ -1,0 +1,61 @@
+diff --git a/samblaster.cpp b/samblaster.cpp
+index 211663b0..62513818 100644
+--- a/samblaster.cpp
++++ b/samblaster.cpp
+@@ -32,6 +32,7 @@
+ #include <errno.h>
+ #include <map>
+ #include "sbhash.h"
++#include "sam_reader.h"
+ 
+ // Rename common integer types.
+ // I like having these shorter name.
+@@ -375,10 +376,10 @@ char * getTagVal (char *  tags, char * tagID)
+ #endif
+ 
+ // Read a line from the file and split it.
+-splitLine_t * readLine(FILE * input)
++splitLine_t * readLine(WgseSamReader & input)
+ {
+     splitLine_t * sline = getSplitLine();
+-    sline->bufLen = getline(&sline->buffer, &sline->maxBufLen, input);
++    sline->bufLen = input.read(&sline->buffer, &sline->maxBufLen);
+     if (sline->bufLen < 1)
+     {
+         disposeSplitLines(sline);
+@@ -1772,6 +1773,8 @@ int main (int argc, char *argv[])
+         if (state->unmappedClippedFile == NULL) fsError(state->unmappedClippedFileName);
+     }
+ 
++    WgseSamReader inputReader(state->inputFile);
++
+     // Read in the SAM header and create the seqs structure.
+     state->seqLens = (UINT32*)calloc(1, sizeof(UINT32)); //initialize to 0
+     state->seqOffs = (UINT64*)calloc(1, sizeof(UINT64)); //initialize to 0
+@@ -1782,7 +1785,7 @@ int main (int argc, char *argv[])
+     UINT64 totalLen = 0;
+     splitLine_t * line;
+     // Read the first line to prime the loop, and also to allow checking for malformed input.
+-    line = readLine(state->inputFile);
++    line = readLine(inputReader);
+     checkBAMfile(line);
+     while (line != NULL && line->fields[0][0] == '@')
+     {
+@@ -1833,7 +1836,7 @@ int main (int argc, char *argv[])
+         disposeSplitLines(line);
+ 
+         // Read in next line.
+-        line = readLine(state->inputFile);
++        line = readLine(inputReader);
+     }
+ 
+     // Output the @PG header lines.
+@@ -1881,7 +1884,7 @@ int main (int argc, char *argv[])
+     count = 1;
+     while (true)
+     {
+-        splitLine_t * nextLine = readLine(state->inputFile);
++        splitLine_t * nextLine = readLine(inputReader);
+         if (nextLine == NULL) break;
+         if (strcmp(line->fields[QNAME], nextLine->fields[QNAME]) != 0)
+         {

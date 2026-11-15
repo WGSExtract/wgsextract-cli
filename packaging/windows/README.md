@@ -65,6 +65,18 @@ test compares every position with the scalar lookup across sampling intervals,
 input orders and batch boundaries. The full-reference alignment benchmarks use
 the same thread and sort-memory settings and verify identical decoded output.
 
+The BWA recipe also reuses `native/bwa`'s exact seed-extension kernel. It runs
+eight 16-bit cells at once using SSE2, retaining upstream's implementation for
+unsupported scoring ranges. Windows PE/COFF does not use the Linux ELF build's
+AVX2 IFUNC resolver; the existing x86-64-v2 requirement is unchanged. The recipe
+compares every output field with upstream across 200,000 randomized extensions.
+
+samblaster has a stream-owned 64-KiB reader that locates newlines in bulk,
+instead of calling the UCRT reader for every byte. It preserves record order,
+long records and final unterminated lines. File and pipe tests compare it with
+the original reader, including an exact buffer-ending newline. The general
+POSIX `getline` shim is unchanged.
+
 The HTS builds (htslib, samtools and bcftools) reduce CRAM decoding overhead by
 copying stop-terminated byte arrays in bounded chunks and packing common BAM
 bases with SSSE3. Unusual bases retain the scalar conversion. A thread-safe
@@ -82,6 +94,21 @@ boundaries, empty/repeated calls, and read-group sample selection.
 HTS tools also use link-time optimization and inline memory operations. These
 flags retain the existing x86-64-v2 CPU requirement and floating-point rules;
 other tool recipes keep their own compiler settings.
+
+bcftools additionally links mimalloc 3.6.1 statically. Link-time wrappers cover
+both direct and dllimport allocation calls, including `_msize` capacity queries
+used by the CRAM buffer cache. UCRT-owned pointers, such as those returned from
+inside `_strdup`, retain their original free/realloc/size-query path. No UCRT
+DLL is patched and no allocator DLL is installed or injected. The build tests
+concurrent ownership transfers, real CRAM codecs and single/multisample and
+empty-input variant calls against an otherwise identical UCRT build.
+The CLI's `--mimalloc` setting still controls only Apple Silicon injection.
+
+**Release status:** the shared extension kernel, buffered SAM reader and static
+allocator recipe changes require a fresh Windows-tools release and updated
+Pixi pins. They are not in the currently pinned `windows-tools-8` assets.
+See [the Windows performance track](https://github.com/WGSExtract/wgsextract-cli/issues/673)
+for the matched-machine benchmarks and record hashes.
 
 ## Building
 
@@ -141,6 +168,7 @@ repository root:
 
 ```powershell
 $env:MSYS2_ROOT = "C:\msys64"   # where MSYS2 is
+$env:PATH = "$env:MSYS2_ROOT\ucrt64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
 pixi exec --spec rattler-build==0.77.0 rattler-build build `
     --recipe-dir packaging/windows/recipes --output-dir out/conda --target-platform win-64
 ```

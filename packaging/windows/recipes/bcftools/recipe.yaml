@@ -1,21 +1,25 @@
 context:
   version: "1.24"
+  mimalloc_version: "3.6.1"
 
 package:
   name: bcftools
   version: ${{ version }}
 
 source:
-  url: https://github.com/samtools/bcftools/releases/download/${{ version }}/bcftools-${{ version }}.tar.bz2
-  sha256: 8caddc22610ee2851666047c859bb91da0c1e32d0c2ec553db6f153ad130e46f
-  patches:
-    - patches/0001-bounded-cram-stop-copy.patch
-    - patches/0002-vector-bam-sequence-packing.patch
-    - patches/0003-reuse-cram-buffers.patch
-    - patches/0004-bulk-copy-single-sample.patch
+  - url: https://github.com/samtools/bcftools/releases/download/${{ version }}/bcftools-${{ version }}.tar.bz2
+    sha256: 8caddc22610ee2851666047c859bb91da0c1e32d0c2ec553db6f153ad130e46f
+    patches:
+      - patches/0001-bounded-cram-stop-copy.patch
+      - patches/0002-vector-bam-sequence-packing.patch
+      - patches/0003-reuse-cram-buffers.patch
+      - patches/0004-bulk-copy-single-sample.patch
+  - url: https://github.com/microsoft/mimalloc/archive/v${{ mimalloc_version }}.tar.gz
+    sha256: 2672e6a99d4579fb4bb32d9de0d63aa424ce600d31fbfaf06eb74d940d2e07a6
+    target_directory: mimalloc
 
 build:
-  number: 3
+  number: 4
   string: wgse_${{ build_number }}
   script:
     # MSYS2 UCRT64 builds it (see ../env.sh); MSYS2_ROOT says where it is.
@@ -31,5 +35,7 @@ tests:
 about:
   homepage: https://www.htslib.org
   license: MIT
-  license_file: LICENSE
-  summary: bcftools, built natively for Windows by WGS Extract (static, with its bundled htslib).
+  license_file:
+    - LICENSE
+    - mimalloc/LICENSE
+  summary: bcftools, built natively for Windows by WGS Extract (static htslib and guarded mimalloc).

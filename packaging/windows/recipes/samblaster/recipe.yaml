@@ -8,9 +8,11 @@ package:
 source:
   url: https://github.com/GregoryFaust/samblaster/archive/refs/tags/v.${{ version }}.tar.gz
   sha256: 6b42a53d64a3ed340852028546693a24c860f236fd70e90c2b24fde9dcc4fd63
+  patches:
+    - patches/0001-buffered-sam-reader.patch
 
 build:
-  number: 1
+  number: 2
   string: wgse_${{ build_number }}
   script:
     # MSYS2 UCRT64 builds it (see ../env.sh); MSYS2_ROOT says where it is.

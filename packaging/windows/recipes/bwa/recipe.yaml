@@ -6,16 +6,17 @@ package:
   version: ${{ version }}
 
 source:
-  url: https://github.com/lh3/bwa/archive/refs/tags/v${{ version }}.tar.gz
-  sha256: cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
-  patches:
-    # 64-bit file offsets (a human .bwt is >2 GB and Windows' long is 32-bit),
-    # no POSIX pipes, sockets or shared memory, and size_t log formats.
-    - patches/0001-windows-native-build.patch
-    - patches/0002-batched-suffix-array-lookups.patch
+  - url: https://github.com/lh3/bwa/archive/refs/tags/v${{ version }}.tar.gz
+    sha256: cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
+    patches:
+      # 64-bit file offsets, no POSIX pipes/sockets/shared memory, and size_t logs.
+      - patches/0001-windows-native-build.patch
+      - patches/0002-batched-suffix-array-lookups.patch
+  - path: ../../../../native/bwa
+    target_directory: wgse-cpu
 
 build:
-  number: 2
+  number: 3
   string: wgse_${{ build_number }}
   script:
     # MSYS2 UCRT64 builds it (see ../env.sh); MSYS2_ROOT says where it is.

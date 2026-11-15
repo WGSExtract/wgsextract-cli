@@ -12,6 +12,10 @@ on:
     branches: [ main ]
     paths:
       - packaging/windows/**
+      - native/bwa/extend_neon.c.in
+      - native/bwa/wgse_neon.h
+      - native/bwa/ksw_batch.h
+      - native/bwa/tests/extend_neon_check.c
       - .github/workflows/windows_tools.yml
       - .github/actions/setup-pixi/**
       - "!**/*.md"
@@ -61,7 +65,7 @@ jobs:
       - uses: ./.github/actions/compiler-cache
         with:
           scope: windows-tools
-          recipe: ${{ hashFiles('packaging/windows/**', '.github/workflows/windows_tools.yml') }}
+          recipe: ${{ hashFiles('packaging/windows/**', 'native/bwa/**', '.github/workflows/windows_tools.yml') }}
           compiler: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/gcc.exe
           executable: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/ccache.exe
 
@@ -78,7 +82,7 @@ jobs:
         with:
           phase: save
           scope: windows-tools
-          recipe: ${{ hashFiles('packaging/windows/**', '.github/workflows/windows_tools.yml') }}
+          recipe: ${{ hashFiles('packaging/windows/**', 'native/bwa/**', '.github/workflows/windows_tools.yml') }}
           compiler: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/gcc.exe
           executable: ${{ steps.msys2.outputs.msys2-location }}/ucrt64/bin/ccache.exe
 
