@@ -389,7 +389,15 @@ def _expand_gvcf_targets(
             records.open("w", newline="\n") as out,
             regions.open("w", newline="\n") as wanted,
         ):
+            depth_defined = False
             for line in source:
+                if line.startswith("##FORMAT=<ID=DP,"):
+                    depth_defined = True
+                if line.startswith("#CHROM") and not depth_defined:
+                    out.write(
+                        "##FORMAT=<ID=DP,Number=1,Type=Integer,"
+                        'Description="Conservative block depth">\n'
+                    )
                 fields = line.rstrip("\n").split("\t")
                 end = None
                 if not line.startswith("#") and fields[4] in _REFERENCE_BLOCK_ALTS:
@@ -409,6 +417,20 @@ def _expand_gvcf_targets(
                 if end is None or not fasta_chrom:
                     out.write(line)
                     continue
+                # MIN_DP is a block-wide lower bound; DP may describe only
+                # its first base and must not certify every interior target.
+                formats = fields[8].split(":")
+                if "MIN_DP" in formats:
+                    minimum = formats.index("MIN_DP")
+                    depth = formats.index("DP") if "DP" in formats else len(formats)
+                    if depth == len(formats):
+                        formats.append("DP")
+                        fields[8] = ":".join(formats)
+                    for sample in range(9, len(fields)):
+                        values = fields[sample].split(":")
+                        values += ["."] * (len(formats) - len(values))
+                        values[depth] = values[minimum]
+                        fields[sample] = ":".join(values)
                 inside = targets.get(fields[0], array("l"))
                 variants = called.get(fields[0], set())
                 first = bisect_left(inside, int(fields[1]))
@@ -517,8 +539,8 @@ def _prepare_microarray_vcf(
         logging.info(
             f"VCF input detected. Extracting target SNPs from {str(params.input)}..."
         )
-        # For VCF input, we intersect our targets with the input VCF.
-        # Any missing targets are assumed to be homozygous reference.
+        # Missing targets stay absent; the exporter applies the explicit
+        # callability policy instead of inferring reference from absence.
         try:
             # Step 1: Get actual variants from the input VCF that match our targets
             hit_vcf = str(Path(outdir, f"{base_name}_hits.vcf.gz"))

@@ -13,6 +13,7 @@ from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -147,6 +148,16 @@ def warn_mixed_platforms(
     return platforms
 
 
+def pacbio_platform(header: str) -> str:
+    """ "clr" when every read group is of subreads (READTYPE=SUBREAD), else
+    "pacbio" (HiFi/CCS)."""
+    groups = read_groups(header)
+    subreads = bool(groups) and all(
+        "READTYPE=SUBREAD" in group.get("DS", "").upper().split(";") for group in groups
+    )
+    return "clr" if subreads else "pacbio"
+
+
 def input_platform(
     reads: PathInput | None,
     reference: PathInput | None = None,
@@ -205,7 +216,7 @@ def _detect_platform(
         stat.st_ctime_ns,
         strict,
     )
-    if platform and method:
+    if is_platform(platform) and method:
         sample_workspace.record(
             "platform",
             reads,

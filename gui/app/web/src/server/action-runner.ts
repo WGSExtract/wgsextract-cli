@@ -8,6 +8,7 @@ import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath
 import { platformCommand } from "./platform-command.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
+import { dataSourceTransform, transformedPayload, type DataSourceTransform } from "./data-source-transform.js";
 
 const dataSourceTimeoutMs = 15_000;
 
@@ -31,8 +32,10 @@ export type ActionEmit = (event: ActionEvent) => unknown;
 interface DataSourceSpec {
     path: string;
     arguments: string[];
+    optionalArguments: string[][];
     environment: StringMap;
     workingDirectory?: string;
+    transform?: DataSourceTransform;
 }
 
 export type PrecheckEvaluation = {
@@ -111,10 +114,14 @@ function dataSourceSpec(value: LooseRecord | undefined): DataSourceSpec {
         throw new Error("Missing data source path.");
     }
     const args = value?.arguments ?? [];
+    const optionalArgs = value?.optionalArguments ?? [];
     const environment = value?.environment ?? {};
     const workingDirectory = value?.workingDirectory;
     if (!Array.isArray(args) || !args.every((argument) => typeof argument === "string")) {
         throw new Error(`Data source ${sourcePath} arguments must be strings.`);
+    }
+    if (!Array.isArray(optionalArgs) || !optionalArgs.every((group) => Array.isArray(group) && group.every((argument) => typeof argument === "string"))) {
+        throw new Error(`Data source ${sourcePath} optionalArguments must be lists of strings.`);
     }
     if (environment == null || typeof environment !== "object" || !Object.values(environment).every((item) => typeof item === "string")) {
         throw new Error(`Data source ${sourcePath} environment values must be strings.`);
@@ -122,11 +129,22 @@ function dataSourceSpec(value: LooseRecord | undefined): DataSourceSpec {
     if (workingDirectory != null && typeof workingDirectory !== "string") {
         throw new Error(`Data source ${sourcePath} workingDirectory must be a string.`);
     }
-    return { path: sourcePath, arguments: args, environment: environment as StringMap, ...(workingDirectory ? { workingDirectory } : {}) };
+    const transform = dataSourceTransform(value?.transform, sourcePath);
+    return {
+        path: sourcePath,
+        arguments: args,
+        optionalArguments: optionalArgs as string[][],
+        environment: environment as StringMap,
+        ...(workingDirectory ? { workingDirectory } : {}),
+        ...(transform ? { transform } : {}),
+    };
 }
 
 export async function runDataSource(dataSourceValue: LooseRecord | undefined, context: CommandContext, bundleRoot: string, runProcess: RunProcess): Promise<DataSourcePayload> {
-    const { path: sourcePath, stdout } = await runDataSourceScript(dataSourceValue, context, bundleRoot, runProcess);
+    const { path: sourcePath, stdout, transform } = await runDataSourceScript(dataSourceValue, context, bundleRoot, runProcess);
+    if (transform) {
+        return transformedPayload(sourcePath, stdout, transform, bundleRoot);
+    }
     try {
         return JSON.parse(stdout || "{}") as DataSourcePayload;
     }
@@ -135,19 +153,20 @@ export async function runDataSource(dataSourceValue: LooseRecord | undefined, co
     }
 }
 
-/** Runs a data source's script and returns what it printed, unparsed. */
+/** Runs a data source's script and returns what it printed, unparsed, with the transform that maps it. */
 export async function runDataSourceScript(
     dataSourceValue: LooseRecord | undefined,
     context: CommandContext,
     bundleRoot: string,
     runProcess: RunProcess,
     timeoutMs = dataSourceTimeoutMs,
-): Promise<{ path: string; stdout: string }> {
+): Promise<{ path: string; stdout: string; transform?: DataSourceTransform }> {
     const dataSource = dataSourceSpec(dataSourceValue);
     const executable = await resolvePlatformScriptPath(dataSource.path, bundleRoot);
     const workingDirectory = dataSource.workingDirectory ? resolveBundlePath(dataSource.workingDirectory, bundleRoot) : bundleRoot;
     const resolvedContext = await contextWithFileState(context, bundleRoot);
-    const args = dataSource.arguments.map((argument) => interpolate(argument, resolvedContext));
+    // Each optional group is left out when a placeholder in it is empty, as in an action's command.
+    const args = renderedCommand({ executable: dataSource.path, arguments: dataSource.arguments, optionalArguments: dataSource.optionalArguments }, resolvedContext).arguments ?? [];
     const env: Record<string, string | undefined> = {
         ...process.env,
         ...bundleEnvironment(bundleRoot),
@@ -166,7 +185,7 @@ export async function runDataSourceScript(
     if (result.exitCode !== 0) {
         throw new Error(`Data source ${dataSource.path} exited ${result.exitCode}: ${result.stderr || "no stderr"}`);
     }
-    return { path: dataSource.path, stdout: result.stdout };
+    return { path: dataSource.path, stdout: result.stdout, ...(dataSource.transform ? { transform: dataSource.transform } : {}) };
 }
 export async function contextWithFileState(context: CommandContext, bundleRoot: string): Promise<CommandContext> {
     return { ...context, fileStateValues: await fileStateValues(context, bundleRoot) };

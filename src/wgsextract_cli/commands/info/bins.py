@@ -140,7 +140,7 @@ def run_depth_bins(
     is shown again instead (``--with-bins``: the coverage table it follows is
     reused the same way). ``--bins`` alone always rescans.
     """
-    from .render import _is_fresh_output, region_file_tag
+    from .render import is_fresh_output, region_file_tag
 
     Path(outdir).mkdir(parents=True, exist_ok=True)
     stem = Path(input_path).name + region_file_tag(region) + "_coverage_bins"
@@ -149,7 +149,7 @@ def run_depth_bins(
         reuse
         and not region
         and table_format == "tsv"
-        and _is_fresh_output(str(output), input_path)
+        and is_fresh_output(str(output), input_path)
     ):
         logging.info("Using existing depth-bin report %s", output)
         human_output(output.read_text(encoding="utf-8"), end="")

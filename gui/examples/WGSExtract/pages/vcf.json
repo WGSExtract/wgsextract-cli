@@ -32,12 +32,29 @@
       "iconName": "annotation",
       "textIcon": "✅",
       "dataSource": {
-        "path": "scripts/library-state.sh",
+        "path": "scripts/run-wgsextract.sh",
         "arguments": [
-          "{{ref_path}}",
-          "{{dataset_library}}",
-          "{{vcf_ann_vcf}}",
-          "{{vcf_path}}"
+          "ref",
+          "status",
+          "--values"
+        ],
+        "optionalArguments": [
+          [
+            "--ref",
+            "{{ref_path}}"
+          ],
+          [
+            "--dataset-library",
+            "{{dataset_library}}"
+          ],
+          [
+            "--annotation-vcf",
+            "{{vcf_ann_vcf}}"
+          ],
+          [
+            "--input",
+            "{{vcf_path}}"
+          ]
         ]
       },
       "controls": [

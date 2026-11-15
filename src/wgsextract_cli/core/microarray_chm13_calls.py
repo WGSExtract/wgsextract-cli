@@ -68,12 +68,24 @@ def parse_native_calls(
     marker_ids: Mapping[tuple[str, int], str],
     quality: MicroarrayQuality,
     identity: MicroarrayIdentity,
+    *,
+    reference_qual: bool = False,
 ) -> tuple[dict[tuple[str, int], NativeCall], set[str]]:
     """Consume CHROM/POS/END/REF/ALT/GT/DP/GQ/FILTER for one sample."""
     calls: dict[tuple[str, int], NativeCall] = {}
     represented: set[str] = set()
     for line in lines:
         fields = line.rstrip("\n").split("\t")
+        if reference_qual and len(fields) == 10:
+            qual = fields.pop()
+            if (
+                fields[7] == "."
+                and fields[4] == "."
+                and fields[5] in {"0", "0/0", "0|0"}
+            ):
+                # Only internal single-sample calls: monomorphic QUAL is
+                # reference confidence when bcftools omits sample GQ.
+                fields[7] = qual
         if len(fields) != 9:
             raise WGSExtractError("CHM13 microarray requires exactly one VCF sample.")
         chrom, pos_text, end_text, ref, alt, gt, dp, gq, record_filter = fields

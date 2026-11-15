@@ -7,6 +7,7 @@ on:
   schedule:
     - cron: "41 6 * * 1"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - .github/workflows/remote_resources.yml
@@ -36,11 +37,12 @@ permissions:
 
 # Only pull requests share a group: a new push supersedes the PR's older run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   remote-resources:
+    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

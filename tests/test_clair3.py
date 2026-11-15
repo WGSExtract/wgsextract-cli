@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
@@ -705,7 +706,10 @@ def test_gpu_refuses_before_calling_when_its_tensors_wont_fit(
     volumes = Volumes(monkeypatch)
     volumes.free[clair3_gpu.out] = 0
     model = make_model(tmp_path, "my_r1041_model")
-    with pytest.raises(WGSExtractError, match=r"temporary space .*--no-preflight"):
+    with pytest.raises(
+        WGSExtractError,
+        match=r"Clair3 run's requirement: .*GiB disk on .*--no-preflight",
+    ):
         gpu_call(clair3_gpu, model)
     assert clair3_gpu.clair3.runs() == []
     assert not (clair3_gpu.out / "clair3.vcf.gz").exists()
@@ -778,3 +782,68 @@ def test_gpu_estimate_covers_the_measured_whole_genome_and_shallow_reads(tmp_pat
 
     assert 99.7 < gib(43) < 1.5 * 99.7
     assert gib(10) > 3 * gib(43)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_clair3_states_its_host_requirement_and_only_warns_short_of_ram(
+    tmp_path, clair3_gpu, ram, caplog
+):
+    """#690: Clair3 states its disk, RAM and time before it starts. Its RAM
+    is one measured --gpu run's (#431), so a computer with less is warned,
+    not refused."""
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
+    assert re.search(
+        r"this Clair3 run needs \S+ GiB disk on .*, ~\d+ GiB RAM, "
+        r"~[\d.]+ (h|min) on \d+ threads?",
+        caplog.text,
+    )
+    assert clair3_gpu.clair3.runs()
+    assert (clair3_gpu.out / "clair3.vcf.gz").is_file()
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_reads_state_the_host_requirement_once(
+    tmp_path, clair3_gpu, ram, monkeypatch, caplog
+):
+    """#690 review: the disk recheck after a CRAM 3.0 copy is written printed
+    Clair3's requirement and recorded its RAM warning a second time."""
+    from wgsextract_cli.core.results import CommandResult, collecting
+
+    caplog.set_level(logging.INFO)
+    ram(4 * GIB)
+    # Clair3 2.0.3 in an image whose tag doesn't say so: its reads are staged.
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    result = CommandResult(command="vcf clair3")
+    with collecting(result):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+
+    assert clair3_gpu.clair3.runs()[0]["cram_version"] == [3, 0]
+    assert caplog.text.count("Host requirement:") == 1
+    codes = [warning.code for warning in result.warnings]
+    assert codes.count("host_requirement_memory") == 1
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("clair3_gpu", ["2.0.3"], indirect=True)
+def test_staged_copy_counts_in_the_host_requirement_before_transcoding(
+    tmp_path, clair3_gpu, monkeypatch, caplog
+):
+    """#690 review: a disk with room for the CRAM 3.0 copy or the tensors,
+    not both, passed both checks and wrote the whole copy before the recheck
+    refused. The first requirement now counts both."""
+    caplog.set_level(logging.INFO)
+    clair3_gpu.docker.add_image("my/clair3:latest")
+    monkeypatch.setitem(clair3.settings, "clair3_gpu_image", "my/clair3:latest")
+    cram = as_cram(clair3_gpu.reads, "3.1", tmp_path / "reads.cram")
+    clair3_gpu.out.mkdir()
+    # Exactly the copy's 64 MiB minimum.
+    Volumes(monkeypatch).free[clair3_gpu.out] = 64 / 1024
+    with pytest.raises(WGSExtractError, match=r"Clair3 run's requirement: .*GiB disk"):
+        gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"), cram=cram)
+    assert "Transcoding CRAM" not in caplog.text
+    assert clair3_gpu.clair3.runs() == []

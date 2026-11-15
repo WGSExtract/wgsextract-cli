@@ -288,7 +288,7 @@ def expand(
     }
     output.sort(key=lambda f: (order.get(f[0], len(order)), int(f[1]), len(f[3])))
     for name, mask in (("evidence.vcf", False), ("expanded.vcf", True)):
-        with Path(work, name).open("w") as stream:
+        with Path(work, name).open("w", encoding="utf-8", newline="\n") as stream:
             stream.write("\n".join([*header[:-1], *extra, header[-1]]) + "\n")
             for original in output:
                 fields = original.copy()
