@@ -28,10 +28,25 @@ from wgsextract_cli.core.resource_estimates import (
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
+from ._vep_engines import CHM13
+
 if TYPE_CHECKING:
     from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
 
 _CHROMOSOMES = [str(c) for c in range(1, 23)] + ["X", "Y", "MT"]
+
+# Ensembl's T2T-CHM13v2.0 gene set (GCA_009914755.4) is a rapid release, not
+# part of its numbered releases: a GFF3, GTF and proteins, and the genome, each
+# folder with an md5sum.txt. It has no table dumps or variation files, and no
+# mitochondrial genes (CHM13's own chrM isn't annotated).
+_CHM13_ROOT = "rapid-release/species/Homo_sapiens/GCA_009914755.4/ensembl"
+_CHM13_GENESET = "2022_07"
+_CHM13_STEM = "Homo_sapiens-GCA_009914755.4"
+
+
+def _chromosomes(assembly: str) -> list[str]:
+    """The chromosomes a cache of ``assembly`` has transcripts on."""
+    return _CHROMOSOMES[:-1] if assembly == CHM13 else _CHROMOSOMES
 
 
 # Ensembl's MySQL table dumps the builder reads: the core tables for MANE,
@@ -65,6 +80,8 @@ class _Source:
     optional: bool = False
     # A table dump Ensembl may publish uncompressed (some GRCh37 ones).
     table: bool = False
+    # The folder's checksum listing: BSD sums, or md5sum's output.
+    listing: str = "CHECKSUMS"
 
 
 def _sources(
@@ -74,6 +91,8 @@ def _sources(
     inputs among them. GRCh37's files live under pub/grch37, with the
     release-87 gene set Ensembl keeps for it."""
     species, release, assembly = params.species, params.vep_version, params.assembly
+    if assembly == CHM13:
+        return _chm13_sources(mirror_root, params, work)
     name = species[0].upper() + species[1:]
     grch37 = assembly == "GRCh37"
     base = f"{mirror_root}/{'grch37/' if grch37 else ''}release-{release}"
@@ -129,6 +148,33 @@ def _sources(
     return inputs, sources
 
 
+def _chm13_sources(
+    mirror_root: str, params: VepDownloadParams, work: Path
+) -> tuple[dict[str, Path], list[_Source]]:
+    """The rapid-release files of Ensembl's T2T-CHM13v2.0 gene set."""
+    if params.species != "homo_sapiens":
+        raise WGSExtractError(f"{CHM13} is a homo_sapiens assembly.")
+    if params.variations:
+        warn(
+            "vep_variations_unavailable",
+            f"Ensembl publishes no known-variant files for {CHM13} to build "
+            "from; the cache has transcripts only.",
+        )
+    base = f"{mirror_root}/{_CHM13_ROOT}"
+    geneset = f"{base}/geneset/{_CHM13_GENESET}"
+    files = {
+        "gff3": f"{geneset}/{_CHM13_STEM}-{_CHM13_GENESET}-genes.gff3.gz",
+        "gtf": f"{geneset}/{_CHM13_STEM}-{_CHM13_GENESET}-genes.gtf.gz",
+        "pep": f"{geneset}/{_CHM13_STEM}-{_CHM13_GENESET}-pep.fa.gz",
+        "genome": f"{base}/genome/{_CHM13_STEM}-unmasked.fa.gz",
+    }
+    inputs = {key: work / url.rsplit("/", 1)[1] for key, url in files.items()}
+    sources = [
+        _Source(url, inputs[key], listing="md5sum.txt") for key, url in files.items()
+    ]
+    return inputs, sources
+
+
 # Files fetched at once: Ensembl's FTP serves each connection at about
 # 0.5 MB/s, and download_file splits only files over 1 GiB into ranges.
 _PARALLEL_DOWNLOADS = 6
@@ -141,13 +187,13 @@ def _fetch(sources: list[_Source]) -> None:
 
     from ._vep_resources import _require_in_scope
 
-    checksums: dict[str, dict[str, tuple[int, int]]] = {}
+    checksums: dict[str, dict[str, _Sum]] = {}
     cancel = cancel_event()
-    todo: list[tuple[str, Path, tuple[int, int]]] = []
+    todo: list[tuple[str, Path, _Sum]] = []
     for source in sources:
         checkpoint()
         folder, filename = source.url.rsplit("/", 1)
-        listing = _expected_sums(folder, checksums)
+        listing = _expected_sums(f"{folder}/{source.listing}", checksums)
         url, dest = source.url, source.dest
         if filename not in listing and source.table and filename[:-3] in listing:
             url, dest = url[:-3], dest.with_suffix("")
@@ -166,7 +212,7 @@ def _fetch(sources: list[_Source]) -> None:
                 )
                 continue
             raise WGSExtractError(
-                f"{filename} is not listed in {folder}/CHECKSUMS; Ensembl "
+                f"{filename} is not listed in {folder}/{source.listing}; Ensembl "
                 f"doesn't publish it for this release and assembly."
             )
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -182,7 +228,7 @@ def _fetch(sources: list[_Source]) -> None:
         def is_set(self) -> bool:
             return failed.is_set() or bool(cancel and cancel.is_set())
 
-    def fetch(url: str, dest: Path, expected: tuple[int, int]) -> None:
+    def fetch(url: str, dest: Path, expected: _Sum) -> None:
         if failed.is_set():
             return
         logging.info(f"Downloading {url}")
@@ -212,10 +258,24 @@ def _fetch(sources: list[_Source]) -> None:
 _SIDECARS = (".ok", ".partial", ".partial.segments", ".partial.source")
 
 
-def _check_download(dest: Path, expected: tuple[int, int]) -> None:
+# A file's checksum as its folder lists it: a BSD sum and 1 KiB block count
+# (Ensembl's CHECKSUMS), or an MD5 digest (md5sum.txt).
+_Sum = tuple[int, int] | str
+
+
+def _check_download(dest: Path, expected: _Sum) -> None:
     from ._vep_resources import calculate_bsd_sum
 
-    actual = calculate_bsd_sum(str(dest))
+    actual: _Sum
+    if isinstance(expected, str):
+        digest = hashlib.md5(usedforsecurity=False)
+        with open(dest, "rb") as f:
+            while chunk := f.read(16 << 20):
+                checkpoint()
+                digest.update(chunk)
+        actual = digest.hexdigest()
+    else:
+        actual = calculate_bsd_sum(str(dest))
     if actual != expected:
         dest.unlink()
         raise WGSExtractError(
@@ -226,27 +286,31 @@ def _check_download(dest: Path, expected: tuple[int, int]) -> None:
 
 
 def _expected_sums(
-    folder: str, cache: dict[str, dict[str, tuple[int, int]]]
-) -> dict[str, tuple[int, int]]:
-    """``folder``'s Ensembl CHECKSUMS (BSD sum and blocks by file name). An
-    unreadable listing fails: it can't tell a missing file from a lost one."""
-    if folder not in cache:
-        sums: dict[str, tuple[int, int]] = {}
+    listing_url: str, cache: dict[str, dict[str, _Sum]]
+) -> dict[str, _Sum]:
+    """A folder's checksum listing by file name: Ensembl's CHECKSUMS (BSD sum
+    and blocks) or an md5sum.txt. An unreadable listing fails: it can't tell
+    a missing file from a lost one."""
+    if listing_url not in cache:
+        md5 = listing_url.endswith("md5sum.txt")
+        sums: dict[str, _Sum] = {}
         try:
-            with urllib.request.urlopen(f"{folder}/CHECKSUMS", timeout=60) as r:
+            with urllib.request.urlopen(listing_url, timeout=60) as r:
                 for line in r.read().decode().splitlines():
                     parts = line.split()
-                    if len(parts) >= 3:
+                    if md5 and len(parts) == 2 and len(parts[0]) == 32:
+                        sums[parts[1].lstrip("*")] = parts[0].lower()
+                    elif not md5 and len(parts) >= 3:
                         sums[parts[-1]] = (int(parts[0]), int(parts[1]))
         except (OSError, ValueError) as e:
             raise WGSExtractError(
-                f"Could not read {folder}/CHECKSUMS ({e}); try again, or use "
+                f"Could not read {listing_url} ({e}); try again, or use "
                 "the other --mirror."
             ) from e
         if not sums:
-            raise WGSExtractError(f"{folder}/CHECKSUMS lists no files.")
-        cache[folder] = sums
-    return cache[folder]
+            raise WGSExtractError(f"{listing_url} lists no files.")
+        cache[listing_url] = sums
+    return cache[listing_url]
 
 
 def _gunzip(src: Path, dest: Path) -> None:
@@ -273,18 +337,21 @@ def build_vep_rs_cache(params: VepDownloadParams, mirror_root: str) -> None:
         _require_in_scope(path)
     work.mkdir(parents=True, exist_ok=True)
 
-    estimate = estimate_vep_download(str(engine_root), params.variations)
+    inputs, sources = _sources(mirror_root, params, work)
+    estimate = estimate_vep_download(
+        str(engine_root), params.variations and "vcfs" in inputs, params.assembly
+    )
     preflight_resources(lambda: estimate)
     disk = estimate.resources[0]
     if disk.status == "LOW" and not (version_dir.exists() or any(work.iterdir())):
+        smaller = " or use --no-variations" if "vcfs" in inputs else ""
         raise WGSExtractError(
             f"Building the vep-rs cache needs about "
             f"{(disk.estimated_bytes or 0) / GIB:.0f} GiB free in {engine_root} "
             f"(downloads, genome and cache), but only "
             f"{(disk.available_bytes or 0) / GIB:.0f} GiB is free. Free some "
-            "space, choose another --vep-cache, or use --no-variations."
+            f"space, choose another --vep-cache{smaller}."
         )
-    inputs, sources = _sources(mirror_root, params, work)
     _fetch(sources)
     genome = work / "genome.fa"
     for path in (genome, Path(f"{genome}.fai")):
@@ -302,11 +369,14 @@ def build_vep_rs_cache(params: VepDownloadParams, mirror_root: str) -> None:
             "--assembly", params.assembly,
             "--gff3", str(inputs["gff3"]),
             "--fasta", str(inputs["pep"]),
-            "--core-dumps", str(inputs["core"]),
             "--genome-fasta", str(genome),
             "--output-dir", str(built / "cache"),
         ]  # fmt: skip
-        if params.variations:
+        if "core" in inputs:
+            cmd += ["--core-dumps", str(inputs["core"])]
+        if "gtf" in inputs:
+            cmd += ["--gtf", str(inputs["gtf"])]
+        if "vcfs" in inputs:
             cmd += [
                 "--include-variations",
                 "--variation-vcf-dir", str(inputs["vcfs"]),
@@ -363,7 +433,8 @@ def verify_vep_rs_cache(params: VepVerifyParams) -> None:
         )
 
     transcripts = version_dir / "transcripts"
-    missing = [c for c in _CHROMOSOMES if not (transcripts / c).is_dir()]
+    expected = _chromosomes(params.assembly)
+    missing = [c for c in expected if not (transcripts / c).is_dir()]
     current_result().add_metrics(missing_chromosomes=len(missing))
     if missing:
         warn(
@@ -371,7 +442,7 @@ def verify_vep_rs_cache(params: VepVerifyParams) -> None:
             f"No transcripts for chromosome(s) {', '.join(missing)}.",
             chromosomes=",".join(missing),
         )
-    if len(missing) == len(_CHROMOSOMES):
+    if len(missing) == len(expected):
         raise WGSExtractError(f"{version_dir} has no transcripts; build it again.")
 
     bad = _checksum_failures(version_dir)

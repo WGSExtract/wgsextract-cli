@@ -677,9 +677,13 @@ def write():
     ploidy = []
     if opts.get("haploid_contigs"):
         par = {}
-        for line in open(opts["par_regions_bed"]):
-            chrom, start, end = line.split()
-            par.setdefault(chrom, []).append((int(start), int(end)))
+        if opts.get("par_regions_bed"):
+            lines = open(opts["par_regions_bed"]).read().splitlines()
+            if not lines:
+                sys.exit("ValueError: OUT_OF_RANGE: EOF")
+            for line in lines:
+                chrom, start, end = line.split()
+                par.setdefault(chrom, []).append((int(start), int(end)))
         table = opts["outfile"] + ".ploidy"
         with open(table, "w") as out:
             for chrom in opts["haploid_contigs"].split(","):

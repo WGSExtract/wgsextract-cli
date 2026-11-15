@@ -25,7 +25,9 @@ the cache folder's ``vep-rs`` folder, which ``download`` builds from Ensembl's
 gene set, sequences and table dumps (with ``variations``, its known variants)
 and ``verify`` checks against the builder's checksums. A vep-rs run refuses
 options it would ignore (``--custom``, ``--database``) and has no database
-fallback. See docs/vep-engines.md.
+fallback. vep-rs alone annotates T2T-CHM13v2.0, from Ensembl's rapid-release
+CHM13 gene set (no known variants); ``run`` takes the assembly from the
+reference library's build, else the VCF's contigs. See docs/vep-engines.md.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from wgsextract_cli.commands._vep_engines import ASSEMBLIES
 from wgsextract_cli.core.messages import LOG_MESSAGES
 
 if TYPE_CHECKING:
@@ -89,12 +92,13 @@ class VepRunParams(Params):
     )
     vep_assembly: str | None = param(
         None,
-        help="Reference assembly for VEP (GRCh37 or GRCh38)",
+        help="Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)",
         doc="Assembly VEP annotates against (default: the reference's build); "
-        "a resolved FASTA of the other build is not used.",
+        "a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs "
+        "vep-rs.",
         flags=("--assembly",),
         hidden_flags=("--vep-assembly",),
-        choices=("GRCh37", "GRCh38"),
+        choices=ASSEMBLIES,
     )
     vep_cache_version: str = param("116", help="VEP cache version (default: 116)")
     vcf_type: str = param(
@@ -171,7 +175,9 @@ class _VepCacheParams(Params):
     engine: str | None = engine_param()
     species: str = param("homo_sapiens", help="Species name (default: homo_sapiens)")
     assembly: str = param(
-        "GRCh38", help="Assembly (default: GRCh38)", choices=("GRCh37", "GRCh38")
+        "GRCh38",
+        help="Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs)",
+        choices=ASSEMBLIES,
     )
     vep_version: str = param("116", help="Ensembl release version (default: 116)")
     vep_cache: Path | None = param(

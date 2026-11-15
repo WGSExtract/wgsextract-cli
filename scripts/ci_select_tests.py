@@ -20,6 +20,7 @@ CI_TESTS = (
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
     "tests/test_ci_certify.py",
+    "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")

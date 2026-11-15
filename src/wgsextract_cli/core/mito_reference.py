@@ -44,9 +44,9 @@ def mito_origin(sequence: str) -> str | None:
 
 
 @cache
-def pinned_sequences() -> tuple[str, str]:
-    """The rCRS and CHM13v2.0's chrM, each from its own origin, out of the
-    pinned alignment the microarray CHM13 path bundles."""
+def _alignment() -> tuple[str, str, int]:
+    """The pinned rCRS and CHM13 alignment rows (gaps as ``-``, both from the
+    rCRS origin) and how far round CHM13's own origin is (0-based)."""
     try:
         bridge = json.loads((_ASSETS / "manifest.json").read_text("utf-8"))[
             "provenance"
@@ -57,16 +57,113 @@ def pinned_sequences() -> tuple[str, str]:
                 if line.startswith(">"):
                     records.append([])
                 elif records:
-                    records[-1].append(line.strip().replace("-", ""))
+                    records[-1].append(line.strip())
         rcrs, chm13 = ("".join(rows).upper() for rows in records)
-        # The alignment starts CHM13's chrM at the rCRS origin; undo that.
-        cut = len(chm13) - int(bridge["target_rotation_offset0"])
-        chm13 = chm13[cut:] + chm13[:cut]
+        offset = int(bridge["target_rotation_offset0"])
     except (OSError, KeyError, TypeError, ValueError) as error:
         raise WGSExtractError(f"Bundled mitochondrial sequences: {error}") from error
-    if (sequence_md5(rcrs), sequence_md5(chm13)) != (RCRS_MD5, CHM13_CHRM_MD5):
+    ungapped = chm13.replace("-", "")
+    cut = len(ungapped) - offset  # the alignment starts CHM13 at the rCRS origin
+    md5s = (
+        sequence_md5(rcrs.replace("-", "")),
+        sequence_md5(ungapped[cut:] + ungapped[:cut]),
+    )
+    if len(rcrs) != len(chm13) or md5s != (RCRS_MD5, CHM13_CHRM_MD5):
         raise WGSExtractError("Bundled mitochondrial sequences fail their MD5 check.")
-    return rcrs, chm13
+    return rcrs, chm13, offset
+
+
+@cache
+def pinned_sequences() -> tuple[str, str]:
+    """The rCRS and CHM13v2.0's chrM, each from its own origin, out of the
+    pinned alignment the microarray CHM13 path bundles."""
+    rcrs, chm13, offset = _alignment()
+    chm13 = chm13.replace("-", "")
+    cut = len(chm13) - offset
+    return rcrs.replace("-", ""), chm13[cut:] + chm13[:cut]
+
+
+@cache
+def _columns() -> tuple[tuple[int | None, str, int | None, str], ...]:
+    """Each alignment column as (rCRS position, rCRS base, CHM13 position,
+    CHM13 base), 1-based in each sequence's own coordinates; a gap is
+    (None, "")."""
+    rcrs, chm13, offset = _alignment()
+    length = len(chm13.replace("-", ""))
+    columns = []
+    p = q = 0
+    for r, c in zip(rcrs, chm13, strict=True):
+        p += r != "-"
+        q += c != "-"
+        columns.append(
+            (
+                p if r != "-" else None,
+                r.strip("-"),
+                (q - 1 + offset) % length + 1 if c != "-" else None,
+                c.strip("-"),
+            )
+        )
+    return tuple(columns)
+
+
+def chm13_to_rcrs() -> dict[int, tuple[int, str, str]]:
+    """CHM13 chrM position -> (rCRS position, rCRS base, CHM13 base), for the
+    positions both sequences have."""
+    return {q: (p, r, c) for p, r, q, c in _columns() if p and q}
+
+
+def rcrs_variants(sample: dict[int, str]) -> list[tuple[int, str, str]]:
+    """The rCRS variants of a sample known at CHM13 chrM positions.
+
+    ``sample`` maps each called CHM13 position to the bases the sample has
+    there ("" where it lacks it, more than one base where it has an insertion
+    after it); positions without a call are unknown and, as in a variants-only
+    VCF, read as the rCRS. Where CHM13 differs from the rCRS (the C after 310,
+    10208 C, no base at 3107) only the sample's bases count, so a sample
+    matching CHM13 at 10208 carries 10208C. Returns (position, REF, ALT) on the
+    rCRS: SNPs, and indels anchored on the base before them, which still need
+    left-aligning against the rCRS (``bcftools norm``), as bcftools calls them
+    on an rCRS chrM.
+    """
+    rcrs = pinned_sequences()[0]
+    alleles: dict[int, str] = {}
+    last = 0
+    for p, _r, q, _c in _columns():
+        bases = sample.get(q) if q else None
+        if bases and bases.strip("ACGT"):  # an N or ambiguity code: unknown
+            bases = None
+        if p:
+            last = p
+            if bases is not None and q:
+                alleles[p] = bases
+        elif bases and last in alleles:  # CHM13's extra C, kept by the sample
+            alleles[last] += bases
+    variants: list[tuple[int, str, str]] = []
+    for p, bases in sorted(alleles.items()):
+        ref = rcrs[p - 1]
+        if bases == ref or ref == "N":
+            continue
+        if bases:  # a SNP, or an insertion after p
+            variants.append((p, ref, bases))
+        elif variants and variants[-1][2] == "" and _ends_at(variants[-1], p - 1):
+            start, run, _ = variants[-1]
+            variants[-1] = (start, run + ref, "")
+        else:
+            variants.append((p, ref, ""))
+    # Anchor each deletion on the rCRS base before it (after it at 1), as VCF
+    # needs.
+    return [
+        (p, ref, alt)
+        if alt
+        else (p - 1, rcrs[p - 2] + ref, rcrs[p - 2])
+        if p > 1
+        else (p, ref + rcrs[len(ref)], rcrs[len(ref)])
+        for p, ref, alt in variants
+    ]
+
+
+def _ends_at(variant: tuple[int, str, str], position: int) -> bool:
+    return variant[0] + len(variant[1]) - 1 == position
 
 
 def ref_agreement(records: Iterable[tuple[int, str]]) -> tuple[bool, bool]:
