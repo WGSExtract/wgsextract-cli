@@ -79,8 +79,8 @@ def test_second():
         ("all", False, 3, 0),
         ("core", False, 2, 1),
         ("integration", False, 1, 2),
-        ("all", True, 2, 1),
-        ("core", True, 1, 2),
+        ("all", True, 3, 0),
+        ("core", True, 2, 1),
     ],
 )
 def test_761_ci_tiers_preserve_every_test_including_new_modules(

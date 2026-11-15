@@ -197,7 +197,7 @@ def test_realign_budgets_output_and_staging_volumes_separately(
         if short == "scratch" and "--keep-fastq" not in options:
             # Streaming that doesn't fit falls back to staging the FASTQs.
             needed = 4 + 9
-        assert str(directory) in message and f"~{needed} GB" in message
+        assert f"~{needed} GiB disk on {directory}" in message
         assert not (output / "sample_aligned.bam").exists()
     assert list(scratch.iterdir()) == []
 
@@ -256,7 +256,7 @@ def test_long_read_cram_realign_budgets_its_spills_and_cram_output(
 ):
     """#474: a 100 GB ONT CRAM -> CRAM realign with --tmp-dir was refused for
     ~363 GB of scratch. Its reads stream into minimap2 -Y and the sorter: the
-    spills come to ~3x the input CRAM and the CRAM output to ~1.7x."""
+    spills come to ~3x the input CRAM and the CRAM output to ~1.8x."""
     real_memory = psutil.virtual_memory
     monkeypatch.setattr(
         psutil, "virtual_memory", lambda: real_memory()._replace(available=64 * GIB)
@@ -264,11 +264,11 @@ def test_long_read_cram_realign_budgets_its_spills_and_cram_output(
     ref, cram = _ont_cram(tmp_path)
     output, scratch = folders
     volumes.sizes[cram] = 100 * 10**9
-    # (output GB, --tmp-dir GB): 1.7e11 B of CRAM; 3e11 B of spills plus the
+    # (output GB, --tmp-dir GB): 1.8e11 B of CRAM; 3e11 B of spills plus the
     # 32 spill files samtools sort merges beside them.
     # test_long_read_disk_covers_the_measured_spills_and_cram_output anchors
     # these ratios to the measurements.
-    budgets = (159, 285)
+    budgets = (168, 285)
     volumes.free[output] = budgets[0] - (short == "output")
     volumes.free[scratch] = budgets[1] - (short == "scratch")
     result = _wgsextract(
@@ -283,7 +283,7 @@ def test_long_read_cram_realign_budgets_its_spills_and_cram_output(
         message = _failure(result)
         directory, needed = (scratch, budgets[1]) if short == "scratch" else (
             output, budgets[0])  # fmt: skip
-        assert str(directory) in message and f"~{needed} GB" in message
+        assert f"~{needed} GiB disk on {directory}" in message
         assert not (output / "ont_aligned.cram").exists()
 
 

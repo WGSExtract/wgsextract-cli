@@ -4,6 +4,7 @@ name: GUI developer setup
 # with no user tools on PATH, the way a new app contributor runs it.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - "gui/**"
@@ -16,6 +17,15 @@ on:
       - "!**/*.md"
   push:
     branches: [main]
+    paths:
+      - "gui/**"
+      - ".github/workflows/gui-dev-setup.yml"
+      - ".github/actions/apt-install/**"
+      - "!gui/mockups/**"
+      - "!gui/site_src/**"
+      - "!gui/site/**"
+      - "!gui/scripts/*site*.py"
+      - "!**/*.md"
   schedule:
     - cron: "31 6 * * *"
   workflow_dispatch:
@@ -24,8 +34,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: gui-dev-setup-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 defaults:
   run:
@@ -33,6 +43,7 @@ defaults:
 
 jobs:
   setup:
+    if: ${{ github.event.pull_request.draft != true }}
     name: GUI setup (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45

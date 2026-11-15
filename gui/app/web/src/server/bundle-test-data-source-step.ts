@@ -1,5 +1,6 @@
 import { checkedOptionsForContext, configValueKey } from "../../../shared/rendering.js";
 import { runDataSourceScript } from "./action-runner.js";
+import { transformedPayload } from "./data-source-transform.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { findConfigEditorControl, resolveDataSource } from "./manifest-lookup.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
@@ -14,7 +15,8 @@ const defaultTimeoutSeconds = 15;
 /** Loads a control's (or config setting's) data source the way the app does when
  *  it shows the page, and checks what it returns: the script must resolve for
  *  this platform, exit 0, print a JSON object, and offer at least
- *  `minimumOptions`. Output checks see exactly what the script printed. */
+ *  `minimumOptions`. Output checks see exactly what the script printed, or,
+ *  for a data source with a transform, the payload it returned as indented JSON. */
 export async function runDataSourceTestStep(
     step: BundleTestStep,
     index: number,
@@ -51,8 +53,16 @@ export async function runDataSourceTestStep(
             timeoutSeconds * 1000,
         );
         output = result.stdout;
+        let payload: DataSourcePayload;
+        if (result.transform) {
+            payload = await transformedPayload(result.path, output, result.transform, workspaceRoot);
+            output = `${JSON.stringify(payload, null, 2)}\n`;
+        }
+        else {
+            payload = parsePayload(result.path, output);
+        }
         options.emit({ type: "command-output", text: output });
-        const offered = offeredOptions(parsePayload(result.path, output));
+        const offered = offeredOptions(payload);
         const minimum = step.minimumOptions ?? 0;
         const error = offered < minimum
             ? `Expected at least ${minimum} options but the data source offered ${offered}.`

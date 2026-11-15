@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 class SeedingDevice {
@@ -24,6 +25,23 @@ public:
     virtual const SeedSmem *smems() const = 0;
     // Why the GPU may not be used again (its watchdog gave up), or empty.
     virtual std::string hang() const = 0;
+
+    // Suffix-array lookups (--gpu-sa on): uploads FMI_search's sampled suffix array, `entries`
+    // of sa_ms_byte and sa_ls_word, one for every 2^shift rows, next to the occurrence table;
+    // count is FMI_search's count[5]. False, with the reason, if the GPU has too little free
+    // memory or no kernel for it.
+    virtual bool enable_sa(const int8_t *, const uint32_t *, size_t, int, const int64_t *,
+        std::string &reason) {
+        reason = "no GPU kernel for suffix-array lookups on this backend";
+        return false;
+    }
+    // The suffix-array values of rows[0, count), as FMI_search::get_sa_entry_compressed walks
+    // them (the sentinel row's walk reports 0 if drop_sentinel_offset), into
+    // coordinates[slots[i]] (coordinates[i] if slots is null). Any thread may call it once
+    // enable_sa succeeded; returns the GPU's seconds and throws on a failure.
+    virtual double resolve_sa(const int64_t *, const int64_t *, size_t, int64_t *, bool) {
+        throw std::runtime_error("no GPU suffix-array lookups");
+    }
 };
 
 // A batch's limits: reads, bases per read (the scratch entries per read too) and SMEMs per

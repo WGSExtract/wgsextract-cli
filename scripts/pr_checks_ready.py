@@ -5,13 +5,118 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
 from typing import Any
 
+# #962: GitHub apps whose check runs (linked as /runs/ID, not /actions/runs/ID)
+# may count as passing; CodeQL code scanning reports as GitHub Advanced Security.
+APP_CHECK_SLUGS = frozenset({"github-advanced-security"})
 
-def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> bool:
+
+def app_check_run_id(link: str, repository: str) -> int | None:
+    match = re.fullmatch(
+        rf"https://github\.com/{re.escape(repository)}/runs/(\d+)",
+        link,
+        flags=re.IGNORECASE,
+    )
+    return int(match[1]) if match else None
+
+
+def app_check_verified(
+    link: str,
+    *,
+    repository: str | None,
+    head_sha: str | None,
+    check_runs: dict[int, dict[str, Any]],
+) -> bool:
+    check_id = app_check_run_id(link, repository) if repository else None
+    check_run = check_runs.get(check_id) if check_id is not None else None
+    return (
+        check_run is not None
+        and head_sha is not None
+        and check_run.get("id") == check_id
+        and str(check_run.get("html_url", "")).lower() == link.lower()
+        and check_run.get("head_sha") == head_sha
+        and check_run.get("status") == "completed"
+        and check_run.get("conclusion") in {"success", "skipped", "neutral"}
+        and (check_run.get("app") or {}).get("slug") in APP_CHECK_SLUGS
+    )
+
+
+def checks_ready(
+    checks: list[dict[str, Any]],
+    *,
+    run_id: int | None = None,
+    runs: list[dict[str, Any]] | None = None,
+    check_runs: dict[int, dict[str, Any]] | None = None,
+    repository: str | None = None,
+) -> bool:
+    # Attestations are inputs to the ready run, not independent Actions jobs.
+    # A failed/missing attestation falls back to hosted checks in that run.
+    checks = [
+        check
+        for check in checks
+        if not (
+            not check.get("workflow")
+            and not check.get("link")
+            and check.get("name")
+            in {
+                "local-ci/linux-x64",
+                "local-ci/linux-arm64",
+                "local-ci/macos-arm64",
+                "local-ci/macos-x64",
+                "local-ci/windows-x64",
+                "local-ci/generic",
+            }
+        )
+    ]
+    if runs is not None:
+        latest: dict[int, dict[str, Any]] = {}
+        known = {int(run["id"]): run for run in runs}
+        head_sha = known[run_id].get("head_sha") if run_id in known else None
+        for metadata in runs:
+            workflow = int(metadata["workflow_id"])
+            if workflow not in latest or int(metadata["id"]) > int(
+                latest[workflow]["id"]
+            ):
+                latest[workflow] = metadata
+        reported_workflows = set()
+        filtered = []
+        for check in checks:
+            if check.get("workflow") != "PR area checks":
+                match = re.search(
+                    r"/actions/runs/(\d+)(?:/|$)", str(check.get("link", ""))
+                )
+                if not match:
+                    if not app_check_verified(
+                        str(check.get("link", "")),
+                        repository=repository,
+                        head_sha=head_sha,
+                        check_runs=check_runs or {},
+                    ):
+                        return False
+                    filtered.append(check)
+                    continue
+                check_run = int(match[1])
+                if check_run not in known:
+                    return False
+                workflow = int(known[check_run]["workflow_id"])
+                reported_workflows.add(workflow)
+                if check_run != int(latest[workflow]["id"]):
+                    continue
+            filtered.append(check)
+        # A reported workflow's replacement may not have registered jobs yet.
+        # Unrelated workflows on the same SHA do not contribute PR checks.
+        if any(
+            latest[workflow]["status"] != "completed"
+            or latest[workflow]["conclusion"] not in {"success", "skipped", "neutral"}
+            for workflow in reported_workflows
+        ):
+            return False
+        checks = filtered
     if (
         run_id is None
         or not checks
@@ -24,7 +129,7 @@ def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> 
         return False
     for gate in checks:
         if (
-            gate.get("name") != "Ready PR area checks"
+            gate.get("name") != "required"
             or gate.get("workflow") != "PR area checks"
             or gate.get("bucket") != "pass"
         ):
@@ -44,10 +149,6 @@ def checks_ready(checks: list[dict[str, Any]], *, run_id: int | None = None) -> 
                 check.get("name") == "changes" and check.get("bucket") == "pass"
                 for check in run_checks
             )
-            and any(
-                check.get("name") == "required" and check.get("bucket") == "pass"
-                for check in run_checks
-            )
             and all(
                 check.get("bucket") == "skipping"
                 for check in run_checks
@@ -64,6 +165,8 @@ def latest_ready_run(
     head_sha: str,
     ready_since: str,
     pr_number: int,
+    head_branch: str | None = None,
+    head_repository: str | None = None,
 ) -> int | None:
     titles = {
         f"PR area checks / {action} / ready"
@@ -80,7 +183,16 @@ def latest_ready_run(
         and run["display_title"] in titles
         and datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
         >= datetime.fromisoformat(ready_since.replace("Z", "+00:00"))
-        and any(pr["number"] == pr_number for pr in run["pull_requests"])
+        and (
+            any(pr["number"] == pr_number for pr in run["pull_requests"])
+            or (
+                not run["pull_requests"]
+                and head_branch is not None
+                and head_repository is not None
+                and run.get("head_branch") == head_branch
+                and run.get("head_repository", {}).get("full_name") == head_repository
+            )
+        )
     ]
     if not candidates:
         return None
@@ -94,13 +206,30 @@ def github_json(*arguments: str) -> Any:
     return json.loads(subprocess.check_output(["gh", *arguments], text=True))
 
 
-def current_ready_run(pr_number: int, repository: str) -> int | None:
+def app_check_runs(
+    checks: list[dict[str, Any]], repository: str
+) -> dict[int, dict[str, Any]]:
+    ids = {
+        check_id
+        for check in checks
+        if (check_id := app_check_run_id(str(check.get("link", "")), repository))
+        is not None
+    }
+    return {
+        check_id: github_json("api", f"repos/{repository}/check-runs/{check_id}")
+        for check_id in sorted(ids)
+    }
+
+
+def current_ready_run(
+    pr_number: int, repository: str
+) -> tuple[int | None, list[dict[str, Any]]]:
     owner, name = repository.split("/")
     query = """
     query($owner:String!, $name:String!, $number:Int!) {
       repository(owner:$owner, name:$name) {
         pullRequest(number:$number) {
-          headRefOid isDraft createdAt
+          headRefOid headRefName headRepository { nameWithOwner } isDraft createdAt
           timelineItems(last:1, itemTypes:[READY_FOR_REVIEW_EVENT]) {
             nodes { ... on ReadyForReviewEvent { id createdAt } }
           }
@@ -122,25 +251,45 @@ def current_ready_run(pr_number: int, repository: str) -> int | None:
     )
     pr = github_json(*arguments)["data"]["repository"]["pullRequest"]
     if not pr or pr["isDraft"]:
-        return None
+        return None, []
     events = pr["timelineItems"]["nodes"]
     ready_since = events[-1]["createdAt"] if events else pr["createdAt"]
     pages = github_json(
         "api",
         "--paginate",
         "--slurp",
-        f"repos/{repository}/actions/workflows/pr_ci.yml/runs"
-        f"?event=pull_request&head_sha={pr['headRefOid']}&per_page=100",
+        f"repos/{repository}/actions/runs?head_sha={pr['headRefOid']}&per_page=100",
     )
+    runs = [
+        run
+        for page in pages
+        for run in page["workflow_runs"]
+        if run["head_sha"] == pr["headRefOid"]
+        # This helper validates PRs before enqueueing, not merge-group SHAs.
+        and run["event"] != "merge_group"
+        and (
+            run["event"] != "pull_request"
+            or any(item["number"] == pr_number for item in run["pull_requests"])
+            # GitHub can omit PR associations even for same-repository PR runs.
+            or (
+                not run["pull_requests"]
+                and run.get("head_branch") == pr["headRefName"]
+                and run.get("head_repository", {}).get("full_name")
+                == pr["headRepository"]["nameWithOwner"]
+            )
+        )
+    ]
     run_id = latest_ready_run(
-        [run for page in pages for run in page["workflow_runs"]],
+        runs,
         head_sha=pr["headRefOid"],
         ready_since=ready_since,
         pr_number=pr_number,
+        head_branch=pr.get("headRefName"),
+        head_repository=(pr.get("headRepository") or {}).get("nameWithOwner"),
     )
     if github_json(*arguments)["data"]["repository"]["pullRequest"] != pr:
-        return None
-    return run_id
+        return None, []
+    return run_id, runs
 
 
 def main() -> int:
@@ -156,7 +305,8 @@ def main() -> int:
             args.repo
             or github_json("repo", "view", "--json", "nameWithOwner")["nameWithOwner"]
         )
-        run_id = current_ready_run(args.pr, repository)
+        run_id, runs = current_ready_run(args.pr, repository)
+        check_runs = app_check_runs(checks, repository)
     except (
         subprocess.CalledProcessError,
         OSError,
@@ -166,7 +316,13 @@ def main() -> int:
     ) as exc:
         print(f"Cannot establish current ready-run validation: {exc}", file=sys.stderr)
         return 1
-    if not checks_ready(checks, run_id=run_id):
+    if not checks_ready(
+        checks,
+        run_id=run_id,
+        runs=runs,
+        check_runs=check_runs,
+        repository=repository,
+    ):
         print(
             "Checks are incomplete/failing or lack validation for the latest ready run.",
             file=sys.stderr,

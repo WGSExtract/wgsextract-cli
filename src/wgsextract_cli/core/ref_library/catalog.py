@@ -10,6 +10,10 @@ from wgsextract_cli.core.paths import absolute_path
 _GENOME_DATA_CACHE: list[dict[str, Any]] = []
 
 
+def _int_or_none(text: str | None) -> int | None:
+    return int(text) if text and text.isdigit() else None
+
+
 def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
     if not Path(csv_path).exists():
         return []
@@ -17,7 +21,9 @@ def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
     try:
         with open(csv_path, encoding="utf-8") as f:
             reader = csv.DictReader(f)
-            for row in reader:
+            for raw in reader:
+                # Stray spaces in cells (hs38d1a's URL had one) aren't data.
+                row = {k: (v or "").strip() for k, v in raw.items() if k}
                 genomes.append(
                     {
                         "code": row.get("Pyth Code"),
@@ -26,9 +32,10 @@ def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
                         "url": row.get("URL"),
                         "label": row.get("Library Menu Label"),
                         "description": row.get("Description", ""),
+                        "sn_count": _int_or_none(row.get("SN Count")),
                         "md5": row.get("Signature") or "",
                         # SHA-256 of the file at url, when pinned (our mirrors).
-                        "sha256": (row.get("SHA256") or "").strip().lower(),
+                        "sha256": row.get("SHA256", "").lower(),
                     }
                 )
     except (OSError, csv.Error) as e:

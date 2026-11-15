@@ -99,7 +99,7 @@ def test_info_detailed_mode(info_env):
 
     assert "hg38 (Num), rCRS, 1 SNs" in output
     assert "150 bp" in output
-    assert "Bio Gender                  Male" in output
+    assert "Bio Gender                  Unknown" in output
     assert "Illumina NS 6000 (Dante)" in output
     assert "File Content                Auto, X, Y" in output
 

@@ -40,6 +40,7 @@ class ReplayGitHub(GitHub):
         self.main_by_workflow: dict[str, dict[str, Any]] = {}
         self.other_runs: list[dict[str, Any]] = []
         self.run_jobs: dict[int, list[dict[str, Any]]] = {}
+        self.attempt_runs: dict[tuple[int, int], dict[str, Any]] = {}
         self.jobs: dict[int, list[dict[str, Any]]] = {1: [recorded("test_failure")]}
         self.main_jobs: list[dict[str, Any]] = []
         self.issues: list[dict[str, Any]] = []
@@ -59,6 +60,7 @@ class ReplayGitHub(GitHub):
         self.use_transport = False
         self.pr_sha: str | None = None
         self.pr_state = "open"
+        self.pr_draft = False
         self.on_label_delete: Callable[[], None] | None = None
         self.on_audit: Callable[[], None] | None = None
         self.runs: list[dict[str, Any]] = []
@@ -109,6 +111,7 @@ class ReplayGitHub(GitHub):
         if parts[0] == "pulls":
             return {
                 "state": self.pr_state,
+                "draft": self.pr_draft,
                 "head": {"sha": self.pr_sha or self.run["head_sha"]},
             }
         if parts[0] == "check-runs":
@@ -130,7 +133,13 @@ class ReplayGitHub(GitHub):
                 selected = self.main_by_workflow.get(parts[2])
             if self.superseded and not main_query:
                 selected = dict(self.run, id=999)
-            candidates = [selected] if selected else []
+            query = parse_qs(url.query)
+            candidates = [
+                run
+                for run in self.other_runs
+                if run["head_branch"] == query["branch"][0]
+                and ("event" not in query or run["event"] == query["event"][0])
+            ] + ([selected] if selected else [])
             if main_query:
                 if self.last_completed_main:
                     candidates.append(self.last_completed_main)
@@ -138,8 +147,6 @@ class ReplayGitHub(GitHub):
                     candidates = [
                         run for run in candidates if run["status"] == "completed"
                     ]
-            else:
-                candidates = self.other_runs + candidates
             return {"workflow_runs": copy.deepcopy(candidates)}
         if parts[:2] == ["actions", "runs"]:
             if len(parts) == 2:
@@ -174,6 +181,8 @@ class ReplayGitHub(GitHub):
                 )
                 return None
             attempt = int(parts[4])
+            if len(parts) == 5:
+                return copy.deepcopy(self.attempt_runs[int(parts[2]), attempt])
             jobs = (
                 self.main_jobs
                 if any(
@@ -334,17 +343,25 @@ def test_lost_before_first_step_is_retried_once_and_audited() -> None:
     assert api.retried == [job["id"]]
 
 
-def test_failed_required_gate_does_not_block_lost_runner_retry() -> None:
-    # Merge queue (#758) review: the `required` summary fails with a lost
-    # dependency; the automatic retry must still rerun the lost job.
+@pytest.mark.parametrize(
+    "summaries", [("required",), ("required", "Ready PR area checks")]
+)
+def test_949_failed_summary_gates_do_not_block_lost_runner_retry(
+    summaries: tuple[str, ...],
+) -> None:
     api = ReplayGitHub()
     api.run.update(
         name="PR area checks / synchronize / ready",
         path=".github/workflows/pr_ci.yml",
     )
     lost = recorded("lost_runner")
-    gate = dict(recorded("test_failure"), id=lost["id"] + 1, name="required")
-    api.jobs[1] = [lost, gate]
+    api.jobs[1] = [
+        lost,
+        *[
+            dict(recorded("test_failure"), id=lost["id"] + index, name=name)
+            for index, name in enumerate(summaries, 1)
+        ],
+    ]
     api.run["conclusion"] = "failure"
     Observer(api).process(api.run)
     assert api.retried == [lost["id"]]
@@ -359,6 +376,33 @@ def test_superseded_zero_step_cancellation_does_not_restart_old_head() -> None:
     Observer(api).process(api.run)
     assert api.retried == []
     assert api.issues == []
+
+
+@pytest.mark.parametrize("during_audit", [False, True])
+def test_910_redrafted_install_lab_cancellation_cannot_restart_ready_payload(
+    during_audit: bool,
+) -> None:
+    api = ReplayGitHub()
+    api.run.update(
+        name="PR area checks / labeled / ready",
+        path=".github/workflows/pr_ci.yml",
+        conclusion="cancelled",
+    )
+    lost = dict(recorded("lost_runner"), name="install / build")
+    label = dict(
+        lost, id=lost["id"] + 1, name="changes (label event)", conclusion="skipped"
+    )
+    api.jobs[1] = [lost, label]
+    if during_audit:
+        api.on_audit = lambda: setattr(api, "pr_draft", True)
+    else:
+        api.pr_draft = True
+    Observer(api).process(api.run)
+    assert api.retried == []
+    if during_audit:
+        assert "Retry not dispatched" in ledger_comments(api)[0]
+    else:
+        assert api.issues == []
 
 
 def test_lost_runner_after_a_step_is_also_retried() -> None:
@@ -526,6 +570,54 @@ def test_red_main_opens_updates_and_closes_a_bug_with_test_and_commit() -> None:
     assert issue["state"] == "closed"
 
 
+@pytest.mark.parametrize("status", ["queued", "in_progress", "completed"])
+@pytest.mark.parametrize("same_sha", [False, True])
+def test_903_cancelled_main_push_cannot_retry_or_change_red_main(
+    status: str, same_sha: bool
+) -> None:
+    api = ReplayGitHub()
+    newer, cancelled = recorded("superseded_main_runs")
+    api.run = dict(cancelled, conclusion="failure", run_attempt=1)
+    observer = Observer(api)
+    observer.process(api.run)
+    red_bug = api.issues[0]
+    original_body = red_bug["body"]
+    original_comments = copy.deepcopy(api.comments)
+
+    api.run = cancelled
+    api.other_runs = [dict(newer, status=status)]
+    if same_sha:
+        api.other_runs[0]["head_sha"] = cancelled["head_sha"]
+    # A partial retry passes the previously failing test, while another test
+    # fails and a queued sibling never starts. None may revive the old push.
+    api.jobs[2] = [
+        passed_job(),
+        dict(recorded("test_failure"), id=101, name="other test"),
+        recorded("lost_runner"),
+    ]
+    assert observer.process(api.run, rerun_tests=True) == 0
+    assert api.retried == []
+    assert api.issues == [red_bug]
+    assert red_bug["state"] == "open"
+    assert red_bug["body"] == original_body
+    assert api.comments == original_comments
+
+    api.run = dict(newer, conclusion="success", status="completed")
+    api.other_runs = []
+    assert observer.process(api.run) == 0
+    assert red_bug["state"] == "closed"
+
+
+def test_903_latest_cancelled_main_runner_loss_is_still_retried() -> None:
+    api = ReplayGitHub()
+    _, api.run = recorded("superseded_main_runs")
+    api.run["run_attempt"] = 1
+    api.jobs[1] = [recorded("lost_runner")]
+    Observer(api).process(api.run)
+    assert api.retried == [api.jobs[1][0]["id"]]
+    assert "lost runner" in ledger_comments(api)[0]
+
+
 def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_override() -> (
     None
 ):
@@ -540,7 +632,7 @@ def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_over
 @pytest.mark.parametrize(
     ("prefix", "job_name", "workflow", "workflow_name"),
     [
-        ("macos", "test-macos", "macos_ci.yml", "CI macOS"),
+        ("macos", "test-macos / core-1", "macos_ci.yml", "CI macOS"),
         pytest.param(
             "smoke",
             "smoke (ubuntu-latest, package)",

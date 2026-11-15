@@ -22,6 +22,8 @@ from wgsextract_cli.api.ref import (
     RefGnomadSvParams,
     RefImputationParams,
     RefIndexParams,
+    RefLibraryDeleteParams,
+    RefLibraryListParams,
     RefLibraryParams,
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
@@ -30,6 +32,7 @@ from wgsextract_cli.api.ref import (
     RefSomalierParams,
     RefSpliceaiParams,
     RefStatusParams,
+    RefTestGenomeParams,
     RefVerifyParams,
     RefYbrowseParams,
 )
@@ -69,6 +72,9 @@ cmd_microarray_targets = command_handler(
 )
 cmd_ref_needs = command_handler("wgsextract_cli.commands.ref.needs", "cmd_ref_needs")
 cmd_ref_status = command_handler("wgsextract_cli.commands.ref.status", "cmd_ref_status")
+cmd_test_genome = command_handler(
+    "wgsextract_cli.commands.ref.mini_genome", "cmd_test_genome"
+)
 cmd_ref_verify = command_handler(
     "wgsextract_cli.commands.ref.core_commands", "cmd_ref_verify"
 )
@@ -252,6 +258,8 @@ def register(
         action="store_true",
         help="Non-interactively list all available genomes and their status.",
     )
+    add_arguments(library, RefLibraryListParams)
+    add_arguments(library, RefLibraryDeleteParams)
     status = add(
         "status",
         RefStatusParams,
@@ -262,6 +270,12 @@ def register(
         "--values",
         action="store_true",
         help="Emit a compact values JSON object for GUI data-source consumers.",
+    )
+    add(
+        "test-genome",
+        RefTestGenomeParams,
+        cmd_test_genome,
+        "Report, install (--install) or delete (--delete) the small hg19 test genome in the dataset library.",
     )
     needs = add(
         "needs",

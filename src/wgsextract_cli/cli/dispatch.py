@@ -47,6 +47,12 @@ def checks_alignment_input(path: str) -> bool:
     return not exempt and words != ["qc", "fake-data"]
 
 
+def reports_status(args: object) -> bool:
+    """Whether a ``--status`` run only reports on existing outputs: it neither
+    reads its input nor makes its output folder."""
+    return bool(getattr(args, "status", False))
+
+
 # Arguments that name a command's primary input files, and their manifest role.
 INPUT_ARGS = {
     "input": "input",
@@ -210,8 +216,10 @@ def _run_command(
             result.add_input(value, role)
     input_path = getattr(args, "input", None)
     command = getattr(args, "command", None) or ""
+    status = reports_status(args)
     if (
         input_path
+        and not status
         and "input" in explicit_dests
         and checks_alignment_input(f"{command} {getattr(args, 'qc_cmd', '') or ''}")
         and Path(input_path).suffix.lower() in {".bam", ".cram"}
@@ -219,7 +227,11 @@ def _run_command(
         from wgsextract_cli.core.alignment_input import validate_alignment_input
 
         validate_alignment_input(input_path)
-    if args.outdir and getattr(args, "command", None) not in READ_ONLY_COMMANDS:
+    if (
+        args.outdir
+        and not status
+        and getattr(args, "command", None) not in READ_ONLY_COMMANDS
+    ):
         Path(args.outdir).mkdir(parents=True, exist_ok=True)
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 

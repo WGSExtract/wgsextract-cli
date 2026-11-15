@@ -1067,11 +1067,13 @@ def test_server_does_not_offer_benchmark():
 def test_path_guard_covers_every_ref_path(op, field, value):
     # #346: the ref commands became server operations; each file or library
     # they read or write must be inside an allowed folder.
-    guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
+    guard = PathGuard([r"C:\data"], allow_destructive=True, pathmod=_RecordingFlavour())
     paths = [item.name for name, item in _REF_PATHS if name == op]
     allowed = {name: rf"C:\data\{name}" for name in paths}
     if op == "ref/library":
         allowed["install"] = "hg38"
+    if op == "ref/library-delete":
+        allowed["genome"] = "hg38"
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))
@@ -1118,6 +1120,29 @@ def test_path_guard_checks_the_library_of_a_home_relative_fasta(
     # A Python caller's Params are checked the same way.
     with pytest.raises(RequestError, match="outside the folders"):
         PathGuard([genomes]).check(find(op).params(ref="~/lib/genomes/x.fa"))
+
+
+@pytest.mark.parametrize("op", ["vcf/freebayes", "vcf/clair3", "vcf/gatk"])
+@pytest.mark.parametrize("filename", ["outside.bed", "outside with spaces, commas.bed"])
+def test_caller_region_beds_cannot_escape_serve_allow(tmp_path, op, filename):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / filename
+    outside.write_text("chr20\t0\t100\n")
+    with pytest.raises(RequestError) as refused:
+        PathGuard([allowed]).check(
+            params_from_json(
+                find(op), {"input": str(allowed / "s.bam"), "region": str(outside)}
+            )
+        )
+    assert refused.value.code == "path_not_allowed"
+    inside = allowed / filename
+    inside.write_text("chr20\t0\t100\n")
+    PathGuard([allowed]).check(
+        params_from_json(
+            find(op), {"input": str(allowed / "s.bam"), "region": str(inside)}
+        )
+    )
 
 
 @pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
@@ -1309,6 +1334,18 @@ def test_ref_library_list_is_a_query_with_the_listing_as_details(client, work):
     details = job["result"]["details"]
     assert details["library"] == str(work)
     assert {g["code"]: g["status"] for g in details["genomes"]}["hs38"] == ("unindexed")
+    assert details["genomes_dir"] == str(work / "genomes")
+    assert {g["code"]: g["size_bytes"] for g in details["genomes"]}["hs38"] == 1
+
+
+def test_read_only_library_list_cannot_look_up_download_sizes():
+    # #825: remote_sizes writes the library's size cache, so read-only MCP
+    # refuses it.
+    op = find("ref/library-list")
+    assert "remote_sizes" not in op.schema(read_only=True)["properties"]
+    with pytest.raises(RequestError) as refused:
+        params_from_json(op, {"remote_sizes": True}, read_only=True)
+    assert refused.value.code == "read_only"
 
 
 def test_ref_library_requests_must_name_a_genome():
@@ -2298,10 +2335,12 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "extract/custom": {"region": "chrM"},
     "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
+    "info/calculate-coverage": {"input": _FILE},
     "vcf/impute": {"input": _FILE, "ref": _DATA},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
     "ref/library": {"install": "hs38"},
+    "ref/library-delete": {"genome": "hs38", "ref": _DATA},
     "ref/library-list": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
     "report": {"input": _FILE},
@@ -2415,6 +2454,8 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert listed["bam/unindex"]["destructive"] is True
         assert listed["ref/gene-map"]["destructive"] is True
         assert listed["ref/dense-sa"]["destructive"] is True
+        assert listed["ref/library-delete"]["destructive"] is True
+        assert listed["ref/test-genome"]["destructive"] is True
         assert "destructive" not in listed["bam/index"]
         status, response = client.request(
             "POST", "/ops/bam/unindex", {"input": str(bam)}
@@ -2426,6 +2467,18 @@ def test_deleting_data_needs_allow_destructive(tmp_path, work, fake_data):
         assert (status, response["error"]["code"]) == (403, "destructive")
         status, response = client.request(
             "POST", "/ops/ref/dense-sa", {"ref": str(bam), "delete": True}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting a library genome, as the app's delete button does.
+        status, response = client.request(
+            "POST", "/ops/ref/library-delete", {"ref": str(work), "genome": "hs38"}
+        )
+        assert (status, response["error"]["code"]) == (403, "destructive")
+        # #825: deleting the test genome, as the app's Datasets page does.
+        status, response = client.request(
+            "POST",
+            "/ops/ref/test-genome",
+            {"dataset_library": str(work), "delete": True},
         )
         assert (status, response["error"]["code"]) == (403, "destructive")
         assert client.request("GET", "/jobs")[1]["jobs"] == []
@@ -2443,11 +2496,13 @@ def test_mcp_offers_deleting_tools_only_with_allow_destructive(work):
     names = {t["name"]: t for t in default.request("tools/list", {})["result"]["tools"]}
     assert default.close() == 0
     assert "bam_unindex" not in names and "sample_unset" not in names
+    assert "ref_library_delete" not in names
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is False
     allowed = Mcp("--allow", str(work), "--allow-jobs", "--allow-destructive")
     names = {t["name"]: t for t in allowed.request("tools/list", {})["result"]["tools"]}
     assert names["bam_unindex"]["annotations"]["destructiveHint"] is True
     assert names["ref_gene_map"]["annotations"]["destructiveHint"] is True
+    assert names["ref_library_delete"]["annotations"]["destructiveHint"] is True
     assert names["bam_index"]["annotations"]["destructiveHint"] is False
     assert allowed.close() == 0
 

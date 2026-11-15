@@ -127,8 +127,11 @@ def _indexed_targets(path: Path, rows: list[str]) -> str:
 
 
 def _kit(tmp_path: Path, *, is_vcf: bool, out_vcf: str, fasta: str, targets: str):
+    """Exercise the legacy reference-fill policy explicitly, never by default."""
     combined_kit = _microarray_combined._write_microarray_combined_kit(
-        params=microarray_params(region=None),
+        params=microarray_params(
+            region=None, assume_hom_ref=True, min_dp=0, min_gq=0, exclude_filtered=False
+        ),
         outdir=str(tmp_path),
         base_name="sample",
         is_vcf=is_vcf,
@@ -257,7 +260,7 @@ def test_liftover_accepts_prefixed_chromosome_names(tmp_path):
 
         def convert_coordinate(self, chrom, pos):
             seen_chroms.append(chrom)
-            return [(chrom, pos + 10)]
+            return [(chrom, pos + 10, "+", 1)]
 
     with patch("wgsextract_cli.core.microarray_coordinates.LiftOver", FakeLiftOver):
         liftover_hg38_to_hg19(str(input_txt), str(output_txt), str(chain_file))

@@ -791,6 +791,7 @@ def run_pipeline(
         if failures:
             raise WGSExtractError(f"{description} failed in " + "\n".join(failures))
     finally:
+        terminate_trees([proc for proc in procs if proc.poll() is None])
         for proc in procs:
             if proc.poll() is None:
                 proc.kill()
