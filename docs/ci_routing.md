@@ -156,6 +156,58 @@ The same routing/output contract applies to PR and merge-queue diffs, and
 `site_src/cli.md` cannot bypass the generated-card freshness assertion, and
 `native/bench/power.py` runs its unit tests through CLI pytest.
 
+### Test result cache
+
+On top of the selection, `scripts/ci_test_cache.py` (#915, Bazel-style test
+result cache) skips a PR's test files whose **exact dependency hash** already
+passed. A test file's hash covers:
+
+- every tracked file whose change would make `select_tests` pick it (its
+  import closure, conftest dependencies and declared file inputs, evaluated
+  one file at a time with the selector itself);
+- every file whose change makes the selector fall back to `all` (`pixi.lock`,
+  `pixi.toml`, `pyproject.toml`, runtime resources, shared fixtures and
+  helpers, unknown paths);
+- how tests run: `os_tests.yml`, the four OS callers, `setup-pixi`, the
+  runner, tier and cache scripts;
+- the job (OS, tier, shard, OS-independent skip), Python version, platform
+  and runner image (`ImageOS`, `ImageVersion`). Coverage flags are excluded.
+
+Equal hashes therefore mean the two trees differ only in files the selector
+would not run that test for, so a cache skip is never less safe than #914's
+selection (a regression test checks this for edits, additions and deletions).
+Hashes only see files that exist; each recorded pass also keeps the names of
+its tree's files whose deletion selects `all`, and a pass is reused only if
+none of them has since been deleted.
+
+Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
+
+| Event | Reads | Records after a passing run |
+|---|---|---|
+| Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
+| Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
+| Merge group, other refs | nothing (runs uncached) | nothing |
+
+A lookup is exact set membership, so a stale, corrupt, evicted or missing
+manifest can only re-run tests, never skip one whose inputs changed. A run
+records only when pytest exits successfully (or finds nothing to collect in a
+sparse partition); failed or cancelled runs record nothing. A cache entry is
+saved only when it learned new hashes. Manifests keep 14 days, 4,000 hashes
+and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
+
+**Security.** GitHub scopes caches by ref: a PR run writes only to
+`refs/pull/<n>/merge`, readable by later runs of that PR alone, and can read the
+base branch's (main's) caches. Only `push`, `schedule` and `workflow_dispatch`
+runs can write main's scope. A PR therefore cannot poison what main or other
+PRs read; at most it can skip its own tests, which its own workflow edits could
+do anyway. Main, nightly and the merge queue run the full suite, so the
+required gate never depends on the cache.
+
+Each test job's summary lists the cache-skipped files, where they passed
+(`main` or `pr`) and their hashes. To estimate savings, run
+`pixi run python scripts/ci_cache_replay.py --limit 60 --junit <main pytest.xml...>`;
+it replays consecutive ready runs of merged PRs.
+
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
@@ -398,6 +450,7 @@ publish exact hit/miss and key in each job summary.
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
 | PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
+| Test results (#915) | None | One small passed-hash manifest per OS test job, saved only when it learns new hashes |
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured
