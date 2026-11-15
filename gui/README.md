@@ -1,6 +1,8 @@
 # WGS Extract GUI
 
-WGS Extract GUI turns a portable CLI-tool bundle into an installable desktop app for Windows, macOS, and Linux. It is one TypeScript app: a Web UI and a local Node backend, packaged as a native desktop app with [Tauri](https://tauri.app).
+WGS Extract GUI turns a portable CLI-tool bundle into an installable desktop app for Windows, macOS (Apple Silicon only), and Linux. It is one TypeScript app: a Web UI and a local Node backend, packaged as a native desktop app with [Tauri](https://tauri.app).
+
+Intel macOS is no longer supported. [v0.8.7](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7) is the last supporting release; its assets remain available, but Intel apps no longer receive updates.
 
 ![WGS Extract GUI running the WGS Extract example bundle (Extract page, dark mode)](docs/readme-screenshot.png)
 

@@ -1,5 +1,8 @@
 # Hardware and acceleration
 
+Supported hosts are Linux, Windows x64, and Apple Silicon macOS. Intel Macs
+are no longer supported; v0.8.7 is the last supporting release.
+
 Alignment (`align`, `realign`) is the slowest step for a whole genome. This
 page says which hardware speeds it up and by how much. Each figure is labelled:
 
