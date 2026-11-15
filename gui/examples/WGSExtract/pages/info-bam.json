@@ -229,11 +229,13 @@
           "--json",
           "info",
           "calculate-coverage",
-          "--status",
-          "--input",
-          "{{bam_path}}"
+          "--status"
         ],
         "optionalArguments": [
+          [
+            "--input",
+            "{{bam_path}}"
+          ],
           [
             "--outdir",
             "{{out_dir}}"

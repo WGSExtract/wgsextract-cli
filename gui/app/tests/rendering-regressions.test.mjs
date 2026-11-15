@@ -174,8 +174,9 @@ test("WGSExtract Detailed Coverage adds the depth bins and, once run, only shows
   const { isActionVisible } = await import("../dist/shared/rendering.js");
   const page = wgsPages.find((item) => item.id === "info-bam");
   const section = page.sections.find((item) => item.id === "info-commands");
-  assert.deepEqual(section.dataSource.arguments, ["--json", "info", "calculate-coverage", "--status", "--input", "{{bam_path}}"]);
-  assert.deepEqual(section.dataSource.optionalArguments, [["--outdir", "{{out_dir}}"]]);
+  // No BAM chosen leaves --input out (Windows PowerShell 5.1 drops an empty argument): nothing is current.
+  assert.deepEqual(section.dataSource.arguments, ["--json", "info", "calculate-coverage", "--status"]);
+  assert.deepEqual(section.dataSource.optionalArguments, [["--input", "{{bam_path}}"], ["--outdir", "{{out_dir}}"]]);
   const { values } = await import("../../examples/WGSExtract/transforms/coverage-status.mjs");
   assert.deepEqual(values({ details: { current: true } }), { values: { coverage_done: "true" } });
   assert.deepEqual(values({ details: { current: false } }), { values: { coverage_done: "false" } });

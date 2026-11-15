@@ -293,6 +293,7 @@ def test_status_says_whether_with_bins_would_show_its_reports_again(tmp_path, ca
     os.utime(bam, (later, later))  # the BAM changed after its reports
     assert status("--input", bam, "--outdir", str(out))["current"] is False
     # No BAM chosen yet, or one that isn't there: nothing is current.
+    assert status()["current"] is False
     assert status("--input", "")["current"] is False
     assert status("--input", str(tmp_path / "missing.bam"))["current"] is False
 
