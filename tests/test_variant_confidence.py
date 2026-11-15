@@ -224,6 +224,9 @@ def test_thresholds_must_not_cross():
     [
         "##source=Mutect2\n",
         "##GATKCommandLine=<ID=Mutect2,CommandLine=Mutect2>\n",
+        '##GATKCommandLine=<ID="Mutect2",CommandLine=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2, --argument",ID=Mutect2>\n',
+        '##GATKCommandLine=<CommandLine="Mutect2",ID="Mutect2">\n',
         "##source=HaplotypeCaller\n##source=Mutect2\n",
     ],
 )
@@ -253,7 +256,7 @@ def test_bug_862_mutect2_germline_policy_is_explicit(tmp_path, header):
         "200:low:unsupported_somatic",
     ]
     rows = _table(out / "clinvar_pathogenic.confidence.tsv")
-    assert rows[0]["alt_fraction"] == "0.100"
+    assert float(rows[0]["alt_fraction"]) == pytest.approx(0.1)
     assert rows[0]["zygosity"] == "unassessed"
     confidence = document["details"]["confidence"][0]
     assert confidence["caller"] == "mutect2"
@@ -262,14 +265,25 @@ def test_bug_862_mutect2_germline_policy_is_explicit(tmp_path, header):
     assert warnings["unsupported_somatic_confidence"]["details"]["policy"] == (
         "unsupported_somatic"
     )
+    assert (
+        sum(w["code"] == "unsupported_somatic_confidence" for w in document["warnings"])
+        == 1
+    )
 
 
 @needs_bcftools
-def test_bug_862_germline_gatk_keeps_imbalance_safeguard(tmp_path):
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##source=HaplotypeCaller\n",
+        '##GATKCommandLine=<CommandLine="example,ID=Mutect2",ID=HaplotypeCaller>\n',
+    ],
+)
+def test_bug_862_germline_gatk_keeps_imbalance_safeguard(tmp_path, header):
     sample = _vcf(
         tmp_path / "germline.vcf.gz",
         ["100 low_vaf C T 99 PASS . GT:DP:GQ:AD 0/1:100:99:90,10"],
-        header="##source=HaplotypeCaller\n",
+        header=header,
     )
     document = _run(
         tmp_path,
