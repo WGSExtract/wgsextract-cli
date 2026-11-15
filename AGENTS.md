@@ -25,7 +25,8 @@ Only request `help --all --json --full` when the entire schema dump is needed.
 PR pytest selection follows the static import graph and test file inputs
 (`scripts/ci_select_tests.py`); uncertainty fails open. CI-only edits run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Main/nightly and merge-queue Ubuntu keep full coverage. See `docs/ci_routing.md`;
+Main/nightly keep full coverage; merge-queue Ubuntu runs the full selection
+minus files whose dependency hash already passed on main (test cache, #915). See `docs/ci_routing.md`;
 add a selector regression for any missed test, never weaken the safety net.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.

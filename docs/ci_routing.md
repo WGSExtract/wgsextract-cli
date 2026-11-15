@@ -259,7 +259,8 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 |---|---|---|
 | Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
-| Merge group, other refs | nothing (runs uncached) | nothing |
+| Merge group | latest `-main-` manifest | nothing |
+| Other refs | nothing (runs uncached) | nothing |
 
 A lookup is exact set membership, so a stale, corrupt, evicted or missing
 manifest can only re-run tests, never skip one whose inputs changed. A run
@@ -273,8 +274,10 @@ and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
 base branch's (main's) caches. Only `push`, `schedule` and `workflow_dispatch`
 runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
-do anyway. Main, nightly and the merge queue run the full suite, so the
-required gate never depends on the cache.
+do anyway. Merge groups read only main's manifest (owner decision,
+2026-11-15): a skipped file's every tracked input matches a tree that passed
+on main. Main pushes and nightly always run the full suite, so an undeclared
+input the hash misses fails the next main run instead of going unnoticed.
 
 Each test job's summary lists the cache-skipped files, where they passed
 (`main` or `pr`) and their hashes. To estimate savings, run
