@@ -1121,8 +1121,8 @@ run with upstream's records:
 | `--cuda`, `--dense-sa off` | 126.8 s | 898 s | 6.3 GiB |
 | `--cuda`, with the file | 125.2 s (−1.3%) | 889 s | 7.0 GiB |
 
-The CPU gain fits `perf`'s eighth of the time in locate (7.5% and 7.8% in
-the two rounds). With `--cuda` the file cut the GPU's locate time from 11.1 to
+The CPU gain (7.5% and 7.8% in the two rounds) fits `perf`'s eighth of the
+time in locate. With `--cuda` the file cut the GPU's locate time from 11.1 to
 9.6 s, but mate rescue and extension dominate there; after 20M reads the GPU
 builds the same denser sample itself. An interval-8 file (2.40 GB) was within
 noise of the interval-16 file in two more rounds on a busier machine: 335.8
