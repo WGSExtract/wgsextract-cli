@@ -1486,6 +1486,15 @@ VEP_RS_GENOME_BYTES = int(3.0 * GIB)
 VEP_RS_CACHE_BYTES = {False: int(5.7 * GIB), True: 17 * GIB}
 # vep-cache-builder peaked at 8.5 GB RSS without variations, 11 GB with.
 VEP_RS_BUILD_MEMORY = 12 * GIB
+# Its T2T-CHM13v2.0 cache (#630), from Ensembl's rapid-release gene set: 0.95
+# GB of downloads, a 3.0 GB genome, a 1.2 GB cache, 2.8 GB peak RSS; no
+# variations.
+VEP_RS_CHM13_BYTES = {
+    "downloads": int(1.0 * GIB),
+    "genome": int(3.0 * GIB),
+    "cache": int(1.3 * GIB),
+}
+VEP_RS_CHM13_BUILD_MEMORY = 4 * GIB
 # Peak memory of `vep run` on a whole genome: vep-rs on its built cache (6
 # threads, HG002), Ensembl VEP (6 forks).
 VEP_RUN_MEMORY = {"vep-rs": 8 * GIB, "ensembl": int(1.5 * GIB)}
@@ -1505,22 +1514,30 @@ CLAIR3_ASSUMED_DEPTH = 30.0
 CLAIR3_CPU_BYTES_PER_BASE = 2.0
 
 
-def estimate_vep_download(cache_dir: str, variations: bool) -> PreflightEstimate:
+def estimate_vep_download(
+    cache_dir: str, variations: bool, assembly: str = "GRCh38"
+) -> PreflightEstimate:
     """Disk and memory a vep-rs cache build needs: the downloads and the
     unpacked genome stay until the cache beside them is complete."""
+    from wgsextract_cli.commands._vep_engines import CHM13
+
     _, free = _disk_space(cache_dir)
-    components = {
-        "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
-        "genome": VEP_RS_GENOME_BYTES,
-        "cache": VEP_RS_CACHE_BYTES[variations],
-    }
+    if assembly == CHM13:
+        components, memory = dict(VEP_RS_CHM13_BYTES), VEP_RS_CHM13_BUILD_MEMORY
+    else:
+        components = {
+            "downloads": VEP_RS_DOWNLOAD_BYTES[variations],
+            "genome": VEP_RS_GENOME_BYTES,
+            "cache": VEP_RS_CACHE_BYTES[variations],
+        }
+        memory = VEP_RS_BUILD_MEMORY
     return PreflightEstimate(
         "vep-download",
         (
             ResourceEstimate(
                 "disk", sum(components.values()), free, components, (cache_dir,)
             ),
-            ResourceEstimate("memory", VEP_RS_BUILD_MEMORY, _available_memory(), {}),
+            ResourceEstimate("memory", memory, _available_memory(), {}),
         ),
         (),
     )

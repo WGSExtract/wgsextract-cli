@@ -49,7 +49,7 @@
 {"path":"vcf gnomad","tier":"core","summary":"Annotate VCF with gnomAD population frequencies.","key_flags":["--vcf-input","--gnomad-file","--max-af"]},
 {"path":"vcf sv-freq","tier":"core","summary":"Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.","key_flags":["--vcf-input","--gnomad-sv-file","--gnomad-lr-file","--min-overlap","--max-distance","--min-size-similarity","--common-af","--rare-af"]},
 {"path":"vcf pharmgkb","tier":"core","summary":"Annotate VCF with PharmGKB drug metabolism data.","key_flags":["--vcf-input","--pharmgkb-file"]},
-{"path":"vep download","tier":"core","summary":"Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's with --engine ensembl, for offline annotation.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache","--mirror","--no-variations"]},
+{"path":"vep download","tier":"core","summary":"Build vep-rs's VEP cache from Ensembl's files (GRCh37/38, T2T-CHM13v2.0), or download Ensembl VEP's with --engine ensembl, for offline annotation.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache","--mirror","--no-variations"]},
 {"path":"vep verify","tier":"core","summary":"Check your existing VEP cache for missing files or corruption.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache"]},
 {"path":"vep delete","tier":"core","summary":"Delete one release and assembly of your VEP cache.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache"]},
 {"path":"vep run","tier":"core","summary":"Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).","key_flags":["--engine","--vep-cache","--assembly","--force","--preset","--format","--region"]},

@@ -75,7 +75,7 @@ CLI_HELP = {
     "cmd_fake-data": "Generate fake BAM, CRAM, VCF, and FASTQ files for testing. BAM generation defaults to the fast streaming reference-backed SNP simulator.",
     "cmd_vep": "Variant Effect Predictor (VEP, with vep-rs by default or Ensembl VEP): annotate variants and manage the VEP cache.",
     "cmd_vep-run": "Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl). Predicts the functional impact of your variants (e.g., if a mutation likely breaks a gene or causes a specific disease).",
-    "cmd_vep-download": "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's with --engine ensembl, for offline annotation.",
+    "cmd_vep-download": "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38, T2T-CHM13v2.0), or download Ensembl VEP's with --engine ensembl, for offline annotation.",
     "cmd_vep-verify": "Check your existing VEP cache for missing files or corruption.",
     "cmd_vep-delete": "Delete one release and assembly of your VEP cache.",
     "cmd_microarray": "Simulate a consumer microarray (like 23andMe or AncestryDNA) from your WGS data.",

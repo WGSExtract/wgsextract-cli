@@ -2745,7 +2745,9 @@ the cache folder's `vep-rs` folder, which `download` builds from Ensembl's
 gene set, sequences and table dumps (with `variations`, its known variants)
 and `verify` checks against the builder's checksums. A vep-rs run refuses
 options it would ignore (`--custom`, `--database`) and has no database
-fallback. See docs/vep-engines.md.
+fallback. vep-rs alone annotates T2T-CHM13v2.0, from Ensembl's rapid-release
+CHM13 gene set (no known variants); `run` takes the assembly from the
+reference library's build, else the VCF's contigs. See docs/vep-engines.md.
 
 ### `api.vep.engine_param() -> Any`
 
@@ -2767,7 +2769,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of the other build is not used. One of: `GRCh37`, `GRCh38` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
@@ -2795,7 +2797,7 @@ unpacked; an unpacked cache replaces the same release's old one.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
@@ -2817,7 +2819,7 @@ missing.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
@@ -2835,7 +2837,7 @@ module docstring), with any download of it left in the cache folder.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
