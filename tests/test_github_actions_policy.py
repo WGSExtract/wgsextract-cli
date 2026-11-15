@@ -10,6 +10,24 @@ import pytest
 from scripts import validate_github_actions as policy
 from scripts.ci_changes import routes
 
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "ubuntu_ci.yml",
+        "macos_ci.yml",
+        "windows_ci.yml",
+        "linux_arm64.yml",
+    ],
+)
+def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> None:
+    source = (policy.ROOT / ".github/workflows" / workflow).read_text()
+    # CI contract: the shared suite must receive both PR selection and smoke mode.
+    assert "uses: ./.github/workflows/os_tests.yml" in source
+    assert "tests: ${{ inputs.tests || 'all' }}" in source
+    assert "smoke-only: ${{ inputs.smoke-only == true }}" in source
+
+
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
@@ -37,10 +55,34 @@ def top_level_conjuncts(expression: str) -> list[str]:
     return atoms
 
 
+def workflow_concurrency(workflow: Path) -> dict[str, str]:
+    """Read workflow-level concurrency without assuming a YAML indent width."""
+    lines = workflow.read_text().splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"concurrency:\s*(?:#.*)?", line)
+        ),
+        None,
+    )
+    if start is None:
+        return {}
+    fields = {}
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line[0].isspace():
+            break
+        key, separator, value = line.strip().partition(":")
+        if separator:
+            fields[key] = value.strip()
+    return fields
+
+
 def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
     """Render the draft-dependent expression; keep identical PR context opaque."""
-    match = re.search(r"^  group: (.*)", workflow.read_text(), re.MULTILINE)
-    assert match
+    group = workflow_concurrency(workflow)["group"]
 
     def render(expression: re.Match[str]) -> str:
         source = expression[1]
@@ -74,18 +116,23 @@ def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
 
         return str(value(tree.body))
 
-    return re.sub(r"\$\{\{(.*?)\}\}", render, match[1])
+    return re.sub(r"\$\{\{(.*?)\}\}", render, group)
 
 
 @pytest.mark.parametrize(
     "workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name
 )
 def test_936_late_draft_payload_cannot_supersede_readiness(workflow: Path) -> None:
-    text = workflow.read_text()
-    if not re.search(r"^  pull_request:\s*$", text, re.MULTILINE):
-        return
-    if "cancel-in-progress:" not in text or workflow.name == "pr_draft_cancel.yml":
-        return
+    if all(
+        event_path_filters(workflow, event) is None
+        for event in ("pull_request", "pull_request_target")
+    ):
+        pytest.skip("No PR trigger; draft payload cannot supersede readiness")
+    concurrency = workflow_concurrency(workflow)
+    if concurrency.get("cancel-in-progress", "false") == "false":
+        pytest.skip("No cancelling workflow concurrency")
+    if workflow.name == "pr_draft_cancel.yml":
+        pytest.skip("Runner-free cancellation helper; covered by label-lane regression")
     ready = draft_concurrency_group(workflow, draft=False, action="ready_for_review")
     delayed = draft_concurrency_group(workflow, draft=True, action="synchronize")
     assert delayed != ready, workflow.name
@@ -93,6 +140,32 @@ def test_936_late_draft_payload_cannot_supersede_readiness(workflow: Path) -> No
     assert (
         draft_concurrency_group(workflow, draft=True, action="converted_to_draft")
         == ready
+    )
+
+
+@pytest.mark.parametrize("indent", ["  ", "    "])
+@pytest.mark.parametrize(
+    "trigger",
+    [
+        "on:\n  pull_request:\n    types: [synchronize, ready_for_review]\n",
+        "on:\n    pull_request: {types: [synchronize, ready_for_review]}\n",
+        "on: {pull_request: {types: [synchronize, ready_for_review]}}\n",
+    ],
+)
+def test_936_draft_race_regression_accepts_yaml_formatting(
+    tmp_path: Path, indent: str, trigger: str
+) -> None:
+    workflow = tmp_path / "workflow.yml"
+    workflow.write_text(
+        trigger
+        + "concurrency:\n"
+        + f"{indent}group: pr-${{{{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}}}\n"
+        + f"{indent}cancel-in-progress: true\n"
+        + "jobs:\n  run:\n    steps:\n      - env:\n          group: not-workflow-concurrency\n"
+    )
+    assert event_path_filters(workflow, "pull_request") is not None
+    assert draft_concurrency_group(workflow, draft=True, action="synchronize") != (
+        draft_concurrency_group(workflow, draft=False, action="ready_for_review")
     )
 
 
@@ -146,9 +219,17 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
-def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix() -> None:
+@pytest.mark.parametrize("job_name", ["workflow-smoke", "test"])
+def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix(
+    job_name: str,
+) -> None:
     workflow = (WORKFLOWS / "os_tests.yml").read_text()
-    job = workflow.split("\njobs:\n", 1)[1].split("\n    steps:", 1)[0]
+    job = re.split(
+        r"^  [\w-]+:\s*$",
+        workflow.split(f"\n  {job_name}:\n", 1)[1],
+        maxsplit=1,
+        flags=re.MULTILINE,
+    )[0]
     condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
     assert condition
     assert "github.event.pull_request.draft != true" in top_level_conjuncts(

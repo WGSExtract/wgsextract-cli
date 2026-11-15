@@ -35,6 +35,17 @@ jobs:
       draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
       routed: ${{ steps.diff.outputs.routed }}
+      tests: ${{ steps.diff.outputs.tests }}
+      ci: ${{ steps.diff.outputs.ci }}
+      ci_tests: ${{ steps.diff.outputs.ci_tests }}
+      ubuntu_tests: ${{ steps.diff.outputs.ubuntu_tests }}
+      macos_tests: ${{ steps.diff.outputs.macos_tests }}
+      windows_tests: ${{ steps.diff.outputs.windows_tests }}
+      arm64_tests: ${{ steps.diff.outputs.arm64_tests }}
+      ubuntu_smoke: ${{ steps.diff.outputs.ubuntu_smoke }}
+      macos_smoke: ${{ steps.diff.outputs.macos_smoke }}
+      windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
+      arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,12 +59,14 @@ jobs:
           FORCE_INSTALL: ${{ contains(github.event.pull_request.labels.*.name, 'run-install-lab') }}
           LABEL_EVENT: ${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
           DRAFT: ${{ github.event.pull_request.draft }}
+          FULL_SUITE: ${{ github.event_name == 'merge_group' }}
         run: |
           set -euo pipefail
           flags=()
           if [ "$FORCE_INSTALL" = true ]; then flags+=(--force-install-lab); fi
           if [ "$LABEL_EVENT" = true ]; then flags+=(--label-event); fi
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
+          if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
   draft-fast:
@@ -94,7 +107,7 @@ jobs:
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.docs == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.docs == 'true' && (needs.changes.outputs.docs_tests != '[]' || needs.changes.outputs.site_validation == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -156,20 +169,59 @@ jobs:
 
   ubuntu:
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.ubuntu_tests != '[]'
     uses: ./.github/workflows/ubuntu_ci.yml
+    with:
+      tests: ${{ needs.changes.outputs.ubuntu_tests }}
+      smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
   macos:
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/macos_ci.yml
+    with:
+      tests: ${{ needs.changes.outputs.macos_tests }}
+      smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
   windows:
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/windows_ci.yml
+    with:
+      tests: ${{ needs.changes.outputs.windows_tests }}
+      smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
   arm64:
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group'
     uses: ./.github/workflows/linux_arm64.yml
+    with:
+      tests: ${{ needs.changes.outputs.arm64_tests }}
+      smoke-only: ${{ needs.changes.outputs.arm64_smoke == 'true' }}
+
+  ci-policy:
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: lint
+          scope: lint
+      - run: |
+          pixi run -e lint -x actionlint
+          pixi run -e lint -x python scripts/validate_github_actions.py
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - name: Run affected CI policy and routing tests
+        env:
+          CI_TESTS: ${{ needs.changes.outputs.ci_tests }}
+        run: |
+          python -m pip install --quiet -e . pytest jsonschema
+          mkdir -p out
+          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
   smoke:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
@@ -222,7 +274,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, required, draft-fast, docs, python-lint, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, required, draft-fast, docs, python-lint, ci-policy, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&
@@ -253,7 +305,7 @@ jobs:
   # (more runner losses) and don't run in the queue.
   required:
     name: required${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, ubuntu, gitleaks, native-smoke, pages]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     # Draft events allocate no runner, including this summary.
