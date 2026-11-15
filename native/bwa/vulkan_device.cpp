@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <mutex>
@@ -49,6 +50,7 @@ struct Candidate {
     VkPhysicalDevice device = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties properties{};
     uint32_t queue_family = 0;
+    uint32_t timestamp_bits = 0;
     // Zero uses the device's default fixed subgroup size.
     uint32_t required_subgroup = 0;
     bool subgroup_extension = false;
@@ -128,6 +130,7 @@ std::string assess(VkPhysicalDevice device, Candidate &c) {
             const bool graphics = family[i].queueFlags & VK_QUEUE_GRAPHICS_BIT;
             if (compute && (pass || !graphics)) {
                 c.queue_family = i;
+                c.timestamp_bits = family[i].timestampValidBits;
                 found = true;
             }
         }
@@ -154,6 +157,9 @@ struct VulkanExtendBuffers : ExtendBuffers {
     VkCommandPool pool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commands;
     VkFence fence = VK_NULL_HANDLE;
+    VkQueryPool queries = VK_NULL_HANDLE;
+    std::vector<uint64_t> timestamps;
+    size_t commands_used = 0, compute_first = 0, compute_count = 0;
     ~VulkanExtendBuffers() override;
 };
 
@@ -161,7 +167,8 @@ class VulkanDevice final : public Device {
 public:
     VulkanDevice(VkInstance instance, const Candidate &c, const DeviceOptions &options)
         : instance_(instance), physical_(c.device), properties_(c.properties),
-          family_(c.queue_family), deadline_floor_(options.watchdog_seconds),
+          family_(c.queue_family), profile_(options.profile), timestamp_bits_(c.timestamp_bits),
+          deadline_floor_(options.watchdog_seconds),
           inject_hang_(!options.hang_label.empty()
               && std::string("extend").find(options.hang_label) == 0) {
         try {
@@ -208,6 +215,17 @@ public:
 
     const char *name() const override { return "Vulkan"; }
     const char *description() const override { return properties_.deviceName; }
+    void report_profile() const override {
+        std::lock_guard<std::mutex> lock(profile_mutex_);
+        fprintf(stderr, "[wgse-bwa] vulkan_profile host_record=%.6f host_order=%.6f "
+            "host_submit=%.6f fence_wait=%.6f batch_latency=%.6f "
+            "device_compute=%.6f device_transfer=%.6f batches=%zu submissions=%zu "
+            "timed_batches=%zu timestamp_bits=%u staged=%d host_jobs_flags=%u "
+            "host_results_flags=%u\n",
+            stats_.record, stats_.order, stats_.submit, stats_.wait, stats_.latency,
+            stats_.compute, stats_.transfer, stats_.batches, stats_.submissions,
+            stats_.timed, timestamp_bits_, !integrated_, stats_.jobs_flags, stats_.results_flags);
+    }
 
     bool seeds() const override { return false; }
     bool rescues() const override { return false; }
@@ -233,14 +251,18 @@ public:
         // extend.comp reads bases as 32-bit words.
         const size_t base_bytes = (std::max<size_t>(bases, 1) + 3) / 4 * 4;
         const VkMemoryPropertyFlags host = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-            | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT
-            | (integrated_ ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : 0);
+            | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
         const VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
             | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         b->host_bases = allocate(base_bytes, usage, host);
         b->host_jobs = allocate(jobs * sizeof(ExtendJob), usage, host);
         b->host_results = allocate(jobs * sizeof(ExtendResult), usage, host);
         b->host_order = allocate(2 * jobs * sizeof(uint32_t), usage, host);
+        if (profile_) {
+            std::lock_guard<std::mutex> lock(profile_mutex_);
+            stats_.jobs_flags = b->host_jobs.properties;
+            stats_.results_flags = b->host_results.properties;
+        }
         // A discrete GPU would read the host's memory across PCIe for every
         // row; it gets device-local copies instead.
         b->staged = !integrated_;
@@ -290,6 +312,13 @@ public:
         check(v.vkAllocateCommandBuffers(device_, &commands, b->commands.data()), "command buffers");
         auto fence = make<VkFenceCreateInfo>(VK_STRUCTURE_TYPE_FENCE_CREATE_INFO);
         check(v.vkCreateFence(device_, &fence, nullptr, &b->fence), "fence");
+        if (profile_ && timestamp_bits_) {
+            auto query = make<VkQueryPoolCreateInfo>(VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO);
+            query.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            query.queryCount = uint32_t(b->commands.size() * 2);
+            check(v.vkCreateQueryPool(device_, &query, nullptr, &b->queries), "timestamp pool");
+            b->timestamps.resize(query.queryCount);
+        }
         return b;
     }
 
@@ -297,6 +326,8 @@ public:
         ExtendDone done) override {
         if (vulkan_hung) throw std::runtime_error("Vulkan: the GPU stopped responding earlier");
         auto &b = static_cast<VulkanExtendBuffers &>(base);
+        const auto started = Clock::now();
+        double ordering = 0;
         Vk &v = vk();
         auto *order = static_cast<uint32_t *>(b.host_order.mapped);
         const size_t capacity = b.job_capacity;
@@ -304,6 +335,17 @@ public:
         size_t used = 0;
         auto begin = make<VkCommandBufferBeginInfo>(VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO);
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        auto start_timing = [&](VkCommandBuffer cb) {
+            if (!b.queries) return;
+            if (used == 1) v.vkCmdResetQueryPool(cb, b.queries, 0, uint32_t(b.timestamps.size()));
+            v.vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, b.queries,
+                uint32_t((used - 1) * 2));
+        };
+        auto end_timing = [&](VkCommandBuffer cb) {
+            if (b.queries)
+                v.vkCmdWriteTimestamp(cb, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, b.queries,
+                    uint32_t((used - 1) * 2 + 1));
+        };
         if (b.staged) {
             // The batch's bases end at the last job's last base.
             size_t bytes = 0;
@@ -314,23 +356,28 @@ public:
             }
             VkCommandBuffer upload = b.commands[used++];
             check(v.vkBeginCommandBuffer(upload, &begin), "command recording");
+            start_timing(upload);
             copy(upload, b.host_bases, b.device_bases, (std::max<size_t>(bytes, 1) + 3) / 4 * 4);
             copy(upload, b.host_jobs, b.device_jobs, count * sizeof(ExtendJob));
             barrier(upload, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+            end_timing(upload);
             check(v.vkEndCommandBuffer(upload), "command recording");
         }
         for (size_t low = 0; low < count; low += submit_jobs) {
             const size_t high = std::min(count, low + submit_jobs);
+            const auto ordered = Clock::now();
             size_t sides[2];
             for (int side = 0; side < 2; ++side) {
                 uint32_t *slots = order + side * capacity + low;
                 sides[side] = order_side(b.jobs + low, high - low, side == 1, slots);
                 for (size_t i = 0; i < sides[side]; ++i) slots[i] += uint32_t(low);
             }
+            ordering += seconds(ordered);
             VkCommandBuffer cb = b.commands[used++];
             check(v.vkBeginCommandBuffer(cb, &begin), "command recording");
+            start_timing(cb);
             if (b.staged) {
                 for (int side = 0; side < 2; ++side)
                     if (sides[side])
@@ -361,21 +408,29 @@ public:
                     VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_TRANSFER_READ_BIT
                         | VK_ACCESS_HOST_READ_BIT);
             }
+            end_timing(cb);
             check(v.vkEndCommandBuffer(cb), "command recording");
         }
         if (b.staged) {
             VkCommandBuffer download = b.commands[used++];
             check(v.vkBeginCommandBuffer(download, &begin), "command recording");
+            start_timing(download);
             copy(download, b.device_results, b.host_results, count * sizeof(ExtendResult));
             barrier(download, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                 VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+            end_timing(download);
             check(v.vkEndCommandBuffer(download), "command recording");
         }
+        b.commands_used = used;
+        b.compute_first = b.staged ? 1 : 0;
+        b.compute_count = (count + submit_jobs - 1) / submit_jobs;
+        const double recorded = seconds(started);
         // Withhold the test submission rather than hang a display-driving shader.
         // The unsignalled fence still exercises the real timeout.
         const bool withhold = inject_hang_.exchange(false);
         std::lock_guard<std::mutex> completion_lock(completion_mutex_);
         pending_.push_back({&b, Clock::now(), std::move(done)});
+        const auto submitted = Clock::now();
         try {
             // One GPU job per command buffer; the last signals the batch's fence.
             std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -385,6 +440,14 @@ public:
                 submit.pCommandBuffers = &b.commands[i];
                 check(v.vkQueueSubmit(queue_, 1, &submit, i + 1 == used ? b.fence : VK_NULL_HANDLE),
                     "submission");
+            }
+            if (profile_) {
+                std::lock_guard<std::mutex> lock(profile_mutex_);
+                stats_.record += recorded - ordering;
+                stats_.order += ordering;
+                stats_.submit += seconds(submitted);
+                stats_.submissions += used;
+                ++stats_.batches;
             }
         } catch (...) {
             // Some commands may already be in flight; never free their buffers.
@@ -413,6 +476,7 @@ public:
             free(*buffer);
         if (b.pool) v.vkDestroyCommandPool(device_, b.pool, nullptr);
         if (b.fence) v.vkDestroyFence(device_, b.fence, nullptr);
+        if (b.queries) v.vkDestroyQueryPool(device_, b.queries, nullptr);
         if (b.descriptors) {
             std::lock_guard<std::mutex> lock(descriptor_mutex_);
             v.vkFreeDescriptorSets(device_, descriptor_pool_, 1, &b.descriptors);
@@ -432,6 +496,14 @@ private:
     VkPhysicalDeviceMemoryProperties memory_{};
     uint32_t family_;
     bool integrated_ = false;
+    bool profile_ = false;
+    uint32_t timestamp_bits_ = 0;
+    struct Stats {
+        double record = 0, order = 0, submit = 0, wait = 0, latency = 0, compute = 0, transfer = 0;
+        size_t batches = 0, submissions = 0, timed = 0;
+        uint32_t jobs_flags = 0, results_flags = 0;
+    } stats_;
+    mutable std::mutex profile_mutex_;
     VkDevice device_ = VK_NULL_HANDLE;
     VkQueue queue_ = VK_NULL_HANDLE;
     VkShaderModule shader_ = VK_NULL_HANDLE;
@@ -474,10 +546,15 @@ private:
         check(v.vkCreateBuffer(device_, &create, nullptr, &b.buffer), "buffer creation");
         VkMemoryRequirements requirements;
         v.vkGetBufferMemoryRequirements(device_, b.buffer, &requirements);
-        // The wanted properties, or failing that without HOST_CACHED (some
-        // drivers have no cached coherent type).
+        // On UMA prefer device-local AND cached, then cached system memory.
+        // Device-local host-visible memory can be uncached even on an APU:
+        // sorting jobs and exact-input matching must not repeatedly read it.
+        const VkMemoryPropertyFlags local = integrated_
+                && (wanted & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+            ? VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) : 0u;
         uint32_t type = UINT32_MAX;
-        for (VkMemoryPropertyFlags flags : {wanted,
+        for (VkMemoryPropertyFlags flags : {VkMemoryPropertyFlags(wanted | local), wanted,
+                 VkMemoryPropertyFlags((wanted | local) & ~VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
                  VkMemoryPropertyFlags(wanted & ~VK_MEMORY_PROPERTY_HOST_CACHED_BIT)})
             for (uint32_t i = 0; i < memory_.memoryTypeCount && type == UINT32_MAX; ++i)
                 if ((requirements.memoryTypeBits >> i & 1)
@@ -490,6 +567,7 @@ private:
         auto allocate_info = make<VkMemoryAllocateInfo>(VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
         allocate_info.allocationSize = requirements.size;
         allocate_info.memoryTypeIndex = type;
+        b.properties = memory_.memoryTypes[type].propertyFlags;
         const VkResult result = v.vkAllocateMemory(device_, &allocate_info, nullptr, &b.memory);
         if (result != VK_SUCCESS) {
             v.vkDestroyBuffer(device_, b.buffer, nullptr);
@@ -583,14 +661,44 @@ private:
             lock.unlock();
             Outcome outcome = Outcome::done;
             std::string error;
+            double kernel_seconds = 0;
             Vk &v = vk();
             const double allowed = std::max(deadline_floor_, 20 * slowest_);
             const double remaining = std::max(0., allowed - seconds(next.submitted));
+            const auto waited = Clock::now();
             const VkResult result = vulkan_hung ? VK_ERROR_DEVICE_LOST
                 : v.vkWaitForFences(device_, 1, &next.buffers->fence, VK_TRUE,
                     uint64_t(remaining * 1e9));
             const double elapsed = seconds(next.submitted);
+            const double waited_seconds = seconds(waited);
             if (result == VK_SUCCESS) {
+                if (profile_) {
+                    auto &b = *next.buffers;
+                    double compute = 0, transfer = 0;
+                    bool timed = false;
+                    if (b.queries && v.vkGetQueryPoolResults(device_, b.queries, 0,
+                            uint32_t(b.commands_used * 2), b.commands_used * 2 * sizeof(uint64_t),
+                            b.timestamps.data(), sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+                        const uint64_t mask = timestamp_bits_ == 64 ? UINT64_MAX
+                            : (uint64_t(1) << timestamp_bits_) - 1;
+                        for (size_t i = 0; i < b.commands_used; ++i) {
+                            const double duration = double((b.timestamps[i * 2 + 1]
+                                - b.timestamps[i * 2]) & mask)
+                                * double(properties_.limits.timestampPeriod) * 1e-9;
+                            if (i >= b.compute_first && i < b.compute_first + b.compute_count)
+                                compute += duration;
+                            else transfer += duration;
+                        }
+                        timed = true;
+                        kernel_seconds = compute;
+                    }
+                    std::lock_guard<std::mutex> lock(profile_mutex_);
+                    stats_.wait += waited_seconds;
+                    stats_.latency += elapsed;
+                    stats_.compute += compute;
+                    stats_.transfer += transfer;
+                    stats_.timed += timed;
+                }
                 slowest_ = std::max(slowest_, elapsed);
                 const VkResult reset = v.vkResetFences(device_, 1, &next.buffers->fence);
                 if (reset != VK_SUCCESS) {
@@ -606,7 +714,7 @@ private:
                         + std::to_string(int(allowed)) + " s"
                     : "Vulkan seed extension failed (VkResult " + std::to_string(int(result)) + ")";
             }
-            next.done(outcome, elapsed, error);
+            next.done(outcome, kernel_seconds, error);
             lock.lock();
         }
     }

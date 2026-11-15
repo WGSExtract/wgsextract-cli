@@ -129,6 +129,8 @@ void wgse_set_gpu_watchdog_seconds(double seconds);
 // Hangs the first GPU work of the stage label names (see DeviceOptions::hang_label).
 void wgse_inject_gpu_hang(const char *label);
 void wgse_force_vulkan_staging();
+void wgse_profile_gpu();
+void wgse_set_vulkan_in_flight(size_t count);
 void wgse_set_gpu_locate(bool enable);
 void wgse_set_gpu_locate_dense(unsigned shift);
 void wgse_set_gpu_locate_dense_after(size_t reads);

@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <system_error>
 #include <thread>
+#include <time.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #ifdef __APPLE__
@@ -99,6 +100,7 @@ size_t extend_batch_pairs = 1024;
 size_t extend_batch_count = 6;
 // Batches running on the GPU at once.
 constexpr size_t extend_in_flight = 2;
+size_t vulkan_in_flight = extend_in_flight;
 // A batch's jobs and bases per pair; a batch is full when it reaches either.
 constexpr size_t extend_jobs_per_pair = 24, extend_bases_per_pair = 8192;
 std::mutex failure_mutex;
@@ -107,6 +109,28 @@ std::string execution_failure;
 std::unique_ptr<Device> device;
 std::string device_reason;
 DeviceOptions device_options;
+struct HostProfile {
+    double trace = 0, stage = 0, pack = 0, finish = 0, seed = 0;
+    size_t overlap_pairs = 0, peak_in_flight = 0;
+};
+HostProfile host_profile;
+thread_local HostProfile local_profile;
+
+double cpu_time() {
+    if (!device_options.profile) return 0;
+    timespec t{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &t);
+    return double(t.tv_sec) + double(t.tv_nsec) * 1e-9;
+}
+
+class CpuTimer {
+public:
+    explicit CpuTimer(double &total) : total_(total), start_(cpu_time()) {}
+    ~CpuTimer() { if (device_options.profile) total_ += cpu_time() - start_; }
+private:
+    double &total_;
+    double start_;
+};
 // Whether the device locates with the attached index's samples.
 bool locator = false;
 const uint64_t *shared_sa = nullptr;
@@ -604,6 +628,7 @@ struct ExtendStage {
 // chain; stages it as a GPU job unless the kernel cannot reproduce it.
 void stage_extension(void *context, int, const uint8_t *query, int l_query, int qbeg, int len,
     const uint8_t *rseq, int64_t seed, int64_t window) {
+    CpuTimer timer(local_profile.stage);
     auto &stage = *static_cast<ExtendStage *>(context);
     const int64_t left_qlen = qbeg, right_qlen = int64_t(l_query) - qbeg - len;
     const int64_t left_tlen = left_qlen ? seed : 0;
@@ -704,6 +729,7 @@ public:
     std::atomic<size_t> missing{0};
     size_t extended_batches = 0, extended_jobs = 0;
     double extend_time = 0, extend_kernel_time = 0;
+    size_t peak_in_flight = 0, overlap_pairs = 0;
 
     SeedScheduler(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
         void (*worker)(void *, long, int), void *data, const ExtendParameters *extension)
@@ -776,17 +802,21 @@ private:
         stage.bases.clear();
         stage.jobs.clear();
         stage.failed = false;
+        const double traced = cpu_time();
         void *chains = wgse_worker1_chain(data_, pair, tid, stage_extension, &stage);
+        if (device_options.profile) local_profile.trace += cpu_time() - traced;
         // Out of memory before chaining: upstream's worker1 maps the pair instead.
         if (!chains) worker_(data_, pair, tid);
         end();
         if (!chains) return;
         extend_tally.skipped += stage.skipped;
         stage.skipped = 0;
+        const double packed = cpu_time();
         size_t base_offset = 0, job_offset = 0;
         ExtendBatch *target = stage.failed || stage.jobs.empty()
             ? nullptr : reserve(stage, pair, chains, base_offset, job_offset);
         if (!target) {
+            if (device_options.profile) local_profile.pack += cpu_time() - packed;
             if (!stage.jobs.empty()) ++extend_tally.cpu_pairs;
             finish(pair, chains, nullptr, 0, 0);
             return;
@@ -802,6 +832,7 @@ private:
         }
         std::lock_guard<std::mutex> lock(mutex_);
         if (--target->writers == 0 && target->sealed) queue(target);
+        if (device_options.profile) local_profile.pack += cpu_time() - packed;
     }
 
     bool fits(const ExtendBatch &batch, const ExtendStage &stage) const {
@@ -832,6 +863,7 @@ private:
         batch->pairs.push_back({pair, chains, uint32_t(job_offset), uint32_t(batch->job_count)});
         ++batch->writers;
         ++pending_;
+        if (in_flight_) ++overlap_pairs;
         if (batch->pairs.size() == batch->pairs.capacity()) seal();
         return batch;
     }
@@ -861,13 +893,16 @@ private:
         std::unique_lock<std::mutex> lock(mutex_);
         for (;;) {
             extend_changed_.wait(lock, [this] {
-                return (!queued_.empty() && in_flight_ < extend_in_flight)
+                const size_t limit = strcmp(device->name(), "Vulkan") == 0
+                    ? vulkan_in_flight : extend_in_flight;
+                return (!queued_.empty() && in_flight_ < limit)
                     || (stopping_ && queued_.empty() && in_flight_ == 0);
             });
             if (queued_.empty()) return;
             ExtendBatch *batch = queued_.front();
             queued_.pop_front();
             ++in_flight_;
+            peak_in_flight = std::max(peak_in_flight, in_flight_);
             lock.unlock();
             submit(batch);
             lock.lock();
@@ -956,6 +991,7 @@ private:
     }
 
     void finish(long pair, void *chains, const ExtendBatch *batch, uint32_t first, uint32_t last) {
+        CpuTimer timer(local_profile.finish);
         extend_current = {batch, &parameters_, opt_, first, last, first};
         wgse_worker1_finish(data_, pair, chains);
         extend_current = {};
@@ -963,6 +999,12 @@ private:
 
     void finish_thread() override {
         std::lock_guard<std::mutex> lock(totals_mutex);
+        host_profile.trace += local_profile.trace;
+        host_profile.stage += local_profile.stage;
+        host_profile.pack += local_profile.pack;
+        host_profile.finish += local_profile.finish;
+        host_profile.seed += local_profile.seed;
+        local_profile = {};
         extend_skipped += extend_tally.skipped;
         extend_gpu_pairs += extend_tally.gpu_pairs;
         extend_cpu_pairs += extend_tally.cpu_pairs;
@@ -993,6 +1035,7 @@ private:
     long steal_block() const override { return bwa_verbose >= 4 ? 1 : 8; }
 
     void prepare_stolen(long first, long last, int) override {
+        CpuTimer timer(local_profile.seed);
         stolen_seeds = first < last && bwa_verbose < 4
             ? seed_block(opt_, bwt_, seqs_, stride_, first, last) : nullptr;
         stolen_first = first;
@@ -1495,6 +1538,8 @@ extern "C" int wgse_metal_map(const mem_opt_t *opt, const bwt_t *bwt, int n,
         extend_jobs += scheduler.extended_jobs;
         extend_kernel_seconds += scheduler.extend_kernel_time;
         extend_gpu_seconds += scheduler.extend_time;
+        host_profile.overlap_pairs += scheduler.overlap_pairs;
+        host_profile.peak_in_flight = std::max(host_profile.peak_in_flight, scheduler.peak_in_flight);
         if (paired_at_start || pairs_running.load() || pair_starts.load() != pairs_before)
             ++overlapped_chunks;
     } catch (const std::exception &error) {
@@ -1788,6 +1833,7 @@ struct CpuMap {
     void *data;
     long items;
     int stride;
+    HostProfile *profiles = nullptr;
 };
 struct CpuMapScratch {
     std::vector<Intervals> intervals;
@@ -1858,20 +1904,32 @@ void use_seeded(const Prepared *prepared, bseq1_t *seqs, int stride, long first,
 void cpu_map_worker(void *context, long block, int tid) {
     const CpuMap &m = *static_cast<const CpuMap *>(context);
     const long first = block * cpu_map_pairs, last = std::min(m.items, first + cpu_map_pairs);
+    const double seeded = cpu_time();
     const Prepared *prepared = seed_block(m.opt, m.bwt, m.seqs, m.stride, first, last);
+    const double mapped = cpu_time();
     for (long item = first; item < last; ++item) {
         use_seeded(prepared, m.seqs, m.stride, first, item);
         m.worker(m.data, item, tid);
         finish_cursor();
     }
     current = {};
+    if (m.profiles) {
+        m.profiles[tid].seed += mapped - seeded;
+        m.profiles[tid].finish += cpu_time() - mapped;
+    }
 }
 
 int map_on_cpu(const mem_opt_t *opt, const bwt_t *bwt, int n, bseq1_t *seqs,
     void (*worker)(void *, long, int), void *data) {
     if (cpu_upstream || bwa_verbose >= 4) return 0;
     CpuMap m{opt, bwt, seqs, worker, data, long(n / stride(opt)), stride(opt)};
+    std::vector<HostProfile> profiles(device_options.profile ? size_t(opt->n_threads) : 0);
+    m.profiles = profiles.empty() ? nullptr : profiles.data();
     kt_for(opt->n_threads, cpu_map_worker, &m, (m.items + cpu_map_pairs - 1) / cpu_map_pairs);
+    for (const auto &profile : profiles) {
+        host_profile.seed += profile.seed;
+        host_profile.finish += profile.finish;
+    }
     return 1;
 }
 } // namespace
@@ -2186,6 +2244,8 @@ bool wgse_gpu_probe(Backend backend, std::string &reason, std::string *descripti
 }
 
 void wgse_force_vulkan_staging() { device_options.force_staging = true; }
+void wgse_profile_gpu() { device_options.profile = true; }
+void wgse_set_vulkan_in_flight(size_t count) { vulkan_in_flight = count; }
 
 bool wgse_gpu_available(Backend backend, std::string &reason) {
     // The device is kept for wgse_set_backend, so its kernels build once.
@@ -2222,6 +2282,14 @@ bool wgse_gpu_execution_failed(std::string &reason) {
 }
 
 void wgse_finish_backend() {
+    if (device_options.profile) {
+        fprintf(stderr, "[wgse-bwa] profile_cpu_seconds seed=%.6f trace=%.6f "
+            "stage_within_trace=%.6f batch_pack=%.6f finish=%.6f "
+            "peak_in_flight=%zu overlap_pairs=%zu\n",
+            host_profile.seed, host_profile.trace, host_profile.stage, host_profile.pack,
+            host_profile.finish, host_profile.peak_in_flight, host_profile.overlap_pairs);
+        if (device) device->report_profile();
+    }
     fprintf(stderr, "[wgse-bwa] gpu_batches=%zu gpu_reads=%zu cpu_reads=%zu fallback_reads=%zu "
         "wasted_reads=%zu unlocated_reads=%zu located_rows=%zu locate_misses=%zu "
         "cpu_located_rows=%zu overlapped_chunks=%zu interruptions=%zu watchdog_threads=%zu\n",
@@ -2259,6 +2327,9 @@ void wgse_finish_backend() {
 }
 
 void wgse_report_cpu_backend() {
+    if (device_options.profile)
+        fprintf(stderr, "[wgse-bwa] cpu_profile seed=%.6f map=%.6f\n",
+            host_profile.seed, host_profile.finish);
     fprintf(stderr, "[wgse-bwa] cpu_located_rows=%zu locate_misses=%zu dense_sa_interval=%u "
         "rescue_cpu_jobs=%zu rescue_cpu_hits=%zu rescue_cpu_skipped=%zu rescue_pruned_dead=%zu "
         "rescue_window_rows=%zu rescue_kept_rows=%zu\n",

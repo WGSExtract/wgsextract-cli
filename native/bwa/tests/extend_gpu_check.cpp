@@ -35,6 +35,7 @@ int main(int argc, char **) {
     if (!vulkan_hardware_supported()) return 77;
     DeviceOptions options;
     options.force_staging = argc > 1;
+    options.profile = true;
     std::string reason;
     auto device = make_vulkan_device(options, reason);
     if (!device) {
@@ -117,4 +118,5 @@ int main(int argc, char **) {
     }
     printf("Vulkan: %zu exact upstream extension jobs, %s\n", count * 2,
         options.force_staging ? "staged" : "mapped");
+    device->report_profile();
 }

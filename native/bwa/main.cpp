@@ -133,6 +133,19 @@ int run(int argc, char **argv) {
             }
             wgse_inject_gpu_interruptions(static_cast<size_t>(every));
             command_index += 2;
+        } else if (strcmp(option, "--gpu-profile") == 0) {
+            wgse_profile_gpu();
+            ++command_index;
+        } else if (strcmp(option, "--vulkan-in-flight") == 0) {
+            const char *value = argc > command_index + 1 ? argv[command_index + 1] : "";
+            char *end = nullptr;
+            const long count = strtol(value, &end, 10);
+            if (end == value || *end || count < 1 || count > 4) {
+                fprintf(stderr, "--vulkan-in-flight requires 1..4 batches\n");
+                return 2;
+            }
+            wgse_set_vulkan_in_flight(size_t(count));
+            command_index += 2;
         } else if (strcmp(option, "--vulkan-staging") == 0) {
             wgse_force_vulkan_staging();
             ++command_index;

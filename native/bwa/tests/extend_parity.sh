@@ -154,7 +154,8 @@ same cpu.sam failed-auto.sam
 if [ "$gpu" = --vulkan ]; then
     # Regression: unused/reset fences used to deadlock buffer destruction.
     # The discrete-memory staging path must preserve the same records on UMA.
-    "$aligner" --vulkan-staging --gpu-extend-verify --vulkan mem -t 4 \
+    "$aligner" --gpu-profile --vulkan-in-flight 4 --vulkan-staging \
+        --gpu-extend-verify --vulkan mem -t 4 \
         reference.fa pairs-R1.fq pairs-R2.fq > staged.sam 2> staged.log
     same cpu.sam staged.sam
     test "$(metric staged.log extend_hits)" -gt 0

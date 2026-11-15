@@ -29,7 +29,9 @@ namespace wgse::vulkan {
     X(vkAllocateCommandBuffers) X(vkBeginCommandBuffer) X(vkEndCommandBuffer) \
     X(vkCmdBindPipeline) X(vkCmdBindDescriptorSets) X(vkCmdPushConstants) X(vkCmdDispatch) \
     X(vkCmdPipelineBarrier) X(vkCmdCopyBuffer) X(vkQueueSubmit) X(vkCreateFence) \
-    X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences)
+    X(vkDestroyFence) X(vkWaitForFences) X(vkResetFences) \
+    X(vkCreateQueryPool) X(vkDestroyQueryPool) X(vkCmdResetQueryPool) \
+    X(vkCmdWriteTimestamp) X(vkGetQueryPoolResults)
 
 struct Runtime {
     void *library = nullptr;
@@ -107,6 +109,7 @@ struct Buffer {
     VkDeviceMemory memory = VK_NULL_HANDLE;
     void *mapped = nullptr;
     VkDeviceSize size = 0;
+    VkMemoryPropertyFlags properties = 0;
 };
 
 } // namespace wgse::vulkan

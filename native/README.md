@@ -1052,8 +1052,11 @@ This keeps each job's shuffle segment intact. Software Vulkan devices are
 rejected. `capabilities --json` reports `vulkan_available`,
 `vulkan_hardware_supported` and `vulkan_device` (a device name or `null`).
 
-On UMA, the scheduler packs jobs directly into coherent, mapped device-local
-buffers and reads results there, without staging copies. Discrete GPUs use
+On UMA, the scheduler packs jobs into coherent, CPU-cached mapped buffers
+and reads results there, without staging copies. Device-local memory is
+preferred only when it is also CPU-cached: on this Radeon APU, requiring
+device-local memory selected uncached mappings and made CPU job ordering
+and result matching much slower. Discrete GPUs use
 device-local copies and coherent host staging buffers. The default pool uses
 roughly 80 MiB on UMA (about twice that with staging), independent of index
 size. Buffers above the device's `maxStorageBufferRange` fail cleanly.
@@ -1071,6 +1074,71 @@ The GPU extension parity tests select whichever backend is available; Vulkan
 also has explicit mapped/staged kernel tests against upstream `ksw_extend2`,
 and tests for watchdog recovery and a missing driver. Linux CI compile-checks
 Vulkan and tests CPU fallback without requiring a GPU.
+
+### APU outcome and profiling
+
+**Vulkan is not recommended on APUs.** On lin-mid's Ryzen 3 PRO 5350GE /
+integrated Radeon Vega, extension-only offload remains slower than the exact
+AVX2 CPU backend, even after fixing uncached mapped-memory selection.
+`bench.sh`, full hs38 / 200k HG002 pairs, four threads, `-K 10000000`, two
+interleaved rounds per backend, under a GPU lock and resource lease:
+
+| Backend | Median wall time | Expected records hash |
+|---|---:|---|
+| CPU | 28.462 s | `bf35bba2923cd0a0` |
+| Vulkan, cached zero-copy | 32.008 s (+12.5%) | `bf35bba2923cd0a0` |
+
+The pipeline already submits two extension batches asynchronously, while CPU
+workers seed other pairs and finish completed ones. Its split mapping/pairing
+stages also overlap chunks with output, as on Metal. Increasing to four batches
+in flight and 4,096 pairs per batch did not help. A one-in-flight control was
+essentially unchanged. Disabling multithreaded I/O/chunk overlap (`mem -1`)
+helped somewhat, but did not reach CPU speed either.
+
+The diagnostic build (`BUILD_TESTING=ON`) accepts `--gpu-profile` and the
+benchmark-only `--vulkan-in-flight 1..4` override. Profiling uses thread CPU
+clocks for host work and Vulkan timestamp queries for device execution:
+
+| Component, 200k pairs | Before cached mapping | Cached mapping |
+|---|---:|---:|
+| Host command recording, producer wall s | 1.80 | 0.016 |
+| Job ordering, producer wall s | 3.53 | 0.031 |
+| Queue submissions, producer wall s | 0.073 | 0.055 |
+| Fence wait, completion-thread wall s | 7.34 | 8.57 |
+| GPU compute, device timestamp s | 6.24 | 6.96 |
+| GPU staging copies, device timestamp s | 0 | 0 |
+| Trace/chaining, aggregate CPU s | 14.20 | 15.17 |
+| Base packing within trace, aggregate CPU s | 3.45 | 3.67 |
+| Packing shared batches, aggregate CPU s | 0.21 | 0.24 |
+| Finish/exact-input matching, aggregate CPU s | 23.71 | 5.90 |
+| CPU worker waiting, aggregate wall s | 0.89 | 0.36 |
+
+These are overlapping clocks, **not an additive wall-time breakdown**. The first
+column averages two profiled runs; the cached column is one separate diagnostic
+run. Profiling itself adds overhead; the end-to-end table above is unprofiled.
+Fence waits occur on the completion thread, not on all CPU workers: the default
+run reached two in-flight batches and staged over 90k pairs while another batch
+was in flight. GPU time is available only when timestamp queries succeed;
+Vulkan's `extend seconds kernel` is otherwise zero (unmeasured). In a separate
+three-thread control, cached staging beat the old uncached mapping (40.7 versus
+47.0 s), despite adding 0.091 s of device copies; this motivated the cached
+zero-copy fix rather than adding more synchronization machinery.
+
+The earlier 2.7× kernel result compared against scalar extension. Current AVX2
+extension is only about 13% of CPU time in the local chr20 profile. After the
+cache fix, tracing, finishing and shared-batch packing cost about 21.3 CPU s,
+versus 21.5 CPU s for
+the CPU backend's whole mapping worker after seeding: the offload has not removed
+meaningful CPU work. This is not a synchronous-fence bottleneck.
+
+For discrete GPUs, retain cached host staging, transfer in bulk to device-local
+VRAM, and keep the existing asynchronous batches. First reduce trace/replay and
+packing cost (retained reference windows or resumable extension calls), then
+target mate rescue and seeding, which cover more CPU time. Separate GPU memory
+and power budgets may help, but a discrete-Vulkan end-to-end win is unproven;
+kernel throughput alone is not sufficient. The optional RTX 3090 experiment
+was skipped because lin-big's resource queue was busy. See #675 (AMD GPU aligner
+backend) for the measured negative result and draft implementation.
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
