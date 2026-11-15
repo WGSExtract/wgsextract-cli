@@ -25,6 +25,8 @@ function W([string]$Name, [string[]]$CliArgs) {
 W "help" @("--help")
 W "deps" @("deps", "check")
 W "bootstrap" @("ref", "bootstrap", "--ref", (Join-Path $Out "reference"))
+# The truncated mini genome cannot infer HG00096's known male sex.
+W "sample_sex" @("sample", "set", "--input", $BAM, "--sex", "Male")
 W "info" @("info", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "info"), "--detailed")
 W "info_cram" @("info", "--input", $CRAM, "--ref", $REF, "--outdir", (Join-Path $Out "info_cram"))
 W "mt_bam" @("extract", "mt-bam", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "mt_bam"))

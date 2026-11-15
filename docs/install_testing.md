@@ -104,6 +104,11 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+The CLI workloads and app test plan explicitly declare HG00096's known male
+sex through `sample set` before running the analyses. This rebased mini genome
+has no informative chrX assay, so coverage-based inference correctly returns
+Unknown; the lab must not bypass the product's unknown-sex ploidy safeguard.
+
 The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
 evidence gates. The scenario keeps those real-user defaults and requests
 `--call-reasons`; it does not disable filtering to make the fixture pass.
