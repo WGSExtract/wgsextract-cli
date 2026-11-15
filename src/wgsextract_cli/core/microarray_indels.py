@@ -234,6 +234,8 @@ def _calls_from_vcf(
     params: MicroarrayParams,
     workdir: str,
     marker_ids: dict[str, str] | None = None,
+    *,
+    reference_qual: bool = False,
 ) -> dict[str, str]:
     samples = _query_lines(["bcftools", "query", "-l", vcf], workdir)
     if len(samples) != 1:
@@ -245,9 +247,16 @@ def _calls_from_vcf(
         by_position[site.chrom, site.position].append(key)
     calls: dict[str, str] = {}
     rejected: set[str] = set()
-    query = "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%FILTER[\t%GT\t%DP\t%GQ]\n"
+    query = "%CHROM\t%POS\t%ID\t%REF\t%ALT\t%FILTER[\t%GT\t%DP\t%GQ]"
+    query += "\t%QUAL\n" if reference_qual else "\n"
     for line in _query_lines(["bcftools", "query", "-u", "-f", query, vcf], workdir):
-        chrom, pos, source_id, ref, alt, filtered, gt, dp, gq = line.split("\t")
+        fields = line.split("\t")
+        qual = fields.pop() if reference_qual else "."
+        chrom, pos, source_id, ref, alt, filtered, gt, dp, gq = fields
+        # bcftools omits GQ at confident hom-ref calls, even with forced
+        # alleles. Only its internally generated single-sample QUAL is used.
+        if reference_qual and gq == "." and gt in {"0", "0/0", "0|0"}:
+            gq = qual
         keys = by_position.get((chrom, int(pos)), [])
         for key in keys:
             site = sites[key]
@@ -480,7 +489,12 @@ def call_manifest_indels(
             description="Call sequence-defined indel probes",
         )
     calls = _calls_from_vcf(
-        vcf, sites, params, workdir, {key: data[1] for key, data in metadata.items()}
+        vcf,
+        sites,
+        params,
+        workdir,
+        {key: data[1] for key, data in metadata.items()},
+        reference_qual=not is_vcf,
     )
     with open(Path(workdir, "indel-calls.tsv"), "w", newline="\n") as stream:
         stream.write("#FORMAT\tID\tCHROM\tPOS\tCALL\n")

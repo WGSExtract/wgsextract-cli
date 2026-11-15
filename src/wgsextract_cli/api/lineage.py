@@ -111,10 +111,11 @@ class YHaplogroupParams(Params):
         exclusive="tree",
     )
     min_reads: int = param(
-        10, doc="Reads needed at a marker position for it to be used."
+        10,
+        doc="Reads needed at a marker; VCF requires AD, DP or callable-block MIN_DP.",
     )
     base_quality: int = param(
-        20, doc="Minimum base quality of a read at a marker position."
+        20, doc="Minimum read base quality; VCF also checks GQ when present."
     )
     base_majority: int = param(
         90, doc="Percentage of reads at a marker that must agree on the base."
@@ -127,8 +128,8 @@ class YHaplogroupParams(Params):
     )
     no_ref_inference: bool = param(
         False,
-        help="VCF: use genotyped positions only (targeted panels); otherwise --ref "
-        "is required.",
+        help="VCF: use explicit genotypes only; otherwise --ref supplies bases "
+        "inside callable reference blocks, never at unassessed sites.",
         action="store_true",
     )
     qc_min_depth: float | None = depth_param()

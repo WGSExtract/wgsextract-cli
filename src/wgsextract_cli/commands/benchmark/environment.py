@@ -1,7 +1,6 @@
 import os
 import platform
 import subprocess
-import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,6 +15,7 @@ from wgsextract_cli.core.dev_download_cache import (
     restore_cached_download,
     store_download_in_dev_cache,
 )
+from wgsextract_cli.core.mini_genome import extract_zip_safely
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import chromosome_aliases
 
@@ -87,22 +87,6 @@ def _real_dataset_zip_path(job: BenchmarkJob, outdir: Path) -> Path:
     return zip_path
 
 
-def _extract_zip_safely(zip_path: Path, extract_dir: Path) -> None:
-    extract_dir.mkdir(parents=True, exist_ok=True)
-    root = extract_dir.resolve()
-    try:
-        with zipfile.ZipFile(zip_path) as archive:
-            for member in archive.infolist():
-                target = (extract_dir / member.filename).resolve()
-                if not target.is_relative_to(root):
-                    raise WGSExtractError(
-                        f"Unsafe benchmark dataset zip entry: {member.filename}"
-                    )
-            archive.extractall(extract_dir)
-    except zipfile.BadZipFile as exc:
-        raise WGSExtractError(f"Invalid benchmark dataset zip: {zip_path}") from exc
-
-
 def _prepare_real_benchmark_dataset(
     job: BenchmarkJob, dataset_dir: Path, outdir: Path
 ) -> BenchmarkDataset:
@@ -114,7 +98,7 @@ def _prepare_real_benchmark_dataset(
 
     zip_path = _real_dataset_zip_path(job, outdir)
     extract_dir = dataset_dir / "real"
-    _extract_zip_safely(zip_path, extract_dir)
+    extract_zip_safely(zip_path, extract_dir)
     return _load_real_benchmark_dataset(extract_dir)
 
 

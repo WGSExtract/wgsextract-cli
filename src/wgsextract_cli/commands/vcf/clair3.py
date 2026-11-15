@@ -3,7 +3,6 @@
 import hashlib
 import json
 import logging
-import math
 import os
 import platform
 import re
@@ -26,7 +25,7 @@ from wgsextract_cli.core.containers import (
     require_image,
     run_container,
 )
-from wgsextract_cli.core.cram_staging import stage_cram30
+from wgsextract_cli.core.cram_staging import needs_cram30, stage_cram30, staging_bytes
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -49,7 +48,10 @@ from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.resource_estimates import (
-    GIB,
+    CLAIR3_MEMORY,
+    HostRequirement,
+    calling_hours,
+    check_host_requirement,
     estimate_clair3,
     report_resources,
 )
@@ -657,22 +659,46 @@ class TempSpace:
     depth: float | None
     gpu: bool
 
-    def check(self, outdir: str, *, enforce: bool = True) -> None:
-        """Report the peak beside the output and refuse a run that wouldn't
-        fit (#811): it fails hours in otherwise."""
+    def check(
+        self,
+        outdir: str,
+        threads: str,
+        *,
+        enforce: bool = True,
+        copy: int = 0,
+        recheck: bool = False,
+    ) -> None:
+        """Report the peak beside the output, and the ``copy`` of the reads
+        to write beside it, with Clair3's host requirement, and refuse a run
+        that wouldn't fit (#811, #690): it fails hours in otherwise. A
+        ``recheck`` (once that copy is written) says nothing more unless the
+        disk is now short."""
         estimate = estimate_clair3(outdir, self.bases, gpu=self.gpu, depth=self.depth)
-        report_resources(estimate)
         (disk,) = estimate.resources
-        if not enforce or disk.status != "LOW":
+        caller = "clair3-gpu" if self.gpu else "clair3"
+        requirement = HostRequirement(
+            "Clair3",
+            (
+                (
+                    outdir,
+                    None
+                    if disk.estimated_bytes is None
+                    else disk.estimated_bytes + copy,
+                ),
+            ),
+            None if recheck else CLAIR3_MEMORY,
+            int(threads),
+            calling_hours(caller, self.bases, int(threads)),
+        )
+        if recheck and not any(v.short for v in requirement.volumes()):
             return
-        assert disk.estimated_bytes is not None and disk.available_bytes is not None
-        mode = "on the GPU " if self.gpu else ""
-        raise WGSExtractError(
-            f"Clair3 {mode}needs about {math.ceil(disk.estimated_bytes / GIB)} GiB "
-            f"of temporary space at {outdir} for {self.bases / 1e6:,.0f} Mb, but "
-            f"{disk.available_bytes / GIB:.0f} GiB is free. Free up space, choose an "
-            "--outdir on a bigger disk or a smaller --region, or rerun with "
-            "--no-preflight to override (not recommended)."
+        report_resources(estimate)
+        check_host_requirement(
+            requirement,
+            enforce=enforce,
+            disk_advice="Free up space, choose an --outdir on a bigger disk or "
+            "call a smaller --region.",
+            memory_advice="Lower --threads.",
         )
 
 
@@ -734,10 +760,17 @@ def run_clair3(params: VcfClair3Params) -> None:
                     f"Invalid Clair3 region selection: {region}: {error}"
                 ) from error
         space = temp_space(input_file, use_ref, intervals, region, gpu is not None)
+        stage = needs_cram30_staging(gpu.version if gpu else clair3_version())
         if space:
-            space.check(outdir, enforce=not params.no_preflight)
+            # A CRAM 3.0 copy stays beside the tensors while Clair3 runs.
+            copy = (
+                staging_bytes(input_file, use_ref, intervals)
+                if stage and needs_cram30(input_file)
+                else 0
+            )
+            space.check(outdir, threads, enforce=not params.no_preflight, copy=copy)
         reads = input_file
-        if needs_cram30_staging(gpu.version if gpu else clair3_version()):
+        if stage:
             staging = Path(work, "reads")
             staging.mkdir()
             reads = stage_cram30(
@@ -745,8 +778,10 @@ def run_clair3(params: VcfClair3Params) -> None:
                 tool="Clair3", why=_CRAM31_BUG,
             )  # fmt: skip
             if space and reads != input_file:
-                # The staged copy stays beside the tensors while Clair3 runs.
-                space.check(outdir, enforce=not params.no_preflight)
+                # Its estimate was a guess; the copy is now on the disk.
+                space.check(
+                    outdir, threads, enforce=not params.no_preflight, recheck=True
+                )
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.
         abs_reads, abs_ref, abs_work = (

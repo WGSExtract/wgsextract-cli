@@ -132,10 +132,12 @@ def test_combined_kit_alignment_mode_doubles_haploid_calls(tmp_path):
     vcf.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1>\n##contig=<ID=chrY>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-        "chrY\t5\trsY\tA\t.\t50\tPASS\t.\tGT\t0\n"
-        "chr1\t6\trsMiss\tA\t.\t50\tPASS\t.\tGT\t./.\n"
-        "chr1\t7\trsHet\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
+        "chrY\t5\trsY\tA\t.\t50\tPASS\t.\tGT:DP:GQ\t0:30:60\n"
+        "chr1\t6\trsMiss\tA\t.\t50\tPASS\t.\tGT:DP:GQ\t./.:30:60\n"
+        "chr1\t7\trsHet\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     kit = _microarray_combined._write_microarray_combined_kit(
         params=microarray_params(region=None),
@@ -297,6 +299,7 @@ def test_y_haplogroup_refuses_a_female_sample_before_yleaf(tmp_path):
     """A female genome's mismapped chrY reads made Yleaf "predict" BT* with a full
     QC score; the command must say there is no Y instead."""
     bam = _xy_bam(tmp_path / "sample.bam", x_reads=30, y_reads=1)
+    _info_cache(bam, "Female")
 
     with pytest.raises(WGSExtractError, match="appears female"):
         run_wgsextract("lineage", "y-haplogroup", "--input", bam)

@@ -13,6 +13,7 @@ from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -215,7 +216,7 @@ def _detect_platform(
         stat.st_ctime_ns,
         strict,
     )
-    if platform and method:
+    if is_platform(platform) and method:
         sample_workspace.record(
             "platform",
             reads,

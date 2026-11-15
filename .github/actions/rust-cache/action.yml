@@ -1,0 +1,30 @@
+name: Trusted Rust cache
+description: Cache Tauri dependencies, never PR-produced crates or signed artifacts.
+inputs:
+  writer:
+    description: Only a build of the current main commit may seed production caches.
+    default: "true"
+outputs:
+  cache-hit:
+    description: Exact dependency cache hit.
+    value: ${{ steps.cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    # Only dependency crates are retained, not workspace crates, installers,
+    # signing material, or cargo-installed binaries. Production writers are
+    # main-only; release tags cannot restore GitHub's PR-ref scoped caches.
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      id: cache
+      with:
+        prefix-key: ${{ github.ref == 'refs/heads/ci/916-compiler-cache' && 'measure-916-rust-v1' || 'tauri-rust-v1' }}
+        shared-key: tauri
+        workspaces: gui/app/web/packagers/tauri -> target
+        cache-bin: "false"
+        cache-workspace-crates: "false"
+        save-if: >-
+          ${{ inputs.writer == 'true' &&
+              github.event_name != 'pull_request' && github.event_name != 'pull_request_target' &&
+              (github.ref == 'refs/heads/main' ||
+               (github.event_name == 'workflow_dispatch' &&
+                github.ref == 'refs/heads/ci/916-compiler-cache' && github.actor == 'theontho')) }}

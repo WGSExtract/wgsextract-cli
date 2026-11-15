@@ -89,6 +89,14 @@ def _table(path: Path) -> list[dict[str, str]]:
 
 def _run(tmp_path: Path, *argv: str) -> dict:
     """Run a command as `wgsextract` does and return its result manifest."""
+    if argv[:2] == ("vcf", "clinvar"):
+        from tests.htslib_helpers import reference_for_vcf
+
+        sample = argv[argv.index("--vcf-input") + 1]
+        reference = reference_for_vcf(
+            tmp_path / "ref.fa.gz", sample, argv[argv.index("--clinvar-file") + 1]
+        )
+        argv = (*argv, "--ref", str(reference))
     args, _ = parse_args(*build_parser(), list(argv))
     try:
         dispatch_command(args, set())

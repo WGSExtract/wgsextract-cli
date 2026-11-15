@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, run_wgsextract
+from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -247,6 +247,7 @@ def test_clinvar_picks_the_builds_file_and_filters_pathogenic_classes(tmp_path):
             info=("CLNSIG", "CLNDN"),
         )
     sample = _sample(tmp_path, rows, length=HG19_CHR1)
+    reference_for_vcf(tmp_path / "lib" / "genomes" / "hg19.fa.gz", sample)
     outdir = tmp_path / "out"
     run_wgsextract("vcf", "clinvar", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir))  # fmt: skip
@@ -454,6 +455,7 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
     outdir = tmp_path / "out"
     # gerp isn't installed: skipped with a warning, not a failure.
+    reference_for_vcf(tmp_path / "lib" / "genomes" / "hg38.fa.gz", sample)
     run_wgsextract("vcf", "chain-annotate", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir),
                    "--annotations", "clinvar, gerp ,REVEL")  # fmt: skip
@@ -475,6 +477,7 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
 
     class Lib:
         clinvar_vcf = "present"
+        fasta = "present"
 
         def __init__(self, *_a, **_k):
             pass
@@ -766,8 +769,9 @@ def test_multiallelic_site_gets_each_alleles_vcf_annotation(tmp_path, command):
                   [f"200 . A G . . {g_value} GT 0/1", f"200 . A T . . {t_value} GT 0/1"],
                   contig="1", info=info)  # fmt: skip
     outdir = tmp_path / "out"
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
     run_wgsextract("vcf", command, "--input", sample, f"--{command}-file", source,
-                   "--outdir", str(outdir))  # fmt: skip
+                   "--outdir", str(outdir), "--ref", str(reference))  # fmt: skip
     # Split into one record per ALT, each with its own allele's value.
     tag = {"clinvar": "CLNSIG", "spliceai": "SpliceAI", "gnomad": "GNOMAD_AF"}[command]
     values = [v.split("=", 1)[1].split(";")[0] for v in (g_value, t_value)]
@@ -832,8 +836,18 @@ def test_annotating_an_output_onto_itself_is_refused(tmp_path):
     clinvar = _vcf(tmp_path / "clinvar_new.vcf.gz",
                    ["100 c1 C T . . CLNSIG=Benign;CLNDN=x GT 0/1"],
                    info=("CLNSIG", "CLNDN"))  # fmt: skip
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", previous)
     with pytest.raises(WGSExtractError, match="would overwrite its input.*--outdir"):
-        run_wgsextract("vcf", "clinvar", "--input", previous, "--clinvar-file", clinvar)
+        run_wgsextract(
+            "vcf",
+            "clinvar",
+            "--input",
+            previous,
+            "--clinvar-file",
+            clinvar,
+            "--ref",
+            str(reference),
+        )
     assert Path(previous).read_bytes() == before
 
 

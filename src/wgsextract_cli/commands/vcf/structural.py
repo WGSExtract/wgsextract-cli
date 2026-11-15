@@ -192,7 +192,7 @@ def _record_calls(out_vcf: str, role: str, ref: str, region: str | None) -> None
 def run_cnv(params: VcfCnvParams) -> None:
     """``vcf cnv``: delly cnv into ``cnv.vcf.gz``."""
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params)
+    setup = setup_caller(params, allow_reference_subset=True)
     outdir, ref = setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "cnv.bcf"))
@@ -457,7 +457,7 @@ def run_sv(params: VcfSvParams) -> None:
         return
 
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params)
+    setup = setup_caller(params, allow_reference_subset=True)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "sv.bcf"))

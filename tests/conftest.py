@@ -288,6 +288,7 @@ def ram(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
         )
         monkeypatch.setattr(psutil, "virtual_memory", lambda: memory)
         monkeypatch.setattr(alignment_memory, "_cgroup_available_memory", lambda: None)
+        monkeypatch.setattr(alignment_memory, "_cgroup_limits", lambda: [])
 
     return set_ram
 

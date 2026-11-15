@@ -80,6 +80,20 @@ fmt:
 typecheck:
     pixi run typecheck
 
+# Attest the clean pushed PR head; reserve shared-host resources around this recipe
+[positional-arguments]
+[unix]
+certify *args:
+    pixi run --no-install python scripts/ci_certify.py "$@"
+
+[extension(".ps1")]
+[positional-arguments]
+[script("powershell.exe", "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File")]
+[windows]
+certify *args:
+    pixi run --no-install python scripts/ci_certify.py @args
+    exit $LASTEXITCODE
+
 # Format, lint, typecheck and test
 check: fmt lint typecheck test
 

@@ -1,16 +1,27 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 const { platformCommand } = await import("../dist/web/src/server/platform-command.js");
 const { runAction } = await import("../dist/web/src/server/action-runner.js");
 
+/** A bundle whose POSIX scripts folder holds one Python helper. */
+async function pythonHelperBundle(t) {
+  const bundleRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-python-helper-"));
+  t.after(() => rm(bundleRoot, { force: true, recursive: true }));
+  await mkdir(path.join(bundleRoot, "scripts", "posix"), { recursive: true });
+  await writeFile(path.join(bundleRoot, "scripts", "posix", "helper.py"), "#!/usr/bin/env python3\n");
+  return bundleRoot;
+}
+
 test("routes POSIX Python scripts through python3", async (t) => {
   if (process.platform === "win32") {
     t.skip("POSIX command resolution is platform-specific.");
     return;
   }
-  const script = path.resolve("..", "examples", "WGSExtract", "scripts", "posix", "test-genome-library.py");
+  const script = path.resolve("scripts", "posix", "helper.py");
   assert.deepEqual(await platformCommand(script, ["download"]), {
     executable: "python3",
     args: [script, "download"],
@@ -22,8 +33,8 @@ test("reports resolved POSIX action script paths", async (t) => {
     t.skip("POSIX command resolution is platform-specific.");
     return;
   }
-  const bundleRoot = path.resolve("..", "examples", "WGSExtract");
-  const script = path.join(bundleRoot, "scripts", "posix", "test-genome-library.py");
+  const bundleRoot = await pythonHelperBundle(t);
+  const script = path.join(bundleRoot, "scripts", "posix", "helper.py");
   const calls = [];
   const events = [];
 
@@ -31,7 +42,7 @@ test("reports resolved POSIX action script paths", async (t) => {
     {
       title: "Download Test Genome",
       command: {
-        executable: "{{bundleRoot}}/scripts/test-genome-library.py",
+        executable: "{{bundleRoot}}/scripts/helper.py",
         arguments: ["download", "{{genome_library}}"],
       },
     },
@@ -64,8 +75,8 @@ test("reports non-zero POSIX action results through complete events", async (t) 
     t.skip("POSIX command resolution is platform-specific.");
     return;
   }
-  const bundleRoot = path.resolve("..", "examples", "WGSExtract");
-  const script = path.join(bundleRoot, "scripts", "posix", "test-genome-library.py");
+  const bundleRoot = await pythonHelperBundle(t);
+  const script = path.join(bundleRoot, "scripts", "posix", "helper.py");
   const calls = [];
   const events = [];
 
@@ -73,7 +84,7 @@ test("reports non-zero POSIX action results through complete events", async (t) 
     {
       title: "Download Test Genome",
       command: {
-        executable: "{{bundleRoot}}/scripts/test-genome-library.py",
+        executable: "{{bundleRoot}}/scripts/helper.py",
         arguments: ["download", "{{genome_library}}"],
       },
     },
@@ -146,8 +157,8 @@ test("routes Windows script files through platform interpreters", async (t) => {
   assert.deepEqual(result.args.slice(0, 5), ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File"]);
   assert.equal(result.args[5], script);
   assert.deepEqual(result.args.slice(6), ["deps", "check"]);
-  assert.deepEqual(await platformCommand(path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "list_reference_genomes.py"), ["options"]), {
+  assert.deepEqual(await platformCommand(path.resolve("scripts", "helper.py"), ["options"]), {
     executable: "python",
-    args: [path.resolve("..", "examples", "WGSExtract", "scripts", "shared", "list_reference_genomes.py"), "options"],
+    args: [path.resolve("scripts", "helper.py"), "options"],
   });
 });
