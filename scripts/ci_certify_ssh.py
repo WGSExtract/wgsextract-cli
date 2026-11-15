@@ -54,6 +54,9 @@ finally:
     if child is not None:
         # Reap all descendants, even when the worker exited before its children.
         for sig in (signal.SIGTERM, signal.SIGKILL):
+            # Darwin can report EPERM for a group containing only its unreaped
+            # zombie leader. Reap it before signalling any remaining descendants.
+            child.poll()
             try:
                 os.killpg(child.pid, sig)
             except ProcessLookupError:
