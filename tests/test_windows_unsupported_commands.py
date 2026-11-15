@@ -96,6 +96,8 @@ def test_gpu_modes_fail_before_work_on_non_linux(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    if platform == "darwin":
+        monkeypatch.setattr("platform.machine", lambda: "arm64")
     with caplog.at_level(logging.ERROR):
         code = _dispatch([*command, "--genome", "joe"], platform, monkeypatch)
     assert code == 2
