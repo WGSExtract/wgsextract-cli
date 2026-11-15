@@ -1197,9 +1197,26 @@ records) took 130.5 s in another.
 
 On x86-64, `perf` puts a fifth of the CPU backend's time in mate rescue
 (`kswv`), more than a quarter in SMEM collection, a tenth in suffix-array
-lookups and an eighth in the 8-bit extension. Suffix-array lookups stay on the
-CPU: the sampled suffix array would add about 4 GiB of GPU memory to the
-occurrence table's 6 GiB.
+lookups and an eighth in the 8-bit extension.
+
+Suffix-array lookups run on the CPU by default. `--gpu-sa on` (with GPU seeding)
+also runs them on the GPU: the sampled suffix array, 3.6 GiB for hs38, is
+uploaded next to the seeder's occurrence table (in about 0.5 s, through pinned
+buffers), and `get_sa_entries_prefetch`'s rows are walked there (`cuda_seeding.cu`),
+each worker's batch on a stream of its own. If the table would leave less than
+1 GiB of GPU memory free, a log line says so and the CPU walks them. A failed or
+hung batch is walked on the CPU, as for the other stages. On the same machine
+and tier (8 threads, interleaved; two sessions, the second busier: medians of
+three pairs, then means of two):
+
+| `wgse-bwa-mem3 --cuda` | Wall | CPU time | Peak RSS | Peak GPU memory | Records |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `--gpu-sa off` (default) | 89.6 s / 107.8 s | 439 s / 516 s | 11.0 GiB | 6.4 GiB | bwa-mem3's |
+| `--gpu-sa on` | 80.6 s / 98.2 s (−10% / −9%) | 343 s / 397 s (−22% / −23%) | 11.0 GiB | 10.1 GiB | bwa-mem3's |
+
+Four of the five pairs were faster; the fifth ran while another job pushed
+the machine into swap. It stays off by default because the GPU may be shared,
+and the 3.6 GiB are held for the whole run.
 
 A denser suffix-array sample (`re-sa -u 2`, every 4th row instead of every
 8th) gave no clear gain here either. In two interleaved rounds on the full-5m
