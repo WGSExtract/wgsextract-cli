@@ -130,6 +130,7 @@ jobs:
       release: ${{ steps.resolve.outputs.release }}
       source: ${{ steps.resolve.outputs.source }}
       build: ${{ steps.resolve.outputs.build }}
+      revision: ${{ steps.resolve.outputs.revision }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -162,6 +163,11 @@ jobs:
               build=true
             fi
           fi
+          # A branch build must match the invoking workflow's immutable commit.
+          # Never execute a PR artifact in main's cache/security context.
+          revision=$(python3 scripts/installlab/app_source.py \
+            --repository "$repo" --run "$APP_RUN" --release "$release" \
+            --expected-sha "$GITHUB_SHA")
           echo "App from $repo ${release:-run $APP_RUN}" >> "$GITHUB_STEP_SUMMARY"
           if [ "$build" = true ]; then
             echo "Tree jobs: an app built from this tree (its gui/ or plan differs from $release)" >> "$GITHUB_STEP_SUMMARY"
@@ -171,6 +177,7 @@ jobs:
             echo "release=$release"
             echo "source=$source"
             echo "build=$build"
+            echo "revision=$revision"
           } >> "$GITHUB_OUTPUT"
 
   # Unsigned, as a local build: the oracle then requires the platform's
@@ -313,19 +320,20 @@ jobs:
           GUI_REPO: ${{ needs.app-source.outputs.repo }}
           APP_RELEASE: ${{ needs.app-source.outputs.release }}
           TREE_BUILD: ${{ matrix.cli == 'tree' && needs.app-source.outputs.build == 'true' }}
+          APP_REVISION: ${{ needs.app-source.outputs.revision }}
         run: |
           if [ "$TREE_BUILD" = true ]; then
-            ref=$GITHUB_SHA
+            revision=$GITHUB_SHA
             mkdir -p out/app
             find out/app-run -name '*.dmg' -exec mv {} out/app/ \;
           elif [ -n "$APP_RUN" ]; then
-            ref=$(gh run view "$APP_RUN" -R "$GUI_REPO" --json headSha -q .headSha)
+            revision=$APP_REVISION
             gh run download "$APP_RUN" -R "$GUI_REPO" -n tauri-macos-arm64 -D out/app-run
             mkdir -p out/app
             find out/app-run -name '*.dmg' -exec mv {} out/app/ \;
           else
-            ref=$APP_RELEASE
-            gh release download "$ref" -R "$GUI_REPO" -p '*.dmg' -D out/app
+            revision=$APP_REVISION
+            gh release download "$APP_RELEASE" -R "$GUI_REPO" -p '*.dmg' -D out/app
           fi
           ls -l out/app
           dmg=$(find out/app -name '*_aarch64.dmg' -print)
@@ -333,13 +341,13 @@ jobs:
           # Choose this runner's architecture, or the single legacy SwiftUI DMG.
           test -f "$dmg"
           echo "dmg=$dmg" >> "$GITHUB_OUTPUT"
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "revision=$revision" >> "$GITHUB_OUTPUT"
       # The bundle-test runner drives the app's actions; it must match the app.
       - name: Check out the app's source (for its bundle-test runner)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.app-source.outputs.repo }}
-          ref: ${{ steps.app.outputs.ref }}
+          ref: ${{ steps.app.outputs.revision }}
           path: out/app-src
           persist-credentials: false
       - name: Install, use and uninstall the app as the runner's macOS user
@@ -356,6 +364,8 @@ jobs:
       # saved here would be restored by this repository's other jobs.
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
+        with:
+          writer: "false"
       - name: Judge the evidence
         run: pixi run python scripts/installlab/lab.py judge out/installlab/ci-macos-app/results
       - name: Every corruption of the evidence must fail the oracle

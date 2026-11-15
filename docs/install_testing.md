@@ -439,9 +439,16 @@ answers, rather than apt's misleading "Unable to locate package curl". The
 container's apt then uses the same mirrors for the app's own `.deb`.
 
 To try an app fix before releasing it, run the *GUI distribution* workflow
-(`gui-distribution.yml`) on its branch, then this workflow with that run's ID:
-`gh workflow run install_lab.yml -f app_run=<run id>`. The app jobs then test
-that run's builds, and `macos-app` checks out the app source at its commit.
+(`gui-distribution.yml`) on its branch, then this workflow on the **same commit**:
+`gh workflow run install_lab.yml --ref <branch> -f app_run=<run id>`.
+Only successful first-party GUI distribution runs from push, schedule or manual
+events are accepted; PR runs and mismatched commits are rejected before any app
+job starts. To test an unmerged build, dispatch both workflows on that branch,
+not on `main`: unmerged code must never execute in main's cache context.
+The app jobs test that run's builds, and `macos-app` checks out the validated
+immutable commit. Release sources likewise resolve a published release's tag
+to its immutable commit (including annotated tags). App jobs restore Pixi
+caches only; they never publish them.
 The latest app release is this repository's latest release once it carries the
 app; until then, the latest of the former gui-for-cli repository.
 
