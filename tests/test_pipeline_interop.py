@@ -21,6 +21,7 @@ HEADER = (
     "##contig=<ID={contig},length=5000>\n"
     '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
     '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+    '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
     '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
     "##source=nf-core/sarek\n"
 )
@@ -30,12 +31,20 @@ def _vcf(
     path: Path, samples: list[str], records: list[str], contig: str = "chr1"
 ) -> str:
     columns = "\t".join(["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER"])
+    prepared = []
+    for record in records:
+        parts = record.split("\t")
+        if len(parts) != 9 + len(samples):
+            raise ValueError("VCF fixture record does not match sample columns")
+        parts[8] += ":DP"
+        parts[9:] = [sample + ":30" for sample in parts[9:]]
+        prepared.append("\t".join(parts) + "\n")
     path.write_text(
         HEADER.format(contig=contig)
         + f"{columns}\tINFO\tFORMAT\t"
         + "\t".join(samples)
         + "\n"
-        + "".join(record + "\n" for record in records)
+        + "".join(prepared)
     )
     return str(bgzip_index(path))
 

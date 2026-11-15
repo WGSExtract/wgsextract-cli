@@ -80,7 +80,7 @@ def _transcode_regions(
     return ["-M", "-L", str(bed)], merged
 
 
-def _indexed_slice_bytes(
+def indexed_slice_bytes(
     alignment: str, ref: str, intervals: dict[str, list[tuple[int, int]]]
 ) -> int | None:
     """CRAI slice sizes reflect capture depth; reference-base fractions do not."""
@@ -128,6 +128,18 @@ def _indexed_slice_bytes(
         return None
 
 
+def staging_bytes(alignment: str, ref: str, intervals: Intervals | None) -> int:
+    """The disk a staged copy of ``alignment`` (the ``intervals`` selected
+    from it, when given) is allowed: the CRAM's ~1.95x expansion and its
+    index, or twice its selected CRAI slices and at least 64 MiB."""
+    selected = indexed_slice_bytes(alignment, ref, intervals) if intervals else None
+    if selected is not None:
+        return max(64 * 1024**2, 2 * selected)
+    _, final_gb = get_free_space_needed(Path(alignment).stat().st_size, is_cram=True)
+    # Round up the CRAM expansion estimate; allow its index.
+    return (final_gb + 1) * GB
+
+
 def stage_cram30(
     alignment: str,
     ref: str,
@@ -172,19 +184,11 @@ def _stage(
     fmt: str,
 ) -> str:
     selection, intervals = _transcode_regions(region, ref, work, tool)
-    _, final_gb = get_free_space_needed(Path(alignment).stat().st_size, is_cram=True)
-    required_gb = final_gb + 1  # Round up the CRAM expansion estimate; allow its index.
-    selected_bytes = _indexed_slice_bytes(alignment, ref, intervals) if region else None
-    # Round the existing ~1.95x CRAM expansion allowance up to 2x for slices.
-    required_bytes = (
-        max(64 * 1024**2, 2 * selected_bytes)
-        if selected_bytes is not None
-        else required_gb * GB
-    )
+    required_bytes = staging_bytes(alignment, ref, intervals if region else None)
     enough_space = (
         shutil.disk_usage(work).free >= required_bytes
         if region
-        else check_free_space(work, required_gb)
+        else check_free_space(work, required_bytes // GB)
     )
     if not enough_space:
         raise WGSExtractError(

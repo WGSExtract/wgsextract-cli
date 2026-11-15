@@ -19,9 +19,11 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
@@ -41,10 +43,12 @@ from wgsextract_cli.core.variant_files import (
     chromosome_rename_mapping,
     ensure_vcf_indexed,
     ensure_vcf_prepared,
-    vcf_index_chromosomes,
+    vcf_chromosomes,
+    vcf_header_chromosomes,
 )
 
 from .basic import require_vcf_input, vcf_input_handler
+from .pharmcat_evidence import expand
 
 RELEASES_URL = "https://github.com/PharmGKB/PharmCAT/releases"
 PIPELINE_FILES = ("pharmcat_pipeline", "pharmcat.jar", "pharmcat_regions.bed")
@@ -96,14 +100,20 @@ def _ensure_reference(python: list[str], directory: str) -> str:
     return reference
 
 
-def prepare_input(input_vcf: str, directory: str, reference: str, work: str) -> str:
+def prepare_input(
+    input_vcf: str,
+    directory: str,
+    reference: str,
+    work: str,
+    params: VcfPharmcatParams | None = None,
+) -> str:
     """input_vcf cut to PharmCAT's regions, in its contig names, with gVCF
     blocks expanded to positions and only GT kept."""
     regions = str(Path(directory, "pharmcat_regions.bed"))
     with open(regions) as f:
         bed_lines = [line.split("\t") for line in f if line.strip()]
     pharmcat_chroms = sorted({fields[0] for fields in bed_lines})
-    input_chroms = vcf_index_chromosomes(input_vcf)
+    input_chroms = vcf_chromosomes(input_vcf)
 
     # The regions, in the input's names.
     to_input = dict(chromosome_rename_mapping(pharmcat_chroms, input_chroms))
@@ -118,8 +128,11 @@ def prepare_input(input_vcf: str, directory: str, reference: str, work: str) -> 
     ensure_vcf_indexed(subset)
 
     renamed = subset
+    subset_header = run_command(
+        ["bcftools", "view", "-h", subset], capture_output=True
+    ).stdout
     to_pharmcat = chromosome_rename_mapping(
-        vcf_index_chromosomes(subset), pharmcat_chroms
+        vcf_header_chromosomes(subset_header), pharmcat_chroms
     )
     if to_pharmcat:
         names = str(Path(work, "names.txt"))
@@ -131,9 +144,14 @@ def prepare_input(input_vcf: str, directory: str, reference: str, work: str) -> 
         ensure_vcf_indexed(renamed)
 
     prepared = str(Path(work, "prepared.vcf.gz"))
-    expanded = str(Path(work, "expanded.vcf.gz"))
-    run_command(["bcftools", "convert", "--gvcf2vcf", "-f", reference, "-Oz", "-o",
-                 expanded, renamed])  # fmt: skip
+    expanded = expand(
+        renamed,
+        directory,
+        reference,
+        work,
+        [(f[0], int(f[1]), int(f[2])) for f in bed_lines],
+        variant_confidence.thresholds_from(params),
+    )
     # GATK/DRAGEN gVCFs keep ##GVCFBlock lines after expansion, and PharmCAT's
     # pipeline refuses any VCF that has them as a gVCF.
     header = run_command(["bcftools", "view", "-h", expanded], capture_output=True)
@@ -166,12 +184,21 @@ def label_pgx_calls(
             if len(fields) >= 3:
                 name = fields[3].rpartition("=")[2] if len(fields) > 3 else ""
                 named.append((fields[0], int(fields[1]), int(fields[2]), name))
+    # evidence.vcf uses PharmCAT's names, rather than the source's names.
+    evidence = str(Path(work, "evidence.vcf"))
+    header = run_command(
+        ["bcftools", "view", "-h", evidence], capture_output=True
+    ).stdout
+    chroms = vcf_header_chromosomes(header)
+    mapping = dict(chromosome_rename_mapping([n[0] for n in named], chroms))
     return variant_confidence.label_vcf(
-        input_vcf,
+        evidence,
         None,
         variant_confidence.thresholds_from(params),
-        regions_file=regions,
-        region_names=named,
+        region_names=[(mapping.get(c, c), s, e, n) for c, s, e, n in named],
+        summary_columns=("PGX_STATE",),
+        include_reference=True,
+        samples=(input_vcf,),
         suppress_rare_imputed=False,
     )
 
@@ -202,21 +229,72 @@ def merge_outside_calls(paths: Sequence[str | Path], merged: str) -> str:
     return merged
 
 
-def summarize(phenotype_json: str) -> list[tuple[str, str, str]]:
-    """(gene, diplotype, phenotype) for each gene PharmCAT called."""
+@dataclass
+class GeneCall:
+    gene: str
+    status: str
+    alternatives: list[dict[str, str]]
+    phenotype_consistent: bool
+
+    @property
+    def diplotype(self) -> str:
+        values = " OR ".join(a["diplotype"] for a in self.alternatives)
+        return (
+            f"Ambiguous: {values}"
+            if self.status == "ambiguous"
+            else values or "No call"
+        )
+
+    @property
+    def phenotype(self) -> str:
+        if self.status == "no_call":
+            return "No call; no definitive guidance."
+        if self.phenotype_consistent:
+            return self.alternatives[0]["phenotype"]
+        return (
+            "Conflicting or unknown phenotypes; no definitive guidance. "
+            + "; ".join(
+                f"{a['diplotype']}: {a['phenotype']}" for a in self.alternatives
+            )
+        )
+
+
+def summarize(phenotype_json: str) -> list[GeneCall]:
+    """One gene result, preserving alternative diplotypes and explicit no-calls."""
     with open(phenotype_json) as f:
         reports = json.load(f).get("geneReports", {})
-    rows = []
+    rows: list[GeneCall] = []
     for gene, report in sorted(reports.items()):
+        alternatives: list[dict[str, str]] = []
+        unknown = False
         for diplotype in report.get("recommendationDiplotypes") or []:
-            alleles = [
-                (diplotype.get(side) or {}).get("name") or "?"
-                for side in ("allele1", "allele2")
-            ]
-            if "Unknown" in alleles:
-                continue
+            alleles = [(diplotype.get("allele1") or {}).get("name") or "?"]
+            if (second := diplotype.get("allele2")) is not None:
+                alleles.append(second.get("name") or "?")
+            unknown |= any(
+                a.lower() in {"unknown", "?", "no call", "no-call"} for a in alleles
+            )
             phenotype = ", ".join(diplotype.get("phenotypes") or []) or "-"
-            rows.append((gene, "/".join(alleles), phenotype))
+            alternative = {"diplotype": "/".join(alleles), "phenotype": phenotype}
+            if alternative not in alternatives:
+                alternatives.append(alternative)
+        status = (
+            "ambiguous"
+            if len(alternatives) > 1
+            else "no_call"
+            if unknown or not alternatives
+            else "resolved"
+        )
+        consistent = (
+            bool(alternatives)
+            and not unknown
+            and (
+                len({a["phenotype"] for a in alternatives}) == 1
+                and alternatives[0]["phenotype"].lower()
+                not in {"-", "unknown", "no call", "n/a"}
+            )
+        )
+        rows.append(GeneCall(gene, status, alternatives, consistent))
     return rows
 
 
@@ -235,7 +313,7 @@ def _vcf_build(vcf: str) -> str | None:
 
 
 def run_pharmcat(params: VcfPharmcatParams) -> None:
-    verify_dependencies(["bcftools", "tabix"])
+    verify_dependencies(["bcftools", "tabix", "samtools"])
     input_vcf = require_vcf_input(params)
     outdir = str(absolute_path(params.outdir or Path(input_vcf).parent))
     Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -253,11 +331,13 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
 
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pharmcat_") as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
-        prepared = prepare_input(input_vcf, directory, reference, work)
+        prepared = prepare_input(input_vcf, directory, reference, work, params)
         confidence = label_pgx_calls(input_vcf, work, params)
+        run_out = Path(work, "outputs")
+        run_out.mkdir()
         command = [
             *python, str(Path(directory, "pharmcat_pipeline")), prepared,
-            "-o", outdir, "-bf", stem, "-reporterHtml", "-reporterJson",
+            "-o", str(run_out), "-bf", stem, "-reporterHtml", "-reporterJson",
         ]  # fmt: skip
         if params.absent_to_ref:
             command.append("--absent-to-ref")
@@ -268,18 +348,35 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
             command += ["-cp", str(1 if cpus < 3 else min(61, max(2, cpus - 2)))]
         # The pipeline has no outside-call flag: it uses `<base name>.outside.tsv`
         # beside its preprocessed VCF, which it writes to the output directory.
-        outside = str(Path(outdir, f"{stem}.outside.tsv"))
+        outside = str(run_out / f"{stem}.outside.tsv")
         if params.outside_call:
             merge_outside_calls(params.outside_call, outside)
-        elif Path(outside).exists():
-            logging.warning(f"PharmCAT will also use the outside calls in {outside}.")
-        used_outside_calls = Path(outside).exists()
+            for path in params.outside_call:
+                current_result().add_input(path, "pharmcat_outside_call")
+        used_outside_calls = bool(params.outside_call)
         logging.info("Running PharmCAT...")
         try:
             # PharmCAT writes pharmcat.log to its working directory.
             run_command(command, cwd=outdir)
         except subprocess.CalledProcessError as e:
             raise WGSExtractError(f"PharmCAT failed (exit {e.returncode}).") from e
+        try:
+            rows = summarize(str(run_out / f"{stem}.phenotype.json"))
+        except (OSError, ValueError) as e:
+            raise WGSExtractError(
+                f"PharmCAT did not produce readable phenotypes: {e}"
+            ) from e
+        generated = {path.name for path in run_out.iterdir()}
+        for path in run_out.iterdir():
+            target = Path(outdir, path.name)
+            if path.is_dir():
+                shutil.copytree(path, target, dirs_exist_ok=True)
+            else:
+                os.replace(path, target)
+        if used_outside_calls:
+            current_result().add_output(
+                Path(outdir, f"{stem}.outside.tsv"), "pharmcat_outside_calls"
+            )
 
     report = str(Path(outdir, f"{stem}.report.html"))
     for suffix, role in (
@@ -287,20 +384,26 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         ("report.json", "pharmcat_report_json"),
         ("phenotype.json", "pharmcat_phenotypes"),
     ):
-        if Path(outdir, f"{stem}.{suffix}").is_file():
+        if f"{stem}.{suffix}" in generated:
             current_result().add_output(Path(outdir, f"{stem}.{suffix}"), role)
     table = str(Path(outdir, f"{stem}.confidence.tsv"))
     variant_confidence.write_table(
-        table, confidence, ("gene",), "Variant calls in PharmCAT gene regions"
+        table, confidence, ("gene", "PGX_STATE"), "Calls in PharmCAT gene regions"
     )
     variant_confidence.record(
         confidence, output=None, role="pgx_calls", what="calls in PharmCAT genes",
         table=table,
     )  # fmt: skip
-    for gene, diplotype, phenotype in summarize(
-        str(Path(outdir, f"{stem}.phenotype.json"))
-    ):
-        logging.info(f"  {gene:<9} {diplotype:<22} {phenotype}")
+    result = current_result()
+    result.set_details(
+        {**(result.details or {}), "pharmcat_genes": [asdict(row) for row in rows]}
+    )
+    for status in ("resolved", "ambiguous", "no_call"):
+        current_result().metrics[f"pharmcat_genes_{status}"] = sum(
+            row.status == status for row in rows
+        )
+    for row in rows:
+        logging.info(f"  {row.gene:<9} {row.diplotype:<22} {row.phenotype}")
     logging.info(f"PharmCAT report: {report}")
     if not used_outside_calls and runtime.is_windows_host():
         warn(

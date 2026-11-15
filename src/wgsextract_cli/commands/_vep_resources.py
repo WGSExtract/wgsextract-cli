@@ -22,6 +22,7 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 
+from ._vep_engines import require_assembly
 from ._vep_rs_cache import build_vep_rs_cache, verify_vep_rs_cache
 
 if TYPE_CHECKING:
@@ -144,6 +145,7 @@ def _verify_vep_tarball(base_url: str, target_path: str, filename: str) -> None:
 
 def run_vep_download(params: VepDownloadParams) -> None:
     engine = params.resolved_engine()
+    require_assembly(engine, params.assembly)
     if engine.name == "vep-rs":
         build_vep_rs_cache(params, VEP_MIRRORS[params.mirror])
         return

@@ -19,7 +19,7 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.table_writer import provenance, write_table
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
 
-from .annotation_helpers import annotation_context
+from .annotation_helpers import annotation_context, resource
 from .basic import vcf_input_handler
 
 SV_FREQ_ANNOTATED = "sv_freq_annotated.vcf.gz"
@@ -31,7 +31,10 @@ def _tables(
 ) -> list[svf.SitesTable]:
     """The catalogues to search: for gnomAD-SV and for gnomAD-LR, the table
     given (or configured), else the library's verified one for the build."""
-    given = {"sr": params.gnomad_sv_file, "lr": params.gnomad_lr_file}
+    given = {
+        "sr": resource(params, "gnomad_sv_file", None),
+        "lr": resource(params, "gnomad_lr_file", None),
+    }
     for path in filter(None, given.values()):
         if not Path(f"{path}.tbi").is_file():
             raise UsageError(
@@ -69,7 +72,7 @@ def _tables(
 def run_sv_freq(params: VcfSvFreqParams) -> None:
     verify_dependencies(["bcftools", "tabix", "bgzip"])
     log_dependency_info(["bcftools", "tabix", "bgzip"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, SV_FREQ_ANNOTATED)
     build = canonical_build(lib.build)
     tables = _tables(params, lib.root, build)
     rule = svf.MatchRule(
@@ -136,10 +139,11 @@ def run_sv_freq(params: VcfSvFreqParams) -> None:
         )
     logging.info(
         f"{summary.matched:,} of {summary.annotatable:,} SVs ({fraction:.1%}) are "
-        f"in gnomAD: {summary.classes[svf.COMMON]:,} common, "
+        f"eligible same-type matches in gnomAD: {summary.classes[svf.COMMON]:,} common, "
         f"{summary.classes[svf.LOW]:,} low-frequency, "
-        f"{summary.classes[svf.RARE]:,} rare; {summary.classes[svf.NOVEL]:,} not "
-        f"found. Output: {out_vcf}"
+        f"{summary.classes[svf.RARE]:,} rare; {summary.classes[svf.NOVEL]:,} with "
+        f"no eligible same-type match (nondirectional CNVs are unassessed, "
+        f"not evidence of absence). Output: {out_vcf}"
     )
 
 

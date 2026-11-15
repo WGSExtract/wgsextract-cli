@@ -157,6 +157,7 @@ class NativeMemoryDecision:
     budget_bytes: int
     sort_memory_requested: str
     sort_memory_actual: str
+    staged_estimate_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,7 @@ class AlignerCommand:
     options: tuple[str, ...] = ()
     dense_sa: Path | None = None
     memory_decision: NativeMemoryDecision | None = None
+    staged: bool = False
 
     @property
     def dense_sa_bytes(self) -> int:
@@ -247,6 +249,12 @@ class AlignerCommand:
                 native_aligner_sort_memory_requested=decision.sort_memory_requested,
                 native_aligner_sort_memory_actual=decision.sort_memory_actual,
             )
+            if decision.staged_estimate_bytes is not None:
+                result.add_metrics(
+                    native_aligner_staged_memory_estimate_bytes=decision.staged_estimate_bytes
+                )
+        if self.staged:
+            result.add_metrics(alignment_mode="staged_metal")
         if self.dense_sa:
             from wgsextract_cli.core.dense_suffix_array import interval_of
 

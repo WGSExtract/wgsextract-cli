@@ -1,11 +1,10 @@
 import gzip
 import json
-import subprocess
 import zipfile
 
 from smoke_utils import run_cli
 
-from tests.htslib_helpers import bgzip_index
+from tests.htslib_helpers import bgzip_index, reference_for_vcf
 from wgsextract_cli.core.pharmgkb import build_table, source_header, write_table
 
 VARIANTS = (
@@ -49,8 +48,6 @@ def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
     (library / "ref").mkdir(parents=True)
     # A library resolves annotation data only alongside a genome.
     (library / "genomes").mkdir()
-    (library / "genomes" / "hg38.fa").write_text(">chr10\nACGT\n")
-    subprocess.run(["bgzip", "-f", str(library / "genomes" / "hg38.fa")], check=True)
     write_table(
         build_table(CLINICAL, VARIANTS), str(library / "ref" / "pharmgkb_hg38.tsv.gz")
     )
@@ -69,6 +66,7 @@ def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
         "chr16\t31096368\t.\tC\tA\t50\tPASS\t.\tGT\t0/1\n"
     )
     vcf_gz = bgzip_index(vcf)
+    reference_for_vcf(library / "genomes" / "hg38.fa.gz", vcf_gz)
 
     rc, _, stderr = run_cli(
         [
@@ -85,16 +83,19 @@ def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
 
     assert rc == 0, stderr
     with gzip.open(tmp_path / "out" / "pharmgkb_annotated.vcf.gz", "rt") as out:
-        info = [line.split("\t")[7] for line in out if not line.startswith("#")]
-    assert info == [f"PHARMGKB={RS100}", "END=31096367", "."]
+        info = [
+            dict(item.partition("=")[::2] for item in line.split("\t")[7].split(";"))
+            for line in out
+            if not line.startswith("#")
+        ]
+    assert [row.get("PHARMGKB") for row in info] == [RS100, None, None]
+    assert info[1]["END"] == "31096367"
 
 
 def _hg38_library(tmp_path, header=()):
     library = tmp_path / "reflib"
     (library / "ref").mkdir(parents=True)
     (library / "genomes").mkdir()
-    (library / "genomes" / "hg38.fa").write_text(">chr10\nACGT\n")
-    subprocess.run(["bgzip", "-f", str(library / "genomes" / "hg38.fa")], check=True)
     write_table(
         build_table(CLINICAL, VARIANTS),
         str(library / "ref" / "pharmgkb_hg38.tsv.gz"),
@@ -108,7 +109,9 @@ def _hg38_library(tmp_path, header=()):
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
         "chr10\t94761900\t.\tC\tT\t50\tPASS\t.\tGT\t1/1\n"
     )
-    return library, bgzip_index(vcf)
+    vcf_gz = bgzip_index(vcf)
+    reference_for_vcf(library / "genomes" / "hg38.fa.gz", vcf_gz)
+    return library, vcf_gz
 
 
 def test_864_vcf_pharmgkb_carries_the_clinpgx_licence_into_its_outputs(tmp_path):

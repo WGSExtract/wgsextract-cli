@@ -21,6 +21,11 @@ void wgse_mem3_seed_forget(const bseq1_t *seqs);
 bool wgse_mem3_seed_release(const FMI_search *fmi);
 // The chunk has mapped: its GPU SMEMs are dropped.
 void wgse_mem3_seed_chunk_done(const bseq1_t *seqs);
+// get_sa_entries_prefetch's LF walks for rows[0, count) on the GPU (--gpu-sa on), each value
+// into coordinates[slots[i]] (coordinates[i] if slots is null), or false if the CPU must walk
+// them.
+bool wgse_mem3_sa_resolve(const FMI_search *fmi, const int64_t *rows, const int64_t *slots,
+    int64_t count, int64_t *coordinates, int drop_sentinel_offset);
 // mem_collect_smem for these reads from the GPU's SMEMs (and the CPU's for reads the GPU
 // left), or false if upstream must collect them.
 bool wgse_mem3_seed_collect(FMI_search *fmi, const mem_opt_t *opt, const bseq1_t *seq, int nseq,

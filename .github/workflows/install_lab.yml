@@ -25,6 +25,28 @@ on:
         default: ""
   push:
     branches: [ main ]
+    paths:
+      - ".github/actions/**"
+      - ".github/workflows/install_lab.yml"
+      - ".github/workflows/gui-build.yml"
+      - "packaging/**"
+      - "scripts/installlab/**"
+      - "src/wgsextract_cli/cli/**"
+      - "src/wgsextract_cli/main.py"
+      - "src/wgsextract_cli/__main__.py"
+      - "gui/app/web/packagers/**"
+      - "gui/tools/packaging/**"
+      - "gui/examples/WGSExtract/**"
+      - "gui/tools/tasks.py"
+      - "pixi.toml"
+      - "pixi.lock"
+      - "pyproject.toml"
+      - "install.sh"
+      - "install_windows.bat"
+      - "uninstall.sh"
+      - "uninstall_windows.bat"
+      - "scripts/bootstrap_windows_prereqs.ps1"
+      - "!**/*.md"
   schedule:
     - cron: "17 6 * * *"
   workflow_dispatch:
@@ -49,10 +71,11 @@ env:
   # app pins, exactly as a user's app does.
   EXTENDED_SCENARIOS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
-# Only pull requests share a group: a new push supersedes the PR's older run.
+# Coalesce main pushes and PRs independently; never cancel nightly/manual runs.
+# A literal prefix avoids sharing the reusable caller's github.workflow group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: install-lab-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
 
 jobs:
   linux:

@@ -52,8 +52,10 @@ the CHM13 intervals, not GRCh38 defaults; chrM is haploid.
   The alignment route reuses the existing SNP-only caller (`mpileup -I`,
   `call -V indels`); it cannot discover every indel allele. Observed indel
   masking applies to supplied VCF records, not an indel-probe certification.
-* Variant-only VCF reference filling still honors `--assume-hom-ref`; depth/GQ
-  gates do not manufacture evidence at absent sites.
+* Absent variant-only VCF sites are no-calls by default, with the same DP ≥10,
+  GQ ≥20 and FILTER gates as GRCh37/38. Unsafe reference filling requires
+  `--assume-hom-ref --min-dp 0 --min-gq 0`; depth/GQ gates never manufacture
+  evidence at absent sites.
 
 Each invocation retains its native VCF, target and canonical CombinedKit in a
 private `CHM13_*` output subdirectory. `<sample>_CHM13_report.json` records reason
@@ -131,6 +133,21 @@ and never provides a called mapping. The manifest pins the rotation, scoring,
 sequence checksums and alignment artifact.
 
 The legacy GRCh38 mitochondrial target/export behavior is deliberately unchanged.
+
+`lineage mt-haplogroup` reads the same alignment to classify chrM called on
+CHM13 (#832): it calls every chrM site, rebuilds the sample's sequence along
+the alignment, and hands Haplogrep its rCRS variants, indels left-aligned
+against the rCRS. Only the sample's bases count where the two differ (the C
+after rCRS 310, 10208, 3107N), which is why a variants-only VCF on CHM13 is
+refused. On HG00096's chrM it gives H16a1, as the GRCh38 alignment does.
+
+A CHM13 VCF must have one sample and reference-only records (ALT `.`,
+`<*>` or `<NON_REF>`); a 0/0 on a real ALT, such as a DeepVariant RefCall,
+doesn't prove the other sites were called. A mixed call at 10208 is refused
+unless its level (FORMAT/AF, as Mutect2 writes) puts one allele above
+Haplogrep's 0.9 heteroplasmy level, and `--contamination` refuses a mixture
+there of CHM13's C and a third base. An alignment whose header and `--ref`
+disagree on which chrM it is (rCRS or CHM13) is refused before calling.
 
 ## Regeneration
 

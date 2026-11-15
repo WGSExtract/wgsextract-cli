@@ -9,6 +9,7 @@ from wgsextract_cli.commands.align import alt_contigs, ensure_bwa_alt_file
 from wgsextract_cli.core.alt_mapping import (
     PROBE_ALT_CONTIG,
     alt_unaware,
+    alt_unaware_message,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 
@@ -104,3 +105,13 @@ def test_alt_unaware_alignments_are_recognised(tmp_path):
     assert alt_unaware(_probe_bam(tmp_path, mapq=60)) is False
     # No ALT contigs (an analysis set, or GRCh37): nothing to tell.
     assert alt_unaware(_probe_bam(tmp_path, mapq=0, with_alt=False)) is None
+
+
+@needs_samtools
+def test_alt_guidance_851_does_not_promise_minimap2_alt_awareness(tmp_path):
+    bam = _probe_bam(tmp_path, mapq=0)
+    assert alt_unaware(bam) is True
+    message = alt_unaware_message(bam)
+    assert "--aligner bwa-mem2" in message
+    assert ".alt" in message
+    assert "minimap2 path does not configure ALT" in message

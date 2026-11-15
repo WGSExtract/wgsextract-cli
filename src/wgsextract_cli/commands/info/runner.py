@@ -32,6 +32,7 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import is_fasta_path
 from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.sequencing import (
     mixed_platforms_message,
@@ -61,6 +62,7 @@ from .metrics import (
     MIN_LONG_READ_MAPPED_PCT,
     MIN_LONG_READ_N50,
     SEX_INFERENCE_VERSION,
+    SEX_MEASUREMENT_UNAVAILABLE,
     IdxStat,
     SexCall,
     contig_key,
@@ -80,6 +82,7 @@ from .metrics import (
 from .render import (
     MAPPING_UNAVAILABLE,
     exact_mapped_read_pct,
+    is_fresh_output,
     region_file_tag,
     render_info,
     run_full_coverage,
@@ -113,6 +116,11 @@ def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
     if not isinstance(data, dict) or data.get("input_signature") != signature:
         logging.debug(f"Ignoring stale cache {path} (input changed or old format)")
         return {}
+    if (
+        data.get("gender")
+        and data.get("sex_inference_version") != SEX_INFERENCE_VERSION
+    ):
+        return {}
     logging.debug(f"Cache file found: {path}")
     return data
 
@@ -132,7 +140,7 @@ def _print_detailed(
     data: dict[str, Any], as_csv: bool, sample: tuple[str, str]
 ) -> None:
     _note_mixed_platforms(data, *sample)
-    _record_info(data)
+    _record_info(data, sample[0])
     _record_facts(data, *sample)
     if as_csv:
         human_output(data["chrom_table_csv"], end="")
@@ -274,7 +282,7 @@ def _export_chromosomes(
 
 def _print_fast(data: dict[str, Any], sample: tuple[str, str]) -> None:
     _note_mixed_platforms(data, *sample)
-    _record_info(data)
+    _record_info(data, sample[0])
     _record_facts(data, *sample)
     human_output(render_info(data, detailed=False))
 
@@ -286,7 +294,6 @@ _PRIVATE_KEYS = {
     "depth_needs_index",
     "input_signature",
     "first_qname",
-    "sex_call",
     # samtools' raw error names local paths; the warning explains it instead.
     "read_sample_error",
 }
@@ -319,7 +326,7 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
             confidence="high",
         )
     platform = platform_from_metadata(header, data.get("first_qname"))
-    if platform:
+    if is_platform(platform):
         has_pl = any(group.get("PL") for group in read_groups(header))
         sample_workspace.record(
             "platform",
@@ -341,9 +348,9 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
         and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
     ):
         call = data.get("sex_call") or (
-            data["gender"],
-            "cached `info --detailed` call",
-            "high",
+            "Unknown",
+            "cache lacks observed confidence",
+            "low",
         )
         record_sex(input_file, SexCall(*call))
     ard = (data.get("metrics") or {}).get("ard_mapped")
@@ -359,7 +366,7 @@ def _record_facts(data: dict[str, Any], input_file: str, header: str) -> None:
         )
 
 
-def _record_info(data: dict[str, Any]) -> None:
+def _record_info(data: dict[str, Any], input_file: str) -> None:
     """Put the metrics `info` reports on the result manifest."""
     result = current_result()
     details = {k: v for k, v in data.items() if k not in _PRIVATE_KEYS}
@@ -392,6 +399,12 @@ def _record_info(data: dict[str, Any]) -> None:
     _record_unread_reads(data)
     if "gender" in data:
         result.add_metrics(sex=data["gender"], **data.get("metrics", {}))
+        call = data.get("sex_call")
+        if call:
+            result.add_metrics(sex_method=call[1], sex_confidence=call[2])
+        workspace = sample_workspace.workspace_for(input_file)
+        if workspace:
+            result.add_metrics(declared_sex=workspace.overrides(input_file).get("sex"))
         if data["gender"] == "Unknown":
             result.warn(
                 "sex_unknown",
@@ -614,6 +627,8 @@ def _detailed_metrics(
     coverage_map: dict[str, str],
     n_counts: dict[str, int],
     mapped_bases: dict[str, float] | None = None,
+    input_file: str | None = None,
+    reference: str | None = None,
 ) -> dict[str, Any]:
     total_reads = sum(s["mapped"] + s["unmapped"] for s in idx_stats)
     avg_len = data["avg_read_len"]
@@ -625,7 +640,7 @@ def _detailed_metrics(
         if s["name"] != "*":
             key = contig_key(s["name"])
             mapped_by_key[key] = mapped_by_key.get(key, 0) + s["mapped"]
-    call = infer_sex_call(idx_stats)
+    call = infer_sex_call(idx_stats, alignment=input_file, reference=reference)
     gender = call.sex
 
     chrom_table = generate_chrom_table(
@@ -751,12 +766,42 @@ def _mapped_reads(
     }
 
 
+def _coverage_status(params: CalculateCoverageParams) -> None:
+    """Whether the whole-file reports ``--with-bins`` writes exist and are newer
+    than the input, so a run would show them again instead of rescanning."""
+    reports: dict[str, Path] = {}
+    if params.input:
+        source = Path(params.input).expanduser()
+        folder = Path(params.outdir).expanduser() if params.outdir else source.parent
+        reports = {
+            role: folder / f"{source.name}{suffix}"
+            for role, suffix in (
+                ("coverage", "_coverage.tsv"),
+                ("coverage_bins", "_coverage_bins.tsv"),
+            )
+        }
+    current = bool(reports) and all(
+        is_fresh_output(str(path), str(source)) for path in reports.values()
+    )
+    current_result().set_details(
+        {"current": current, **{role: str(path) for role, path in reports.items()}}
+    )
+    human_output(
+        "Coverage reports: "
+        + ("current" if current else "not current")
+        + "".join(f"\n  {path}" for path in reports.values())
+    )
+
+
 def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     """``info`` and its coverage subcommands; ``as_csv`` prints the detailed
     table as CSV (CLI only)."""
     from wgsextract_cli.core.variant_files import resolve_reference
     from wgsextract_cli.core.warnings import print_warning
 
+    if isinstance(params, CalculateCoverageParams) and params.status:
+        _coverage_status(params)
+        return
     start_time = time.time()
     verify_dependencies(["samtools"])
     log_dependency_info(["samtools"])
@@ -855,6 +900,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             params.min_depth,
             table_format or "tsv",
             metadata,
+            region=region,
         )
         return
 
@@ -866,6 +912,67 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
         Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
 
+    if region:
+        # Header lengths are enough to choose sampled windows. Regional work
+        # must not gather global read counts, sex, or first-record QC.
+        stats = [
+            IdxStat(name=name, length=length, mapped=0, unmapped=0)
+            for name, length in sequence_lengths(header).items()
+        ]
+        coverage = _coverage_map(
+            info_cmd, input_file, resolved_ref, stats, outdir, region
+        )
+        current_result().set_details({"region": region, "breadth": coverage})
+        if as_csv:
+            stream = io.StringIO(newline="")
+            writer = csv.writer(stream, lineterminator="\n")
+            writer.writerow(["Seq Name", "Breadth Coverage"])
+            writer.writerows(coverage.items())
+            human_output(stream.getvalue(), end="")
+        else:
+            human_output(
+                f"Region: {region}\nSeq Name\tBreadth Coverage\n"
+                + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
+            )
+        if table_format:
+            path = table_path(
+                Path(
+                    outdir, Path(input_file).name + region_file_tag(region) + "_breadth"
+                ),
+                table_format,
+            )
+            write_table(
+                path,
+                [CHROMOSOME_TABLE[0], CHROMOSOME_TABLE[-1]],
+                [
+                    (name, float(value.lstrip("~").rstrip("% ").strip()))
+                    for name, value in coverage.items()
+                ],
+                table_format,
+                metadata={
+                    **metadata,
+                    "breadth": "sampled estimate (coverage-sample)"
+                    if info_cmd == "coverage-sample"
+                    else "exact (calculate-coverage)",
+                },
+            )
+            current_result().add_output(path, "coverage_table")
+        if isinstance(params, CalculateCoverageParams) and params.with_bins:
+            from .bins import run_depth_bins
+
+            bins_path = run_depth_bins(
+                input_file,
+                resolved_ref,
+                sequence_lengths(header),
+                outdir,
+                region,
+                "tsv",
+                metadata,
+                reuse=True,
+            )
+            current_result().add_output(bins_path, "coverage_bins")
+        return
+
     user_fasta = ref if ref and is_fasta_path(ref) else None
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)
 
@@ -873,6 +980,12 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
     signature = _input_signature(input_file)
     data = _load_cache(json_cache, signature)
+    call = data.get("sex_call")
+    sex_unavailable = (
+        isinstance(call, list)
+        and len(call) == 3
+        and call[1] == SEX_MEASUREMENT_UNAVAILABLE
+    )
     # Classifying the header is cheap, so it is redone every run. A cache made
     # when it said otherwise (older detection, or a different --ref) is stale,
     # including its chromosome table, which depends on the build.
@@ -927,6 +1040,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             )
             and not data.get("mapping_failed")
             and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
+            and (not sex_unavailable or alignment_index(input_file) is None)
         ):
             logging.debug("Cache hit for detailed metrics.")
             if data.get("depth_needs_index"):
@@ -997,6 +1111,8 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             coverage_map,
             load_n_counts(resolved_ref),
             mapped_bases,
+            input_file,
+            resolved_ref,
         )
     )
 

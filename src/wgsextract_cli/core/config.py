@@ -105,6 +105,11 @@ KNOWN_SETTINGS = {
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
         "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
     ),
+    "output_profile": (
+        "default",
+        "`align`/`realign`: default keeps --format; archive selects lossless "
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
+    ),
     "prefer_native_gpu": (
         False,
         "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
@@ -211,14 +216,14 @@ KNOWN_SETTINGS = {
         "`methylation pileup`: sum both strands of each CpG into one row",
     ),
     "default_input_vcf": (None, "Default input VCF file"),
-    "microarray_min_gq": (0, "Microarray minimum sample GQ (0 disables filtering)"),
-    "microarray_min_dp": (0, "Microarray minimum sample DP (0 disables filtering)"),
+    "microarray_min_gq": (20, "Microarray minimum sample GQ (0 disables filtering)"),
+    "microarray_min_dp": (10, "Microarray minimum sample DP (0 disables filtering)"),
     "microarray_assume_hom_ref": (
-        True,
+        False,
         "Treat absent VCF markers on represented contigs as homozygous reference",
     ),
     "microarray_exclude_filtered": (
-        False,
+        True,
         "Write microarray no-calls for VCF FILTER values other than PASS or .",
     ),
     "microarray_call_reasons": (

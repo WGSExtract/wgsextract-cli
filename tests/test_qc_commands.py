@@ -171,6 +171,37 @@ def test_multiqc_combines_mates_without_changing_fastqc_reports(tmp_path, monkey
     assert "sample_R1" in single and "sample_R2" not in single
 
 
+@needs_tools("fastqc", "multiqc")
+def test_fastqc_reports_both_mates_and_merges_them_when_asked(tmp_path, capsys):
+    """#825: the app's FastQC button ran a wrapper for R2 and MultiQC."""
+    r1 = _fastq(tmp_path / "sample_R1.fastq", NAMES, 1)
+    r2 = _fastq(tmp_path / "sample_R2.fastq", NAMES, 2)
+    outdir = tmp_path / "out"
+    argv = [
+        "--json",
+        "qc",
+        "fastqc",
+        "--input",
+        r1,
+        "--r2",
+        r2,
+        "--outdir",
+        str(outdir),
+    ]
+    main([*argv, "--threads", "1"])
+    result = json.loads(capsys.readouterr().out)
+    assert result["metrics"]["total_sequences"] == 10
+    assert result["metrics"]["r2_total_sequences"] == 10
+    assert not (outdir / "multiqc_report.html").exists()  # only when asked
+
+    (outdir / "multiqc_report.html").write_text("an earlier report")
+    main([*argv, "--threads", "1", "--multiqc"])
+    result = json.loads(capsys.readouterr().out)
+    assert sorted(o["role"] for o in result["outputs"]).count("fastqc_report_zip") == 2
+    html = (outdir / "multiqc_report.html").read_text()
+    assert "sample_R1" in html and "sample_R2" in html
+
+
 @needs_tools("multiqc")
 def test_multiqc_rejects_missing_fastqc_reports_and_cleans_staging(tmp_path):
     source = tmp_path / "empty"

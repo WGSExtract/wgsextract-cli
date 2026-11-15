@@ -41,10 +41,13 @@ class MtHaplogroupParams(Params):
     ``haplogrep_results.txt``; the tree is downloaded once into the reference
     library. With ``contamination``, haplocheck also looks for a mixture of
     two haplogroups (``haplocheck_contamination.txt``). Haplogrep reads
-    rCRS positions, so a chrM that isn't the rCRS is refused: hg19's Yoruba
-    sequence, or CHM13v2.0's original chrM, which is as long but rotated. One
-    the header MD5, the reference or a VCF's REF alleles can't confirm as the
-    rCRS is warned of (``mt_reference_unconfirmed``)."""
+    rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
+    three more differences) is called at every site and mapped onto the rCRS
+    through the bundled alignment (``details.mt_reference``); a VCF on it needs
+    reference calls at all sites, and ``contamination`` its BAM/CRAM. Another
+    chrM that isn't the rCRS is refused: hg19's Yoruba sequence or another
+    rotation. One the header MD5, the reference or a VCF's REF alleles can't
+    confirm as the rCRS is warned of (``mt_reference_unconfirmed``)."""
 
     COMMAND = "lineage mt-haplogroup"
 
@@ -111,10 +114,11 @@ class YHaplogroupParams(Params):
         exclusive="tree",
     )
     min_reads: int = param(
-        10, doc="Reads needed at a marker position for it to be used."
+        10,
+        doc="Reads needed at a marker; VCF requires AD, DP or callable-block MIN_DP.",
     )
     base_quality: int = param(
-        20, doc="Minimum base quality of a read at a marker position."
+        20, doc="Minimum read base quality; VCF also checks GQ when present."
     )
     base_majority: int = param(
         90, doc="Percentage of reads at a marker that must agree on the base."
@@ -127,8 +131,8 @@ class YHaplogroupParams(Params):
     )
     no_ref_inference: bool = param(
         False,
-        help="VCF: use genotyped positions only (targeted panels); otherwise --ref "
-        "is required.",
+        help="VCF: use explicit genotypes only; otherwise --ref supplies bases "
+        "inside callable reference blocks, never at unassessed sites.",
         action="store_true",
     )
     qc_min_depth: float | None = depth_param()
@@ -173,7 +177,8 @@ def mt_haplogroup(
     ``haplogroup_quality`` (plus ``mt_contamination`` and
     ``mt_contamination_level`` with ``contamination``). ``details`` holds the
     full Haplogrep row (``haplogrep``), ``haplogrep_version``, the ``tree``
-    (id, version, name) and the haplocheck row (``haplocheck``)."""
+    (id, version, name), the haplocheck row (``haplocheck``) and, when
+    CHM13v2.0's chrM was mapped onto the rCRS, ``mt_reference``."""
     from wgsextract_cli.commands.lineage import run_mt_haplogroup
 
     return execute(

@@ -48,6 +48,9 @@ failures and are not automatically retried.
   cannot accidentally supersede another repository's run.
   Same-head label-only router runs are separate validation scopes and do not
   supersede the full validation run.
+  Associated PRs must still be open, non-draft and on the observed head before
+  auditing and immediately before dispatch. A runner-free redraft cancellation
+  cannot retry an old ready payload, even when its queued jobs had zero steps.
 
 Successful first-attempt PR runs are skipped by the workflow's job condition.
 Supersession and zero-step cancellation cannot be determined from Actions'
@@ -145,7 +148,7 @@ landing callers as well.
 For the PR-only **PR area checks** router, job prefixes (`ubuntu /`, `macos /`,
 `windows /`, `arm64 /`, `install /`) select the corresponding reusable workflow's
 main push run, rather than looking for a nonexistent main run of the router.
-The label and issue notify agents through the normal bug-first queue; no host
+The label and issue notify agents through the normal issue queue; no host
 credentials or external notification service is needed.
 
 Run an audited retry from the repository root:

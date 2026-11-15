@@ -1,13 +1,20 @@
 name: CI Windows
 
-# Native Windows, as users run it: every tool comes from the Pixi environment
-# (WGS Extract's own Windows builds of the bioinformatics tools). Lint and type
-# checks run on Ubuntu.
+# Native Windows uses the same published Pixi tools as users.
 # pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - "**/*.md"
   workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+      smoke-only:
+        type: boolean
+        default: false
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
@@ -21,77 +28,12 @@ concurrency:
 
 jobs:
   test-windows:
-    name: test-windows (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {tier: core, shard: "0/2", label: core-1}
-          - {tier: core, shard: "1/2", label: core-2}
-          - {tier: integration, shard: all, label: integration}
-    runs-on: windows-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Pixi
-        uses: ./.github/actions/setup-pixi
-        with:
-          environments: >-
-            default
-            dev
-            gatk
-            vep-rs
-          writer: ${{ matrix.label == 'core-1' }}
-      - name: Validate installer arguments
-        if: matrix.label == 'core-1'
-        shell: cmd
-        run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
-      # This environment is deliberately not restored by setup-pixi above:
-      # prove that a fresh install uses the published, SHA-256-pinned package.
-      - name: Install pinned imputation tools from scratch
-        if: matrix.tier == 'integration'
-        run: |
-          if (Test-Path .pixi/envs/imputation) {
-            Remove-Item -Recurse -Force .pixi/envs/imputation
-          }
-          pixi install --locked -e imputation
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: matrix.tier == 'integration'
-        run: |
-          New-Item -ItemType Directory -Force out | Out-Null
-          pixi run pytest tests/test_imputation.py -p no:randomly -rs -o addopts="" --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Check tools
-        run: pixi run wgsextract deps check
-      - name: Run Tests
-        shell: bash
-        run: |
-          coverage=()
-          if [ "${{ github.event_name }}" != pull_request ]; then
-            coverage+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
-          fi
-          pixi run test-ci --ci-tier ${{ matrix.tier }} --ci-shard ${{ matrix.shard }} --ci-skip-independent "${coverage[@]}"
-      - name: Publish test timings and non-gating coverage
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tests-windows-${{ matrix.label }}
-          path: |
-            out/coverage.xml
-            out/pytest.xml
-            out/imputation-e2e.xml
-      - name: Annotate with vep-rs end to end (no skips)
-        if: matrix.tier == 'integration'
-        run: |
-          pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          pixi run pytest tests/test_vep_rs.py -p no:randomly -rs -o addopts="" --junitxml=out/vep-rs-e2e.xml
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/vep-rs-e2e.xml').getroot().find('testsuite'); n = int(s.get('skipped')); print(s.get('tests'), 'tests,', n, 'skipped'); sys.exit(n > 0)"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Run end-to-end tests on generated data
-        if: matrix.tier == 'integration'
-        run: pixi run test-e2e-fake
+    if: inputs.tests != '[]'
+    uses: ./.github/workflows/os_tests.yml
+    with:
+      os: windows
+      runner: windows-latest
+      timeout-minutes: 45
+      environments: default dev gatk vep-rs
+      tests: ${{ inputs.tests || 'all' }}
+      smoke-only: ${{ inputs.smoke-only == true }}
