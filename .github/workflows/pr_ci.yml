@@ -3,6 +3,7 @@ run-name: PR area checks / ${{ github.event.action }} / ${{ github.event_name ==
 
 on:
   pull_request:
+    # converted_to_draft enters concurrency to cancel ready work; all jobs skip.
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
   # The merge queue retests only the required set below against the latest main.
   merge_group:
@@ -18,12 +19,14 @@ concurrency:
 jobs:
   changes:
     name: changes${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab' }}
+    if: ${{ github.event.pull_request.draft != true && (!contains(fromJSON('["labeled","unlabeled"]'), github.event.action) || github.event.label.name == 'run-install-lab') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
+      docs_tests: ${{ steps.diff.outputs.docs_tests }}
+      site_validation: ${{ steps.diff.outputs.site_validation }}
       native: ${{ steps.diff.outputs.native }}
       site: ${{ steps.diff.outputs.site }}
       install: ${{ steps.diff.outputs.install }}
@@ -55,7 +58,7 @@ jobs:
   draft-fast:
     name: Draft lint and fast tests
     needs: changes
-    if: needs.changes.outputs.fast == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.fast == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -90,7 +93,7 @@ jobs:
   docs:
     name: Documentation freshness${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -98,20 +101,29 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        if: needs.changes.outputs.docs_tests != '[]'
         with:
           python-version: "3.13"
       - name: Install only Python documentation test dependencies
+        if: needs.changes.outputs.docs_tests != '[]'
         run: python -m pip install --quiet -e . pytest jsonschema
-      - name: Check API reference, command reference, CLI snapshot and help topics
+      - name: Run input-selected documentation tests
+        if: needs.changes.outputs.docs_tests != '[]'
+        env:
+          DOCS_TESTS: ${{ needs.changes.outputs.docs_tests }}
         run: |
           mkdir -p out
-          python -c 'import subprocess, sys; from scripts.ci_test_dependencies import DOCS_TEST_TARGETS; subprocess.run([sys.executable, "-m", "pytest", "-q", *DOCS_TEST_TARGETS, "--basetemp=out/docs-tmp"], check=True)'
-          python scripts/validate_site_sources.py
+          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["DOCS_TESTS"]), "--basetemp=out/docs-tmp"], check=True)'
+      - name: Validate changed site sources without package installation
+        if: needs.changes.outputs.site_validation == 'true'
+        run: |
+          python3 scripts/validate_site_sources.py
+          python3 gui/scripts/validate_site_sources.py
 
   python-lint:
     name: Changed Python lint${{ contains(fromJSON('["labeled","unlabeled"]'), github.event.action) && ' (label event)' || '' }}
     needs: changes
-    if: needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.python_files != '' && needs.changes.outputs.python_files != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -143,38 +155,38 @@ jobs:
 
   ubuntu:
     needs: changes
-    if: needs.changes.outputs.cli == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true'
     uses: ./.github/workflows/ubuntu_ci.yml
   macos:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/macos_ci.yml
   windows:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/windows_ci.yml
   arm64:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/linux_arm64.yml
   smoke:
     needs: changes
-    if: needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/cli_smoke.yml
   install:
     needs: changes
-    if: needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/install_lab.yml
 
-  # The secret scan covers every PR and queue group, docs-only ones included.
+  # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
-    if: ${{ !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    if: ${{ github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     uses: ./.github/workflows/gitleaks.yml
 
   native-smoke:
     name: Native CLI smoke
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.native == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -193,7 +205,7 @@ jobs:
   pages:
     name: Pages source checks
     needs: changes
-    if: needs.changes.outputs.site == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -243,7 +255,8 @@ jobs:
     needs: [changes, draft-fast, docs, python-lint, ubuntu, gitleaks, native-smoke, pages]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
-    if: ${{ !cancelled() && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
+    # Draft events allocate no runner, including this summary.
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && !contains(fromJSON('["labeled","unlabeled"]'), github.event.action) }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

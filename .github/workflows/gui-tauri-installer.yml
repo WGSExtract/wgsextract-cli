@@ -5,6 +5,7 @@ name: GUI Tauri installer
 # inputs change.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
     paths:
       - ".github/workflows/gui-tauri-installer.yml"
@@ -20,6 +21,8 @@ on:
       - "!**/*.md"
   push:
     branches: [ main ]
+    paths-ignore:
+      - "**/*.md"
   schedule:
     - cron: "31 6 * * *"
   workflow_dispatch:
@@ -37,6 +40,7 @@ defaults:
 
 jobs:
   windows:
+    if: ${{ github.event.pull_request.draft != true }}
     name: Windows installer lifecycle
     runs-on: windows-latest
     timeout-minutes: 45

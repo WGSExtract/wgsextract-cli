@@ -4,29 +4,50 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
-Drafts retain the documentation route and run lint/routing-policy tests.
-When the diff selects CLI tests, they also run the lightweight product subset
-(`test_microarray_vendor_formats.py`, `test_table_writer.py`), without a
-bioinformatics environment. The OS matrix and Install Lab wait until
-`ready_for_review`; readiness recomputes the complete diff.
+Drafts run **no CI runner jobs**, including documentation and secret checks.
+Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
+relevant product tests and type checks, documentation freshness checks if docs
+changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
+draft product subset was `test_microarray_vendor_formats.py` and
+`test_table_writer.py`; use relevant tests rather than relying on remote draft
+validation. `ready_for_review` recomputes the complete diff and runs the same
+area-selected checks as a ready PR push.
+
+GitHub Actions has no workflow-level `if`. Job-level draft conditions are
+evaluated before runner allocation (and before expanding a matrix); reusable
+workflow callers have the same gate. Skipped workflow records may appear, but
+use no runner. Every PR workflow includes `ready_for_review`.
+The shared `os_tests.yml` suite also gates its matrix job on the inherited
+draft payload, in addition to the PR area's gates on its OS callers.
+Workflows with cancelling concurrency retain a runner-free `converted_to_draft`
+event in the same concurrency group to cancel in-flight ready runs. Pushes, schedules,
+manual dispatches, workflow calls and merge groups retain their existing gates.
+The runner-free `pr_draft_cancel.yml` workflow also cancels the separate
+Install Lab label group on redrafting/readiness, without letting ordinary
+label events cancel code validation.
 
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
 globs without executing tests. Inputs read only by the lightweight docs modules
 select that pytest job; other referenced inputs select the full CLI matrix.
 The map is deliberately conservative, including some fixture-data literals.
-Every Python change, including native and GUI/site Python, selects CLI pytest
-and explicit changed-file lint. CLI Python retains root Ruff/format rules and
+Product Python changes, including native and GUI/site Python, select CLI pytest
+and explicit changed-file lint. Known docs/CI generator scripts and lightweight
+test modules select their own checks instead of the full CLI matrix.
+CLI Python retains root Ruff/format rules and
 the existing strict CLI mypy gate; GUI Python retains its own compile gate and
 adds fatal-error Ruff checks without imposing unrelated root formatting.
 
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
-| Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Documentation freshness | 1–3 (previously ~125) |
-| CLI source/tests | Four-OS CLI matrix, docs, CodeQL | ~90–100 (previously ~125) |
+| Any draft PR | None; validate locally before readiness | 0 |
+| Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
+| Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
+| CLI source/tests | Four-OS CLI matrix (including freshness), CodeQL | ~90–100 (previously ~125) |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
 | Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
-| Site sources or `gui/mockups/` only | Pages checks plus pytest for referenced inputs | Usually 1–3; Python/other CLI test inputs select the matrix |
+| Site Markdown only | Site-source validation, plus command freshness for generated CLI cards | <1–3 |
+| Site code/assets or `gui/mockups/` | Pages checks plus pytest for referenced inputs | Usually 1–3; non-light test inputs select the matrix |
 | App source | Existing GUI checks; app packaging also selects Install Lab | Depends on the app area |
 
 These are estimates from the pre-routing workflow medians, not billing claims.
@@ -37,8 +58,10 @@ after deployment.
 
 ## Coverage
 
-The lightweight documentation job installs Python dependencies, not bioinformatics
-tools. It runs:
+The lightweight documentation job installs the package, pytest and jsonschema
+**only when its selected Python tests are nonempty**, never for prose alone.
+`DOCS_TARGET_INPUTS` in `scripts/ci_test_dependencies.py`, complemented by exact
+test-input reads, selects each target independently:
 
 - `tests/test_api.py::test_api_docs_are_up_to_date` (`docs/api.md`);
 - `tests/test_api_cli_parity.py` (the CLI structure/help snapshot);
@@ -48,32 +71,103 @@ tools. It runs:
 - `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
   without bioinformatics tools);
 - `tests/test_build_mockup_previews.py` (static branch preview publishing);
-- routing/action-policy tests, including a meta-gate that every test-referenced
-  input selects pytest and every light-only input's readers run in that job;
+- routing/action-policy tests on CI scripts/workflows and test changes, not
+  arbitrary prose mentioned by routing fixtures;
 - `scripts/validate_site_sources.py` (existing source/front-matter validation).
 
-`DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the single source for
-the job's pytest selection and its coverage classification. For example,
+`DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the available target
+inventory, not an unconditional test batch. The router outputs `docs_tests`
+and `site_validation`. Prose outside `site_src/` and `gui/site_src/` selects
+neither; site prose runs both source validators with system Python and no
+package installation. This does not build Pages for a Markdown-only PR.
+Version/changelog prose does not run release-script tests.
+
+When the full CLI lane is selected, `docs_tests` is empty: its existing pytest
+suite already collects API freshness, CLI snapshot and help checks, plus the
+other light test modules. Freshness therefore runs in one lane, not both.
+The same routing/output contract applies to PR and merge-queue diffs, and
+`required` still waits for the selected docs or CLI checks. For example,
 `site_src/cli.md` cannot bypass the generated-card freshness assertion, and
 `native/bench/power.py` runs its unit tests through CLI pytest.
 
 There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
-deployment permissions. The secret scan remains on **all PRs and queue groups**,
+deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
-The OS workflows and Install Lab run unconditionally on main pushes and nightly,
-as do the GUI and native workflows covered by area routing. CodeQL retains
-unfiltered main coverage and runs nightly; PRs scan code/configuration paths
-only. Releases and manual dispatches remain available. Install Lab can be
+### Main-push prose filters
+
+The four OS trigger wrappers (CI Ubuntu, macOS, Windows and ARM64), CLI smoke, Linux aligners/DeepVariant,
+GATK/GKL on Windows, GUI Tauri installer and CodeQL use
+`paths-ignore: ["**/*.md"]` on main pushes, with no generated-reference or
+changelog exceptions. Mixed Markdown/code pushes still run normally.
+`os_tests.yml` is reusable-only; it inherits the filtered wrappers' invocation
+and cannot start independently on a push or PR.
+Generated references legitimately change with code inputs; the PR/merge-queue
+docs or CLI lane already checked freshness before `required` passed.
+The secret scan remains unfiltered on every main push; Pages retains its
+existing site-source filters.
+
+Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
+retain the area-scoped main-push filters from #904 (main-push coalescing),
+including the final `!**/*.md` exclusion. Their PR triggers use the same
+Markdown exclusion (Install Lab is invoked through PR area routing).
+A Markdown-only main push therefore starts only gitleaks, plus Pages for
+site sources; none of these six workflows or the OS suite starts.
+See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
+policy files and generated/test-checked references still require PRs.
+
+All standalone `pull_request` workflows exclude prose-only Markdown diffs
+through ordered path exclusions or exact non-Markdown includes (Developer
+setup and Linux bwa-mem3 parity). Only `pr_ci.yml` starts: its router retains input-selected documentation
+freshness, gitleaks and `required`, including generated-reference checks.
+Mixed diffs still select the union of applicable code areas. PR event types
+and job-level draft gates are managed separately by #910 (draft PR CI gating).
+
+Merge-group routing, nightly schedules, reusable calls, releases and manual
+dispatches retain their coverage. Install Lab can be
 forced on any PR with the `run-install-lab` label. Only this label is actionable:
 adding it runs Install Lab without repeating the matrix; other labels are ignored.
 Label runs cannot cancel a code-validation run. Routing, documentation, lint
-and summary label checks have distinct names. Draft-fast, native smoke and
+and summary label checks have distinct names. The now-skipped draft-fast, native smoke and
 Pages checks use static names so skipped jobs do not expose raw name expressions.
 The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative
-controls and pinned-release scenarios.
+Its nightly run includes the former weekly negative controls and pinned-release
+scenarios.
+
+### Main-push macOS capacity
+
+Main pushes supersede older main-push runs independently in Install Lab, GUI
+distribution, CI macOS, CLI package/benchmark smoke, macOS Aligners,
+macOS DeepVariant, GUI CI and GUI developer setup. Their concurrency groups
+separate push, PR, nightly and manual events. Nightly/manual runs keep unique
+run-ID groups and are not cancelled by pushes. Reusable workflows use literal
+workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
+distribution calls also keep unique, non-cancelling groups, including a release
+caller with a push event. Release publishing and `app_run` artifact selection
+are unchanged.
+Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
+rerunning an old commit cannot cancel the newest first-attempt main push.
+
+The eight workflows previously submitted **13–14 macOS jobs per main merge**:
+CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
+GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
+developer setup. A CLI-only merge outside installer/packaging paths now submits
+**5** (CI macOS plus smoke); Markdown-only submits **0** macOS jobs after the
+prose filters. Relevant app/native
+merges still run the matching workflows. Coalescing limits each workflow's
+main-push backlog to its newest run; it does not promise a fixed saving in
+runner-minutes or a measured queue-wait target.
+
+The failure observer treats a cancelled superseded main run as obsolete:
+no retry, red-main update or flake exemption from its partial passes.
+Cancelled runs do not replace the last conclusive main failure/success used
+for PR comparisons, including an earlier failed attempt of a cancelled retry.
+A relevant newer main push or nightly success still closes that workflow's
+red-main bug. Nightly results refresh the baseline after fixes outside the push
+route; unrelated path-filtered pushes do not falsely mark it green.
+Manual/nightly retries remain independent and can report confirmed recoveries
+even when another run of their event exists.
 
 ### CLI test time and tiers
 
@@ -95,7 +189,7 @@ independent, disjoint pytest tiers in parallel:
 
 Both tiers run on every CLI-routed PR, not only main: the existing conservative
 area router includes all Python, tool/configuration and test-input changes.
-Both run unconditionally on main and nightly too. ARM64 retains its complete
+Both run on non-prose main pushes and nightly too. ARM64 retains its complete
 suite in one job. No slow suite is demoted to nightly-only coverage.
 Only `test_genotyping.py` (pure genotype parsing/repeat classification) is
 Ubuntu-x64-only in CI. Real-tool genotyping commands remain cross-platform.
@@ -117,7 +211,7 @@ selected tier rather than a merged whole-suite percentage.
 
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands as independent parallel jobs on all three x64 OSes.
-It has the same CLI-PR routing and unconditional main/nightly coverage. Neither
+It has the same CLI-PR routing, non-Markdown main coverage and nightly coverage. Neither
 command precedes pytest anymore; neither has been removed. The failure observer
 watches direct smoke runs and compares routed PR smoke failures with that
 workflow's main run, as it does for the OS workflows.
@@ -153,26 +247,31 @@ These are individual baselines, not 20-run medians. The targets in
 the implementation PR reports the observed sample and any remaining gap.
 
 PR area checks also accepts non-main target branches, so its routing can be
-verified with a docs-only draft PR against the implementation branch before
+verified with a docs-only ready PR against the implementation branch before
 the routing itself lands. Other main-only workflow triggers are unchanged.
 
 ## Landing checks
 
 `main` lands through a merge queue whose only required status check is
-`required`, a dependency summary in PR area checks. It runs for every PR, docs-only
+`required`, a dependency summary in PR area checks. It runs for every ready PR, docs-only
 included, and for every merge-queue group. It passes when routing succeeded
 and every required job passed or was skipped by area routing; a failed or
-cancelled job fails it. `always()` keeps it reporting when a dependency fails,
-because GitHub counts a skipped required check as passing.
+cancelled job fails it in an otherwise active run. `!cancelled()` keeps it
+reporting after failed dependencies while allowing whole-run cancellation to
+stop the summary, compatible with #897 (cancellation-safe required gate).
+Drafts cannot enter the queue and need no `required` result.
+The landing validator rejects cancelled runs because GitHub counts a skipped
+required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Pull request | routing, draft lint/fast tests when applicable, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI Ubuntu (lint, tests, imputation, ONT), secret scan, native CLI smoke, Pages checks | macOS, Windows, ARM64, package smoke, Install Lab, CodeQL, GUI and native workflows: advisory |
 | Merge-queue group | the same set, routed by the group's diff against `main` | not run |
 
 The required set stays on fast Ubuntu jobs. The other OS jobs, which more
 often lose runners or wait for capacity, stay advisory so they can't stall the
-queue; main pushes and nightly runs still run them in full. A job-level `needs:` summary in one workflow, rather than polling the
+queue; main pushes run selected advisory workflows in full and nightly runs cover
+all paths. A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff, keeping docs-only groups to a few minutes.
@@ -269,3 +368,15 @@ the validator rejects direct `actions/setup-node` steps. `gui-build.yml` can
 build an older ref, so it replaces that ref's `.github/actions` with the run's
 own before using it. `gui-dev-setup.yml` deliberately bypasses it: it tests the
 app's own bootstrap on runners without user tools.
+
+CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
+concurrency groups and workflow names, but run the CLI suite through one
+reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
+Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
+macOS) adds the hg19ToHg38 chain and hs38 reference library. ARM64 passes one
+`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
+it collects the same tests as before. Its jobs report as `test-ubuntu / core-1`
+on main and `ubuntu / test-ubuntu / core-1` in PR area checks; ARM64's single job is
+`native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
+no concurrency group of its own, so the OS calls in one run never cancel each
+other.
