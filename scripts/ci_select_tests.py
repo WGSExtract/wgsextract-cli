@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
@@ -53,6 +54,7 @@ class ImportGraph:
                     self.files[name] = file
         self.edges: dict[str, set[str]] = {}
         self.fixture_cache: dict[Path, set[str]] = {}
+        self.reach_cache: dict[str, frozenset[str]] = {}
         self.unsafe: set[str] = set()
         for name, file in self.files.items():
             try:
@@ -223,7 +225,9 @@ class ImportGraph:
             return targets
         return None
 
-    def reaches(self, name: str) -> set[str]:
+    def reaches(self, name: str) -> frozenset[str]:
+        if name in self.reach_cache:
+            return self.reach_cache[name]
         seen: set[str] = set()
         pending = [name]
         while pending:
@@ -232,7 +236,8 @@ class ImportGraph:
                 continue
             seen.add(current)
             pending.extend(self.edges.get(current, set()) - seen)
-        return seen
+        self.reach_cache[name] = frozenset(seen)
+        return self.reach_cache[name]
 
     def fixture_dependencies(self, directory: Path) -> set[str]:
         """Tests implicitly import conftest and its shared helper dependencies."""
@@ -256,15 +261,45 @@ def import_graph(root: Path = ROOT) -> ImportGraph:
     return ImportGraph(root.resolve())
 
 
-def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | str:
-    """Return sorted existing test files, or 'all' for an uncertain dependency."""
-    root = repository.resolve()
+@dataclass(frozen=True)
+class SelectionContext:
+    tests: dict[str, str]
+    by_path: dict[str, str]
+    direct_closures: dict[str, frozenset[str]]
+    closures: dict[str, frozenset[str]]
+
+
+@cache
+def selection_context(root: Path) -> SelectionContext:
+    """Per-checkout graph views, shared by every selection query."""
     graph = import_graph(root)
     tests = {
         file.relative_to(root).as_posix(): name
         for name, file in graph.files.items()
         if name.startswith("tests.") and file.name.startswith("test_")
     }
+    direct_closures = {test: graph.reaches(name) for test, name in tests.items()}
+    return SelectionContext(
+        tests=tests,
+        by_path={
+            file.relative_to(root).as_posix(): name
+            for name, file in graph.files.items()
+        },
+        direct_closures=direct_closures,
+        closures={
+            test: direct_closures[test]
+            | graph.fixture_dependencies((root / test).parent)
+            for test in tests
+        },
+    )
+
+
+def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | str:
+    """Return sorted existing test files, or 'all' for an uncertain dependency."""
+    root = repository.resolve()
+    graph = import_graph(root)
+    context = selection_context(root)
+    tests = context.tests
     selected = {
         target.split("::")[0]
         for target in docs_test_targets(paths, repository=root)
@@ -273,14 +308,9 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
     changed_modules: set[str] = set()
     ci_modules: set[str] = set()
     inputs = test_inputs(root)
-    by_path = {
-        file.relative_to(root).as_posix(): name for name, file in graph.files.items()
-    }
-    direct_closures = {test: graph.reaches(name) for test, name in tests.items()}
-    closures = {
-        test: direct_closures[test] | graph.fixture_dependencies((root / test).parent)
-        for test, name in tests.items()
-    }
+    by_path = context.by_path
+    direct_closures = context.direct_closures
+    closures = context.closures
     for path in paths:
         if path.endswith(".md") and path not in GENERATED_DOCS:
             continue
