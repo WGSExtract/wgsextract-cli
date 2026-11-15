@@ -123,6 +123,8 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Babysitting a PR
 
+Auto-merge is now safe for area-selected checks because `required` includes the PR area gate; merge-group validation keeps its smaller matrix.
+
 "Babysit" a PR (or "babysit landing" it) means: shepherd it until it merges, using the `ci-pr-autopilot` skill (`.agents/skills/ci-pr-autopilot`).
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
@@ -132,4 +134,4 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - Before enqueueing, require the current head's latest non-draft area run after the latest ready transition, including its passing `required` check: `gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"`. Drafts have no CI result; readiness must produce fresh validation, even without a new push. Verify reviews and mergeability separately.
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
-- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check is green (the advisory macOS, Windows, ARM64, smoke and Install Lab jobs too, or their failures explained), no material threads are unresolved, and local checks pass. The queue retests the `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
+- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows, ARM64, smoke and Install Lab jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
