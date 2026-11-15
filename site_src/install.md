@@ -189,7 +189,7 @@ Use the standalone installer on macOS/Linux and `install_windows.bat` on native 
 ::: grid three
 ::: card
 ### macOS (Apple Silicon only)
-Use the standalone installer. It opens the install folder in Finder and creates the `wgsextract` CLI launcher. Intel Macs are no longer supported; [v0.8.7](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7){.inline-link} is the last supporting release. Existing Intel assets remain available, but Intel desktop apps no longer receive updates.
+Use the standalone installer. It opens the install folder in Finder and creates the `wgsextract` CLI launcher. Intel Macs are no longer supported; see the [Intel Mac guidance](https://github.com/WGSExtract/wgsextract-cli/blob/main/README.md#install){.inline-link} for the last supporting release. Existing Intel assets remain available, but Intel desktop apps no longer receive updates.
 
 {{ tag: osx-arm64 }}
 

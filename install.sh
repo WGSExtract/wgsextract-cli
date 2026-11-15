@@ -29,7 +29,12 @@ OS_NAME="$(uname -s)"
 if [ "$OS_NAME" = "Darwin" ]; then
     case "$(uname -m)" in
         arm64|aarch64) ;;
-        *) fail "Intel macOS is no longer supported. The last supporting release is v0.8.7: https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7. macOS now requires Apple Silicon." ;;
+        *)
+            if [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ]; then
+                fail "Apple Silicon is supported, but this shell is running under Rosetta. Restart Terminal without Rosetta (or run arch -arm64 /bin/zsh), then rerun the installer."
+            fi
+            fail "Intel macOS is no longer supported. The last supporting release is v0.8.7: https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.7. macOS now requires Apple Silicon."
+            ;;
     esac
 fi
 

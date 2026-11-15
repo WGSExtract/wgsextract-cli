@@ -123,7 +123,7 @@ the same pair rather than generating a new password. Do not run GUI distribution
 until the retry succeeds. Successful uploads remove the local recovery files;
 otherwise remove those specific files once recovery is complete.
 
-The macOS release builds natively on an Apple Silicon runner, producing only arm64 apps, DMGs, and updater archives. Intel macOS is unsupported; v0.8.7 is the last supporting release and its existing assets remain available. Intel apps no longer receive updates.
+The macOS release builds natively on an Apple Silicon runner, producing only arm64 apps, DMGs, and updater archives. Intel macOS is unsupported; see the [Intel Mac guidance](../README.md) for the last supporting release and its existing assets. Intel apps no longer receive updates.
 
 ### Bundling a new WGSExtract CLI release
 

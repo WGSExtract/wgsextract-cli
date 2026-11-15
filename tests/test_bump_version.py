@@ -66,6 +66,30 @@ def test_bumps_all_three(bump, tmp_path):
     assert download in (tmp_path / "gui/site/index.html").read_text()
 
 
+def test_957_version_bump_preserves_historical_intel_macos_guidance(bump, tmp_path):
+    notices = {
+        name: next(
+            line
+            for line in (tmp_path / name).read_text().splitlines()
+            if "Intel" in line
+        )
+        for name in (
+            "site_src/install.md",
+            "gui/site_src/index.md",
+            "gui/docs/distribution.md",
+        )
+    }
+
+    assert bump.main(["bump", "9.8.7"]) == 0
+
+    for name, notice in notices.items():
+        assert notice in (tmp_path / name).read_text()
+    assert (
+        "https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/README.md"
+        in (tmp_path / "gui/site/index.html").read_text()
+    )
+
+
 def test_a_failed_app_bump_changes_nothing(bump, tmp_path):
     before = {name: (tmp_path / name).read_text() for name in FILES}
     (tmp_path / "gui/docs/distribution.md").write_text("no version here\n")

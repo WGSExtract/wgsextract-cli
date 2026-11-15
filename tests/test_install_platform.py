@@ -26,6 +26,9 @@ def test_957_installer_refuses_intel_macos_before_installing(
         f'#!/bin/sh\ncase "$1" in -s) echo Darwin;; -m) echo {architecture};; esac\n'
     )
     uname.chmod(0o755)
+    sysctl = commands / "sysctl"
+    sysctl.write_text("#!/bin/sh\necho 0\n")
+    sysctl.chmod(0o755)
     installation = tmp_path / "installation"
     result = subprocess.run(
         [str(SH), str(ROOT / "install.sh")],
@@ -44,6 +47,42 @@ def test_957_installer_refuses_intel_macos_before_installing(
     assert "Intel macOS is no longer supported" in result.stderr
     assert "v0.8.7" in result.stderr
     assert "Apple Silicon" in result.stderr
+    assert not installation.exists()
+
+
+@pytest.mark.parametrize("pixi_arch", ["", "aarch64"])
+def test_957_rosetta_shell_gets_native_shell_guidance_not_intel_refusal(
+    tmp_path: Path, pixi_arch: str
+) -> None:
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    for name, body in {
+        "uname": 'case "$1" in -s) echo Darwin;; -m) echo x86_64;; esac',
+        "sysctl": "echo 1",
+    }.items():
+        command = commands / name
+        command.write_text(f"#!/bin/sh\n{body}\n")
+        command.chmod(0o755)
+    installation = tmp_path / "installation"
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env={
+            **os.environ,
+            "PATH": str(commands),
+            "HOME": str(tmp_path),
+            "PIXI_ARCH": pixi_arch,
+            "WGSEXTRACT_INSTALL_DIR": str(installation),
+        },
+        input="",
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 1
+    assert "Apple Silicon is supported" in result.stderr
+    assert "Rosetta" in result.stderr
+    assert "arch -arm64 /bin/zsh" in result.stderr
+    assert "Intel macOS" not in result.stderr
     assert not installation.exists()
 
 
