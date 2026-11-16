@@ -411,7 +411,9 @@ class ReferenceEvidence:
                 encoding="utf-8",
                 newline="\n",
             )
-            with open(Path(work, "stderr.txt"), "w+", encoding="utf-8") as errors:
+            with open(
+                Path(work, "stderr.txt"), "w+", encoding="utf-8", newline="\n"
+            ) as errors:
                 process = popen(
                     ["bcftools", "view", "-H", "-R", str(regions), self.path],
                     stdout=subprocess.PIPE,

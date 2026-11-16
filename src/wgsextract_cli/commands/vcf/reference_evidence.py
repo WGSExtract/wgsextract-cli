@@ -15,7 +15,7 @@ import logging
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
 from threading import Event
@@ -147,7 +147,7 @@ def write_gvcf(
         ) as pool:
             futures = [pool.submit(partial(call, index)) for index in order]
             try:
-                for future in futures:
+                for future in as_completed(futures):
                     future.result()
             except BaseException:
                 cancelled.set()
