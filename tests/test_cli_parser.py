@@ -14,7 +14,8 @@ import tomllib
 from wgsextract_cli.cli import parser
 from wgsextract_cli.cli.dispatch import dispatch_command
 from wgsextract_cli.core import config
-from wgsextract_cli.core.config import KNOWN_SETTINGS, settings
+from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.settings_schema import DEV_SETTINGS, SETTINGS
 from wgsextract_cli.main import main
 
 
@@ -181,8 +182,10 @@ def test_every_default_config_entry_is_a_setting_once_uncommented():
         if " = " in line or line.startswith("# [")
     ]
     uncommented = tomllib.loads("\n".join(examples))
+    for key in uncommented.pop("dev"):
+        assert key in DEV_SETTINGS, key
     for key in uncommented:
-        assert config.CONFIG_ALIASES.get(key, key) in KNOWN_SETTINGS, key
+        assert config.CONFIG_ALIASES.get(key, key) in SETTINGS, key
 
 
 # --genome replaces the inputs the user didn't give with the genome folder's.

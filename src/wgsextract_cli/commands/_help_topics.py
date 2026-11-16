@@ -7,10 +7,10 @@ parse and that no topic shares a name with a command.
 
 from dataclasses import dataclass
 
-from wgsextract_cli.core.config import KNOWN_SETTINGS
+from wgsextract_cli.core.settings_schema import Settings
 
-_DIPLOID_DEPTH = KNOWN_SETTINGS["qc_min_diploid_depth"][0]
-_HAPLOID_DEPTH = KNOWN_SETTINGS["qc_min_haploid_depth"][0]
+_DIPLOID_DEPTH = Settings().qc_min_diploid_depth
+_HAPLOID_DEPTH = Settings().qc_min_haploid_depth
 
 
 @dataclass(frozen=True)

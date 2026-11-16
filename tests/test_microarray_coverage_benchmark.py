@@ -9,7 +9,7 @@ from scripts.benchmark_microarray_coverage import (
     score,
 )
 from wgsextract_cli.commands.benchmark.chip import ChipCall
-from wgsextract_cli.core import genotype_qc
+from wgsextract_cli.core import config
 
 
 def test_score_splits_low_coverage_errors_by_truth_class() -> None:
@@ -66,11 +66,11 @@ def test_cached_warnings_follow_the_current_depth_threshold() -> None:
         "measured_depth": {"autosomes": 10.0, "chrX": 5.0, "chrY": 10.0},
         "warnings": ["high_homozygosity"],  # reported when the threshold was 8
     }
-    with patch.dict(genotype_qc.settings, {"qc_min_diploid_depth": 15.0}):
+    with patch.dict(config.settings, {"qc_min_diploid_depth": 15.0}):
         assert current_warnings(result) == [
             "high_homozygosity",
             "low_coverage:autosomes",
         ]
     result["warnings"].append("low_coverage:autosomes")
-    with patch.dict(genotype_qc.settings, {"qc_min_diploid_depth": 8.0}):
+    with patch.dict(config.settings, {"qc_min_diploid_depth": 8.0}):
         assert current_warnings(result) == ["high_homozygosity"]

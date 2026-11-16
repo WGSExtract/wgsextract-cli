@@ -15,8 +15,24 @@ import tomllib
 
 from wgsextract_cli import api
 from wgsextract_cli.cli import bootstrap, parser
-from wgsextract_cli.commands import _deps_status, examples
-from wgsextract_cli.core import config, process_registry, resource_policy
+from wgsextract_cli.commands import (
+    _deps_status,
+    _vep_engines,
+    examples,
+    methylation,
+    serve,
+)
+from wgsextract_cli.core import (
+    config,
+    microarray_quirks,
+    mimalloc,
+    native_aligners,
+    native_deepvariant,
+    output_profiles,
+    process_registry,
+    resource_policy,
+)
+from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -95,11 +111,7 @@ def test_invalid_config_threads_warns_and_allows_cli_override(
 
 @pytest.mark.parametrize(
     "key",
-    [
-        key
-        for key, (default, _) in config.KNOWN_SETTINGS.items()
-        if type(default) is bool
-    ],
+    [key for key, setting in SETTINGS.items() if setting.kind == "bool"],
 )
 @pytest.mark.parametrize("value", ['"false"', "0", "[]", "{}"])
 def test_boolean_config_settings_require_toml_booleans(temp_config, key, value):
@@ -113,7 +125,6 @@ def test_boolean_config_settings_require_toml_booleans(temp_config, key, value):
     [
         ("microarray_min_dp", '"15"', "TOML integer"),
         ("microarray_min_gq", "false", "TOML integer"),
-        ("dev_download_cache_ttl_seconds", "1.5", "TOML integer"),
         ("memory", "2", "TOML string"),
         ("ref", "false", "TOML string"),
         ("output_directory", "[]", "TOML string"),
@@ -121,6 +132,12 @@ def test_boolean_config_settings_require_toml_booleans(temp_config, key, value):
         ("qc_min_diploid_depth", '"8"', "non-negative TOML number"),
         ("qc_min_haploid_depth", "-1", "non-negative TOML number"),
         ("qc_max_no_call_rate", "1.5", "TOML number from 0 to 1"),
+        ("server_port", "70000", "TOML integer from 0 to 65535"),
+        ("server_max_jobs", "0", "TOML integer of at least 1"),
+        ("server_mcp_transport", '"tcp"', "one of stdio, http"),
+        ("microarray_quirks", '"Vendor"', "one of corrected, vendor"),
+        ("dev", "true", r"\[dev\] table"),
+        ("dev", "{ download_cache_ttl_seconds = 1.5 }", "non-negative TOML integer"),
     ],
 )
 def test_other_config_types_are_validated_at_load(temp_config, key, value, expected):
@@ -133,8 +150,9 @@ def test_valid_config_types_preserve_values_and_defaults(temp_config):
     temp_config.write_text(
         'atomic_outputs = false\nkeep_awake = true\nthreads = 4\nmemory = "512M"\n'
         'ref = "~/reference.fa"\nvcf_input_paths = ["a.vcf", "b.vcf"]\n'
-        "microarray_min_dp = 15\ndev_download_cache_ttl_seconds = 0\n"
-        "qc_min_diploid_depth = 4\nqc_max_no_call_rate = 0.25\n"
+        "microarray_min_dp = 15\nqc_min_diploid_depth = 4\n"
+        'qc_max_no_call_rate = 0.25\nnative_aligners = "OFF"\n'
+        "[dev]\ndownload_cache_ttl_seconds = 0\n"
     )
     loaded = config.load_config()
     assert loaded["atomic_outputs"] is False and loaded["keep_awake"] is True
@@ -142,12 +160,129 @@ def test_valid_config_types_preserve_values_and_defaults(temp_config):
     assert loaded["reference_fasta"] == str(Path.home() / "reference.fa")
     assert loaded["vcf_input_paths"] == ["a.vcf", "b.vcf"]
     assert loaded["microarray_min_dp"] == 15
-    assert loaded["dev_download_cache_ttl_seconds"] == 0
+    assert loaded["dev"] == {"download_cache_ttl_seconds": 0}
+    assert loaded["native_aligners"] == "OFF"
     assert loaded["qc_min_diploid_depth"] == 4
     assert loaded["qc_max_no_call_rate"] == 0.25
     assert "quiet_mode" not in loaded
     temp_config.write_text("")
     assert config.load_config() == {}
+
+
+@pytest.mark.parametrize(
+    ("key", "values"),
+    [
+        ("server_mcp_transport", serve.MCP_TRANSPORTS),
+        ("methylation_context", methylation.CONTEXTS),
+        ("vep_engine", _vep_engines.ENGINE_NAMES),
+        ("native_aligners", native_aligners.SETTINGS),
+        ("mimalloc", mimalloc.SETTINGS),
+        ("deepvariant_native", native_deepvariant.ENGINE_CHOICES),
+        ("microarray_quirks", microarray_quirks.MODES),
+        ("output_profile", output_profiles.OUTPUT_PROFILES),
+    ],
+)
+def test_config_choices_are_what_their_commands_accept(key, values):
+    # contract: loading must accept exactly the values the command runs with.
+    assert set(SETTINGS[key].info.choices) == set(values)
+
+
+def test_param_config_key_must_name_a_setting():
+    from wgsextract_cli.api._params import param
+
+    assert param(None, config_key="server_port") is not None
+    with pytest.raises(ValueError, match="server_prot"):
+        param(None, config_key="server_prot")
+
+
+def test_configuration_docs_are_up_to_date():
+    script = Path(__file__).resolve().parents[1] / "scripts" / "gen_config_docs.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--check"], capture_output=True, text=True
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("key", "moved"),
+    [
+        ("dev_download_cache", "download_cache"),
+        ("real_genome_test_path", "real_genome_test_path"),
+    ],
+)
+def test_old_top_level_dev_setting_names_its_dev_table(temp_config, caplog, key, moved):
+    # Issue #823: developer and test settings moved into a [dev] table; an old
+    # config must say where, not silently drop the setting.
+    temp_config.write_text(f"{key} = true\n")
+    with pytest.raises(WGSExtractError, match=rf"{key}.*\[dev\].*{moved} ="):
+        config.load_config()
+    assert "Unknown setting" not in caplog.text
+    with pytest.raises(WGSExtractError, match=r"\[dev\]"):
+        config.save_config({"cpu_threads": 4})
+    assert temp_config.read_text() == f"{key} = true\n"
+
+
+def test_typed_settings_read_the_loaded_config(temp_config, caplog):
+    # Issue #823: typed attribute access to checked config.toml values.
+    temp_config.write_text(
+        'threads = 6\nqc_min_diploid_depth = 8\nvcf_input_paths = ["~/a.vcf"]\n'
+        'reference_library = "~/reflib"\n'
+        '[dev]\ndownload_cache = true\npet_r1_fastq = "~/r1.fq"\nreal_genome = 1\n'
+    )
+    config.reload_settings()
+    typed = config.typed_settings()
+    assert typed.cpu_threads == 6 and typed.qc_min_diploid_depth == 8.0
+    assert typed.vcf_input_paths == (str(Path.home() / "a.vcf"),)
+    assert typed.reference_library == str(Path.home() / "reflib")
+    assert typed.dev.download_cache is True
+    assert typed.dev.pet_r1_fastq == str(Path.home() / "r1.fq")
+    assert "Unknown setting 'real_genome'" in caplog.text
+    assert "Did you mean 'real_genome_test_path'?" in caplog.text
+
+
+def test_typed_settings_reject_invalid_host_values(temp_config, monkeypatch):
+    monkeypatch.setitem(config.settings, "qc_max_no_call_rate", "high")
+    with pytest.raises(WGSExtractError, match="qc_max_no_call_rate.*0 to 1"):
+        config.typed_settings()
+
+
+@pytest.mark.parametrize("value", ['"max"', "0", '"-2"'])
+def test_typed_settings_read_invalid_config_threads_as_auto(temp_config, value):
+    # PR #934 review: typed settings returned cpu_threads = 0 or "max" as-is
+    # instead of the documented auto fallback.
+    temp_config.write_text(f"cpu_threads = {value}\n")
+    config.reload_settings()
+    assert config.typed_settings().cpu_threads == "auto"
+
+
+def test_save_config_writes_and_clears_the_dev_table(temp_config):
+    # PR #934 review: save_config silently dropped [dev] updates, which were
+    # writable as top-level dev_* settings before the move.
+    temp_config.write_text('[dev]\npet_r2_fastq = "/r2.fq"\n')
+    config.save_config({"dev": {"download_cache": True, "pet_r1_fastq": "~/r1.fq"}})
+    dev = tomllib.loads(temp_config.read_text())["dev"]
+    assert dev == {
+        "pet_r2_fastq": "/r2.fq",
+        "download_cache": True,
+        "pet_r1_fastq": str(Path.home() / "r1.fq"),
+    }
+    assert config.typed_settings().dev.download_cache is True
+
+    with pytest.raises(WGSExtractError, match=r"dev\.download_cache.*boolean"):
+        config.save_config({"dev": {"download_cache": "yes"}})
+    assert tomllib.loads(temp_config.read_text())["dev"]["download_cache"] is True
+
+    config.save_config({"dev": None})
+    assert "dev" not in tomllib.loads(temp_config.read_text())
+    assert config.typed_settings().dev.download_cache is False
+
+
+def test_save_config_names_the_dev_table_for_old_dev_keys(temp_config):
+    # PR #934 review: an old top-level dev key passed to save_config was
+    # silently discarded; it fails like the same key in config.toml.
+    with pytest.raises(WGSExtractError, match=r"\[dev\].*download_cache ="):
+        config.save_config({"dev_download_cache": True})
+    assert not temp_config.exists()
 
 
 def test_config_threads_retains_supported_numeric_string(temp_config):

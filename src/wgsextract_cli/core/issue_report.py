@@ -761,13 +761,13 @@ def _sensitive_names(manifest: Mapping[str, Any]) -> tuple[set[str], set[str]]:
     """Names that may identify a person (input and output file stems, every
     folder of a path the run used, --genome, a batch file's samples), and
     catalog reference stems that are safe to show."""
-    from wgsextract_cli.core.config import PATH_SETTINGS, settings
+    from wgsextract_cli.core.config import configured_paths
 
     sensitive: set[str] = set()
     for record in [*(manifest.get("inputs") or []), *(manifest.get("outputs") or [])]:
         if isinstance(record, Mapping) and record.get("kind") != "directory":
             sensitive |= file_stems(str(record.get("path") or ""))
-    configured = [settings.get(key) for key in sorted(PATH_SETTINGS)]
+    configured = configured_paths()
     sensitive |= path_components(_path_strings([manifest, configured]))
     provenance = manifest.get("provenance") or {}
     params = provenance.get("params") or {}
@@ -914,15 +914,17 @@ def tool_versions(extra: Iterable[str] = ()) -> dict[str, str]:
 
 def settings_lines(redactor: Redactor) -> list[str]:
     """The config.toml settings that are set, redacted; secrets never shown."""
-    from wgsextract_cli.core.config import KNOWN_SETTINGS, get_config_path, settings
+    from wgsextract_cli.core.config import get_config_path, settings
     from wgsextract_cli.core.results import _SECRET_NAME
+    from wgsextract_cli.core.settings_schema import SETTINGS
 
     lines = []
     for key in sorted(settings):
         value = settings[key]
-        if value is None or KNOWN_SETTINGS.get(key, (object(),))[0] == value:
+        known = SETTINGS.get(key)
+        if value is None or (known is not None and known.default == value):
             continue
-        if _SECRET_NAME.search(key) or key not in KNOWN_SETTINGS:
+        if _SECRET_NAME.search(key) or known is None:
             shown = "<set>"
         elif isinstance(value, str):
             shown = redactor.text(value)

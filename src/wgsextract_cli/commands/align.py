@@ -35,7 +35,7 @@ from wgsextract_cli.core.atomic_output import (
     safe_output,
 )
 from wgsextract_cli.core.chunked_alignment import Chunk, ChunkedAlignment
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import settings, typed_settings
 from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -219,9 +219,7 @@ class AlignJob:
         )
         if params.COMMAND not in ("align", "realign"):
             return job
-        job.output_profile = (
-            job.output_profile or settings.get("output_profile") or "default"
-        )
+        job.output_profile = job.output_profile or typed_settings().output_profile
         output_profile_options(job.output_profile)
         job.format = job.format or "BAM"
         if job.output_profile != "default":

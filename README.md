@@ -521,7 +521,7 @@ Parabricks has no Ultima model, and `align`/`realign --gpu` refuse Ultima reads 
 
 ## Configuration
 
-Settings live in `config.toml`. Run `wgsextract config` to see its path and every active value.
+Settings live in `config.toml`. Run `wgsextract config` to see its path and every active value. [docs/configuration.md](docs/configuration.md) lists every setting with its type, allowed values, default and meaning.
 
 - macOS: `~/.config/wgsextract/config.toml` if `~/.config/` exists, otherwise `~/Library/Application Support/wgsextract/config.toml`
 - Linux: `~/.config/wgsextract/config.toml`
@@ -540,6 +540,9 @@ previously supported numeric thread strings such as `"4"` remain accepted.
 Integer thresholds and cache TTLs require TOML integers, not quoted numbers or
 booleans. Memory limits (for example `memory = "2G"`), paths,
 and image names are strings. `vcf_input_paths` and `server_allowed_paths` also accept an array of strings.
+Ports, job counts and thresholds must be in range, and settings with fixed
+choices (such as `server_mcp_transport`, `microarray_quirks` or
+`native_aligners`) must be one of them.
 Errors name the setting and expected type; canonical keys and aliases follow
 the same rules. `--config` selects its file before validation, so an invalid
 unused default file does not block a valid alternate configuration. Valid
@@ -730,7 +733,7 @@ pixi run pytest tests/test_smoke_real_basics.py \
   --real-input /data/HG002.cram --real-ref /data/reference/hs38.fa --real-region chr20
 ```
 
-Options include `--real-input`, `--real-ref`, `--real-vcf`, `--real-region`, `--real-targets`, `--real-fastq-r1`/`--real-fastq-r2`, `--fake-data`, and `--full-data` (see `tests/conftest.py`). Alternatively, set `real_genome_test_path` and `real_genome_tests_enabled = true` in `config.toml`. Setting `dev_download_cache = true` caches downloads under `$XDG_CACHE_HOME/wgsextract/downloads` (`~/.cache/wgsextract/downloads` by default) for reuse across test runs, pruned after `dev_download_cache_ttl_seconds` (default one week).
+Options include `--real-input`, `--real-ref`, `--real-vcf`, `--real-region`, `--real-targets`, `--real-fastq-r1`/`--real-fastq-r2`, `--fake-data`, and `--full-data` (see `tests/conftest.py`). Alternatively, set `real_genome_test_path` and `real_genome_tests_enabled = true` in the `[dev]` table at the end of `config.toml`. Setting `download_cache = true` there caches downloads under `$XDG_CACHE_HOME/wgsextract/downloads` (`~/.cache/wgsextract/downloads` by default) for reuse across test runs, pruned after `download_cache_ttl_seconds` (default one week). These developer settings used to be top-level keys (`dev_download_cache` and `dev_download_cache_ttl_seconds` without the `dev_` prefix); a config.toml that still has one there fails to load and names its new place.
 
 `wgsextract qc fake-data` generates synthetic BAM/CRAM/VCF/FASTQ files for tests and bug reports; see the [workflows page](https://wgsextract.github.io/wgsextract-cli/workflows.html#testing).
 

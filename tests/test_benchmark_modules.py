@@ -224,7 +224,7 @@ def test_direct_real_dataset_downloads_into_the_shared_cache_root(
     tmp_path, served, monkeypatch
 ):
     files, _ = served
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     files["https://example.test/ref.fa"] = b">chr1\nACGT\n"
     files["https://example.test/sample.bam"] = b"bam"
     spec = BenchmarkDatasetSpec(
@@ -263,7 +263,7 @@ def test_cached_remote_file_drops_corrupt_dev_cache_copy_and_downloads(
     remote = BenchmarkRemoteFile(
         "bam", url, "sample.cram", hashlib.md5(b"good").hexdigest()
     )
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
     stale = tmp_path / "stale.cram"
     stale.write_bytes(b"stale")
@@ -287,11 +287,11 @@ def test_cached_remote_file_drops_corrupt_dev_cache_copy_and_downloads(
 
 def test_real_dataset_cache_dir_precedence(tmp_path, monkeypatch):
     out = tmp_path / "out"
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     assert datasets._real_dataset_cache_dir(BenchmarkJob(), out) == out / "datasets"
     explicit = BenchmarkJob(dataset_cache_dir=tmp_path / "x" / ".." / "cache")
     assert datasets._real_dataset_cache_dir(explicit, out) == tmp_path / "cache"
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
     assert (
         datasets._real_dataset_cache_dir(BenchmarkJob(), out)
@@ -382,7 +382,7 @@ def test_load_dataset_reports_missing_files_and_manifest(tmp_path):
 def test_md5_pinned_github_asset_does_not_require_release_sha_metadata(
     tmp_path, served, monkeypatch
 ):
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     files, fetched = served
     url = "https://github.com/example/benchmarks/releases/download/test/sample.cram"
     metadata = "https://api.github.com/repos/example/benchmarks/releases/tags/test"
@@ -401,7 +401,7 @@ def test_md5_pinned_github_asset_does_not_require_release_sha_metadata(
 def test_real_archive_downloads_once_verifies_and_extracts(
     tmp_path, served, monkeypatch
 ):
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     files, fetched = served
     asset = _dataset_zip(tmp_path / "asset.zip")
     url = "https://example.test/rel/wgsextract-benchmark-hg19-mini.zip?x=1"
@@ -458,7 +458,7 @@ def test_real_archive_without_checksum_reuses_cached_zip(tmp_path, served):
 def test_empty_archive_checksum_skips_missing_github_release_digest(
     tmp_path, served, monkeypatch, checksum
 ):
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     files, fetched = served
     url = "https://github.com/example/benchmarks/releases/download/test/fixture.zip"
     metadata = "https://api.github.com/repos/example/benchmarks/releases/tags/test"
@@ -481,7 +481,7 @@ def test_real_archive_restores_from_dev_cache_without_downloading(
     tmp_path, served, monkeypatch
 ):
     files, fetched = served
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
     url = "https://example.test/d.zip"
     files[url] = _dataset_zip(tmp_path / "a.zip").read_bytes()

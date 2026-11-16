@@ -88,6 +88,18 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `bcftools_allocator` metric says which allocator ran. See
   [hardware.md](../hardware.md#bcftools-with-mimalloc).
 
+- config.toml is checked against one schema of every setting's type, range
+  and choices when it loads: an out-of-range port or job count, or a value
+  that isn't one of a setting's choices (such as `server_mcp_transport` or
+  `microarray_quirks`), stops the run with an error naming the setting,
+  where before the command that used it failed later or ignored it.
+  [configuration.md](../configuration.md) lists every setting and is
+  generated from that schema. Developer and test settings
+  (`real_genome_test_path`, `real_genome_tests_enabled`, `pet_*`, and
+  `dev_download_cache[_ttl_seconds]`, now `download_cache[_ttl_seconds]`)
+  moved into a `[dev]` table; a config.toml that still has one at the top
+  level fails to load and says where it goes.
+
 ## Fixes
 
 - `align` and `realign` no longer admit an over-budget `wgse-bwa` GPU plan

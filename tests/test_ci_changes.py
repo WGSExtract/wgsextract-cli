@@ -356,6 +356,17 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
             ["tests/test_cli_help.py", "tests/test_regen.py"],
         ),
         (
+            "docs/configuration.md",
+            ["tests/test_core_cli.py::test_configuration_docs_are_up_to_date"],
+        ),
+        (
+            "scripts/gen_config_docs.py",
+            [
+                "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
+                "tests/test_regen.py",
+            ],
+        ),
+        (
             "scripts/ci_changes.py",
             ["tests/test_ci_changes.py", "tests/test_github_actions_policy.py"],
         ),

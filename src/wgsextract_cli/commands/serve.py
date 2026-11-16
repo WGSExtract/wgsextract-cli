@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wgsextract_cli.cli.registration.serve import register as register
-from wgsextract_cli.core.config import dataset_library, get_config_path, settings
+from wgsextract_cli.core.config import (
+    dataset_library,
+    get_config_path,
+    settings,
+    typed_settings,
+)
 from wgsextract_cli.core.results import json_mode
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -55,13 +60,14 @@ def allowed_roots(extra: Iterable[str]) -> list[Path]:
     return roots
 
 
-def _setting_int(
-    value: int | None, flag: str, key: str, low: int, high: int | None = None
+def _option_int(
+    value: int | None, configured: int, flag: str, low: int, high: int | None = None
 ) -> int:
+    """``flag``'s value, else the setting, whose range config loading checked."""
     if value is None:
-        value = int(settings.get(key) or low)
+        return configured
     if value < low or (high is not None and value > high):
-        raise UsageError(f"{flag} (config {key}) is out of range: {value}.")
+        raise UsageError(f"{flag} is out of range: {value}.")
     return value
 
 
@@ -100,9 +106,15 @@ def _run(args: argparse.Namespace) -> None:
         from wgsextract_cli.server.mcp_http import require_sdk
 
         require_sdk()
-    port_key = "server_mcp_port" if transport == "http" else "server_port"
-    port = _setting_int(args.port, "--port", port_key, 0, 65535)
-    max_jobs = _setting_int(args.max_jobs, "--max-jobs", "server_max_jobs", 1)
+    configured = typed_settings()
+    port = _option_int(
+        args.port,
+        configured.server_mcp_port if transport == "http" else configured.server_port,
+        "--port",
+        0,
+        65535,
+    )
+    max_jobs = _option_int(args.max_jobs, configured.server_max_jobs, "--max-jobs", 1)
 
     from wgsextract_cli.server.operations import PathGuard
 
@@ -157,12 +169,7 @@ def _mcp_transport(args: argparse.Namespace) -> str | None:
     """stdio or http for MCP, or None for the HTTP/JSON API."""
     if not (args.mcp or args.mcp_transport):
         return None
-    transport = args.mcp_transport or settings.get("server_mcp_transport") or "stdio"
-    if transport not in MCP_TRANSPORTS:
-        raise UsageError(
-            f"Config server_mcp_transport must be stdio or http, not {transport!r}."
-        )
-    return str(transport)
+    return str(args.mcp_transport or typed_settings().server_mcp_transport)
 
 
 def _made(folder: Path) -> Path:

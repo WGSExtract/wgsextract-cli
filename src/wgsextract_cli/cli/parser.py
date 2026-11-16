@@ -14,7 +14,7 @@ from wgsextract_cli.commands.registry import (
     COMMAND_TIERS,
     CommandRegistration,
 )
-from wgsextract_cli.core.config import KNOWN_SETTINGS, get_config_path, settings
+from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
 
@@ -104,13 +104,14 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # pgs_keep_ambiguous = false  # only enable after verifying scoring-allele strands
 # pgs_scoring_file = "/path/to/my_score.txt.gz"  # overrides Catalog selection
 
-# --- Local Developer Test Data ---
-# Path to a local real genome dataset used by real smoke tests.
-# real_genome_test_path = "~/genomes/sample"
-# real_genome_tests_enabled = false
-
 # --- Persistent Run Logs (off by default; a log_dir keeps the newest 100 runs) ---
 # log_dir = "~/wgse_logs"
+
+# --- Developer and test settings (a table: keep tables last in this file) ---
+# [dev]
+# real_genome_test_path = "~/genomes/sample"  # a real genome for smoke tests
+# real_genome_tests_enabled = false
+# download_cache = false  # reuse downloads across test runs
 
 # --- Your own Y haplogroup trees (keep tables last in this file) ---
 # A Yleaf-format tree JSON and a marker table per build. A path is local
@@ -690,8 +691,16 @@ def run_config(args: argparse.Namespace) -> None:
     print(f"{'Variable':<20} {'Value':<30} {'Status'}")
     print("-" * 65)
 
-    for key, (default, _desc) in KNOWN_SETTINGS.items():
-        current_val = settings.get(key)
+    from wgsextract_cli.core.settings_schema import DEV_SETTINGS, DEV_TABLE, SETTINGS
+
+    dev = settings.get(DEV_TABLE)
+    dev_values = dev if isinstance(dev, dict) else {}
+    rows = [(key, item.default, settings.get(key)) for key, item in SETTINGS.items()]
+    rows += [
+        (f"{DEV_TABLE}.{key}", item.default, dev_values.get(key))
+        for key, item in DEV_SETTINGS.items()
+    ]
+    for key, default, current_val in rows:
         if current_val is not None:
             status = "[SET]"
             val_str = _display_config_value(key, current_val)

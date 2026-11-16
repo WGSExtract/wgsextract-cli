@@ -21,7 +21,7 @@ from tests.smoke_utils import (
 )
 from wgsextract_cli.core.alignment_metadata import get_vcf_build
 from wgsextract_cli.core.builds import canonical_build
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import settings, typed_settings
 from wgsextract_cli.core.microarray_utils import _resolve_templates_roots
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.variant_files import calculate_bam_md5, vcf_index_chromosomes
@@ -94,12 +94,11 @@ def _dataset_from_options(config: pytest.Config) -> RealDataset | None:
 
 
 def _dataset_from_config() -> RealDataset | None:
-    if settings.get("real_genome_tests_enabled") is not True:
+    dev = typed_settings().dev
+    if not dev.real_genome_tests_enabled or dev.real_genome_test_path is None:
         return None
 
-    root_value = settings.get("real_genome_test_path")
-    if not isinstance(root_value, str):
-        return None
+    root_value = dev.real_genome_test_path
 
     root = _existing_path(root_value)
     if not root or not root.is_dir():
@@ -170,8 +169,8 @@ def real_dataset(pytestconfig: pytest.Config) -> RealDataset:
     if dataset is None:
         message = (
             "real smoke data not configured; pass --real-input/--real-vcf/--real-ref, "
-            "enable real_genome_tests_enabled with real_genome_test_path in the CLI "
-            "config.toml, or run the real benchmark smoke first"
+            "enable real_genome_tests_enabled with real_genome_test_path in the [dev] "
+            "table of the CLI config.toml, or run the real benchmark smoke first"
         )
         if pytestconfig.getoption("--ci-require-real-data"):
             pytest.fail(message)

@@ -19,7 +19,7 @@ URL = "https://example.test/genomes/hs38.fa.gz"
 
 @pytest.fixture
 def enabled(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
     source = tmp_path / "hs38.fa.gz"
     source.write_bytes(b"reference")
@@ -166,22 +166,6 @@ def test_marking_a_folder_used_renews_it(tmp_path):
     assert not cache.cache_item_is_expired(folder)
     cache.mark_cache_item_used(tmp_path / "gone")  # no error
     assert cache.cache_item_is_expired(tmp_path / "gone")
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [(None, cache.CACHE_TTL_SECONDS), (3600, 3600), ("120", 120), (-5, 0)],
-)
-def test_ttl_setting(monkeypatch, value, expected):
-    monkeypatch.setitem(settings, "dev_download_cache_ttl_seconds", value)
-    assert cache._cache_ttl_seconds() == expected
-
-
-def test_an_invalid_ttl_setting_warns_and_uses_the_default(monkeypatch, caplog):
-    monkeypatch.setitem(settings, "dev_download_cache_ttl_seconds", "a week")
-
-    assert cache._cache_ttl_seconds() == cache.CACHE_TTL_SECONDS
-    assert "Ignoring invalid dev_download_cache_ttl_seconds='a week'" in caplog.text
 
 
 # --- staged, verified restores (#277) --------------------------------------

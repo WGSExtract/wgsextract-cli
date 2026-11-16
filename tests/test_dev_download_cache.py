@@ -10,7 +10,7 @@ from wgsextract_cli.core.config import settings
 
 
 def test_dev_download_cache_round_trip(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
 
     source = tmp_path / "source.fa.gz"
@@ -34,7 +34,7 @@ def test_dev_download_cache_round_trip(tmp_path, monkeypatch):
 
 
 def test_dev_download_cache_can_be_disabled(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", False)
+    monkeypatch.setitem(settings, "dev", {"download_cache": False})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
 
     source = tmp_path / "source.fa.gz"
@@ -48,7 +48,7 @@ def test_dev_download_cache_can_be_disabled(tmp_path, monkeypatch):
 
 
 def test_dev_download_cache_defaults_to_disabled(tmp_path, monkeypatch):
-    monkeypatch.delitem(settings, "dev_download_cache", raising=False)
+    monkeypatch.delitem(settings, "dev", raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
 
     source = tmp_path / "source.fa.gz"
@@ -63,7 +63,7 @@ def test_dev_download_cache_defaults_to_disabled(tmp_path, monkeypatch):
 
 
 def test_prune_expired_cache_items_removes_stale_files(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache_ttl_seconds", 1)
+    monkeypatch.setitem(settings, "dev", {"download_cache_ttl_seconds": 1})
     root = tmp_path / "cache"
     root.mkdir()
     stale = root / "old.zip"
@@ -80,7 +80,7 @@ def test_prune_expired_cache_items_removes_stale_files(tmp_path, monkeypatch):
 
 
 def test_ref_library_download_file_uses_dev_cache(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
     monkeypatch.setattr(
         ref_library.downloads, "resolve_github_release_asset_sha256", lambda url: None
@@ -110,7 +110,7 @@ def test_ref_library_download_file_uses_dev_cache(tmp_path, monkeypatch):
 
 
 def test_real_benchmark_dataset_cache_defaults_to_xdg_for_devs(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
 
     args = BenchmarkJob()
@@ -121,7 +121,7 @@ def test_real_benchmark_dataset_cache_defaults_to_xdg_for_devs(tmp_path, monkeyp
 
 
 def test_failed_cache_copy_leaves_no_temp_file(tmp_path, monkeypatch):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
     source = tmp_path / "source.fa.gz"
     source.write_bytes(b"cached reference")
@@ -143,7 +143,7 @@ def test_failed_cache_copy_leaves_no_temp_file(tmp_path, monkeypatch):
 def test_download_file_verifies_a_cache_restore_before_dest_exists(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setitem(settings, "dev_download_cache", True)
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
     downloads = ref_library.downloads
     source = tmp_path / "source.fa.gz"

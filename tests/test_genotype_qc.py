@@ -11,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
-from wgsextract_cli.core import genotype_qc
+from wgsextract_cli.core import config, genotype_qc
 from wgsextract_cli.core.genotype_qc import (
     AUTOSOMES,
     CHR_X,
@@ -194,7 +194,7 @@ def test_no_call_rates_are_reported_together(tmp_path, caplog):
 
 def test_thresholds_come_from_config(tmp_path, caplog):
     kit = _kit(tmp_path / "kit.txt", 960, 40)
-    with patch.dict(genotype_qc.settings, {"qc_max_autosomal_homozygosity": 0.97}):
+    with patch.dict(config.settings, {"qc_max_autosomal_homozygosity": 0.97}):
         warn_about_genotypes(kit)
     assert not _warnings(caplog)
 
