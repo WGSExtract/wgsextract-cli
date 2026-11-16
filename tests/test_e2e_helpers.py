@@ -7,7 +7,7 @@ import pytest
 from tests import e2e_base
 from tests.fake_tools import python_tool
 from tests.htslib_helpers import needs_htslib
-from tests.smoke_utils import ensure_fake_data, isolate_home
+from tests.smoke_utils import isolate_home
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.pixi_tools import PIXI_TOOL_ENVS
 from wgsextract_cli.core.runtime import repo_root
@@ -45,9 +45,13 @@ def test_fake_data_generation_keeps_its_run_record_out_of_the_checkout(
     """#979 (fake-data generation wrote state/ into the checkout): the e2e
     suites isolate the home without a config, so the generating run fell back
     to the checkout's state/."""
+    # Imported here: a top-level import puts this file in the serialized
+    # shared-smoke group (tests/conftest.py), though it uses its own folder.
+    from tests.smoke_utils import ensure_fake_data
+
     isolate_home(monkeypatch, tmp_path / "home")
     fake = tmp_path / "fake"
-    ensure_fake_data(str(fake))
+    ensure_fake_data(str(fake), coverage=0.02)
 
     assert (fake / "fake.bam.bai").is_file()
     record = repo_root() / "state" / "last-run.json"

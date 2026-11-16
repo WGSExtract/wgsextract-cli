@@ -211,7 +211,7 @@ def assert_log_contains(stderr: str, pattern: str) -> None:
     assert pattern in stderr
 
 
-def ensure_fake_data(fake_dir: str) -> None:
+def ensure_fake_data(fake_dir: str, coverage: float = 10.0) -> None:
     """Ensures that fake test data is generated in the specified directory."""
     required_files = [
         os.path.join(fake_dir, "fake.bam"),
@@ -229,10 +229,12 @@ def ensure_fake_data(fake_dir: str) -> None:
     os.makedirs(fake_dir, exist_ok=True)
     # Test workers and concurrent sessions share this directory.
     with build_lock(os.path.normpath(fake_dir) + ".lock"):
-        _generate_fake_data(fake_dir, required_files + required_index_files)
+        _generate_fake_data(fake_dir, required_files + required_index_files, coverage)
 
 
-def _generate_fake_data(fake_dir: str, required: list[str]) -> None:
+def _generate_fake_data(
+    fake_dir: str, required: list[str], coverage: float = 10.0
+) -> None:
 
     def normalize_fake_data_names() -> None:
         ref_candidates = glob(os.path.join(fake_dir, "fake_ref_hg38_*.fa"))
@@ -284,7 +286,7 @@ def _generate_fake_data(fake_dir: str, required: list[str]) -> None:
             config.write_text(state_directory_setting(Path(scratch)))
             rc, stdout, stderr = run_cli(
                 ["--config", str(config), "qc", "fake-data", "--outdir", fake_dir]
-                + ["--build", "hg38", "--seed", "42", "--coverage", "10.0"]
+                + ["--build", "hg38", "--seed", "42", "--coverage", str(coverage)]
                 + ["--type", "all", "--ref", fake_dir]
             )
         if rc != 0:
