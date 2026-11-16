@@ -56,6 +56,17 @@ from that pileup too; the call set is still `snps.vcf.gz`/`indels.vcf.gz`.
 Each contig with reads is called in its own process, so its records don't
 depend on `--threads`.
 
+Measured on HG002 (35x Illumina, GRCh38) against GIAB v4.2.1:
+
+| Region | `vcf snp` | with the gVCF | gVCF + index |
+| --- | --- | --- | --- |
+| chr20:10-12 Mb, 1 thread | 13.2 s | 24.4 s | 0.23 MB |
+| chr20, 2 threads | 240 s | 468 s | 7.8 MB (about 0.4 GB for a genome) |
+
+The variant VCF was identical with and without it. Of the 82,588 truth
+variants in chr20's confident regions, 432 sit on bases the gVCF calls
+callable reference, variants bcftools missed (335 SNVs and 97 indels).
+
 ## Evidence states
 
 `wgsextract_cli.core.reference_evidence` reads a gVCF (one written here, or

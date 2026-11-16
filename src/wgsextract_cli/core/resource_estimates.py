@@ -43,7 +43,7 @@ FASTQ_BYTES_PER_READ = 100
 # HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
 # Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
 _BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
-# --reference-evidence gvcf: GVCF_PLACEHOLDER
+# --reference-evidence gvcf, HG002 35x chr20 (#863): 7.8 MB from 19.5M reads.
 _BCFTOOLS_GVCF_BYTES_PER_READ = 2.0
 _BCFTOOLS_PART_HEADER_BYTES = 16 * 1024
 _BCFTOOLS_JOBS_PER_WORKER = 16
