@@ -48,7 +48,10 @@ are explicitly refused rather than silently interpreted as diploid.
   `deepvariant_native = "off"` in config.toml.
 
 GATK and Clair3 outputs are clipped by variant POS to the partition, so a call
-overlapping a boundary cannot be emitted by both partitions. Interval-restricted
+overlapping a boundary cannot be emitted by both partitions. With
+`--reference-evidence gvcf` each partition's gVCF blocks are also cut at its
+edges before the parts are gathered (see
+[reference-evidence.md](reference-evidence.md#sex-and-par)). Interval-restricted
 assembly and Clair3's haploid filtering may differ from other callers; the shared
 ploidy contract is **not** a claim of scientific parity. Regression tests use real
 fixture alignments and real samtools/bcftools, replacing only the expensive caller

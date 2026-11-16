@@ -28,13 +28,16 @@ def x64_policy(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.usefixtures("x64_policy")
 def test_flow_markduplicates_windows_argv_uses_native_local_paths(monkeypatch):
+    from wgsextract_cli.commands.alignment import output as alignment_output
+
     commands = []
     monkeypatch.setattr(paths, "sys", Namespace(platform="win32"))
     monkeypatch.setattr(align, "get_tool_path", lambda _: "gatk")
     monkeypatch.setattr(align, "run_pipeline", lambda *_a, **_k: None)
-    monkeypatch.setattr(align, "run_command", lambda cmd: commands.append(cmd))
+    for module in (align, alignment_output):
+        monkeypatch.setattr(module, "run_command", lambda cmd: commands.append(cmd))
     monkeypatch.setattr(
-        align, "get_sam_index_cmd", lambda *_a, **_k: ["samtools", "index"]
+        alignment_output, "get_sam_index_cmd", lambda *_a, **_k: ["samtools", "index"]
     )
     setup = align._AlignSetup(
         "1", "256M", "R:/Results", "R:/ref.fa", "sample", "reads.fq"

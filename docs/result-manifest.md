@@ -295,6 +295,12 @@ Other commands' metrics:
 error there. Commands that only print (`deps`, `info` listings, `ref library
 --list`, `config`) record no outputs.
 
+## Alignment implementation
+
+Alignment output registration, streamed BAM/CRAM publication and atomic index
+staging are shared in `commands/alignment/output.py`. Existing
+`commands.align` callers use the same helpers through its import interface.
+
 ## MultiQC
 
 `qc multiqc-metrics` turns a directory of manifests (and saved `--json`
