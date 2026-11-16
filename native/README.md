@@ -4,6 +4,10 @@ These builds are for Apple Silicon. `wgse-bwa` is also built for Linux x86-64,
 with an experimental NVIDIA GPU backend (see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
+Native Windows uses [separate tool recipes](../packaging/windows/README.md).
+Its `bwa` recipe reuses the exact CPU extension kernel here, not the
+`wgse-*` GPU executables or their command-line options.
+
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
 run them in place of their upstream aligners when they're on `PATH`, and

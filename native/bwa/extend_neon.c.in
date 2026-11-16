@@ -22,10 +22,10 @@ int wgse_extend_fits(int qlen, int m, const int8_t *mat, int o_del, int e_del,
 }
 
 #ifdef WGSE_NEON
-/* On x86-64 CPUs with AVX2, a copy compiled for them runs: its 3-operand forms
+/* On ELF x86-64 builds, AVX2 CPUs run a copy whose 3-operand forms
  * of the same SSE2 operations need a sixth fewer instructions. The copy is
  * chosen once, when the program loads. */
-#ifdef __x86_64__
+#if defined(__x86_64__) && !defined(_WIN32)
 __attribute__((target_clones("avx2", "default")))
 #endif
 static int wgse_ksw_extend2_neon(int qlen, const uint8_t *query, int tlen, const uint8_t *target,
