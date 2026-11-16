@@ -937,5 +937,6 @@ def test_native_deepvariant_gvcf_budgets_the_whole_call_set_863(
         return estimate.resources[0].components["largest_sequential_stage"]
 
     assert stage() < 8 * GIB
-    assert stage(gvcf=True) > 25 * GIB
+    # 0.81 -> 0.94 GiB from chr20 to chr20+chr22: ~20 GiB for hs38DH.
+    assert stage(gvcf=True) > 15 * GIB
     assert 0.74 * GIB < stage("chr20", gvcf=True) < 8 * GIB

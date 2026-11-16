@@ -86,16 +86,24 @@ deleted once the run finishes, so a gVCF deleted later reruns every stage, as
 does turning `--reference-evidence` on or off, which changes what
 `make_examples` writes.
 
-Memory: Google's `postprocess_variants` writes each partition's part of the
-gVCF beside its VCF, GVCF_PARTITION_NOTE. `wgse-deepvariant` keeps every
-contig's calls until it writes the gVCF, so its preflight allows about 10
-bytes per called base (about 30 GB for a whole genome, against 2 GB without):
-on a smaller machine call a `--region`, or use Google's image.
+Memory: Google's `postprocess_variants` streams each partition's reference
+records into the gVCF, so it needs no more memory (chr20 as one partition:
+1.14 GiB either way). `wgse-deepvariant` keeps every contig's calls until it
+writes the gVCF, so its preflight allows about 20 GiB for a whole genome,
+against 5 GiB without; on a smaller machine call a `--region`, or use
+Google's image (see [resource_estimates.md](resource_estimates.md#deepvariant-postprocess_variants)).
 
 Measured on HG002 (35x Illumina, GRCh38) chr20, 8 threads, against GIAB
 v4.2.1:
 
-DV_TABLE
+| Engine | VCF only | with the gVCF | gVCF + index |
+| --- | --- | --- | --- |
+| Google's image, CPU | 859 s | 1,030 s | 20.8 MB (about 1 GB for a genome) |
+| `wgse-deepvariant`, CPU | 500 s | 575 s | 19.4 MB |
+| Parabricks, RTX 3090 | PB_NONE | PB_GVCF | PB_SIZE |
+
+Times are from a shared host (load 9-20 on 12 cores); on a quieter one
+Google's image took 943 and 989 s.
 
 The variant VCFs were identical with and without the gVCF. Of the 82,588
 truth variants in chr20's confident regions, 116 sit on bases the gVCF calls
