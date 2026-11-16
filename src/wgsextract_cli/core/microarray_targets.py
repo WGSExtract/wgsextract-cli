@@ -283,7 +283,9 @@ def build_genome_wide_target(
         _write_target(markers, out)
         metadata = Path(out + ".inputs.json")
         staged = metadata.with_suffix(metadata.suffix + ".tmp")
-        staged.write_text(json.dumps(inputs, sort_keys=True) + "\n")
+        staged.write_text(
+            json.dumps(inputs, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
         staged.replace(metadata)
     logging.info(f"Saved the {target_build} microarray target: {out}")
     return out
