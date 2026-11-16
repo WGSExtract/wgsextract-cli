@@ -31,6 +31,7 @@ from wgsextract_cli.core.output_checks import (
     warn_if_no_variants,
 )
 from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
+from wgsextract_cli.core.region_selection import is_region_file, region_output_suffix
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -453,9 +454,9 @@ def run_custom(params: CustomParams) -> None:
     if not region:
         raise UsageError("--region or --gene is required for custom extraction.")
 
-    is_bed = Path(region).is_file()
+    is_bed = is_region_file(region)
     label = Path(region).name if is_bed else region
-    region_suffix = label.replace(":", "_").replace(",", "_")
+    region_suffix = region_output_suffix(region)
     out_bam = derive_output_path(input_path, base.outdir, f"_{region_suffix}.bam")
 
     logging.info(

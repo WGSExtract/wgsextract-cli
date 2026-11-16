@@ -21,7 +21,7 @@ from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.reference_assets import read_fai_lengths, reference_dict_path
-from wgsextract_cli.core.region_selection import region_items
+from wgsextract_cli.core.region_selection import is_region_file, region_items
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -56,7 +56,7 @@ def _prepare_gatk_input(
     logging.info(f"Preparing regional BAM for GATK from CRAM input ({region})...")
     try:
         samtools = get_tool_path("samtools")
-        bed = Path(region).is_file()
+        bed = is_region_file(region)
         regions = [] if bed else region_items(region, commas=True)
         run_command(
             [
@@ -86,7 +86,7 @@ def _gatk_region_args(region: str | None, outdir: str) -> tuple[list[str], str |
     as a file path and fails on the ':'; a .intervals file reads the same everywhere."""
     if not region:
         return [], None
-    if Path(region).is_file():
+    if is_region_file(region):
         return ["-L", java_local_path(region)], None
     # A new file, never one a link at a fixed name points to.
     fd, intervals = tempfile.mkstemp(
@@ -128,7 +128,7 @@ def _cleanup_gatk_temp_input(temp_input: str | None) -> None:
 
 def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
     """chr1:1000-1050,chr2 (1-based, inclusive) as BED (0-based, half-open)."""
-    if Path(region).is_file():
+    if is_region_file(region):
         shutil.copyfile(region, bed)
         return
     with open(bed, "w", newline="\n") as f:

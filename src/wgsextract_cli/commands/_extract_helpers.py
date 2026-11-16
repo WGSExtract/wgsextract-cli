@@ -14,6 +14,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.region_selection import is_region_file
 from wgsextract_cli.core.run_log import is_run_log_path
 from wgsextract_cli.core.samtools_commands import parse_memory
 from wgsextract_cli.core.temp_directory import configured_temp_directory
@@ -118,7 +119,7 @@ def _matching_reference(
 
 def _check_region(region: str | None, contigs: dict[str, int], path: str) -> None:
     """samtools writes an empty file for a region naming no contig of the input."""
-    if region and Path(region).is_file():  # a BED file of regions
+    if is_region_file(region):  # a BED file of regions
         return
     for part in (r.strip() for r in (region or "").split(",") if r.strip()):
         # A whole name first: HLA allele contigs contain colons.

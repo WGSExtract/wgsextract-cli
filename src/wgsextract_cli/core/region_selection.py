@@ -1,6 +1,7 @@
 """Nucleus-style region selections (DeepVariant's --regions) as merged intervals."""
 
 import gzip
+import hashlib
 import re
 from pathlib import Path
 
@@ -49,10 +50,38 @@ def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
     return rows
 
 
+def is_region_file(region: str | None) -> bool:
+    """Whether a ``--region`` value names a file (a BED) rather than regions.
+
+    A long region list is no path: ``Path.is_file`` raises ENAMETOOLONG on it."""
+    if not region:
+        return False
+    try:
+        return Path(region).is_file()
+    except OSError:
+        return False
+
+
+_MAX_REGION_LABEL = 100  # characters of a --region list kept in a file name
+
+
+def region_output_suffix(region: str) -> str:
+    """The file-name suffix ``extract custom`` gives a ``--region``: a BED's
+    name, else the regions with ``:`` and ``,`` replaced; a list too long for a
+    file name becomes ``<N>regions-<sha256 prefix>`` (#977)."""
+    if is_region_file(region):
+        return Path(region).name.replace(":", "_").replace(",", "_")
+    suffix = region.replace(":", "_").replace(",", "_")
+    if len(suffix) <= _MAX_REGION_LABEL:
+        return suffix
+    digest = hashlib.sha256(region.encode()).hexdigest()[:16]
+    return f"{len(region_items(region, commas=True))}regions-{digest}"
+
+
 def region_items(region: str, *, commas: bool) -> list[str]:
     """The regions and BED files in a ``--region`` list: GATK and Parabricks
     separate them with commas, DeepVariant on the CPU with whitespace."""
-    if Path(region).is_file():
+    if is_region_file(region):
         return [region]
     if commas:
         return [item.strip() for item in region.split(",") if item.strip()]

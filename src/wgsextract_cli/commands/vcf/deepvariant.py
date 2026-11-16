@@ -45,6 +45,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import (
+    is_region_file,
     region_items,
 )
 from wgsextract_cli.core.resource_estimates import (
@@ -288,7 +289,7 @@ def _dv_env() -> dict[str, str]:
 def _container_regions(region: str) -> str:
     """``region`` with its BED files at the paths mounted in the container."""
     return " ".join(
-        host_path(p) if Path(p).is_file() else p
+        host_path(p) if is_region_file(p) else p
         for p in region_items(region, commas=False)
     )
 
@@ -976,7 +977,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     staged_reads = not native and needs_cram30(input_file)
     reads = str(work / "reads" / "reads.cram") if staged_reads else input_file
     region_files = [
-        p for p in region_items(region or "", commas=False) if Path(p).is_file()
+        p for p in region_items(region or "", commas=False) if is_region_file(p)
     ]
     launcher = _Launcher(
         local_dv,
