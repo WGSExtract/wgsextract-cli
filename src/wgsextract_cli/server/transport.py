@@ -91,11 +91,16 @@ class JobEvent(JobProgress, JobEventRequired, total=False):
     status: Status | Literal["cancelling"]
 
 
+class JobError(TypedDict, total=False):
+    kind: str
+    message: str
+
+
 class Job(JobRequired, total=False):
     started: Timestamp
     finished: Timestamp
     exit_code: int
-    error: dict[str, object]
+    error: JobError
     progress: JobProgress
     result: dict[str, object]
     cancel_requested: Timestamp

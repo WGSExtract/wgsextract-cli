@@ -38,7 +38,7 @@ from .operations import (
     params_from_json,
 )
 from .transport import Job as JobView
-from .transport import JobEvent, JobProgress, JobSummary, Kind, Status
+from .transport import JobError, JobEvent, JobProgress, JobSummary, Kind, Status
 
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
@@ -67,7 +67,7 @@ class Job:
     started: str | None = None
     finished: str | None = None
     exit_code: int | None = None
-    error: dict[str, Any] | None = None
+    error: JobError | None = None
     progress: JobProgress | None = None
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
@@ -548,14 +548,14 @@ class JobManager:
         status: Status,
         *,
         error: str | None = None,
-        error_record: Mapping[str, Any] | None = None,
+        error_record: JobError | None = None,
     ) -> None:
         job.status = status
         job.finished = _now()
         if status == "cancelled":
             job.exit_code = CANCELLED_EXIT_CODE
         if error_record:
-            job.error = dict(error_record)
+            job.error = error_record.copy()
         elif error:
             job.error = {
                 "kind": "failure" if status == "failed" else "cancelled",

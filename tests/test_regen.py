@@ -155,3 +155,38 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
             text=True,
         )
         assert checked.returncode == 0, checked.stderr
+
+
+def test_989_stale_compact_openapi_reports_readable_field_diff(
+    regen_repo: Path,
+) -> None:
+    regenerated = resolve(regen_repo)
+    assert regenerated.returncode == 0, regenerated.stderr
+    path = (
+        regen_repo / "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["info"]["version"] = "stale-version"
+    path.write_text(
+        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+    )
+
+    checked = subprocess.run(
+        [sys.executable, "scripts/gen_server_contracts.py", "--check"],
+        cwd=regen_repo,
+        capture_output=True,
+        text=True,
+    )
+
+    assert checked.returncode == 1
+    assert (
+        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        in checked.stderr
+    )
+    assert '-    "version": "stale-version",' in checked.stderr
+    assert '+    "version":' in checked.stderr
+    assert len(checked.stderr) < 5000
+    assert (
+        json.loads(path.read_text(encoding="utf-8"))["info"]["version"]
+        == "stale-version"
+    )

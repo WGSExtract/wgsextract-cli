@@ -269,6 +269,17 @@
         "time"
       ]
     },
+    "JobError": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
     "Job": {
       "type": "object",
       "properties": {
@@ -310,8 +321,7 @@
           "type": "integer"
         },
         "error": {
-          "type": "object",
-          "additionalProperties": {}
+          "$ref": "#/$defs/JobError"
         },
         "progress": {
           "$ref": "#/$defs/JobProgress"

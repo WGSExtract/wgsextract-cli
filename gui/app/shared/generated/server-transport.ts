@@ -72,6 +72,11 @@ export interface JobEvent {
     status?: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted" | "cancelling";
 }
 
+export interface JobError {
+    kind?: string;
+    message?: string;
+}
+
 export interface Job {
     id: string;
     op: string;
@@ -81,7 +86,7 @@ export interface Job {
     started?: string;
     finished?: string;
     exit_code?: number;
-    error?: Record<string, unknown>;
+    error?: JobError;
     progress?: JobProgress;
     result?: Record<string, unknown>;
     cancel_requested?: string;

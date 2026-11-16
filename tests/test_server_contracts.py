@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from scripts.server_transport_typescript import typescript
 from tests.test_server import _serve
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job
@@ -28,6 +29,9 @@ def validate(value: object, name: str) -> None:
 
 
 def test_929_checked_in_openapi_and_response_schemas_do_not_drift() -> None:
+    assert (ROOT / "gui/app/shared/generated/server-transport.ts").read_text(
+        encoding="utf-8"
+    ) == typescript()
     subprocess.run(
         [sys.executable, "scripts/gen_server_contracts.py", "--check"],
         cwd=ROOT,
@@ -66,7 +70,7 @@ def test_929_job_projections_preserve_omission_and_extension_data(full: bool) ->
     assert ("params" in queued) is full
     job.status = "failed"
     job.exit_code = 0
-    job.error = {"kind": "failure", "message": "failed", "extension": [1]}
+    job.error = json.loads('{"kind": "failure", "message": "failed", "extension": [1]}')
     job.progress = {"stage": "reading", "fraction": 0.0}
     job.result = {
         "status": "error",
@@ -84,6 +88,20 @@ def test_929_job_projections_preserve_omission_and_extension_data(full: bool) ->
     assert ("provenance" in value["result"]) is full
     assert ("details" in value["result"]) is full
     validate(job.summary(), "JobSummary")
+
+
+@pytest.mark.parametrize("field", ["kind", "message"])
+def test_989_job_error_known_fields_remain_strings(field: str) -> None:
+    schema = json.loads(
+        (SCHEMAS / "wgsextract.server.responses.1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    schema["$ref"] = "#/$defs/JobError"
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid({"kind": "failure", "message": "failed", "extra": [1]})
+    assert validator.is_valid({})
+    assert not validator.is_valid({field: 42})
 
 
 def test_929_http_response_schemas_match_live_discovery_and_errors(
