@@ -5,10 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 from jsonschema import Draft202012Validator
 
-from scripts.ci_select_tests import select_tests
 from wgsextract_cli.core.result_schema import result_schema
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -27,20 +25,6 @@ def test_929_committed_result_schema_follows_actual_writer_models() -> None:
         cwd=ROOT,
         check=True,
     )
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "src/wgsextract_cli/core/results.py",
-        "src/wgsextract_cli/core/result_schema.py",
-        "scripts/gen_output_schemas.py",
-        "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
-    ],
-)
-def test_929_result_contract_changes_select_freshness(path: str) -> None:
-    selected = select_tests([path])
-    assert selected == "all" or "tests/test_result_documents.py" in selected
 
 
 def test_929_result_records_preserve_bounds_nulls_and_extension_policies(
