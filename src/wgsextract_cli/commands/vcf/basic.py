@@ -152,7 +152,7 @@ def caller_setup(
         raise UsageError(LOG_MESSAGES["input_required"])
 
     logging.debug(f"Input file: {str(absolute_path(input_file))}")
-    thread_count, _ = get_resource_defaults(threads, None)
+    thread_count, _ = get_resource_defaults(threads, None, stage="calling")
     outdir = outdir or str(absolute_path(input_file).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
@@ -332,6 +332,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             parallel=parallel,
             bcftools_contigs=contigs,
             alignment_header=get_bam_header(input_file),
+            reference_evidence=params.reference_evidence == "gvcf",
         )
     )
     environment = bcftools_environment(params.mimalloc)
@@ -344,6 +345,8 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
 
     out_vcf = str(Path(outdir, "indels.vcf.gz" if indels else "snps.vcf.gz"))
     profile, prior = ultima.bcftools_options(input_file)
+    # A flat prior beat bcftools' 1.1e-3 for indels on GIAB HG002 and matches it
+    # for SNPs after QUAL>30 (#860, docs/variant-confidence.md).
     prior = ["-P", "0"] if prior is None else prior
     message = "vcf_calling_indels" if indels else "vcf_calling_snps"
     logging.info(LOG_MESSAGES[message].format(output=out_vcf))
@@ -355,30 +358,43 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
 
     from wgsextract_cli.core.atomic_output import safe_output
 
-    with (
-        safe_output(out_vcf) as staged,
-        sex_samples_args(
-            input_file, outdir, ploidy, region=params.region, reference=ref
-        ) as sex_args,
-    ):
-        call_small_variants(
-            input_file,
-            ref,
-            staged,
-            threads=threads,
-            region=params.region,
-            profile=profile,
-            call_args=[*ploidy, *sex_args, *prior],
-            indels=indels,
-            contigs=contigs,
-            environment=environment,
+    with sex_samples_args(
+        input_file, outdir, ploidy, region=params.region, reference=ref
+    ) as sex_args:
+        with safe_output(out_vcf) as staged:
+            call_small_variants(
+                input_file,
+                ref,
+                staged,
+                threads=threads,
+                region=params.region,
+                profile=profile,
+                call_args=[*ploidy, *sex_args, *prior],
+                indels=indels,
+                contigs=contigs,
+                environment=environment,
+            )
+        ensure_vcf_indexed(out_vcf)
+        record_variants(
+            out_vcf,
+            "indels" if indels else "snps",
+            warn_if_no_variants(out_vcf, ref, params.region),
         )
-    ensure_vcf_indexed(out_vcf)
-    record_variants(
-        out_vcf,
-        "indels" if indels else "snps",
-        warn_if_no_variants(out_vcf, ref, params.region),
-    )
+        if params.reference_evidence == "gvcf":
+            from .reference_evidence import write_gvcf
+
+            write_gvcf(
+                input_file,
+                ref,
+                outdir,
+                threads=threads,
+                region=params.region,
+                profile=profile,
+                ploidy_args=ploidy,
+                sex_args=sex_args,
+                prior_args=prior,
+                environment=environment,
+            )
 
 
 def record_variants(out_vcf: str, role: str, count: int | None) -> None:

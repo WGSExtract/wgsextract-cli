@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -22,19 +23,31 @@ class _Server:
         # can't finish a request before its entry exists, whereas a byte count
         # bumped after the write can land after the client has moved on.
         self.requests: list[tuple[int, int]] = []
+        self.path = f"/{secrets.token_hex(8)}/big.bin"
         server = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
+            def _foreign(self) -> bool:
+                """A request from other software probing the port (#987)."""
+                if self.path == server.path:
+                    return False
+                self.send_error(404)
+                return True
+
             def do_HEAD(self):
+                if self._foreign():
+                    return
                 self.send_response(200)
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Content-Length", str(len(DATA)))
                 self.end_headers()
 
             def do_GET(self):
+                if self._foreign():
+                    return
                 spec = self.headers.get("Range")
                 if not spec or server.ignore_ranges:
                     server.requests.append((0, len(DATA)))
@@ -64,7 +77,7 @@ class _Server:
                 self.wfile.write(body)
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.httpd.server_port}/big.bin"
+        self.url = f"http://127.0.0.1:{self.httpd.server_port}{self.path}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
 

@@ -39579,7 +39579,7 @@
    }
   },
   "vcf indel": {
-   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel | --no-parallel] [--mimalloc {auto,off}]\n                            [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf indel [-h] [-r REGION] [--parallel | --no-parallel]\n                            [--reference-evidence {none,gvcf}] [--mimalloc {auto,off}]\n                            [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass),\n                        or not (none). Default: config reference_evidence, else none.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf indel --help-all' lists them.\n\nexamples:\n  wgsextract vcf indel --input sample.cram\n\noutputs (in the output directory unless noted):\n  indels.vcf.gz (+ .tbi); with --reference-evidence gvcf also\n  bcftools.g.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -39942,6 +39942,25 @@
       ],
       "required": false,
       "type": "_non_negative"
+     },
+     {
+      "choices": [
+       "none",
+       "gvcf"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "reference_evidence",
+      "exclusive_group": null,
+      "help": "Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass), or not (none). Default: config reference_evidence, else none.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--reference-evidence"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": [
@@ -41852,7 +41871,7 @@
    }
   },
   "vcf snp": {
-   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel] [--mimalloc {auto,off}]\n                          [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel]\n                          [--reference-evidence {none,gvcf}] [--mimalloc {auto,off}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass),\n                        or not (none). Default: config reference_evidence, else none.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi); with --reference-evidence gvcf also bcftools.g.vcf.gz\n  (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -42215,6 +42234,25 @@
       ],
       "required": false,
       "type": "_non_negative"
+     },
+     {
+      "choices": [
+       "none",
+       "gvcf"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "reference_evidence",
+      "exclusive_group": null,
+      "help": "Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass), or not (none). Default: config reference_evidence, else none.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--reference-evidence"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": [
@@ -46629,6 +46667,7 @@
    "qc_min_depth": null,
    "quiet": true,
    "ref": "r.fa",
+   "reference_evidence": null,
    "region": null,
    "threads": 4,
    "tmp_dir": null,
@@ -51510,6 +51549,7 @@
    "qc_min_depth": 4.5,
    "quiet": false,
    "ref": null,
+   "reference_evidence": null,
    "region": null,
    "threads": 2,
    "tmp_dir": null,
@@ -51742,6 +51782,7 @@
    "qc_min_depth": null,
    "quiet": false,
    "ref": null,
+   "reference_evidence": null,
    "region": null,
    "threads": null,
    "tmp_dir": null,
@@ -51776,6 +51817,7 @@
    "qc_min_depth": null,
    "quiet": false,
    "ref": null,
+   "reference_evidence": null,
    "region": "chrM",
    "threads": null,
    "tmp_dir": null,

@@ -1,6 +1,7 @@
 """`extract region`: one region (chrM, chrY, both, or autosomes and X) as any
 of a BAM, a VCF and a consensus FASTA, on a tiny BAM with planted SNPs."""
 
+import json
 import logging
 import random
 from pathlib import Path
@@ -241,3 +242,42 @@ def test_api_reports_each_formats_role_and_the_variant_count(genome, tmp_path):
         "y_fasta": "male_Y.fasta",
     }
     assert result.metrics["variants"] == 1
+
+
+def test_997_autox_calling_preserves_the_original_auto_thread_plan(
+    genome, tmp_path, monkeypatch
+):
+    from tests.test_alignment_commands import _m1_core_levels
+    from wgsextract_cli.core.config import settings
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    calls = []
+    for threads, expected in (
+        (
+            None,
+            {"alignment": 8, "sort": 4, "markdup": 4, "compression": 8, "calling": 8},
+        ),
+        (
+            3,
+            dict.fromkeys(
+                ("alignment", "sort", "markdup", "compression", "calling"), 3
+            ),
+        ),
+    ):
+        out = tmp_path / str(threads)
+        result = api.extract.region(
+            api.ExtractRegionParams(
+                input=genome["male"],
+                ref=genome["ref"],
+                outdir=out,
+                target="autox",
+                formats="vcf",
+                threads=threads,
+            )
+        )
+        assert result.manifest is not None
+        manifest = json.loads(Path(result.manifest).read_text())
+        assert manifest["provenance"]["params"]["thread_plan"] == expected
+        calls.append(vcf_calls(out / "male_autosomes_X.vcf.gz"))
+    assert calls[0] and calls[0] == calls[1]

@@ -366,13 +366,63 @@ class TestThreadPolicy(unittest.TestCase):
 
     def test_default_thread_policy_uses_all_cores_elsewhere(self):
         with (
-            patch.object(runtime, "macos_performance_core_count", return_value=None),
+            patch.object(runtime.platform, "system", return_value="Linux"),
             patch.object(runtime.os, "cpu_count", return_value=16),
         ):
             profile = runtime.default_thread_tuning_profile()
 
         self.assertEqual(profile.threads, 16)
         self.assertEqual(profile.reason, "all available cores")
+
+
+@pytest.mark.parametrize(
+    ("levels", "big", "total"),
+    [
+        ([("Performance", 4), ("Efficiency", 4)], 4, 8),  # M1
+        ([("Performance", 8), ("Efficiency", 2)], 8, 10),  # M1 Pro
+        ([("Performance", 6), ("Efficiency", 6)], 6, 12),  # M3 Pro
+        ([("Super", 4), ("Efficiency", 6)], 4, 10),  # M5
+        ([("Super", 5), ("Performance", 10)], 15, 15),  # M5 Pro
+        ([("Super", 5), ("Performance", 10), ("Efficiency", 0)], 15, 15),
+        ([("", 5), ("", 10), ("", 0)], 15, 15),
+        ([("Super", 12), ("Performance", 24)], 36, 36),  # M5 Ultra
+        ([("Super", 2), ("Performance", 4), ("Efficiency", 6)], 6, 12),  # M6
+        ([("Super", 2), ("Performance", 3), ("Efficiency", 5)], 5, 10),
+        ([("Prime", 2), ("Performance", 4), ("Efficiency", 6)], 6, 12),
+        ([("", 2), ("", 4), ("", 6)], 6, 12),
+        ([("Performance", 8)], 8, 8),
+    ],
+)
+def test_968_core_levels_keep_super_and_performance_workers(levels, big, total):
+    from wgsextract_cli.core.resource_policy import stage_thread_plan
+
+    output = "\n".join(
+        f"hw.perflevel{index}.name: {name}\nhw.perflevel{index}.physicalcpu: {count}"
+        for index, (name, count) in enumerate(levels)
+    )
+    with (
+        patch.object(runtime.platform, "system", return_value="Darwin"),
+        patch.object(runtime.platform, "machine", return_value="arm64"),
+        patch.object(
+            runtime.subprocess,
+            "run",
+            return_value=MagicMock(returncode=0, stdout=output),
+        ),
+    ):
+        plan = stage_thread_plan()
+        assert plan.alignment == total
+        assert (plan.sort, plan.markdup) == (big, big)
+        assert (plan.compression, plan.calling) == (total, total)
+        assert stage_thread_plan(metal=True).alignment == big
+        for explicit in (3, "3"):
+            override = stage_thread_plan(explicit, metal=True)
+            assert (
+                override.alignment,
+                override.sort,
+                override.markdup,
+                override.compression,
+                override.calling,
+            ) == (3,) * 5
 
 
 if __name__ == "__main__":

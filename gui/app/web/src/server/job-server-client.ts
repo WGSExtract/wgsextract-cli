@@ -1,4 +1,5 @@
 import type { LooseRecord } from "../../../shared/types.js";
+import type { Job as TransportJob } from "../../../shared/generated/server-transport.js";
 import { errorMessage } from "./errors.js";
 
 /** Where a running job server listens, as it announced on stdout. */
@@ -8,10 +9,10 @@ export interface JobServerAddress {
 }
 
 /** A job record; servers may add fields. `exit_code` is set once the job has finished. */
-export interface JobRecord extends LooseRecord {
-    id: string;
+export interface JobRecord extends LooseRecord, Pick<TransportJob, "id"> {
+    // This tolerant reader accepts future statuses and unvalidated errors.
     status: string;
-    exit_code?: number | null;
+    exit_code?: TransportJob["exit_code"] | null;
     error?: unknown;
 }
 

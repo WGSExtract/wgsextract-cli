@@ -20,6 +20,7 @@ from typing import Any, TypeVar
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS
 from wgsextract_cli.core.results import CommandResult
+from wgsextract_cli.core.settings_schema import REFERENCE_EVIDENCE_MODES
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
@@ -42,6 +43,22 @@ from ._shared import (
     restart_param,
     threads_param,
 )
+
+
+def reference_evidence_param(gvcf: str, cost: str) -> Any:
+    """``--reference-evidence``: every caller's opt-in gVCF (#863)."""
+    return param(
+        None,
+        help=f"Also write reference evidence: a gVCF, {gvcf} (+ .tbi), beside "
+        f"the unchanged variant VCF (gvcf; costs {cost}), or not (none). "
+        "Default: config reference_evidence, else none.",
+        doc=f"gvcf also writes {gvcf} and its index (output roles "
+        "reference_evidence, reference_evidence_index); the variant VCF is "
+        "unchanged. None uses config reference_evidence, else none. See "
+        "docs/reference-evidence.md.",
+        choices=REFERENCE_EVIDENCE_MODES,
+        config_key="reference_evidence",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,6 +90,9 @@ class _SmallVariantParams(Params):
         action="boolean_optional",
     )
     qc_min_depth: float | None = depth_param()
+    reference_evidence: str | None = reference_evidence_param(
+        "bcftools.g.vcf.gz", "a second, SNP+indel bcftools pass"
+    )
     mimalloc: str | None = param(
         None,
         help="Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or "

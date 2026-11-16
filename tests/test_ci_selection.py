@@ -20,6 +20,17 @@ from scripts.ci_select_tests import (
 from scripts.ci_test_dependencies import ROOT
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/server_transport_typescript.py",
+        "gui/app/shared/generated/server-transport.ts",
+    ],
+)
+def test_989_transport_changes_select_committed_contract_freshness(path: str) -> None:
+    assert "tests/test_server_contracts.py" in select_tests([path])
+
+
 def repository(tmp_path: Path, files: dict[str, str]) -> Path:
     for name, text in files.items():
         path = tmp_path / name

@@ -197,6 +197,8 @@ def run_staged_alignment(
     memory: str,
     fmt: str,
     ref: str,
+    threads: str = "1",
+    compression_threads: str | None = None,
     retire_fastqs: Sequence[str] = (),
     read_length: float | None = None,
     expected_reads: int | None = None,
@@ -226,6 +228,9 @@ def run_staged_alignment(
         ),
     )
     contract = _contract(commands, memory, chunks)
+    contract["threads"] = threads
+    compression_threads = compression_threads or threads
+    contract["compression_threads"] = compression_threads
     contract["indexes"] = [
         _identity(Path(ref + suffix))
         for suffix in (".bwt", ".sa", ".pac", ".alt")
@@ -240,7 +245,15 @@ def run_staged_alignment(
         raise WGSExtractError(
             "Staged alignment requires installed samtools and samblaster"
         )
-    worker = [sys.executable, "-m", "wgsextract_cli.core.staged_alignment"]
+    worker = [
+        sys.executable,
+        "-m",
+        "wgsextract_cli.core.staged_alignment",
+        "--threads",
+        threads,
+        "--compression-threads",
+        compression_threads,
+    ]
     try:
         with _disk_guard(
             [workspace.parent, Path(out_path).parent], expected_reads
@@ -268,7 +281,17 @@ def run_staged_alignment(
                     run_pipeline(
                         [
                             *commands,
-                            [samtools, "view", "-b", "--no-PG", "-o", partial, "-"],
+                            [
+                                samtools,
+                                "view",
+                                "-@",
+                                compression_threads,
+                                "-b",
+                                "--no-PG",
+                                "-o",
+                                partial,
+                                "-",
+                            ],
                         ],
                         description="Staged Metal alignment",
                         cancel_event=cancel,
@@ -411,7 +434,7 @@ def _mark(options: argparse.Namespace) -> None:
                         options.samtools,
                         "sort",
                         "-@",
-                        "1",
+                        options.threads,
                         "-m",
                         options.memory,
                         "-l",
@@ -475,7 +498,7 @@ def _merge(options: argparse.Namespace) -> None:
                     "-p",
                     "--no-PG",
                     "-@",
-                    "1",
+                    options.compression_threads,
                     "-l",
                     "3",
                     "-o",
@@ -512,7 +535,7 @@ def _merge(options: argparse.Namespace) -> None:
             "-p",
             "--no-PG",
             "-@",
-            "1",
+            options.threads,
             "-O",
             "SAM",
             "-o",
@@ -539,7 +562,7 @@ def _merge(options: argparse.Namespace) -> None:
             "view",
             "--no-PG",
             "-@",
-            "1",
+            options.compression_threads,
             *encoding,
             "--write-index",
             "-o",
@@ -573,12 +596,15 @@ def main() -> None:
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--samtools", required=True)
     parser.add_argument("--memory", default="2G")
+    parser.add_argument("--threads", default="1")
+    parser.add_argument("--compression-threads")
     parser.add_argument("--chunk-records", type=int, default=2_000_000)
     parser.add_argument("--output")
     parser.add_argument("--format", choices=("BAM", "CRAM"), default="BAM")
     parser.add_argument("--reference")
     parser.add_argument("--output-profile", choices=OUTPUT_PROFILES, default="default")
     options = parser.parse_args()
+    options.compression_threads = options.compression_threads or options.threads
 
     def interrupted(signum: int, frame: Any) -> None:
         raise KeyboardInterrupt

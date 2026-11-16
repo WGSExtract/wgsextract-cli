@@ -9,6 +9,7 @@ from typing import TypedDict
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
 from wgsextract_cli.cli.registration.analyze import register as register
+from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -148,12 +149,23 @@ def _run_comprehensive(
         _print("\nSTAGE: Variant Calling (No input VCFs provided)")
         # Call SNV and InDels if nothing else provided
         called = []
+        # One gVCF per sample: the SNP step writes it (and reruns when the gVCF
+        # or its index is gone), the indel step doesn't repeat it.
+        gvcf = typed_settings().reference_evidence == "gvcf"
         for name, file in (("snp", "snps.vcf.gz"), ("indel", "indels.vcf.gz")):
             vcf = str(Path(outdir, file))
             command = ["vcf", name, "--input", input_file, "--outdir", outdir]
+            outputs = [vcf]
+            if gvcf:
+                command += ["--reference-evidence", "gvcf" if name == "snp" else "none"]
+            if gvcf and name == "snp":
+                from wgsextract_cli.commands.vcf.reference_evidence import GVCF_NAME
+
+                evidence = str(Path(outdir, GVCF_NAME))
+                outputs += [evidence, evidence + ".tbi"]
             decision, _ = run_step(
                 journal,
-                Step(name, inputs={"input": input_file}, outputs=[vcf],
+                Step(name, inputs={"input": input_file}, outputs=outputs,
                      params=_step_params(job, command), tools=["bcftools"]),
                 subcommand_action(command, job),
             )  # fmt: skip

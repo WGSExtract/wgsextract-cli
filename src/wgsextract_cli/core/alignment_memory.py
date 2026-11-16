@@ -385,6 +385,7 @@ def estimate_mapping_memory(
     aligner: str,
     *,
     threads: str = "1",
+    alignment_threads: str | None = None,
     memory: str = "512M",
     samblaster: bool = True,
     reads: int | None = None,
@@ -401,6 +402,7 @@ def estimate_mapping_memory(
     (an aligner's GPU backend: bwa_gpu_memory) counts as working memory,
     and ``dense_sa_bytes`` (wgse-bwa's dense suffix-array file) as index."""
     bases = _model_bases(ref, aligner)
+    mapper_threads = int(alignment_threads or threads)
     amount, unit = parse_memory(memory)
     per_thread = amount * (1024**3 if unit == "G" else 1024**2)
     # samtools sort reserves -@ × -m when it starts (#781).
@@ -410,7 +412,7 @@ def estimate_mapping_memory(
     if aligner == "minimap2":
         long_read = _long_read_preset(preset)
         index, build, mapping = _minimap2_memory(
-            bases, preset, int(threads), input_bytes, read_length
+            bases, preset, mapper_threads, input_bytes, read_length
         )
         # A GPU backend's buffers are set up before the index builds or loads.
         build += gpu_bytes
@@ -458,7 +460,7 @@ def estimate_mapping_memory(
             pass
     result = MappingMemory(
         index + dense_sa_bytes,
-        _working_memory(aligner, int(threads), reads, platform, read_length)
+        _working_memory(aligner, mapper_threads, reads, platform, read_length)
         + gpu_bytes,
         (input_reads * _SAMBLASTER_BYTES_PER_PAIR + 1) // 2 if samblaster else 0,
         sort,
@@ -470,9 +472,7 @@ def estimate_mapping_memory(
         staged_mapping = result._replace(
             samblaster=0, sort=0, overhead=result.overhead + 5 * _GIB // 16
         )
-        postprocess = MappingMemory(
-            0, 0, result.samblaster, int(per_thread * 1.25), 3 * _GIB // 4
-        )
+        postprocess = MappingMemory(0, 0, result.samblaster, sort, 3 * _GIB // 4)
         return max(staged_mapping, postprocess, key=lambda phase: phase.total)
     return result
 
@@ -482,6 +482,7 @@ def check_mapping_memory(
     aligner: str,
     *,
     threads: str,
+    alignment_threads: str | None = None,
     memory: str,
     samblaster: bool,
     reads: int | None = None,
@@ -505,6 +506,7 @@ def check_mapping_memory(
             ref,
             aligner,
             threads=threads,
+            alignment_threads=alignment_threads,
             memory=memory,
             samblaster=samblaster,
             reads=reads,

@@ -19,7 +19,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `reference_library` | string, path (`~` expands) | unset | Reference data directory (annotation data, gene maps, VEP caches) |
 | `reference_genome_library` | string, path (`~` expands) | unset | Folder holding only the reference genomes (FASTAs) and the files made from them, for reference_library (default: genomes/ in it) |
 | `dataset_library` | string, path (`~` expands) | unset | Directory of user datasets, one folder per person or sample (formerly genome_library) |
-| `cpu_threads` | integer or `auto` | `"auto"` | CPU threads: a positive integer, or auto (Apple Silicon performance cores, otherwise all cores) |
+| `cpu_threads` | integer or `auto` | `"auto"` | CPU threads: a positive integer for every stage, or auto (per-stage core-layout plan on Apple Silicon; all cores elsewhere) |
 | `memory_limit` | string | `"auto"` | Memory limit per thread, e.g. 2G (auto: 25% of RAM split across threads) |
 | `debug_mode` | boolean | `false` | Enable verbose debug logging |
 | `quiet_mode` | boolean | `false` | Enable quiet mode (errors only) |
@@ -39,6 +39,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `dense_suffix_array` | boolean | `false` | `align`/`realign`: wgse-bwa reads the reference's dense suffix-array file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; holds it in RAM, 0.8 GB for hs38) |
 | `dorado_models_directory` | string, path (`~` expands) | unset | Folder `basecall` downloads Dorado models into (default: the wgsextract cache's dorado-models) |
 | `mimalloc` | `auto` or `off` | unset | Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's wgse-mimalloc allocator when it's installed (auto, the default) or never (off) |
+| `reference_evidence` | `none` or `gvcf` | `"none"` | `vcf snp`/`vcf indel`: also write a gVCF of reference evidence (bcftools.g.vcf.gz) beside the variant VCF (gvcf), or not (none, the default); see docs/reference-evidence.md |
 | `haplocheck_executable` | string, path (`~` expands) | unset | Path to the haplocheck executable or JAR |
 | `report_gene_list` | string | unset | `report`: genes of the ClinVar section, a built-in list (acmg-sf-3.3, the default, or acmg-sf-3.2) or a TSV or BED file |
 | `haplogrep_tree` | string | unset | Haplogrep 3 tree for mtDNA haplogroups: phylotree-fu-rcrs (default), phylotree-rcrs or mitotree-rcrs |

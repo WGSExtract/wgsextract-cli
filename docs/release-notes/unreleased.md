@@ -11,6 +11,14 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   protein index, gnomAD v4.1 and its constraint, ClinGen, REVEL, SpliceAI,
   phyloP), which you build with `fastvep sa-build`. GRCh38; Linux and macOS,
   not Windows. See [acmg.md](../acmg.md).
+- `vcf snp` and `vcf indel` can also write reference evidence:
+  `--reference-evidence gvcf` (or `reference_evidence = "gvcf"` in
+  `config.toml`) adds `bcftools.g.vcf.gz` (+ `.tbi`), a gVCF of every assessed
+  base, beside the unchanged variant VCF. A shared classifier tells confident
+  reference from low-quality reference, coverage gaps, filtered and no-call
+  bases, and ploidy-0 bases such as a woman's chrY. Off by default: it adds a
+  second bcftools pass. DeepVariant, GATK and Clair3 are to follow. See
+  [reference-evidence.md](../reference-evidence.md).
 
 - Low-memory Macs retain Metal BWA rather than the slower CPU fallback when
   compressed staging fits the existing physical-RAM gate. Alignment no longer

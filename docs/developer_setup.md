@@ -154,12 +154,30 @@ MCP `tools/list` must include its protocol-required `inputSchema`. Both use
 the same typed Params definitions as per-command CLI help, not the compact
 help index, so their invocation schemas remain complete.
 
+Server response envelopes are writer-used TypedDicts in `server/transport.py`.
+`scripts/gen_server_contracts.py` generates the committed response JSON Schema
+bundle, OpenAPI 3.1 document and raw GUI TypeScript transport declarations;
+`--check` detects drift, and `just regen` updates all three. Keep GUI presentation
+types and tolerant parsing adapters handwritten: they are not wire documents.
+Loaded result/report documents remain opaque in the server spec until their
+own writer models drive their public schemas; a schema ID check is not full
+document validation. Job projections still omit unset fields and compact
+results still omit provenance and empty values.
+
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
 it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
+
+### Issue-report package
+
+Issue-report internals live in `core/issue_report/`: `redaction.py` sanitizes
+text, `runs.py` loads local run records and discovers sensitive names, and
+`environment.py` collects installation diagnostics. The package initializer
+assembles reports and fits GitHub links; existing `core.issue_report` and
+`api.support` imports remain unchanged.
 
 ## Write tests
 

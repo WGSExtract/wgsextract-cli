@@ -37,8 +37,9 @@ from .operations import (
     is_network_path,
     params_from_json,
 )
+from .transport import Job as JobView
+from .transport import JobError, JobEvent, JobProgress, JobSummary, Kind, Status
 
-Status = Literal["queued", "running", "succeeded", "failed", "cancelled", "interrupted"]
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
 
@@ -59,19 +60,19 @@ def _now() -> str:
 class Job:
     id: str
     op: str
-    kind: str
+    kind: Kind
     params: dict[str, Any]
     status: Status = "queued"
     created: str = field(default_factory=_now)
     started: str | None = None
     finished: str | None = None
     exit_code: int | None = None
-    error: dict[str, Any] | None = None
-    progress: dict[str, Any] | None = None
+    error: JobError | None = None
+    progress: JobProgress | None = None
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
     server_pid: int = field(default_factory=os.getpid)
-    events: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    events: list[JobEvent] = field(default_factory=list, repr=False)
 
     @property
     def done(self) -> bool:
@@ -82,13 +83,43 @@ class Job:
         data = {k: v for k, v in vars(self).items() if k != "events"}
         return {"schema": RECORD_SCHEMA, **data}
 
-    def view(self, *, full: bool = False) -> dict[str, Any]:
+    def summary(self) -> JobSummary:
+        data: JobSummary = {
+            "id": self.id,
+            "op": self.op,
+            "status": self.status,
+            "created": self.created,
+        }
+        if self.finished is not None:
+            data["finished"] = self.finished
+        return data
+
+    def view(self, *, full: bool = False) -> JobView:
         """The job as a client sees it: unset fields left out and, unless
         ``full``, the result without its provenance."""
-        hidden = {"events", "server_pid"} | (set() if full else {"params"})
-        data = {
-            k: v for k, v in vars(self).items() if k not in hidden and v is not None
+        data: JobView = {
+            "id": self.id,
+            "op": self.op,
+            "kind": self.kind,
+            "status": self.status,
+            "created": self.created,
         }
+        if full:
+            data["params"] = self.params
+        if self.started is not None:
+            data["started"] = self.started
+        if self.finished is not None:
+            data["finished"] = self.finished
+        if self.exit_code is not None:
+            data["exit_code"] = self.exit_code
+        if self.error is not None:
+            data["error"] = self.error
+        if self.progress is not None:
+            data["progress"] = self.progress
+        if self.cancel_requested is not None:
+            data["cancel_requested"] = self.cancel_requested
+        if self.result is not None:
+            data["result"] = self.result
         if self.result is not None and not full:
             data["result"] = {
                 k: v
@@ -212,7 +243,7 @@ class JobManager:
 
     def events(
         self, job_id: str, after: int, timeout: float
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[JobEvent], bool]:
         """Events with ``seq`` above ``after``, waiting up to ``timeout`` for
         one; and whether the job has finished."""
         deadline = time.monotonic() + timeout
@@ -312,9 +343,27 @@ class JobManager:
 
     # Internals (called with the lock held unless noted) --------------------
 
-    def _event(self, job: Job, kind: str, **data: Any) -> None:
+    def _event(
+        self,
+        job: Job,
+        kind: Literal["status", "progress"],
+        *,
+        status: Status | Literal["cancelling"] | None = None,
+        stage: str | None = None,
+        message: str | None = None,
+        fraction: float | None = None,
+    ) -> None:
         seq = job.events[-1]["seq"] + 1 if job.events else 1
-        job.events.append({"seq": seq, "type": kind, "time": _now(), **data})
+        event: JobEvent = {"seq": seq, "type": kind, "time": _now()}
+        if status is not None:
+            event["status"] = status
+        if stage is not None:
+            event["stage"] = stage
+        if message is not None:
+            event["message"] = message
+        if fraction is not None:
+            event["fraction"] = fraction
+        job.events.append(event)
         self._lock.notify_all()
 
     def _pump(self) -> None:
@@ -427,11 +476,13 @@ class JobManager:
                 continue
             if message["event"] == "progress":
                 with self._lock:
-                    progress = {
-                        k: message.get(k)
-                        for k in ("stage", "message", "fraction")
-                        if message.get(k) is not None
-                    }
+                    progress: JobProgress = {}
+                    if message.get("stage") is not None:
+                        progress["stage"] = message["stage"]
+                    if message.get("message") is not None:
+                        progress["message"] = message["message"]
+                    if message.get("fraction") is not None:
+                        progress["fraction"] = message["fraction"]
                     # Tools often run in many short steps with the same message.
                     if progress != job.progress:
                         job.progress = progress
@@ -497,14 +548,14 @@ class JobManager:
         status: Status,
         *,
         error: str | None = None,
-        error_record: Mapping[str, Any] | None = None,
+        error_record: JobError | None = None,
     ) -> None:
         job.status = status
         job.finished = _now()
         if status == "cancelled":
             job.exit_code = CANCELLED_EXIT_CODE
         if error_record:
-            job.error = dict(error_record)
+            job.error = error_record.copy()
         elif error:
             job.error = {
                 "kind": "failure" if status == "failed" else "cancelled",

@@ -1,5 +1,6 @@
 import os
 import platform
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -15,14 +16,23 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-MACOS_PERFORMANCE_LEVEL_NAMES = {"performance", "super"}
-
 
 @dataclass(frozen=True)
 class ThreadTuningProfile:
     threads: int
     label: str
     reason: str
+    cpu_alignment_threads: int | None = None
+
+
+@dataclass(frozen=True)
+class CoreLayout:
+    big: int
+    little: int
+
+    @property
+    def total(self) -> int:
+        return self.big + self.little
 
 
 def is_windows_host() -> bool:
@@ -46,18 +56,19 @@ def _sysctl_output(command: list[str]) -> str | None:
     return completed.stdout
 
 
-def _positive_int(value: str) -> int | None:
+def _core_count(value: str) -> int | None:
     try:
         parsed = int(value.strip())
     except ValueError:
         return None
-    return parsed if parsed > 0 else None
+    return parsed if parsed >= 0 else None
 
 
-def _macos_named_performance_core_count() -> int | None:
-    output = _sysctl_output(["sysctl", "-a"])
-    if output is None:
+def macos_core_layout() -> CoreLayout | None:
+    """Read core levels, not chip names; Super and Performance are both big."""
+    if platform.system() != "Darwin" or platform.machine() not in {"arm64", "aarch64"}:
         return None
+    output = _sysctl_output(["sysctl", "-a"]) or ""
 
     perf_levels: dict[str, dict[str, str]] = {}
     for line in output.splitlines():
@@ -71,48 +82,56 @@ def _macos_named_performance_core_count() -> int | None:
         if len(key_parts) != 3 or key_parts[0] != "hw":
             continue
         level_key, field = key_parts[1], key_parts[2]
-        if not level_key.startswith("perflevel") or field not in {
+        if not re.fullmatch(r"perflevel\d+", level_key) or field not in {
             "name",
             "physicalcpu",
         }:
             continue
         perf_levels.setdefault(level_key, {})[field] = value.strip().strip('"')
 
-    total = 0
-    for level_fields in perf_levels.values():
-        if (
-            level_fields.get("name", "").strip().lower()
-            not in MACOS_PERFORMANCE_LEVEL_NAMES
-        ):
-            continue
-        core_count = _positive_int(level_fields.get("physicalcpu", ""))
-        if core_count:
-            total += core_count
-    return total or None
+    levels = sorted(perf_levels, key=lambda level: int(level.removeprefix("perflevel")))
+    counts = [
+        _core_count(perf_levels[level].get("physicalcpu", "")) for level in levels
+    ]
+    if counts and all(count is not None for count in counts):
+        named = all(perf_levels[level].get("name", "").strip() for level in levels)
+        big = little = 0
+        for index, (level, count) in enumerate(zip(levels, counts, strict=True)):
+            assert count is not None
+            efficiency = (
+                perf_levels[level]["name"].strip().lower() == "efficiency"
+                if named
+                else len(levels) > 1 and index == len(levels) - 1
+            )
+            if efficiency:
+                little += count
+            else:
+                big += count
+        if big:
+            return CoreLayout(big, little)
+
+    # Older macOS releases may expose only the fastest level.
+    fastest = _sysctl_output(["sysctl", "-n", "hw.perflevel0.physicalcpu"])
+    count = _core_count(fastest) if fastest is not None else None
+    return (
+        CoreLayout(count, max(0, (os.cpu_count() or count) - count)) if count else None
+    )
 
 
 def macos_performance_core_count() -> int | None:
-    if platform.system() != "Darwin" or platform.machine() not in {"arm64", "aarch64"}:
-        return None
-
-    named_core_count = _macos_named_performance_core_count()
-    if named_core_count:
-        return named_core_count
-
-    output = _sysctl_output(["sysctl", "-n", "hw.perflevel0.physicalcpu"])
-    if output is None:
-        return None
-    return _positive_int(output.strip())
+    layout = macos_core_layout()
+    return layout.big if layout else None
 
 
 def default_thread_tuning_profile() -> ThreadTuningProfile:
     """Return the central default thread policy for user-facing commands."""
-    apple_perf_cores = macos_performance_core_count()
-    if apple_perf_cores:
+    layout = macos_core_layout()
+    if layout:
         return ThreadTuningProfile(
-            threads=apple_perf_cores,
-            label=str(apple_perf_cores),
+            threads=layout.big,
+            label=str(layout.big),
             reason="Apple Silicon performance-core count",
+            cpu_alignment_threads=layout.total,
         )
 
     total_cpus = os.cpu_count() or 4

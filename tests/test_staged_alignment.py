@@ -42,8 +42,11 @@ def _align(reads, ref, out, *, native="off", prefer=None):
 
 
 @pytest.mark.parametrize("fmt", ["BAM", "CRAM"])
+@pytest.mark.parametrize(("threads", "compression_threads"), [("1", "1"), ("2", "4")])
 @needs_tools("bwa", "samtools", "samblaster")
-def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_path, fmt):
+def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(
+    tmp_path, fmt, threads, compression_threads
+):
     reads = _short_reads(tmp_path)
     ref = str(
         write_fasta(
@@ -77,6 +80,8 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(tmp_pat
             memory="16M",
             fmt=fmt,
             ref=ref,
+            threads=threads,
+            compression_threads=compression_threads,
             chunk_records=3,
             expected_reads=280,
         )
@@ -209,7 +214,9 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
 
 
 @needs_tools("bwa", "samtools", "samblaster")
-def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkeypatch):
+def test_issue968_multithreaded_real_metal_gate_and_speed_preference(
+    tmp_path, monkeypatch
+):
     native = native_aligners.find_native_aligner("bwa", "auto", quiet=True)
     if native is None or not native.metal_available or native.tool != "bwa":
         pytest.skip("Genuine wgse-bwa Metal hardware/build required")
@@ -217,11 +224,12 @@ def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkey
     ordinary, _ = _align(reads, reads.ref, tmp_path / "ordinary")
     monkeypatch.setitem(settings, "memory_limit", None)
     gpu = bwa_gpu_memory(reads.ref, 280)
+    # Trigger staging at its floor; a 2G-per-worker budget may fit streaming.
     needed = estimate_mapping_memory(
         reads.ref,
         "bwa",
         threads="2",
-        memory="2G",
+        memory="256M",
         samblaster=True,
         reads=280,
         read_length=100,
@@ -244,6 +252,7 @@ def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkey
     assert (
         staged.metrics["native_aligner_backend_reason"] == "memory_budget_metal_staged"
     )
+    assert set(staged.provenance.params["thread_plan"].values()) == {2}
     assert _samtools("view", staged_path) == _samtools("view", ordinary)
     realigned = api.align.realign(
         api.RealignParams(
@@ -257,7 +266,18 @@ def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkey
     )
     assert realigned.metrics["alignment_mode"] == "staged_metal"
     assert Path(reads.r1).is_file() and Path(reads.r2).is_file()
-    memory(needed - GIB // 32)
+    minimum = estimate_mapping_memory(
+        reads.ref,
+        "bwa",
+        threads="2",
+        memory="256M",
+        samblaster=True,
+        reads=280,
+        read_length=100,
+        gpu_bytes=gpu,
+        staged=True,
+    ).total
+    memory(minimum - GIB // 32)
     _, cpu = _align(reads, reads.ref, tmp_path / "cpu", native="auto")
     assert cpu.metrics["native_aligner_backend_reason"] == "memory_budget_cpu"
     _, preferred = _align(
@@ -309,11 +329,14 @@ def test_issue872_staged_estimate_includes_extraction_reserve_and_raw_resume_cre
     }
     one = estimate_resources("realign", threads="3", **options)
     many = estimate_resources("realign", threads="16", **options)
-    # Available RAM and disk are live snapshots, not part of the thread cap.
+    # More sort workers reserve more memory, even in a staged pipeline.
     for three, sixteen in zip(one.resources, many.resources, strict=True):
         assert three.resource == sixteen.resource
-        assert three.estimated_bytes == sixteen.estimated_bytes
-        assert three.components == sixteen.components
+        if three.resource == "memory":
+            assert sixteen.estimated_bytes > three.estimated_bytes
+        else:
+            assert three.estimated_bytes == sixteen.estimated_bytes
+            assert three.components == sixteen.components
     workspace = tmp_path / "checkpoint"
     workspace.mkdir()
     raw = workspace / "unsorted.bam"

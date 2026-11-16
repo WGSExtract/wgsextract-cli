@@ -3,7 +3,8 @@
 
 Usage: python scripts/bump_version.py 0.4.4
 
-Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, the CLI
+Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, the
+committed OpenAPI release version, the CLI
 site's current-release text (site_src/), then points the desktop app's bundle
 and its site at the same CLI release with
 gui/scripts/bump-wgsextract-cli.py; release.yml compares all of them with the
@@ -12,6 +13,7 @@ vX.Y.Z tag (see docs/releasing.md).
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
@@ -30,6 +32,7 @@ VERSIONS = [
 # versions older than the current one.
 SITE = ["site_src/index.md", "site_src/install.md"]
 GUI_BUMP = "gui/scripts/bump-wgsextract-cli.py"
+OPENAPI = "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
 
 
 def main(argv: list[str]) -> int:
@@ -63,20 +66,30 @@ def main(argv: list[str]) -> int:
                 )
                 return 1
             changes[path] = text
+    path = ROOT / OPENAPI
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["info"]["version"] = new
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"Could not update {OPENAPI} ({e}); nothing changed.", file=sys.stderr)
+        return 1
+    changes[path] = (
+        json.dumps(document, separators=(",", ":"), ensure_ascii=False) + "\n"
+    )
     # Write each to a temporary file first and rename them all into place; if
     # anything fails, put back the files already replaced.
-    originals = {path: path.read_text() for path in changes}
+    originals = {path: path.read_text(encoding="utf-8") for path in changes}
     staged = {path: path.with_name(path.name + ".bump") for path in changes}
     replaced: list[Path] = []
     try:
         for path, text in changes.items():
-            staged[path].write_text(text)
+            staged[path].write_text(text, encoding="utf-8")
         for path in changes:
             staged[path].replace(path)
             replaced.append(path)
     except OSError as e:
         for path in replaced:
-            path.write_text(originals[path])
+            path.write_text(originals[path], encoding="utf-8")
         for tmp in staged.values():
             tmp.unlink(missing_ok=True)
         print(
@@ -88,7 +101,7 @@ def main(argv: list[str]) -> int:
     gui = subprocess.run([sys.executable, str(ROOT / GUI_BUMP), f"v{new}"])
     if gui.returncode:
         for path in changes:
-            path.write_text(originals[path])
+            path.write_text(originals[path], encoding="utf-8")
         print(f"{GUI_BUMP} failed; nothing changed.", file=sys.stderr)
         return 1
     print(f"Version {new} (was {', '.join(sorted(old))}).")

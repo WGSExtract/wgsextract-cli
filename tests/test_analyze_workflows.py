@@ -135,6 +135,10 @@ elif output and not (name in state["skip_existing"] and output.exists()):
     if source:
         shutil.copy(source, output)
         shutil.copy(source + ".tbi", str(output) + ".tbi")
+if name == "vcf snp" and opt.get("--reference-evidence") == "gvcf":
+    gvcf = outdir / "bcftools.g.vcf.gz"
+    shutil.copy(state["outputs"][name], gvcf)
+    shutil.copy(state["outputs"][name] + ".tbi", str(gvcf) + ".tbi")
 if name == "vcf snp" and state["reference"]:
     # Callers name the FASTA they used only in their provenance.
     document["provenance"] = {{"reference": {{"path": state["reference"]}}}}
@@ -654,6 +658,25 @@ def test_changed_inputs_settings_or_outputs_redo_only_the_steps_they_affect(
     run = fake.run("--input", bam, "--outdir", str(out),
                    "--confidence-depth", "5", "10")  # fmt: skip
     assert run.ran == _ALL_STEPS
+
+
+@needs_bcftools
+def test_863_missing_reference_evidence_reruns_the_snp_step(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    """Issue #863: with config reference_evidence = gvcf, the SNP step writes
+    the sample's one gVCF, and a lost gVCF index is made again."""
+    fake.settings["reference_evidence"] = "gvcf"
+    out = tmp_path / "out"
+    fake.run("--input", bam, "--outdir", str(out))
+    evidence = {c[1]: c[c.index("--reference-evidence") + 1] for c in fake.calls
+                if c[:2] in (["vcf", "snp"], ["vcf", "indel"])}  # fmt: skip
+    assert evidence == {"snp": "gvcf", "indel": "none"}
+
+    Path(out, "bcftools.g.vcf.gz.tbi").unlink()
+    run = fake.run("--input", bam, "--outdir", str(out))
+    assert run.ran[0] == "snp" and "indel" not in run.ran
+    assert Path(out, "bcftools.g.vcf.gz.tbi").is_file()
 
 
 @needs_bcftools

@@ -51,6 +51,8 @@ def setting(
 
 
 AUTO_OFF = ("auto", "off")
+# --reference-evidence: none, or a gVCF beside the variant VCF (#863).
+REFERENCE_EVIDENCE_MODES = ("none", "gvcf")
 
 
 @dataclass(frozen=True)
@@ -115,8 +117,8 @@ class Settings:
     )
     cpu_threads: int | str = setting(
         "auto",
-        "CPU threads: a positive integer, or auto (Apple Silicon performance "
-        "cores, otherwise all cores)",
+        "CPU threads: a positive integer for every stage, or auto "
+        "(per-stage core-layout plan on Apple Silicon; all cores elsewhere)",
     )
     memory_limit: str = setting(
         "auto",
@@ -216,6 +218,13 @@ class Settings:
         "never (off)",
         choices=AUTO_OFF,
         fold_case=True,
+    )
+    reference_evidence: str = setting(
+        "none",
+        "`vcf snp`/`vcf indel`: also write a gVCF of reference evidence "
+        "(bcftools.g.vcf.gz) beside the variant VCF (gvcf), or not (none, the "
+        "default); see docs/reference-evidence.md",
+        choices=REFERENCE_EVIDENCE_MODES,
     )
     haplocheck_executable: str | None = setting(
         None, "Path to the haplocheck executable or JAR", path=True
