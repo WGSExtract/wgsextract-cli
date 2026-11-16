@@ -351,6 +351,7 @@ def test_bad_alignment_fails_cleanly_before_inference(tmp_path, command, capsys)
 
 def test_atomic_alignment_failure_keeps_the_previous_bam(tmp_path, monkeypatch):
     from wgsextract_cli.commands import align
+    from wgsextract_cli.commands.alignment import output as alignment_output
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 
     output = tmp_path / "alignment.bam"
@@ -365,7 +366,7 @@ def test_atomic_alignment_failure_keeps_the_previous_bam(tmp_path, monkeypatch):
         Path(bai).write_bytes(b"interrupted index")
         raise RuntimeError("interrupted alignment")
 
-    monkeypatch.setattr(align, "run_pipeline", interrupted)
+    monkeypatch.setattr(alignment_output, "run_pipeline", interrupted)
     with atomic_output_mode(True), pytest.raises(RuntimeError):
         align.run_streamed_alignment(
             ["bwa", "mem", "reference", "reads"],
@@ -389,6 +390,7 @@ def test_failed_atomic_alignment_index_never_publishes_partial_sidecar(
     tmp_path, monkeypatch, extension
 ):
     from wgsextract_cli.commands import align
+    from wgsextract_cli.commands.alignment import output as alignment_output
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 
     output = tmp_path / f"alignment.{extension}"
@@ -401,7 +403,7 @@ def test_failed_atomic_alignment_index_never_publishes_partial_sidecar(
         Path(command[-1]).write_bytes(b"partial index")
         raise RuntimeError("interrupted indexing")
 
-    monkeypatch.setattr(align, "run_command", interrupted)
+    monkeypatch.setattr(alignment_output, "run_command", interrupted)
     with atomic_output_mode(True), pytest.raises(RuntimeError):
         align._index_output(str(output))
     assert index.read_bytes() == b"previous valid index"
