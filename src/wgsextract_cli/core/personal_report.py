@@ -1842,7 +1842,7 @@ def _choose_inputs(
         candidates.extend(
             source.locate(str(r["path"]))
             for r in source.records("inputs")
-            if r.get("role") in ("input", "vcf_input") and r.get("path")
+            if r.get("role") in SAMPLE_ROLES and r.get("path")
         )
     if input_file is None:
         keys = (workspace.describe().get("files") or {}).keys()

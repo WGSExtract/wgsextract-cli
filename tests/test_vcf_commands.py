@@ -1,7 +1,9 @@
 """Focused regressions for vcf/, VEP and analyze command helpers."""
 
 import argparse
+import contextlib
 import gzip
+import json
 import os
 import random
 import shutil
@@ -11,12 +13,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract, write_fasta
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_tools,
+    reference_for_vcf,
+    run_wgsextract,
+    write_fasta,
+)
 from wgsextract_cli import api
 from wgsextract_cli.api import VcfFreebayesParams
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.main import main
 
 needs_bcftools = needs_tools("bcftools", "bgzip", "tabix")
 
@@ -354,6 +363,139 @@ def test_filter_reads_the_vcf_input_not_the_alignment(tmp_path):
                    "--input", str(tmp_path / "missing.cram"),
                    "--region", "chrM", "--outdir", str(out))  # fmt: skip
     assert _query(str(out / "filtered.vcf.gz")) == ["m"]
+
+
+def _cli_json(capsys: pytest.CaptureFixture[str], *argv: str) -> dict:
+    """The --json result of a full CLI run (dispatch included)."""
+    with contextlib.suppress(SystemExit):
+        main([*argv, "--json"])
+    return json.loads(capsys.readouterr().out)
+
+
+def _inputs(result: dict) -> list[tuple[str, str]]:
+    return [(r["role"], Path(r["path"]).name) for r in result["inputs"]]
+
+
+CLINVAR_HEADER = (
+    '##INFO=<ID=CLNSIG,Number=.,Type=String,Description="s">\n'
+    '##INFO=<ID=CLNDN,Number=.,Type=String,Description="d">\n'
+)
+
+
+def _sample_and_other(tmp_path: Path) -> tuple[str, str]:
+    """A sample's VCF and an unrelated one, each in its own folder."""
+    (tmp_path / "sample").mkdir()
+    (tmp_path / "other").mkdir()
+    body = "{c}\t10\tv\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
+    return (
+        _write_vcf(tmp_path / "sample" / "sample.vcf.gz", body, sample="S"),
+        _write_vcf(tmp_path / "other" / "other.vcf.gz", body, sample="O"),
+    )
+
+
+def _clinvar(tmp_path: Path, sample: str) -> tuple[str, ...]:
+    """`vcf clinvar` options for a one-entry ClinVar file and the sample's
+    reference (ClinVar matching needs --ref)."""
+    clinvar = _write_vcf(
+        tmp_path / "clinvar.vcf.gz",
+        "{c}\t10\tc\tA\tG\t.\t.\tCLNSIG=Pathogenic;CLNDN=D\n",
+        header=CLINVAR_HEADER,
+    )
+    ref = reference_for_vcf(tmp_path / "ref" / "ref.fa.gz", sample)
+    return ("--clinvar-file", clinvar, "--ref", str(ref))
+
+
+@needs_bcftools
+@pytest.mark.parametrize(
+    ("command", "status"),
+    [
+        (("vcf", "clinvar"), "ok"),
+        (("vcf", "table"), "ok"),
+        (("qc", "vcf"), "ok"),
+        (("vcf", "filter", "--expr", "NOPE>1"), "failed"),
+    ],
+)
+def test_manifest_lists_only_the_vcf_input_read(tmp_path, capsys, command, status):
+    """Issue #900: given --input and --vcf-input, a vcf command reads only
+    --vcf-input, but its manifest listed both, for failed runs too."""
+    sample, other = _sample_and_other(tmp_path)
+    out = tmp_path / "out"
+    extra = _clinvar(tmp_path, sample) if command[1] == "clinvar" else ()
+    result = _cli_json(capsys, *command, "--input", other, "--vcf-input", sample,
+                       *extra, "--outdir", str(out))  # fmt: skip
+    assert result["status"] == status
+    assert _inputs(result) == [("vcf_input", "sample.vcf.gz")]
+    if command[1] == "clinvar":
+        saved = json.loads((out / "clinvar_pathogenic.vcf.manifest.json").read_text())
+        assert _inputs(saved) == [("vcf_input", "sample.vcf.gz")]
+
+
+@needs_bcftools
+def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys):
+    """Issue #900: the --input recorded beside --vcf-input pulled a run on one
+    sample's VCF into another sample's report."""
+    sample, other = _sample_and_other(tmp_path)
+    results = tmp_path / "results"
+    _cli_json(capsys, "vcf", "clinvar", "--input", other, "--vcf-input", sample,
+              *_clinvar(tmp_path, sample), "--outdir", str(results))  # fmt: skip
+
+    def sources(vcf: str) -> list[str]:
+        report = _cli_json(capsys, "report", "--input", vcf, "--results", str(results))
+        return [name for role, name in _inputs(report) if role == "manifest"]
+
+    assert sources(other) == []
+    assert sources(sample) == ["clinvar_pathogenic.vcf.manifest.json"]
+
+
+@needs_bcftools
+def test_trio_proband_overrides_input_in_the_manifest(tmp_path, capsys):
+    """Issue #900: --proband is the child's VCF read, not --input, also when
+    the run fails before reading it."""
+    body = "{c}\t10\tv\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:99\n"
+    gq = '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="q">\n'
+    child, mom, dad, other = (
+        _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)
+        for name in ("child", "mom", "dad", "other")
+    )
+    result = _cli_json(capsys, "vcf", "trio", "--proband", child, "--mother", mom,
+                       "--father", dad, "--input", other, "--mode", "denovo",
+                       "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert result["status"] == "ok", result["error"]
+    assert _inputs(result) == [
+        ("proband", "child.vcf.gz"), ("mother", "mom.vcf.gz"), ("father", "dad.vcf.gz")
+    ]  # fmt: skip
+    # A run that fails before reading the parents still names the child.
+    failed = _cli_json(capsys, "vcf", "trio", "--proband", child, "--mother", mom,
+                       "--input", other, "--outdir", str(tmp_path / "out"))  # fmt: skip
+    assert failed["status"] == "failed"
+    assert _inputs(failed) == [("proband", "child.vcf.gz")]
+
+
+@needs_bcftools
+def test_trio_on_a_vcf_only_genome_is_the_genomes_report_vcf(tmp_path, capsys):
+    """Issue #900 review: a --genome trio records the child as its proband, and
+    the genome's report still names that VCF as the sample's."""
+    body = "{c}\t10\tv\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:99\n"
+    gq = '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="q">\n'
+    genome = tmp_path / "genomes" / "child"
+    genome.mkdir(parents=True)
+    config = tmp_path / "config.toml"
+    config.write_text(f"dataset_library = {json.dumps(str(genome.parent))}\n")
+    _write_vcf(genome / "child.vcf.gz", body, sample="S", header=gq)
+    mom, dad = (
+        _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)
+        for name in ("mom", "dad")
+    )
+    trio = _cli_json(capsys, "--config", str(config), "vcf", "trio", "--genome",
+                     "child", "--mother", mom,
+                     "--father", dad, "--mode", "denovo")  # fmt: skip
+    assert trio["status"] == "ok", trio["error"]
+    assert _inputs(trio)[0] == ("proband", "child.vcf.gz")
+
+    report = _cli_json(capsys, "--config", str(config), "report", "--genome", "child")
+    assert report["status"] == "ok", report["error"]
+    document = next(o["path"] for o in report["outputs"] if o["path"].endswith(".json"))
+    assert json.loads(Path(document).read_text())["sample"]["vcf"] == "child.vcf.gz"
 
 
 @needs_bcftools
