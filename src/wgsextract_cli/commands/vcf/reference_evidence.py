@@ -12,13 +12,15 @@ subsamples columns deeper than 255 bases with one random stream per process).
 
 from __future__ import annotations
 
+import bisect
 import logging
 import os
 import re
 import subprocess
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from functools import partial
 from pathlib import Path
 from threading import Event
@@ -274,40 +276,20 @@ def clip_gvcf(
                 text=True,
             )
             assert reader.stdout is not None and writer.stdin is not None
+            broken = False
             try:
                 for line in reader.stdout:
-                    if line.startswith("#"):
-                        writer.stdin.write(line)
-                        continue
-                    fields = line.split("\t", 8)
-                    contig, pos = fields[0], int(fields[1])
-                    ranges = spans.get(contig, [])
-                    end_match = _END.search(fields[7])
-                    block = end_match is not None and all(
-                        alt in SYMBOLIC_REFERENCE_ALTS for alt in fields[4].split(",")
-                    )
-                    if not block:
-                        if any(first <= pos <= last for first, last in ranges):
-                            writer.stdin.write(line)
-                        continue
-                    assert end_match is not None
-                    end = int(end_match.group(1))
-                    for first, last in ranges:
-                        start, stop = max(pos, first), min(end, last)
-                        if start > stop:
-                            continue
-                        if start == pos and stop == end:
-                            writer.stdin.write(line)
-                            continue
-                        fields[1] = str(start)
-                        fields[3] = fields[3] if start == pos else base(contig, start)
-                        fields[7] = _END.sub(f"END={stop}", fields[7], count=1)
-                        writer.stdin.write("\t".join(fields))
+                    if not line.startswith("#"):
+                        line = _cut_record(line, spans, base)
+                    writer.stdin.write(line)
+            except BrokenPipeError:
+                broken = True  # The writer failed; its stderr says why.
             finally:
                 reader.stdout.close()
-                writer.stdin.close()
+                with suppress(BrokenPipeError):
+                    writer.stdin.close()
                 codes = reader.wait(), writer.wait()
-            if any(codes):
+            if broken or any(codes):
                 stderr.seek(0)
                 raise WGSExtractError(
                     f"Cutting the gVCF {source} to its partition failed: "
@@ -317,6 +299,40 @@ def clip_gvcf(
 
 
 _END = re.compile(r"(?<![^;])END=(\d+)")
+
+
+def _cut_record(
+    line: str,
+    spans: Mapping[str, list[tuple[int, int]]],
+    base: Callable[[str, int], str],
+) -> str:
+    """``line`` (one gVCF record) cut to the sorted, disjoint 1-based
+    ``spans``: "" when outside them, else one record per span it covers."""
+    fields = line.split("\t", 8)
+    contig, pos = fields[0], int(fields[1])
+    ranges = spans.get(contig, [])
+    # The first span ending at or after POS.
+    index = bisect.bisect_left(ranges, pos, key=lambda span: span[1])
+    end_match = _END.search(fields[7])
+    block = end_match is not None and all(
+        alt in SYMBOLIC_REFERENCE_ALTS for alt in fields[4].split(",")
+    )
+    if end_match is None or not block:
+        inside = index < len(ranges) and ranges[index][0] <= pos
+        return line if inside else ""
+    end = int(end_match.group(1))
+    pieces = []
+    for first, last in ranges[index:]:
+        if first > end:
+            break
+        start, stop = max(pos, first), min(end, last)
+        if start == pos and stop == end:
+            return line
+        fields[1] = str(start)
+        fields[3] = fields[3] if start == pos else base(contig, start)
+        fields[7] = _END.sub(f"END={stop}", fields[7], count=1)
+        pieces.append("\t".join(fields))
+    return "".join(pieces)
 
 
 def gather_gvcf(parts: Sequence[str], work: str, output: str) -> None:

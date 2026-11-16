@@ -28,6 +28,7 @@ from wgsextract_cli.core.reference_evidence import (
     ReferenceEvidence,
     State,
 )
+from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 pytestmark = needs_htslib
@@ -192,3 +193,26 @@ def test_a_clair3_partition_without_reads_reads_uncovered_863(sample, request):
     gvcf = {output.role: output for output in result.outputs}[ROLE].path
     assert state(gvcf, "chrY", 300) is State.UNCOVERED
     assert state(gvcf, "chr20", 1200) is State.CALLABLE_REFERENCE
+
+
+def test_a_gvcf_that_cant_be_written_reports_bcftools_error_863(sample, tmp_path):
+    """#1009 review: when bcftools can't write the cut gVCF (a full disk, or
+    here a folder in its place), the error names the gVCF and carries
+    bcftools' own message, not a bare broken pipe."""
+    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf
+
+    rows = ["##fileformat=VCFv4.2", "##contig=<ID=chr20,length=12000>"]
+    rows.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts")
+    rows += [
+        f"chr20\t{p}\t.\tA\t<NON_REF>\t.\t.\tEND={p}\tGT\t0/0" for p in range(1, 5001)
+    ]
+    source = tmp_path / "raw.vcf"
+    source.write_text("\n".join(rows) + "\n")
+    target = tmp_path / "cut.g.vcf.gz"
+    target.mkdir()
+
+    with pytest.raises(WGSExtractError, match="raw.vcf to its partition failed: .+"):
+        clip_gvcf(
+            str(source), [PloidyInterval("chr20", 0, 12000, 2)], sample.ref, str(target)
+        )
