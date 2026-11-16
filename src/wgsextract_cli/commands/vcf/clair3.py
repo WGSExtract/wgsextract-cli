@@ -48,6 +48,7 @@ from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.resource_estimates import (
+    CLAIR3_GVCF_TIME_FACTOR,
     CLAIR3_MEMORY,
     HostRequirement,
     calling_hours,
@@ -55,6 +56,8 @@ from wgsextract_cli.core.resource_estimates import (
     estimate_clair3,
     report_resources,
 )
+from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
@@ -612,6 +615,22 @@ def clair3_errors(output: Path, limit: int = 8) -> str:
     return "\n".join(list(seen)[:limit])
 
 
+def _calls_contigs_with_reads(
+    reads: str, ref: str, intervals: Intervals | None
+) -> bool:
+    """Whether a contig Clair3 calls (the region's, else chr1-22, X and Y)
+    has mapped reads by the index, as Clair3's CheckEnvs asks; True when
+    the index can't say."""
+    try:
+        with_reads = contigs_with_reads(reads, ref) if alignment_index(reads) else None
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.debug(f"Could not list the contigs with reads in {reads}: {e}")
+        with_reads = None
+    if with_reads is None:
+        return True
+    return bool(set(intervals or _MAJOR_CONTIGS) & set(with_reads))
+
+
 def called_bases(reads: str, ref: str, intervals: Intervals | None) -> int:
     """Reference bases Clair3 calls: the region's, else chr1-22, X and Y
     (its default), on the contigs the index places reads on (all of them
@@ -658,6 +677,7 @@ class TempSpace:
     bases: int
     depth: float | None
     gpu: bool
+    gvcf: bool = False
 
     def check(
         self,
@@ -673,7 +693,9 @@ class TempSpace:
         that wouldn't fit (#811, #690): it fails hours in otherwise. A
         ``recheck`` (once that copy is written) says nothing more unless the
         disk is now short."""
-        estimate = estimate_clair3(outdir, self.bases, gpu=self.gpu, depth=self.depth)
+        estimate = estimate_clair3(
+            outdir, self.bases, gpu=self.gpu, depth=self.depth, gvcf=self.gvcf
+        )
         (disk,) = estimate.resources
         caller = "clair3-gpu" if self.gpu else "clair3"
         requirement = HostRequirement(
@@ -688,7 +710,8 @@ class TempSpace:
             ),
             None if recheck else CLAIR3_MEMORY,
             int(threads),
-            calling_hours(caller, self.bases, int(threads)),
+            calling_hours(caller, self.bases, int(threads))
+            * (CLAIR3_GVCF_TIME_FACTOR[caller] if self.gvcf else 1),
         )
         if recheck and not any(v.short for v in requirement.volumes()):
             return
@@ -703,7 +726,12 @@ class TempSpace:
 
 
 def temp_space(
-    reads: str, ref: str, intervals: Intervals | None, region: str | None, gpu: bool
+    reads: str,
+    ref: str,
+    intervals: Intervals | None,
+    region: str | None,
+    gpu: bool,
+    gvcf: bool = False,
 ) -> TempSpace | None:
     """Clair3's temporary space for ``reads``, or None when its called bases
     can't be counted."""
@@ -712,11 +740,13 @@ def temp_space(
     except (OSError, ValueError) as e:
         logging.warning(f"Clair3's temporary space wasn't estimated: {e}")
         return None
-    return TempSpace(bases, mean_depth(reads, ref, region) if gpu else None, gpu)
+    return TempSpace(bases, mean_depth(reads, ref, region) if gpu else None, gpu, gvcf)
 
 
 def run_clair3(params: VcfClair3Params) -> None:
-    from .caller_ploidy import call_partitioned
+    from wgsextract_cli.core.reference_evidence import CLAIR3_MIN_MAPPING_QUALITY
+
+    from .caller_ploidy import GvcfEngine, call_partitioned
 
     require_supported_platform()
     gpu = verify_gpu() if params.gpu else None
@@ -729,8 +759,28 @@ def run_clair3(params: VcfClair3Params) -> None:
     else:
         verify_dependencies([CLAIR3, "samtools", "bcftools", "tabix"])
         log_dependency_info([CLAIR3])
+    evidence = None
+    if params.reference_evidence == "gvcf":
+        version = (
+            str(image_record(gpu.image)["image"])
+            if gpu
+            else ".".join(map(str, clair3_version() or ())) or "unknown"
+        )
+        evidence = GvcfEngine(
+            "clair3", version, min_mapping_quality=CLAIR3_MIN_MAPPING_QUALITY
+        )
+        warn(
+            "clair3_gvcf_cost",
+            "Clair3 writes its gVCF from a slower pileup: expect about "
+            f"{CLAIR3_GVCF_TIME_FACTOR['clair3-gpu' if gpu else 'clair3']:g}x "
+            "the calling time (--reference-evidence none skips it).",
+        )
     call_partitioned(
-        params, setup_caller(params), "clair3", partial(_run_clair3, gpu=gpu)
+        params,
+        setup_caller(params),
+        "clair3",
+        partial(_run_clair3, gpu=gpu),
+        evidence,
     )
 
 
@@ -739,10 +789,12 @@ def _run_clair3(
     sample_ploidy: int = 2,
     setup: CallerSetup | None = None,
     record: bool = True,
+    gvcf: str | None = None,
     *,
     gpu: GpuSetup | None = None,
 ) -> None:
-    """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``."""
+    """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``, and
+    with ``gvcf`` its gVCF there."""
     setup = setup or setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
@@ -774,7 +826,9 @@ def _run_clair3(
                 raise WGSExtractError(
                     f"Invalid Clair3 region selection: {region}: {error}"
                 ) from error
-        space = temp_space(input_file, use_ref, intervals, region, gpu is not None)
+        space = temp_space(
+            input_file, use_ref, intervals, region, gpu is not None, gvcf is not None
+        )
         stage = needs_cram30_staging(gpu.version if gpu else clair3_version())
         if space:
             # A CRAM 3.0 copy stays beside the tensors while Clair3 runs.
@@ -812,6 +866,8 @@ def _run_clair3(
             )  # fmt: skip
             if sample_ploidy == 1:
                 command.append("--haploid_precise")
+            if gvcf:
+                command.append("--gvcf")
             try:
                 if gpu:
                     weights = [str(Path(run_model, name)) for name in MODEL_FILES]
@@ -852,6 +908,17 @@ def _run_clair3(
         named = restore_vcf_paths(str(merged), real_paths, work)
         with safe_output(out_vcf) as staged:
             run_command(["bcftools", "view", "-Oz", "-o", staged, named])
+        if gvcf:
+            evidence = Path(output, "merge_output.gvcf.gz")
+            if evidence.is_file():
+                named = restore_vcf_paths(str(evidence), real_paths, work)
+                run_command(["bcftools", "view", "-Oz", "-o", gvcf, named])
+            elif not _calls_contigs_with_reads(input_file, use_ref, intervals):
+                # Clair3 skips contigs without reads, and with none left writes
+                # a header-only VCF and no gVCF: its bases read as uncovered.
+                run_command(["bcftools", "view", "-h", "-Oz", "-o", gvcf, out_vcf])
+            else:
+                raise WGSExtractError("Clair3 failed to produce merge_output.gvcf.gz.")
     ensure_vcf_indexed(out_vcf)
     if record:
         record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))

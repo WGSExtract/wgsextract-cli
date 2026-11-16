@@ -221,8 +221,9 @@ class Settings:
     )
     reference_evidence: str = setting(
         "none",
-        "`vcf snp`/`vcf indel`/`vcf deepvariant`: also write a gVCF of "
-        "reference evidence (bcftools.g.vcf.gz, deepvariant.g.vcf.gz) beside "
+        "`vcf snp`/`vcf indel`/`vcf deepvariant`/`vcf gatk`/`vcf clair3`: also "
+        "write a gVCF of reference evidence (bcftools.g.vcf.gz, "
+        "deepvariant.g.vcf.gz, gatk.g.vcf.gz, clair3.g.vcf.gz) beside "
         "the variant VCF (gvcf), or not (none, the default); see "
         "docs/reference-evidence.md",
         choices=REFERENCE_EVIDENCE_MODES,

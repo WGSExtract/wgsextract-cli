@@ -7,7 +7,8 @@ need the difference: treating every missing base as reference turns a
 coverage gap into a confident genotype.
 
 `--reference-evidence gvcf` asks a caller to also write a gVCF, which records
-every base it assessed, beside its variant VCF. The variant VCF is unchanged.
+every base it assessed, beside its variant VCF. The variant VCF is unchanged,
+except that GATK genotypes it from the gVCF (see [GATK](#gatk)).
 It is opt-in (`reference_evidence = "gvcf"` in `config.toml` makes it the
 default) because it costs time, memory and disk.
 
@@ -15,7 +16,8 @@ default) because it costs time, memory and disk.
 | --- | --- | --- |
 | `vcf snp`, `vcf indel` (bcftools) | `bcftools.g.vcf.gz` | available |
 | `vcf deepvariant` (Google's image, `wgse-deepvariant`, Parabricks) | `deepvariant.g.vcf.gz` | available |
-| `vcf gatk`, `vcf clair3` | — | planned |
+| `vcf gatk` (HaplotypeCaller on the CPU; not `--gpu` or `--scatter`) | `gatk.g.vcf.gz` | available |
+| `vcf clair3` (CPU and `--gpu`) | `clair3.g.vcf.gz` | available, about 2.5-6x slower |
 
 `analyze` follows the `config.toml` setting: its SNP step writes the gVCF
 (its indel step doesn't repeat it), and a rerun repeats the SNP step when the
@@ -114,6 +116,66 @@ The variant VCFs were identical with and without the gVCF. Of the 82,588
 truth variants in chr20's confident regions, 116 sit on bases the gVCF calls
 callable reference, against bcftools' 432.
 
+## GATK
+
+HaplotypeCaller writes the gVCF (`-ERC GVCF`), and GenotypeGVCFs genotypes
+the variant VCF from it, so one HaplotypeCaller run makes both. Its blocks
+carry GQ and MIN_DP, with `<NON_REF>`, banded by GQ at `10,20,30,60`: GATK's
+default (one band per GQ below 60) made a genome's gVCF about 6.5 GB, these
+about 1.4 GB, with the same bases at GQ 20 or more. Reads below mapping
+quality 20 are left out, GATK's default. Parabricks' HaplotypeCaller
+(`--gpu`) and Ultima's `--scatter` aren't supported with the gVCF; a run
+asking for both stops before calling.
+
+Measured on HG002 (35x Illumina, GRCh38) against GIAB v4.2.1, 4 threads:
+
+| Region | VCF only | with the gVCF | gVCF + index |
+| --- | --- | --- | --- |
+| chr20:10-12 Mb | 25.5 s | 38.4 s | 0.76 MB |
+| chr20 | 1,374 s | 1,432 s | 28.3 MB (about 1.4 GB for a genome) |
+
+HaplotypeCaller took the same time either way; GenotypeGVCFs added 17 s and
+cutting and publishing the gVCF 4 s. GenotypeGVCFs' VCF had 134,083
+records against HaplotypeCaller's 134,073 without the gVCF: it genotypes
+each site from the gVCF's likelihoods, so a few borderline sites differ. Of
+the 82,588 truth variants in chr20's confident regions, 102 sit on bases the
+gVCF calls callable reference (DeepVariant 116, bcftools 432). GATK also
+writes blocks over reference N, with MIN_DP 0, so they read as `uncovered`.
+
+## Clair3
+
+Clair3 writes the gVCF (`--gvcf`) in the same run as its VCF, whose calls and
+filters it doesn't change, on the CPU and in HKU's GPU image (`--gpu`). Its
+blocks carry GQ, in Clair3's bins of 5, and MIN_DP; reads below mapping
+quality 5 (Clair3's default) are left out. Its pileup step is much slower
+with it, so a run that asks for it warns (`clair3_gvcf_cost`) and its
+preflight scales the time it reports: about 3.8x on the CPU and 6x on the
+GPU. Clair3 skips contigs the index places no reads on, and with none left
+writes no gVCF; their bases read as `uncovered`. A missing gVCF when a
+called contig has reads fails the run. Without a `--region` it calls chr1-22, X and Y, so the
+gVCF's `Region` lists those and other contigs read as `not_assessed`.
+
+Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: 75 s for the VCF,
+179 s with the gVCF (2.4x; 3.8x on 6 threads and 6x in the GPU image in
+#863's research), 1.6 MB. The calls and filters were identical. Of 7,055
+truth variants, 2 sit on bases the gVCF calls callable reference.
+
+## Sex and PAR
+
+GATK and Clair3 call a man's haploid chrX and chrY apart from the diploid
+rest (see [caller-ploidy.md](caller-ploidy.md)), so the gVCF is written in
+parts. Each part's blocks are cut at its edges (a block cut at its start
+begins on its own reference base, read from the FASTA or, for a gzip one,
+its decompressed copy) and the parts are gathered in reference order, so
+every base has one record in the ploidy it was called with: `0` on a man's
+chrX, `0/0` in its PAR. Any other record belongs to the part its POS is in;
+one starting before the selection, such as a deletion whose REF reaches
+into it, is kept where it covers the selected bases, once. Bases the policy gives ploidy 0, such as
+a woman's chrY, aren't called and are recorded in `PloidyZero`.
+
+`vcf gatk` and `vcf clair3` keep no step journal: a rerun calls again,
+with or without the gVCF.
+
 ## Evidence states
 
 `wgsextract_cli.core.reference_evidence` reads a gVCF (one written here, or
@@ -128,7 +190,7 @@ state higher in this table wins.
 | `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example) or sample filter (`FORMAT/FT`). |
 | `no_call` | A missing genotype (`.` or `./.`). |
 | `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`. |
-| `uncovered` | Assessed, but no reads: no record (bcftools, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
+| `uncovered` | Assessed, but no reads: no record (bcftools, Clair3, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
 | `callable_reference` | Reference, with enough depth (and GQ). |
 | `not_assessed` | Outside the region the caller assessed. |
 

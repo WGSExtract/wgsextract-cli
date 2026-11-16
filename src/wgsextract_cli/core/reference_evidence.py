@@ -44,6 +44,12 @@ BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
 # HaplotypeCaller drops them too (MappingQualityReadFilter, default 20).
 BCFTOOLS_MIN_MAPPING_QUALITY = 20
+# GATK's default bands (one per GQ below 60) make a genome's gVCF ~6.5 GB;
+# these make it ~1.4 GB with the same GQ >= 20 states (#863).
+GATK_BANDS = "10,20,30,60"
+GATK_MIN_MAPPING_QUALITY = 20
+# Clair3's --min_mq default (shared/param_p.py, param_f.py).
+CLAIR3_MIN_MAPPING_QUALITY = 5
 
 Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
 

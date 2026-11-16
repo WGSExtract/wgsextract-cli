@@ -109,6 +109,9 @@ NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE = 0.06
 NATIVE_DV_GVCF_BYTES_PER_BASE = 5.0
 NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE = 0.4
 DV_GVCF_PER_INPUT_BYTE = 0.05
+# GATK's gVCF with GQ bands 10,20,30,60 (#863): 2.6% of HG002 35x chr20's
+# BAM; 3% of its bytes at the 80 BAM bytes per read disk_reads infers.
+GATK_GVCF_BYTES_PER_READ = 0.03 * 80
 
 
 @dataclass(frozen=True)
@@ -396,8 +399,9 @@ def estimate_resources(
     serial fallback); None conservatively infers it from the reference index.
     ``alignment_header`` helps budget full headers without launching metadata
     tools in this read-only API. ``reference_evidence`` adds the disk of
-    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts, or DeepVariant's
-    gVCF and the memory and work it takes.
+    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts, GATK's gVCF
+    and its partition copies, or DeepVariant's gVCF and the memory and work
+    it takes.
 
     ``reads`` counts individual reads, not pairs. Callers may provide a cheap
     FASTQ sample/indexed count. Otherwise disk uses a conservative byte-size
@@ -920,6 +924,15 @@ def estimate_resources(
             )
     if operation == "deepvariant" and reference_evidence:
         gvcf_bytes = None if size is None else math.ceil(size * DV_GVCF_PER_INPUT_BYTE)
+        demands.append((output_dir, "reference_evidence", gvcf_bytes))
+    if operation == "gatk" and reference_evidence:
+        # HaplotypeCaller's raw gVCF per ploidy partition, its cut and
+        # gathered copies and the published gVCF.
+        gvcf_bytes = (
+            None
+            if disk_reads is None
+            else math.ceil(disk_reads * GATK_GVCF_BYTES_PER_READ * GVCF_COPIES)
+        )
         demands.append((output_dir, "reference_evidence", gvcf_bytes))
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
     if operation == "gatk" and gatk_workers > 1:
@@ -1560,6 +1573,13 @@ CLAIR3_GPU_BYTES_PER_BASE = (
 CLAIR3_GPU_MARGIN = 1.45
 CLAIR3_ASSUMED_DEPTH = 30.0
 CLAIR3_CPU_BYTES_PER_BASE = 2.0
+# --reference-evidence gvcf (#863), HG002 ONT R10.4.1 chr20:10-15 Mb: the
+# gVCF pileup made Clair3 3.8x slower on 6 CPU threads and 6x in the GPU
+# image; its gVCF was 1.6 MB (0.32 bytes per base). The partitions' parts,
+# their gathered copy and the published gVCF can coexist: three copies.
+CLAIR3_GVCF_TIME_FACTOR = {"clair3": 3.8, "clair3-gpu": 6.0}
+CLAIR3_GVCF_BYTES_PER_BASE = 0.35
+GVCF_COPIES = 3
 
 
 def estimate_vep_download(
@@ -1612,10 +1632,16 @@ def _clair3_gpu_bytes_per_base(depth: float) -> float:
 
 
 def estimate_clair3(
-    output_dir: str, bases: int, *, gpu: bool, depth: float | None = None
+    output_dir: str,
+    bases: int,
+    *,
+    gpu: bool,
+    depth: float | None = None,
+    gvcf: bool = False,
 ) -> PreflightEstimate:
     """Peak of Clair3's work folder beside the output for ``bases`` called
-    reference bases at ``depth`` (#811)."""
+    reference bases at ``depth`` (#811), and with ``gvcf`` the copies of its
+    gVCF (#863)."""
     _, free = _disk_space(output_dir)
     notes = []
     if gpu:
@@ -1630,9 +1656,19 @@ def estimate_clair3(
     else:
         rate = CLAIR3_CPU_BYTES_PER_BASE
     work = math.ceil(bases * rate)
+    components = {"work": work}
+    if gvcf:
+        components["reference_evidence"] = math.ceil(
+            bases * CLAIR3_GVCF_BYTES_PER_BASE * GVCF_COPIES
+        )
+        notes.append(
+            f"Clair3's gVCF pileup takes about {CLAIR3_GVCF_TIME_FACTOR['clair3-gpu' if gpu else 'clair3']:g}x "
+            "the calling time."
+        )
+    total = sum(components.values())
     return PreflightEstimate(
         "clair3",
-        (ResourceEstimate("disk", work, free, {"work": work}, (output_dir,)),),
+        (ResourceEstimate("disk", total, free, components, (output_dir,)),),
         tuple(notes),
     )
 

@@ -1138,6 +1138,10 @@ class VcfGatkParams(_CallerParams):
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     qc_min_depth: float | None = depth_param()
+    reference_evidence: str | None = reference_evidence_param(
+        "gatk.g.vcf.gz",
+        "little time; the VCF is then genotyped from it; not with --gpu or --scatter",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1238,6 +1242,9 @@ class VcfClair3Params(_CallerParams):
     )
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
+    reference_evidence: str | None = reference_evidence_param(
+        "clair3.g.vcf.gz", "~4x the time on a CPU, ~6x on a GPU"
+    )
 
 
 PHASERS = ("whatshap", "longphase")
