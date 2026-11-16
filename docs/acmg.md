@@ -108,24 +108,31 @@ databases with `fastvep sa-build`:
   the build refuses to start without the free space it needs. `--threads`
   sets how many chromosomes build at a time (default 4).
 
-| Source | Download | Database | Terms |
+| Source | Download | Database (chr22; whole genome, estimated) | Terms |
 |---|---|---|---|
-| Ensembl GRCh38 GFF3 (release 116) | 103 MB | (fastVEP caches 144 MB beside it) | no restrictions |
-| ClinVar VCF | 192 MB | `clinvar.osa2`, 41 MB | NCBI, no restrictions |
-| ClinVar `variant_summary.txt.gz` | 437 MB | `clinvar_protein.oga`, 19 MB | NCBI, no restrictions |
-| gnomAD v4.1 joint sites | streams 817 GB | `gnomad_chrN.osa2`, GNOMAD_DB | CC0 |
-| gnomAD v4.1 constraint metrics | 91 MB | `gnomad_genes.oga`, 1.4 MB | CC0 |
-| ClinGen gene-disease validity | 1 MB | `omim.oga`, 0.5 MB | CC0; credit ClinGen and give the access date |
-| REVEL v1.3 | 636 MB | `revel_chrN.osa2`, REVEL_DB | free for non-commercial use; others contact the authors |
-| SpliceAI (Illumina, MANE SNVs via Ensembl) | 27 GB | `spliceai_chrN.osa2`, about 14 GB | academic and not-for-profit use only |
-| UCSC phyloP100way | 5.1 GB | `phylop_chrN.osa2`, about 5.8 GB | freely available for public use |
+| Ensembl GRCh38 GFF3 (release 116) | 108 MB | (fastVEP caches 151 MB beside it) | no restrictions |
+| ClinVar VCF | 202 MB | `clinvar.osa2`, 43 MB | NCBI, no restrictions |
+| ClinVar `variant_summary.txt.gz` | 458 MB | `clinvar_protein.oga`, 20 MB | NCBI, no restrictions |
+| gnomAD v4.1 joint sites | streams 877 GB (chr22: 15.6 GB) | `gnomad_chr22.osa2`, 211 MB; about 12 GB | CC0 |
+| gnomAD v4.1 constraint metrics | 96 MB | `gnomad_genes.oga`, 1.5 MB | CC0 |
+| ClinGen gene-disease validity | 1.1 MB | `omim.oga`, 0.5 MB | CC0; credit ClinGen and give the access date |
+| REVEL v1.3 | 667 MB | `revel_chr22.osa2`, 4 MB; about 0.4 GB | free for non-commercial use; others contact the authors |
+| SpliceAI (Illumina, MANE SNVs via Ensembl) | 28.9 GB | `spliceai_chr22.osa2`, 228 MB; about 15 GB | academic and not-for-profit use only |
+| UCSC phyloP100way | 5.5 GB (chr22: 69 MB) | `phylop_chr22.osa2`, 75 MB; about 6 GB | freely available for public use |
 
 You download these yourself and their terms apply to you; WGS Extract never
 mirrors them or the databases built from them, and you shouldn't share the
 databases either. The run shows each source's terms and warns
 `acmg_data_terms` about REVEL's and SpliceAI's.
 
-CHR22_TIMINGS
+Measured with `--chromosomes chr22` on a 6-core Linux machine, two at a
+time: 89 minutes and 2.6 GB of memory at most. Most of it was the 28.9 GB
+SpliceAI download (54 minutes at 9 MB/s) and gnomAD's chromosome 22 (31
+minutes): bcftools reads the joint release at about 8.5 MB/s per stream,
+held back by parsing its 11 KB records, and more bcftools threads don't help.
+A whole genome streams 877 GB, about 29 hours of one core, or 7 at 4
+chromosomes at a time where the network keeps up; `--dry-run` says it needs
+about 78 GB (73 GiB) free.
 
 ## Validation
 
@@ -136,6 +143,11 @@ eight sources (gnomAD, SpliceAI, REVEL and phyloP built for chromosome 22):
 |---|---|---|---|
 | P/LP (1,960) | 75.4% P/LP | 24.5% | 2 |
 | B/LB (8,231) | 77.2% B/LB | 22.8% | 1 |
+
+The same check with the databases `ref acmg-data` built for chromosome 22
+(REVEL v1.3 rather than ANNOVAR's REVEL, and the whole of gnomAD's chromosome
+22 rather than the test's sites) gives 75.4% and 77.2%, with 1 opposite call
+each way, and the same classes for HG002.
 
 ClinVar itself feeds some criteria (the PM2 backstop, PM5, PM1, PS1), so these
 numbers are an optimistic upper bound. GIAB HG002's chromosome 22 (50,284

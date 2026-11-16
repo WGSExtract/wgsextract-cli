@@ -792,7 +792,10 @@ class _Build:
             self.spliceai = _library_spliceai(reflib)
             if self.spliceai is None:
                 raise WGSExtractError("The SpliceAI download left no indexed file.")
-        require_grch38_vcf(self.spliceai)
+        header = require_grch38_vcf(self.spliceai)
+        date = next(
+            (h.split("=", 1)[1] for h in header if h.startswith("##fileDate=")), ""
+        )
         if not any(Path(f"{self.spliceai}{ext}").is_file() for ext in (".tbi", ".csi")):
             raise WGSExtractError(
                 f"{self.spliceai} has no tabix index; index it with "
@@ -804,7 +807,10 @@ class _Build:
             {
                 "file": str(self.spliceai),
                 "bytes": self.spliceai.stat().st_size,
-                "verified": "BGZF end-of-file block and tabix index",
+                "verified": "given with --spliceai-file"
+                if self.plan.spliceai
+                else "BGZF end-of-file block and tabix index (ref spliceai)",
+                "release": date,
             },
         )
 
@@ -968,9 +974,10 @@ def tabix_contigs(path: Path) -> set[str]:
     return set(listed.split())
 
 
-def require_grch38_vcf(path: Path) -> None:
+def require_grch38_vcf(path: Path) -> list[str]:
     """Refuse a VCF whose header says another assembly: its chromosome 1
-    length, else a ``##reference`` line naming GRCh38 or hg38."""
+    length, else a ``##reference`` line naming GRCh38 or hg38. Returns the
+    header."""
     header = run_command(["bcftools", "view", "-h", str(path)], capture_output=True)
     lines = header.stdout.splitlines()
     for line in lines:
@@ -978,7 +985,7 @@ def require_grch38_vcf(path: Path) -> None:
         if match:
             build = CHR1_LENGTH_BUILDS.get(int(match.group(1)))
             if build == "hg38":
-                return
+                return lines
             raise WGSExtractError(
                 f"{path} is for {build or 'an unknown assembly'}; the databases "
                 "are GRCh38, so give a GRCh38 SpliceAI VCF."
@@ -987,7 +994,7 @@ def require_grch38_vcf(path: Path) -> None:
         line.startswith("##reference") and re.search(r"GRCh38|hg38", line)
         for line in lines
     ):
-        return
+        return lines
     raise WGSExtractError(
         f"{path}'s header doesn't say it is GRCh38 (no chromosome 1 length or "
         "##reference line); give a GRCh38 SpliceAI VCF."
