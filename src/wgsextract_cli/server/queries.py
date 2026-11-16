@@ -16,7 +16,7 @@ import zlib
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from wgsextract_cli.core import personal_report
 from wgsextract_cli.core.results import MANIFEST_SUFFIX
@@ -24,12 +24,17 @@ from wgsextract_cli.core.results import SCHEMA_ID as RESULT_SCHEMA
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_table import COLUMN_NAMES, COLUMNS, INTEGER, REAL
 
+from .lookup_inputs import (
+    CONFIDENCE_RANK,
+    LookupInputs,
+    ManifestInputs,
+    ReportInputs,
+    VariantInputs,
+)
 from .operations import PathGuard, RequestError
 from .transport import VariantPage
 
-MAX_ROWS = 1000
 _FAR = 2**62
-CONFIDENCE_RANK = {"low": 0, "moderate": 1, "high": 2}
 _TYPES = {c.name: c.type for c in COLUMNS}
 _REGION = re.compile(
     r"(?P<chrom>[^:\s]+)(?::(?P<start>\d[\d,]*)(?:-(?P<end>\d[\d,]*))?)?"
@@ -38,46 +43,40 @@ _RSID = re.compile(r"rs\d+")
 _TRUE = ("1", "true", "yes")
 _FALSE = ("0", "false", "no")
 _SIGNIFICANCE_SPLIT = re.compile(r"[/|,]")
+InputT = TypeVar("InputT", bound=LookupInputs)
 
 
 @dataclass(frozen=True)
-class Query:
+class Query(Generic[InputT]):
     """A lookup: MCP tool ``name``, HTTP ``GET /v1/<route>``."""
 
     name: str
     route: str
     summary: str
-    properties: dict[str, Any]
-    required: tuple[str, ...]
-    answer: Callable[[PathGuard, Mapping[str, Any]], dict[str, Any]]
+    inputs: type[InputT]
+    answer: Callable[[PathGuard, InputT], dict[str, Any]]
 
     @property
-    def schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": self.properties,
-            "required": list(self.required),
-            "additionalProperties": False,
-        }
+    def properties(self) -> dict[str, dict[str, object]]:
+        return self.inputs.properties()
 
-    def run(self, guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        unknown = set(arguments) - set(self.properties)
-        if unknown:
-            raise RequestError(
-                400, "usage", f"Unknown parameter(s): {', '.join(sorted(unknown))}."
-            )
-        for name in self.required:
-            if arguments.get(name) in (None, ""):
-                raise RequestError(400, "usage", f"{name} is required.")
-        for name, value in arguments.items():
-            _check_type(name, value, self.properties[name])
-        return self.answer(guard, arguments)
+    @property
+    def required(self) -> tuple[str, ...]:
+        return self.inputs.required()
 
-    def from_query_string(self, query: Mapping[str, list[str]]) -> dict[str, Any]:
+    @property
+    def schema(self) -> dict[str, object]:
+        return self.inputs.schema()
+
+    def run(self, guard: PathGuard, arguments: Mapping[str, object]) -> dict[str, Any]:
+        return self.answer(guard, self.inputs.parse(arguments))
+
+    def from_query_string(self, query: Mapping[str, list[str]]) -> dict[str, object]:
         """HTTP query parameters as JSON values of this query's schema."""
-        arguments: dict[str, Any] = {}
+        arguments: dict[str, object] = {}
+        properties = self.properties
         for name, values in query.items():
-            spec = self.properties.get(name)
+            spec = properties.get(name)
             value = values[-1]
             if spec is not None and spec["type"] == "array":
                 # Comma-separated, repeated, or both.
@@ -101,38 +100,8 @@ class Query:
         return arguments
 
 
-def _check_type(name: str, value: Any, spec: Mapping[str, Any]) -> None:
-    kind = spec["type"]
-    ok = {
-        "string": isinstance(value, str),
-        "integer": isinstance(value, int) and not isinstance(value, bool),
-        "boolean": isinstance(value, bool),
-        "array": isinstance(value, list) and all(isinstance(v, str) for v in value),
-    }[kind]
-    if not ok:
-        raise RequestError(
-            400, "usage", f"{name} must be a{'n' * (kind[0] in 'ai')} {kind}."
-        )
-    if "enum" in spec and value not in spec["enum"]:
-        raise RequestError(
-            400, "usage", f"{name} must be one of {', '.join(spec['enum'])}."
-        )
-    if kind == "integer" and not spec.get("minimum", value) <= value <= spec.get(
-        "maximum", value
-    ):
-        raise RequestError(
-            400,
-            "usage",
-            f"{name} must be {spec['minimum']} to {spec['maximum']}.",
-        )
-    if kind == "array" and "items" in spec and "enum" in spec["items"]:
-        bad = [v for v in value if v not in spec["items"]["enum"]]
-        if bad:
-            raise RequestError(400, "usage", f"Unknown {name}: {', '.join(bad)}.")
-
-
-def _path(guard: PathGuard, arguments: Mapping[str, Any]) -> Path:
-    text = str(arguments["path"])
+def _path(guard: PathGuard, arguments: LookupInputs) -> Path:
+    text = arguments.path
     guard.check_path("path", text)
     return Path(os.path.expanduser(text))
 
@@ -147,7 +116,7 @@ def _read_json(path: Path) -> Any:
 # Manifests -------------------------------------------------------------------
 
 
-def read_manifest(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, Any]:
+def read_manifest(guard: PathGuard, arguments: ManifestInputs) -> dict[str, Any]:
     path = _path(guard, arguments)
     if not path.name.endswith(MANIFEST_SUFFIX):
         raise RequestError(
@@ -156,7 +125,7 @@ def read_manifest(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, A
     document = _read_json(path)
     if not isinstance(document, dict) or document.get("schema") != RESULT_SCHEMA:
         raise RequestError(400, "usage", f"{path} is not a {RESULT_SCHEMA} manifest.")
-    if not arguments.get("full"):
+    if not arguments.full:
         document.pop("provenance", None)
     return document
 
@@ -256,19 +225,19 @@ def _sqlite_rows(
         db.close()
 
 
-def query_variants(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, Any]:
+def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]:
     path = _path(guard, arguments)
     if not path.is_file():
         raise RequestError(404, "not_found", f"No variant table {path}.")
-    gene = arguments.get("gene")
-    rsid = arguments.get("rsid")
+    gene = arguments.gene
+    rsid = arguments.rsid
     if rsid is not None and not _RSID.fullmatch(rsid):
         raise RequestError(400, "usage", f"rsid {rsid!r} isn't an rsID (rs123).")
-    region = _region(arguments["region"]) if arguments.get("region") else None
-    clinvar = str(arguments.get("clinvar") or "").lower()
-    least = CONFIDENCE_RANK.get(str(arguments.get("min_confidence") or ""), -1)
-    limit = int(arguments.get("limit") or 50)
-    cursor = str(arguments.get("cursor") or "0")
+    region = _region(arguments.region) if arguments.region else None
+    clinvar = (arguments.clinvar or "").lower()
+    least = CONFIDENCE_RANK.get(arguments.min_confidence or "", -1)
+    limit = arguments.limit or 50
+    cursor = arguments.cursor or "0"
     # ASCII digits only (str.isdigit accepts "²"), within SQLite's integers.
     if not re.fullmatch(r"[0-9]+", cursor) or int(cursor) > _FAR:
         raise RequestError(400, "usage", "cursor must be a next_cursor value.")
@@ -321,7 +290,7 @@ def query_variants(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, 
             "usage",
             "path must be a vcf table output: *_variants.tsv, .parquet or .sqlite.",
         )
-    wanted = arguments.get("columns") or COLUMN_NAMES
+    wanted = arguments.columns or COLUMN_NAMES
     found: list[dict[str, Any]] = []
     next_cursor = None
     last = after
@@ -370,7 +339,7 @@ def _report_file(guard: PathGuard, path: Path) -> Path:
     return path
 
 
-def report_section(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, Any]:
+def report_section(guard: PathGuard, arguments: ReportInputs) -> dict[str, Any]:
     path = _report_file(guard, _path(guard, arguments))
     document = _read_json(path)
     if not isinstance(document, dict) or document.get("schema") != (
@@ -390,7 +359,7 @@ def report_section(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, 
         "sample": document.get("sample"),
         "disclaimer": document.get("disclaimer"),
     }
-    name = arguments.get("section")
+    name = arguments.section
     if not name:
         return {
             **head,
@@ -408,83 +377,34 @@ def report_section(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, 
     return {**head, "section": name, **sections[name]}
 
 
-_PATH = {"type": "string", "description": "Absolute path in an allowed folder."}
-QUERIES: dict[str, Query] = {
+LookupQuery = Query[ManifestInputs] | Query[VariantInputs] | Query[ReportInputs]
+QUERIES: dict[str, LookupQuery] = {
     q.name: q
     for q in (
-        Query(
+        Query[ManifestInputs](
             "read_manifest",
             "manifest",
             "Read a result manifest (*.manifest.json) a WGS Extract command "
             "wrote: its outputs, metrics, warnings and details.",
-            {
-                "path": _PATH,
-                "full": {
-                    "type": "boolean",
-                    "description": "Include provenance (tools, params).",
-                },
-            },
-            ("path",),
+            ManifestInputs,
             read_manifest,
         ),
-        Query(
+        Query[VariantInputs](
             "query_variants",
             "variants",
             "Look up a sample's variants in a `vcf table` output (*_variants "
             ".sqlite, .tsv or .parquet) by gene, rsID, region, ClinVar "
             "significance or confidence. Returns at most `limit` rows and a "
             "next_cursor to continue.",
-            {
-                "path": _PATH,
-                "gene": {"type": "string", "description": "Gene symbol (BRCA1)."},
-                "rsid": {"type": "string", "description": "dbSNP rsID (rs429358)."},
-                "region": {
-                    "type": "string",
-                    "description": "chrom, chrom:pos or chrom:start-end, named "
-                    "as in the table.",
-                },
-                "clinvar": {
-                    "type": "string",
-                    "description": "A ClinVar significance term, e.g. Pathogenic "
-                    "or Likely_pathogenic (case-insensitive).",
-                },
-                "min_confidence": {
-                    "type": "string",
-                    "enum": list(CONFIDENCE_RANK),
-                    "description": "Only calls labelled at least this confident.",
-                },
-                "columns": {
-                    "type": "array",
-                    "items": {"type": "string", "enum": list(COLUMN_NAMES)},
-                    "description": "Columns to return (default: all non-empty).",
-                },
-                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_ROWS},
-                "cursor": {
-                    "type": "string",
-                    "description": "next_cursor from the previous page.",
-                },
-            },
-            ("path",),
+            VariantInputs,
             query_variants,
         ),
-        Query(
+        Query[ReportInputs](
             "report_section",
             "report",
             "Read a sample's personal report (from the report operation): each "
             "section's status and summary, or one section in full.",
-            {
-                "path": {
-                    "type": "string",
-                    "description": "The sample folder, or its "
-                    "*_personal_report.json, in an allowed folder.",
-                },
-                "section": {
-                    "type": "string",
-                    "enum": list(personal_report.SECTIONS),
-                    "description": "Return this section in full.",
-                },
-            },
-            ("path",),
+            ReportInputs,
             report_section,
         ),
     )
