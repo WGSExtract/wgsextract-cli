@@ -47,6 +47,16 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
+# Clair3's gVCF counts, at a reference base, only the reads that show a base
+# there (preprocess/utils.py, _cal_reference_likelihood): a read deleting it
+# counts for neither its DP nor its GQ. A deletion it saw but didn't call is a
+# no-call or filtered record at its anchor, then confident 0/0 blocks with the
+# deleting reads missing from their depth. Bases within this span after one,
+# at under this share of its depth, are low quality (HG002 ONT chr20:10-15 Mb:
+# 41 truth variants on callable reference became 3, for 0.4% of its callable
+# bases; #1028).
+CLAIR3_DELETION_SPAN = 10
+CLAIR3_DELETION_DEPTH = 0.7
 
 Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
 
@@ -66,6 +76,7 @@ class State(enum.Enum):
 
 
 _RANK = {state: rank for rank, state in enumerate(State)}
+Classified = tuple[str, int, int, State]  # a record's bases and their state
 
 
 @dataclass(frozen=True)
@@ -247,12 +258,22 @@ def _float(value: str | None) -> float | None:
         return None
 
 
+def _depth(info_text: str, values: Mapping[str, str]) -> int | None:
+    info = _info(info_text)
+    depths = [d for d in (_int(info.get("MIN_DP")), _int(values.get("MIN_DP")), _int(values.get("DP"))) if d is not None]  # fmt: skip
+    return min(depths) if depths else None
+
+
+def _sample(fields: Sequence[str]) -> dict[str, str]:
+    keys = fields[8].split(":") if len(fields) > 9 else []
+    return dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
+
+
 def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
     """The state of the bases one gVCF record covers (its first sample)."""
     if fields[6] not in {"PASS", "."}:
         return State.FILTERED
-    keys = fields[8].split(":") if len(fields) > 9 else []
-    values = dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
+    values = _sample(fields)
     alleles = re.split(r"[/|]", values.get("GT", "."))
     alts = fields[4].split(",")
     carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
@@ -260,9 +281,7 @@ def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> S
         return State.VARIANT
     if carried or any(a != "0" for a in alleles):
         return State.NO_CALL
-    info = _info(fields[7])
-    depths = [d for d in (_int(info.get("MIN_DP")), _int(values.get("MIN_DP")), _int(values.get("DP"))) if d is not None]  # fmt: skip
-    depth = min(depths) if depths else None
+    depth = _depth(fields[7], values)
     if depth == 0:
         return State.UNCOVERED
     scale = 0.5 if len(alleles) == 1 else 1.0
@@ -344,6 +363,7 @@ class ReferenceEvidence:
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
+    deletion_shadow: bool = field(init=False)
 
     def __post_init__(self) -> None:
         header = run_command(
@@ -352,6 +372,11 @@ class ReferenceEvidence:
         self.lengths = header_contig_lengths(header)
         self.provenance = next(
             (p for line in header.splitlines() if (p := parse_provenance(line))), None
+        )
+        engine = self.provenance.engine if self.provenance else None
+        # Another tool's gVCF from Clair3 says so in its ##source line.
+        self.deletion_shadow = engine == "clair3" or (
+            engine is None and "\n##source=Clair3" in f"\n{header}"
         )
         has_gq = "##FORMAT=<ID=GQ," in header
         self.quality_model = (
@@ -434,8 +459,12 @@ class ReferenceEvidence:
         """Spans of ``wanted`` from the records alone (absent: uncovered)."""
         with tempfile.TemporaryDirectory(prefix="wgse_evidence_") as work:
             regions = Path(work, "regions.tsv")
+            # The records just before each interval, where a Clair3 gVCF
+            # may hold the no-call whose deletion reaches into it.
+            margin = 2 * CLAIR3_DELETION_SPAN if self.deletion_shadow else 0
+            queried = _merge(((c, max(1, s - margin), e) for c, s, e in wanted), order)
             regions.write_text(
-                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in wanted),
+                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in queried),
                 encoding="utf-8",
                 newline="\n",
             )
@@ -450,11 +479,15 @@ class ReferenceEvidence:
                 )
                 assert process.stdout is not None
                 try:
+                    records = (line.rstrip("\n").split("\t") for line in process.stdout)
                     yield from _sweep(
                         wanted,
-                        (line.rstrip("\n").split("\t") for line in process.stdout),
-                        self.quality_model,
-                        thresholds,
+                        _classified(
+                            records,
+                            self.quality_model,
+                            thresholds,
+                            self.deletion_shadow,
+                        ),
                         order,
                     )
                 finally:
@@ -468,11 +501,54 @@ class ReferenceEvidence:
                     )
 
 
-def _sweep(
-    wanted: list[Interval],
+def _classified(
     records: Iterator[list[str]],
     model: str,
     thresholds: Thresholds,
+    deletion_shadow: bool,
+) -> Iterator[Classified]:
+    """Each record's bases (contig, start, end) and state. With
+    ``deletion_shadow`` (Clair3), reference bases directly after a no-call or
+    filtered record, within CLAIR3_DELETION_SPAN of it, are low quality while
+    their depth stays under CLAIR3_DELETION_DEPTH of its depth: the missing
+    reads delete them, which Clair3's reference GQ doesn't see (#1028)."""
+    # contig, last base it may reach, its depth, the base the chain resumes at
+    shadow: tuple[str, int, int, int] | None = None
+    for fields in records:
+        contig, start, end = fields[0], int(fields[1]), _record_end(fields)
+        state = record_state(fields, model, thresholds)
+        if not deletion_shadow:
+            yield contig, start, end, state
+            continue
+        depth = _depth(fields[7], _sample(fields)) or 0
+        if state in (State.NO_CALL, State.FILTERED):
+            if shadow and shadow[0] == contig and start <= shadow[3]:
+                # Consecutive no-calls: measure against the deepest.
+                depth = max(depth, shadow[2])
+            shadow = (contig, end + CLAIR3_DELETION_SPAN, depth, end + 1)
+        elif (
+            shadow
+            and state in (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
+            and (contig, start) == (shadow[0], shadow[3])
+            and start <= shadow[1]
+            and depth < CLAIR3_DELETION_DEPTH * shadow[2]
+        ):
+            cut = min(end, shadow[1])
+            yield contig, start, cut, State.LOW_QUALITY_REFERENCE
+            if cut < end:
+                yield contig, cut + 1, end, state
+                shadow = None
+            else:
+                shadow = (*shadow[:3], end + 1)
+            continue
+        else:
+            shadow = None
+        yield contig, start, end, state
+
+
+def _sweep(
+    wanted: list[Interval],
+    records: Iterator[Classified],
     order: Mapping[str, int],
 ) -> Iterator[Span]:
     """Resolve overlapping records base by base, highest-ranked state first.
@@ -486,20 +562,14 @@ def _sweep(
             pending = next(records, None)
         cursor = first
         while cursor <= last:
-            while (
-                pending is not None
-                and pending[0] == contig
-                and int(pending[1]) <= cursor
-            ):
-                end = _record_end(pending)
-                if end >= cursor:
-                    state = record_state(pending, model, thresholds)
-                    active.append((contig, end, state))
+            while pending is not None and pending[0] == contig and pending[1] <= cursor:
+                if pending[2] >= cursor:
+                    active.append((contig, pending[2], pending[3]))
                 pending = next(records, None)
             active = [a for a in active if a[0] == contig and a[1] >= cursor]
             upcoming = last + 1
             if pending is not None and pending[0] == contig:
-                upcoming = min(upcoming, int(pending[1]))
+                upcoming = min(upcoming, pending[1])
             if active:
                 state = min((a[2] for a in active), key=_RANK.__getitem__)
                 stop = min(min(a[1] for a in active), upcoming - 1)

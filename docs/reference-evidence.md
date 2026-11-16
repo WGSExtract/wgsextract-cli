@@ -157,8 +157,19 @@ gVCF's `Region` lists those and other contigs read as `not_assessed`.
 
 Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: 75 s for the VCF,
 179 s with the gVCF (2.4x; 3.8x on 6 threads and 6x in the GPU image in
-#863's research), 1.6 MB. The calls and filters were identical. Of 7,055
-truth variants, 2 sit on bases the gVCF calls callable reference.
+#863's research), 1.6 MB. The calls and filters were identical.
+
+Clair3 builds a reference base's depth and GQ from the reads that show a base
+there; a read that deletes the base counts for neither. A deletion it saw but
+didn't call is a no-call (or a filtered record) at its first base, followed
+by confident `0/0` blocks over the deleted bases, with the deleting reads
+missing from their depth (#1028). So in a Clair3 gVCF (its `Engine`, or a
+`##source=Clair3` line), reference bases directly after a no-call or filtered
+record, within 10 bases of it, read as `low_quality_reference` while their
+depth stays below 70% of that record's. Of the 7,055 truth variants in the
+confident regions, 41 (40 deletions) had a base of their REF on callable
+reference before this rule (2 at their position) and 3 after; it took
+0.4% of the callable bases (4,879,943 to 4,862,257).
 
 ## Sex and PAR
 
@@ -189,7 +200,7 @@ state higher in this table wins.
 | `variant` | Inside the REF span of a called non-reference allele. |
 | `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example). |
 | `no_call` | A missing genotype (`.` or `./.`). |
-| `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`. |
+| `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`; in a Clair3 gVCF, also the bases a deletion it didn't call may remove (see [Clair3](#clair3)). |
 | `uncovered` | Assessed, but no reads: no record (bcftools, Clair3, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
 | `callable_reference` | Reference, with enough depth (and GQ). |
 | `not_assessed` | Outside the region the caller assessed. |

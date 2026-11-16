@@ -302,3 +302,41 @@ def test_a_deletion_starting_before_a_partition_covers_its_bases_1009(
     assert state(gathered, "chr20", 100) is State.VARIANT
     assert state(gathered, "chr20", 101) is State.VARIANT
     assert state(gathered, "chr20", 200) is State.CALLABLE_REFERENCE
+
+
+def test_clair3_missed_deletion_bases_arent_callable_reference_1028(tmp_path, request):
+    """Issue #1028: Clair3 leaves reads that delete a base out of its depth
+    and GQ, so the bases of a deletion it saw but didn't call followed its
+    no-call anchor as confident 0/0 blocks and read as callable reference.
+    They must read as low quality, and reference away from it stay callable."""
+    rng = random.Random(1028)
+    seq = "".join(rng.choice("ACGT") for _ in range(3000))
+    while seq[1999:2002] in ("AAA", "CCC", "GGG", "TTT") or seq[1999] in seq[2000:2002]:
+        seq = "".join(rng.choice("ACGT") for _ in range(3000))
+    ref = write_fasta(tmp_path / "hg38.fa", {"chr20": seq})
+    rows = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:sample\tPL:ONT"]
+    rows.append("@SQ\tSN:chr20\tLN:3000")
+    # 50x; half the reads delete 2,001-2,002, after the anchor at 2,000.
+    for i, start in enumerate(range(100, 2800, 3)):
+        cigar, bases = "150M", seq[start - 1 : start + 149]
+        if i % 2 and start <= 1990 and start + 150 > 2010:
+            left = 2000 - start + 1
+            cigar = f"{left}M2D{150 - left}M"
+            bases = seq[start - 1 : 2000] + seq[2002 : start + 151]
+        rows.append(
+            f"r{i}\t0\tchr20\t{start}\t60\t{cigar}\t*\t0\t0\t{bases}"
+            f"\t{'I' * 150}\tRG:Z:r"
+        )
+    sample = SimpleNamespace(
+        ref=ref, bam=Path(sam_to_bam(rows, tmp_path / "sample.bam")), root=tmp_path
+    )
+    request.getfixturevalue("fake_clair3").miss_indels()
+
+    result = call(sample, "clair3", request, "Female", "chr20:1500-2500")
+
+    assert result.status == "ok", result.error
+    gvcf = {output.role: output for output in result.outputs}[ROLE].path
+    assert state(gvcf, "chr20", 2000) is State.NO_CALL
+    for deleted in (2001, 2002):
+        assert state(gvcf, "chr20", deleted) is State.LOW_QUALITY_REFERENCE
+    assert state(gvcf, "chr20", 2100) is State.CALLABLE_REFERENCE

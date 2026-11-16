@@ -233,10 +233,13 @@ _GVCF_BLOCKS = r"""
 import os as _os, subprocess as _subprocess
 
 
-def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samtools):
+def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samtools,
+                      missed=()):
     # As GATK -ERC GVCF and Clair3 --gvcf: the VCF's records with <NON_REF>
     # added, and <NON_REF> blocks over every other base of ``bed``, by GQ
     # band: GQ 99 at 10 reads or more, 15 below, and 0 (MIN_DP 0) without.
+    # Depth leaves out reads deleting a base, as Clair3's does; the anchors
+    # of indels it saw but didn't call (``missed``) are no-calls.
     sequence, name = {}, None
     for line in open(ref):
         if line.startswith(">"):
@@ -262,13 +265,17 @@ def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samto
             continue
         gq = 99 if here >= 10 else 15 if here else 0
         band = max([b for b in bands if b <= gq], default=0)
+        if (chrom, pos) in missed:
+            gq, band = 0, None
         last = blocks[-1] if blocks else None
-        if last and last[0] == chrom and last[2] == pos - 1 and last[5] == band:
+        if (last and last[0] == chrom and last[2] == pos - 1 and last[5] == band
+                and band is not None):
             last[2], last[3], last[4] = pos, min(last[3], here), min(last[4], gq)
         else:
             blocks.append([chrom, pos, pos, here, gq, band])
     rows = [f"{c}\t{a}\t.\t{sequence[c][a - 1]}\t<NON_REF>\t.\t.\tEND={b}\t"
-            f"GT:DP:GQ:MIN_DP\t{genotype}:{d}:{gq}:{d}" for c, a, b, d, gq, _ in blocks]
+            f"GT:DP:GQ:MIN_DP\t{genotype if band is not None else './.'}:{d}:{gq}:{d}"
+            for c, a, b, d, gq, band in blocks]
     variants = []
     for record in records:
         fields = record.split("\t")
@@ -532,6 +539,16 @@ mpileup = subprocess.Popen(
 ploidy = "1" if "haploid_precise" in opts else "2"
 subprocess.run([{bcftools!r}, "call", "--ploidy", ploidy, "-mv", "-Oz", "-o", calls],
                stdin=mpileup.stdout, check=True)
+missed = set()
+if os.path.exists({miss_indels!r}):
+    # Like Clair3 on an indel it sees but doesn't call: no record in the VCF,
+    # a no-call at its anchor in the gVCF.
+    indels = subprocess.run([{bcftools!r}, "view", "-H", "-v", "indels", calls],
+                            capture_output=True, text=True, check=True).stdout
+    missed = {{(row.split("\t")[0], int(row.split("\t")[1])) for row in indels.splitlines()}}
+    snps = os.path.join(out, "snps.vcf.gz")
+    subprocess.run([{bcftools!r}, "view", "-V", "indels", "-Oz", "-o", snps, calls], check=True)
+    os.replace(snps, calls)
 with open(os.path.join(out, "sample.txt"), "w") as names:
     names.write(opts["sample_name"] + "\\n")
 # Like Clair3, name its inputs in the header.
@@ -570,7 +587,7 @@ elif "gvcf" in opts:
     write_caller_gvcf(os.path.join(out, "merge_output.vcf.gz"), opts["bam_fn"],
                       opts["ref_fn"], os.path.join(out, "merge_output.gvcf.gz"), bed,
                       list(range(0, 100, 5)), "haploid_precise" in opts,
-                      {bcftools!r}, {samtools!r})
+                      {bcftools!r}, {samtools!r}, missed)
 """
 
 
@@ -585,7 +602,7 @@ class FakeClair3:
     reads. With ``--use_gpu=True`` it needs a container started with
     ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
     nothing, yet exits 0, when a path it is given contains a space; ``lose_gvcf``
-    makes it skip the gVCF it was asked for. Each run's options, resolved model, reads' CRAM
+    makes it skip the gVCF it was asked for, and ``miss_indels`` call no indels. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -602,9 +619,11 @@ class FakeClair3:
         self.failure = bindir / "clair3-failure.json"
         self.no_gvcf = bindir / "clair3-no-gvcf"
         self.block_padding = bindir / "clair3-block-padding"
+        self.missed_indels = bindir / "clair3-miss-indels"
         python_tool(bindir, "run_clair3.sh", _GVCF_BLOCKS + _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure),
             no_gvcf=str(self.no_gvcf), block_padding=str(self.block_padding),
+            miss_indels=str(self.missed_indels),
             samtools=samtools or shutil.which("samtools") or "samtools",
             version=version,
             old_htslib=not version[:1].isdigit()
@@ -627,6 +646,11 @@ class FakeClair3:
         """Later --gvcf runs write reference blocks ``padding`` bases past
         the regions asked for, as Clair3 calls its regions extended."""
         self.block_padding.write_text(str(padding))
+
+    def miss_indels(self) -> None:
+        """Later runs call no indels, writing a no-call at each one's anchor
+        in the gVCF, as Clair3 does for an indel it sees but doesn't call."""
+        self.missed_indels.touch()
 
     def lose_gvcf(self) -> None:
         """Later --gvcf runs write the VCF but no gVCF, and still exit 0."""
