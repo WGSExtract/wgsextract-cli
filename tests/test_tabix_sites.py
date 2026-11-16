@@ -40,7 +40,9 @@ def indexed(tmp_path_factory):
     rng = random.Random(629)
     records = _records("chr1", 100000, rng) + _records("chr2", 300, rng)
     plain = tmp_path_factory.mktemp("tabix") / "sites.vcf"
-    plain.write_text(HEADER + "".join(line + "\n" for *_, line in records))
+    plain.write_text(
+        HEADER + "".join(line + "\n" for *_, line in records), newline="\n"
+    )
     vcf = Path(bgzip_index(plain))
     return vcf, records
 
