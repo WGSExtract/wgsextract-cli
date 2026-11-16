@@ -94,7 +94,7 @@ CLI_HELP = {
     "cmd_sign-verify": "Check a SHA256SUMS manifest's OpenSSH signature against a trusted key, then re-hash every listed file.",
     "cmd_typing": "Genotype genes and repeats a VCF can't capture from a 30x WGS BAM/CRAM: CYP2D6 star alleles (Cyrius), SMN1/SMN2 copy number (SMNCopyNumberCaller), HLA alleles (T1K) and repeat expansions (ExpansionHunter, or LongTR for long reads).",
     "cmd_typing-smn": "Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.",
-    "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius is for noncommercial use only.",
+    "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification.",
     "cmd_typing-hla": "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.",
     "cmd_typing-str": "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range.",
     "cmd_methylation": "Methylation (5mC/5hmC) from the base-modification (MM/ML) tags of Nanopore and PacBio HiFi reads.",

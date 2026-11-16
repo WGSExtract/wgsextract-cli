@@ -1083,6 +1083,20 @@
   },
   "release_tag": "yleaf-data-v4.1.6",
   "schema_version": 1,
+  "third_party": {
+    "hg19/hg38ToHg19.over.chain.gz": {
+      "license": "UCSC Chain Files: free for non-commercial use by independent researchers and nonprofit organizations; any other use needs a commercial licence from UCSC",
+      "notice": "UCSC-liftOver-README.txt",
+      "source": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHg19.over.chain.gz",
+      "terms": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/README.txt"
+    },
+    "t2t/hg38ToHs1.over.chain.gz": {
+      "license": "UCSC Chain Files: free for non-commercial use by independent researchers and nonprofit organizations; any other use needs a commercial licence from UCSC",
+      "notice": "UCSC-liftOver-README.txt",
+      "source": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHs1.over.chain.gz",
+      "terms": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/README.txt"
+    }
+  },
   "upstream": {
     "commit": "c167c4e8951623a53c370e7c300a0cfc7f411b62",
     "files": [

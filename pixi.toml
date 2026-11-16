@@ -306,9 +306,12 @@ vep-rs = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download
 # pysam has no native Windows build.
 pysam = ">=0.24.1,<0.25"
 
-# Cyrius calls CYP2D6 star alleles from a WGS BAM/CRAM (`typing cyp2d6`). Its
-# PolyForm Strict license allows noncommercial use only, so it's an opt-in
-# environment (`pixi install -e cyrius`) that the CLI runs automatically.
+# Cyrius calls CYP2D6 star alleles from a WGS BAM/CRAM (`typing cyp2d6`). The
+# PyPI cyrius 1.1.1 package declares the PolyForm Strict License (its metadata
+# says "PolyFormStrict"; upstream's LICENSE.txt is PolyForm Strict 1.0.0, though
+# the v1.1.1 Git tag's LICENSE.txt is Apache-2.0): noncommercial use only, and
+# no distribution or modification. So it's never bundled: an opt-in environment
+# (`pixi install -e cyrius`) fetches it from PyPI, and the CLI runs it from there.
 [feature.cyrius]
 platforms = ["linux-64", "osx-64", "osx-arm64"]
 
