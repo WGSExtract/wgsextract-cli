@@ -436,7 +436,7 @@ def _expand_gvcf_targets(
                     minimum = reference_depth(
                         block_info,
                         dict(zip(formats, values, strict=True)),
-                        block=end > int(fields[1]),
+                        block=True,
                     )
                     values[depth] = str(minimum) if minimum is not None else "."
                     fields[sample] = ":".join(values)

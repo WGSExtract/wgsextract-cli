@@ -126,6 +126,31 @@ def test_issue_1044_real_gatk_block_loses_depth_evidence_when_min_dp_is_removed(
 
 
 @needs_htslib
+def test_issue_1044_clipped_single_base_block_does_not_inherit_start_dp(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf
+
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 300})
+    plain = tmp_path / "block.g.vcf"
+    plain.write_text(
+        _DV_HEADER
+        + "chr1\t1\t.\tA\t<*>\t.\tPASS\tEND=100\tGT:DP:GQ\t0/0:30:60\n"
+        + "chr1\t150\t.\tA\t.\t.\tPASS\t.\tGT:DP:GQ\t0/0:30:60\n"
+    )
+    source = bgzip_index(plain)
+    clipped = tmp_path / "clipped.g.vcf.gz"
+    clip_gvcf(source, [PloidyInterval("chr1", 49, 50, 2)], str(ref), str(clipped))
+    assert list(
+        ReferenceEvidence(str(clipped)).spans(THRESHOLDS, [("chr1", 50, 50)])
+    ) == [Span("chr1", 50, 50, State.LOW_QUALITY_REFERENCE)]
+    assert list(ReferenceEvidence(source).spans(THRESHOLDS, [("chr1", 150, 150)])) == [
+        Span("chr1", 150, 150, State.CALLABLE_REFERENCE)
+    ]
+
+
+@needs_htslib
 def test_reference_evidence_gap_keeps_callable_uncovered_and_failed_distinct(
     woman: tuple[str, str], tmp_path: Path
 ) -> None:

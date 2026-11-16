@@ -690,8 +690,9 @@ def test_weak_reference_block_interiors_do_not_export_as_reference(
         (";MIN_DP=30", "GT:DP:GQ 0/0:30:60", "AA", "called"),
     ],
 )
+@pytest.mark.parametrize(("start", "end"), [(900, 3500), (1000, 1000)])
 def test_issue_1044_block_dp_does_not_certify_interior_chip_markers(
-    tmp_path, library, minimum, values, expected, reason
+    tmp_path, library, minimum, values, expected, reason, start, end
 ):
     fasta, _ = library
     headers = (
@@ -704,14 +705,16 @@ def test_issue_1044_block_dp_does_not_certify_interior_chip_markers(
     vcf = _vcf(
         tmp_path / "unknown.g.vcf",
         ("1",),
-        [f"1 900 . A <NON_REF> . PASS END=3500{minimum} {values}"],
+        [f"1 {start} . A <NON_REF> . PASS END={end}{minimum} {values}"],
         headers,
         evidence=False,
     )
     _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
     report = _rows(tmp_path / "out/unknown.g_CombinedKit_reasons.tsv")
     assert report["rsHet"][-2:] == [expected, reason]
-    assert report["rsRef"][-2:] == [expected, reason]
+    assert report["rsRef"][-2:] == (
+        [expected, reason] if end >= 3000 else ["--", "absent_from_vcf"]
+    )
 
 
 @pytest.mark.parametrize(("field", "reason"), [("DP", "low_dp"), ("GQ", "low_gq")])

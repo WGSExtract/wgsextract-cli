@@ -278,9 +278,9 @@ def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> S
     if carried or any(a != "0" for a in alleles):
         return State.NO_CALL
     info = _info(fields[7])
-    block = all(
+    block = "END" in info and all(
         alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
-    ) and _record_end(fields) > int(fields[1])
+    )
     depth = reference_depth(info, values, block=block)
     if depth == 0:
         return State.UNCOVERED
