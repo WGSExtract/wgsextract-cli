@@ -152,10 +152,12 @@ def _run_comprehensive(
         # One gVCF per sample: the SNP step writes it (and reruns when the gVCF
         # or its index is gone), the indel step doesn't repeat it.
         gvcf = typed_settings().reference_evidence == "gvcf"
-        baq_flag = "--baq" if typed_settings().baq else "--no-baq"
+        baq = typed_settings().baq
         for name, file in (("snp", "snps.vcf.gz"), ("indel", "indels.vcf.gz")):
             vcf = str(Path(outdir, file))
-            command = ["vcf", name, "--input", input_file, "--outdir", outdir, baq_flag]
+            command = ["vcf", name, "--input", input_file, "--outdir", outdir]
+            if baq:
+                command += ["--baq"]
             outputs = [vcf]
             if gvcf:
                 command += ["--reference-evidence", "gvcf" if name == "snp" else "none"]

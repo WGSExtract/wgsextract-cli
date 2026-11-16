@@ -352,6 +352,8 @@ its automatic `-X ultima` profile itself disables BAQ. Use `--no-baq` for
 Ultima; the other profile settings and its prior stay unchanged.
 `analyze comprehensive` records the effective config choice in its calling
 step keys, so changing `baq` reruns SNP and indel calling on resume.
+With BAQ off, the commands stay identical to those from before this option,
+so existing default-setting journals resume without redoing completed calls.
 
 ## The calling prior in `vcf snp` and `vcf indel`
 
