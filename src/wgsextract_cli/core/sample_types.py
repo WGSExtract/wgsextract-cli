@@ -3,6 +3,7 @@
 from typing import Literal, TypedDict, TypeGuard, get_args
 
 Sex = Literal["Male", "Female"]
+ObservedSex = Literal["Male", "Female", "Unknown"]
 Platform = Literal["illumina", "ont", "pacbio", "ultima", "dnbseq"]
 Confidence = Literal["high", "medium", "low"]
 Superpopulation = Literal["AFR", "AMR", "EAS", "EUR", "SAS"]
@@ -32,6 +33,10 @@ class OverrideChanges(TypedDict, total=False):
 
 def is_sex(value: object) -> TypeGuard[Sex]:
     return value in get_args(Sex)
+
+
+def is_observed_sex(value: object) -> TypeGuard[ObservedSex]:
+    return value in get_args(ObservedSex)
 
 
 def is_platform(value: object) -> TypeGuard[Platform]:

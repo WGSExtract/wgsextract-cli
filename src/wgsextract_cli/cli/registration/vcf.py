@@ -33,6 +33,7 @@ from wgsextract_cli.api.vcf import (
     VcfTableParams,
     VcfToFastaParams,
     VcfTrioParams,
+    _VcfFileParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.config import settings
@@ -83,10 +84,14 @@ def _add_vcf_command(
     cls: type[Params],
     func: Callable[[argparse.Namespace], None],
 ) -> None:
-    """A command on a VCF; --vcf-input defaults to config default_input_vcf."""
+    """A command on a VCF; --vcf-input defaults to config default_input_vcf.
+    Those that read one VCF, --vcf-input or --input, are marked for dispatch
+    (``_one_vcf_input``) to record only that one."""
     parser = vcf_subs.add_parser(name, parents=[base_parser], help=help_text)
     add_arguments(parser, cls, config_defaults=True)
     parser.set_defaults(func=func)
+    if issubclass(cls, _VcfFileParams):
+        parser.set_defaults(_one_vcf_input=True)
     for action in parser._actions:
         if action.dest == "vcf_input":
             action.default = settings.get("default_input_vcf")

@@ -193,6 +193,10 @@ def test_modules_hold_tree_and_build_marker_tables_reproducibly(
 
     _build(args, tmp_path / "b")
     entry = json.loads((tmp_path / "a/trees_entry.json").read_text())
+    # PR #902 review: a refresh rewrote "CC-BY-SA" without "version not stated"
+    # and kept the previous release's terms.
+    assert "version not stated" in entry["license"]
+    assert entry["source"].split("/blob/")[1].split("/")[0] in entry["terms"]
     for module, folder in MODULES.items():
         first = (tmp_path / f"a/{folder}-1.0.0.tar.gz").read_bytes()
         assert (tmp_path / f"b/{folder}-1.0.0.tar.gz").read_bytes() == first

@@ -21,7 +21,10 @@ Single-sex tables without a sex-neutral fallback, or sex labels other than M/F,
 are explicitly refused rather than silently interpreted as diploid.
 
 * **Google DeepVariant:** uses `--haploid_contigs` and `--par_regions_bed`;
-  ploidy-zero intervals are excluded from its region selection. The generated
+  the PAR BED is omitted when the selected haploid contigs have no diploid PAR
+  intervals (for example chrM or male non-PAR-only chrX/chrY calls), because
+  DeepVariant cannot read an empty BED. Haploid contig handling still applies.
+  Ploidy-zero intervals are excluded from its region selection. The generated
   BEDs are atomically published, immutable, content-addressed inputs in
   `.deepvariant.policy` beside (not inside) its cleaned work folder. Concurrent
   planning and work cleanup cannot rewrite or delete an active run's policy.

@@ -70,3 +70,5 @@ def register(
         sub = qc_subs.add_parser(name, parents=[base_parser], help=help_text)
         add_arguments(sub, cls)
         sub.set_defaults(func=func)
+        if cls is QcVcfParams:
+            sub.set_defaults(_one_vcf_input=True)  # see dispatch

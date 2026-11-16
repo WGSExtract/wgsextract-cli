@@ -17,6 +17,11 @@ from wgsextract_cli.core.utils import WGSExtractError
 
 ENGINE_NAMES = ("ensembl", "vep-rs")
 
+# Ensembl's name for T2T-CHM13v2.0 (GCA_009914755.4), whose gene set Ensembl
+# publishes as a rapid release rather than in its numbered releases.
+CHM13 = "T2T-CHM13v2.0"
+ASSEMBLIES = ("GRCh37", "GRCh38", CHM13)
+
 
 @dataclass(frozen=True)
 class VepEngine:
@@ -36,6 +41,8 @@ class VepEngine:
     refused_args: tuple[str, ...]
     # sys.platform prefixes the engine runs on.
     platforms: tuple[str, ...]
+    # The assemblies it has a cache for.
+    assemblies: tuple[str, ...]
 
     def cache_root(self, vep_cache_root: Path) -> Path:
         return (
@@ -56,6 +63,7 @@ ENGINES = {
         database_fallback=True,
         refused_args=(),
         platforms=("linux", "darwin"),
+        assemblies=("GRCh37", "GRCh38"),
     ),
     "vep-rs": VepEngine(
         name="vep-rs",
@@ -76,6 +84,7 @@ ENGINES = {
             "--registry",
         ),
         platforms=("linux", "darwin", "win32"),
+        assemblies=ASSEMBLIES,
     ),
 }
 
@@ -134,6 +143,18 @@ def resolve_engine(
             "config.toml."
         )
     return default, None
+
+
+def require_assembly(engine: VepEngine, assembly: str | None) -> None:
+    """Refuse an assembly ``engine`` has no cache for."""
+    if assembly and assembly not in engine.assemblies:
+        others = [e.name for e in ENGINES.values() if assembly in e.assemblies]
+        hint = (
+            f"use --engine {' or '.join(others)}."
+            if others
+            else f"supported assemblies are {', '.join(ASSEMBLIES)}."
+        )
+        raise WGSExtractError(f"{engine.label} has no {assembly} cache; {hint}")
 
 
 def _refuses(engine: VepEngine, token: str) -> bool:

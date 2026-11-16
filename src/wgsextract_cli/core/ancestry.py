@@ -202,3 +202,18 @@ def project(
         lower = np.minimum(lower, q)
         upper = np.maximum(upper, q)
     return Projection(q, lower, upper, n, log_likelihood, iterations)
+
+
+def principal_components(
+    frequency: np.ndarray, loadings: np.ndarray, dosage: np.ndarray
+) -> np.ndarray:
+    """The sample's scores on the reference PCA: its alt-allele dosages at the
+    sites it has, standardised with the reference frequencies, times the SNP
+    loadings (as plink2 ``--score variance-standardize`` projects). A site
+    without data counts at the reference mean, so a sample missing many sites
+    is pulled toward the centre."""
+    f = np.asarray(frequency, dtype=np.float64)
+    scale = np.sqrt(2 * f * (1 - f))
+    z = np.divide(dosage - 2 * f, scale, out=np.zeros_like(f), where=scale > 0)
+    scores: np.ndarray = z @ np.asarray(loadings, dtype=np.float64)
+    return scores

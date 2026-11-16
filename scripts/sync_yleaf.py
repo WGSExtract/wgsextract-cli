@@ -10,6 +10,9 @@ import json
 import subprocess
 import tarfile
 from pathlib import Path
+from typing import Any
+
+from wgsextract_cli.ydna.yleaf_native.data import UCSC_README, ucsc_chain_terms
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/wgsextract_cli/ydna/yleaf_native"
@@ -40,7 +43,7 @@ def sync(
         "upstream": {**base, "tag": tag, "commit": commit},
         "release_tag": f"yleaf-data-{tag}",
     }
-    archives = {}
+    archives: dict[str, dict[str, Any]] = {}
     for folder in ("hg19", "hg38", "t2t", "hg_prediction_tables"):
         prefix = f"yleaf/data/{folder}"
         paths = (
@@ -49,13 +52,18 @@ def sync(
             .splitlines()
         )
         name = f"yleaf-{tag}-{folder}.tar.gz"
+        members = {
+            path.removeprefix("yleaf/data/"): git(checkout, "show", f"{commit}:{path}")
+            for path in paths
+        }
+        # UCSC's chain licence must travel in the same archive as its chains.
+        if any(member.endswith(".over.chain.gz") for member in members):
+            members[f"{folder}/{UCSC_README}"] = (PACKAGE / UCSC_README).read_bytes()
         files = {}
         with (output / name).open("wb") as stream:
             with gzip.GzipFile(filename="", fileobj=stream, mode="wb", mtime=0) as gz:
                 with tarfile.open(fileobj=gz, mode="w") as archive:
-                    for path in sorted(paths):
-                        data = git(checkout, "show", f"{commit}:{path}")
-                        relative = path.removeprefix("yleaf/data/")
+                    for relative, data in sorted(members.items()):
                         info = tarfile.TarInfo(relative)
                         info.size = len(data)
                         info.mode = 0o644
@@ -70,6 +78,14 @@ def sync(
             "files": files,
         }
     manifest["archives"] = archives
+    # Recorded so the CLI also installs the README beside chains from packs
+    # published before it was packed with them.
+    manifest["third_party"] = {
+        name: ucsc_chain_terms(name)
+        for archive in archives.values()
+        for name in archive["files"]
+        if name.endswith(".over.chain.gz")
+    }
     content = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     (output / "manifest.json").write_text(content, encoding="utf-8", newline="\n")
     (output / "SHA256SUMS").write_text(

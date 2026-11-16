@@ -86,6 +86,16 @@ When you add or rename a command:
 
 `tests/test_cli_help.py` fails until all three are done.
 
+### Benchmark fixture ploidy
+
+The `benchmark` timing workload explicitly calls SNPs, indels and microarray
+sites with uniform diploid ploidy for generated data and the `real` mini-genome
+archive. Scaled, regional and low-depth fixtures cannot reliably infer sex;
+the benchmark is not a karyotype or genotype-accuracy validation. This override
+is passed only to those child commands and does not change the sample's
+declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
+`real-1x`/`real-30x` runs retain build-specific ploidy.
+
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API

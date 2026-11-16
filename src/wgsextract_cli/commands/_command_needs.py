@@ -167,7 +167,9 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf gerp": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
-    "vcf pharmcat": _n(MINUTES, "bcftools", "pharmcat", "tabix", optional="bgzip"),
+    "vcf pharmcat": _n(
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip"
+    ),
     "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
     # Minutes with vep-rs, the default; hours with Ensembl VEP.
     "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
@@ -236,7 +238,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
     ),
     "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
-    "score pgs": _n(MINUTES, "bcftools", optional="plink2"),
+    "score pgs": _n(MINUTES, "bcftools", optional="plink2 curl"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
     "qc fake-data": _n(
         SECONDS,

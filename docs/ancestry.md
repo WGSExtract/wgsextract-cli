@@ -37,7 +37,7 @@ releases these data under CC0 1.0.
 
 The reference is one file (about 16 MB). It holds the sites, the component
 allele frequencies for K=7 and K=12, and a PCA of the reference samples, which
-polygenic scores will reuse. It is downloaded from this project's GitHub
+[polygenic scores](pgs.md) use for their ancestry-adjusted percentiles. It is downloaded from this project's GitHub
 release `ancestry-ref-1` into `<library>/ancestry/` on first use, or with
 `wgsextract ref ancestry --install`. Its SHA-256 is pinned and checked before
 every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
@@ -49,7 +49,7 @@ every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
 | Input | Genotypes | Notes |
 | :--- | :--- | :--- |
 | BAM/CRAM | read counts at the sites (`bcftools mpileup`, MAPQ and base quality 20), as genotype likelihoods | Low coverage gives wider intervals, not biased proportions. Needs its index, and the reference FASTA for a CRAM. |
-| VCF | the sample's calls (REF and the site's ALT; filtered or other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. gVCFs are refused. |
+| VCF | the sample's calls (REF and the site's ALT; site- or sample-filtered (`FORMAT/FT`) and other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. gVCFs are refused. |
 | Microarray raw data | the genotypes at the chip's markers that are reference sites | 23andMe, AncestryDNA, FTDNA, MyHeritage and similar layouts (`.txt`, `.csv`, `.zip`, `.gz`). The build is found from the positions. |
 
 A variants-only VCF omits hom-ref sites. For a whole-genome call set, a
@@ -65,7 +65,7 @@ proportions would be biased. An all-sites VCF's missing sites stay unknown.
 | File | Contents |
 | :--- | :--- |
 | `<stem>.ancestry.tsv` | For K=7 and K=12, one row per component: name, region, proportion, 95% interval and the reference populations that carry it most |
-| `<stem>.ancestry.manifest.json` | The [result manifest](result-manifest.md). Metrics: `ancestry_k7_<component>` and `ancestry_k12_<component>`, each with `_lower`/`_upper`; `ancestry_sites`, `ancestry_sites_available`, `ancestry_depth`, `ancestry_build`, `ancestry_confidence` |
+| `<stem>.ancestry.manifest.json` | The [result manifest](result-manifest.md). Metrics: `ancestry_k7_<component>` and `ancestry_k12_<component>`, each with `_lower`/`_upper`; `ancestry_sites`, `ancestry_sites_available`, `ancestry_depth`, `ancestry_build`, `ancestry_confidence`; for a VCF or microarray file, also the sample's projection onto the reference PCA, `ancestry_pc1`…`ancestry_pc10`, and the share of the sites it used, `ancestry_pca_sites_fraction` (a site without data counts at the reference mean, pulling the PCs toward the centre) |
 
 The 95% intervals come from a block bootstrap over the sites
 (`--bootstrap N` replicates, default 100; 0 skips them). Blocks of 500

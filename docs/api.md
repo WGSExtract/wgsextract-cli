@@ -121,7 +121,7 @@ reports `with_bins` writes are `current` (both newer than the input).
 | `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM to describe. Required unless status. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
 | `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
 | `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
@@ -1609,17 +1609,21 @@ mtDNA haplogroup; `metrics` holds `haplogroup` and
 `haplogroup_quality` (plus `mt_contamination` and
 `mt_contamination_level` with `contamination`). `details` holds the
 full Haplogrep row (`haplogrep`), `haplogrep_version`, the `tree`
-(id, version, name) and the haplocheck row (`haplocheck`).
+(id, version, name), the haplocheck row (`haplocheck`) and, when
+CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 
 `MtHaplogroupParams`: Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; the tree is downloaded once into the reference
 library. With `contamination`, haplocheck also looks for a mixture of
 two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
-rCRS positions, so a chrM that isn't the rCRS is refused: hg19's Yoruba
-sequence, or CHM13v2.0's original chrM, which is as long but rotated. One
-the header MD5, the reference or a VCF's REF alleles can't confirm as the
-rCRS is warned of (`mt_reference_unconfirmed`).
+rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
+three more differences) is called at every site and mapped onto the rCRS
+through the bundled alignment (`details.mt_reference`); a VCF on it needs
+reference calls at all sites, and `contamination` its BAM/CRAM. Another
+chrM that isn't the rCRS is refused: hg19's Yoruba sequence or another
+rotation. One the header MD5, the reference or a VCF's REF alleles can't
+confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2317,7 +2321,8 @@ key); with no signature file, only the hashes are checked.
 
 Local polygenic sums, with explicit missingness and research-only labels.
 
-Percentiles are withheld until score-specific ancestry calibration is available.
+Curated GRCh38 scores also get an ancestry-adjusted percentile against the
+HGDP+1KG reference (docs/pgs.md), or a reason it is withheld.
 
 ### `api.score.pgs(ScorePgsParams)`
 
@@ -2354,7 +2359,8 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 
 * `cyp2d6`: CYP2D6 star alleles, copy number and hybrids with Cyrius
   (`.cyrius.tsv`/`.json`), from the optional `cyrius` Pixi environment.
-  Cyrius's PolyForm Strict license allows noncommercial use only.
+  Cyrius's PolyForm Strict license allows noncommercial use only, and no
+  distribution or modification.
 * `smn`: SMN1/SMN2 copy number and SMA carrier status with
   SMNCopyNumberCaller (`.smn.tsv`/`.json`), from the optional `smn`
   environment. A screening estimate, not a diagnosis.
@@ -2745,7 +2751,9 @@ the cache folder's `vep-rs` folder, which `download` builds from Ensembl's
 gene set, sequences and table dumps (with `variations`, its known variants)
 and `verify` checks against the builder's checksums. A vep-rs run refuses
 options it would ignore (`--custom`, `--database`) and has no database
-fallback. See docs/vep-engines.md.
+fallback. vep-rs alone annotates T2T-CHM13v2.0, from Ensembl's rapid-release
+CHM13 gene set (no known variants); `run` takes the assembly from the
+reference library's build, else the VCF's contigs. See docs/vep-engines.md.
 
 ### `api.vep.engine_param() -> Any`
 
@@ -2767,7 +2775,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of the other build is not used. One of: `GRCh37`, `GRCh38` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
@@ -2795,7 +2803,7 @@ unpacked; an unpacked cache replaces the same release's old one.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
@@ -2817,7 +2825,7 @@ missing.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
@@ -2835,7 +2843,7 @@ module docstring), with any download of it left in the cache folder.
 | --- | --- | --- | --- | --- |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `species` | `str` | `'homo_sapiens'` | `--species` | Species name (default: homo_sapiens) |
-| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38) One of: `GRCh37`, `GRCh38` |
+| `assembly` | `str` | `'GRCh38'` | `--assembly` | Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs) One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_version` | `str` | `'116'` | `--vep-version` | Ensembl release version (default: 116) |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |

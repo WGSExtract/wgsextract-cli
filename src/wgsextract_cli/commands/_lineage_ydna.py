@@ -154,22 +154,23 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
     logging.debug(f"Input file: {str(absolute_path(input_file))}")
     logging.debug(f"Output directory: {yleaf_outdir}")
 
+    lib = ReferenceLibrary(
+        str(params.ref) if params.ref else None,
+        None if is_vcf else calculate_bam_md5(input_file, None),
+        input_path=input_file,
+    )
     # Yleaf still "predicts" from a female sample's few mismapped chrY reads
     # (BT* with hundreds of exclusions, at full QC score); say there's no Y.
     if (
         input_lower.endswith((".bam", ".cram"))
-        and sample_sex(input_file, outdir_arg, allow_scan=False) == "Female"
+        and sample_sex(input_file, outdir_arg, reference=lib.fasta, allow_scan=False)
+        == "Female"
     ):
         raise WGSExtractError(
             f"{input_file} has almost no chrY reads (the sample appears female), "
             "so there is no Y haplogroup to predict."
         )
 
-    lib = ReferenceLibrary(
-        str(params.ref) if params.ref else None,
-        None if is_vcf else calculate_bam_md5(input_file, None),
-        input_path=input_file,
-    )
     build = params.build or (get_vcf_build(input_file) if is_vcf else None)
     if not build:
         build = lib.build
@@ -248,7 +249,8 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
             "build": yleaf_build,
             "tree": {
                 key: provenance[key]
-                for key in ("id", "name", "version", "date", "license")
+                for key in ("id", "name", "version", "date", "license", "terms")
+                if key in provenance
             },
             "tables": version,
             "predictions": rows,

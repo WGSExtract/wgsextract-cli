@@ -14,6 +14,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.pharmgkb import INFO_HEADER as PHARMGKB_INFO_HEADER
+from wgsextract_cli.core.pharmgkb import table_provenance
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared
 
@@ -37,11 +39,11 @@ PHARMGKB_ANNOTATED = "pharmgkb_annotated.vcf.gz"
 def run_spliceai(params: VcfSpliceaiParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, SPLICEAI_ANNOTATED)
     logging.info(f"Annotating VCF with SpliceAI scores: {input_file}")
 
     spliceai_file = require_annotation_file(
-        resource(params.spliceai_file, lib.spliceai_vcf),
+        resource(params, "spliceai_file", lib.spliceai_vcf),
         "vcf_spliceai_missing",
         "spliceai",
     )
@@ -63,11 +65,11 @@ def run_spliceai(params: VcfSpliceaiParams) -> None:
 def run_alphamissense(params: VcfAlphamissenseParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, ALPHAMISSENSE_ANNOTATED)
     logging.info(f"Annotating VCF with AlphaMissense scores: {input_file}")
 
     am_file = require_annotation_file(
-        resource(params.am_file, lib.alphamissense_vcf),
+        resource(params, "am_file", lib.alphamissense_vcf),
         "vcf_alphamissense_missing",
         "alphamissense",
     )
@@ -118,10 +120,10 @@ def run_alphamissense(params: VcfAlphamissenseParams) -> None:
 def run_pharmgkb(params: VcfPharmgkbParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
-    input_file, outdir, lib = annotation_context(params)
+    input_file, outdir, lib = annotation_context(params, PHARMGKB_ANNOTATED)
     logging.info(f"Annotating VCF with PharmGKB data: {input_file}")
 
-    pharmgkb_file = resource(params.pharmgkb_file, lib.pharmgkb_vcf)
+    pharmgkb_file = resource(params, "pharmgkb_file", lib.pharmgkb_vcf)
     # Without a library, the build comes from the VCF's own header.
     build = lib.build or get_vcf_build(input_file)
     if not pharmgkb_file and build and not is_hg38_build(build):
@@ -146,14 +148,28 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
         )
     else:
         # The table `ref pharmgkb` builds: #CHROM, POS, REF, ALT, PHARMGKB.
+        table = prepare_tabix_annotation(pharmgkb_file, "PharmGKB")
+        source = table_provenance(table)
+        if source:
+            result = current_result()
+            result.set_details({**(result.details or {}), "pharmgkb_source": source})
+        if not (source.get("license") and source.get("retrieved")):
+            warn(
+                "pharmgkb_provenance_missing",
+                f"{pharmgkb_file} records no ClinPGx licence or retrieval date; "
+                "rebuild it with 'wgsextract ref pharmgkb' to keep them.",
+            )
         annotate_vcf(
             ensure_vcf_prepared(input_file),
-            prepare_tabix_annotation(pharmgkb_file, "PharmGKB"),
+            table,
             "CHROM,POS,REF,ALT,INFO/PHARMGKB",
             ann_out,
             outdir,
             "PharmGKB",
-            [PHARMGKB_INFO_HEADER],
+            [
+                PHARMGKB_INFO_HEADER,
+                *(f"##PHARMGKB_{key}={value}" for key, value in source.items()),
+            ],
             threads=params.threads,
             reference=lib.fasta,
         )

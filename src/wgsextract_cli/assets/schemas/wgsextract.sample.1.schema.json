@@ -87,7 +87,7 @@
           "pattern": "^wgse-fp1:[0-9a-f]{64}$"
         },
         "sex": {
-          "$ref": "#/$defs/sex_fact"
+          "$ref": "#/$defs/observed_sex_fact"
         },
         "platform": {
           "$ref": "#/$defs/platform_fact"
@@ -124,7 +124,7 @@
         "$ref": "#/$defs/fact"
       }
     },
-    "sex_fact": {
+    "observed_sex_fact": {
       "type": "object",
       "properties": {
         "method": {
@@ -153,7 +153,11 @@
           "format": "date-time"
         },
         "value": {
-          "$ref": "#/$defs/sex"
+          "enum": [
+            "Male",
+            "Female",
+            "Unknown"
+          ]
         }
       },
       "required": [
@@ -236,6 +240,47 @@
         },
         "value": {
           "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "confidence",
+        "version",
+        "by",
+        "at",
+        "value"
+      ]
+    },
+    "sex_fact": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "How it was detected."
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "description": "Detector version; a fact from another version is detected again.",
+          "minimum": 1
+        },
+        "by": {
+          "type": "string",
+          "description": "\"wgsextract <version> <command>\"."
+        },
+        "at": {
+          "type": "string",
+          "description": "UTC time it was detected.",
+          "format": "date-time"
+        },
+        "value": {
+          "$ref": "#/$defs/sex"
         }
       },
       "required": [

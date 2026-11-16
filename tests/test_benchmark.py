@@ -253,6 +253,20 @@ def test_benchmark_prints_machine_progress_and_base_file_size(
 
 
 @needs_benchmark_tools
+def test_issue_856_smoke_benchmark_calls_sparse_sex_chromosomes_with_explicit_ploidy(
+    tmp_path: Path,
+) -> None:
+    run = _benchmark(tmp_path, "--suite", "core", "--region", "chrX", "--threads", "1")
+    results = run.results
+    for step in ("08-vcf-snp", "09-vcf-indel", "10-microarray"):
+        assert results[step]["status"] == "PASS"
+        assert all(Path(path).is_file() for path in results[step]["expected_outputs"])
+    info_path = next(run.run_dir.glob("steps/info/*.wgse_info.json"))
+    assert json.loads(info_path.read_text())["gender"] == "Unknown"
+    assert {row["status"] for row in results.values()} == {"PASS"}
+
+
+@needs_benchmark_tools
 def test_heavy_suite_adds_processing_steps_on_the_aligned_bam_and_region(
     core_run: BenchmarkRun, heavy_run: BenchmarkRun
 ) -> None:

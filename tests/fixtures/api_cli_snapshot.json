@@ -12364,7 +12364,7 @@
    }
   },
   "info calculate-coverage": {
-   "help": "usage: wgsextract info calculate-coverage [-h] [-r REGION] [--bins] [--with-bins] [--by BED]\n                                          [--min-depth N] [--format {tsv,parquet}] [--status]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --bins                Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming\n                        pass.\n  --with-bins           After the coverage table, also report the --bins depth breadth; an up-to-\n                        date whole-file bins report is shown again instead of rescanned.\n  --by BED              Report depth per target of this BED (e.g. from 'panel bed'): mean, median\n                        and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus\n                        off-target enrichment\n  --min-depth N         With --by, list targets whose mean depth is below this (default: 30)\n  --format {tsv,parquet}\n                        Also save the per-chromosome table and the QC stats as <input>_chromosomes\n                        and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. With\n                        --bins or --by, that table's format instead\n  --status              Only report whether the --with-bins reports in --outdir are newer than the\n                        input (current), so a run would show them again\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract info calculate-coverage --input sample.cram\n  wgsextract info calculate-coverage --input sample.cram --bins --format parquet\n  wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20\n  wgsextract info calculate-coverage --input sample.cram --status\n\noutputs (in the output directory unless noted):\n  <input file name>_coverage.tsv, or with --bins <input file\n  name>_coverage_bins.tsv (depth bands, or .parquet with --format parquet)\n  instead; with --with-bins both .tsv files. With --by,\n  <input>_<bed>_target_coverage.tsv (depth per target) and\n  <input>_<bed>_target_summary.txt (on- and off-target depth, enrichment and\n  targets below --min-depth). --status writes nothing.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract info calculate-coverage [-h] [-r REGION] [--bins] [--with-bins] [--by BED]\n                                          [--min-depth N] [--format {tsv,parquet}] [--status]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the\n                        assessed scope (all targets must fit inside it); otherwise the whole\n                        alignment header is the assessed scope\n  --bins                Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming\n                        pass.\n  --with-bins           After the coverage table, also report the --bins depth breadth; an up-to-\n                        date whole-file bins report is shown again instead of rescanned.\n  --by BED              Report depth per target of this BED (e.g. from 'panel bed'): mean, median\n                        and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus\n                        off-target enrichment\n  --min-depth N         With --by, list targets whose mean depth is below this (default: 30)\n  --format {tsv,parquet}\n                        Also save the per-chromosome table and the QC stats as <input>_chromosomes\n                        and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. With\n                        --bins or --by, that table's format instead\n  --status              Only report whether the --with-bins reports in --outdir are newer than the\n                        input (current), so a run would show them again\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract info calculate-coverage --input sample.cram\n  wgsextract info calculate-coverage --input sample.cram --bins --format parquet\n  wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20\n  wgsextract info calculate-coverage --input sample.cram --status\n\noutputs (in the output directory unless noted):\n  <input file name>_coverage.tsv, or with --bins <input file\n  name>_coverage_bins.tsv (depth bands, or .parquet with --format parquet)\n  instead; with --with-bins both .tsv files. With --by,\n  <input>_<bed>_target_coverage.tsv (depth per target) and\n  <input>_<bed>_target_summary.txt (on- and off-target depth, enrichment and\n  targets below --min-depth). --status writes nothing.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools; minutes on a 30x\n  genome.\n",
    "parser": {
     "actions": [
      {
@@ -12653,7 +12653,7 @@
       "default": null,
       "dest": "region",
       "exclusive_group": null,
-      "help": "Chromosomal region (e.g. chrM, chrY:10000-20000)",
+      "help": "Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -20027,6 +20027,7 @@
     ],
     "defaults": {
      "_command": "qc vcf",
+     "_one_vcf_input": true,
      "func": "cmd_vcf_qc"
     },
     "description": null,
@@ -30564,7 +30565,7 @@
    }
   },
   "score pgs": {
-   "help": "usage: wgsextract score pgs [-h] --build {GRCh37,GRCh38} [--pgs-id PGS_ID | --trait TRAIT]\n                            [--scoring-file SCORING_FILE] [--sample SAMPLE] [--plink2-check]\n                            [--keep-ambiguous | --no-keep-ambiguous]\n                            [--confident-bed CONFIDENT_BED] [--min-match MIN_MATCH]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {GRCh37,GRCh38}\n                        Input/scoring coordinate build (must match).\n  --pgs-id PGS_ID       Catalog PGS ID; uncurated IDs carry a warning.\n  --trait TRAIT         Curated trait (see docs/pgs.md).\n  --scoring-file SCORING_FILE\n                        Own scoring TSV[.gz], overriding Catalog selection.\n  --sample SAMPLE       VCF sample name (required for multi-sample files).\n  --plink2-check        Cross-check the matched-set sum with installed plink2 (no imputation).\n  --keep-ambiguous, --no-keep-ambiguous\n                        Keep A/T and C/G SNPs only if their forward strand was independently\n                        verified.\n  --confident-bed CONFIDENT_BED\n                        Same-sample/build confident BED: absent SNPs within it are reference calls\n                        (needs --ref).\n  --min-match MIN_MATCH\n                        Minimum matched fraction for percentile eligibility (default 0.75).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018\n\noutputs (in the output directory unless noted):\n  <input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate,\n  licence and citation. No calibrated percentile yet.\n\nneeds:\n  bcftools; depending on options and inputs, also: plink2; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract score pgs [-h] --build {GRCh37,GRCh38} [--pgs-id PGS_ID | --trait TRAIT]\n                            [--scoring-file SCORING_FILE] [--sample SAMPLE] [--plink2-check]\n                            [--keep-ambiguous | --no-keep-ambiguous]\n                            [--confident-bed CONFIDENT_BED] [--min-match MIN_MATCH]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {GRCh37,GRCh38}\n                        Input/scoring coordinate build (must match).\n  --pgs-id PGS_ID       Catalog PGS ID; uncurated IDs carry a warning.\n  --trait TRAIT         Curated trait (see docs/pgs.md).\n  --scoring-file SCORING_FILE\n                        Own scoring TSV[.gz], overriding Catalog selection.\n  --sample SAMPLE       VCF sample name (required for multi-sample files).\n  --plink2-check        Cross-check the matched-set sum with installed plink2 (no imputation).\n  --keep-ambiguous, --no-keep-ambiguous\n                        Keep A/T and C/G SNPs only if their forward strand was independently\n                        verified.\n  --confident-bed CONFIDENT_BED\n                        Same-sample/build confident BED: absent SNPs within it are reference calls\n                        (needs --ref).\n  --min-match MIN_MATCH\n                        Minimum matched fraction for percentile eligibility (default 0.75).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018\n\noutputs (in the output directory unless noted):\n  <input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate,\n  licence and citation; for curated GRCh38 scores, an ancestry-adjusted\n  percentile.\n\nneeds:\n  bcftools; depending on options and inputs, also: plink2, curl; minutes on a\n  30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -32089,7 +32090,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius is for noncommercial use only.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn       Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n              SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n              outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6    Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and\n              write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and\n              no distribution or modification.\n    hla       Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT\n              outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn       Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n              SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str       Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n              ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n              outside STRchive's normal range.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -32119,7 +32120,7 @@
       "help": [
        [
         "cyp2d6",
-        "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius is for noncommercial use only."
+        "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification."
        ],
        [
         "hla",
@@ -34532,6 +34533,7 @@
     ],
     "defaults": {
      "_command": "vcf alphamissense",
+     "_one_vcf_input": true,
      "func": "cmd_alphamissense"
     },
     "description": null,
@@ -34889,6 +34891,7 @@
     ],
     "defaults": {
      "_command": "vcf annotate",
+     "_one_vcf_input": true,
      "func": "cmd_annotate"
     },
     "description": null,
@@ -35262,6 +35265,7 @@
     ],
     "defaults": {
      "_command": "vcf cadd",
+     "_one_vcf_input": true,
      "func": "cmd_cadd"
     },
     "description": null,
@@ -35619,6 +35623,7 @@
     ],
     "defaults": {
      "_command": "vcf chain-annotate",
+     "_one_vcf_input": true,
      "func": "cmd_chain_annotate"
     },
     "description": null,
@@ -36388,6 +36393,7 @@
     ],
     "defaults": {
      "_command": "vcf clinvar",
+     "_one_vcf_input": true,
      "func": "cmd_clinvar"
     },
     "description": null,
@@ -37700,6 +37706,7 @@
     ],
     "defaults": {
      "_command": "vcf filter",
+     "_one_vcf_input": true,
      "func": "cmd_filter"
     },
     "description": null,
@@ -38789,6 +38796,7 @@
     ],
     "defaults": {
      "_command": "vcf gerp",
+     "_one_vcf_input": true,
      "func": "cmd_gerp"
     },
     "description": null,
@@ -39184,6 +39192,7 @@
     ],
     "defaults": {
      "_command": "vcf gnomad",
+     "_one_vcf_input": true,
      "func": "cmd_gnomad"
     },
     "description": null,
@@ -39975,7 +39984,7 @@
    }
   },
   "vcf pharmcat": {
-   "help": "usage: wgsextract vcf pharmcat [-h] [--vcf-input VCF_INPUT] [--pharmcat-dir PHARMCAT_DIR]\n                               [--absent-to-ref] [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, tabix; depending on options and inputs, also: bgzip;\n  minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf pharmcat [-h] [--vcf-input VCF_INPUT] [--pharmcat-dir PHARMCAT_DIR]\n                               [--absent-to-ref] [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -40378,6 +40387,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmcat",
+     "_one_vcf_input": true,
      "func": "cmd_pharmcat"
     },
     "description": null,
@@ -40719,6 +40729,7 @@
     ],
     "defaults": {
      "_command": "vcf pharmgkb",
+     "_one_vcf_input": true,
      "func": "cmd_pharmgkb"
     },
     "description": null,
@@ -41469,6 +41480,7 @@
     ],
     "defaults": {
      "_command": "vcf phylop",
+     "_one_vcf_input": true,
      "func": "cmd_phylop"
     },
     "description": null,
@@ -41826,6 +41838,7 @@
     ],
     "defaults": {
      "_command": "vcf revel",
+     "_one_vcf_input": true,
      "func": "cmd_revel"
     },
     "description": null,
@@ -42577,6 +42590,7 @@
     ],
     "defaults": {
      "_command": "vcf spliceai",
+     "_one_vcf_input": true,
      "func": "cmd_spliceai"
     },
     "description": null,
@@ -43456,6 +43470,7 @@
     ],
     "defaults": {
      "_command": "vcf sv-freq",
+     "_one_vcf_input": true,
      "func": "cmd_sv_freq"
     },
     "description": null,
@@ -43881,6 +43896,7 @@
     ],
     "defaults": {
      "_command": "vcf table",
+     "_one_vcf_input": true,
      "func": "cmd_table"
     },
     "description": null,
@@ -44328,6 +44344,7 @@
     ],
     "defaults": {
      "_command": "vcf to-fasta",
+     "_one_vcf_input": true,
      "func": "cmd_to_fasta"
     },
     "description": null,
@@ -44774,6 +44791,7 @@
     ],
     "defaults": {
      "_command": "vcf trio",
+     "_one_vcf_input": true,
      "func": "cmd_trio"
     },
     "description": null,
@@ -44782,7 +44800,7 @@
    }
   },
   "vep": {
-   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's\n              with --engine ensembl, for offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    delete    Delete one release and assembly of your VEP cache.\n    run       Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).\n              Predicts the functional impact of your variants (e.g., if a mutation likely breaks a\n              gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vep [-h] <command> ...\n\npositional arguments:\n  <command>\n    download  Build vep-rs's VEP cache from Ensembl's files (GRCh37/38, T2T-CHM13v2.0), or\n              download Ensembl VEP's with --engine ensembl, for offline annotation.\n    verify    Check your existing VEP cache for missing files or corruption.\n    delete    Delete one release and assembly of your VEP cache.\n    run       Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).\n              Predicts the functional impact of your variants (e.g., if a mutation likely breaks a\n              gene or causes a specific disease).\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -44812,7 +44830,7 @@
       "help": [
        [
         "download",
-        "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's with --engine ensembl, for offline annotation."
+        "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38, T2T-CHM13v2.0), or download Ensembl VEP's with --engine ensembl, for offline annotation."
        ],
        [
         "verify",
@@ -45118,7 +45136,7 @@
    }
   },
   "vep download": {
-   "help": "usage: wgsextract vep download [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                               [--assembly {GRCh37,GRCh38}] [--vep-version VEP_VERSION]\n                               [--vep-cache VEP_CACHE] [--mirror {ebi,uk}]\n                               [--variations | --no-variations]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n  --mirror {ebi,uk}     Ensembl FTP mirror to use (default: uk)\n  --variations, --no-variations\n                        vep-rs: include known variants (Existing_variation, frequencies; ~15 GB;\n                        default: on)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep download --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Into the VEP cache directory (vep_cache, or --vep-cache).\n\nneeds:\n  samtools, vep-cache-builder; depending on options and inputs, also: curl,\n  tar; depends on download speed.\n",
+   "help": "usage: wgsextract vep download [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                               [--assembly {GRCh37,GRCh38,T2T-CHM13v2.0}]\n                               [--vep-version VEP_VERSION] [--vep-cache VEP_CACHE]\n                               [--mirror {ebi,uk}] [--variations | --no-variations]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38,T2T-CHM13v2.0}\n                        Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n  --mirror {ebi,uk}     Ensembl FTP mirror to use (default: uk)\n  --variations, --no-variations\n                        vep-rs: include known variants (Existing_variation, frequencies; ~15 GB;\n                        default: on)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep download --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Into the VEP cache directory (vep_cache, or --vep-cache).\n\nneeds:\n  samtools, vep-cache-builder; depending on options and inputs, also: curl,\n  tar; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -45438,14 +45456,15 @@
      {
       "choices": [
        "GRCh37",
-       "GRCh38"
+       "GRCh38",
+       "T2T-CHM13v2.0"
       ],
       "class": "_StoreAction",
       "const": null,
       "default": "GRCh38",
       "dest": "assembly",
       "exclusive_group": null,
-      "help": "Assembly (default: GRCh38)",
+      "help": "Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -45549,7 +45568,7 @@
    }
   },
   "vep run": {
-   "help": "usage: wgsextract vep run [-h] [--engine {ensembl,vep-rs}] [--vep-cache VEP_CACHE]\n                          [--assembly {GRCh37,GRCh38}] [--force] [--preset {everything,fast}]\n                          [--format {vcf,tab,json}] [-r REGION] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory (e.g., $HOME/.vep)\n  --assembly {GRCh37,GRCh38}\n                        Reference assembly for VEP (GRCh37 or GRCh38)\n  --force               Force re-run even if output exists\n  --preset {everything,fast}\n                        What VEP annotates: 'everything' (default), or 'fast' (about twice as\n                        fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no\n                        population frequencies, for which use 'vcf gnomad', and no HGVS)\n  --format {vcf,tab,json}\n                        Output format (default: vcf)\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n6 advanced options not shown; 'wgsextract vep run --help-all' lists them.\n\nexamples:\n  wgsextract vep run --input sample.vcf.gz\n  wgsextract vep run --input sample.vcf.gz --assembly GRCh37 --format tab\n\noutputs (in the output directory unless noted):\n  <input stem>_vep.vcf.gz (or .tsv/.json with --format), with VEP's summary.\n\nneeds:\n  bcftools, tabix, vep-rs; depending on options and inputs, also: samtools,\n  vep; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vep run [-h] [--engine {ensembl,vep-rs}] [--vep-cache VEP_CACHE]\n                          [--assembly {GRCh37,GRCh38,T2T-CHM13v2.0}] [--force]\n                          [--preset {everything,fast}] [--format {vcf,tab,json}] [-r REGION]\n                          [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory (e.g., $HOME/.vep)\n  --assembly {GRCh37,GRCh38,T2T-CHM13v2.0}\n                        Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)\n  --force               Force re-run even if output exists\n  --preset {everything,fast}\n                        What VEP annotates: 'everything' (default), or 'fast' (about twice as\n                        fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no\n                        population frequencies, for which use 'vcf gnomad', and no HGVS)\n  --format {vcf,tab,json}\n                        Output format (default: vcf)\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n6 advanced options not shown; 'wgsextract vep run --help-all' lists them.\n\nexamples:\n  wgsextract vep run --input sample.vcf.gz\n  wgsextract vep run --input sample.vcf.gz --assembly GRCh37 --format tab\n\noutputs (in the output directory unless noted):\n  <input stem>_vep.vcf.gz (or .tsv/.json with --format), with VEP's summary.\n\nneeds:\n  bcftools, tabix, vep-rs; depending on options and inputs, also: samtools,\n  vep; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -45869,14 +45888,15 @@
      {
       "choices": [
        "GRCh37",
-       "GRCh38"
+       "GRCh38",
+       "T2T-CHM13v2.0"
       ],
       "class": "_StoreAction",
       "const": null,
       "default": null,
       "dest": "vep_assembly",
       "exclusive_group": null,
-      "help": "Reference assembly for VEP (GRCh37 or GRCh38)",
+      "help": "Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -45888,7 +45908,8 @@
      {
       "choices": [
        "GRCh37",
-       "GRCh38"
+       "GRCh38",
+       "T2T-CHM13v2.0"
       ],
       "class": "_StoreAction",
       "const": null,
@@ -46104,7 +46125,7 @@
    }
   },
   "vep verify": {
-   "help": "usage: wgsextract vep verify [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                             [--assembly {GRCh37,GRCh38}] [--vep-version VEP_VERSION]\n                             [--vep-cache VEP_CACHE]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38}\n                        Assembly (default: GRCh38)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep verify --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Prints what is missing or damaged; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
+   "help": "usage: wgsextract vep verify [-h] [--engine {ensembl,vep-rs}] [--species SPECIES]\n                             [--assembly {GRCh37,GRCh38,T2T-CHM13v2.0}]\n                             [--vep-version VEP_VERSION] [--vep-cache VEP_CACHE]\n\noptions:\n  -h, --help            show this help message and exit\n  --engine {ensembl,vep-rs}\n                        Engine: 'vep-rs' (default; fast Rust VEP, every platform) or 'ensembl'\n                        (Linux, macOS); each has its own cache\n  --species SPECIES     Species name (default: homo_sapiens)\n  --assembly {GRCh37,GRCh38,T2T-CHM13v2.0}\n                        Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs)\n  --vep-version VEP_VERSION\n                        Ensembl release version (default: 116)\n  --vep-cache VEP_CACHE\n                        Path to VEP cache directory\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vep verify --assembly GRCh38\n\noutputs (in the output directory unless noted):\n  Prints what is missing or damaged; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
    "parser": {
     "actions": [
      {
@@ -46424,14 +46445,15 @@
      {
       "choices": [
        "GRCh37",
-       "GRCh38"
+       "GRCh38",
+       "T2T-CHM13v2.0"
       ],
       "class": "_StoreAction",
       "const": null,
       "default": "GRCh38",
       "dest": "assembly",
       "exclusive_group": null,
-      "help": "Assembly (default: GRCh38)",
+      "help": "Assembly (default: GRCh38; T2T-CHM13v2.0 with vep-rs)",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -49101,6 +49123,7 @@
     "outdir",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "qc",
    "debug": false,
@@ -49127,6 +49150,7 @@
    "_explicit_dests": [
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "qc",
    "debug": false,
@@ -50573,6 +50597,7 @@
     "am_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "am_file": "a.tsv.gz",
    "atomic_output": false,
    "command": "vcf",
@@ -50602,6 +50627,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "am_file": null,
    "atomic_output": false,
    "command": "vcf",
@@ -50631,6 +50657,7 @@
     "input",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "ann_vcf": null,
    "atomic_output": false,
    "cols": null,
@@ -50661,6 +50688,7 @@
     "cols",
     "input"
    ],
+   "_one_vcf_input": true,
    "ann_vcf": "a.vcf.gz",
    "atomic_output": false,
    "cols": "ID",
@@ -50691,6 +50719,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "cadd_file": "c.tsv.gz",
    "cadd_indel_file": null,
@@ -50721,6 +50750,7 @@
     "cadd_indel_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "cadd_file": null,
    "cadd_indel_file": "i.tsv.gz",
@@ -50751,6 +50781,7 @@
     "keep_intermediates",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "annotations": "clinvar,revel,phylop,gnomad,vep",
    "atomic_output": false,
    "command": "vcf",
@@ -50780,6 +50811,7 @@
     "annotations",
     "input"
    ],
+   "_one_vcf_input": true,
    "annotations": "clinvar,revel",
    "atomic_output": false,
    "command": "vcf",
@@ -50841,6 +50873,7 @@
     "clinvar_file",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": "c.vcf.gz",
    "command": "vcf",
@@ -50871,6 +50904,7 @@
     "confidence_depth",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": null,
    "command": "vcf",
@@ -50904,6 +50938,7 @@
     "confidence_gq",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "clinvar_file": null,
    "command": "vcf",
@@ -51129,6 +51164,7 @@
     "input",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51161,6 +51197,7 @@
     "gene",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51286,6 +51323,7 @@
     "input",
     "min_score"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51315,6 +51353,7 @@
     "confidence_depth",
     "input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": [
@@ -51350,6 +51389,7 @@
     "input",
     "max_af"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": null,
@@ -51477,6 +51517,7 @@
     "input",
     "outside_call"
    ],
+   "_one_vcf_input": true,
    "absent_to_ref": false,
    "atomic_output": false,
    "command": "vcf",
@@ -51516,6 +51557,7 @@
     "input",
     "pharmcat_dir"
    ],
+   "_one_vcf_input": true,
    "absent_to_ref": true,
    "atomic_output": false,
    "command": "vcf",
@@ -51548,6 +51590,7 @@
     "input",
     "pharmgkb_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51611,6 +51654,7 @@
     "min_score",
     "phylop_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51641,6 +51685,7 @@
     "min_score",
     "revel_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51737,6 +51782,7 @@
     "input",
     "spliceai_file"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -51837,6 +51883,7 @@
     "min_overlap",
     "vcf_input"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "common_af": 0.01,
@@ -51872,6 +51919,7 @@
     "pharmcat_json",
     "table_format"
    ],
+   "_one_vcf_input": true,
    "all_alleles": false,
    "atomic_output": false,
    "command": "vcf",
@@ -51907,6 +51955,7 @@
     "no_sqlite",
     "sample"
    ],
+   "_one_vcf_input": true,
    "all_alleles": true,
    "atomic_output": false,
    "command": "vcf",
@@ -51941,6 +51990,7 @@
     "input",
     "uncalled"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": false,
    "command": "vcf",
@@ -51976,6 +52026,7 @@
     "input",
     "sample"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": false,
    "command": "vcf",
@@ -52012,6 +52063,7 @@
     "mask",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "chain": true,
    "command": "vcf",
@@ -52047,6 +52099,7 @@
     "mother",
     "proband"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,
@@ -52086,6 +52139,7 @@
     "proband_sex",
     "region"
    ],
+   "_one_vcf_input": true,
    "atomic_output": false,
    "command": "vcf",
    "debug": false,

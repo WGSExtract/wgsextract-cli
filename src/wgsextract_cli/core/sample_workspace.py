@@ -49,6 +49,7 @@ from wgsextract_cli.core.sample_types import (
 )
 from wgsextract_cli.core.sample_types import (
     FactName,
+    ObservedSex,
     OverrideChanges,
     Platform,
     Sex,
@@ -137,7 +138,7 @@ class FactSpec:
 FACTS: dict[str, FactSpec] = {
     spec.name: spec
     for spec in (
-        FactSpec("sex", "Male or Female, from the chrX/chrY read counts.", SEXES, 2),
+        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 4),
         FactSpec(
             "platform",
             "Sequencing platform, from the read groups or read names.",
@@ -510,7 +511,18 @@ class SampleWorkspace:
     @overload
     def record(
         self,
-        name: Literal["sex", "somalier_sex"],
+        name: Literal["sex"],
+        file: PathInput,
+        value: ObservedSex | None,
+        *,
+        method: str,
+        confidence: Confidence,
+    ) -> bool: ...
+
+    @overload
+    def record(
+        self,
+        name: Literal["somalier_sex"],
         file: PathInput,
         value: Sex | None,
         *,
@@ -907,7 +919,18 @@ def recording_paused() -> Iterator[None]:
 
 @overload
 def record(
-    name: Literal["sex", "somalier_sex"],
+    name: Literal["sex"],
+    file: PathInput | None,
+    value: ObservedSex | None,
+    *,
+    method: str,
+    confidence: Confidence,
+) -> bool: ...
+
+
+@overload
+def record(
+    name: Literal["somalier_sex"],
     file: PathInput | None,
     value: Sex | None,
     *,

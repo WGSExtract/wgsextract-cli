@@ -26,17 +26,24 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
 
+if TYPE_CHECKING:
+    from wgsextract_cli.core.pgs_reference import Accumulator
+
 DISCLAIMER = (
     "Research use only; not a diagnosis. A polygenic score is not absolute "
     "disease risk, and must not guide treatment or screening."
 )
-# IDs and trait labels only: scoring files are never redistributed.
+# The PGS Catalog's licence for a score whose authors set no terms of their own.
+CATALOG_DEFAULT_LICENSE = "PGS obtained from the Catalog should be cited appropriately"
+# IDs and trait labels only: scoring files are never redistributed. `bmi`'s
+# PGS000027 carries its authors' terms (academic research use; commercial use
+# needs the Broad Institute's permission), which `score pgs` warns of.
 CURATED = {
     "cad": "PGS000018",
     "breast-cancer": "PGS000004",
@@ -50,6 +57,12 @@ CURATED = {
     "lung-cancer": "PGS000070",
     "thyroid-cancer": "PGS000087",
 }
+
+
+def author_license(license: str | None) -> bool:
+    """Whether a Catalog score's licence is its authors' own terms rather than
+    the Catalog's default."""
+    return bool(license) and not str(license).startswith(CATALOG_DEFAULT_LICENSE)
 
 
 def text_file(path: Path) -> TextIO:
@@ -541,8 +554,10 @@ def score(
     min_match: float = 0.75,
     matched_file: Path | None = None,
     keep_ambiguous: bool = False,
+    calibration: Accumulator | None = None,
 ) -> dict[str, Any]:
-    """Sum observed effect-allele dosages; count every source row in coverage."""
+    """Sum observed effect-allele dosages; count every source row in coverage.
+    ``calibration`` also accumulates the reference-calibrated score."""
     import numpy as np
 
     counts: Counter[str] = Counter()
@@ -560,6 +575,8 @@ def score(
                 variant, confident, reference, keep_ambiguous
             )
             counts[reason] += 1
+            if calibration is not None:
+                calibration.add(number - 1, variant.weight, dosage)
             if dosage is None:
                 continue
             weights.append(variant.weight)

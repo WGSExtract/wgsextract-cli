@@ -33,24 +33,32 @@ def _components(k: int) -> dict:
     }
 
 
-def build(folder: Path, proportions: list[float], seed: int = 11) -> dict:
+def build(
+    folder: Path,
+    proportions: list[float],
+    seed: int = 11,
+    *,
+    contigs: tuple[str, ...] = CONTIGS,
+    length: int = LENGTH,
+    sites_per_contig: int = SITES_PER_CONTIG,
+) -> dict:
     """The reference genome, the ancestry reference (in ``folder/ancestry``, a library beside the FASTA) and
     the person's genotypes (0-2 alt copies per site)."""
     rng = random.Random(seed)
     nrng = np.random.default_rng(seed)
     folder.mkdir(parents=True, exist_ok=True)
-    seqs = {c: "".join(rng.choice("ACGT") for _ in range(LENGTH)) for c in CONTIGS}
+    seqs = {c: "".join(rng.choice("ACGT") for _ in range(length)) for c in contigs}
     fasta = folder / "ref.fa"
     with fasta.open("w") as f:
         for contig, seq in seqs.items():
             f.write(f">{contig}\n")
-            f.writelines(seq[i : i + 60] + "\n" for i in range(0, LENGTH, 60))
+            f.writelines(seq[i : i + 60] + "\n" for i in range(0, length, 60))
     subprocess.run(["samtools", "faidx", str(fasta)], check=True)
 
     chrom, pos, ref, alt = [], [], [], []
-    step = (LENGTH - 2 * READ) // SITES_PER_CONTIG
-    for c, contig in enumerate(CONTIGS, 1):
-        for i in range(SITES_PER_CONTIG):
+    step = (length - 2 * READ) // sites_per_contig
+    for c, contig in enumerate(contigs, 1):
+        for i in range(sites_per_contig):
             p = READ + i * step + rng.randrange(step // 2)
             r = seqs[contig][p - 1]
             chrom.append(c)
@@ -99,6 +107,8 @@ def build(folder: Path, proportions: list[float], seed: int = 11) -> dict:
     return {
         "fasta": fasta,
         "seqs": seqs,
+        "contigs": contigs,
+        "length": length,
         "reflib": reflib,
         "sha256": hashlib.sha256(npz.read_bytes()).hexdigest(),
         "sites": list(zip(chrom, pos, ref, alt, strict=True)),
@@ -133,19 +143,38 @@ def reads_bam(sample: dict, path: Path, depth: int, sites: int | None = None) ->
     return Path(sam_to_bam(header + records, path))
 
 
-def calls_vcf(sample: dict, path: Path, *, variants_only: bool) -> Path:
-    """A bgzipped, indexed single-sample VCF of the person's calls."""
+def calls_vcf(
+    sample: dict,
+    path: Path,
+    *,
+    variants_only: bool,
+    failed: frozenset[int] = frozenset(),
+) -> Path:
+    """A bgzipped, indexed single-sample VCF of the person's calls; the calls
+    at site indexes ``failed`` carry a failing sample filter (FORMAT/FT)."""
     lines = [
         "##fileformat=VCFv4.2",
-        *(f"##contig=<ID={c},length={LENGTH}>" for c in CONTIGS),
+        *(f"##contig=<ID={c},length={sample['length']}>" for c in sample["contigs"]),
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+        *(
+            ['##FORMAT=<ID=FT,Number=1,Type=String,Description="Sample filter">']
+            if failed
+            else []
+        ),
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS",
     ]
-    for (c, pos, ref, alt), g in zip(sample["sites"], sample["genotypes"], strict=True):
+    for i, ((c, pos, ref, alt), g) in enumerate(
+        zip(sample["sites"], sample["genotypes"], strict=True)
+    ):
         if variants_only and g == 0:
             continue
         gt = ("0/0", "0/1", "1/1")[g]
-        lines.append(f"{CONTIGS[c - 1]}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t.\tGT\t{gt}")
+        sample_format = "GT"
+        if failed:
+            sample_format, gt = "GT:FT", f"{gt}:{'LowGQ' if i in failed else 'PASS'}"
+        lines.append(
+            f"{sample['contigs'][c - 1]}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t.\t{sample_format}\t{gt}"
+        )
     plain = path.with_suffix("")
     plain.write_text("\n".join(lines) + "\n")
     subprocess.run(["bgzip", "-f", str(plain)], check=True)

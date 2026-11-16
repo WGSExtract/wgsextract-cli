@@ -62,7 +62,7 @@ def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
     assert routes(["README.md"], force_install_lab=True)["install"]
 
 
-def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
+def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     output = subprocess.check_output(
         [
@@ -72,7 +72,6 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
             "HEAD",
             "--head",
             "HEAD",
-            "--label-event",
             "--force-install-lab",
         ],
         text=True,
@@ -102,6 +101,53 @@ def test_757_install_lab_label_does_not_repeat_the_cli_matrix() -> None:
         "windows_smoke": "false",
         "arm64_smoke": "false",
     }
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
+)
+@pytest.mark.parametrize("live_label", ["true", "false", "api-error"])
+def test_954_routing_reads_live_install_label_and_fails_closed(
+    tmp_path: Path, live_label: str
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    command = workflow_shell("Route the complete PR diff")
+    # GitHub's API is the network boundary; git diff and routing run for real.
+    gh = tmp_path / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        + ("exit 1\n" if live_label == "api-error" else f"echo {live_label}\n")
+    )
+    gh.chmod(0o755)
+    output = tmp_path / "output"
+    environment = {
+        **os.environ,
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+        "BASE": "HEAD",
+        "HEAD": "HEAD",
+        "PR_NUMBER": "954",
+        "GITHUB_REPOSITORY": "WGSExtract/wgsextract-cli",
+        "GITHUB_OUTPUT": str(output),
+        "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
+        "DRAFT": "false",
+        "FULL_SUITE": "false",
+    }
+    result = subprocess.run(
+        ["bash", "-c", command],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if live_label == "api-error":
+        assert result.returncode != 0
+        assert not output.exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        assert selected["install"] == live_label
+        assert selected["routed"] == "true"
 
 
 @pytest.mark.parametrize(
@@ -651,8 +697,7 @@ def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
             **os.environ,
             "BASE": base,
             "HEAD": "HEAD",
-            "FORCE_INSTALL": "false",
-            "LABEL_EVENT": "false",
+            "PR_NUMBER": "",
             "DRAFT": "false",
             "GITHUB_OUTPUT": str(output),
             "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
@@ -1012,6 +1057,79 @@ def test_876_unverifiable_passing_check_cannot_establish_readiness(link: str) ->
         {"name": "unverified", "bucket": "pass", "workflow": "Other", "link": link}
     )
     assert not checks_ready(checks, run_id=20, runs=[ready])
+
+
+@pytest.mark.parametrize(
+    ("bucket", "changes", "ready"),
+    [
+        ("pass", {}, True),
+        ("pass", {"app": {"slug": "some-other-app"}}, False),
+        ("pass", {"head_sha": "older-head"}, False),
+        ("pass", {"status": "in_progress", "conclusion": None}, False),
+        ("fail", {"conclusion": "failure"}, False),
+        ("pass", {"conclusion": "failure"}, False),
+        (
+            "pass",
+            {"html_url": "https://github.com/other/repo/runs/132889584422"},
+            False,
+        ),
+    ],
+)
+def test_962_codeql_app_check_run_is_verified_against_the_pr_head(
+    monkeypatch: pytest.MonkeyPatch,
+    bucket: str,
+    changes: dict[str, Any],
+    ready: bool,
+) -> None:
+    repository = "WGSExtract/wgsextract-cli"
+    link = f"https://github.com/{repository}/runs/132889584422"
+    # Shape of PR #956's code-scanning check run: an app check, not an Actions job.
+    codeql = {
+        "id": 132889584422,
+        "name": "CodeQL",
+        "head_sha": "same-head",
+        "status": "completed",
+        "conclusion": "success",
+        "html_url": link,
+        "app": {"slug": "github-advanced-security"},
+        **changes,
+    }
+
+    def response(*arguments: str) -> Any:
+        assert arguments == ("api", f"repos/{repository}/check-runs/132889584422")
+        return codeql
+
+    monkeypatch.setattr(pr_checks_ready, "github_json", response)
+    ready_run = {**area_run(20, "2026-11-13T16:20:01Z"), "workflow_id": 416978936}
+    checks = [
+        {
+            "name": name,
+            "bucket": "pass",
+            "workflow": "PR area checks",
+            "link": f"https://github.com/{repository}/actions/runs/20/job/{i}",
+        }
+        for i, name in enumerate(("changes", "required", "Ready PR area checks"))
+    ]
+    checks.append({"name": "CodeQL", "bucket": bucket, "workflow": "", "link": link})
+    check_runs = pr_checks_ready.app_check_runs(checks, repository)
+    assert (
+        checks_ready(
+            checks,
+            run_id=20,
+            runs=[ready_run],
+            check_runs=check_runs,
+            repository=repository,
+        )
+        is ready
+    )
+    # An app check under another repository is never trusted.
+    assert not checks_ready(
+        [*checks[:-1], {**checks[-1], "link": "https://github.com/a/b/runs/1"}],
+        run_id=20,
+        runs=[ready_run],
+        check_runs=check_runs,
+        repository=repository,
+    )
 
 
 def test_876_recorded_pr_run_with_empty_associations_is_still_verified(

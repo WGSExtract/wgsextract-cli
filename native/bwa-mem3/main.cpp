@@ -28,7 +28,7 @@ constexpr const char *platform = "Linux", *gpu_option = "--cuda";
 void help(FILE *stream) {
     fprintf(stream, "%s %s (bwa-mem3 %s rebuilt for %s)\n"
         "Usage: %s [%s | --backend cpu|%s|auto] [--gpu-threads PERCENT] [--gpu-seed on|off]\n"
-        "         [--gpu-backlog PAIRS] [--gpu-rescue on|off] <command> [arguments]\n"
+        "         [--gpu-backlog PAIRS] [--gpu-rescue on|off] [--gpu-sa on|off] <command> [arguments]\n"
         "         bwa-mem3's commands: index, mem, shm, re-sa\n"
         "       %s capabilities --json   report %s availability\n"
         "       %s --version | version   print executable and engine version\n"
@@ -40,7 +40,8 @@ void help(FILE *stream) {
         "%d) of -t compute threads, as threads wait for the GPU. %s fails if %s is\n"
         "unavailable, and exits 1 after finishing on the CPU if a GPU batch fails; --backend auto\n"
         "falls back to the CPU in both cases. With CUDA it also aligns mate-rescue windows on the\n"
-        "GPU (unless --gpu-rescue off).\n"
+        "GPU (unless --gpu-rescue off), and with --gpu-sa on (default off) looks up suffix-array\n"
+        "values there too, if the sampled suffix array (about 4 GiB for hs38) fits.\n"
         "SAM is written to stdout, diagnostics to stderr. Not qualified for clinical use.\n\n",
         name, version, engine_version, platform, name, gpu_option, gpu_option + 2, name,
         wgse_mem3_gpu_name(), name, name, gpu_option, wgse_mem3_default_thread_percent,
@@ -60,7 +61,7 @@ int run(int argc, char **argv) {
     // Backend options precede the command, as for wgse-bwa and wgse-bwa-mem2.
     // gpu: --metal on macOS, --cuda on Linux.
     enum class Backend { cpu, gpu, automatic } backend = Backend::cpu;
-    bool gpu_seed = true, gpu_rescue = true;
+    bool gpu_seed = true, gpu_rescue = true, gpu_sa = false;
     long long gpu_backlog = -1;
     int command_index = 1;
     while (argc > command_index) {
@@ -83,6 +84,14 @@ int run(int argc, char **argv) {
             else if (strcmp(value, "off") == 0) gpu_rescue = false;
             else {
                 fprintf(stderr, "--gpu-rescue requires on or off\n");
+                return 2;
+            }
+            command_index += 2;
+        } else if (strcmp(option, "--gpu-sa") == 0) {
+            if (strcmp(value, "on") == 0) gpu_sa = true;
+            else if (strcmp(value, "off") == 0) gpu_sa = false;
+            else {
+                fprintf(stderr, "--gpu-sa requires on or off\n");
                 return 2;
             }
             command_index += 2;
@@ -217,6 +226,11 @@ int run(int argc, char **argv) {
                 reason.c_str());
         } else {
             wgse_mem3_seed_set_enabled(gpu_seed);
+            // The lookups use the seeder's copy of the occurrence table.
+            if (gpu_sa && !gpu_seed)
+                fprintf(stderr, "[%s] GPU suffix-array lookups are off: --gpu-sa needs GPU "
+                    "seeding; they run on the CPU\n", name);
+            wgse_mem3_seed_set_sa(gpu_sa && gpu_seed);
             wgse_mem3_rescue_set_enabled(gpu_rescue);
             // With seeding on the GPU, the CPU threads have time to score extensions when the
             // GPU's queue is long.

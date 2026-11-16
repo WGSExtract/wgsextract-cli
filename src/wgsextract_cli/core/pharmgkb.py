@@ -8,18 +8,26 @@ annotates the records carrying one of those alleles; matching by allele keeps a
 gVCF reference block that merely spans a site from being labelled with it.
 Left out: star alleles and haplotypes (CYP2D6*4, HLA-B*15:02), which have no
 single position, and the few indels, whose HGVS doesn't give VCF alleles.
+
+ClinPGx data is CC BY-SA 4.0 with its own data usage policy (research use, no
+sale of the data). The table's ``##`` header keeps each download's URL and
+creation date, the retrieval date, the licence, attribution, the changes made
+and ClinPGx's LICENSE.txt; `vcf pharmgkb` copies all but the licence text into
+the annotated VCF's header and its result manifest.
 """
 
 from __future__ import annotations
 
 import csv
+import gzip
 import io
 import logging
 import re
 import tempfile
 import zipfile
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
@@ -30,6 +38,18 @@ from .ref_library import download_file
 CLINICAL_URL = "https://api.clinpgx.org/v1/download/file/data/clinicalAnnotations.zip"
 VARIANTS_URL = "https://api.clinpgx.org/v1/download/file/data/variants.zip"
 DEST_NAME = "pharmgkb_hg38.tsv.gz"
+POLICY_URL = "https://www.clinpgx.org/page/dataUsagePolicy"
+LICENSE = (
+    "CC-BY-SA-4.0 (https://creativecommons.org/licenses/by-sa/4.0/) with "
+    f"ClinPGx's data usage policy: research use, no sale of the data ({POLICY_URL})"
+)
+ATTRIBUTION = "ClinPGx (PharmGKB), https://www.clinpgx.org/page/citingClinpgx"
+CHANGES = (
+    "WGS Extract placed each clinical annotation's rsID on its GRCh38 SNV "
+    "alleles from variants.tsv, keeping rsID, gene, level of evidence, "
+    "phenotype category and drugs"
+)
+_LICENSE_TEXT = "license_text"
 INFO_HEADER = (
     '##INFO=<ID=PHARMGKB,Number=.,Type=String,Description="ClinPGx (PharmGKB) '
     'clinical annotations: rsID|gene|level of evidence|phenotype category|drugs">'
@@ -122,10 +142,68 @@ def _member(zip_path: str, suffix: str) -> str:
         return archive.read(name).decode("utf-8")
 
 
-def write_table(rows: Iterable[tuple[str, int, str, str, str]], dest: str) -> None:
-    """Write, bgzip and tabix-index the table at dest (a .tsv.gz path)."""
+def source_header(archives: dict[str, tuple[str, str]], retrieved: str) -> list[str]:
+    """The table's ``##key=value`` provenance lines. ``archives`` maps each
+    download's name to its URL and ClinPGx archive path."""
+    lines = [f"##source={ATTRIBUTION}"]
+    texts: list[str] = []
+    for name, (url, path) in archives.items():
+        with zipfile.ZipFile(path) as archive:
+            members = archive.namelist()
+            created = next(
+                (
+                    m.removeprefix("CREATED_").removesuffix(".txt")
+                    for m in members
+                    if m.startswith("CREATED_")
+                ),
+                "not stated",
+            )
+            if "LICENSE.txt" in members:
+                text = archive.read("LICENSE.txt").decode("utf-8")
+                if text not in texts:
+                    texts.append(text)
+        lines.append(f"##{name}={url} (created {created})")
+    lines += [
+        f"##retrieved={retrieved}",
+        f"##license={LICENSE}",
+        f"##attribution={ATTRIBUTION}",
+        f"##changes={CHANGES}",
+    ]
+    lines += [
+        f"##{_LICENSE_TEXT}={line}".rstrip()
+        for text in texts
+        for line in text.splitlines()
+    ]
+    return lines
+
+
+def table_provenance(path: str) -> dict[str, str]:
+    """The provenance a table's header records (empty for a table without one,
+    such as one built before the header existed), less the licence text."""
+    record: dict[str, str] = {}
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as table:
+            for line in table:
+                if not line.startswith("##"):
+                    break
+                key, _, value = line[2:].rstrip("\n").partition("=")
+                if key != _LICENSE_TEXT:
+                    record[key] = value
+    except (OSError, UnicodeDecodeError, EOFError):
+        return {}
+    return record
+
+
+def write_table(
+    rows: Iterable[tuple[str, int, str, str, str]],
+    dest: str,
+    header: Sequence[str] = (),
+) -> None:
+    """Write, bgzip and tabix-index the table at dest (a .tsv.gz path), after
+    the ``##`` provenance ``header`` lines."""
     plain = dest[: -len(".gz")]
     with open(plain, "w", newline="\n") as out:
+        out.writelines(line + "\n" for line in header)
         out.write("#CHROM\tPOS\tREF\tALT\tPHARMGKB\n")
         out.writelines("\t".join(map(str, row)) + "\n" for row in rows)
     run_command(["bgzip", "-f", plain], capture_output=True)
@@ -158,7 +236,14 @@ def download_pharmgkb(
             logging.error("PharmGKB: no clinical annotation could be placed on hg38.")
             return False
         dest = str(Path(target_dir, DEST_NAME))
-        write_table(sites, dest)
+        header = source_header(
+            {
+                "clinical_annotations": (CLINICAL_URL, downloads["clinical"]),
+                "variants": (VARIANTS_URL, downloads["variants"]),
+            },
+            datetime.now(timezone.utc).date().isoformat(),
+        )
+        write_table(sites, dest, header)
     # Earlier versions saved ClinPGx's archive unconverted; nothing reads it.
     stale = str(Path(target_dir, "pharmgkb_hg38.zip"))
     if Path(stale).exists():

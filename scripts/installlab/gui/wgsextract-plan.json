@@ -140,6 +140,19 @@
       ]
     },
     {
+      "id": "declare_fixture_sex",
+      "kind": "action",
+      "pageID": "workflows",
+      "sectionID": "sample-overrides",
+      "actionID": "sample-set",
+      "timeoutSeconds": 60,
+      "inputs": {
+        "fieldValues": {
+          "sample_sex": "Male"
+        }
+      }
+    },
+    {
       "id": "info",
       "kind": "action",
       "pageID": "info-bam",
@@ -209,6 +222,22 @@
           "vcf_region": "20"
         }
       }
+    },
+    {
+      "id": "sample_sex",
+      "kind": "action",
+      "pageID": "workflows",
+      "sectionID": "sample-overrides",
+      "actionID": "sample-set",
+      "timeoutSeconds": 600,
+      "inputs": {
+        "fieldValues": {
+          "sample_sex": "Male"
+        }
+      },
+      "requiredOutput": [
+        "sex = Male"
+      ]
     },
     {
       "id": "microarray",

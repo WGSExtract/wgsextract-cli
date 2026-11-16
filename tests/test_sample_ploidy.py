@@ -62,12 +62,11 @@ def _snp(ref: str, bam: str, out: Path, *options: str) -> list[tuple[str, ...]]:
 @pytest.mark.parametrize("region", [None, "chrY"])
 def test_snp_calls_chry_for_a_man_only(tmp_path, sex, calls, region):
     ref, bam = _snp_bam(tmp_path / "sample", "chrY")
-    if sex:
-        run_wgsextract("sample", "set", "--input", bam, "--sex", sex)
+    run_wgsextract("sample", "set", "--input", bam, "--sex", sex or "Male")
     region_args = ["--region", region] if region else []
     out = tmp_path / "out"
     assert len(_snp(ref, bam, out, "--ploidy", "GRCh38", *region_args)) == calls
-    assert _scanned_sex(bam) == "Male"
+    assert _scanned_sex(bam) == "Unknown"
 
 
 @pytest.mark.parametrize(
@@ -89,18 +88,20 @@ def test_autosomal_regions_do_not_scan_the_whole_alignment(tmp_path, region, pre
 )
 def test_sex_chromosomes_and_unknown_region_syntax_keep_sex_detection(tmp_path, region):
     _ref, bam = _snp_bam(tmp_path / "sample", "chrY")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     with sample_ploidy.sex_samples_args(
         bam, str(tmp_path), ["--ploidy", "GRCh38"], region=region
     ) as args:
         assert args[0] == "--samples-file"
         assert Path(args[1]).read_text() == "man\tM\n"
-    assert _scanned_sex(bam) == "Male"
+    assert _scanned_sex(bam) == "Unknown"
     assert not list(tmp_path.glob("*.samples.txt"))
 
 
 def _male_samples_file(tmp_path: Path, ploidy: str, region: str | None) -> bool:
     """Whether a man's chrY BAM is listed as male for this ploidy file."""
     _ref, bam = _snp_bam(tmp_path / "sample", "chrY")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     path = tmp_path / "custom.ploidy"
     path.write_text(ploidy)
     with sample_ploidy.sex_samples_args(
@@ -117,7 +118,7 @@ def test_custom_ploidy_rules_for_the_requested_contigs_are_respected(
 ):
     ploidy = f"# CHROM FROM TO SEX PLOIDY\n{male_contig} 1 100 M 1\n* * * * 2\n"
     assert _male_samples_file(tmp_path / "region", ploidy, "chr20:1-100") is needed
-    assert _male_samples_file(tmp_path / "whole", ploidy, None)
+    assert _male_samples_file(tmp_path / "whole", ploidy, None) is (male_contig == "*")
 
 
 @pytest.mark.parametrize(
@@ -152,6 +153,7 @@ def test_microarray_normalizes_region_before_custom_sex_ploidy(
     tmp_path, contig, region
 ):
     ref, bam = _snp_bam(tmp_path / "sample", contig, "chrY")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     _templates(tmp_path / "sample", "23andMe_V5_2025.txt", "", "rs1000\t20\t1000\n")
     targets = tmp_path / "targets.tab"
     targets.write_text(f"{contig}\t1000\trs1000\tA\n")
@@ -165,7 +167,7 @@ def test_microarray_normalizes_region_before_custom_sex_ploidy(
                    "--ref-vcf-tab", target_gz, "--ploidy-file", str(ploidy),
                    "--region", region, "--formats", "23andme_v5_2025",
                    "--threads", "1", "--outdir", str(out))  # fmt: skip
-    assert _scanned_sex(bam) == "Male"
+    assert _scanned_sex(bam) == "Unknown"
     assert vcf_calls(out / "man_combined.vcf.gz")[0][-1] == "1"
     assert not list(out.glob("*.samples.txt"))
     export = next(out.glob("*23andMe_V5_2025.txt")).read_text()

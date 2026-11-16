@@ -75,7 +75,7 @@ CLI_HELP = {
     "cmd_fake-data": "Generate fake BAM, CRAM, VCF, and FASTQ files for testing. BAM generation defaults to the fast streaming reference-backed SNP simulator.",
     "cmd_vep": "Variant Effect Predictor (VEP, with vep-rs by default or Ensembl VEP): annotate variants and manage the VEP cache.",
     "cmd_vep-run": "Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl). Predicts the functional impact of your variants (e.g., if a mutation likely breaks a gene or causes a specific disease).",
-    "cmd_vep-download": "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38), or download Ensembl VEP's with --engine ensembl, for offline annotation.",
+    "cmd_vep-download": "Build vep-rs's VEP cache from Ensembl's files (GRCh37/38, T2T-CHM13v2.0), or download Ensembl VEP's with --engine ensembl, for offline annotation.",
     "cmd_vep-verify": "Check your existing VEP cache for missing files or corruption.",
     "cmd_vep-delete": "Delete one release and assembly of your VEP cache.",
     "cmd_microarray": "Simulate a consumer microarray (like 23andMe or AncestryDNA) from your WGS data.",
@@ -94,7 +94,7 @@ CLI_HELP = {
     "cmd_sign-verify": "Check a SHA256SUMS manifest's OpenSSH signature against a trusted key, then re-hash every listed file.",
     "cmd_typing": "Genotype genes and repeats a VCF can't capture from a 30x WGS BAM/CRAM: CYP2D6 star alleles (Cyrius), SMN1/SMN2 copy number (SMNCopyNumberCaller), HLA alleles (T1K) and repeat expansions (ExpansionHunter, or LongTR for long reads).",
     "cmd_typing-smn": "Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.",
-    "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius is for noncommercial use only.",
+    "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification.",
     "cmd_typing-hla": "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.",
     "cmd_typing-str": "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range.",
     "cmd_methylation": "Methylation (5mC/5hmC) from the base-modification (MM/ML) tags of Nanopore and PacBio HiFi reads.",
@@ -293,6 +293,11 @@ LOG_MESSAGES = {
     "ref_required": "--ref is required.",
     "ref_required_for": "--ref is required for {task}.",
     "file_not_found": "{label} file not found: {path}",
+    "resource_not_found": "{flag} file not found: {path}. Give an existing file, "
+    "or leave {flag} unset to use the reference library's.",
+    "resource_not_found_in_config": "{flag} file not found: {path} (set by "
+    "{setting} in config.toml). Correct or remove {setting}, or give an existing "
+    "file with {flag}.",
 }
 
 # System and Warning Messages
