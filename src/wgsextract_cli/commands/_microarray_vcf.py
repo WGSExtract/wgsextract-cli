@@ -363,6 +363,8 @@ def _expand_gvcf_targets(
     unobserved alleles such as <NON_REF> trimmed. Targets no record covers stay
     absent, i.e. uncalled. Only target positions are expanded: a whole-genome
     gVCF's blocks span billions of bases."""
+    from wgsextract_cli.core.reference_evidence import reference_depth
+
     targets = _target_positions(ref_vcf_tab)
     fasta_chroms = _fasta_chromosomes(ref_fasta)
     fasta_names: dict[str, str | None] = {}
@@ -421,17 +423,23 @@ def _expand_gvcf_targets(
                 # MIN_DP is a block-wide lower bound; DP may describe only
                 # its first base and must not certify every interior target.
                 formats = fields[8].split(":")
-                if "MIN_DP" in formats:
-                    minimum = formats.index("MIN_DP")
-                    depth = formats.index("DP") if "DP" in formats else len(formats)
-                    if depth == len(formats):
-                        formats.append("DP")
-                        fields[8] = ":".join(formats)
-                    for sample in range(9, len(fields)):
-                        values = fields[sample].split(":")
-                        values += ["."] * (len(formats) - len(values))
-                        values[depth] = values[minimum]
-                        fields[sample] = ":".join(values)
+                depth = formats.index("DP") if "DP" in formats else len(formats)
+                if depth == len(formats):
+                    formats.append("DP")
+                    fields[8] = ":".join(formats)
+                block_info = dict(
+                    item.partition("=")[::2] for item in fields[7].split(";")
+                )
+                for sample in range(9, len(fields)):
+                    values = fields[sample].split(":")
+                    values += ["."] * (len(formats) - len(values))
+                    minimum = reference_depth(
+                        block_info,
+                        dict(zip(formats, values, strict=True)),
+                        block=end > int(fields[1]),
+                    )
+                    values[depth] = str(minimum) if minimum is not None else "."
+                    fields[sample] = ":".join(values)
                 inside = targets.get(fields[0], array("l"))
                 variants = called.get(fields[0], set())
                 first = bisect_left(inside, int(fields[1]))

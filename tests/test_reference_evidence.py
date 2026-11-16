@@ -89,6 +89,43 @@ def _state_at(spans: list[Span], contig: str, position: int) -> State:
 
 
 @needs_htslib
+def test_issue_1044_real_gatk_block_loses_depth_evidence_when_min_dp_is_removed(
+    tmp_path: Path,
+) -> None:
+    # First HaplotypeCaller block of public GATK NA12878 chr20 test data:
+    # expected.CEUTrio.HiSeq.WGS.b37.NA12878.calls.20.10100000-10150000.g.vcf
+    # SHA256 03c9560d6c38fe6f5b00a439657a5d05a832f50308fa7fa7fb258cf93fa79005.
+    plain = tmp_path / "gatk.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("chr1,length=300", "20,length=63025520")
+        + "20\t10100000\t.\tC\t<NON_REF>\t.\t.\tEND=10100467"
+        "\tGT:DP:GQ:MIN_DP\t0/0:68:99:56\n"
+    )
+    original = bgzip_index(plain)
+    stripped = tmp_path / "without-minimum.g.vcf.gz"
+    run_command(
+        [
+            "bcftools",
+            "annotate",
+            "-x",
+            "FORMAT/MIN_DP",
+            "-Oz",
+            "-o",
+            str(stripped),
+            original,
+        ]
+    )
+    run_command(["tabix", "-p", "vcf", str(stripped)])
+    region = [("20", 10100000, 10100467)]
+    assert list(ReferenceEvidence(original).spans(THRESHOLDS, region)) == [
+        Span("20", 10100000, 10100467, State.CALLABLE_REFERENCE)
+    ]
+    assert list(ReferenceEvidence(str(stripped)).spans(THRESHOLDS, region)) == [
+        Span("20", 10100000, 10100467, State.LOW_QUALITY_REFERENCE)
+    ]
+
+
+@needs_htslib
 def test_reference_evidence_gap_keeps_callable_uncovered_and_failed_distinct(
     woman: tuple[str, str], tmp_path: Path
 ) -> None:

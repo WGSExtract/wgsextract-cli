@@ -71,6 +71,7 @@ def run_inputs(
     sex = sample_workspace.known("sex", input_path)
     return {
         "cli_version": __version__,
+        "reference_depth_policy": "explicit-block-minimum-v1",
         "input": file_identity(input_path),
         "reference": file_identity(ref_fasta),
         "build": build,

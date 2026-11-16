@@ -681,6 +681,39 @@ def test_weak_reference_block_interiors_do_not_export_as_reference(
     assert report["rsNoReads"][-2:] == ["--", "absent_from_vcf"]
 
 
+@pytest.mark.parametrize(
+    ("minimum", "values", "expected", "reason"),
+    [
+        ("", "GT:DP:GQ 0/0:30:60", "--", "missing_dp"),
+        ("", "GT:DP:GQ:MIN_DP 0/0:30:60:.", "--", "missing_dp"),
+        (";MIN_DP=2", "GT:DP:GQ 0/0:30:60", "--", "low_dp"),
+        (";MIN_DP=30", "GT:DP:GQ 0/0:30:60", "AA", "called"),
+    ],
+)
+def test_issue_1044_block_dp_does_not_certify_interior_chip_markers(
+    tmp_path, library, minimum, values, expected, reason
+):
+    fasta, _ = library
+    headers = (
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
+        '##INFO=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum block depth">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Start-site depth">\n'
+        '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+    )
+    vcf = _vcf(
+        tmp_path / "unknown.g.vcf",
+        ("1",),
+        [f"1 900 . A <NON_REF> . PASS END=3500{minimum} {values}"],
+        headers,
+        evidence=False,
+    )
+    _microarray(vcf, fasta, tmp_path / "out", "--call-reasons")
+    report = _rows(tmp_path / "out/unknown.g_CombinedKit_reasons.tsv")
+    assert report["rsHet"][-2:] == [expected, reason]
+    assert report["rsRef"][-2:] == [expected, reason]
+
+
 @pytest.mark.parametrize(("field", "reason"), [("DP", "low_dp"), ("GQ", "low_gq")])
 def test_partial_quality_header_fixture_retains_weak_evidence(
     tmp_path, library, field, reason

@@ -197,6 +197,13 @@ state higher in this table wins.
 The thresholds are the `confidence_*` settings shared with
 [variant confidence labels](variant-confidence.md).
 
+Multi-base reference blocks need an explicit `FORMAT/MIN_DP` or `INFO/MIN_DP`
+depth floor. A block's `DP` alone does not establish depth throughout the block:
+without a minimum, reference evidence is `low_quality_reference`, and microarray
+export reports missing depth at enabled depth thresholds. Explicit single-site
+calls can still use `DP`. This also applies if a tool removed `MIN_DP` from an
+otherwise valid gVCF; do not strip that field when transferring reference evidence.
+
 ## Commands that read it
 
 A command given a variant VCF finds its gVCF through the
