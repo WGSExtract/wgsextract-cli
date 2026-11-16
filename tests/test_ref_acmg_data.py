@@ -11,6 +11,9 @@ import hashlib
 import io
 import json
 import shutil
+import signal
+import threading
+import time
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -149,7 +152,8 @@ def library(tmp_path):
 def _params(library, **extra) -> RefAcmgDataParams:
     lib, spliceai = library
     return RefAcmgDataParams(
-        ref=lib, chromosomes="chr1", spliceai_file=spliceai, threads=2, **extra
+        **{"ref": lib, "chromosomes": "chr1", "spliceai_file": spliceai, "threads": 2}
+        | extra
     )
 
 
@@ -297,7 +301,18 @@ def test_a_spliceai_vcf_of_another_assembly_is_refused(publishers, library, tmp_
 
 @pytest.mark.parametrize("chromosomes", ["chrM", "chr23", "1-25"])
 def test_chromosomes_other_than_1_to_22_x_and_y_are_refused(chromosomes, tmp_path):
-    with pytest.raises(UsageError, match="chr1-22, X or Y"):
+    with pytest.raises(UsageError, match="chr1-22"):
+        RefAcmgDataParams(ref=tmp_path, chromosomes=chromosomes)
+
+
+@pytest.mark.parametrize("chromosomes", ["22-1", "1-1000000000", "chr5-3"])
+def test_a_descending_or_enormous_range_is_refused_before_it_is_expanded(
+    chromosomes, tmp_path
+):
+    """#1010 review: 1-1000000000 built a billion names before it was checked
+    (in a server's request handler), and 22-1 chose no chromosome at all,
+    leaving every per-chromosome database unbuilt without a word."""
+    with pytest.raises(UsageError, match="runs upwards within chr1-22"):
         RefAcmgDataParams(ref=tmp_path, chromosomes=chromosomes)
 
 
@@ -323,3 +338,239 @@ def test_files_an_interrupted_run_left_are_checked_and_recorded_again(
     assert manifest["gff3"]["verified"].startswith("Ensembl CHECKSUMS")
     assert manifest["databases"]["revel_chr1"]["records"] == 1
     assert api.ref.status(RefStatusParams(ref=lib)).details["acmgData"]["installed"]
+
+
+def test_a_dry_run_leaves_the_last_builds_result_manifest(publishers, library):
+    """#1010 review: a dry run with ref/acmg already there replaced the last
+    build's acmg_data.manifest.json with its own empty inventory."""
+    acmg = library[0] / "ref" / "acmg"
+    acmg.mkdir(parents=True)
+    previous = acmg / "acmg_data.manifest.json"
+    previous.write_text('{"outputs": ["the last build"]}\n')
+
+    api.ref.acmg_data(_params(library, dry_run=True))
+
+    assert previous.read_text() == '{"outputs": ["the last build"]}\n'
+
+
+@pytest.mark.parametrize("damage", ["{not json", '{"databases": {"x": 1}}'])
+def test_ref_status_reports_an_unreadable_acmg_manifest_instead_of_failing(
+    library, damage
+):
+    """#1010 review: an invalid acmg_data.json made all of `ref status` (and
+    the app's --values call) fail."""
+    sa = _sa(library)
+    sa.mkdir(parents=True)
+    (sa / "acmg_data.json").write_text(damage)
+
+    status = api.ref.status(RefStatusParams(ref=library[0]))
+
+    acmg = status.details["acmgData"]
+    assert not acmg["installed"] and acmg["problem"]
+    assert "unusable" in status.text
+
+
+def test_revel_is_cut_one_chromosome_at_a_time(tmp_path):
+    """#1010 review: every chromosome's REVEL CSV was written before any was
+    built, about 6.5 GB for the genome, beyond the disk check's estimate; a
+    CSV now waits for its slot, so those built and removed are all there is."""
+    rows = (FIXTURES / "revel.csv").read_text().splitlines(keepends=True)
+    header, row = rows[0], rows[1]
+    body = "".join(row.replace("1,", f"{c},", 1) for c in ("1", "2", "3"))
+    zipped = tmp_path / "revel.zip"
+    with zipfile.ZipFile(zipped, "w") as archive:
+        archive.writestr("revel_with_transcript_ids", header + body)
+    parts = tmp_path / "parts"
+    present = []
+
+    for chromosome, part in acmg_data.split_revel(
+        zipped,
+        ["chr1", "chr3"],
+        parts,
+        lambda: present.append(len(list(parts.iterdir()))),
+    ):
+        assert part.read_text().count("\n") == 2, chromosome  # header and row
+        part.unlink()
+
+    assert present == [0, 0]  # nothing left waiting when the next is started
+
+
+@needs_fastvep
+def test_spliceai_provenance_and_sha256_are_those_of_the_file_used(
+    publishers, library, tmp_path
+):
+    """#1010 review: a --spliceai-file was recorded (and copied into
+    acmg_summary.json) as Ensembl's MANE SNVs, and had no SHA-256."""
+    lib, spliceai = library
+    api.ref.acmg_data(_params(library))
+
+    recorded = _manifest(library)["sources"]["spliceai"]
+    assert recorded["url"] == "" and "--spliceai-file" in recorded["label"]
+    entry = recorded["files"][spliceai.name]
+    assert entry["sha256"] == hashlib.sha256(spliceai.read_bytes()).hexdigest()
+
+
+@needs_fastvep
+def test_a_new_clinvar_release_is_fetched_with_the_download_cache_on(
+    publishers, library, tmp_path, monkeypatch
+):
+    """#1010 review: with [dev] download_cache on, the URL-keyed cache gave
+    back last week's ClinVar, which then failed the new release's MD5 on
+    every rerun."""
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    api.ref.acmg_data(_params(library))
+    newer = gzip.compress((FIXTURES / "clinvar.vcf").read_bytes() + b"\n", mtime=0)
+    publishers.files["clinvar.vcf.gz"] = newer
+    publishers.files["clinvar.vcf.gz.md5"] = (
+        f"{_md5(newer)}  /pub/clinvar_20261115.vcf.gz\n".encode()
+    )
+    manifest = _manifest(library)
+    del manifest["databases"]["clinvar"]
+    (_sa(library) / "acmg_data.json").write_text(json.dumps(manifest))
+
+    api.ref.acmg_data(_params(library))
+
+    assert _manifest(library)["sources"]["clinvar"]["release"] == "20261115"
+
+
+@needs_fastvep
+def test_a_phylop_download_whose_build_failed_is_kept_for_the_rerun(
+    publishers, library
+):
+    """#1010 review: the cleanup after a failed source deleted the phyloP
+    download (and any resumable .partial) the recovery message says a rerun
+    resumes, so the rerun downloaded it all again."""
+    broken = gzip.compress(b"not a wigFix file\n", mtime=0)
+    publishers.files["phylop/chr1.phyloP100way.wigFix.gz"] = broken
+    publishers.files["phylop/md5sum.txt"] = (
+        f"{_md5(broken)}  chr1.phyloP100way.wigFix.gz\n".encode()
+    )
+
+    with pytest.raises(api.CommandFailed, match="phylop_chr1"):
+        api.ref.acmg_data(_params(library))
+    publishers.paths.clear()
+    with pytest.raises(api.CommandFailed, match="phylop_chr1"):
+        api.ref.acmg_data(_params(library))
+
+    # Only the plan's HEAD for its size: no second download.
+    assert publishers.paths.count("phylop/chr1.phyloP100way.wigFix.gz") == 1
+
+
+@needs_fastvep
+def test_the_library_drive_is_checked_when_the_databases_go_elsewhere(
+    publishers, library, tmp_path, monkeypatch
+):
+    """#1010 review: only --sa-dir's drive was checked, so a roomy external
+    --sa-dir let the downloads fill a nearly full library drive."""
+    lib, _ = library
+    real = shutil.disk_usage
+
+    def usage(path):
+        free = 1 if Path(path).is_relative_to(lib) else 10**15
+        return SimpleNamespace(total=real(path).total, used=0, free=free)
+
+    monkeypatch.setattr(acmg_data.shutil, "disk_usage", usage)
+
+    with pytest.raises(api.CommandFailed, match=f"needs about .* free for {lib}"):
+        api.ref.acmg_data(_params(library, sa_dir=tmp_path / "external"))
+    assert _gets(publishers) == 0
+
+
+@needs_fastvep
+def test_ctrl_c_stops_the_queued_builds_and_the_preparation(publishers, library):
+    """#1010 review: on Ctrl-C or SIGTERM the executors waited for every
+    queued chromosome, so builds kept starting after the user stopped."""
+    publishers.delays["gnomad/chr1.vcf.bgz"] = 2.0
+    main = threading.get_ident()
+
+    def interrupt_once_streaming() -> None:
+        # The signal arrives as gnomAD's stream starts (after the plan's and
+        # the step's HEAD), the other builds queued behind it.
+        while publishers.paths.count("gnomad/chr1.vcf.bgz") < 2:
+            time.sleep(0.05)
+        signal.pthread_kill(main, signal.SIGINT)
+
+    watcher = threading.Thread(target=interrupt_once_streaming, daemon=True)
+    watcher.start()
+    with pytest.raises(KeyboardInterrupt):
+        api.ref.acmg_data(_params(library, threads=1))
+
+    built = _manifest(library)["databases"]
+    assert not [name for name in built if name.endswith("_chr1")]
+    time.sleep(1)
+    assert _manifest(library)["databases"] == built
+
+
+def _link(link: Path, target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+
+
+def test_a_server_checks_the_library_and_folders_ref_acmg_data_writes(
+    tmp_path, monkeypatch
+):
+    """#1010 review: with ref omitted the configured library wasn't checked
+    against serve --allow, and a ref/acmg or sa folder linked out of an
+    allowed library led the downloads and databases outside it."""
+    from wgsextract_cli.core.config import settings
+    from wgsextract_cli.server.operations import (
+        PathGuard,
+        RequestError,
+        find,
+        params_from_json,
+    )
+
+    op = find("ref/acmg-data")
+    allowed, outside = tmp_path / "allowed", tmp_path / "outside"
+    allowed.mkdir()
+    monkeypatch.setitem(settings, "reference_library", str(outside / "lib"))
+    with pytest.raises(RequestError, match="outside the folders"):
+        PathGuard([allowed]).check(params_from_json(op, {}))
+
+    lib = allowed / "lib"
+    PathGuard([allowed]).check(params_from_json(op, {"ref": str(lib)}))
+    _link(lib / "ref" / "acmg", outside / "acmg")
+    with pytest.raises(RequestError, match="outside the folders"):
+        PathGuard([allowed]).check(params_from_json(op, {"ref": str(lib)}))
+
+    other = allowed / "other"
+    _link(other / "ref" / "acmg" / "sa", outside / "sa")
+    with pytest.raises(RequestError, match="outside the folders"):
+        PathGuard([allowed]).check(params_from_json(op, {"ref": str(other)}))
+
+
+def test_a_server_checks_the_gff3_vcf_acmg_finds_through_its_databases(tmp_path):
+    """#1010 review: an allowed databases folder whose acmg_data.json names a
+    GFF3 elsewhere made vcf acmg read it, and write fastVEP's transcript cache
+    beside it, outside serve --allow and without the job lock on that folder."""
+    from wgsextract_cli.server.operations import (
+        PathGuard,
+        RequestError,
+        find,
+        params_from_json,
+    )
+
+    allowed, outside = tmp_path / "allowed", tmp_path / "outside"
+    sa = allowed / "lib" / "ref" / "acmg" / "sa"
+    sa.mkdir(parents=True)
+    outside.mkdir()
+    gff3 = outside / GFF3
+    gff3.write_bytes(b"")
+    (sa / "acmg_data.json").write_text(json.dumps({"gff3": {"file": str(gff3)}}))
+    vcf = allowed / "in.vcf.gz"
+    request = {"input": str(vcf), "research_acmg": True}
+    op = find("vcf/acmg")
+
+    for given in ({"sa_dir": str(sa)}, {"ref": str(allowed / "lib")}):
+        params = params_from_json(op, {**request, **given})
+        with pytest.raises(RequestError, match="outside the folders"):
+            PathGuard([allowed]).check(params)
+        assert outside in set(params.write_folders())
+    PathGuard([tmp_path]).check(params_from_json(op, {**request, "sa_dir": str(sa)}))

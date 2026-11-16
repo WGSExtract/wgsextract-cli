@@ -6,7 +6,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.ref import RefAcmgDataParams
-from wgsextract_cli.core import acmg_data
+from wgsextract_cli.core import acmg_data, read_scope
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -21,6 +21,12 @@ TOOLS = ["fastvep", "bcftools", "bgzip", "tabix"]
 def run_acmg_data(params: RefAcmgDataParams) -> None:
     reflib = params.library()
     sa_dir = params.databases()
+    # Checked again as the run starts, links resolved: a server checked them
+    # when the job was submitted.
+    folders, files = acmg_data.destinations(reflib, sa_dir, params.ensembl_release)
+    for path in (*folders, *files):
+        if not read_scope.may_follow(path):
+            raise UsageError(f"{path} is outside the folders this run may use.")
     spliceai = None
     if params.spliceai_file:
         spliceai = Path(expand_path(params.spliceai_file))
@@ -46,7 +52,6 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
         sources=",".join(s.key for s in restricted),
     )
     result = current_result()
-    result.set_manifest_stem(acmg_data.folder(reflib) / "acmg_data")
     result.set_details(
         {
             "sa_dir": str(sa_dir),
@@ -74,6 +79,9 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
     if not plan.steps:
         human_output("Everything is built; nothing to do.")
         return
+    # Only a build records its outputs there: a dry run or a run with nothing
+    # to do would replace the last build's inventory with an empty one.
+    result.set_manifest_stem(acmg_data.folder(reflib) / "acmg_data")
     verify_dependencies(TOOLS)
     log_dependency_info(TOOLS)
     acmg_data.fastvep_version()

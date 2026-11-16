@@ -593,15 +593,42 @@ class VcfAcmgParams(_AnnotatorParams):
 
         require_opt_in(self.research_acmg)
 
-    def write_folders(self) -> Iterator[Path]:
-        # fastVEP saves its transcript cache beside the GFF3.
+    def _acmg_inputs(self) -> Iterator[tuple[str, Path]]:
+        """The databases folder and GFF3 the run reads, configured or found
+        through the library as the command finds them: the folder first, so
+        a server refuses it before the manifest in it is read."""
+        from wgsextract_cli.core import acmg_data
         from wgsextract_cli.core.paths import expand_path
+        from wgsextract_cli.core.reference_resolver import library_roots
+        from wgsextract_cli.core.utils import WGSExtractError
 
         from ._params import with_config_defaults
 
-        gff3 = with_config_defaults(self).gff3
-        if gff3 is not None:
-            yield Path(expand_path(gff3)).parent
+        filled = with_config_defaults(self)
+        sa_dir = acmg_data.acmg_sa_dir(library_roots(filled.ref).root, filled.sa_dir)
+        if sa_dir is not None:
+            yield "sa_dir", sa_dir
+        if filled.gff3 is not None:
+            yield "gff3", Path(expand_path(filled.gff3))
+        elif sa_dir is not None:
+            try:
+                gff3 = acmg_data.recorded_gff3(sa_dir)
+            except WGSExtractError:
+                gff3 = None  # the run reports the unreadable manifest
+            if gff3 is not None:
+                yield "gff3", gff3
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        yield from super().implied_paths()
+        for name, path in self._acmg_inputs():
+            if getattr(self, name) is None:
+                yield name, path
+
+    def write_folders(self) -> Iterator[Path]:
+        # fastVEP saves its transcript cache beside the GFF3.
+        for name, path in self._acmg_inputs():
+            if name == "gff3":
+                yield path.parent
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -29,20 +29,23 @@ import time
 import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.builds import CHR1_LENGTH_BUILDS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
+from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import (
@@ -222,6 +225,29 @@ def default_sa_dir(reflib: str | Path) -> Path:
     return folder(reflib) / "sa"
 
 
+def acmg_sa_dir(
+    library_root: str | Path | None, sa_dir: str | Path | None
+) -> Path | None:
+    """The databases ``vcf acmg`` reads: ``sa_dir`` when given (or
+    configured), else the library's ``ref/acmg/sa`` when it is there."""
+    if sa_dir:
+        return Path(expand_path(sa_dir))
+    built = default_sa_dir(library_root) if library_root else None
+    return built if built and built.is_dir() else None
+
+
+def recorded_gff3(sa_dir: str | Path) -> Path | None:
+    """The GFF3 ``ref acmg-data`` recorded beside the databases in
+    ``sa_dir``, when it is still there and the run may follow it."""
+    if not read_scope.may_follow(sa_dir):
+        return None
+    recorded = (load_manifest(sa_dir).get("gff3") or {}).get("file")
+    if not isinstance(recorded, str) or not recorded:
+        return None
+    path = Path(recorded)
+    return path if read_scope.may_follow(path) and path.is_file() else None
+
+
 def parse_chromosomes(text: str | None) -> list[str]:
     """``chr22``, ``1-22``, ``chr21,chrX`` or ``all`` (the default) as
     ``chrN`` names of the nuclear chromosomes."""
@@ -231,11 +257,15 @@ def parse_chromosomes(text: str | None) -> list[str]:
     for item in (part.strip() for part in text.split(",")):
         bare = item.removeprefix("chr").upper()
         lo, dash, hi = bare.partition("-")
-        span = (
-            [str(n) for n in range(int(lo), int(hi) + 1)]
-            if dash and lo.isdigit() and hi.isdigit()
-            else [bare]
-        )
+        span = [bare]
+        if dash and (lo + hi).isascii() and lo.isdigit() and hi.isdigit():
+            # Checked before it is expanded: 1-1000000000 is not a billion names.
+            if max(len(lo), len(hi)) > 2 or not 1 <= int(lo) <= int(hi) <= 22:
+                raise UsageError(
+                    f"No ACMG data for chromosomes {item!r}: a range runs upwards "
+                    "within chr1-22 (e.g. --chromosomes chr1-22)."
+                )
+            span = [str(n) for n in range(int(lo), int(hi) + 1)]
         for n in span:
             if f"chr{n}" not in CHROMOSOMES:
                 raise UsageError(
@@ -329,14 +359,33 @@ class Plan:
     def gff3(self) -> Path:
         return folder(self.reflib) / GFF3_NAME.format(release=self.release)
 
-    def need_bytes(self, workers: int) -> int:
-        """Free space the plan needs at its peak (unknown sizes count as 0)."""
-        temps = sorted((s.temp for s in self.steps), reverse=True)
-        return (
-            sum((s.download or 0) + s.database for s in self.steps)
-            + sum(temps[: max(1, workers)])
-            + sum(size or 0 for size in self.downloads.values())
+    def needs(self, workers: int) -> dict[Path, int]:
+        """Free space each folder written needs at the plan's peak (unknown
+        sizes count as 0): the GFF3, the sources and the SpliceAI download
+        go to the library, the databases and their staging to ``sa_dir``."""
+        need: dict[Path, int] = defaultdict(int)
+        for step in self.steps:
+            # phyloP is downloaded into the staging folder and removed once built.
+            kept = {"gff3": folder(self.reflib), "phylop": self.sa_dir}
+            need[kept.get(step.source, self.sources_dir)] += step.download or 0
+            need[self.sa_dir] += step.database
+        # At most `workers` builds of each kind at a time: REVEL's CSVs are cut
+        # beside the builds, at most `workers` of them waiting at once.
+        for revel in (True, False):
+            temps = sorted(
+                (s.temp for s in self.steps if (s.source == "revel") == revel),
+                reverse=True,
+            )
+            need[self.sa_dir] += sum(temps[: max(1, workers)])
+        need[self.sources_dir] += self.downloads.get("revel") or 0
+        need[library_spliceai_path(self.reflib).parent] += (
+            self.downloads.get("spliceai") or 0
         )
+        return {path: size for path, size in need.items() if size}
+
+    def need_bytes(self, workers: int) -> int:
+        """Free space the plan needs at its peak, all folders together."""
+        return sum(self.needs(workers).values())
 
 
 def make_plan(
@@ -411,10 +460,33 @@ def make_plan(
     return plan
 
 
+def library_spliceai_path(reflib: str | Path) -> Path:
+    """Where ``ref spliceai`` installs the library's GRCh38 SpliceAI VCF."""
+    return Path(reflib, "ref", "spliceai_hg38.vcf.gz")
+
+
 def _library_spliceai(reflib: str | Path) -> Path | None:
-    """The library's GRCh38 SpliceAI VCF, as ``ref spliceai`` installs it."""
-    path = Path(reflib, "ref", "spliceai_hg38.vcf.gz")
+    """The library's GRCh38 SpliceAI VCF, when installed and indexed."""
+    path = library_spliceai_path(reflib)
     return path if path.is_file() and Path(f"{path}.tbi").is_file() else None
+
+
+def destinations(
+    reflib: str | Path, sa_dir: str | Path, release: str
+) -> tuple[list[Path], list[Path]]:
+    """The folders ``ref acmg-data`` writes in, and the files it names there
+    (a server checks each, links resolved, against its allowed folders)."""
+    acmg, sa = folder(reflib), Path(sa_dir)
+    spliceai = library_spliceai_path(reflib)
+    return (
+        [acmg, acmg / "sources", spliceai.parent, sa, sa / ".building"],
+        [
+            acmg / GFF3_NAME.format(release=release),
+            acmg / "acmg_data.manifest.json",
+            spliceai,
+            sa / MANIFEST,
+        ],
+    )
 
 
 def _remote_size(url: str) -> int | None:
@@ -478,8 +550,33 @@ def _digests(path: Path) -> tuple[str, str]:
     return sha.hexdigest(), md5.hexdigest()
 
 
+def _sha256(path: Path, cancel: CancelEvent | None = None) -> str:
+    sha = hashlib.sha256()
+    with path.open("rb") as f:
+        while chunk := f.read(8 << 20):
+            if cancel and cancel.is_set():
+                raise WGSExtractError("Cancelled.")
+            sha.update(chunk)
+    return sha.hexdigest()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class _Stop:
+    """Set when the run stops (Ctrl-C, SIGTERM) or its caller cancels it: the
+    builds still running stop at their next check and their tools are killed."""
+
+    def __init__(self, outer: CancelEvent | None) -> None:
+        self.outer = outer
+        self.event = threading.Event()
+
+    def set(self) -> None:
+        self.event.set()
+
+    def is_set(self) -> bool:
+        return self.event.is_set() or bool(self.outer and self.outer.is_set())
 
 
 class _Build:
@@ -490,10 +587,11 @@ class _Build:
         plan: Plan,
         cancel: CancelEvent | None,
         on_output: Callable[[Path], None],
+        workers: int = 1,
     ) -> None:
         self.plan = plan
         self.fastvep = get_tool_path("fastvep") or "fastvep"
-        self.cancel = cancel
+        self.cancel = _Stop(cancel)
         self.on_output = on_output
         self.lock = threading.Lock()
         self.manifest = load_manifest(plan.sa_dir)
@@ -502,7 +600,8 @@ class _Build:
         self.manifest.setdefault("databases", {})
         self.staging = plan.sa_dir / ".building"
         self.phylop_md5: dict[str, str] | None = None
-        self.revel_parts: dict[str, Path] = {}
+        # REVEL CSVs cut and not yet built: at most one per worker.
+        self.revel_slots = threading.Semaphore(max(1, workers))
         self.spliceai: Path | None = plan.spliceai
 
     def _save(self) -> None:
@@ -512,11 +611,25 @@ class _Build:
         partial.write_text(json.dumps(self.manifest, indent=1) + "\n", newline="\n")
         partial.replace(path)
 
-    def record_source(self, key: str, file: str, entry: dict[str, Any]) -> None:
+    def record_source(
+        self,
+        key: str,
+        file: str,
+        entry: dict[str, Any],
+        *,
+        label: str | None = None,
+        url: str | None = None,
+    ) -> None:
+        """Record a source file; ``label`` and ``url`` say where a file that
+        isn't the publisher download came from."""
         source = BY_KEY[key]
         with self.lock:
             info = self.manifest["sources"].setdefault(key, {})
-            info.update(label=source.label, url=source_url(key), terms=source.terms)
+            info.update(
+                label=source.label if label is None else label,
+                url=source_url(key) if url is None else url,
+                terms=source.terms,
+            )
             if "release" in entry:
                 info["release"] = entry.pop("release")
             info.setdefault("files", {})[file] = entry
@@ -542,11 +655,20 @@ class _Build:
         """Download ``url`` to ``dest`` (resuming a ``.partial``), check it
         against ``md5`` or with ``check`` (which says what it verified), and
         return its manifest entry."""
+        if not read_scope.may_follow(dest):
+            raise WGSExtractError(f"{dest} leads outside the folders this run may use.")
         dest.parent.mkdir(parents=True, exist_ok=True)
         if not dest.is_file():
             logging.info("Downloading %s...", url)
+            # Not the download cache: it is keyed by the URL, and most of these
+            # URLs name the latest release, checked only after the download.
             if not download_file(
-                url, str(dest), None, self.cancel, resolve_release_digest=False
+                url,
+                str(dest),
+                None,
+                self.cancel,
+                resolve_release_digest=False,
+                use_cache=False,
             ):
                 raise WGSExtractError(
                     f"Downloading {url} failed; rerun the command to resume it."
@@ -756,62 +878,119 @@ class _Build:
         self.record_source("phylop", name, entry)
         self.database(step, dest, keep_input=False)
 
-    def split_revel(self, chromosomes: list[str]) -> None:
+    def produce_revel(
+        self, steps: list[Step], submit: Callable[[Step, Path], None]
+    ) -> None:
         """Cut REVEL into one CSV per chromosome being built, which bounds
-        sa-build's memory."""
+        sa-build's memory, handing each to ``submit`` once complete. A CSV is
+        started only when one of the ``workers`` slots is free, so at most that
+        many wait on disk; the build of each frees its slot."""
         dest = self.plan.sources_dir / Path(REVEL_URL).name
         recorded = self.manifest["sources"].get("revel", {}).get("files", {})
         if dest.name not in recorded or not dest.is_file():
             entry = self.fetch(REVEL_URL, dest)
             entry["release"] = "1.3"
             self.record_source("revel", dest.name, entry)
-        logging.info("Splitting REVEL by chromosome...")
-        self.revel_parts = split_revel(dest, chromosomes, self.staging)
 
-    def step_revel(self, step: Step) -> None:
-        assert step.chromosome
-        part = self.revel_parts.get(step.chromosome)
-        if part is None:
+        def slot() -> None:
+            while not self.revel_slots.acquire(timeout=1):
+                if self.cancel.is_set():
+                    raise WGSExtractError("Cancelled.")
+
+        by_chromosome = {s.chromosome: s for s in steps}
+        logging.info("Splitting REVEL by chromosome...")
+        for chromosome, part in split_revel(
+            dest, [c for c in by_chromosome if c], self.staging, slot, self.cancel
+        ):
+            submit(by_chromosome.pop(chromosome), part)
+        for step in by_chromosome.values():
             self.absent(step, f"REVEL has no rows on {step.chromosome}")
-        else:
+
+    def build_revel(self, step: Step, part: Path) -> None:
+        try:
             self.database(step, part, keep_input=False)
+        finally:
+            part.unlink(missing_ok=True)
+            self.revel_slots.release()
 
     def prepare_spliceai(self) -> None:
         """The SpliceAI VCF to cut: the one given, else the library's (as
-        ``ref spliceai`` installs it), downloaded from Ensembl when missing."""
+        ``ref spliceai`` installs it), downloaded from Ensembl when missing.
+        Its SHA-256 and where it came from go into the manifest."""
+        downloaded = False
         if self.spliceai is None:
             from wgsextract_cli.core.annotation_resources import download_spliceai
 
             reflib = self.plan.reflib
-            if not _library_spliceai(reflib) and not download_spliceai(
-                str(reflib), self.cancel, builds=("hg38",)
-            ):
-                raise WGSExtractError(
-                    "Downloading the SpliceAI scores failed; rerun to resume."
-                )
+            if not _library_spliceai(reflib):
+                # An unindexed file already there is indexed, not downloaded.
+                downloaded = not library_spliceai_path(reflib).is_file()
+                if not download_spliceai(str(reflib), self.cancel, builds=("hg38",)):
+                    raise WGSExtractError(
+                        "Downloading the SpliceAI scores failed; rerun to resume."
+                    )
             self.spliceai = _library_spliceai(reflib)
             if self.spliceai is None:
                 raise WGSExtractError("The SpliceAI download left no indexed file.")
-        header = require_grch38_vcf(self.spliceai)
+        path = self.spliceai
+        if not read_scope.may_follow(path):
+            raise WGSExtractError(f"{path} leads outside the folders this run may use.")
+        header = require_grch38_vcf(path)
         date = next(
             (h.split("=", 1)[1] for h in header if h.startswith("##fileDate=")), ""
         )
-        if not any(Path(f"{self.spliceai}{ext}").is_file() for ext in (".tbi", ".csi")):
+        if not any(Path(f"{path}{ext}").is_file() for ext in (".tbi", ".csi")):
             raise WGSExtractError(
-                f"{self.spliceai} has no tabix index; index it with "
-                f"'tabix -p vcf {self.spliceai}'."
+                f"{path} has no tabix index; index it with 'tabix -p vcf {path}'."
             )
+        stat = path.stat()
+        info = self.manifest["sources"].get("spliceai", {})
+        before = info.get("files", {}).get(path.name, {})
+        unchanged = bool(before.get("sha256")) and (
+            before.get("file"),
+            before.get("bytes"),
+            before.get("mtime_ns"),
+        ) == (str(path), stat.st_size, stat.st_mtime_ns)
+        # Where the file came from is recorded with it: the source's label is
+        # that of the file used last, which may have been another.
+        if self.plan.spliceai:
+            origin = {
+                "label": "SpliceAI scores (given with --spliceai-file)",
+                "url": "",
+            }
+            verified = "given with --spliceai-file"
+        elif downloaded:
+            origin = {"label": BY_KEY["spliceai"].label, "url": SPLICEAI_URL}
+            verified = "BGZF end-of-file block and tabix index (ref spliceai)"
+        elif unchanged and "label" in before:
+            # The file an earlier run recorded, untouched since.
+            origin = {"label": before["label"], "url": before.get("url", "")}
+            verified = str(before.get("verified", ""))
+        else:
+            origin = {
+                "label": f"SpliceAI scores (the library's {path.name}, installed "
+                "before this run; origin not recorded)",
+                "url": "",
+            }
+            verified = "found in the library"
+        if unchanged:
+            sha256 = str(before["sha256"])
+        else:
+            logging.info("Hashing %s...", path.name)
+            sha256 = _sha256(path, self.cancel)
         self.record_source(
             "spliceai",
-            self.spliceai.name,
+            path.name,
             {
-                "file": str(self.spliceai),
-                "bytes": self.spliceai.stat().st_size,
-                "verified": "given with --spliceai-file"
-                if self.plan.spliceai
-                else "BGZF end-of-file block and tabix index (ref spliceai)",
+                "file": str(path),
+                "bytes": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+                "sha256": sha256,
+                "verified": verified,
                 "release": date,
+                **origin,
             },
+            **origin,
         )
 
     def step_spliceai(self, step: Step) -> None:
@@ -925,13 +1104,21 @@ def _retry(
     return failures
 
 
-def split_revel(zipped: Path, chromosomes: list[str], out_dir: Path) -> dict[str, Path]:
+def split_revel(
+    zipped: Path,
+    chromosomes: list[str],
+    out_dir: Path,
+    before_each: Callable[[], None] = lambda: None,
+    cancel: CancelEvent | None = None,
+) -> Iterator[tuple[str, Path]]:
     """Write the REVEL v1.3 rows of each of ``chromosomes`` to its own CSV,
-    with the header, in ``out_dir``; returns those with rows."""
+    with the header, in ``out_dir``, yielding each (chromosome, CSV) as it is
+    complete. REVEL's rows come a chromosome at a time, so one CSV is written
+    at a time; ``before_each`` runs before each is started (and may wait)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     keys = {c.removeprefix("chr"): c for c in chromosomes}
-    files: dict[str, Any] = {}
-    paths: dict[str, Path] = {}
+    finished: set[str] = set()
+    current: tuple[str, Path, IO[str]] | None = None
     try:
         with zipfile.ZipFile(zipped) as archive:
             members = [m for m in archive.namelist() if not m.endswith("/")]
@@ -947,16 +1134,34 @@ def split_revel(zipped: Path, chromosomes: list[str], out_dir: Path) -> dict[str
                         f"{zipped.name} isn't REVEL v1.3's CSV (its header is "
                         f"{header.strip()[:80]!r})."
                     )
-                for line in text:
+                for number, line in enumerate(text):
+                    if number & 0xFFFFF == 0 and cancel and cancel.is_set():
+                        raise WGSExtractError("Cancelled.")
                     chrom = keys.get(line.split(",", 1)[0])
+                    if current and chrom != current[0]:
+                        name, path, out = current
+                        current = None
+                        out.close()
+                        finished.add(name)
+                        yield name, path
                     if chrom is None:
                         continue
-                    out = files.get(chrom)
-                    if out is None:
-                        paths[chrom] = out_dir / f"revel_{chrom}.csv"
-                        out = files[chrom] = paths[chrom].open("w", newline="")
-                        out.write(header)
-                    out.write(line)
+                    if current is None:
+                        if chrom in finished:
+                            raise WGSExtractError(
+                                f"{zipped.name} has {chrom} rows apart from the "
+                                "others; REVEL v1.3 lists them together."
+                            )
+                        before_each()
+                        path = out_dir / f"revel_{chrom}.csv"
+                        current = (chrom, path, path.open("w", newline=""))
+                        current[2].write(header)
+                    current[2].write(line)
+        if current:
+            name, path, out = current
+            current = None
+            out.close()
+            yield name, path
     except zipfile.BadZipFile as e:
         zipped.unlink(missing_ok=True)
         raise WGSExtractError(
@@ -964,9 +1169,9 @@ def split_revel(zipped: Path, chromosomes: list[str], out_dir: Path) -> dict[str
             "to fetch it again."
         ) from e
     finally:
-        for out in files.values():
-            out.close()
-    return paths
+        if current:
+            current[2].close()
+            current[1].unlink(missing_ok=True)
 
 
 def tabix_contigs(path: Path) -> set[str]:
@@ -1079,9 +1284,10 @@ def build(
 ) -> None:
     """Carry out ``plan``: the GFF3, ClinVar and the gene-level sources first,
     then the per-chromosome databases ``workers`` at a time. A failed step
-    leaves the others to finish; the run then fails, naming it."""
+    leaves the others to finish; the run then fails, naming it. Stopped
+    (Ctrl-C, SIGTERM), it starts nothing more and stops what is running."""
     plan.sa_dir.mkdir(parents=True, exist_ok=True)
-    run = _Build(plan, cancel, on_output)
+    run = _Build(plan, cancel, on_output, workers)
     failed: dict[str, str] = {}
 
     def attempt(name: str, func: Callable[..., None], *args: Any) -> bool:
@@ -1093,47 +1299,88 @@ def build(
             failed[name] = str(e)
             return False
 
-    per_chromosome = [s for s in plan.steps if s.chromosome]
+    by_source: dict[str, list[Step]] = defaultdict(list)
     for step in plan.steps:
-        if not step.chromosome:
+        by_source[step.source if step.chromosome else ""].append(step)
+    for steps in by_source.values():
+        steps.sort(key=lambda s: -_MB[s.chromosome or "chr1"])
+    # SpliceAI's download and REVEL's split run beside the other builds, which
+    # go first, the largest first so the last to finish is a short one; each
+    # hands its builds over as their input is ready.
+    revel = by_source.pop("revel", [])
+    revel.sort(key=lambda s: CHROMOSOMES.index(s.chromosome or "chr1"))
+    spliceai = by_source.pop("spliceai", [])
+    pool = ContextThreadPoolExecutor(max_workers=max(1, workers))
+    preparing = ContextThreadPoolExecutor(max_workers=2)
+    futures: list[Future[Any]] = []
+    submitting = threading.Lock()
+    succeeded = False
+
+    def submit(func: Callable[..., Any], *args: Any) -> None:
+        with submitting:
+            futures.append(pool.submit(func, *args))
+
+    def prepare_spliceai() -> None:
+        if attempt("spliceai", run.prepare_spliceai):
+            for step in spliceai:
+                submit(attempt, step.name, run.run, step)
+
+    def prepare_revel() -> None:
+        attempt(
+            "revel",
+            run.produce_revel,
+            revel,
+            lambda step, part: submit(attempt, step.name, run.build_revel, step, part),
+        )
+
+    try:
+        for step in by_source.pop("", []):
             attempt(step.name, run.run, step)
-    revel = [
-        s.chromosome for s in per_chromosome if s.source == "revel" and s.chromosome
-    ]
-    preparations: dict[str, Callable[[], None]] = {
-        "spliceai": run.prepare_spliceai,
-        "revel": lambda: run.split_revel(revel),
-    }
-    needed = {
-        k: f
-        for k, f in preparations.items()
-        if any(s.source == k for s in per_chromosome)
-    }
-
-    def task(step: Step) -> None:
-        if step.source in ready and not ready[step.source].result():
-            return  # its preparation failed, and says so
-        attempt(step.name, run.run, step)
-
-    # The SpliceAI download and the REVEL split run beside the builds that
-    # don't wait for them, which go first, the largest first so the last to
-    # finish is a short one.
-    per_chromosome.sort(
-        key=lambda s: (s.source in needed, -_MB[s.chromosome or "chr1"])
-    )
-    with (
-        ThreadPoolExecutor(max_workers=max(1, len(needed))) as preparing,
-        ThreadPoolExecutor(max_workers=max(1, workers)) as pool,
-    ):
-        ready = {k: preparing.submit(attempt, k, f) for k, f in needed.items()}
-        list(pool.map(task, per_chromosome))
-    shutil.rmtree(run.staging, ignore_errors=True)
+        per_chromosome = sorted(
+            (s for steps in by_source.values() for s in steps),
+            key=lambda s: -_MB[s.chromosome or "chr1"],
+        )
+        for step in per_chromosome:
+            submit(attempt, step.name, run.run, step)
+        prepared = [
+            preparing.submit(prepare)
+            for prepare, steps in ((prepare_spliceai, spliceai), (prepare_revel, revel))
+            if steps
+        ]
+        for future in prepared:
+            future.result()
+        # Every build is submitted once the preparations are done.
+        for future in list(futures):
+            future.result()
+        succeeded = not failed
+    except BaseException:
+        run.cancel.set()
+        raise
+    finally:
+        preparing.shutdown(cancel_futures=True)
+        pool.shutdown(cancel_futures=True)
+        _tidy_staging(run.staging, keep_downloads=not succeeded)
     if failed:
         raise WGSExtractError(
             "ref acmg-data didn't finish: "
             + "; ".join(f"{name}: {why.rstrip('.')}" for name, why in failed.items())
-            + ". Rerun the command to resume; what was built is kept."
+            + ". Rerun the command to resume; what was built and downloaded is kept."
         )
+
+
+def _tidy_staging(staging: Path, *, keep_downloads: bool) -> None:
+    """Remove the staging folder, or after a failure all of it but the phyloP
+    downloads (and their resumable ``.partial`` files) a rerun picks up."""
+    if not keep_downloads:
+        shutil.rmtree(staging, ignore_errors=True)
+        return
+    for path in staging.iterdir() if staging.is_dir() else ():
+        if PHYLOP_FILE.format(chrom="") in path.name:
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
 
 
 def describe(plan: Plan, workers: int) -> Iterator[str]:
@@ -1184,19 +1431,35 @@ def describe(plan: Plan, workers: int) -> Iterator[str]:
         f"Disk needed: about {format_bytes(plan.need_bytes(workers))} "
         f"({workers} chromosome build(s) at a time)."
     )
+    needs = plan.needs(workers)
+    if len(needs) > 1:
+        for path, size in needs.items():
+            yield f"  {path}: {format_bytes(size)}"
+
+
+def _existing(path: Path) -> Path:
+    while not path.exists() and path.parent != path:
+        path = path.parent
+    return path
 
 
 def check_disk(plan: Plan, workers: int) -> None:
-    """Refuse a build the free space can't hold. Everything is counted on the
-    databases' folder, which takes the larger share."""
-    need = plan.need_bytes(workers)
-    probe = plan.sa_dir
-    while not probe.exists():
-        probe = probe.parent
-    free = shutil.disk_usage(probe).free
-    if free < need:
-        raise WGSExtractError(
-            f"ref acmg-data needs about {format_bytes(need)} free in {plan.sa_dir} "
-            f"and {format_bytes(free)} is free. Free some space, build fewer "
-            "--chromosomes, or fewer at a time (--threads)."
+    """Refuse a build the free space can't hold, on each filesystem written:
+    the library's (the GFF3, the sources, the SpliceAI download) and the
+    databases' (``--sa-dir`` may be on another drive)."""
+    by_device: dict[int, tuple[list[Path], int, int]] = {}
+    for path, need in plan.needs(workers).items():
+        probe = _existing(path)
+        device = probe.stat().st_dev
+        folders, total, free = by_device.get(
+            device, ([], 0, shutil.disk_usage(probe).free)
         )
+        by_device[device] = ([*folders, path], total + need, free)
+    for folders, need, free in by_device.values():
+        if free < need:
+            raise WGSExtractError(
+                f"ref acmg-data needs about {format_bytes(need)} free for "
+                f"{', '.join(map(str, folders))} and {format_bytes(free)} is free "
+                "there. Free some space, build fewer --chromosomes, or fewer at a "
+                "time (--threads)."
+            )

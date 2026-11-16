@@ -35,6 +35,7 @@ from wgsextract_cli.core.reference_assets import (
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.utils import WGSExtractError
 
 # Annotation data the ref commands download into <library>/ref, as
 # (key, label, file extensions, builds): <key>_<build><ext>, tabix-indexed
@@ -238,6 +239,8 @@ def print_ref_status(status: dict[str, Any]) -> None:
         + (
             f"installed for {_chromosome_span(acmg['chromosomes'])} ({acmg['folder']})"
             if acmg["installed"]
+            else f"unusable: {acmg['problem']}"
+            if acmg.get("problem")
             else "not installed ('wgsextract ref acmg-data')"
         )
     )
@@ -301,11 +304,30 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
 
 def _acmg_status(reflib: str) -> dict[str, Any]:
     configured = settings.get("acmg_sa_dir")
-    return acmg_data.installed(
+    sa_dir = (
         expand_path(configured)
         if isinstance(configured, str) and configured
-        else acmg_data.default_sa_dir(reflib)
+        else str(acmg_data.default_sa_dir(reflib))
     )
+    try:
+        return acmg_data.installed(sa_dir)
+    except (
+        WGSExtractError,
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+    ) as e:
+        # An unreadable or damaged acmg_data.json is a finding, not a crash.
+        return {
+            "installed": False,
+            "folder": sa_dir,
+            "gff3": "",
+            "chromosomes": [],
+            "releases": {},
+            "problem": str(e),
+        }
 
 
 def _chromosome_span(chromosomes: list[str]) -> str:

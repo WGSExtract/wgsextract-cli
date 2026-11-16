@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import IO
 
 from wgsextract_cli.api.vcf import VcfAcmgParams
-from wgsextract_cli.core import acmg_data
+from wgsextract_cli.core import acmg_data, read_scope
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -37,7 +37,6 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -561,20 +560,20 @@ def run_acmg(params: VcfAcmgParams) -> None:
         )
     if not lib.fasta:
         raise WGSExtractError("vcf acmg needs the GRCh38 reference FASTA; pass --ref.")
-    library_sa = acmg_data.default_sa_dir(lib.root) if lib.root else None
-    sa_dir = expand_path(params.sa_dir) if params.sa_dir else None
-    if not sa_dir and library_sa and library_sa.is_dir():
-        sa_dir = str(library_sa)
-    if not sa_dir or not Path(sa_dir).is_dir():
+    sa_path = acmg_data.acmg_sa_dir(lib.root, params.sa_dir)
+    if not sa_path or not sa_path.is_dir():
         raise UsageError(
             "vcf acmg needs the folder of fastVEP databases that 'wgsextract ref "
             "acmg-data' builds (--sa-dir, or acmg_sa_dir in config.toml)"
-            + (f"; {sa_dir} is not a folder." if sa_dir else ".")
+            + (f"; {sa_path} is not a folder." if sa_path else ".")
         )
-    built_gff3 = (acmg_data.load_manifest(sa_dir).get("gff3") or {}).get("file")
-    gff3 = resource(params, "gff3", None) or (
-        built_gff3 if built_gff3 and Path(built_gff3).is_file() else None
-    )
+    sa_dir = str(sa_path)
+    if not read_scope.may_follow(sa_dir):
+        raise UsageError(f"{sa_dir} is outside the folders this run may use.")
+    # The GFF3 the databases were built with, as VcfAcmgParams.implied_paths
+    # and write_folders resolve it (fastVEP saves its cache beside it).
+    built_gff3 = acmg_data.recorded_gff3(sa_dir)
+    gff3 = resource(params, "gff3", None) or (str(built_gff3) if built_gff3 else None)
     if not gff3:
         raise UsageError(
             "vcf acmg needs an Ensembl GRCh38 GFF3 (--gff3, or acmg_gff3 in "

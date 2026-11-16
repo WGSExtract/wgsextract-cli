@@ -664,7 +664,7 @@ class RefGerpParams(_Resource):
 
 
 @dataclass(frozen=True, kw_only=True)
-class RefAcmgDataParams(_InLibrary, Params):
+class RefAcmgDataParams(_ConfiguredLibrary):
     """Download the eight sources of ``vcf acmg`` (ClinVar and its protein
     index, gnomAD v4.1 and its gene constraint, ClinGen, REVEL, SpliceAI,
     phyloP) and the Ensembl GFF3 from their publishers, check them, and build
@@ -715,22 +715,43 @@ class RefAcmgDataParams(_InLibrary, Params):
 
         from ._params import with_config_defaults
 
-        sa_dir = with_config_defaults(self).sa_dir
-        return sa_dir.expanduser() if sa_dir else default_sa_dir(self.library())
+        filled = with_config_defaults(self)
+        sa_dir = filled.sa_dir
+        return sa_dir.expanduser() if sa_dir else default_sa_dir(filled.library())
 
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+    def _destinations(self) -> tuple[list[Path], list[Path]]:
+        """The folders the run writes in and the files it names there, from
+        the library and ``sa_dir`` it resolves, config included."""
+        from wgsextract_cli.core.acmg_data import default_sa_dir, destinations
+
         from ._params import with_config_defaults
 
+        filled = with_config_defaults(self)
+        # Lexically, as the guard checks ref, so a Windows request is checked
+        # as such; links are resolved when each path is checked.
+        library = (
+            _library_named(filled.ref) if filled.ref is not None else self.library()
+        )
+        sa_dir = filled.sa_dir.expanduser() if filled.sa_dir else None
+        return destinations(
+            library,
+            sa_dir or default_sa_dir(library),
+            filled.ensembl_release,
+        )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # The library (configured when ref is omitted), then everything written
+        # in it and in sa_dir: a server checks each with links resolved, so a
+        # linked ref/acmg or sa folder can't lead outside the allowed ones.
         yield from super().implied_paths()
-        configured = with_config_defaults(self).sa_dir
-        if configured and not self.sa_dir:
-            yield "sa_dir", configured.expanduser()
+        folders, files = self._destinations()
+        databases = folders[3]  # destinations(): ref/acmg, sources, ref, sa_dir, ...
+        for path in (*folders, *files):
+            yield "sa_dir" if path.is_relative_to(databases) else "ref", path
 
     def write_folders(self) -> Iterator[Path]:
-        from wgsextract_cli.core.acmg_data import folder
-
         yield from super().write_folders()
-        yield from (folder(self.library()), self.databases())
+        yield from self._destinations()[0]
 
 
 @dataclass(frozen=True, kw_only=True)

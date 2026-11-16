@@ -87,8 +87,10 @@ databases with `fastvep sa-build`:
   `.md5` files of NCBI, UCSC's `md5sum.txt`, the MD5 Google Cloud Storage gives
   for gnomAD and Ensembl's `CHECKSUMS`. ClinGen and REVEL publish none. A file
   that fails is removed, and the run says so. `acmg_data.json` beside the
-  databases records each file's URL, release, size, SHA-256 and check, and
-  each database's record count and SHA-256.
+  databases records each file's URL, release, size, SHA-256 and check (the
+  SpliceAI VCF's too, and where it came from: Ensembl, `--spliceai-file` or a
+  file already in the library), and each database's record count and
+  SHA-256.
 - gnomAD's joint sites (877 GB) are streamed, one chromosome at a time, never
   stored: bcftools keeps the INFO fields fastVEP reads (AC, AN, AF and
   nhomalt, faf95, the population AFs and each callset's filters), filtered
@@ -101,12 +103,15 @@ databases with `fastvep sa-build`:
   gnomAD, SpliceAI, REVEL and phyloP; the others are genome-wide. `vcf acmg`
   refuses inputs with records on a chromosome gnomAD wasn't built for.
 - It's resumable: a rerun builds only what is missing, resuming interrupted
-  downloads, and a source that failed doesn't stop the others. To take a new
+  downloads (a failed run keeps them), and a source that failed doesn't stop
+  the others. Ctrl-C stops the builds running and starts no more. To take a new
   ClinVar or ClinGen release, delete its database (`clinvar.osa2`,
   `clinvar_protein.oga`, `omim.oga`) and its download, and rerun.
 - `--dry-run` prints the plan, the terms and the sizes, and downloads nothing;
-  the build refuses to start without the free space it needs. `--threads`
-  sets how many chromosomes build at a time (default 4).
+  the build refuses to start without the free space it needs on each drive
+  it writes (the library's, and `--sa-dir`'s when that is elsewhere).
+  `--threads` sets how many chromosomes build at a time (default 4); REVEL is
+  cut into per-chromosome files only as fast as they are built.
 
 | Source | Download | Database (chr22; whole genome, estimated) | Terms |
 |---|---|---|---|
@@ -132,7 +137,9 @@ minutes): bcftools reads the joint release at about 8.5 MB/s per stream,
 held back by parsing its 11 KB records, and more bcftools threads don't help.
 A whole genome streams 877 GB, about 29 hours of one core, or 7 at 4
 chromosomes at a time where the network keeps up; `--dry-run` says it needs
-about 78 GB (73 GiB) free.
+about 80 GB (75 GiB) free: 47 GiB for the databases and their staging, 27 GiB
+for the SpliceAI download in the library's `ref/` and 1.4 GiB for the other
+downloads.
 
 ## Validation
 
