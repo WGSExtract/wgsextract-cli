@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -81,15 +82,29 @@ def local_ref_path(value: str | None, sep: str | None = None) -> str:
     return sep.join(local)
 
 
+# Concurrent library calls share the process environment: the first to start
+# sets REF_PATH and the last to finish restores it.
+_lock = threading.Lock()
+_users = 0
+_saved: str | None = None
+
+
 @contextmanager
 def local_reference_lookup() -> Iterator[None]:
     """Give every tool started meanwhile a local-only ``REF_PATH``."""
-    previous = os.environ.get(REF_PATH)
-    os.environ[REF_PATH] = local_ref_path(previous)
+    global _users, _saved
+    with _lock:
+        if _users == 0:
+            _saved = os.environ.get(REF_PATH)
+            os.environ[REF_PATH] = local_ref_path(_saved)
+        _users += 1
     try:
         yield
     finally:
-        if previous is None:
-            os.environ.pop(REF_PATH, None)
-        else:
-            os.environ[REF_PATH] = previous
+        with _lock:
+            _users -= 1
+            if _users == 0:
+                if _saved is None:
+                    os.environ.pop(REF_PATH, None)
+                else:
+                    os.environ[REF_PATH] = _saved

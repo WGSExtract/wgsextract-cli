@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from wgsextract_cli.core.microarray_chm13_markers import (
+from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
@@ -34,7 +34,7 @@ def test_unverified_manifest_markers_remain_known_indels(tmp_path: Path) -> None
 
 
 def test_known_ids_mask_exact_raw_vendor_rows(tmp_path: Path, monkeypatch) -> None:
-    from wgsextract_cli.core import microarray_chm13_markers as markers
+    from wgsextract_cli.core.microarray import chm13_markers as markers
 
     template = tmp_path / "body.txt"
     template.write_text("")

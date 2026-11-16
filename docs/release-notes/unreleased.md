@@ -3,6 +3,14 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- Python API: quick read-only calls (`info`, `info chip`, `sample show`,
+  `ref status`, `ref library-list`, `example-genome list`, `deps check`) can
+  run on several threads at once, each with its own result, progress
+  callback, cancel token and settings; other operations, and those asked to
+  save files (`info --detailed`/`--format`, `ref library --list
+  --remote-sizes`), still run one at a time. `with api.scoped_config(path):` gives one thread's calls their own
+  `config.toml`. Cancelling a call now stops only its own tools. See
+  [api.md](../api.md).
 - `vcf acmg --research-acmg` adds automated ACMG/AMP classes from fastVEP
   (`ACMG_CLASS`, `ACMG_CRITERIA`, `ACMG_TRANSCRIPT`) to a `vep run` VCF, on the
   transcript the variant table shows. **Research use only; not a diagnosis**:
@@ -89,7 +97,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.
   See [native/deepvariant/README.md](../../native/deepvariant/README.md).
-- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.3.0, the
+- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.3.1, the
   new `linux-deepvariant` conda packages): DeepVariant 1.10.0's WGS and
   ONT_R104 models without Docker, on the CPU, or with `--gpu` on an NVIDIA
   GPU through CUDA instead of Parabricks (call_variants for HG002 chr20 in 20 s on an RTX 3090,
@@ -100,7 +108,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   uses it for both models; `deepvariant_native = "off"` keeps Parabricks.
   Other models keep Google's image and Parabricks. Its weights
   (`wgse-deepvariant-weights-1.10.0`) are a separate download.
-- `pixi install -e deepvariant` installs `wgse-deepvariant` 0.3.0's CUDA build
+- `pixi install -e deepvariant` installs `wgse-deepvariant` 0.3.1's CUDA build
   on Linux x86-64 into an opt-in Pixi environment, where `vcf deepvariant`
   finds it.
 

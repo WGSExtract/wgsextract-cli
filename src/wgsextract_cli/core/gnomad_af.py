@@ -9,7 +9,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, wait
 from http.client import HTTPException
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -18,6 +18,10 @@ from wgsextract_cli.core.download_progress import (
     CancelEvent,
     ProgressCallback,
     format_bytes,
+)
+from wgsextract_cli.core.execution_context import (
+    ContextThreadPoolExecutor,
+    context_thread,
 )
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -96,7 +100,7 @@ def _stream_gnomad_contig(
                 except OSError:
                     pass
 
-        feeder = threading.Thread(target=feed, daemon=True)
+        feeder = context_thread(target=feed, daemon=True)
         feeder.start()
         queried = wait_with_cancel(query, cancel_event)
         feeder.join()
@@ -192,7 +196,7 @@ def build_gnomad_af(
 
     start = time.monotonic()
     failed: list[str] = []
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+    with ContextThreadPoolExecutor(max_workers=max(1, workers)) as pool:
         pending = {pool.submit(stream, c): c for c in todo}
         while pending:
             finished, _ = wait(pending, timeout=60, return_when=FIRST_COMPLETED)

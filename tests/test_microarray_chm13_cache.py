@@ -6,8 +6,8 @@ from unittest.mock import Mock
 import pytest
 
 from wgsextract_cli.core import library_cache
-from wgsextract_cli.core import microarray_chm13_cache as cache
-from wgsextract_cli.core.microarray_chm13 import load_chm13_catalogue
+from wgsextract_cli.core.microarray import chm13_cache as cache
+from wgsextract_cli.core.microarray.chm13 import load_chm13_catalogue
 from wgsextract_cli.core.results import CommandResult, collecting
 
 

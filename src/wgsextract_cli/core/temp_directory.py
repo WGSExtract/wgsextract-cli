@@ -6,26 +6,38 @@ import shutil
 import tempfile
 from collections.abc import Iterator
 from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 from wgsextract_cli.core.utils import WGSExtractError
 
-_workspace: ContextVar[str | None] = ContextVar("temporary_workspace", default=None)
-_retained: ContextVar[bool] = ContextVar("retained_workspace", default=False)
+
+@dataclass(eq=False)
+class _Workspace:
+    # Mutable, so a worker thread (running in a copy of the context) can
+    # retain the workspace of the run that started it.
+    directory: str
+    retained: bool = False
+
+
+_workspace: ContextVar[_Workspace | None] = ContextVar(
+    "temporary_workspace", default=None
+)
 
 
 def retain_temporary_directory() -> str | None:
-    directory = _workspace.get()
-    if directory is not None:
-        _retained.set(True)
-    return directory
+    workspace = _workspace.get()
+    if workspace is None:
+        return None
+    workspace.retained = True
+    return workspace.directory
 
 
 def configured_temp_directory() -> str | None:
     active = _workspace.get()
     if active is not None:
-        return active
+        return active.directory
     from wgsextract_cli.core.config import settings
 
     configured = settings.get("temp_directory")
@@ -52,13 +64,11 @@ def run_temporary_directory(override: PathInput | None = None) -> Iterator[None]
         raise WGSExtractError(
             f"Cannot use temporary directory {parent}: {error}"
         ) from error
-    token = _workspace.set(directory)
-    retained_token = _retained.set(False)
+    workspace = _Workspace(directory)
+    token = _workspace.set(workspace)
     try:
         yield
     finally:
-        retained = _retained.get()
-        _retained.reset(retained_token)
         _workspace.reset(token)
-        if not retained:
+        if not workspace.retained:
             shutil.rmtree(directory)

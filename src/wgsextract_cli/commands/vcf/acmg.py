@@ -20,7 +20,6 @@ import re
 import struct
 import subprocess
 import tempfile
-import threading
 import zipfile
 from collections import Counter, deque
 from collections.abc import Iterable, Iterator, Mapping
@@ -37,6 +36,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
@@ -333,7 +333,7 @@ class _FastVep:
         self.strip_tail: deque[str] = deque(maxlen=10)
         assert self.strip.stderr is not None
         strip_err = self.strip.stderr
-        self._strip_drain = threading.Thread(
+        self._strip_drain = context_thread(
             target=lambda: self.strip_tail.extend(strip_err), daemon=True
         )
         self._strip_drain.start()
@@ -349,7 +349,7 @@ class _FastVep:
                 self.ready = True
                 break
         stderr = self.proc.stderr
-        self._drain = threading.Thread(target=self._read, args=(stderr,), daemon=True)
+        self._drain = context_thread(target=self._read, args=(stderr,), daemon=True)
         self._drain.start()
 
     def _read(self, stderr: IO[str]) -> None:

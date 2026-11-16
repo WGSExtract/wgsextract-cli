@@ -21,7 +21,6 @@ import sys
 import tempfile
 from collections import Counter
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,6 +35,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
@@ -327,7 +327,7 @@ def _sketch_inputs(
         if not jobs:
             return
         logging.info(f"Sketching {len(jobs)} input(s) at somalier's sites...")
-        with ThreadPoolExecutor(max(1, min(threads, len(jobs)))) as pool:
+        with ContextThreadPoolExecutor(max(1, min(threads, len(jobs)))) as pool:
             futures = [
                 (item, pool.submit(_extract, item, sites, ref, work))
                 for item, sites, ref in jobs

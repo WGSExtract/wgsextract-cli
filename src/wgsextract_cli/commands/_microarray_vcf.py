@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import (
     LOW_CONFIDENCE_FILTER,
     describe,
@@ -586,7 +587,6 @@ def _prepare_microarray_vcf(
             raise WGSExtractError(f"Microarray VCF extraction failed: {e}") from e
 
     elif contigs := _parallel_contigs(params, threads, ref_vcf_tab, input_chroms):
-        from concurrent.futures import ThreadPoolExecutor
         from threading import Event
 
         workers = min(int(threads), len(contigs))
@@ -602,7 +602,7 @@ def _prepare_microarray_vcf(
             # through the shared process registry.
             stop = Event()
             progress = ContigProgress(contigs)
-            with ThreadPoolExecutor(max_workers=workers) as executor:
+            with ContextThreadPoolExecutor(max_workers=workers) as executor:
                 futures = {
                     chrom: executor.submit(
                         process_chrom,

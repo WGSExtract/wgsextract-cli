@@ -236,7 +236,7 @@ class ReferenceLibrary:
         # The FASTA's own chr1 length, else its name (human_g1k_v37 names no build).
         path_build = canonical_build(
             build_from_chr1_length(read_fai_lengths(guessed))
-        ) or build_from_path(guessed)
+        ) or build_from_path(Path(guessed).name)
         if not path_build or path_build == target:
             return
 
@@ -301,9 +301,7 @@ class ReferenceLibrary:
         assert self.root is not None
         return (
             build
-            or build_from_path(self.resource_roots[0])
-            or (build_from_path(self.input_path) if self.input_path else None)
-            or build_hint(self.input_path, root_path)
+            or build_hint(self.resource_roots[0], self.input_path, root_path)
             or None
         )
 
