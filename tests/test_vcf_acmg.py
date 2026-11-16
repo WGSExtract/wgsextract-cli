@@ -175,3 +175,13 @@ def test_acmg_refuses_a_vcf_without_vep_annotation(tmp_path):
     params = _params(tmp_path, tmp_path, **_inputs(tmp_path, plain))
     result = api.vcf.acmg(params, check=False)
     assert result.error is not None and "vep run" in result.error.message
+
+
+@needs_fastvep
+def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
+    # Review of #629: a GFF3 fastVEP can't read was reported as "no ACMG column".
+    inputs = _inputs(tmp_path)
+    inputs["gff3"].write_text("##gff-version 3\nthis is not gff\n")
+    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs), check=False)
+    assert result.error is not None
+    assert "fastVEP failed before reading the input" in result.error.message

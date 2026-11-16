@@ -12,6 +12,7 @@ as VUS), so a run whose databases lack one of the required sources is refused.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -212,11 +213,15 @@ class _FastVep:
         )
         self._strip_drain.start()
         self.setup: list[str] = []
+        self.ready = False
+        # Others the run starts and close() must stop: the reader and writer.
+        self.others: list[subprocess.Popen[str]] = []
         for line in self.proc.stderr:
             line = line.rstrip("\n")
             self.setup.append(line)
             logging.debug("fastVEP: %s", line)
             if line.startswith(_SETUP_DONE):
+                self.ready = True
                 break
         stderr = self.proc.stderr
         self._drain = threading.Thread(target=self._read, args=(stderr,), daemon=True)
@@ -235,10 +240,21 @@ class _FastVep:
         return self.proc.stdout
 
     def close(self) -> None:
-        for proc in (self.proc, self.strip):
+        for proc in (self.proc, self.strip, *self.others):
             if proc.poll() is None:
                 proc.kill()
             proc.wait()
+            for stream in (proc.stdin, proc.stdout):
+                if stream is not None and not stream.closed:
+                    with contextlib.suppress(OSError):
+                        stream.close()
+
+    def require_ready(self) -> None:
+        """fastVEP stopped before its setup was done: say why."""
+        if not self.ready:
+            self.proc.wait()
+            detail = "\n".join(self.setup).strip()
+            raise WGSExtractError(f"fastVEP failed before reading the input: {detail}")
 
     def check(self) -> None:
         self._drain.join(timeout=30)
@@ -442,6 +458,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         partial = str(Path(work, ACMG_ANNOTATED))
         run = _FastVep(command, strip, env)
         try:
+            run.require_ready()
             _check_setup(run.setup, contigs)
             view = popen(
                 ["bcftools", "view", "--no-version", vcf],
@@ -449,6 +466,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
                 stderr=subprocess.DEVNULL,
                 text=True,
             )
+            run.others.append(view)
             with open(partial, "wb") as raw:
                 bgzip = popen(
                     ["bgzip", "-@", str(threads), "-c"],
@@ -456,6 +474,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
                     stdout=raw,
                     text=True,
                 )
+                run.others.append(bgzip)
                 assert view.stdout is not None and bgzip.stdin is not None
                 tally = _merge(view.stdout, run.stdout, bgzip.stdin, meta)
                 bgzip.stdin.close()
