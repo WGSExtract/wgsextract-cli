@@ -19,6 +19,7 @@ GENERATED = (
     "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
     "gui/app/shared/generated/server-transport.ts",
@@ -54,6 +55,8 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
         "scripts/gen_output_schemas.py",
+        "scripts/gen_report_schema.py",
+        "scripts/schema_sources/wgsextract.report.1.json",
         "scripts/gen_server_contracts.py",
         "scripts/server_transport_typescript.py",
         "tests/cli_snapshot.py",
@@ -147,6 +150,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         "gen_command_docs.py",
         "gen_config_docs.py",
         "gen_output_schemas.py",
+        "gen_report_schema.py",
         "gen_server_contracts.py",
     ):
         checked = subprocess.run(

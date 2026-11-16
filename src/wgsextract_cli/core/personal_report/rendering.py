@@ -10,12 +10,20 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 from urllib.parse import quote
 
+from wgsextract_cli.core.report_documents import (
+    ReportAttemptDocument,
+    ReportLinkDocument,
+    ReportMissingDocument,
+    ReportSourceDocument,
+    ReportWarningDocument,
+)
+
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
 # Section warning: a newer attempt failed; the section shows an older result.
 NEWER_ATTEMPT_FAILED = "newer_attempt_failed"
 
 
-def _number(value: Any, unit: str = "") -> str:
+def _number(value: object, unit: str = "") -> str:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return str(value)
     text = f"{value:,.0f}" if abs(value) >= 100 else f"{value:.3g}"
@@ -53,7 +61,7 @@ def _href(file: str | None, base: str) -> str | None:
     return quote(Path(os.path.normpath(Path(base, file))).as_posix())
 
 
-def _h(value: Any) -> str:
+def _h(value: object) -> str:
     return html.escape("" if value is None else str(value))
 
 
@@ -62,17 +70,53 @@ def _link(text: str, href: str | None) -> str:
 
 
 def _source_links(
-    source: Mapping[str, Any], link: Callable[[str, str | None], str]
+    source: ReportSourceDocument, link: Callable[[str, str | None], str]
 ) -> str:
     """A section source as 'command (status, finished)', linked to its
     manifest, then the newer attempt that failed or was cancelled after it."""
 
-    def label(run: Mapping[str, Any]) -> str:
+    def label(run: ReportAttemptDocument) -> str:
         when = f", {run['finished']}" if run["finished"] else ""
         return link(f"{run['command']} ({run['status']}{when})", run["manifest"])
 
     newer = source.get("latest_attempt")
     return label(source) + (f"; newest attempt: {label(newer)}" if newer else "")
+
+
+def _sources_text(
+    sources: Sequence[ReportSourceDocument],
+    link: Callable[[str, str | None], str],
+) -> str:
+    return ", ".join(_source_links(source, link) for source in sources)
+
+
+def _warning_rows(
+    warnings: Sequence[ReportWarningDocument], *, newer: bool
+) -> list[ReportWarningDocument]:
+    return [
+        warning
+        for warning in warnings
+        if (warning["code"] == NEWER_ATTEMPT_FAILED) == newer
+    ]
+
+
+def _missing_lines(
+    missing: Sequence[ReportMissingDocument], *, markdown: bool
+) -> list[str]:
+    if markdown:
+        return [
+            f"- {_md(item['what'])}: {_md_code(item['command'])}" for item in missing
+        ]
+    return [
+        f"<li>{_h(item['what'])}: <code>{_h(item['command'])}</code></li>"
+        for item in missing
+    ]
+
+
+def _finding_links(
+    links: Sequence[ReportLinkDocument], link: Callable[[str, str | None], str]
+) -> str:
+    return " ".join(link(item["label"], item["url"]) for item in links)
 
 
 def render_html(report: Mapping[str, Any], base: str = ".") -> str:
@@ -107,8 +151,7 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             out.append(f"<p><b>Failed:</b> {_h(section['error'])}</p>")
         out.extend(
             f'<p class="stale"><b>Newer attempt failed:</b> {_h(w["message"])}</p>'
-            for w in section["warnings"]
-            if w["code"] == NEWER_ATTEMPT_FAILED
+            for w in _warning_rows(section["warnings"], newer=True)
         )
         out.extend(_html_section_body(name, section, base))
         if section["findings"]:
@@ -117,20 +160,16 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             out.append(
                 '<p class="muted">Not run yet (run in the sample folder):</p><ul>'
             )
-            out.extend(
-                f"<li>{_h(m['what'])}: <code>{_h(m['command'])}</code></li>"
-                for m in section["missing"]
-            )
+            out.extend(_missing_lines(section["missing"], markdown=False))
             out.append("</ul>")
-        warnings = [w for w in section["warnings"] if w["code"] != NEWER_ATTEMPT_FAILED]
+        warnings = _warning_rows(section["warnings"], newer=False)
         if warnings:
             out.append("<ul>")
             out.extend(f'<li class="muted">⚠ {_h(w["message"])}</li>' for w in warnings)
             out.append("</ul>")
         if section["sources"]:
-            links = ", ".join(
-                _source_links(s, lambda text, f: _link(text, _href(f, base)))
-                for s in section["sources"]
+            links = _sources_text(
+                section["sources"], lambda text, f: _link(text, _href(f, base))
             )
             out.append(f'<p class="muted">Sources: {links}</p>')
     out.append(
@@ -273,7 +312,7 @@ def _html_findings(
         call = _h(_call_text(v))
         why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
         detail = _h(f["detail"]) + (f"<br><i>{_h(f['note'])}</i>" if f["note"] else "")
-        links = " ".join(_link(x["label"], x["url"]) for x in f["links"])
+        links = _finding_links(f["links"], _link)
         evidence = f["evidence"]
         out.append(
             f"<tr><td>{_h(f['label'])}</td><td>{_h(f['value'])}"
@@ -303,13 +342,13 @@ _MD_ESCAPES = str.maketrans(
 )
 
 
-def _md(value: Any) -> str:
+def _md(value: object) -> str:
     """Text for Markdown (and a table cell): its markup, links and any HTML
     show as typed rather than being rendered."""
     return ("" if value is None else str(value)).translate(_MD_ESCAPES)
 
 
-def _md_code(value: Any, *, cell: bool = False) -> str:
+def _md_code(value: object, *, cell: bool = False) -> str:
     """An inline code span (which shows its text as typed) that a backtick or
     line break, or in a table ``cell`` a pipe, in ``value`` cannot end."""
     text = " ".join(("" if value is None else str(value)).split())
@@ -347,9 +386,8 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
             out += ["", _md(section["summary"])]
         if section.get("error"):
             out += ["", f"**Failed:** {_md(section['error'])}"]
-        for w in section["warnings"]:
-            if w["code"] == NEWER_ATTEMPT_FAILED:
-                out += ["", f"**Newer attempt failed:** {_md(w['message'])}"]
+        for w in _warning_rows(section["warnings"], newer=True):
+            out += ["", f"**Newer attempt failed:** {_md(w['message'])}"]
         if name == "overview" and section["facts"]:
             out += [
                 "",
@@ -449,7 +487,7 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                 v = f["variant"] or {}
                 call = _call_text(v)
                 why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
-                links = " ".join(_md_link(x["label"], x["url"]) for x in f["links"])
+                links = _finding_links(f["links"], _md_link)
                 detail = " — ".join(x for x in (f["detail"], f["note"]) if x)
                 evidence = f["evidence"]
                 target = evidence["file"] or evidence["manifest"]
@@ -462,18 +500,14 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                 )
         if section["missing"]:
             out += ["", "Not run yet (run in the sample folder):", ""]
-            out += [
-                f"- {_md(m['what'])}: {_md_code(m['command'])}"
-                for m in section["missing"]
-            ]
-        warnings = [w for w in section["warnings"] if w["code"] != NEWER_ATTEMPT_FAILED]
+            out += _missing_lines(section["missing"], markdown=True)
+        warnings = _warning_rows(section["warnings"], newer=False)
         if warnings:
             out.append("")
             out += [f"- ⚠ {_md(w['message'])}" for w in warnings]
         if section["sources"]:
-            links = ", ".join(
-                _source_links(s, lambda text, f: _md_link(text, _href(f, base)))
-                for s in section["sources"]
+            links = _sources_text(
+                section["sources"], lambda text, f: _md_link(text, _href(f, base))
             )
             out += ["", f"Sources: {links}"]
     out += [
