@@ -28,7 +28,7 @@ from wgsextract_cli.core.alignment_memory import (
     check_mapping_memory,
     estimate_mapping_memory,
 )
-from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
+from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import (
     atomic_output_mode,
     atomic_outputs_enabled,
@@ -71,13 +71,9 @@ from wgsextract_cli.core.output_profiles import (
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
-    alignment_sample,
-    fasta_read_length,
     fastq_input_statistics,
-    fastq_statistics,
 )
 from wgsextract_cli.core.reference_assets import (
-    header_sequences,
     is_fasta_path,
     reference_genomes_dir,
 )
@@ -94,7 +90,6 @@ from wgsextract_cli.core.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
 from wgsextract_cli.core.staged_alignment import workspace_path as workspace_path
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
@@ -132,15 +127,26 @@ from .alignment.output import (
 from .alignment.output import (
     run_streamed_alignment as run_streamed_alignment,
 )
+from .alignment.reads import _READ_FILE_SUFFIXES as _READ_FILE_SUFFIXES
+from .alignment.reads import LONG_READ_TAGS as LONG_READ_TAGS
+from .alignment.reads import _alignment_file_platform as _alignment_file_platform
+from .alignment.reads import _cram_reference as _cram_reference
+from .alignment.reads import _is_alignment_file as _is_alignment_file
+from .alignment.reads import _long_read_length as _long_read_length
+from .alignment.reads import _needs_read_extraction as _needs_read_extraction
+from .alignment.reads import (
+    _refuse_short_read_alignment_file as _refuse_short_read_alignment_file,
+)
+from .alignment.reads import _refuse_unreadable_reads as _refuse_unreadable_reads
+from .alignment.reads import long_read_fastq_command as long_read_fastq_command
+from .alignment.reads import reads_stem as reads_stem
+from .alignment.reads import resolve_platform as resolve_platform
 
 if TYPE_CHECKING:
     from wgsextract_cli.api._params import Params
 
 PACBIO_PLATFORMS = {"pacbio", "hifi", "clr"}
 _LONG_READ_PLATFORMS = PACBIO_PLATFORMS | {"ont", "nanopore"}
-# Base-modification tags (and ONT's MN), and the parent read ID (pi) of a read
-# Dorado split, that long reads keep through alignment.
-LONG_READ_TAGS = "MM,ML,MN,pi"
 # pbmm2-style preset names accepted by minimap2 under their minimap2 names.
 _MINIMAP2_PRESET_ALIASES = {"ccs": "map-hifi", "subread": "map-pb"}
 _PBMM2_PRESETS = {
@@ -153,15 +159,6 @@ _PBMM2_PRESETS = {
 BWA_ALIGNERS = frozenset({"bwa", "bwa-mem2", "bwa-mem3"})
 # BWA's default batch size depends on threads and changes pairing statistics.
 BWA_BATCH_BASES = "100000000"
-_READ_FILE_SUFFIXES = (
-    ".fastq.gz",
-    ".fq.gz",
-    ".fastq",
-    ".fq",
-    ".subreads.bam",
-    ".ccs.bam",
-    ".bam",
-)
 
 
 class InputReads(NamedTuple):
@@ -282,32 +279,6 @@ def add_read_inputs(r1: Path | None, r2: Path | None) -> None:
             result.add_input(path, role)
 
 
-def resolve_platform(
-    platform: str | None, reads: str | None, input_ref: str | None = None
-) -> str:
-    """Keep existing defaults except ONT and the existing Ultima RG case."""
-    if platform:
-        return platform
-    detected = input_platform(reads, input_ref, strict=True)
-    if reads and reads.lower().endswith((".bam", ".cram")) and Path(reads).is_file():
-        if ultima.is_ultima_header(get_bam_header(reads, input_ref)):
-            logging.info(
-                "%s has an Ultima read group: retaining Ultima defaults.", reads
-            )
-            return "ultima"
-    if detected == "ont":
-        logging.info(
-            "Detected ont reads: selecting platform-specific alignment defaults."
-        )
-        return detected
-    if detected and detected != "illumina":
-        logging.info(
-            "Detected non-Illumina reads; retaining existing Illumina alignment defaults. "
-            "Use --platform to request different defaults explicitly."
-        )
-    return "illumina"
-
-
 def select_aligner(job: AlignJob) -> str:
     """Resolve --aligner auto and reject nonsensical aligner/platform/preset combos."""
     long_read = job.long_read or job.platform in _LONG_READ_PLATFORMS
@@ -396,50 +367,6 @@ def select_aligner(job: AlignJob) -> str:
 _GPU_MINIMAP2_PRESETS = {"map-hifi": "map-hifi", "map-ont": "map-ont"}
 
 
-def _alignment_file_platform(job: AlignJob) -> str | None:
-    """The platform of PacBio reads in a BAM/CRAM/SAM --r1 (such as the
-    *.ccs.bam or *.subreads.bam that --genome picks): they align as long reads."""
-    reads = job.r1
-    if job.platform or not reads or not _is_alignment_file(reads):
-        return None
-    input_ref = job.input_ref
-    if input_platform(reads, input_ref, strict=True) != "pacbio":
-        return None
-    platform = pacbio_platform(get_bam_header(reads, input_ref))
-    logging.info(
-        "Detected PacBio reads in %s: aligning them as long reads (--platform %s).",
-        reads,
-        platform,
-    )
-    return platform
-
-
-def _is_alignment_file(path: object) -> bool:
-    return str(path).lower().endswith((".bam", ".cram", ".sam"))
-
-
-def _needs_read_extraction(path: object) -> bool:
-    """CRAM and SAM reads, which pbmm2 and Parabricks can't read: only
-    samtools fastq (in the minimap2 path) decodes them."""
-    return str(path or "").lower().endswith((".cram", ".sam"))
-
-
-def _refuse_unreadable_reads(job: AlignJob, aligner: str) -> None:
-    reads = job.r1
-    if not _needs_read_extraction(reads):
-        return
-    if job.gpu:
-        raise UsageError(
-            f"{reads} is a CRAM/SAM, and --gpu (Parabricks) reads FASTQ or a BAM. "
-            "Align it without --gpu, or convert it to BAM first."
-        )
-    if aligner == "pbmm2":
-        raise UsageError(
-            f"{reads} is a CRAM/SAM, and pbmm2 reads BAM, FASTQ or FASTA. "
-            "Use --aligner minimap2 (or auto)."
-        )
-
-
 def run(job: AlignJob) -> None:
     _cram_reference(job)
     job.platform = _alignment_file_platform(job) or resolve_platform(
@@ -462,47 +389,6 @@ def run(job: AlignJob) -> None:
         align_minimap2(job)
     else:
         align_bwa(job)
-
-
-def _cram_reference(job: AlignJob) -> None:
-    """The FASTA a CRAM --r1 decodes with: --input-ref, else --ref when it
-    encoded the CRAM. realign passes the one it found as input_cram_opt."""
-    reads = str(job.r1 or "")
-    if (
-        not reads.lower().endswith(".cram")
-        or not Path(reads).is_file()
-        or job.input_cram_opt
-    ):
-        return
-    fasta = job.input_ref
-    if fasta:
-        verify_paths_exist({"--input-ref": fasta})
-    elif not header_sequences(get_bam_header(reads)):
-        return  # Unaligned reads: the CRAM holds every base itself.
-    elif job.ref and Path(job.ref).is_file() and cram_encoded_with(job.ref, reads):
-        fasta = job.ref
-    else:
-        raise UsageError(
-            f"{reads} is a CRAM, and --ref doesn't match the reference it was "
-            "encoded with. Pass that FASTA with --input-ref, or realign the CRAM "
-            f"with 'wgsextract realign --input {reads} --ref <reference>', which "
-            "also finds it in the reference library."
-        )
-    job.input_ref = str(fasta)
-    job.input_cram_opt = ["--reference", str(fasta)]
-
-
-def _refuse_short_read_alignment_file(job: AlignJob) -> None:
-    """Short-read aligners read FASTQ; pairing reads out of a BAM/CRAM is
-    realign's job (#447)."""
-    for reads in (job.r1, job.r2):
-        if reads and _is_alignment_file(reads):
-            raise UsageError(
-                f"{reads} is a BAM/CRAM/SAM file, and short reads align from "
-                f"FASTQ. Realign its reads with 'wgsextract realign --input "
-                f"{reads} --ref <reference>', or pass --platform for long "
-                "(ONT or PacBio) reads."
-            )
 
 
 def requested_aligner(job: AlignJob) -> str:
@@ -657,15 +543,6 @@ def streaming_mapping_fits(
         staged=staged,
     )
     return estimate.total + additional_ram_bytes <= available_memory()
-
-
-def reads_stem(path: str) -> str:
-    """File name of a FASTQ/unaligned-BAM read file without its read-file suffix."""
-    name = Path(path).name
-    for suffix in _READ_FILE_SUFFIXES:
-        if name.lower().endswith(suffix):
-            return name[: -len(suffix)]
-    return Path(name).stem
 
 
 def short_read_sort_memory(aligner: str, memory: str, *, log: bool = True) -> str:
@@ -1951,22 +1828,6 @@ def is_long_read(job: AlignJob) -> bool:
     return bool(job.long_read) or job.platform in _LONG_READ_PLATFORMS
 
 
-def long_read_fastq_command(path: str, cram_opt: Sequence[str] = ()) -> list[str]:
-    """samtools fastq writing each read of a BAM/CRAM once (its primary record,
-    not secondary or supplementary copies) with its modification tags."""
-    return [
-        "samtools",
-        "fastq",
-        "-n",
-        "-F",
-        "0x900",
-        "-T",
-        LONG_READ_TAGS,
-        *cram_opt,
-        path,
-    ]
-
-
 def _minimap2_preset(job: AlignJob) -> str:
     if job.preset:
         preset: str = job.preset
@@ -1978,21 +1839,6 @@ def _minimap2_preset(job: AlignJob) -> str:
     if job.platform == "clr" or job.long_read:
         return "map-pb"
     return "sr"
-
-
-def _long_read_length(reads: str, cram_opt: Sequence[str]) -> float | None:
-    """Sampled mean read length, which scales minimap2's long-read buffers."""
-    if _is_alignment_file(reads):
-        sample = alignment_sample(reads, cram_opt=list(cram_opt), single_end=True)
-        mean = sample.read_length
-    elif is_fasta_path(reads):
-        mean = fasta_read_length(reads)
-    else:
-        statistics = fastq_statistics(reads)
-        mean = statistics.read_length if statistics is not None else None
-    if mean is not None:
-        logging.info("Sampled mean read length: %s bp.", f"{mean:,.0f}")
-    return mean
 
 
 def _minimap2_command(
