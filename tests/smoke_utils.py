@@ -211,7 +211,7 @@ def assert_log_contains(stderr: str, pattern: str) -> None:
     assert pattern in stderr
 
 
-def ensure_fake_data(fake_dir: str) -> None:
+def ensure_fake_data(fake_dir: str, coverage: float = 10.0) -> None:
     """Ensures that fake test data is generated in the specified directory."""
     required_files = [
         os.path.join(fake_dir, "fake.bam"),
@@ -229,10 +229,12 @@ def ensure_fake_data(fake_dir: str) -> None:
     os.makedirs(fake_dir, exist_ok=True)
     # Test workers and concurrent sessions share this directory.
     with build_lock(os.path.normpath(fake_dir) + ".lock"):
-        _generate_fake_data(fake_dir, required_files + required_index_files)
+        _generate_fake_data(fake_dir, required_files + required_index_files, coverage)
 
 
-def _generate_fake_data(fake_dir: str, required: list[str]) -> None:
+def _generate_fake_data(
+    fake_dir: str, required: list[str], coverage: float = 10.0
+) -> None:
 
     def normalize_fake_data_names() -> None:
         ref_candidates = glob(os.path.join(fake_dir, "fake_ref_hg38_*.fa"))
@@ -275,24 +277,18 @@ def _generate_fake_data(fake_dir: str, required: list[str]) -> None:
     repair_fake_data_indexes()
 
     if not all(os.path.exists(path) for path in required):
-        rc, stdout, stderr = run_cli(
-            [
-                "qc",
-                "fake-data",
-                "--outdir",
-                fake_dir,
-                "--build",
-                "hg38",
-                "--seed",
-                "42",
-                "--coverage",
-                "10.0",
-                "--type",
-                "all",
-                "--ref",
-                fake_dir,
-            ]
-        )
+        # Callers may isolate the home without a config (the e2e suites), which
+        # would record this run in the checkout's state/ (#979).
+        with tempfile.TemporaryDirectory(
+            dir=Path(fake_dir).resolve().parent
+        ) as scratch:
+            config = Path(scratch) / "config.toml"
+            config.write_text(state_directory_setting(Path(scratch)))
+            rc, stdout, stderr = run_cli(
+                ["--config", str(config), "qc", "fake-data", "--outdir", fake_dir]
+                + ["--build", "hg38", "--seed", "42", "--coverage", str(coverage)]
+                + ["--type", "all", "--ref", fake_dir]
+            )
         if rc != 0:
             raise RuntimeError(f"qc fake-data failed ({rc}):\n{stdout}\n{stderr}")
         normalize_fake_data_names()
