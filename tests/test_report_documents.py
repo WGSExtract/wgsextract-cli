@@ -1,4 +1,4 @@
-"""Published source/warning components keep report/1's validation behavior."""
+"""Generated writer components keep report/1's validation behavior."""
 
 import json
 import subprocess
@@ -13,12 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json"
 
 
-def source_validator() -> Draft202012Validator:
+def component_validator(name: str) -> Draft202012Validator:
     schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
     return Draft202012Validator(
         {
-            "$ref": "#/$defs/reportSource",
+            "$ref": f"#/$defs/{name}",
             "$defs": schema["$defs"],
         }
     )
@@ -46,7 +46,7 @@ def test_929_report_components_and_handwritten_rules_cannot_drift() -> None:
 
 
 def test_929_source_records_preserve_nullable_and_legacy_latest_attempts() -> None:
-    validate = source_validator()
+    validate = component_validator("reportSource")
     attempt = {
         "command": "",
         "status": "legacy-custom",
@@ -117,3 +117,106 @@ def test_929_missing_commands_and_links_remain_closed_string_records() -> None:
         assert not validate.is_valid({**valid, "unknown": True})
         for field in valid:
             assert not validate.is_valid({**valid, field: None})
+
+
+def test_929_generated_finding_graph_keeps_legacy_optional_and_nullable_fields() -> (
+    None
+):
+    validate = component_validator("finding")
+    variant = {
+        "chrom": "chr1",
+        "pos": None,
+        "ref": None,
+        "alt": None,
+        "genotype": None,
+        "zygosity": None,
+        "depth": None,
+        "genotype_quality": None,
+        "alt_fraction": None,
+    }
+    evidence = {"file": None, "region": None, "manifest": None}
+    finding: dict[str, object] = {
+        "section": "clinvar",
+        "label": "A finding",
+        "value": "",
+        "detail": None,
+        "gene": None,
+        "note": None,
+        "confidence": "not_assessed",
+        "confidence_reasons": [],
+        "confidence_basis": "",
+        "evidence": evidence,
+        "variant": variant,
+        "links": [],
+        "disclaimer": "Technical result, not diagnosis.",
+    }
+    assert validate.is_valid(finding)
+    assert validate.is_valid({**finding, "variant": None})
+    for field in finding:
+        assert not validate.is_valid(
+            {key: value for key, value in finding.items() if key != field}
+        )
+    for field, value in (
+        ("label", ""),
+        ("confidence", "future-value"),
+        ("section", "overview"),
+        ("disclaimer", "arbitrary text"),
+        ("evidence", {**evidence, "future": True}),
+        ("variant", {**variant, "future": True}),
+        ("future", True),
+    ):
+        assert not validate.is_valid({**finding, field: value})
+    for clinical in ({}, {"stars": None}, {"stars": 0}, {"stars": 4}):
+        assert validate.is_valid(
+            {**finding, "variant": {**variant, "clinical_evidence": clinical}}
+        )
+    for stars in (-1, 5, True):
+        assert not validate.is_valid(
+            {**finding, "variant": {**variant, "clinical_evidence": {"stars": stars}}}
+        )
+    for copies in (1, 2, None):
+        assert validate.is_valid(
+            {**finding, "variant": {**variant, "mnv_residual_copies": copies}}
+        )
+    for copies in (0, 3):
+        assert not validate.is_valid(
+            {**finding, "variant": {**variant, "mnv_residual_copies": copies}}
+        )
+    pgx = {
+        "status": "ambiguous",
+        "alternatives": [{"diplotype": "*1/*2", "phenotype": "intermediate"}],
+        "phenotype_consistent": False,
+        "source": "PharmCAT",
+    }
+    assert validate.is_valid({**finding, "pgx": pgx})
+    for pgx_field, pgx_value in (
+        ("status", "future-value"),
+        ("source", "other"),
+        ("alternatives", [{"diplotype": "*1/*2"}]),
+    ):
+        assert not validate.is_valid({**finding, "pgx": {**pgx, pgx_field: pgx_value}})
+
+
+def test_929_generated_facts_and_qc_keep_extensions_and_arbitrary_json_values() -> None:
+    metric = {
+        "name": "coverage",
+        "label": "Coverage",
+        "value": {"regions": [1, None, "unknown"]},
+        "text": "recorded",
+    }
+    fact = {
+        **metric,
+        "source": None,
+        "method": None,
+        "confidence": None,
+        "file": None,
+        "at": None,
+    }
+    for name, record in (("metric", metric), ("fact", fact)):
+        validate = component_validator(name)
+        assert validate.is_valid({**record, "future": [True]})
+        assert not validate.is_valid({**record, "text": None})
+        for field in record:
+            assert not validate.is_valid(
+                {key: value for key, value in record.items() if key != field}
+            )
