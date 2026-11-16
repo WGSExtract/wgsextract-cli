@@ -730,6 +730,26 @@ def triggered_workflows(
     return selected
 
 
+@pytest.mark.parametrize("action", ["synchronize", "ready_for_review"])
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("src/wgsextract_cli/core/microarray/__init__.py", True),
+        ("src/wgsextract_cli/core/microarray/coordinates.py", True),
+        ("src/wgsextract_cli/core/microarray/chm13_calls.py", True),
+        ("src/wgsextract_cli/core/microarray/identity.py", True),
+        ("src/wgsextract_cli/core/microarray/nested/probes.py", True),
+        ("src/wgsextract_cli/core/microarray_targets.py", True),
+        ("src/wgsextract_cli/core/microarray/README.md", False),
+    ],
+)
+def test_826_package_moves_preserve_real_chip_concordance_trigger(
+    path: str, expected: bool, action: str
+) -> None:
+    selected = triggered_workflows([path], "pull_request", action=action)
+    assert ("remote_resources.yml" in selected) is expected
+
+
 def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation() -> (
     None
 ):

@@ -24,6 +24,7 @@ on:
       - src/wgsextract_cli/core/gene_map.py
       - src/wgsextract_cli/core/gnomad_af.py
       - src/wgsextract_cli/core/microarray_*.py
+      - src/wgsextract_cli/core/microarray/**
       - src/wgsextract_cli/core/pharmgkb.py
       - src/wgsextract_cli/core/ref_library/catalog.py
       - tests/test_remote_*.py
