@@ -490,7 +490,33 @@ Each run first checks that bcftools loads the library (macOS drops `DYLD_*`
 variables for protected binaries, and a damaged file stops it starting); if not,
 or if `DYLD_INSERT_LIBRARIES` is already set, bcftools runs with the system
 allocator and the log says why. The result manifest's `bcftools_allocator`
-metric (`mimalloc` or `system`) records which ran. Linux isn't covered yet.
+metric (`mimalloc` or `system`) records which ran. Linux keeps the system allocator.
+
+**Linux x86-64 measurements**
+([#966, Linux allocator comparison](https://github.com/WGSExtract/wgsextract-cli/issues/966)):
+on a Ryzen 3 PRO 5350GE with glibc 2.44 and bcftools 1.24, override-enabled
+mimalloc 3.6.1 did not meet the 5% end-to-end improvement gate. The human input
+was a coordinate slice preserving HG002 NovaSeq PCR-free 30× depth: six
+8-Mb autosomal windows, 11,283,270 records (1.560% of the genome's records).
+Each caller/allocator had three interleaved runs with two workers, on SSD,
+under separate coordinator leases. Another coordinator-leased job ran
+alongside them; individual fast observations did not recur.
+
+| Input / caller | System median seconds | Mimalloc median seconds | Wall-time change |
+|---|---:|---:|---:|
+| HG002 slice / SNP | 94.59 | 95.03 | +0.47% |
+| HG002 slice / indel | 118.86 | 114.54 | −3.64% |
+| Whole 12.27-Mb fake genome / SNP | 16.18 | 17.07 | +5.46% |
+| Whole fake genome / indel | 21.73 | 21.09 | −2.98% |
+
+Ordered record SHA-256 hashes matched across all six runs for each row.
+The human slice produced 70,630 SNPs and 16,528 indels; the fake genome
+produced 6,136 SNPs but no indels, so its indel row is an empty-output control.
+Largest-child peak RSS on the human slice increased from 284/286 MiB
+(SNP/indel) to 318/340 MiB with mimalloc. A separate one-pair six-worker pilot also
+showed less than 2% wall-time changes. No full-human-genome allocator
+comparison or Linux packaging/default change followed this gate; these
+measurements do not qualify Linux ARM64 or every glibc version.
 
 `vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
 (MPS) path; see [docs/ont.md](ont.md#clair3-optional).

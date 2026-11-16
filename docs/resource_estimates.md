@@ -739,6 +739,17 @@ filesystem for reference-index storage.
   are conservative heuristics, not measured guarantees for every caller, read
   length or depth.
 
+The [Linux allocator comparison](hardware.md#bcftools-with-mimalloc)
+([#966, bcftools allocator measurements](https://github.com/WGSExtract/wgsextract-cli/issues/966))
+does not change these budgets. On a 1.560% HG002 30× coordinate slice with
+two workers, largest-child peak RSS was 284/286 MiB for SNP/indel calling
+with glibc, versus 318/340 MiB with mimalloc. Across the slice and whole
+fake-genome runs, sampled concurrent pipeline RSS stayed below 0.91 GiB
+and sampled temporary-plus-output disk below 8.6 MiB. These are small-input
+observations, not whole-genome bounds or grounds for reducing the conservative
+1-GiB-per-worker allowance. Neither caller reached the 5% median speedup
+gate; Linux retains the system allocator.
+
 ### Native DeepVariant
 
 `wgse-deepvariant` on Apple Silicon and Linux x86-64 has a separate
