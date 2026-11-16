@@ -509,7 +509,7 @@ class _Build:
         self.manifest["updated"] = _now()
         path = self.plan.sa_dir / MANIFEST
         partial = path.with_name(path.name + ".partial")
-        partial.write_text(json.dumps(self.manifest, indent=1) + "\n")
+        partial.write_text(json.dumps(self.manifest, indent=1) + "\n", newline="\n")
         partial.replace(path)
 
     def record_source(self, key: str, file: str, entry: dict[str, Any]) -> None:
