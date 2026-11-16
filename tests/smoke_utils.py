@@ -275,24 +275,18 @@ def _generate_fake_data(fake_dir: str, required: list[str]) -> None:
     repair_fake_data_indexes()
 
     if not all(os.path.exists(path) for path in required):
-        rc, stdout, stderr = run_cli(
-            [
-                "qc",
-                "fake-data",
-                "--outdir",
-                fake_dir,
-                "--build",
-                "hg38",
-                "--seed",
-                "42",
-                "--coverage",
-                "10.0",
-                "--type",
-                "all",
-                "--ref",
-                fake_dir,
-            ]
-        )
+        # Callers may isolate the home without a config (the e2e suites), which
+        # would record this run in the checkout's state/ (#979).
+        with tempfile.TemporaryDirectory(
+            dir=Path(fake_dir).resolve().parent
+        ) as scratch:
+            config = Path(scratch) / "config.toml"
+            config.write_text(state_directory_setting(Path(scratch)))
+            rc, stdout, stderr = run_cli(
+                ["--config", str(config), "qc", "fake-data", "--outdir", fake_dir]
+                + ["--build", "hg38", "--seed", "42", "--coverage", "10.0"]
+                + ["--type", "all", "--ref", fake_dir]
+            )
         if rc != 0:
             raise RuntimeError(f"qc fake-data failed ({rc}):\n{stdout}\n{stderr}")
         normalize_fake_data_names()

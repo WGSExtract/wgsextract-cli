@@ -1,11 +1,15 @@
 import sys
+from pathlib import Path
 
 import pytest
 
 from tests import e2e_base
 from tests.fake_tools import python_tool
+from tests.htslib_helpers import needs_htslib
+from tests.smoke_utils import ensure_fake_data, isolate_home
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.pixi_tools import PIXI_TOOL_ENVS
+from wgsextract_cli.core.runtime import repo_root
 
 
 # Finding a tool in another environment sends pixi a multi-line `python -c`,
@@ -31,3 +35,19 @@ def test_optional_tool_needs_its_pixi_environment_installed(fake_pixi, monkeypat
 def test_optional_tool_on_the_host_is_installed(fake_pixi):
     python_tool(fake_pixi.host_bin, "freebayes", "")
     assert e2e_base.optional_tool_installed("freebayes")
+
+
+@needs_htslib
+def test_fake_data_generation_keeps_its_run_record_out_of_the_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#979 (fake-data generation wrote state/ into the checkout): the e2e
+    suites isolate the home without a config, so the generating run fell back
+    to the checkout's state/."""
+    isolate_home(monkeypatch, tmp_path / "home")
+    fake = tmp_path / "fake"
+    ensure_fake_data(str(fake))
+
+    assert (fake / "fake.bam.bai").is_file()
+    record = repo_root() / "state" / "last-run.json"
+    assert not record.is_file() or str(fake) not in record.read_text()
