@@ -154,6 +154,12 @@ The server answers three read-only lookups itself, without a job, over HTTP
 `read_manifest`, `query_variants`, `report_section`). Their paths must be in
 an allowed folder.
 
+Manifest and report readers check the document identifier and the object
+containers they use, not the complete writer schema. Loaded field values remain
+opaque; unknown extension fields and their values are preserved rather than
+coerced or cast to canonical writer models. A report summary projects only
+`status` and `summary` from each section.
+
 - **Variants.** `path` is a [`vcf table`](variant-table.md) output:
   `*_variants.sqlite`, `.tsv` or `.parquet` (needs pyarrow). The filters
   combine: `gene` (symbol), `rsid` (one rsID), `region` (`chr1`,
