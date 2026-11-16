@@ -15,7 +15,7 @@ from wgsextract_cli.core.microarray.coordinates import (
     project_coordinates,
     sole_placement,
 )
-from wgsextract_cli.core.microarray_identity import MicroarrayIdentity, resolve_rsid
+from wgsextract_cli.core.microarray.identity import MicroarrayIdentity, resolve_rsid
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 

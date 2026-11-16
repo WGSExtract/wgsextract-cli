@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 _RSID_MAP = (
-    Path(__file__).resolve().parents[1] / "assets/microarray/rsid/dbsnp157.tsv.gz"
+    Path(__file__).resolve().parents[2] / "assets/microarray/rsid/dbsnp157.tsv.gz"
 )
 
 

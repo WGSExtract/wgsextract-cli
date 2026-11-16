@@ -4,6 +4,11 @@ PR area checks diffs the PR's **base...head**, not just the latest commit.
 `--no-renames` includes deletions and both sides of moves. Unknown paths run
 the full CLI matrix; mixed PRs run the union of their areas.
 
+When moving modules, audit workflow `paths` filters as well as the import graph
+and ownership/review path lists. The remote-resource/real-chip concordance
+workflow covers both remaining flat `core/microarray_*.py` modules and the
+`core/microarray/**` package; Markdown exclusions still apply.
+
 Drafts run **no CI runner jobs**, including documentation and secret checks.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs

@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli import __version__
-from wgsextract_cli.core.microarray_identity import identity_policy
+from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.microarray_quirks import quirks_mode
 from wgsextract_cli.core.microarray_utils import GenotypeTally
