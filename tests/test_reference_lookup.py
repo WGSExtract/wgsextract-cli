@@ -89,6 +89,37 @@ def orphan_cram(tmp_path: Path) -> Path:
 
 
 @needs_htslib
+def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
+    orphan_cram, reference_server
+):
+    """The server's path filter (#987) must keep htslib's lookups, or the
+    "never asks a server" tests below would pass vacuously."""
+    import urllib.error
+    import urllib.request
+
+    port = reference_server.server_address[1]
+    probe = urllib.request.Request(
+        f"http://127.0.0.1:{port}/", headers={"Range": "bytes=0-16383"}
+    )
+    with pytest.raises(urllib.error.HTTPError):
+        urllib.request.urlopen(probe, timeout=10)
+
+    env = {**os.environ, "REF_PATH": _server_url(reference_server)}
+    env.pop("REF_CACHE", None)
+    result = run_command(
+        [get_tool_path("samtools"), "view", str(orphan_cram)],
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if not reference_server.requests and "http" not in result.stderr.lower():
+        pytest.skip("this samtools has no HTTP support")
+    assert result.returncode != 0
+    md5 = hashlib.md5(SEQUENCE.encode(), usedforsecurity=False).hexdigest()
+    assert reference_server.requests == [reference_server.prefix + md5]
+
+
+@needs_htslib
 def test_cli_cram_without_its_reference_fails_without_asking_a_server(
     tmp_path, orphan_cram, reference_server, monkeypatch, capfd
 ):
