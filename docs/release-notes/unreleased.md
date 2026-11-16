@@ -28,6 +28,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   to write it, so its preflight allows about 20 GiB for a whole genome (5
   without).
 
+- `wgse-deepvariant` 0.3.1 writes a gVCF PL value for every genotype, those
+  with `<*>` included, as Google's image does; 0.3.0 left them out of variant
+  records, which tools reading PL by genotype index would misread (#999).
+
 - Low-memory Macs retain Metal BWA rather than the slower CPU fallback when
   compressed staging fits the existing physical-RAM gate. Alignment no longer
   overlaps duplicate marking/sorting; bounded compressed BAM checkpoints avoid
