@@ -2229,6 +2229,29 @@ Download GERP; output role `reference_resource`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `build` | `str` | `'hg38'` | `--build` | Genome build to download (default: hg38). One of: `hg38`, `hg19` |
 
+### `api.ref.acmg_data(RefAcmgDataParams)`
+
+CLI: `wgsextract ref acmg-data`.
+
+Build the databases (output role `reference_resource` for each file,
+the GFF3 and `acmg_data.json`); with `dry_run`, only the plan in
+`details`.
+
+`RefAcmgDataParams`: Download the eight sources of `vcf acmg` (ClinVar and its protein
+index, gnomAD v4.1 and its gene constraint, ClinGen, REVEL, SpliceAI,
+phyloP) and the Ensembl GFF3 from their publishers, check them, and build
+fastVEP's databases. Shows each source's terms; reruns resume.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: ref/acmg/sa in the library). |
+| `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
+| `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
+| `dry_run` | `bool` | `False` | `--dry-run` | Show the sources, their terms, sizes and the disk needed; download nothing. |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
 ### `api.ref.bootstrap(RefBootstrapParams)`
 
 CLI: `wgsextract ref bootstrap`.

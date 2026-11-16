@@ -192,6 +192,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref test-genome": _n(DOWNLOAD, optional="curl"),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
+    "ref acmg-data": _n(DOWNLOAD, "bcftools", "bgzip", "fastvep", "tabix"),
     "ref somalier": _n(DOWNLOAD, optional="curl"),
     "ref ancestry": _n(DOWNLOAD, optional="curl"),
     "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),

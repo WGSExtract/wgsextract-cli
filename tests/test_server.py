@@ -2292,6 +2292,8 @@ def test_mcp_offers_read_only_queries_by_default(work, fake_data):
     tools = {t["name"]: t for t in mcp.request("tools/list", {})["result"]["tools"]}
     assert {"info", "read_manifest", "job_status"} <= set(tools)
     assert "vcf_snp" not in tools and "cancel_job" not in tools
+    # ref acmg-data downloads and builds tens of GB (issue 629): a job.
+    assert "ref_acmg_data" not in tools
     assert tools["info"]["annotations"]["readOnlyHint"] is True
     assert tools["info"]["inputSchema"]["required"] == ["input"]
 
@@ -2305,6 +2307,7 @@ def test_mcp_offers_read_only_queries_by_default(work, fake_data):
     assert result["isError"] is True
     assert result["structuredContent"]["error"]["code"] == "path_not_allowed"
     assert mcp.call("vcf_snp", input=str(bam))["error"]["code"] == -32602
+    assert mcp.call("ref_acmg_data", ref=str(work))["error"]["code"] == -32602
 
     # PR #422 review: info's table_format saves files, yet read-only MCP
     # offered it; malformed params killed the call or the server.
@@ -2362,6 +2365,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "ref/library": {"install": "hs38"},
     "ref/library-delete": {"genome": "hs38", "ref": _DATA},
     "ref/library-list": {"ref": _DATA},
+    "ref/acmg-data": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},

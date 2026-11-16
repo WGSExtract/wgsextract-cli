@@ -15,17 +15,20 @@ class RangeServer:
     """Serves ``files[path]``, or ``data`` for any other path (404 when None),
     with byte ranges, and records each request.
 
-    drops: GETs left to cut off half-way. drop_starts: ranged GETs starting at
+    drops: GETs left to cut off half-way; drop_paths: paths whose next GET
+    is cut off half-way, once. drop_starts: ranged GETs starting at
     these offsets are always cut off. head_status/get_status: answer HEAD/GET
     with this error; statuses[path]: answer requests for path with it.
     etags: send each file's ETag (a hash of its content), as S3 does.
     delays[path]: seconds to wait before answering a GET for path.
+    headers[path]: extra headers sent with path (as x-goog-hash on GCS).
     """
 
     def __init__(self, data: bytes | None = b"", files: dict[str, bytes] | None = None):
         self.data = data
         self.files = dict(files or {})
         self.drops = 0
+        self.drop_paths: set[str] = set()
         self.drop_starts: set[int] = set()
         self.ignore_ranges = False
         self.get_status: int | None = None
@@ -34,6 +37,7 @@ class RangeServer:
         self.statuses: dict[str, int] = {}
         self.etags = False
         self.delays: dict[str, float] = {}
+        self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
         # Other software on the host may probe any new listening port (one
         # sent `GET /` with `Range: bytes=0-16383`, #987); only requests under
@@ -63,9 +67,11 @@ class RangeServer:
                     return None
                 return server.files.get(path, server.data)
 
-            def _etag(self, data: bytes) -> None:
+            def _etag(self, data: bytes, path: str) -> None:
                 if server.etags:
                     self.send_header("ETag", f'"{hashlib.md5(data).hexdigest()}"')
+                for name, value in server.headers.get(path, {}).items():
+                    self.send_header(name, value)
 
             def do_HEAD(self):
                 path = self._own_path()
@@ -79,7 +85,7 @@ class RangeServer:
                     self.send_error(server.head_status or 404)
                     return
                 self.send_response(200)
-                self._etag(data)
+                self._etag(data, path)
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
@@ -111,9 +117,15 @@ class RangeServer:
                         return
                     end = int(last) + 1 if last else len(data)
                     body, code = data[start:end], 206
-                cut = server.drops > 0 or (code == 206 and start in server.drop_starts)
+                cut_path = path in server.drop_paths
+                server.drop_paths.discard(path)
+                cut = (
+                    server.drops > 0
+                    or cut_path
+                    or (code == 206 and start in server.drop_starts)
+                )
                 self.send_response(code)
-                self._etag(data)
+                self._etag(data, path)
                 self.send_header("Accept-Ranges", "bytes")
                 if code == 206:
                     last = start + len(body) - 1
@@ -123,7 +135,8 @@ class RangeServer:
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 if cut:
-                    server.drops = max(0, server.drops - 1)
+                    if not cut_path:
+                        server.drops = max(0, server.drops - 1)
                     self.wfile.write(body[: len(body) // 2])
                     self.close_connection = True
                     return

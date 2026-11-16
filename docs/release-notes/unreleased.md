@@ -26,6 +26,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   disclaimer, with the carried alleles' classes and the P/LP calls in the
   gene list's genes; and the desktop app runs `vcf acmg` once you tick that
   you understand it is research use only.
+  phyloP). GRCh38; Linux and macOS, not Windows. See [acmg.md](../acmg.md).
+- `ref acmg-data` downloads those eight sources and the Ensembl GFF3 from
+  their publishers, checks them against the checksums they publish, shows
+  their terms (REVEL and SpliceAI are non-commercial) and builds the fastVEP
+  databases into the library, where `vcf acmg` now finds them. gnomAD's 877 GB
+  are streamed; `--chromosomes` builds part of the genome, `--dry-run` shows
+  the sizes, and reruns resume. See [acmg.md](../acmg.md).
 - `vcf snp` and `vcf indel` can also write reference evidence:
   `--reference-evidence gvcf` (or `reference_evidence = "gvcf"` in
   `config.toml`) adds `bcftools.g.vcf.gz` (+ `.tbi`), a gVCF of every assessed

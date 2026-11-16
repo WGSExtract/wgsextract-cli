@@ -8,6 +8,7 @@ from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api._params import Params
 from wgsextract_cli.api.ref import (
     RefAadrParams,
+    RefAcmgDataParams,
     RefAlphamissenseParams,
     RefAncestryParams,
     RefBootstrapParams,
@@ -41,6 +42,9 @@ from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.utils import UsageError
 
 cmd_aadr = command_handler("wgsextract_cli.commands.ref.library_commands", "cmd_aadr")
+cmd_acmg_data = command_handler(
+    "wgsextract_cli.commands.ref.acmg_data", "cmd_acmg_data"
+)
 cmd_ancestry_reference = command_handler(
     "wgsextract_cli.commands.ref.library_commands", "cmd_ancestry_reference"
 )
@@ -303,6 +307,12 @@ def register(
         RefBootstrapParams,
         cmd_bootstrap,
         "Download and initialize the reference library bootstrap (liftover chains, chip templates, etc.).",
+    )
+    add(
+        "acmg-data",
+        RefAcmgDataParams,
+        cmd_acmg_data,
+        "Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's databases.",
     )
     add(
         "microarray-targets",
