@@ -534,13 +534,10 @@ def _classified(
             and depth < CLAIR3_DELETION_DEPTH * shadow[2]
         ):
             cut = min(end, shadow[1])
+            # Laid over the record, not cut from it: records stay in start
+            # order for _sweep, where low quality outranks it up to ``cut``.
             yield contig, start, cut, State.LOW_QUALITY_REFERENCE
-            if cut < end:
-                yield contig, cut + 1, end, state
-                shadow = None
-            else:
-                shadow = (*shadow[:3], end + 1)
-            continue
+            shadow = None if cut < end else (*shadow[:3], end + 1)
         else:
             shadow = None
         yield contig, start, end, state

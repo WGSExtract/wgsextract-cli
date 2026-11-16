@@ -161,3 +161,32 @@ def test_gq_gvcf_blocks_read_by_genotype_quality_and_minimum_depth(
         Span("chr1", 95, 100, State.CALLABLE_REFERENCE),
         Span("chr1", 101, 105, State.UNCOVERED),
     ]
+
+
+@needs_htslib
+def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(tmp_path: Path) -> None:
+    """Issue #1028 review: another tool's Clair3 gVCF (``##source=Clair3``)
+    gets the missed-deletion rule too, and a call overlapping a demoted
+    block keeps its own state rather than reading as low quality."""
+    rows = [
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\tEND=10\tGT:GQ:MIN_DP\t./.:0:40",
+        "chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t15\t.\tA\tC\t30\tPASS\t.\tGT:GQ:DP\t0/1:30:20",
+        "chr1\t31\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:40",
+    ]
+    plain = tmp_path / "clair3.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace(
+            "##fileformat=VCFv4.2\n", "##fileformat=VCFv4.2\n##source=Clair3\n"
+        )
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 40)])) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 14, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 15, 15, State.VARIANT),
+        Span("chr1", 16, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 40, State.CALLABLE_REFERENCE),
+    ]
