@@ -12,8 +12,8 @@ from tests.smoke_utils import state_directory_setting
 from tests.test_remote_benchmark import OMNI, REGION_HG19, _run, _score_all_exports
 from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.microarray.chm13 import load_chm13_catalogue
 from wgsextract_cli.core.microarray.site_map import SiteMap
-from wgsextract_cli.core.microarray_chm13 import load_chm13_catalogue
 from wgsextract_cli.core.microarray_targets import ncbi36_chain
 
 pytestmark = [

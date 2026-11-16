@@ -68,7 +68,7 @@ def load_chm13_catalogue(
 ) -> CHM13Catalogue:
     if manifest_path is None:
         manifest_path = (
-            Path(__file__).resolve().parents[1]
+            Path(__file__).resolve().parents[2]
             / "assets/microarray/chm13/v1/manifest.json"
         )
     try:

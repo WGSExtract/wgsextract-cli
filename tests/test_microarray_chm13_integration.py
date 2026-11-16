@@ -14,8 +14,8 @@ from wgsextract_cli.commands import _microarray_chm13 as command
 from wgsextract_cli.core import library_cache
 from wgsextract_cli.core import microarray_aadr as aadr
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue, ReferenceContig
 from wgsextract_cli.core.microarray.site_map import SiteProjection, load_site_map
-from wgsextract_cli.core.microarray_chm13 import CHM13Catalogue, ReferenceContig
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError
 

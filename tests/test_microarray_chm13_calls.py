@@ -4,14 +4,14 @@ import pytest
 
 from scripts.build_microarray_chm13_map import write_site_map
 from wgsextract_cli.commands._microarray_chm13 import _regions, _selected
+from wgsextract_cli.core.microarray.chm13_calls import (
+    parse_native_calls,
+    project_native_calls,
+)
 from wgsextract_cli.core.microarray.site_map import (
     SiteMap,
     SiteProjection,
     load_site_map,
-)
-from wgsextract_cli.core.microarray_chm13_calls import (
-    parse_native_calls,
-    project_native_calls,
 )
 from wgsextract_cli.core.microarray_identity import MicroarrayIdentity
 from wgsextract_cli.core.microarray_quality import MicroarrayQuality
