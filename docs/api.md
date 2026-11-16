@@ -1466,6 +1466,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes deepvariant.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
 | `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: stage_reads, make_examples, call_variants, postprocess_variants. One of: `stage_reads`, `make_examples`, `call_variants`, `postprocess_variants` |
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |

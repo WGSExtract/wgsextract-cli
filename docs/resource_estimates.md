@@ -833,6 +833,18 @@ local `run_deepvariant` whose `postprocess_variants --helpfull` lists it (asked
 only when more partitions are wanted). Otherwise step 2 is skipped: only
 `--postprocess_cpus` is lowered, with a warning. That saves little: fewer
 workers sort bigger partitions, so a whole genome still needs about 30 GiB.
+
+With `--reference-evidence gvcf` each worker also writes its partition's part
+of the gVCF, streaming `make_examples`' reference records: HG002 35x chr20 as
+one partition peaked at 1.14 GiB with the gVCF and 1.14 without (#863), so the
+plan is the same. `wgse-deepvariant`'s `postprocess_variants` differs: it
+keeps every contig's calls until it writes the gVCF. HG002 35x chr20 and
+chr22 together peaked at 0.94 GiB with the gVCF and 0.81 without, chr22 adding
+3.5 bytes per base beyond its serialized records; the estimate charges 5 more
+bytes to every called base (about 20 GiB for hs38DH, against 5 GiB without
+the gVCF), 0.4 more temporary bytes per input byte for the gVCF records
+`make_examples` writes (0.26 measured), and a gVCF of 5% of the input (1.9%
+measured).
 When even that cannot fit, the refusal suggests DeepVariant 1.9+.
 4. If one worker cannot fit, it refuses before `make_examples` starts and
    gives the memory needed and available.

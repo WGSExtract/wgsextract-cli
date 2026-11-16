@@ -71,6 +71,9 @@ class Provenance:
     quality_model: str
     bands: str = ""
     min_mapping_quality: int | None = None
+    # The assessed bases (None: every contig), as comma-separated
+    # "contig:start-end" items (canonical_region); earlier headers may hold
+    # the --region as given, which selected_intervals reads too.
     region: str | None = None
     ploidy: str = ""
     sex: str = ""
@@ -144,6 +147,25 @@ def parse_provenance(line: str) -> Provenance | None:
         sex=values.get("Sex", ""),
         ploidy_zero=tuple(item for item in values.get("PloidyZero", "").split(",") if item),
     )  # fmt: skip
+
+
+def canonical_region(intervals: Iterable[tuple[str, int, int]]) -> str:
+    """Zero-based, half-open ``intervals`` as the merged, comma-separated
+    "contig:start-end" (1-based, inclusive) items a Region records, contigs
+    in the order they first appear: no file names, no thousands separators."""
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for contig, start, end in intervals:
+        spans.setdefault(contig, []).append((start, end))
+    items = []
+    for contig, ranges in spans.items():
+        merged: list[list[int]] = []
+        for start, end in sorted(ranges):
+            if merged and start <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        items += [f"{contig}:{start + 1}-{end}" for start, end in merged]
+    return ",".join(items)
 
 
 def ploidy_definitions(ploidy_args: Sequence[str]) -> list[list[str]]:

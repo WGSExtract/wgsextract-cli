@@ -1,4 +1,5 @@
-"""``--reference-evidence gvcf`` for ``vcf snp``/``vcf indel``: bcftools' gVCF.
+"""``--reference-evidence gvcf``: bcftools' gVCF for ``vcf snp``/``vcf indel``,
+and publishing the gVCF other callers write beside their VCF (``publish_gvcf``).
 
 The gVCF comes from its own pass over the reads, apart from the variant VCF,
 which it never changes: one SNP+indel pileup (a SNP-only one, like ``vcf
@@ -19,11 +20,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
 from pathlib import Path
 from threading import Event
+from typing import TYPE_CHECKING
 
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
 from wgsextract_cli.core.utils import run_command, run_pipeline
@@ -31,6 +34,9 @@ from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .call_cleanup import indel_cleanup_pipeline
 from .contig_calling import populated_contigs
+
+if TYPE_CHECKING:
+    from .caller_ploidy import PloidyInterval
 
 GVCF_NAME = "bcftools.g.vcf.gz"
 
@@ -75,8 +81,17 @@ def _provenance(
     rows = evidence.ploidy_definitions(ploidy_args)
     zero = evidence.ploidy_zero(rows, sex, lengths)
     if region:
-        named = {part.strip().rpartition(":")[0] or part.strip() for part in region.split(",")}  # fmt: skip
-        zero = tuple(item for item in zero if item.rpartition(":")[0] in named)
+        try:
+            selected = selected_intervals(region, lengths, commas=True)
+        except (OSError, ValueError):
+            selected = None
+        if selected is not None:
+            region = evidence.canonical_region(
+                (contig, start, end)
+                for contig in lengths
+                for start, end in selected.get(contig, ())
+            )
+            zero = tuple(item for item in zero if item.rpartition(":")[0] in selected)
     return evidence.Provenance(
         engine="bcftools",
         version=version.stdout.splitlines()[0].removeprefix("bcftools ").strip(),
@@ -179,3 +194,64 @@ def write_gvcf(
     current_result().add_output(output, evidence.ROLE, metrics=provenance.metrics())
     current_result().add_output(output + ".tbi", evidence.INDEX_ROLE)
     return output
+
+
+def caller_provenance(
+    engine: str,
+    version: str,
+    intervals: list[PloidyInterval],
+    region: str | None,
+) -> evidence.Provenance:
+    """The provenance of a GQ caller's gVCF, called over ``region`` with the
+    sex/PAR ploidy ``intervals`` (caller_ploidy.calling_ploidy's), which
+    cover the selection: its Region is theirs, resolved."""
+    from .caller_ploidy import policy_sex
+
+    def span(item: PloidyInterval) -> str:
+        return f"{item.chrom}:{item.start + 1}-{item.end}"
+
+    return evidence.Provenance(
+        engine=engine,
+        version=version,
+        quality_model=evidence.GQ,
+        region=(
+            evidence.canonical_region((i.chrom, i.start, i.end) for i in intervals)
+            if region
+            else None
+        ),
+        ploidy=",".join(f"{span(i)}={i.ploidy}" for i in intervals if i.ploidy != 2),
+        sex=policy_sex(intervals),
+        ploidy_zero=tuple(span(i) for i in intervals if i.ploidy == 0),
+    )
+
+
+def publish_gvcf(source: str, output: str, provenance: evidence.Provenance) -> None:
+    """Publish a caller's gVCF ``source`` as ``output`` (+ .tbi) with the
+    ``##wgseReferenceEvidence`` header. Only the header is rewritten (bcftools
+    reheader copies the records' BGZF blocks), so every record, FILTER and
+    FORMAT field stays as the caller wrote it."""
+    header = run_command(["bcftools", "view", "-h", source], capture_output=True)
+    prefix = f"##{evidence.HEADER_KEY}="
+    lines = [line for line in header.stdout.splitlines() if not line.startswith(prefix)]  # fmt: skip
+    lines.insert(len(lines) - 1, provenance.header())
+    with (
+        tempfile.TemporaryDirectory(dir=Path(output).parent, prefix=".wgse_gvcf_") as work,
+        atomic_output(output) as staged,
+    ):  # fmt: skip
+        text = Path(work, "header.txt")
+        text.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        run_command(["bcftools", "reheader", "-h", str(text), "-o", staged, source])
+        ensure_vcf_indexed(staged)
+
+
+def record_gvcf(output: str) -> None:
+    """Record a published gVCF and its index as result outputs, with the
+    provenance its header records as the gVCF's metrics."""
+    header = run_command(["bcftools", "view", "-h", output], capture_output=True)
+    provenance = next(
+        (p for line in header.stdout.splitlines() if (p := evidence.parse_provenance(line))),
+        None,
+    )  # fmt: skip
+    metrics = provenance.metrics() if provenance else None
+    current_result().add_output(output, evidence.ROLE, metrics=metrics)
+    current_result().add_output(output + ".tbi", evidence.INDEX_ROLE)

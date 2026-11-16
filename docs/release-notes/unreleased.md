@@ -9,8 +9,16 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   base, beside the unchanged variant VCF. A shared classifier tells confident
   reference from low-quality reference, coverage gaps, filtered and no-call
   bases, and ploidy-0 bases such as a woman's chrY. Off by default: it adds a
-  second bcftools pass. DeepVariant, GATK and Clair3 are to follow. See
+  second bcftools pass. GATK and Clair3 are to follow. See
   [reference-evidence.md](../reference-evidence.md).
+
+- `vcf deepvariant --reference-evidence gvcf` (or the same `config.toml`
+  setting) also writes `deepvariant.g.vcf.gz` (+ `.tbi`) from the same run, on
+  the CPU (Google's image or `wgse-deepvariant`) and with Parabricks
+  (`--gpu`); the variant VCF is unchanged. On HG002 chr20 it added about 15-20%
+  to the run and 21 MB. `wgse-deepvariant` keeps the whole call set in memory
+  to write it, so its preflight allows about 20 GiB for a whole genome (5
+  without).
 
 - Low-memory Macs retain Metal BWA rather than the slower CPU fallback when
   compressed staging fits the existing physical-RAM gate. Alignment no longer

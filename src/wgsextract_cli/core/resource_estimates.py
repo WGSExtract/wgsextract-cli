@@ -98,6 +98,17 @@ NATIVE_DV_EXAMPLES_PER_INPUT_BYTE = 0.8
 # each region (282,000 records for HG002 ONT chr20); 48 times that, a whole
 # genome's worth, took 4.2 GiB, about 0.055 bytes per byte of its 81 GB CRAM.
 NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE = 0.06
+# --reference-evidence gvcf (#863): wgse-deepvariant's postprocess_variants
+# keeps every contig's calls until it writes the gVCF (patch 0005). HG002 35x
+# Illumina chr20+chr22 peaked at 0.94 GiB with the gVCF and 0.81 without;
+# adding chr22 to chr20 added 3.5 B/base beyond the serialized records. Allow
+# 5 (the 4.75 per kb density above, against 3.3 measured) for every called
+# base. Its make_examples' gVCF records took 0.26 more temporary bytes per
+# input byte (285 MiB from a 1.09 GB BAM), the published gVCF 1.9% of the
+# input (20.8 MB for chr20; ~1 GB for a 30x genome).
+NATIVE_DV_GVCF_BYTES_PER_BASE = 5.0
+NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE = 0.4
+DV_GVCF_PER_INPUT_BYTE = 0.05
 
 
 @dataclass(frozen=True)
@@ -385,7 +396,8 @@ def estimate_resources(
     serial fallback); None conservatively infers it from the reference index.
     ``alignment_header`` helps budget full headers without launching metadata
     tools in this read-only API. ``reference_evidence`` adds the disk of
-    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts.
+    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts, or DeepVariant's
+    gVCF and the memory and work it takes.
 
     ``reads`` counts individual reads, not pairs. Callers may provide a cheap
     FASTQ sample/indexed count. Otherwise disk uses a conservative byte-size
@@ -699,7 +711,11 @@ def estimate_resources(
                 + inference_batch_size * NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE,
                 NATIVE_DV_BASE_BYTES
                 + math.ceil(
-                    sum(contig_bases.values()) * NATIVE_DV_RECORD_BYTES_PER_BASE
+                    sum(contig_bases.values())
+                    * (
+                        NATIVE_DV_RECORD_BYTES_PER_BASE
+                        + (NATIVE_DV_GVCF_BYTES_PER_BASE if reference_evidence else 0)
+                    )
                     + max(contig_bases.values(), default=0)
                     * NATIVE_DV_CONTIG_BYTES_PER_BASE
                 ),
@@ -717,11 +733,27 @@ def estimate_resources(
             "by --batch-size) and postprocess_variants (one contig at a "
             "time) one after another: allow for the largest."
         )
+        if reference_evidence:
+            notes.append(
+                "With the gVCF, wgse-deepvariant's postprocess_variants keeps "
+                "every contig's calls until it writes it: ~5 more bytes per "
+                "called base (~15 GiB for a genome)."
+            )
         output = None if size is None else math.ceil(size / 10)
         temporary = (
             None
             if size is None
-            else math.ceil(size * NATIVE_DV_EXAMPLES_PER_INPUT_BYTE)
+            else math.ceil(
+                size
+                * (
+                    NATIVE_DV_EXAMPLES_PER_INPUT_BYTE
+                    + (
+                        NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE
+                        if reference_evidence
+                        else 0
+                    )
+                )
+            )
         )
     elif operation == "deepvariant":
         arm64 = is_arm64_docker_host()
@@ -886,6 +918,9 @@ def estimate_resources(
             temporary = (
                 None if output is None else output * (2 if operation == "gatk" else 1)
             )
+    if operation == "deepvariant" and reference_evidence:
+        gvcf_bytes = None if size is None else math.ceil(size * DV_GVCF_PER_INPUT_BYTE)
+        demands.append((output_dir, "reference_evidence", gvcf_bytes))
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
     if operation == "gatk" and gatk_workers > 1:
         # Shards coexist with the gathered output.
