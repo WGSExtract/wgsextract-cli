@@ -7,6 +7,7 @@ server. A local HTTP server stands in for EBI's.
 
 import hashlib
 import os
+import secrets
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,13 +29,17 @@ SEQUENCE = "ACGTTGCAAGGCTTAC" * 125
 
 class _ReferenceServer(ThreadingHTTPServer):
     requests: list[str]
+    # Only requests under this unguessable prefix are the test's: other
+    # software on the host may probe any new listening port (#987).
+    prefix: str
 
 
 class _Handler(BaseHTTPRequestHandler):
     server: _ReferenceServer
 
     def do_GET(self) -> None:  # noqa: N802
-        self.server.requests.append(self.path)
+        if self.path.startswith(self.server.prefix):
+            self.server.requests.append(self.path)
         self.send_response(404)
         self.end_headers()
 
@@ -46,6 +51,7 @@ class _Handler(BaseHTTPRequestHandler):
 def reference_server() -> Iterator[_ReferenceServer]:
     server = _ReferenceServer(("127.0.0.1", 0), _Handler)
     server.requests = []
+    server.prefix = f"/{secrets.token_hex(8)}/"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield server
@@ -56,7 +62,7 @@ def reference_server() -> Iterator[_ReferenceServer]:
 
 def _server_url(server: _ReferenceServer) -> str:
     # htslib's REF_PATH keeps a URL's host:port together.
-    return f"http://127.0.0.1:{server.server_address[1]}/%s"
+    return f"http://127.0.0.1:{server.server_address[1]}{server.prefix}%s"
 
 
 @pytest.fixture

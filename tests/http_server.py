@@ -2,6 +2,7 @@
 the network."""
 
 import hashlib
+import secrets
 import threading
 import time
 from collections.abc import Iterator
@@ -34,6 +35,11 @@ class RangeServer:
         self.etags = False
         self.delays: dict[str, float] = {}
         self.requests: list[tuple[str, str | None]] = []
+        # Other software on the host may probe any new listening port (one
+        # sent `GET /` with `Range: bytes=0-16383`, #987); only requests under
+        # this unguessable prefix come from the test, so only they are served
+        # and recorded.
+        self.prefix = f"/{secrets.token_hex(8)}/"
         self.paths: list[str] = []
         server = self
 
@@ -41,8 +47,16 @@ class RangeServer:
             def log_message(self, *args):
                 pass
 
-            def _body(self) -> bytes | None:
-                path = urlsplit(self.path).path.lstrip("/")
+            def _own_path(self) -> str | None:
+                """The requested path below the server's prefix; None, after a
+                404, for a request from some other client on the host."""
+                path = urlsplit(self.path).path
+                if not path.startswith(server.prefix):
+                    self.send_error(404)
+                    return None
+                return path.removeprefix(server.prefix)
+
+            def _body(self, path: str) -> bytes | None:
                 server.paths.append(path)
                 if path in server.statuses:
                     self.send_error(server.statuses[path])
@@ -54,9 +68,12 @@ class RangeServer:
                     self.send_header("ETag", f'"{hashlib.md5(data).hexdigest()}"')
 
             def do_HEAD(self):
+                path = self._own_path()
+                if path is None:
+                    return
                 server.requests.append(("HEAD", None))
-                data = self._body()
-                if data is None and self.path.lstrip("/") in server.statuses:
+                data = self._body(path)
+                if data is None and path in server.statuses:
                     return
                 if server.head_status or data is None:
                     self.send_error(server.head_status or 404)
@@ -68,11 +85,14 @@ class RangeServer:
                 self.end_headers()
 
             def do_GET(self):
-                time.sleep(server.delays.get(urlsplit(self.path).path.lstrip("/"), 0))
+                path = self._own_path()
+                if path is None:
+                    return
+                time.sleep(server.delays.get(path, 0))
                 spec = self.headers.get("Range")
                 server.requests.append(("GET", spec))
-                data = self._body()
-                if data is None and self.path.lstrip("/") in server.statuses:
+                data = self._body(path)
+                if data is None and path in server.statuses:
                     return
                 if server.get_status or data is None:
                     self.send_error(server.get_status or 404)
@@ -110,7 +130,7 @@ class RangeServer:
                 self.wfile.write(body)
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.base = f"http://127.0.0.1:{self.httpd.server_port}"
+        self.base = f"http://127.0.0.1:{self.httpd.server_port}{self.prefix[:-1]}"
         self.url = self.url_for("hs38.fa.gz")
         # A short poll keeps shutdown() from waiting out the default half second.
         threading.Thread(
