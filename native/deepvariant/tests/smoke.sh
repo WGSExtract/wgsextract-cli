@@ -1,6 +1,7 @@
 #!/bin/sh
 # Call variants on a deterministic synthetic genome with planted SNPs and
-# require each one in the VCF as a PASS call with the planted genotype; then
+# require each one in the VCF as a PASS call with the planted genotype, and a
+# PL value for every genotype of every gVCF record; then
 # run the stages `run --dry_run=true` prints, on a copy with only a .csi
 # index and a BED selection of every contig, and require the same VCF. With
 # the ONT_R104 weights, call long reads too and require the planted SNPs with
@@ -61,8 +62,26 @@ samtools index reads.bam
 
 "$binary" run --model_type=WGS --ref=reference.fa --reads=reads.bam \
     --checkpoint="$weights/wgs.dvw" --small_model_path="$weights/wgs_small_weights" \
-    --output_vcf=calls.vcf.gz --intermediate_results_dir=inter --num_shards=2 > run.log 2>&1 ||
+    --output_vcf=calls.vcf.gz --output_gvcf=calls.g.vcf.gz \
+    --intermediate_results_dir=inter --num_shards=2 > run.log 2>&1 ||
     { tail -20 run.log; exit 1; }
+
+# PL is Number=G: one value per diploid genotype of REF and every ALT, <*>
+# included, in reference blocks and in variant records alike (#999).
+gzip -dc calls.g.vcf.gz | awk -F '\t' '
+    !/^#/ {
+        n = split($5, alt, ",") + 1
+        split($9, k, ":"); split($10, v, ":")
+        for (i in k) if (k[i] == "PL") pl = split(v[i], p, ",")
+        kind = $5 == "<*>" ? "block" : "variant"
+        seen[kind]++
+        if (pl != n * (n + 1) / 2) { print "smoke: " $1 ":" $2 " " $4 " " $5 " has " pl " PL values, not " n * (n + 1) / 2 > "/dev/stderr"; bad++ }
+        pl = 0
+    }
+    END {
+        if (!seen["block"] || !seen["variant"]) { print "smoke: the gVCF lacks reference blocks or variant records" > "/dev/stderr"; exit 1 }
+        exit (bad > 0)
+    }'
 
 gzip -dc calls.vcf.gz | awk -F '\t' '!/^#/ && $7 == "PASS" { split($10, f, ":"); print $1 "\t" $2 "\t" $4 "\t" $5 "\t" f[1] }' > called.tsv
 if ! diff truth.tsv called.tsv; then

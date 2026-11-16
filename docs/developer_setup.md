@@ -164,6 +164,15 @@ own writer models drive their public schemas; a schema ID check is not full
 document validation. Job projections still omit unset fields and compact
 results still omit provenance and empty values.
 
+The three read-only lookup inputs live in `server/lookup_inputs.py`. Their
+frozen dataclasses and annotated constraints drive both HTTP/MCP discovery
+schemas and request validation, and lookup readers consume the resulting typed
+objects. This deliberately supports strings, booleans, integers and string
+arrays; unsupported annotations fail closed. Optional `None` defaults represent
+omitted fields internally: explicitly supplied JSON null is still rejected.
+This input-specific adapter does not add dataclass support to the public
+output-schema generator.
+
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add

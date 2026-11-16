@@ -65,6 +65,9 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   ONT model's fuzzy read-support channel reads. postprocess_variants writes
   phased genotypes and phase sets (`PS`) stitched across regions from the
   read phases, as Google's does.
+- **0010** (0.3.1) writes a PL value for every genotype of the gVCF's variant
+  records, those with the `<*>` allele included, as Google's does: 0.3.0 left
+  them out, so `A T,<*>` had 3 values instead of 6 (#999).
 
 ## Same results as Google's image
 

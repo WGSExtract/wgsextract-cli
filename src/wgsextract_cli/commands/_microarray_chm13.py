@@ -21,37 +21,37 @@ from wgsextract_cli.commands._microarray_combined import (
     record_kit,
     record_microarray_run,
 )
-from wgsextract_cli.core import microarray_chm13_cache
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genotype_qc import warn_about_genotypes
 from wgsextract_cli.core.library_cache import microarray_cache_root
-from wgsextract_cli.core.microarray_aadr import (
-    _chrom_name,
-    aadr_markers,
-    aadr_panel,
-    write_aadr_outputs,
-)
-from wgsextract_cli.core.microarray_chm13 import (
+from wgsextract_cli.core.microarray import chm13_cache as microarray_chm13_cache
+from wgsextract_cli.core.microarray.chm13 import (
     CHM13Catalogue,
     load_chm13_catalogue,
     validate_chm13_alignment_header,
     validate_chm13_reference,
     write_chm13_ploidy,
 )
-from wgsextract_cli.core.microarray_chm13_calls import (
+from wgsextract_cli.core.microarray.chm13_calls import (
     canonical_chromosome,
     parse_native_calls,
     project_native_calls,
 )
-from wgsextract_cli.core.microarray_chm13_markers import (
+from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
+)
+from wgsextract_cli.core.microarray.site_map import SiteProjection
+from wgsextract_cli.core.microarray_aadr import (
+    _chrom_name,
+    aadr_markers,
+    aadr_panel,
+    write_aadr_outputs,
 )
 from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.microarray_quirks import quirks_mode
-from wgsextract_cli.core.microarray_site_map import SiteProjection
 from wgsextract_cli.core.microarray_targets import collect_template_markers
 from wgsextract_cli.core.microarray_utils import (
     GenotypeTally,
@@ -377,7 +377,7 @@ def run_chm13(
                 input_chroms=input_chroms,
             )
             if indel_bindings:
-                from wgsextract_cli.core.microarray_chm13_indels import (
+                from wgsextract_cli.core.microarray.chm13_indels import (
                     call_chm13_indels,
                 )
 

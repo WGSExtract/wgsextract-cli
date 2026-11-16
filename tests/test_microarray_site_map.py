@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from wgsextract_cli.core.microarray_site_map import load_site_map
+from wgsextract_cli.core.microarray.site_map import load_site_map
 from wgsextract_cli.core.utils import WGSExtractError
 
 # Four chr1 sites (two mapped, one collision, one unmapped), one MT site.
@@ -87,7 +87,7 @@ def test_bidirectional_mapping_preserves_inversion_and_missing_status(
 def test_decoded_cache_matches_decoder_and_rebuilds_corruption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from wgsextract_cli.core import microarray_site_map as maps
+    from wgsextract_cli.core.microarray import site_map as maps
 
     manifest = _fixture(tmp_path)
     expected = load_site_map(manifest)
@@ -126,7 +126,7 @@ def test_decoded_cache_does_not_survive_manifest_changes(tmp_path: Path) -> None
 def test_unwritable_decoded_cache_still_verifies_and_decodes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unavailable: str
 ) -> None:
-    from wgsextract_cli.core import microarray_site_map as maps
+    from wgsextract_cli.core.microarray import site_map as maps
 
     manifest = _fixture(tmp_path)
     expected = load_site_map(manifest)

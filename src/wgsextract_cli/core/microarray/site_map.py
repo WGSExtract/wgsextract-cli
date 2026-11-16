@@ -18,8 +18,8 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import NamedTuple
 
-from wgsextract_cli.core import microarray_site_map_cache
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.microarray import site_map_cache as microarray_site_map_cache
 from wgsextract_cli.core.utils import WGSExtractError
 
 _MAGIC = b"WGSCMAP\x01"

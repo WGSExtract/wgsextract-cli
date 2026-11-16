@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from wgsextract_cli.core.microarray_site_map import (
+from wgsextract_cli.core.microarray.site_map import (
     _CHROMS,
     SiteMap,
     load_site_map,
@@ -68,7 +68,7 @@ def load_chm13_catalogue(
 ) -> CHM13Catalogue:
     if manifest_path is None:
         manifest_path = (
-            Path(__file__).resolve().parents[1]
+            Path(__file__).resolve().parents[2]
             / "assets/microarray/chm13/v1/manifest.json"
         )
     try:

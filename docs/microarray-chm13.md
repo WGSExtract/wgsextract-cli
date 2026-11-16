@@ -192,3 +192,13 @@ paths of 260 characters (UTF-16 code units) or more, whatever the
 175 characters runs uncached with a `cache_path_too_long` warning. Caches named
 by full 64-digit SHA-256 keys, from earlier releases, are never read; delete
 them to reclaim their space when no older release is running.
+
+### Implementation layout
+
+The internal `core/microarray/` package holds assembly-chain coordinate
+projection (`coordinates.py`), verified CHM13 asset decoding (`site_map.py`),
+and the disposable decoded-column cache (`site_map_cache.py`). The `chm13*.py`
+modules alongside them handle CHM13 reference validation, calls, indel probes,
+marker exclusions, and native-target caches. Command orchestration remains
+in `commands/_microarray_chm13.py`; public
+`wgsextract_cli.api.microarray` operations are unchanged.
