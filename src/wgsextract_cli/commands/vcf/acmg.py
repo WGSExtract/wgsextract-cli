@@ -30,10 +30,10 @@ from pathlib import Path
 from typing import IO
 
 from wgsextract_cli.api.vcf import VcfAcmgParams
+from wgsextract_cli.core import acmg_data
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
-    get_tool_version,
     log_dependency_info,
     verify_dependencies,
 )
@@ -99,7 +99,6 @@ _V2_CHUNK = re.compile(r"^fastsa/([^/]+)/\d+/")
 _NUCLEAR = {str(n) for n in range(1, 23)} | {"X", "Y"}
 _TAGS = ("ACMG_CLASS", "ACMG_CRITERIA", "ACMG_TRANSCRIPT")
 _OURS = tuple(f"##INFO=<ID={tag}," for tag in _TAGS) + ("##WGSE_ACMG=",)
-_SUPPORTED_VERSION = re.compile(r"\b0\.5\.\d+\b")
 # Printed once fastVEP has loaded its databases and checked them, before it
 # reads a record (we always pass --pick-order).
 _SETUP_DONE = "Using --pick order"
@@ -133,17 +132,6 @@ class _Tally:
     criteria: Counter[str] = field(default_factory=Counter)
     transcripts: Counter[str] = field(default_factory=Counter)
     records: int = 0
-
-
-def _version() -> str:
-    raw = get_tool_version("fastvep") or ""
-    match = _SUPPORTED_VERSION.search(raw)
-    if not match:
-        raise WGSExtractError(
-            f"vcf acmg needs fastVEP 0.5 (found: {raw.strip() or 'unknown'}); its "
-            "classifier and messages are what this command was validated with."
-        )
-    return match.group(0)
 
 
 def _contig_key(name: str) -> str:
@@ -562,7 +550,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
     tools = ["bcftools", "bgzip", "tabix", "fastvep"]
     verify_dependencies(tools)
     log_dependency_info(tools)
-    version = _version()
+    version = acmg_data.fastvep_version()
     input_file, outdir, lib = annotation_context(params, ACMG_ANNOTATED)
     out_vcf = str(Path(outdir, ACMG_ANNOTATED))
     _refuse_overwrite(input_file, out_vcf)
@@ -573,18 +561,26 @@ def run_acmg(params: VcfAcmgParams) -> None:
         )
     if not lib.fasta:
         raise WGSExtractError("vcf acmg needs the GRCh38 reference FASTA; pass --ref.")
-    gff3 = resource(params, "gff3", None)
+    library_sa = acmg_data.default_sa_dir(lib.root) if lib.root else None
+    sa_dir = expand_path(params.sa_dir) if params.sa_dir else None
+    if not sa_dir and library_sa and library_sa.is_dir():
+        sa_dir = str(library_sa)
+    if not sa_dir or not Path(sa_dir).is_dir():
+        raise UsageError(
+            "vcf acmg needs the folder of fastVEP databases that 'wgsextract ref "
+            "acmg-data' builds (--sa-dir, or acmg_sa_dir in config.toml)"
+            + (f"; {sa_dir} is not a folder." if sa_dir else ".")
+        )
+    built_gff3 = (acmg_data.load_manifest(sa_dir).get("gff3") or {}).get("file")
+    gff3 = resource(params, "gff3", None) or (
+        built_gff3 if built_gff3 and Path(built_gff3).is_file() else None
+    )
     if not gff3:
         raise UsageError(
             "vcf acmg needs an Ensembl GRCh38 GFF3 (--gff3, or acmg_gff3 in "
-            "config.toml), such as Homo_sapiens.GRCh38.116.gff3.gz from "
+            "config.toml), such as the one 'wgsextract ref acmg-data' fetches: "
+            "Homo_sapiens.GRCh38.116.gff3.gz from "
             "https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/."
-        )
-    sa_dir = expand_path(params.sa_dir) if params.sa_dir else None
-    if not sa_dir or not Path(sa_dir).is_dir():
-        raise UsageError(
-            "vcf acmg needs a folder of fastVEP databases (--sa-dir, or acmg_sa_dir "
-            "in config.toml)" + (f"; {sa_dir} is not a folder." if sa_dir else ".")
         )
     databases = _databases(sa_dir)
     vcf = ensure_vcf_prepared(input_file)
@@ -678,6 +674,13 @@ def run_acmg(params: VcfAcmgParams) -> None:
         "databases": {
             "folder": str(Path(sa_dir).absolute()),
             "files": _inventory(databases),
+            # Where `ref acmg-data` built them: each source's release and terms.
+            "sources": {
+                key: {k: info.get(k, "") for k in ("label", "release", "url", "terms")}
+                for key, info in (
+                    acmg_data.load_manifest(sa_dir).get("sources") or {}
+                ).items()
+            },
         },
         "sources_required": sorted(REQUIRED_SOURCES.values()),
         "sources_not_used": sorted(unused),

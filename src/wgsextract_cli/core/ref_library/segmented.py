@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -41,12 +42,20 @@ USER_AGENT = (
 )
 # Hosts that refuse an outdated browser's User-Agent (403) but serve a tool's.
 _TOOL_AGENT_HOSTS = ("zenodo.org",)
+# Hosts that refuse both but serve Python's own (REVEL's, checked 2026-11-16).
+_PYTHON_AGENT_HOSTS = ("rothsj06.dmz.hpc.mssm.edu",)
 
 
 def user_agent(url: str) -> str:
     host = (urlparse(url).hostname or "").lower()
-    if any(host == h or host.endswith(f".{h}") for h in _TOOL_AGENT_HOSTS):
+
+    def listed(hosts: tuple[str, ...]) -> bool:
+        return any(host == h or host.endswith(f".{h}") for h in hosts)
+
+    if listed(_TOOL_AGENT_HOSTS):
         return "wgsextract-cli"
+    if listed(_PYTHON_AGENT_HOSTS):
+        return f"Python-urllib/{sys.version_info.major}.{sys.version_info.minor}"
     return USER_AGENT
 
 

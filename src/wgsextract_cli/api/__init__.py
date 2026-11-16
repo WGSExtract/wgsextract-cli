@@ -138,6 +138,7 @@ from .qc import (
 )
 from .ref import (
     RefAadrParams,
+    RefAcmgDataParams,
     RefAlphamissenseParams,
     RefAncestryParams,
     RefBootstrapParams,
@@ -258,6 +259,7 @@ __all__ = [
     "RealignParams",
     "RelateParams",
     "RefAadrParams",
+    "RefAcmgDataParams",
     "RefAlphamissenseParams",
     "RefBootstrapParams",
     "RefCaddParams",

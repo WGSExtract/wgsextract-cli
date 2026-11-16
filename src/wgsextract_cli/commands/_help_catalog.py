@@ -451,6 +451,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"{_LIBRARY}: AlphaMissense score files (--delete removes them).",
         "wgsextract ref alphamissense",
     ),
+    "ref acmg-data": _h(
+        f"{_LIBRARY}: ref/acmg/ holds the Ensembl GFF3, the downloads in "
+        "sources/ and fastVEP's databases with acmg_data.json in sa/ (or "
+        "--sa-dir); --dry-run prints the plan and sizes only.",
+        "wgsextract ref acmg-data --dry-run",
+        "wgsextract ref acmg-data --chromosomes chr22",
+    ),
     "ref aadr": _h(
         f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",
         "wgsextract ref aadr --install",
