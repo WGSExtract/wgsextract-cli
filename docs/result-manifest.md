@@ -6,6 +6,12 @@ Commands describe each run in a JSON document that follows the versioned schema
 command read and wrote, what it measured and warned about, and how it ran. Use
 it instead of parsing log text or guessing output file names.
 
+The bundled schema is generated from the actual writer dataclasses in
+`core/results.py`, through `core/result_schema.py`. Run
+`scripts/gen_output_schemas.py` (or `just regen`) to update it; `--check` detects
+drift. Defaulted and nullable fields remain required because the writer emits
+them. This generation does not add runtime validation or change tolerant readers.
+
 - **Manifest file.** A command that writes outputs also writes
   `<output>.manifest.json` next to them, atomically. The name is the first
   output file's name with any compression suffix (`.gz`, `.bgz`, `.zst`,

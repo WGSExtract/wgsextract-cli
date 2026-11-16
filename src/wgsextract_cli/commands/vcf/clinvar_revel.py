@@ -1,5 +1,6 @@
 import logging
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfClinvarParams, VcfRevelParams
@@ -156,8 +157,11 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     result.add_metrics(**conflict_metrics)
     if conflict_summary.carried:
         details = dict(result.details or {})
+        previous_confidence = details.get("confidence", [])
+        if not isinstance(previous_confidence, Iterable):
+            raise TypeError("Result confidence details must be iterable.")
         details["confidence"] = [
-            *details.get("confidence", []),
+            *previous_confidence,
             conflict_summary.details(conflicts, "clinvar_conflicts"),
         ]
         result.set_details(details)
