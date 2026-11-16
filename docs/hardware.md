@@ -187,6 +187,44 @@ and contig jobs benefited from all cores without comparable scheduling stalls.
 See [issue #968 (Apple per-stage thread measurements)](https://github.com/WGSExtract/wgsextract-cli/issues/968)
 for wall/CPU times, periodic-task latency and the experiment's limitations.
 
+Mean wall seconds, comparing big versus all workers within each host:
+
+| Stage | M1, 4 / 8 | M1 Pro, 8 / 10, **desktop load** |
+|---|---:|---:|
+| CPU mapper | 13.72 / 9.14 | 26.03 / 23.26 |
+| Metal mapper | 3.31 / 3.30 | 7.30 / 7.22 |
+| Standalone sort | 3.78 / 3.04 | 1.80 / 1.98 |
+| markdup | 2.65 / 2.66 | 1.94 / 1.94 |
+| Standalone CRAM encoding | 2.72 / 2.13 | 8.08 / 8.03 |
+| bgzip | 1.69 / 1.25 | 0.96 / 0.95 |
+| Pipeline, varying sort only | 9.84 / 9.67 | 22.04 / 22.10 |
+| Contig-parallel SNP calling | 1.94 / 1.46 | 6.49 / 6.33 |
+
+These are not absolute cross-host speed comparisons: M1 used 278,929 chr20
+pairs, M1 Pro 200k pairs on hs38. Standalone processing used tenfold repeated
+records, which compress unusually well; small standalone tools were repeated
+five times per timing. M1 had two interleaved rounds per count. M1 Pro had
+four balanced interleaved rounds under normal desktop load, with backup paused,
+finishing in 25 minutes. Its per-run load averages, CPU seconds and wall times
+are recorded together in the issue's detailed table.
+
+On the busy M1 Pro, nine and ten CPU workers were effectively tied
+(23.34/23.26 s); standalone codec gains were below 1% and calling gained 2.6%.
+Background work that tends to occupy efficiency cores can hide or reverse
+those small gains, change the best interactive worker count, and affect latency
+tails. Interleaving reduces drift but cannot remove this contention; no per-core
+placement was measured. Do not treat these as quiet-host optima or predictions
+for other chips. The all-core mapper/codec/calling budgets retain the base M1's
+clear gains; explicit thread overrides remain available.
+
+The M1 Pro's standalone sort probe had p95 13.6/14.1 ms and maxima 15.5/16.5 ms
+at 8/10 workers, despite the larger worker count being slower and using more
+RAM (1.19/1.46 GiB largest-process RSS). No seconds-long probe stall was observed;
+the largest delay anywhere was 183 ms with ten Metal workers. The probe includes
+tiny-process launch overhead, not GUI latency, and spare-memory tests do not
+rule out thrashing under memory pressure. Neither integer topology detection,
+explicit overrides nor the record-equality checks depend on desktop timing noise.
+
 Correctness was also checked through the actual CLI on 200k and 5M HG002
 read pairs against the whole hs38 reference. M1 Pro's automatic budgets
 (CPU mapper 10, sort/markdup 8, standalone codec/calling 10) and explicit 8
@@ -203,7 +241,7 @@ contain this table. Only M1 and the 10-core M1 Pro are available for measurement
 |---|---|---:|---:|---|
 | M1 | 4P + 4E | 8 | 4 | Measured |
 | M1 Pro (8-core) | 6P + 2E | 8 | 6 | Derived |
-| M1 Pro (10-core) | 8P + 2E | 10 | 8 | Timing pending |
+| M1 Pro (10-core) | 8P + 2E | 10 | 8 | Measured, desktop load |
 | M1 Max | 8P + 2E | 10 | 8 | Derived |
 | M1 Ultra | 16P + 4E | 20 | 16 | Derived |
 | M2 | 4P + 4E | 8 | 4 | Derived |

@@ -323,6 +323,12 @@ matched across thread counts with fixed `-K 10000000`.
 This did **not** reproduce an OS-thrashing problem from sort's extra workers.
 It does not establish safety under memory pressure: the much larger
 `wgse-bwa-mem3` runs below are a separate memory-pressure failure.
+The accompanying 8P+2E M1 Pro study used four balanced rounds under normal
+desktop load: CPU mapping benefited from extra workers, Metal and markdup did
+not materially benefit, and sort at ten workers was slower than at eight without
+seconds-long scheduling stalls. Its tiny codec/calling gains are sensitive to
+background work on efficiency cores; see the
+[thread-plan measurements and limitations](hardware.md#apple-silicon-stage-plan).
 
 - **`wgse-bwa-mem3` thrashed.** macOS compressed memory to make room, free
   memory fell to 36–39%, and the load average was seen at about 50. The Mac
