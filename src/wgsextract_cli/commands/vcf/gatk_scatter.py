@@ -12,7 +12,7 @@ from threading import Event
 
 import psutil
 
-from wgsextract_cli.core.alignment_memory import available_memory
+from wgsextract_cli.core.alignment.memory import available_memory
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.progress import Heartbeat

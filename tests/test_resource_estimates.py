@@ -17,8 +17,8 @@ from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
-from wgsextract_cli.core import alignment_memory
 from wgsextract_cli.core import resource_estimates as resources
+from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 
 GIB = 1024**3

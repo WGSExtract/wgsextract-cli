@@ -7,7 +7,7 @@ from pathlib import Path
 
 from wgsextract_cli.api.pet import PetAlignParams
 from wgsextract_cli.cli.registration.pet import register as register
-from wgsextract_cli.core.alignment_memory import check_mapping_memory
+from wgsextract_cli.core.alignment.memory import check_mapping_memory
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,

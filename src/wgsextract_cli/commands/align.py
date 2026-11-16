@@ -19,7 +19,7 @@ from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.cli.registration.align import register as register
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
-from wgsextract_cli.core.alignment_memory import (
+from wgsextract_cli.core.alignment.memory import (
     BWA_MEM3_CUDA_BYTES,
     BWA_MEM3_METAL_BYTES,
     MINIMAP2_CUDA_BYTES,

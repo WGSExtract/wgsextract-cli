@@ -17,7 +17,8 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS, VcfDeepvariantParams
-from wgsextract_cli.core import alignment_memory, native_deepvariant, ultima
+from wgsextract_cli.core import native_deepvariant, ultima
+from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (

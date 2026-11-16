@@ -34,7 +34,7 @@ from urllib.parse import urlsplit
 from wgsextract_cli.api.align import RealignParams
 from wgsextract_cli.cli.registration.realign import register as register
 from wgsextract_cli.core import bwa_mem2, ultima
-from wgsextract_cli.core.alignment_memory import (
+from wgsextract_cli.core.alignment.memory import (
     available_memory,
     check_mapping_memory,
     estimate_mapping_memory,
