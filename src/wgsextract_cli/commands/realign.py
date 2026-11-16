@@ -1118,7 +1118,7 @@ def _run_steps(
         # One collate bucket is resident while BWA maps; reserve it alongside.
         additional_ram_bytes = collate_working_memory(
             job.input,
-            str(stage_thread_plan(job.threads).compression),
+            threads,
             memory,
             records=reads,
             max_record_bytes=sample.max_record_bytes,
@@ -1291,6 +1291,7 @@ def _run_steps(
                 job.input,
                 threads=str(stage_thread_plan(job.threads).compression),
                 memory=memory,
+                memory_threads=threads,
                 temp_parent=outdir,
                 cram_opt=cram_opt,
             ) as stages:
@@ -1350,6 +1351,7 @@ def _run_steps(
                 staged_r2,
                 threads=str(stage_thread_plan(job.threads).compression),
                 memory=memory,
+                memory_threads=threads,
                 temp_parent=outdir,
                 cram_opt=cram_opt,
                 heartbeat=True,

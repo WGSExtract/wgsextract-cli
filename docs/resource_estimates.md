@@ -202,7 +202,9 @@ pipes on every platform, including native Windows. There is no
 `extracted_fastqs` demand. minimap2, GPU and long-read workflows keep files.
 
 Streaming uses file extraction's collate bucket count (20× BAM / 70× CRAM input
-size against threads × per-thread memory, 64–200 buckets). Collate's output
+size against sort-stage threads × per-thread memory, 64–200 buckets).
+Codec `-@` workers are independent: using efficiency cores for compression
+does not enlarge collate's bucket budget or its concurrent-RAM estimate. Collate's output
 order depends on that count, so the aligner receives the same pairs in the same
 order either way and the realigned records are identical. A 30x genome streams
 whenever one bucket fits beside alignment in RAM.
