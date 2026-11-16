@@ -161,6 +161,14 @@ it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
 
+### Issue-report package
+
+Issue-report internals live in `core/issue_report/`: `redaction.py` sanitizes
+text, `runs.py` loads local run records and discovers sensitive names, and
+`environment.py` collects installation diagnostics. The package initializer
+assembles reports and fits GitHub links; existing `core.issue_report` and
+`api.support` imports remain unchanged.
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
