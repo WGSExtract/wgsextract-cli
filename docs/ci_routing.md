@@ -473,6 +473,11 @@ red-main bug. Nightly results refresh the baseline after fixes outside the push
 route; unrelated path-filtered pushes do not falsely mark it green.
 Manual/nightly retries remain independent and can report confirmed recoveries
 even when another run of their event exists.
+Main's red/green issue follows the newest conclusive completed push/nightly
+result even when a newer push is queued or running. Pending successors only
+suppress retries of the older run; they cannot hide a failure or prevent
+reporting recovery. A delayed older result never replaces a newer completed
+verdict, and closing an old red-main issue does not certify the pending SHA.
 
 ### CLI test time and tiers
 
@@ -524,7 +529,11 @@ Baseline main run IDs: Ubuntu `43950284692`, macOS `43904396484`, Windows
 Main smoke run `43941593870` used package + benchmark minutes of
 0.55 + 1.75 (Ubuntu), 1.13 + 2.58 (macOS), 0.78 + 3.08 (Windows);
 the same PR used 0.47 + 1.58, 0.67 + 2.08, 0.90 + 2.65 respectively.
-Combined smoke timeouts are 4, 6 and 6 minutes respectively.
+These smoke samples had warm dependency caches; their durations do not bound
+a cold Pixi install after `pixi.lock` changes. PR smoke jobs cannot seed the
+replacement main cache. All three combined smoke jobs therefore retain the
+conservative **30-minute ceiling**, rather than the warm-cache-derived 4/6/6
+minutes, until cold lockfile-change runs establish a safe tighter budget.
 
 Per-test timing XML and the slowest 60 durations remain available on **every**
 run, separately named by OS. Non-gating line coverage is collected on
