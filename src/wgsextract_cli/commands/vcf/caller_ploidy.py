@@ -331,7 +331,7 @@ def call_partitioned(
             "GATK --scatter does not support sex/PAR ploidy partitions."
         )
     if name == "gatk" and params.region is None:
-        from wgsextract_cli.core.cram_staging import cram_version
+        from wgsextract_cli.core.alignment.cram_staging import cram_version
 
         version = cram_version(str(params.input))
         if version is not None and version >= (3, 1):
