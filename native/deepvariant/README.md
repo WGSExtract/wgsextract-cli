@@ -300,7 +300,7 @@ executables), and check the archives against the published digests:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download macos-deepvariant-2 -R WGSExtract/wgsextract-cli
+gh release download macos-deepvariant-3 -R WGSExtract/wgsextract-cli
 shasum -a 256 -c SHA256SUMS
 ```
 
