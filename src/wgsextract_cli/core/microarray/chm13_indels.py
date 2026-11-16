@@ -12,8 +12,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from wgsextract_cli.core.microarray_chm13 import CHM13Catalogue
-from wgsextract_cli.core.microarray_chm13_calls import canonical_chromosome
+from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
+from wgsextract_cli.core.microarray.chm13_calls import canonical_chromosome
 from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_indel_probes import (
     IndelProbe,
