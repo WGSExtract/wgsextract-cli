@@ -171,6 +171,16 @@ it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
 
+### Running state and worker threads
+
+What a running command reads (its result, progress callback, cancel token,
+settings, where its tools' stdout goes) is on the `ExecutionContext` in
+`core/execution_context.py`, a `ContextVar`, so concurrent library calls keep
+apart. Reach it through `current_result()`, `report()`, `checkpoint()` and
+`settings` as before. Start worker threads with `context_thread` or
+`ContextThreadPoolExecutor`, which run them in the caller's context; ruff
+rejects a bare `threading.Thread` or `ThreadPoolExecutor` in command code.
+
 ### Issue-report package
 
 Issue-report internals live in `core/issue_report/`: `redaction.py` sanitizes
