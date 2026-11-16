@@ -20,7 +20,10 @@ import pytest
 from tests.htslib_helpers import needs_htslib, write_fasta
 from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
+from wgsextract_cli.api.microarray import MicroarrayParams
+from wgsextract_cli.commands import _microarray_reuse as reuse
 from wgsextract_cli.core.microarray_targets import build_genome_wide_target
+from wgsextract_cli.core.results import CommandResult, collecting
 
 pytestmark = needs_htslib
 
@@ -171,6 +174,43 @@ def test_issue_1043_changed_declared_sex_invalidates_reuse(run: Any) -> None:
     run()
     assert not _reused(outdir)[KIT]
     assert not _reused(outdir)[V3]
+
+
+def test_issue_1043_external_effective_sex_invalidates_saved_outputs(
+    run: Any, tmp_path: Path
+) -> None:
+    output = tmp_path / "combined.txt"
+    output.write_text("rs1\tX\t100\tAA\n")
+    unit = reuse.Unit(reuse.COMBINED, tmp_path / "combined.inputs.json")
+    params = MicroarrayParams(input=Path(run.bam))
+    result = CommandResult("microarray")
+    with collecting(result):
+        result.add_output(str(output), "combined_kit")
+        result.add_metrics(effective_sex="Male")
+        inputs = reuse.run_inputs(
+            params,
+            input_path=run.bam,
+            ref_fasta=str(run.fasta),
+            build="hg19",
+            ref_vcf_tab=None,
+            ploidy_file=None,
+            liftover_chain=None,
+            sample=None,
+        )
+        reuse.save(unit, inputs, result.outputs)
+        assert reuse.check(unit, inputs).fresh
+        result.add_metrics(effective_sex="Female")
+        changed = reuse.run_inputs(
+            params,
+            input_path=run.bam,
+            ref_fasta=str(run.fasta),
+            build="hg19",
+            ref_vcf_tab=None,
+            ploidy_file=None,
+            liftover_chain=None,
+            sample=None,
+        )
+        assert not reuse.check(unit, changed).fresh
 
 
 def test_issue_1043_config_quality_changes_invalidate_reuse(run: Any) -> None:

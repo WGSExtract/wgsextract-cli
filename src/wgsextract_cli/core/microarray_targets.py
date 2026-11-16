@@ -228,6 +228,13 @@ def build_genome_wide_target(
     template_files = [
         path for _name, _ncbi36, paths in _template_paths(roots) for path in paths
     ]
+    templates = [
+        {
+            "format": name,
+            "parts": [resource_identity(path, include_path=False) for path in paths],
+        }
+        for name, _ncbi36, paths in _template_paths(roots)
+    ]
     chain36 = (
         ncbi36_chain(reflib_dir, chain_roots)
         if needs_ncbi36_chain(template_roots)
@@ -240,10 +247,12 @@ def build_genome_wide_target(
     )
     inputs: dict[str, object] = {
         "version": TARGET_VERSION,
-        "templates": [resource_identity(path) for path in template_files],
-        "corrections": resource_identity(_PACKAGED_TEMPLATES / "corrections.tsv"),
-        "chain36": resource_identity(chain36),
-        "chain38": resource_identity(chain38),
+        "templates": templates,
+        "corrections": resource_identity(
+            _PACKAGED_TEMPLATES / "corrections.tsv", include_path=False
+        ),
+        "chain36": resource_identity(chain36, include_path=False),
+        "chain38": resource_identity(chain38, include_path=False),
     }
     # Before taking the lock, so a current target in a read-only library is used.
     if _is_current(out, inputs):
@@ -320,6 +329,7 @@ def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> 
         return found
     chain = str(Path(reflib_dir, source.name))
     if not Path(chain).is_file():
+        Path(chain).parent.mkdir(parents=True, exist_ok=True)
         with _build_lock(chain + ".lock"):
             if not Path(chain).is_file() and not download_chain(source, chain):
                 raise WGSExtractError(

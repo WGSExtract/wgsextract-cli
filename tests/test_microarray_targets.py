@@ -2,6 +2,7 @@
 
 import gzip
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -245,6 +246,22 @@ def test_a_current_target_is_reused(tmp_path):
 
 
 @needs_tools("bgzip", "tabix")
+def test_issue_1043_shared_target_reuses_byte_identical_resources_at_another_path(
+    tmp_path,
+):
+    first = tmp_path / "first"
+    templates = _templates(first)
+    target = mt.build_genome_wide_target(str(first), "hg19", [str(templates)])
+    second = tmp_path / "second"
+    shutil.copytree(first, second)
+    stamp = Path(target).stat().st_mtime_ns
+    mt.build_genome_wide_target(
+        str(first), "hg19", [str(second / "microarray")], [str(second)]
+    )
+    assert Path(target).stat().st_mtime_ns == stamp
+
+
+@needs_tools("bgzip", "tabix")
 def test_simultaneous_builds_leave_one_valid_target(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
@@ -343,6 +360,12 @@ def test_issue_1043_concurrent_missing_chain_acquisition(tmp_path, chain_servers
     with ThreadPoolExecutor(max_workers=2) as pool:
         paths = list(pool.map(lambda _: mt.hg19_to_hg38_chain(str(tmp_path)), range(2)))
     assert all(Path(path).read_bytes() == data for path in paths)
+
+
+def test_issue_1043_chain_acquisition_creates_a_fresh_library(tmp_path, chain_servers):
+    _primary, _mirror, data = chain_servers
+    chain = mt.hg19_to_hg38_chain(str(tmp_path / "new-library"))
+    assert Path(chain).read_bytes() == data
 
 
 def test_a_chain_with_the_wrong_checksum_is_rejected_for_the_mirrors(

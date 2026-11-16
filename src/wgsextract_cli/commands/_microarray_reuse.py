@@ -62,6 +62,7 @@ def run_inputs(
     liftover_chain: str | None,
     sample: str | None,
     aadr_panels: Iterable[str] = (),
+    aadr_chain: str | None = None,
 ) -> dict[str, Any]:
     """The inputs shared by every unit; options are resolved through
     config.toml, so changing a ``microarray_*`` setting counts too. The AADR
@@ -76,7 +77,10 @@ def run_inputs(
         "ref_vcf_tab": resource_identity(ref_vcf_tab),
         "ploidy_file": resource_identity(ploidy_file),
         "liftover_chain": resource_identity(liftover_chain),
-        "sample_sex": sex.value if sex else None,
+        "sample_sex": current_result().metrics.get(
+            "effective_sex", sex.value if sex else None
+        ),
+        "aadr_chain": resource_identity(aadr_chain),
         "region": params.region,
         "sample": sample,
         "quality": asdict(quality_policy(params)),

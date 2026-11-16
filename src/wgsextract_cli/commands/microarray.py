@@ -33,6 +33,7 @@ from wgsextract_cli.core.genotype_qc import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.microarray.aadr import (
+    aadr_chain,
     aadr_lifter,
     aadr_panel,
     aadr_vcf_nocalls,
@@ -373,11 +374,14 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     ref_fasta = lib.fasta
     ref_vcf_tab = str(params.ref_vcf_tab) if params.ref_vcf_tab else lib.ref_vcf_tab
+    if params.ref_vcf_tab and not Path(params.ref_vcf_tab).is_file():
+        raise WGSExtractError(f"--ref-vcf-tab not found: {params.ref_vcf_tab}")
     ploidy_file = str(params.ploidy_file) if params.ploidy_file else lib.ploidy_file
     requested = params.formats.split(",")
     aadr_panels = [panel for key in requested if (panel := aadr_panel(key))]
     legacy_requested = any(aadr_panel(key) is None for key in requested)
     lifter = None
+    aadr_chain_file = None
     if aadr_panels:
         validate_aadr_sample_id(params.aadr_sample_id)
         if "2m" in aadr_panels:
@@ -387,12 +391,18 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     "projection is not supported."
                 )
             require_aadr_2m(lib.resource_root("aadr/" + AADR_2M_FILENAME))
-            lifter = aadr_lifter(
-                lib.build,
-                outdir,
-                lib.resource_root(_HG19_TO_HG38),
-                allow_download=False,
-            )
+        aadr_chain_file = aadr_chain(
+            lib.build,
+            outdir,
+            lib.resource_root(_HG19_TO_HG38),
+            allow_download="2m" not in aadr_panels,
+        )
+        lifter = aadr_lifter(
+            lib.build,
+            outdir,
+            lib.resource_root(_HG19_TO_HG38),
+            allow_download="2m" not in aadr_panels,
+        )
 
     logging.debug(f"Resolved Reference FASTA: {ref_fasta}")
     logging.debug(f"Resolved Target SNP Tab: {ref_vcf_tab}")
@@ -541,6 +551,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         liftover_chain=lib.liftover_chain,
         sample=vcf_sample,
         aadr_panels=aadr_panels,
+        aadr_chain=aadr_chain_file,
     )
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
@@ -612,10 +623,6 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         Path(outdir).mkdir(parents=True, exist_ok=True)
         calling_outdir = tempfile.mkdtemp(prefix="AADR_", dir=outdir)
         try:
-            if "2m" not in aadr_panels:
-                lifter = aadr_lifter(
-                    lib.build, calling_outdir, lib.resource_root(_HG19_TO_HG38)
-                )
             legacy_panels = [panel for panel in aadr_panels if panel != "2m"]
             if "2m" in aadr_panels and is_vcf and (legacy_panels or legacy_requested):
                 legacy_workdir = str(Path(calling_outdir, "legacy"))

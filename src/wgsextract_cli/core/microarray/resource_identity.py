@@ -4,7 +4,9 @@ import hashlib
 from pathlib import Path
 
 
-def resource_identity(path: str | Path | None) -> dict[str, str] | None:
+def resource_identity(
+    path: str | Path | None, *, include_path: bool = True
+) -> dict[str, str] | None:
     if path is None:
         return None
     resolved = Path(path).expanduser().resolve()
@@ -14,5 +16,7 @@ def resource_identity(path: str | Path | None) -> dict[str, str] | None:
             while chunk := source.read(1024 * 1024):
                 digest.update(chunk)
     except FileNotFoundError:
-        return {"path": str(resolved)}
-    return {"path": str(resolved), "sha256": digest.hexdigest()}
+        return {"path": str(resolved)} if include_path else {}
+    return ({"path": str(resolved)} if include_path else {}) | {
+        "sha256": digest.hexdigest()
+    }

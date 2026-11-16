@@ -171,7 +171,6 @@ def _open_template(path: str) -> TextIO:
     return open(path)
 
 
-@functools.cache
 def _template_corrections() -> dict[tuple[str, str, str], str]:
     """{(template, ID, position): corrected position} from corrections.tsv."""
     corrections: dict[tuple[str, str, str], str] = {}
@@ -250,7 +249,11 @@ def template_resource_paths(
     fmt = get_template_format(format_name)
     if fmt is None:
         return []
-    root, bodies = _resolve_templates_for_format(templates_dir, format_name, fmt)
+    try:
+        root, bodies = _resolve_templates_for_format(templates_dir, format_name, fmt)
+    except WGSExtractError:
+        # Freshness checks must not discard a CombinedKit when conversion fails.
+        return []
     return [
         Path(root, "head", format_name + fmt["suffix"]),
         *(Path(body) for body in bodies),
