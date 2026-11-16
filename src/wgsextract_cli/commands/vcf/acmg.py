@@ -508,7 +508,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         "criteria": dict(tally.criteria.most_common()),
         "transcript_choice": dict(tally.transcripts.most_common()),
     }
-    summary_path.write_text(json.dumps(summary, indent=1) + "\n")
+    summary_path.write_text(json.dumps(summary, indent=1) + "\n", newline="\n")
     result.add_output(out_vcf, "annotated_vcf", metrics={"variants": tally.records})
     result.add_output(summary_path, "acmg_summary")
     result.add_metrics(
