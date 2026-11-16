@@ -84,7 +84,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   whose files are checked against their published hashes; only the WGS model
   is qualified. `deepvariant_native = "off"` keeps the Docker image instead.
   See [native/deepvariant/README.md](../../native/deepvariant/README.md).
-- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.3.0, the
+- `vcf deepvariant` also runs `wgse-deepvariant` on Linux x86-64 (0.3.1, the
   new `linux-deepvariant` conda packages): DeepVariant 1.10.0's WGS and
   ONT_R104 models without Docker, on the CPU, or with `--gpu` on an NVIDIA
   GPU through CUDA instead of Parabricks (call_variants for HG002 chr20 in 20 s on an RTX 3090,
@@ -95,7 +95,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   uses it for both models; `deepvariant_native = "off"` keeps Parabricks.
   Other models keep Google's image and Parabricks. Its weights
   (`wgse-deepvariant-weights-1.10.0`) are a separate download.
-- `pixi install -e deepvariant` installs `wgse-deepvariant` 0.3.0's CUDA build
+- `pixi install -e deepvariant` installs `wgse-deepvariant` 0.3.1's CUDA build
   on Linux x86-64 into an opt-in Pixi environment, where `vcf deepvariant`
   finds it.
 
