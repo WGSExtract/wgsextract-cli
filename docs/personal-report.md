@@ -330,3 +330,10 @@ The report's result manifest records the source manifests as inputs (role
 `section_failed` warning for each failed section and a `newer_attempt_failed`
 warning (with its `section`) for each source that a newer failed attempt
 followed.
+
+## Implementation layout
+
+The internal `core/personal_report/` package keeps the existing import interface.
+Its initializer collects evidence and builds the JSON document and findings
+table; `rendering.py` formats the offline HTML/Markdown documents and evidence
+links. Confidence and clinical rules are independent of presentation.
