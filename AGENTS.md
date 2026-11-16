@@ -8,7 +8,7 @@ When outputting test run results, logs, or stdout captures, **always** put them 
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
 
-Default operations and options never reach the network. Only explicit network operations (downloads, or commands that inherently need the network) may, and anything else that would contact a server (for example sending a sample's variant positions to a remote index) must be an explicit opt-in that says what is sent where.
+Default operations and options never reach the network. Only explicit network operations (downloads, or commands that inherently need the network) may, and anything else that would contact a server (for example sending a sample's variant positions to a remote index) must be an explicit opt-in that says what is sent where. Fetching missing public reference data on first use is allowed when the command says so and the request carries nothing derived from the user's samples; anything that sends sample-derived information (positions, genotypes, files) is opt-in only.
 
 ## Discover CLI commands
 
