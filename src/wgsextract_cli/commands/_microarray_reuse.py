@@ -32,7 +32,7 @@ from wgsextract_cli.core.microarray_utils import GenotypeTally
 from wgsextract_cli.core.results import FileRecord, current_result
 
 SIDECAR_SUFFIX = ".inputs.json"
-SCHEMA = "wgsextract.microarray-inputs/1"
+SCHEMA = "wgsextract.microarray-inputs/2"
 
 COMBINED = "all"
 """The unit holding the combined kit and everything else not a vendor or

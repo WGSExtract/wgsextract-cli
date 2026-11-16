@@ -437,6 +437,21 @@ def test_issue_1042_public_mt_markers_survive_real_chain_cold_and_warm(tmp_path)
         ]
 
 
+@pytest.mark.parametrize("cached", [False, True])
+def test_issue_1042_invalid_rcrs_coordinates_are_not_exported(tmp_path, cached):
+    chain = _chain(tmp_path / "c.chain", *TWO_BLOCKS)
+    rows = [("bad", "MT", str(position), "AA") for position in (-1, 0, 16570)] + [
+        ("last", "MT", "16569", "CC")
+    ]
+    for _ in range(2):
+        assert _lift(
+            tmp_path,
+            rows,
+            chain,
+            reflib_dir=str(tmp_path / "cache") if cached else None,
+        ) == [["last", "MT", "16569", "CC"]]
+
+
 def test_liftover_complements_genotypes_in_inverted_regions(tmp_path):
     chain = _chain(
         tmp_path / "c.chain",

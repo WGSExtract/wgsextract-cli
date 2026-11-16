@@ -262,6 +262,20 @@ def test_issue_1043_ncbi36_chain_edit_regenerates_explicit_target_vendor(
         assert list(csv.reader(source))[-1][-1] == "CC"
 
 
+def test_issue_1042_outputs_from_old_projection_policy_are_regenerated(
+    run: Any,
+) -> None:
+    outdir = run()
+    for name in (KIT, V3):
+        sidecar = outdir / f"{name}.inputs.json"
+        saved = json.loads(sidecar.read_text())
+        saved["schema"] = "wgsextract.microarray-inputs/1"
+        sidecar.write_text(json.dumps(saved))
+    run()
+    assert not _reused(outdir)[KIT]
+    assert not _reused(outdir)[V3]
+
+
 def test_a_changed_reference_regenerates(run: Any) -> None:
     outdir = run()
     before = _stamps(outdir, V3, KIT)

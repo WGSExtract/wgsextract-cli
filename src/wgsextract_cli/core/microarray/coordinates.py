@@ -126,7 +126,10 @@ def _project(
     for index, (chrom, position) in enumerate(coordinates):
         # Chip targets and hg38 both use rCRS, not UCSC hg19's Yoruba chrM.
         if preserve_rcrs and chrom == "chrM":
-            rows.append(Projection(index, chrom, position, False))
+            if 1 <= position <= 16569:
+                rows.append(Projection(index, chrom, position, False))
+            else:
+                reasons["unmapped"] += 1
             continue
         try:
             hits = lifter.convert_coordinate(chrom, position - 1)
