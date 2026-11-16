@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from wgsextract_cli.api._runtime import ProgressEvent, _context_of
-from wgsextract_cli.core import utils
+from wgsextract_cli.api._runtime import ProgressEvent
+from wgsextract_cli.core import execution_context, utils
 from wgsextract_cli.core.progress import Heartbeat
 from wgsextract_cli.core.results import CommandResult, collecting
 
@@ -109,7 +109,7 @@ def test_pipeline_counts_aligner_only_or_fastq_as_fallback(
 
 def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
     events: list[ProgressEvent] = []
-    with _context_of(events.append, None):
+    with execution_context.bound(progress=events.append):
         with Heartbeat("Alignment", 4, interval=60) as heartbeat:
             heartbeat.advance(3)
     assert events == [
