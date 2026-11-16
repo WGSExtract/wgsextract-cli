@@ -24,13 +24,17 @@ test("929 writer-generated record types require emitted defaults without narrowi
   const source = `
 import type { ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "${modulePath("generated/server-transport.js")}";
 import type { ResultError, ResultFile } from "${modulePath("result-document.js")}";
+type OptionalKeys<T> = { [Key in keyof T]-?: {} extends Pick<T, Key> ? Key : never }[keyof T];
+type RequireNone<T extends never> = T;
+// Reject even one optional key, including nullable/defaulted wire fields.
+type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
+type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
+type ErrorFieldsRequired = RequireNone<OptionalKeys<ResultErrorRecord>>;
 const wire: ResultFileRecord = {
   path: "out.bam", role: "output", kind: "bam", exists: false,
   size_bytes: null, mtime: null, fingerprint: null, index: null,
   metrics: { count: 1, ratio: 0.5, flag: true, missing: null, label: "test" },
 };
-// @ts-expect-error The writer emits defaults; they are not optional on the wire.
-const incomplete: ResultFileRecord = { path: "out.bam", role: "output", kind: "bam" };
 const warning: ResultWarningRecord = { code: "low_coverage", message: "", details: { depth: 1 } };
 const error: ResultErrorRecord = { kind: "usage", message: "" };
 // @ts-expect-error A canonical writer error uses a declared ErrorKind.
