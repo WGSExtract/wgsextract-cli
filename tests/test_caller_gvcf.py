@@ -3,6 +3,7 @@ fixture alignments, samtools and bcftools; only the callers are faked."""
 
 import gzip
 import random
+import sys
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
@@ -86,8 +87,9 @@ def call(sample, caller, request, sex, region=None, **extra):
     }
     if caller == "gatk":
         return api.vcf.gatk(VcfGatkParams(**common), check=False)
-    request.getfixturevalue("linux_x86")
+    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
+    request.getfixturevalue("linux_x86")
     model = make_model(sample.root, "custom")
     return api.vcf.clair3(VcfClair3Params(**common, model=str(model)), check=False)
 
@@ -195,6 +197,10 @@ def test_a_clair3_partition_without_reads_reads_uncovered_863(sample, request):
     assert state(gvcf, "chr20", 1200) is State.CALLABLE_REFERENCE
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Windows locks the half-written file instead of failing the write",
+)
 def test_a_gvcf_that_cant_be_written_reports_bcftools_error_863(sample, tmp_path):
     """#1009 review: when bcftools can't write the cut gVCF (a full disk, or
     here a folder in its place), the error names the gVCF and carries
