@@ -216,7 +216,8 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract vcf gatk --input sample.cram",
     ),
     "vcf deepvariant": _h(
-        "deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; until "
+        "deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with "
+        "--reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until "
         "it finishes, the stages' work in .deepvariant.work, where a rerun "
         "resumes.",
         "wgsextract vcf deepvariant --input sample.cram",

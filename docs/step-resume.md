@@ -104,7 +104,9 @@ finished. Those shards are kept only when the rerun has the same key and
 inputs. Otherwise the folder is cleared. A resume with a different
 `--threads` keeps the earlier run's shard count, and `--threads` sets only
 how many shards run at once. Once the VCF is written, the work folder is
-deleted.
+deleted. With `--reference-evidence gvcf` the gVCF and its index are
+`postprocess_variants`' outputs too: a missing one reruns it, and after the
+work folder is gone, every stage (see [reference-evidence.md](reference-evidence.md#deepvariant)).
 
 ## Options
 

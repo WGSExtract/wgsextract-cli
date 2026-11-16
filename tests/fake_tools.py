@@ -519,6 +519,54 @@ def fail_here(stage, task=None, write=lambda: None):
         os.kill(failure["interrupt"], signal.SIGINT)
         time.sleep(30)
     sys.exit(137)
+
+
+def write_gvcf(vcf, reads, ref, out, bed=None):
+    # As DeepVariant: the VCF's records, and 0/0 blocks over every other base
+    # it assessed, binned by GQ: 50 at 10 reads or more, 5 below, and 0 (with
+    # MIN_DP 0) where no read covers it.
+    sequence, name = {}, None
+    for line in open(ref):
+        if line.startswith(">"):
+            name = line[1:].split()[0]
+            sequence[name] = []
+        else:
+            sequence[name].append(line.strip())
+    sequence = {k: "".join(v) for k, v in sequence.items()}
+    depth = subprocess.run(
+        [SAMTOOLS, "depth", "-aa", "--reference", ref, *(["-b", bed] if bed else []), reads],
+        capture_output=True, text=True, check=True).stdout
+    header = subprocess.run([BCFTOOLS, "view", "-h", vcf], capture_output=True, text=True,
+                            check=True).stdout.splitlines()
+    records = subprocess.run([BCFTOOLS, "view", "-H", vcf], capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+    called = {(r.split("\t")[0], int(r.split("\t")[1]) + i)
+              for r in records for i in range(len(r.split("\t")[3]))}
+    blocks = []
+    for line in depth.splitlines():
+        chrom, pos, reads_here = line.split("\t")
+        pos, reads_here = int(pos), int(reads_here)
+        if (chrom, pos) in called:
+            continue
+        gq = 50 if reads_here >= 10 else 5 if reads_here else 0
+        last = blocks[-1] if blocks else None
+        if last and last[0] == chrom and last[2] == pos - 1 and last[4] == gq:
+            last[2], last[3] = pos, min(last[3], reads_here)
+        else:
+            blocks.append([chrom, pos, pos, reads_here, gq])
+    rows = [f"{c}\t{a}\t.\t{sequence[c][a - 1]}\t<*>\t0\t.\tEND={b}\tGT:GQ:MIN_DP\t"
+            f"0/0:{gq}:{d}" for c, a, b, d, gq in blocks]
+    extra = ['##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+             '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">',
+             '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum DP">',
+             '##ALT=<ID=*,Description="Any other allele">']
+    text = "\n".join(header[:-1] + extra + header[-1:] + records + rows) + "\n"
+    unsorted = out + ".unsorted.vcf"
+    open(unsorted, "w").write(text)
+    subprocess.run([BCFTOOLS, "sort", "-Oz", "-o", out, unsorted], check=True,
+                   capture_output=True)
+    os.unlink(unsorted)
+    subprocess.run([BCFTOOLS, "index", "-t", out], check=True)
 """
 
 _DV_RUN_DEEPVARIANT = r"""
@@ -550,15 +598,21 @@ for flag in ("call_variants_extra_args", "postprocess_variants_extra_args"):
         extra[flag] = "".join(
             f' --{k} "{v}"' for k, v in (kv.split("=") for kv in opts[flag].split(","))
         )
+gvcf = make_gvcf = ""
+if "output_gvcf" in opts:
+    nonvariant = f"{work}/gvcf.tfrecord@{shards}.gz"
+    make_gvcf = f' --gvcf "{nonvariant}"'
+    gvcf = (f' --nonvariant_site_tfrecord_path "{nonvariant}"'
+            f' --gvcf_outfile "{opts["output_gvcf"]}"')
 commands = [
     f"time seq 0 {shards - 1} | parallel -q --halt 2 --line-buffer {bindir}/make_examples "
     f'--mode calling --ref "{opts["ref"]}" --reads "{opts["reads"]}" '
-    f'--examples "{examples}"{regions} --task {{}}',
+    f'--examples "{examples}"{make_gvcf}{regions} --task {{}}',
     f'time {bindir}/call_variants --outfile "{outputs}" --examples "{examples}" '
     f'--checkpoint "{model}"{extra.get("call_variants_extra_args", "")}',
     f'time {bindir}/postprocess_variants --ref "{opts["ref"]}" --infile "{outputs}" '
     f'--outfile "{opts["output_vcf"]}" --cpus "{opts.get("postprocess_cpus", shards)}"'
-    f'{extra.get("postprocess_variants_extra_args", "")}{ploidy}',
+    f'{extra.get("postprocess_variants_extra_args", "")}{ploidy}{gvcf}',
 ]
 print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
 """
@@ -626,6 +680,8 @@ shard = shard_names(opts["examples"])[task]
 def write():
     with open(shard, "w") as out:
         json.dump({"ref": ref, "reads": reads, "regions": opts.get("regions")}, out)
+    if opts.get("gvcf"):
+        open(shard_names(opts["gvcf"])[task], "w").close()
 
 
 fail_here("make_examples", task, write)
@@ -704,6 +760,11 @@ def write():
         subprocess.run([BCFTOOLS, "+fixploidy", output, "-Oz", "-o", opts["outfile"],
                         "--", "-f", "2"], check=True)
     subprocess.run([BCFTOOLS, "index", "-t", opts["outfile"]], check=True)
+    if opts.get("gvcf_outfile"):
+        if not all(map(os.path.exists, shard_names(opts["nonvariant_site_tfrecord_path"]))):
+            sys.exit("postprocess_variants: make_examples wrote no gVCF records")
+        write_gvcf(opts["outfile"], called["reads"], called["ref"], opts["gvcf_outfile"],
+                   regions[1] if regions else None)
 
 
 fail_here("postprocess_variants", None, write)
@@ -741,7 +802,8 @@ if command == "run":
         f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
         f"--checkpoint={opts['checkpoint']}{batch}",
         f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
-        f"--output_vcf_outfile={opts['output_vcf']}",
+        f"--output_vcf_outfile={opts['output_vcf']}"
+        + (f" --gvcf_outfile={opts['output_gvcf']}" if "output_gvcf" in opts else ""),
     ]
     print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
 elif command == "make_examples":
@@ -790,6 +852,9 @@ elif command == "postprocess_variants":
             [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
         )
         subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["output_vcf_outfile"]], stdin=mpileup.stdout, check=True)
+        if opts.get("gvcf_outfile"):
+            write_gvcf(opts["output_vcf_outfile"], called["reads"], called["ref"],
+                       opts["gvcf_outfile"])
 
 
     fail_here("postprocess_variants", None, write)
@@ -1195,18 +1260,36 @@ elif tool in ("deepvariant", "haplotypecaller"):
     with open(ref + ".fai") as fai:
         contigs = [line.split("\t")[:2] for line in fai]
     order = [name for name, _ in contigs]
-    lines = ["##fileformat=VCFv4.2"]
-    lines += [f"##contig=<ID={name},length={length}>" for name, length in contigs]
-    lines += ['##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
-              "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS"]
+    header = ["##fileformat=VCFv4.2"]
+    header += [f"##contig=<ID={name},length={length}>" for name, length in contigs]
+    header += ['##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">']
+    columns = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS"
+    calls = []
     for chrom, pos in sorted(set(starts), key=lambda s: (order.index(s[0]), s[1])):
         base = subprocess.run([TOOLS["samtools"], "faidx", ref, f"{chrom}:{pos}-{pos}"],
                               capture_output=True, text=True, check=True).stdout
         base = base.splitlines()[1].upper()
         alt = "C" if base != "C" else "G"
-        lines.append(f"{chrom}\t{pos}\t.\t{base}\t{alt}\t50\tPASS\t.\tGT\t1/1")
-    subprocess.run([TOOLS["bcftools"], "view", "-Oz", "-o", opt("--out-variants")],
-                   input="\n".join(lines) + "\n", text=True, check=True)
+        calls.append(f"{chrom}\t{pos}\t.\t{base}\t{alt}\t50\tPASS\t.\tGT\t1/1")
+    out = opt("--out-variants")
+    vcf = out
+    if "--gvcf" in args:
+        # --out-variants names the gVCF; the VCF goes beside it, without .g.
+        if not out.endswith(".g.vcf.gz"):
+            sys.exit("pbrun deepvariant: --gvcf needs a .g.vcf.gz output")
+        vcf = out[: -len(".g.vcf.gz")] + ".vcf.gz"
+        # Confident reference over each contig, around the calls.
+        gvcf = header + ['##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+                         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">',
+                         '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Min DP">',
+                         columns]
+        gvcf += [line.replace("\tGT\t1/1", "\tGT:GQ:MIN_DP\t1/1:50:20") for line in calls]
+        gvcf += [f"{name}\t1\t.\tN\t<*>\t0\t.\tEND={length}\tGT:GQ:MIN_DP\t0/0:50:20"
+                 for name, length in contigs]
+        subprocess.run([TOOLS["bcftools"], "sort", "-Oz", "-o", out], input="\n".join(gvcf) + "\n",
+                       text=True, check=True, capture_output=True)
+    subprocess.run([TOOLS["bcftools"], "view", "-Oz", "-o", vcf],
+                   input="\n".join([*header, columns, *calls]) + "\n", text=True, check=True)
 else:
     sys.exit(f"fake pbrun: unknown tool {tool}")
 """

@@ -1201,6 +1201,9 @@ class VcfDeepvariantParams(_CallerParams):
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
+    reference_evidence: str | None = reference_evidence_param(
+        "deepvariant.g.vcf.gz", "~5 percent more time, ~25 with Parabricks"
+    )
     restart: bool = restart_param()
     force_steps: tuple[str, ...] | None = force_steps_param(DEEPVARIANT_STEPS)
     dry_run: bool = dry_run_param()

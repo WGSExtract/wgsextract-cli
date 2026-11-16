@@ -550,3 +550,38 @@ def test_rerunning_a_finished_gpu_realign_needs_no_free_gpu(tmp_path, gpu, genom
     gpu.set_gpus((24_576, 14_000))
     run_wgsextract(*argv)
     assert len(gpu.runs()) == 1 and bam.stat().st_mtime_ns == finished
+
+
+@posix_only
+@needs_tools("samtools", "bcftools", "tabix")
+def test_gpu_deepvariant_writes_the_gvcf_in_the_same_run_863(tmp_path, gpu):
+    """Issue #863: with --reference-evidence gvcf one pbrun run writes both
+    the VCF and the gVCF, which is published with its provenance."""
+    from wgsextract_cli.core.reference_evidence import INDEX_ROLE, ROLE
+
+    (tmp_path / "sample").mkdir()
+    sample = snp_sample(tmp_path / "sample")
+    result = api.vcf.deepvariant(
+        api.VcfDeepvariantParams(
+            input=sample.bam, ref=sample.ref, outdir=tmp_path / "out", gpu=True,
+            region="chr1:1000-1100", reference_evidence="gvcf",
+        )
+    )  # fmt: skip
+
+    ((tool, args),) = gpu.runs()
+    assert "--gvcf" in args
+    outputs = {o.role: o for o in result.outputs}
+    assert [(c[0], c[1]) for c in vcf_calls(outputs["variants"].path)] == [
+        ("chr1", "1000")
+    ]
+    gvcf = outputs[ROLE]
+    assert os.path.basename(gvcf.path) == "deepvariant.g.vcf.gz"
+    assert outputs[INDEX_ROLE].path == gvcf.path + ".tbi"
+    assert gvcf.metrics["engine"] == "parabricks-deepvariant"
+    assert gvcf.metrics["region"] == "chr1:1000-1100"
+    # Nothing of pbrun's run is left beside them.
+    left = os.listdir(tmp_path / "out")
+    assert sorted(n for n in left if not n.endswith(".manifest.json")) == [
+        "deepvariant.g.vcf.gz", "deepvariant.g.vcf.gz.tbi",
+        "deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi",
+    ]  # fmt: skip
