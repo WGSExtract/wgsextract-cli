@@ -4,8 +4,8 @@
 classes (P, LP, VUS, LB, B) to a VCF annotated by `vep run`. They come from
 [fastVEP](https://github.com/Huang-lab/fastVEP)'s classifier and public
 databases only. It has no clinical, family or functional evidence (PS3/BS3,
-PS4, PP1, PP4) and no repeat track (BP3), and a VUS can mean that nothing was
-checked. Don't act on a class without a clinical genetics professional.
+PS4, PP1, PP4), BP3 needs an optional RepeatMasker track, and a VUS can mean
+that nothing was checked. Don't act on a class without a clinical genetics professional.
 
 The command is off unless you ask for it: it refuses to run without
 `--research-acmg` (`research_acmg` in the API and server), and nothing else
@@ -22,9 +22,11 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg \
 - `acmg_annotated.vcf.gz` (+ `.tbi`): the input VCF, vep-rs consequences
   unchanged, with three INFO fields per ALT allele: `ACMG_CLASS`,
   `ACMG_CRITERIA` (the criteria met, joined by `&`) and `ACMG_TRANSCRIPT`.
-  The header carries the disclaimer in `##WGSE_ACMG`.
+  The header carries the disclaimer in `##WGSE_ACMG`. Classifying an
+  `acmg_annotated.vcf.gz` again replaces its earlier classes.
 - `acmg_summary.json`: the disclaimer, the fastVEP version, the databases
-  (names, sizes, dates), the criteria never evaluated, and the counts of
+  (files, sources, assemblies, sizes, dates), the optional sources not loaded,
+  the criteria never evaluated, and the counts of
   classes, criteria and transcript choices.
 - The result manifest lists both (roles `annotated_vcf` and `acmg_summary`),
   the class counts as metrics (`acmg_p`, `acmg_lp`, ...), and the warning
@@ -44,8 +46,12 @@ and annotations are discarded.
 fastVEP doesn't fail when a database is missing: the criteria it drives
 don't fire and the variant reads as VUS. `vcf acmg` refuses instead, before
 reading any record, when the databases lack one of the eight sources below,
-when fastVEP skips a database file, or when the gnomAD database holds nothing
-of a chromosome the input has.
+when a database isn't built for GRCh38, when fastVEP skips a database file,
+or when the gnomAD database holds nothing of an autosome, X or Y the input
+has records on. Records on other contigs gnomAD holds nothing of (chrM, which
+gnomAD v4.1 lacks, and unplaced, alt or decoy contigs) are left unclassified,
+with the warning `acmg_contigs_not_classified`, and listed in the summary's
+`contigs_not_classified`.
 
 ## Requirements
 
@@ -59,7 +65,9 @@ of a chromosome the input has.
   <https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/>. fastVEP
   writes a transcript cache beside it on first use.
 - A folder of fastVEP databases built with `fastvep sa-build` (see fastVEP's
-  `docs/ACMG_SETUP.md`), one per source. Set `acmg_sa_dir` and `acmg_gff3` in
+  `docs/ACMG_SETUP.md`), one per source, all with `--assembly GRCh38`. A
+RepeatMasker track (`--source custom_bed --name repeatmasker`, an `.osi`)
+is optional and lets fastVEP evaluate BP3. Set `acmg_sa_dir` and `acmg_gff3` in
   config.toml to avoid passing them each time.
 
 | Source | `sa-build --source` | Terms |

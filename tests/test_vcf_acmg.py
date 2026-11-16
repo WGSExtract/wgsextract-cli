@@ -15,6 +15,7 @@ import pytest
 from tests.htslib_helpers import bgzip_index, needs_htslib, needs_tools
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfAcmgParams
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
@@ -37,10 +38,24 @@ SOURCES = {
 }
 
 
-def _sa_dir(tmp_path: Path, skip: str = "", gnomad_contig: str = "1") -> Path:
+def _sa_dir(
+    tmp_path: Path,
+    skip: str = "",
+    gnomad_contig: str = "1",
+    assembly: str = "GRCh38",
+    repeatmasker: bool = False,
+) -> Path:
     sa = tmp_path / "sa"
     sa.mkdir()
     fastvep = get_tool_path("fastvep") or "fastvep"
+    if repeatmasker:
+        bed = tmp_path / "repeats.bed"
+        bed.write_text("1\t1100\t1200\tAluY\n")
+        run_command(
+            [fastvep, "sa-build", "--source", "custom_bed", "--name", "repeatmasker",
+             "-i", str(bed), "-o", str(sa / "repeatmasker"), "--no-progress"],
+            capture_output=True,
+        )  # fmt: skip
     for source, name in SOURCES.items():
         if source == skip:
             continue
@@ -51,7 +66,7 @@ def _sa_dir(tmp_path: Path, skip: str = "", gnomad_contig: str = "1") -> Path:
             src.write_text(text.replace("\n1\t", f"\n{gnomad_contig}\t"))
         run_command(
             [fastvep, "sa-build", "--source", source, "-i", str(src),
-             "-o", str(sa / source), "--assembly", "GRCh38", "--no-progress"],
+             "-o", str(sa / source), "--assembly", assembly, "--no-progress"],
             capture_output=True,
         )  # fmt: skip
     return sa
@@ -115,6 +130,8 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
     assert summary["disclaimer"].startswith("Research use only; not a diagnosis")
     assert summary["classes"]["LP"] >= 1 and summary["classes"]["B"] == 1
     assert summary["transcript_choice"].get("other_transcript", 0) == 0
+    assert summary["sources_not_used"] == ["repeatmasker"]
+    assert "BP3" in summary["criteria_not_evaluated"]
     assert {o.role for o in result.outputs} >= {"annotated_vcf", "acmg_summary"}
     assert "acmg_research_only" in {w.code for w in result.warnings}
     assert result.metrics["acmg_b"] == 1
@@ -185,3 +202,158 @@ def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
     result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs), check=False)
     assert result.error is not None
     assert "fastVEP failed before reading the input" in result.error.message
+
+
+def test_api_acmg_refuses_without_the_opt_in_before_making_the_outdir(tmp_path):
+    # Review of #988: the API made the output folder before refusing.
+    params = VcfAcmgParams(
+        input=tmp_path / "in.vcf.gz", sa_dir=tmp_path, outdir=tmp_path / "out"
+    )
+    result = api.vcf.acmg(params, check=False)
+    assert result.exit_code == 2
+    assert result.error is not None and "--research-acmg" in result.error.message
+    assert not (tmp_path / "out").exists()
+
+
+def test_acmg_declares_the_gff3_folder_fastvep_writes_its_cache_in(tmp_path):
+    # Review of #988: two server jobs could write the same transcript cache.
+    given = VcfAcmgParams(gff3=tmp_path / "given" / "genes.gff3")
+    assert tmp_path / "given" in set(given.write_folders())
+    settings["acmg_gff3"] = str(tmp_path / "configured" / "genes.gff3")
+    assert tmp_path / "configured" in set(VcfAcmgParams().write_folders())
+
+
+@needs_fastvep
+def test_acmg_refuses_a_chromosome_the_gnomad_database_lacks(tmp_path):
+    # Review of #988: fastVEP's warning covers only autosomes and X, so a chrY
+    # record was classified without gnomAD.
+    text = (FIXTURES / "in_vep.vcf").read_text()
+    text = text.replace(
+        "##contig=<ID=1,length=248956422>\n",
+        "##contig=<ID=1,length=248956422>\n##contig=<ID=Y,length=57227415>\n",
+    )
+    text += "Y\t2781480\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\n"
+    sa = _sa_dir(tmp_path)
+    result = api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path, text)), check=False)
+    assert result.exit_code == 1
+    assert result.error is not None
+    assert "gnomAD database holds nothing of Y" in result.error.message
+    assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()
+
+
+@needs_fastvep
+def test_acmg_leaves_chrm_unclassified_when_gnomad_lacks_it(tmp_path):
+    # Code review of the #988 fix: refusing every contig gnomAD lacks refused
+    # whole-genome VCFs for their chrM, alt and decoy records.
+    text = (FIXTURES / "in_vep.vcf").read_text()
+    text = text.replace(
+        "##contig=<ID=1,length=248956422>\n",
+        "##contig=<ID=1,length=248956422>\n##contig=<ID=MT,length=16569>\n",
+    )
+    text += "MT\t7000\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
+    sa = _sa_dir(tmp_path)
+
+    result = api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path, text)))
+
+    acmg = _acmg(tmp_path / "out" / "acmg_annotated.vcf.gz")
+    assert acmg[7000] == {}
+    assert acmg[1150]["ACMG_CLASS"] == "B"
+    assert "acmg_contigs_not_classified" in {w.code for w in result.warnings}
+    summary = json.loads((tmp_path / "out" / "acmg_summary.json").read_text())
+    assert summary["contigs_not_classified"] == ["MT"]
+
+
+@needs_fastvep
+def test_acmg_refuses_databases_of_another_assembly(tmp_path):
+    # Review of #988: a whole GRCh37 set passed, as fastVEP only warns when
+    # the databases disagree with each other.
+    sa = _sa_dir(tmp_path, assembly="GRCh37")
+    result = api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path)), check=False)
+    assert result.exit_code == 1
+    assert result.error is not None
+    assert "gnomad.osa2 is built for GRCh37" in result.error.message
+    assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()
+
+
+@needs_fastvep
+def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(tmp_path):
+    # Review of #988: the classified VCF replaced an input of the same name.
+    inputs = _inputs(tmp_path)
+    named = tmp_path / "acmg_annotated.vcf.gz"
+    inputs["input"].rename(named)
+    Path(f"{inputs['input']}.tbi").rename(f"{named}.tbi")
+    before = named.read_bytes()
+    params = VcfAcmgParams(
+        research_acmg=True,
+        sa_dir=_sa_dir(tmp_path),
+        input=named,
+        ref=inputs["ref"],
+        gff3=inputs["gff3"],
+    )
+    result = api.vcf.acmg(params, check=False)
+    assert result.error is not None and "would overwrite" in result.error.message
+    assert named.read_bytes() == before
+
+
+@needs_fastvep
+def test_acmg_replaces_the_classes_of_an_earlier_run(tmp_path):
+    # Review of #988: classifying an acmg_annotated.vcf.gz again appended a
+    # second ACMG_CLASS, and a record left unclassified kept its old one.
+    first = tmp_path / "first"
+    first.mkdir()
+    sa = _sa_dir(first)
+    api.vcf.acmg(_params(first, sa, **_inputs(first)))
+    with gzip.open(first / "out" / "acmg_annotated.vcf.gz", "rt") as f:
+        text = f.read()
+    # A stale call on a reference-only record, which fastVEP leaves unclassified.
+    text += "1\t2900\t.\tA\t.\t50\tPASS\tACMG_CLASS=P;ACMG_TRANSCRIPT=OLD\tGT\t0/0\n"
+
+    api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path, text)))
+
+    with gzip.open(tmp_path / "out" / "acmg_annotated.vcf.gz", "rt") as f:
+        lines = f.read().splitlines()
+    assert sum(line.startswith("##INFO=<ID=ACMG_CLASS,") for line in lines) == 1
+    assert sum(line.startswith("##WGSE_ACMG=") for line in lines) == 1
+    acmg = _acmg(tmp_path / "out" / "acmg_annotated.vcf.gz")
+    assert acmg[1150]["ACMG_CLASS"] == "B"
+    assert acmg[2900] == {}
+    records = [line for line in lines if not line.startswith("#")]
+    assert all(line.count("ACMG_CLASS=") <= 1 for line in records)
+
+
+@needs_fastvep
+def test_acmg_summary_counts_repeatmasker_and_bp3_when_loaded(tmp_path):
+    # Review of #988: a loaded RepeatMasker track was reported unused, BP3
+    # never evaluated, and the .osi left out of the database inventory.
+    sa = _sa_dir(tmp_path, repeatmasker=True)
+    api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path)))
+    summary = json.loads((tmp_path / "out" / "acmg_summary.json").read_text())
+    assert summary["sources_not_used"] == []
+    assert "BP3" not in summary["criteria_not_evaluated"]
+    assert "repeatmasker.osi" in {f["file"] for f in summary["databases"]["files"]}
+
+
+@needs_fastvep
+def test_acmg_reports_fastveps_error_when_it_stops_partway(tmp_path):
+    # Review of #988: fastVEP stopping while bcftools still fed it was
+    # reported as "bcftools failed reading the input" (bcftools's SIGPIPE).
+    header = "".join(
+        line
+        for line in (FIXTURES / "in_vep.vcf").read_text().splitlines(keepends=True)
+        if line.startswith("#")
+    ).replace("#CHROM", '##INFO=<ID=NOTE,Number=1,Type=String,Description="">\n#CHROM')
+    # Past fastVEP's first batch, with plenty left for bcftools to write.
+    body = b"".join(
+        f"1\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n".encode()
+        for pos in range(1, 300_000)
+    ).replace(
+        b"\t50000\t.\tA\tG\t50\tPASS\t.", b"\t50000\t.\tA\tG\t50\tPASS\tNOTE=caf\xe9"
+    )
+    inputs = _inputs(tmp_path)
+    plain = tmp_path / "latin1.vcf"
+    plain.write_bytes(header.encode() + body)
+    inputs["input"] = Path(bgzip_index(plain))
+    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs), check=False)
+    assert result.error is not None
+    assert result.error.message.startswith("fastVEP failed: ")
+    assert "UTF-8" in result.error.message

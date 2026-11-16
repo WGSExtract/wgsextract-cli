@@ -588,6 +588,21 @@ class VcfAcmgParams(_AnnotatorParams):
         "Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz).", "acmg_gff3"
     )
 
+    def preflight(self) -> None:
+        from wgsextract_cli.commands.vcf.acmg import require_opt_in
+
+        require_opt_in(self.research_acmg)
+
+    def write_folders(self) -> Iterator[Path]:
+        # fastVEP saves its transcript cache beside the GFF3.
+        from wgsextract_cli.core.paths import expand_path
+
+        from ._params import with_config_defaults
+
+        gff3 = with_config_defaults(self).gff3
+        if gff3 is not None:
+            yield Path(expand_path(gff3)).parent
+
 
 @dataclass(frozen=True, kw_only=True)
 class VcfAlphamissenseParams(_AnnotatorParams):
