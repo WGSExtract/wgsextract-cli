@@ -188,7 +188,7 @@ def calling_ploidy(
     male, female = _policy(rows, selected, "M"), _policy(rows, selected, "F")
     if male == female:
         return female
-    sex = sample_sex(alignment, directory)
+    sex = sample_sex(alignment, directory, reference=reference)
     if sex is not None and sex not in {"Male", "Female"}:
         warn(
             "caller_sex_unknown",
