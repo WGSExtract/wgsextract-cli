@@ -103,7 +103,7 @@ def _classes(line: str) -> list[str]:
         return []
     start += len(_KEY)
     ends = [i for i in (line.find(";", start), line.find("\t", start)) if i >= 0]
-    return line[start : min(ends, default=len(line))].split(",")
+    return line[start : min(ends, default=len(line))].rstrip("\r\n").split(",")
 
 
 def _format(keys: str, values: str) -> dict[str, str]:
