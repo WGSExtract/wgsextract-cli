@@ -228,7 +228,9 @@ class Params:
     ``SAVES_IN_WORKING_FOLDER``: with no ``outdir`` the command saves in the
     working folder rather than beside its input. A ``DELETES`` operation
     deletes data it didn't make (an index, a sample's settings), which a
-    server does only when allowed.
+    server does only when allowed. ``ATOMIC_WRITES`` names ``writes`` fields
+    whose saves are atomic and the same from any run (a cache), so a
+    read-only library call making them still runs beside others.
     """
 
     COMMAND: ClassVar[str] = ""
@@ -237,6 +239,7 @@ class Params:
     DELETES: ClassVar[bool] = False
     WRITES_BESIDE: ClassVar[str] = ""
     SAVES_IN_WORKING_FOLDER: ClassVar[bool] = False
+    ATOMIC_WRITES: ClassVar[frozenset[str]] = frozenset()
     _config_default_fields: ClassVar[frozenset[str]] = frozenset()
 
     def explicitly_set(self, name: str) -> bool:

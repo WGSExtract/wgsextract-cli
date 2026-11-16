@@ -26,7 +26,7 @@ from typing import (
     overload,
 )
 
-from wgsextract_cli.core import live_status
+from wgsextract_cli.core import execution_context, live_status
 from wgsextract_cli.core.download_progress import CancelEvent, redact_urls
 from wgsextract_cli.core.paths import PathInput, command_is_path, expand_path
 from wgsextract_cli.core.process_registry import (
@@ -59,29 +59,22 @@ _process_group_kwargs = process_group_kwargs
 
 ProcessStream: TypeAlias = int | IO[bytes] | IO[str] | None
 
+
 # Set while a library (wgsextract_cli.api) call runs, so tools that would
 # inherit stdout write to stderr instead and the caller's stdout stays clean.
 # A process-wide flag rather than a contextvar because commands start tools
 # from worker threads, which do not inherit context; api calls are serialised.
-_children_stdout_to_stderr = False
-
-
 @contextlib.contextmanager
 def child_stdout_to_stderr() -> Iterator[None]:
     """Send the stdout of tools started without an explicit stdout to stderr."""
-    global _children_stdout_to_stderr
-    previous = _children_stdout_to_stderr
-    _children_stdout_to_stderr = True
-    try:
+    with execution_context.bound(child_stdout_to_stderr=True):
         yield
-    finally:
-        _children_stdout_to_stderr = previous
 
 
 def _child_stdout(stdout: ProcessStream) -> ProcessStream:
     """The stdout to give a tool: ``stdout`` itself unless it would inherit
     ours while ``child_stdout_to_stderr`` is active."""
-    if stdout is not None or not _children_stdout_to_stderr:
+    if stdout is not None or not execution_context.current().child_stdout_to_stderr:
         return stdout
     try:
         if sys.stderr is not None:
@@ -320,14 +313,14 @@ def _relay_if_terminal(
     return write_fd
 
 
-def _start_relays(relays: list[_Relay], launched: bool) -> list[threading.Thread]:
+def _start_relays(relays: list[_Relay], launched: bool) -> list[threading.Thread]:  # noqa: TID251 -- an annotation
     threads = []
     for read_fd, write_fd, target in relays:
         os.close(write_fd)
         if not launched:
             os.close(read_fd)
             continue
-        thread = threading.Thread(
+        thread = execution_context.context_thread(
             target=_tee_stderr,
             args=(read_fd, bytearray(), getattr(sys, target)),
             daemon=True,
@@ -400,7 +393,7 @@ def run_command(
     if stderr_read is not None:
         assert stderr_write is not None
         os.close(stderr_write)
-        stderr_thread = threading.Thread(
+        stderr_thread = execution_context.context_thread(
             target=_tee_stderr,
             args=(stderr_read, stderr_tail, sys.stderr, redact_output_urls, cmd_list),
             daemon=True,
@@ -444,7 +437,8 @@ def run_command(
         )
     except KeyboardInterrupt:
         if sys.platform == "win32":
-            cleanup_processes()
+            # Only this operation's tools: other library calls keep theirs.
+            proc_registry.cleanup(execution_context.current().process_scope)
         else:
             # The tool runs in its own session, so Ctrl-C did not reach it.
             terminate_trees([process])
@@ -459,7 +453,7 @@ class _RelayedPopen(subprocess.Popen[Any]):
     """A tool whose output to the terminal is relayed by threads: it is not
     finished, for wait() and poll(), until they have copied all of it."""
 
-    relays: Sequence[threading.Thread] = ()
+    relays: Sequence[threading.Thread] = ()  # noqa: TID251 -- an annotation
 
     def poll(self) -> int | None:
         returncode = super().poll()
@@ -557,7 +551,9 @@ def popen(
         process.wait()
         proc_registry.unregister_process(cmd_str, process)
 
-    threading.Thread(target=_unregister_finished_process, daemon=True).start()
+    execution_context.context_thread(
+        target=_unregister_finished_process, daemon=True
+    ).start()
     return process
 
 

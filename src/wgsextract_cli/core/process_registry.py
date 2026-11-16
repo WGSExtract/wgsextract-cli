@@ -6,23 +6,37 @@ import subprocess
 import sys
 import threading
 import time
+import weakref
 from typing import Any
 
 
 class ProcessRegistry:
-    """Tracks running subprocesses so they can be terminated on exit."""
+    """Tracks running subprocesses so they can be terminated on exit.
+
+    Each process belongs to the ``process_scope`` of the execution context
+    that started it, so cancelling one library call stops only its tools."""
 
     def __init__(self) -> None:
         self.processes: dict[str, set[subprocess.Popen[Any]]] = {}
+        self._scopes: weakref.WeakKeyDictionary[subprocess.Popen[Any], object] = (
+            weakref.WeakKeyDictionary()
+        )
         # Reentrant: signal handlers run cleanup() on the main thread, possibly
         # while that thread is already inside register/unregister.
         self._lock = threading.RLock()
-        self._refusing = False
+        self._refusing_all = False
+        self._refusing: set[object] = set()
 
     def register_process(self, key: str, process: subprocess.Popen[Any]) -> None:
+        from wgsextract_cli.core.execution_context import current
+
+        scope = current().process_scope
         with self._lock:
             self.processes.setdefault(key, set()).add(process)
-            refusing = self._refusing
+            self._scopes[process] = scope
+            refusing = self._refusing_all or (
+                scope is not None and scope in self._refusing
+            )
         if refusing:
             # Started after cancel(): it raced the cleanup, so stop it now.
             terminate_trees([process])
@@ -33,29 +47,47 @@ class ProcessRegistry:
             if not processes:
                 return
             processes.discard(process)
+            self._scopes.pop(process, None)
             if not processes:
                 del self.processes[key]
 
-    def cancel(self) -> None:
-        """Terminate every registered process, and any registered until
-        ``accept_new()``."""
+    def cancel(self, scope: object | None = None) -> None:
+        """Terminate the registered processes of ``scope`` (every process when
+        None), and any it registers until ``accept_new(scope)``."""
         with self._lock:
-            self._refusing = True
-        self.cleanup()
+            if scope is None:
+                self._refusing_all = True
+            else:
+                self._refusing.add(scope)
+        self.cleanup(scope)
 
-    def accept_new(self) -> None:
-        """Let processes run again after ``cancel()``."""
+    def accept_new(self, scope: object | None = None) -> None:
+        """Let processes of ``scope`` (None: all) run again after ``cancel()``."""
         with self._lock:
-            self._refusing = False
+            if scope is None:
+                self._refusing_all = False
+            else:
+                self._refusing.discard(scope)
 
-    def cleanup(self) -> None:
-        """Terminate registered process trees, escalating Unix groups to SIGKILL."""
+    def cleanup(self, scope: object | None = None) -> None:
+        """Terminate registered process trees (only ``scope``'s when given),
+        escalating Unix groups to SIGKILL."""
         with self._lock:
-            all_processes = [
-                proc for processes in self.processes.values() for proc in processes
-            ]
-            self.processes.clear()
-        terminate_trees(all_processes)
+            stopped: list[subprocess.Popen[Any]] = []
+            for key in list(self.processes):
+                processes = self.processes[key]
+                chosen = {
+                    p
+                    for p in processes
+                    if scope is None or self._scopes.get(p) is scope
+                }
+                stopped.extend(chosen)
+                processes -= chosen
+                if not processes:
+                    del self.processes[key]
+            for process in stopped:
+                self._scopes.pop(process, None)
+        terminate_trees(stopped)
 
 
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:

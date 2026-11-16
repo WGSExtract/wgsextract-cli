@@ -180,6 +180,32 @@ def test_info_records_what_later_commands_read(seqs, folder):
     jsonschema.validate(raw, sample_workspace.load_schema())
 
 
+@needs_htslib
+def test_a_report_on_another_thread_does_not_pause_info_recording(seqs, folder):
+    """#824: read-only API calls run concurrently, and ref status pausing fact
+    recording (process-wide before) made an overlapping info record nothing."""
+    import threading
+
+    bam = _bam(seqs, folder / "s.bam", MALE)
+    paused, done = threading.Event(), threading.Event()
+
+    def report() -> None:
+        with sample_workspace.recording_paused():
+            paused.set()
+            done.wait(60)
+
+    other = threading.Thread(target=report)
+    other.start()
+    try:
+        assert paused.wait(60)
+        api.info.info(api.InfoParams(input=Path(bam), outdir=folder))
+    finally:
+        done.set()
+        other.join()
+    facts = SampleWorkspace(folder).describe(bam)["files"]["s.bam"]["facts"]
+    assert "platform" in facts
+
+
 def test_typed_sample_schema_preserves_version_one_extensions(folder):
     """The typed spec must not close extension keys accepted by sample/1."""
     reads = folder / "s.bam"

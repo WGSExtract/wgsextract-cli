@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import tempfile
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePath
 
 from wgsextract_cli.api.sign import MANIFEST_NAME, SignCreateParams, SignVerifyParams
@@ -16,6 +15,7 @@ from wgsextract_cli.cli.registration.sign import register as register
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import PathInput, absolute_path, append_suffix
 from wgsextract_cli.core.results import current_result, manifest_path_for, warn
 from wgsextract_cli.core.utils import (
@@ -54,7 +54,7 @@ def _sha256(path: PathInput) -> str:
 
 def _hash_files(paths: list[Path], threads: str) -> list[str]:
     # hashlib releases the GIL, so threads hash several files at once.
-    with ThreadPoolExecutor(max_workers=max(1, int(threads))) as pool:
+    with ContextThreadPoolExecutor(max_workers=max(1, int(threads))) as pool:
         return list(pool.map(_sha256, paths))
 
 

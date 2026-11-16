@@ -109,9 +109,12 @@ def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[s
             index.unlink(missing_ok=True)
 
 
-def atomic_write(path: PathInput, data: bytes) -> None:
+def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None:
+    """Replace ``path`` with ``data`` atomically. An existing file keeps its
+    permissions; a new one gets ``new_mode`` (private by default; 0o666 gives
+    the umask's ordinary permissions)."""
     final = Path(path)
-    mode = stat.S_IMODE(final.stat().st_mode) if final.exists() else 0o600
+    mode = stat.S_IMODE(final.stat().st_mode) if final.exists() else new_mode
     with atomic_output(final, retire_indexes=False) as staged:
         fd = os.open(staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
         with os.fdopen(fd, "wb") as stream:

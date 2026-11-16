@@ -25,7 +25,6 @@ import re
 import subprocess
 import tempfile
 from collections.abc import Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -42,6 +41,7 @@ from wgsextract_cli.core import ancestry, ancestry_reference, sample_workspace
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.microarray_revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
@@ -201,7 +201,7 @@ def _alignment_genotypes(
     )
     workers = max(1, min(int(aln.threads), len(by_contig)))
     cancel = cancel_event()
-    with ThreadPoolExecutor(workers) as pool:
+    with ContextThreadPoolExecutor(workers) as pool:
         for found in pool.map(one, sorted(by_contig, key=lambda c: -len(by_contig[c]))):
             if cancel is not None and cancel.is_set():
                 raise WGSExtractError("Cancelled.")

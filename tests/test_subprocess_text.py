@@ -125,7 +125,7 @@ def test_interrupt_keeps_tree_cleanup_platform_specific(monkeypatch, platform):
     monkeypatch.setattr(utils.sys, "platform", platform)
     monkeypatch.setattr(utils, "process_group_kwargs", lambda: {})
     monkeypatch.setattr(utils.subprocess, "Popen", lambda *args, **kwargs: process)
-    monkeypatch.setattr(utils, "cleanup_processes", cleanup)
+    monkeypatch.setattr(utils.proc_registry, "cleanup", lambda scope=None: cleanup())
     with pytest.raises(KeyboardInterrupt):
         run_command([Path(sys.executable)], capture_output=True)
     assert cleaned == ([process] if platform == "win32" else [])

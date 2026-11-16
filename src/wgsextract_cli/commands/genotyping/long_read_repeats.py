@@ -15,11 +15,11 @@ import logging
 import re
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from importlib.resources import files
 from pathlib import Path
 
 from wgsextract_cli.api._runtime import checkpoint
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -186,7 +186,7 @@ def run_longtr(
             f"Sizing repeat expansions with LongTR ({len(chroms)} chromosomes, "
             f"{workers} at a time)..."
         )
-        with ThreadPoolExecutor(workers) as pool:
+        with ContextThreadPoolExecutor(workers) as pool:
             futures = [pool.submit(call, chrom) for chrom in chroms]
             vcfs = []
             for future in futures:

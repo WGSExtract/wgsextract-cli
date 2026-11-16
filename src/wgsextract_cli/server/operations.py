@@ -24,6 +24,7 @@ from wgsextract_cli.api._params import (
     json_schema,
     param_fields,
 )
+from wgsextract_cli.api._runtime import READ_ONLY_COMMANDS
 from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
@@ -33,17 +34,7 @@ from .transport import Error, Kind, OperationSummary
 # Quick reads that describe a sample or the reference library; everything else
 # makes new files, takes longer or changes what is recorded about a sample, so
 # MCP offers it only with --allow-jobs.
-QUERIES = frozenset(
-    {
-        "info",
-        "info chip",
-        "sample show",
-        "ref status",
-        "ref library-list",
-        "example-genome list",
-        "deps check",
-    }
-)
+QUERIES = READ_ONLY_COMMANDS
 
 
 # What follows the contig of an interval (chr1:1-100, X:1,000-): a drive

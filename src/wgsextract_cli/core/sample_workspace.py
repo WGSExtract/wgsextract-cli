@@ -31,6 +31,7 @@ import logging
 import os
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -347,7 +348,8 @@ class SampleWorkspace:
         from wgsextract_cli.core.config import dataset_library
         from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
 
-        if _active is not None and _active.folder == self.folder:
+        active = current_workspace()
+        if active is not None and active.folder == self.folder:
             return True
         if (self.folder / GENOME_CONFIG_NAME).is_file():
             return True
@@ -826,8 +828,11 @@ def load_schema() -> dict[str, Any]:
 
 # --- finding the workspace of a file -------------------------------------------
 
-_active: SampleWorkspace | None = None
-_active_files: frozenset[Path] = frozenset()
+# The running command's --genome workspace and the files it claims; per
+# context, so worker threads (core.execution_context) see their command's.
+_active: ContextVar[tuple[SampleWorkspace, frozenset[Path]] | None] = ContextVar(
+    "active_sample_workspace", default=None
+)
 
 
 @contextlib.contextmanager
@@ -836,20 +841,22 @@ def active_workspace(
 ) -> Iterator[None]:
     """Make ``folder`` (a --genome folder) the workspace of the files in it and
     of ``files`` (its inputs, which genome-config.toml may place elsewhere)."""
-    global _active, _active_files
-    previous = (_active, _active_files)
-    if folder is not None:
-        _active = SampleWorkspace(folder)
-        _active_files = frozenset(absolute_path(f) for f in files if f)
+    if folder is None:
+        yield
+        return
+    token = _active.set(
+        (SampleWorkspace(folder), frozenset(absolute_path(f) for f in files if f))
+    )
     try:
         yield
     finally:
-        _active, _active_files = previous
+        _active.reset(token)
 
 
 def current_workspace() -> SampleWorkspace | None:
     """The --genome workspace of the running command, if any."""
-    return _active
+    active = _active.get()
+    return active[0] if active else None
 
 
 def workspace_for(file: PathInput | None) -> SampleWorkspace | None:
@@ -858,10 +865,11 @@ def workspace_for(file: PathInput | None) -> SampleWorkspace | None:
     if not file:
         return None
     path = absolute_path(file)
-    if _active is not None and (
-        path in _active_files or path.is_relative_to(_active.folder)
+    active = _active.get()
+    if active is not None and (
+        path in active[1] or path.is_relative_to(active[0].folder)
     ):
-        return _active
+        return active[0]
     from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
 
     folder = path.parent
@@ -903,18 +911,17 @@ def known(name: str, file: PathInput | None) -> Fact | None:
     return fact
 
 
-_recording = True
+_recording: ContextVar[bool] = ContextVar("sample_facts_recording", default=True)
 
 
 @contextlib.contextmanager
 def recording_paused() -> Iterator[None]:
     """Detect facts without recording them, for a report that changes nothing."""
-    global _recording
-    previous, _recording = _recording, False
+    token = _recording.set(False)
     try:
         yield
     finally:
-        _recording = previous
+        _recording.reset(token)
 
 
 @overload
@@ -1005,7 +1012,7 @@ def record(
     """Record a detected fact in ``file``'s workspace, if it has one, and warn
     if it contradicts the user's override."""
     workspace = workspace_for(file)
-    if workspace is None or file is None or not _recording:
+    if workspace is None or file is None or not _recording.get():
         return False
     recorded = workspace._record(
         name, file, value, method=method, confidence=confidence

@@ -5,8 +5,10 @@ reads, depth, sex and file state as samtools sees them, plus the edge cases
 import csv
 import io
 import json
+import os
 import random
 import shutil
+import stat
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -513,6 +515,21 @@ def test_info_requires_an_input(monkeypatch):
     args = type("A", (), {"input": None})()
     with pytest.raises(WGSExtractError, match="--input required"):
         runner.run(args)  # type: ignore[arg-type]
+
+
+@needs_htslib
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
+def test_info_cache_is_readable_by_other_users_pr1001(genome, tmp_path):
+    # PR #1001 made the cache write atomic, which created it 0600; Install
+    # Lab's oracle (another user) then failed with "Permission denied".
+    bam = _sample(genome, tmp_path / "m.bam", MALE)
+    old = os.umask(0o022)
+    try:
+        _info(bam)
+    finally:
+        os.umask(old)
+    mode = stat.S_IMODE((tmp_path / "m.bam.wgse_info.json").stat().st_mode)
+    assert mode == 0o644
 
 
 def test_cache_write_failure_is_only_a_warning(tmp_path, caplog):
