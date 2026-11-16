@@ -127,3 +127,24 @@ def test_929_http_response_schemas_match_live_discovery_and_errors(
         assert status == 200
         validate(body, "VariantPage")
         assert body["rows"] == [{"chrom": "chr1", "pos": 100, "gene": "BRCA1"}]
+
+
+def test_1023_variant_pages_with_acmg_classes_carry_the_research_disclaimer(
+    tmp_path: Path,
+) -> None:
+    """PR #1023 review: query_variants returned automated P/LP classes without
+    the research-only caveat the table's metadata carries."""
+    table = tmp_path / "acmg_annotated_variants.tsv"
+    table.write_text(
+        "chrom\tpos\tgene\tacmg_class\nchr1\t100\tMUTYH\tLP\nchr1\t200\tGENEX\t\n",
+        encoding="utf-8",
+    )
+    with _serve(tmp_path, [tmp_path]) as client:
+        status, body = client.request("GET", f"/variants?path={table}")
+        assert status == 200
+        validate(body, "VariantPage")
+        assert body["disclaimer"].startswith("Research use only; not a diagnosis")
+        for query in ("columns=chrom,pos", "gene=GENEX"):
+            status, body = client.request("GET", f"/variants?path={table}&{query}")
+            assert status == 200
+            assert "disclaimer" not in body

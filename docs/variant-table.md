@@ -64,8 +64,9 @@ row count and command line). It is indexed on `gene`, `rsid` and
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key
-`acmg_disclaimer` (SQLite `metadata`, the Parquet footer) and the result
-manifest's warning `acmg_research_only`. The TSV has only its header row, so
+`acmg_disclaimer` (SQLite `metadata`, the Parquet footer), the result
+manifest's warning `acmg_research_only` and the server's `query_variants`
+pages that return `acmg_*` values (`disclaimer`). The TSV has only its header row, so
 read the classes with that disclaimer in mind:
 
 ```sql

@@ -1767,9 +1767,13 @@ def test_report_falls_back_to_the_contamination_run_without_a_workspace(tmp_path
     assert not any("qc contamination" in m["command"] for m in overview["missing"])
 
 
-def _acmg_run(folder: Path) -> None:
+def _acmg_run(
+    folder: Path, *, samples: tuple[str, ...] = ("S",), mutyh_info: str = ""
+) -> Path:
     """A `vcf acmg` run (issue 629) on the sample's VEP VCF: a carried LP in
-    MUTYH and P elsewhere, a carried VUS, and an LP the sample doesn't carry."""
+    MUTYH and P elsewhere, a carried VUS, and an LP the sample doesn't carry.
+    Every sample has the same genotypes; ``mutyh_info`` is added to the MUTYH
+    LP's INFO. Returns the classified VCF."""
     brca2, mutyh = _mid("BRCA2"), _mid("MUTYH")
     csq = "Allele|Consequence|IMPACT|SYMBOL|HGVSc|HGVSp|CANONICAL"
     lines = [
@@ -1784,7 +1788,9 @@ def _acmg_run(folder: Path) -> None:
         '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">',
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">',
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS",
+        '##INFO=<ID=IMP,Number=0,Type=Flag,Description="Imputed">',
+        '##INFO=<ID=RAF,Number=A,Type=Float,Description="Panel ALT frequency">',
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + "\t".join(samples),
     ]
     records = [
         ("chr1", 1000, "A", "G", "P", "GENEX", "0/1:20,20:40:99"),
@@ -1798,9 +1804,11 @@ def _acmg_run(folder: Path) -> None:
             f"ACMG_CLASS={cls};ACMG_CRITERIA=PVS1&PM2_Supporting;"
             "ACMG_TRANSCRIPT=ENST1"
         )
+        if (chrom, pos) == mutyh and mutyh_info:
+            info += f";{mutyh_info}"
         lines.append(
             f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t{info}\tGT:AD:DP:GQ\t"
-            + sample_fields
+            + "\t".join([sample_fields] * len(samples))
         )
     plain = folder / "acmg_annotated.vcf"
     plain.write_text("\n".join(lines) + "\n")
@@ -1821,6 +1829,7 @@ def _acmg_run(folder: Path) -> None:
         inputs=((folder / "HG002.vcf.gz", "input"),),
         outputs=((vcf, "annotated_vcf"), (summary, "acmg_summary")),
     )
+    return vcf
 
 
 @needs_htslib
@@ -1853,3 +1862,60 @@ def test_629_acmg_section_lists_listed_genes_plp_calls_as_research_only(sample):
         assert page.count("Research use only; not a diagnosis.") >= 2
         assert "without a clinical genetics professional" in page
         assert "fastVEP 0.5.0" in page
+
+
+def _acmg_section(folder: Path) -> dict[str, Any]:
+    report = pr.build_report(folder)
+    jsonschema.validate(json.loads(json.dumps(report)), pr.load_schema())
+    return report["sections"]["acmg_research"]
+
+
+@needs_htslib
+def test_1023_acmg_section_names_the_one_sample_of_a_multi_sample_vcf(sample):
+    """PR #1023 review: a trio VCF with a parent first must not pass the
+    parent's calls off silently as the sample's."""
+    _acmg_run(sample, samples=("MOTHER", "HG002", "FATHER"))
+    section = _acmg_section(sample)
+    (warning,) = [
+        w for w in section["warnings"] if w["code"] == "confidence_first_sample_only"
+    ]
+    assert "MOTHER" in warning["message"] and "3-sample" in warning["message"]
+    assert "bcftools view -s" in warning["message"]
+
+
+@needs_htslib
+def test_1023_a_damaged_acmg_vcf_leaves_the_rest_of_the_report(sample):
+    """PR #1023 review: a truncated acmg_annotated.vcf.gz aborted the whole
+    report."""
+    vcf = _acmg_run(sample)
+    vcf.write_bytes(vcf.read_bytes()[:-60])  # cut off the BGZF EOF and more
+    report = pr.build_report(sample)
+    jsonschema.validate(json.loads(json.dumps(report)), pr.load_schema())
+    section = report["sections"]["acmg_research"]
+    assert "unreadable_evidence" in {w["code"] for w in section["warnings"]}
+    assert section["findings"] == []
+    assert report["sections"]["clinvar"]["findings"]
+
+
+@needs_htslib
+def test_1023_rare_imputed_acmg_plp_is_counted_but_not_listed(sample):
+    """PR #1023 review: an imputed LP rarer than 1% in the panel was listed
+    as a finding (docs/variant-confidence.md)."""
+    _acmg_run(sample, mutyh_info="IMP;RAF=0.001")
+    section = _acmg_section(sample)
+    assert section["findings"] == []
+    assert section["counts"]["lp"] == 1  # still counted among the carried
+    assert "rare_imputed_not_listed" in {w["code"] for w in section["warnings"]}
+
+
+@needs_htslib
+def test_1023_contaminated_sample_caps_acmg_findings_at_moderate(sample):
+    """PR #1023 review: recorded FREEMIX above qc_max_contamination left a
+    well-supported P/LP call at high confidence."""
+    _acmg_run(sample)
+    SampleWorkspace(sample).record(
+        "contamination", sample / "HG002.cram", 0.08, method="VB2", confidence="high"
+    )
+    (finding,) = _acmg_section(sample)["findings"]
+    assert finding["confidence"] == "moderate"
+    assert "sample_contaminated" in finding["confidence_reasons"]

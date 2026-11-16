@@ -221,6 +221,15 @@ counted; every class is in the classified VCF and in its
 `gene_list`, `tool`, `criteria_not_evaluated` (criteria fastVEP never
 evaluates, such as PS3/BS3), `build`, `counts` and `all_calls`.
 
+As in the ClinVar section, an imputed P/LP allele rarer than 1% in the panel
+(or of unknown panel frequency) is counted but not listed
+(`rare_imputed_not_listed`), and a sample that `qc contamination` found
+contaminated has every call at most `moderate` (`sample_contaminated`). A
+multi-sample VCF is read for its first sample, named in a
+`confidence_first_sample_only` warning; subset it to the intended sample
+first. A classified VCF that can't be read (`unreadable_evidence`) leaves the
+section without findings; the rest of the report is still written.
+
 ## Confidence labels
 
 Every finding has a label, `high`, `moderate`, `low` or `not_assessed`, with

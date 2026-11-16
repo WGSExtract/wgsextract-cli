@@ -41,6 +41,9 @@ class Scan:
     sites_only: bool = False
     carried: Counter[str] = field(default_factory=Counter)
     calls: list[Call] = field(default_factory=list)
+    # Carried P/LP alleles left out of the calls: imputed, and rare or of
+    # unknown panel frequency (variant_confidence.rare_imputed).
+    rare_imputed: int = 0
 
 
 @contextmanager
@@ -53,9 +56,17 @@ def _lines(path: Path) -> Iterator[IO[str]]:
             yield stream
 
 
-def scan(path: Path, thresholds: variant_confidence.Thresholds) -> Scan:
+def scan(
+    path: Path,
+    thresholds: variant_confidence.Thresholds,
+    *,
+    contaminated: bool = False,
+) -> Scan:
     """The classes of the ALTs the first sample carries (every ALT of a
-    sites-only VCF), and its P/LP calls."""
+    sites-only VCF), and its P/LP calls. ``contaminated``: `qc contamination`
+    found the sample contaminated, which caps every call at moderate.
+
+    Raises OSError, EOFError or ValueError for an unreadable or damaged VCF."""
     with _lines(path) as stream:
         header_lines = []
         for line in stream:
@@ -88,7 +99,11 @@ def scan(path: Path, thresholds: variant_confidence.Thresholds) -> Scan:
                 ):
                     result.carried[cls] += 1
             if any(cls in acmg.PATHOGENIC for cls in classes):
-                result.calls += _calls(line, header, thresholds, caller, mq_kind)
+                calls, rare = _calls(
+                    line, header, thresholds, caller, mq_kind, contaminated
+                )
+                result.calls += calls
+                result.rare_imputed += rare
     return result
 
 
@@ -122,7 +137,10 @@ def _calls(
     thresholds: variant_confidence.Thresholds,
     caller: str,
     mq_kind: str,
-) -> list[Call]:
+    contaminated: bool,
+) -> tuple[list[Call], int]:
+    """A record's carried P/LP calls, and how many rare imputed ones it left
+    out."""
     has_sample = bool(header.samples)
     fields = line.rstrip("\r\n").split("\t")
     alts = fields[4].split(",")
@@ -130,15 +148,19 @@ def _calls(
     fmt = _format(fields[8], fields[9]) if has_sample and len(fields) > 9 else {}
     alleles = re.split(r"[/|]", fmt.get("GT", "")) if has_sample else []
     calls = []
+    rare = 0
     for values in variant_table.variant_rows(
         [line], header, sample_index=0 if has_sample else None
     ):
         row = dict(zip(variant_table.COLUMN_NAMES, values, strict=True))
         if row["acmg_class"] not in acmg.PATHOGENIC:
             continue
+        alt = alts.index(str(row["alt"])) + 1
+        if variant_confidence.rare_imputed(info, alt):
+            rare += 1
+            continue
         label = None
         if has_sample:
-            alt = alts.index(str(row["alt"])) + 1
             label = variant_confidence.classify(
                 alt=alt,
                 alleles=alleles,
@@ -152,6 +174,7 @@ def _calls(
                 mq_kind=mq_kind,
                 caller=caller,
                 samples=len(header.samples),
+                contaminated=contaminated,
             )
         calls.append(
             Call(
@@ -162,4 +185,4 @@ def _calls(
                 fmt.get("PS") if fmt.get("PS") not in (None, "", ".") else None,
             )
         )
-    return calls
+    return calls, rare

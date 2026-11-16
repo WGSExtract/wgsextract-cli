@@ -23,6 +23,7 @@ import gzip
 import json
 import os
 import re
+import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -769,6 +770,22 @@ def _overview(ctx: _Context) -> dict[str, Any]:
         or "No facts recorded."
     )
     return section
+
+
+def _contaminated(ctx: _Context, inputs: Iterable[Path]) -> float | None:
+    """The selected sample's FREEMIX when it is at or above
+    ``qc_max_contamination``: the estimate the overview shows, else one
+    recorded for a run's own ``inputs``."""
+    run = ctx.latest(_command("qc contamination"))
+    estimate = _contamination_fact(ctx, run if run and run.status == "ok" else None)
+    value = estimate["value"] if estimate else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        threshold = contamination.max_contamination()
+        return float(value) if threshold and value >= threshold else None
+    for file in inputs:
+        if (found := contamination.contaminated(file)) is not None:
+            return found
+    return None
 
 
 def _contamination_fact(ctx: _Context, run: Source | None) -> dict[str, Any] | None:
@@ -1592,7 +1609,44 @@ def _acmg_research(ctx: _Context) -> dict[str, Any] | None:
         )
         section["summary"] = "The classified VCF is missing."
         return section
-    found = acmg_calls.scan(vcf, variant_confidence.thresholds_from())
+    try:
+        found = acmg_calls.scan(
+            vcf,
+            variant_confidence.thresholds_from(),
+            contaminated=_contaminated(ctx, source.files("inputs")) is not None,
+        )
+    except (OSError, EOFError, ValueError, IndexError, zlib.error) as e:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="unreadable_evidence",
+                message=f"The classified VCF {vcf.name} can't be read ({e}); "
+                "rerun vcf acmg.",
+            )
+        )
+        section["summary"] = "The classified VCF can't be read."
+        return section
+    samples = found.header.samples
+    if len(samples) > 1:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="confidence_first_sample_only",
+                message=f"The classes counted and the calls listed are the first "
+                f"sample's ({samples[0]}) of this {len(samples)}-sample VCF; "
+                "subset it to the intended sample (bcftools view -s) and rerun "
+                "vcf acmg.",
+            )
+        )
+    if found.rare_imputed:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="rare_imputed_not_listed",
+                message=f"{found.rare_imputed} imputed P/LP "
+                f"allele{'s' * (found.rare_imputed != 1)} rarer than 1% in the "
+                "panel (or of unknown panel frequency) are counted but not "
+                "listed: imputation can't see a rare allele the reads don't "
+                "show. See the classified VCF.",
+            )
+        )
     build = _gene_build(_vcf_build(vcf))
     section["build"] = build
     gene_list = gene_lists.GeneList(described["id"], described["name"], ())
