@@ -23,7 +23,6 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
-from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 
 def run_pgs(params: ScorePgsParams) -> None:
@@ -241,7 +240,7 @@ def _reference_evidence(
         copy = str(work / "evidence.g.vcf.gz")
         run_command(["bcftools", "view", "--no-version", "-s", genotypes.sample,
                      "-Oz", "-o", copy, gvcf])  # fmt: skip
-        ensure_vcf_indexed(copy)
+        run_command(["bcftools", "index", "-t", copy])
         gvcf_read = copy
     else:
         gvcf_read = gvcf
