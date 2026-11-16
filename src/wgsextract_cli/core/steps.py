@@ -46,12 +46,23 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any
 
 from wgsextract_cli.core.paths import PathInput, absolute_path
+from wgsextract_cli.core.step_documents import SCHEMA as SCHEMA
+from wgsextract_cli.core.step_documents import (
+    CompleteStepDocument,
+    DirectoryIdentity,
+    DirectoryOutput,
+    FileOutput,
+    InputIdentity,
+    JournalDocument,
+    OutputDocument,
+    RunningStepDocument,
+    extend_output,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 if TYPE_CHECKING:
     from wgsextract_cli.core.remote_input import RemoteFile
 
-SCHEMA = "wgsextract.steps/1"
 JOURNAL_SUFFIX = ".steps.json"
 RUN_TAG = "WGSEXTRACT_STEP_RUN"
 DIRECTORY_FINGERPRINT_PREFIX = "wgse-dir1:"
@@ -114,7 +125,7 @@ class Step:
     name: str
     inputs: Mapping[str, PathInput | None] = field(default_factory=dict)
     outputs: Sequence[PathInput] = ()
-    params: Mapping[str, Any] = field(default_factory=dict)
+    params: Mapping[str, object] = field(default_factory=dict)
     tools: Sequence[str] = ()
     version: int = 1
 
@@ -145,9 +156,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _json_value(value: Any) -> Any:
+def _json_mapping(value: Mapping[str, object]) -> dict[str, object]:
+    return {str(k): _json_value(v) for k, v in sorted(value.items())}
+
+
+def _json_value(value: object) -> object:
     if isinstance(value, Mapping):
-        return {str(k): _json_value(v) for k, v in sorted(value.items())}
+        return _json_mapping(value)
     if isinstance(value, list | tuple):
         return [_json_value(v) for v in value]
     if isinstance(value, os.PathLike):
@@ -189,7 +204,7 @@ def _link_target(path: str) -> str:
         return "?"
 
 
-def _directory_identity(root: Path) -> dict[str, Any]:
+def _directory_identity(root: Path) -> DirectoryIdentity:
     """The identity of a directory's contents, without reading any file.
 
     Hashes each file's path relative to ``root``, size and mtime (ns), in
@@ -342,7 +357,7 @@ class StepJournal:
         if record is None:
             return
         old = dict(record.get("params") or {})
-        params = _json_value(migrate(dict(old)))
+        params = _json_mapping(migrate(dict(old)))
         if params == old:
             return
         known = {"version": version, "tools": _tool_versions(tools)}
@@ -445,7 +460,11 @@ class StepJournal:
     def _save(self) -> None:
         from wgsextract_cli.core.atomic_output import atomic_write
 
-        document = {"schema": SCHEMA, "workflow": self.workflow, "steps": self._steps}
+        document: JournalDocument = {
+            "schema": SCHEMA,
+            "workflow": self.workflow,
+            "steps": dict(self._steps),
+        }
         text = json.dumps(document, indent=2, sort_keys=True) + "\n"
         atomic_write(self.path, text.encode("utf-8"))
 
@@ -501,7 +520,7 @@ class StepJournal:
                     return name
         return None
 
-    def _input(self, role: str, path: PathInput) -> dict[str, Any]:
+    def _input(self, role: str, path: PathInput) -> InputIdentity:
         from wgsextract_cli.core.remote_input import is_url, remote_file
 
         if is_url(path):
@@ -517,7 +536,7 @@ class StepJournal:
                 "fingerprint": remote.fingerprint,
             }
         resolved = absolute_path(path)
-        item: dict[str, Any] = {"role": role, "path": str(resolved)}
+        item: InputIdentity = {"role": role, "path": str(resolved)}
         producer = self._producer(resolved)
         if producer:
             item["from_step"] = producer
@@ -527,14 +546,17 @@ class StepJournal:
             item["fingerprint"] = _fingerprint(resolved)
         elif resolved.is_dir():
             item["kind"] = "directory"
-            item.update(_directory_identity(resolved))
+            directory = _directory_identity(resolved)
+            item["files"] = directory["files"]
+            item["size"] = directory["size"]
+            item["fingerprint"] = directory["fingerprint"]
         else:
             item["missing"] = True
         return item
 
     def _key(self, step: Step, tools: Mapping[str, str | None]) -> str:
         return self._payload_key(
-            step.name, step.version, _json_value(step.params), tools
+            step.name, step.version, _json_mapping(step.params), tools
         )
 
     def _record_key(
@@ -545,7 +567,7 @@ class StepJournal:
         )
 
     def _payload_key(
-        self, step: str, version: Any, params: Any, tools: Mapping[str, Any]
+        self, step: str, version: object, params: object, tools: Mapping[str, object]
     ) -> str:
         payload = {
             "workflow": self.workflow,
@@ -610,7 +632,7 @@ class StepJournal:
         if record.get("version") != step.version:
             return "the step's definition changed in this wgsextract version"
         old_params = record.get("params") or {}
-        params = _json_value(step.params)
+        params = _json_mapping(step.params)
         changed = sorted(
             name
             for name in set(old_params) | set(params)
@@ -649,6 +671,7 @@ class StepJournal:
             if role in inputs or old.get("declared", True):
                 continue
             path = Path(old["path"])
+            now: str | None
             if old.get("kind") == "directory" and path.is_dir():
                 now = _directory_identity(path)["fingerprint"]
             elif path.is_file():
@@ -748,11 +771,11 @@ class StepJournal:
                     )
                     resolved.unlink()
         token = uuid.uuid4().hex
-        self._steps[step.name] = {
+        record: RunningStepDocument = {
             "status": "running",
             "token": token,
             "key": decision.key,
-            "params": _json_value(step.params),
+            "params": _json_mapping(step.params),
             "started": _now(),
             "inputs": [
                 {**self._input(role, path), "declared": True}
@@ -760,6 +783,7 @@ class StepJournal:
                 if path is not None
             ],
         }
+        self._steps[step.name] = dict(record)
         self._save()
         self._tag_processes(token)
         return StepRun(decision, time.monotonic())
@@ -770,44 +794,51 @@ class StepJournal:
 
     def _complete(self, decision: Decision, handle: StepRun, seconds: float) -> None:
         step = decision.step
-        extras: dict[Path, dict[str, Any]] = {}
+        extras: dict[Path, dict[str, object]] = {}
         for path, extra in [(p, {}) for p in step.outputs] + handle.outputs:
             extras.setdefault(absolute_path(path), {}).update(extra)
-        outputs: list[dict[str, Any]] = []
+        outputs: list[OutputDocument] = []
         for resolved, extra in extras.items():
             if not resolved.exists():
                 raise WGSExtractError(
                     f"Step {step.name} finished without writing {resolved}."
                 )
-            item: dict[str, Any] = {**extra, "path": self._stored_path(resolved)}
+            identity: OutputDocument
             if resolved.is_dir():
-                item["kind"] = "directory"
+                identity = DirectoryOutput(
+                    path=self._stored_path(resolved), kind="directory"
+                )
             else:
-                item["size"] = resolved.stat().st_size
-                item["fingerprint"] = _fingerprint(resolved)
-            outputs.append(item)
-        inputs = [
+                identity = FileOutput(
+                    path=self._stored_path(resolved),
+                    size=resolved.stat().st_size,
+                    fingerprint=_fingerprint(resolved),
+                )
+            outputs.append(extend_output(identity, extra))
+        inputs: list[InputIdentity] = [
             {**self._input(role, path), "declared": True}
             for role, path in step.inputs.items()
             if path is not None
-        ] + [
+        ]
+        inputs.extend(
             {**self._input(role, path), "declared": False}
             for role, path in handle.inputs
-        ]
-        self._steps[step.name] = {
+        )
+        record: CompleteStepDocument = {
             "status": "complete",
             "key": decision.key,
             "version": step.version,
-            "params": _json_value(step.params),
+            "params": _json_mapping(step.params),
             "tools": _tool_versions(step.tools),
             "inputs": inputs,
             "outputs": outputs,
-            "metrics": _json_value(handle.metrics),
+            "metrics": _json_mapping(handle.metrics),
             "run_id": uuid.uuid4().hex,
             "started": self._steps.get(step.name, {}).get("started", _now()),
             "finished": _now(),
             "seconds": round(seconds, 1),
         }
+        self._steps[step.name] = dict(record)
         self._save()
         self._tag_processes(None)
         logging.info(f"Step {step.name} complete in {seconds:.0f} s.")
@@ -832,12 +863,12 @@ class StepRun:
 
     decision: Decision
     clock: float
-    outputs: list[tuple[PathInput, dict[str, Any]]] = field(default_factory=list)
+    outputs: list[tuple[PathInput, dict[str, object]]] = field(default_factory=list)
     inputs: list[tuple[str, PathInput]] = field(default_factory=list)
-    metrics: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, object] = field(default_factory=dict)
 
-    def add_output(self, path: PathInput, **details: Any) -> None:
-        self.outputs.append((path, _json_value(details)))
+    def add_output(self, path: PathInput, **details: object) -> None:
+        self.outputs.append((path, _json_mapping(details)))
 
     def add_input(self, role: str, path: PathInput) -> None:
         self.inputs.append((role, path))
