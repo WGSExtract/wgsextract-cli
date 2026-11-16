@@ -6,9 +6,9 @@ import re
 from collections.abc import Iterable, Iterator, Mapping
 from typing import NamedTuple
 
+from wgsextract_cli.core.microarray.site_map import SiteMap, SiteProjection
 from wgsextract_cli.core.microarray_identity import MicroarrayIdentity
 from wgsextract_cli.core.microarray_quality import MicroarrayQuality
-from wgsextract_cli.core.microarray_site_map import SiteMap, SiteProjection
 from wgsextract_cli.core.utils import WGSExtractError
 
 _COMPLEMENT = str.maketrans("ACGT", "TGCA")

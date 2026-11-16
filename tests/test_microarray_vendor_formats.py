@@ -14,7 +14,7 @@ import pytest
 
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core.microarray_coordinates import project_coordinates
+from wgsextract_cli.core.microarray.coordinates import project_coordinates
 from wgsextract_cli.core.microarray_utils import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,

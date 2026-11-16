@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from tests.test_microarray_vendor_formats import TWO_BLOCKS, _chain, _lift
-from wgsextract_cli.core import microarray_coordinates
+from wgsextract_cli.core.microarray import coordinates as microarray_coordinates
 
 
 def test_coordinate_cache_preserves_exact_output_and_never_caches_genotypes(
