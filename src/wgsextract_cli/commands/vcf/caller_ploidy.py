@@ -200,6 +200,19 @@ def calling_ploidy(
     return male if sex == "Male" else female
 
 
+def policy_sex(intervals: list[PloidyInterval]) -> str:
+    """The sex a ploidy policy was made for: M when an X or Y interval is
+    haploid, F when Y is excluded (ploidy 0), else "" (it doesn't say)."""
+    sexes = {
+        (_sex_contig(i.chrom), i.ploidy)
+        for i in intervals
+        if _sex_contig(i.chrom) in {"X", "Y"}
+    }
+    if ("X", 1) in sexes or ("Y", 1) in sexes:
+        return "M"
+    return "F" if ("Y", 0) in sexes else ""
+
+
 def write_intervals(path: Path, intervals: list[PloidyInterval]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     content = "".join(f"{i.chrom}\t{i.start}\t{i.end}\n" for i in intervals)

@@ -9,12 +9,12 @@ coverage gap into a confident genotype.
 `--reference-evidence gvcf` asks a caller to also write a gVCF, which records
 every base it assessed, beside its variant VCF. The variant VCF is unchanged.
 It is opt-in (`reference_evidence = "gvcf"` in `config.toml` makes it the
-default) because it costs a second pass and disk.
+default) because it costs time, memory and disk.
 
 | Caller | gVCF | Status |
 | --- | --- | --- |
 | `vcf snp`, `vcf indel` (bcftools) | `bcftools.g.vcf.gz` | available |
-| `vcf deepvariant` (CPU, native, Parabricks) | — | planned |
+| `vcf deepvariant` (Google's image, `wgse-deepvariant`, Parabricks) | `deepvariant.g.vcf.gz` | available |
 | `vcf gatk`, `vcf clair3` | — | planned |
 
 `analyze` follows the `config.toml` setting: its SNP step writes the gVCF
@@ -67,6 +67,40 @@ The variant VCF was identical with and without it. Of the 82,588 truth
 variants in chr20's confident regions, 432 sit on bases the gVCF calls
 callable reference, variants bcftools missed (335 SNVs and 97 indels).
 
+## DeepVariant
+
+DeepVariant writes the gVCF in the same run as its VCF, which is unchanged:
+Google's image or a local `run_deepvariant` and `wgse-deepvariant` with
+`--output_gvcf`, Parabricks (`--gpu`) with `--gvcf`. Its blocks carry GQ, in
+DeepVariant's bins of 5, and MIN_DP. It writes bases no read covers as `0/0`
+blocks with GQ 0 and MIN_DP 0, which read as `uncovered`, and its `RefCall`
+and `NoCall` records as `filtered`. Only the gVCF's header changes when it is
+published (`bcftools reheader`), so every record stays as DeepVariant wrote
+it. Bases a sex/PAR ploidy of 0 leaves out of calling (a woman's chrY) are
+recorded in `PloidyZero`; Parabricks and `wgse-deepvariant` call diploid
+genomes only, as without the gVCF.
+
+The gVCF and its index are outputs of the `postprocess_variants` stage: if
+that stage is interrupted, a rerun repeats it alone. Its stages' work is
+deleted once the run finishes, so a gVCF deleted later reruns every stage, as
+does turning `--reference-evidence` on or off, which changes what
+`make_examples` writes.
+
+Memory: Google's `postprocess_variants` writes each partition's part of the
+gVCF beside its VCF, GVCF_PARTITION_NOTE. `wgse-deepvariant` keeps every
+contig's calls until it writes the gVCF, so its preflight allows about 10
+bytes per called base (about 30 GB for a whole genome, against 2 GB without):
+on a smaller machine call a `--region`, or use Google's image.
+
+Measured on HG002 (35x Illumina, GRCh38) chr20, 8 threads, against GIAB
+v4.2.1:
+
+DV_TABLE
+
+The variant VCFs were identical with and without the gVCF. Of the 82,588
+truth variants in chr20's confident regions, 116 sit on bases the gVCF calls
+callable reference, against bcftools' 432.
+
 ## Evidence states
 
 `wgsextract_cli.core.reference_evidence` reads a gVCF (one written here, or
@@ -81,7 +115,7 @@ state higher in this table wins.
 | `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example). |
 | `no_call` | A missing genotype (`.` or `./.`). |
 | `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`. |
-| `uncovered` | Assessed, but no reads: no record (bcftools) or a block with MIN_DP 0 (DeepVariant, GATK). |
+| `uncovered` | Assessed, but no reads: no record (bcftools, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
 | `callable_reference` | Reference, with enough depth (and GQ). |
 | `not_assessed` | Outside the region the caller assessed. |
 

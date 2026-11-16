@@ -9,6 +9,7 @@ import gzip
 import hashlib
 import json
 import os
+import random
 import re
 import shutil
 import sys
@@ -45,12 +46,19 @@ from wgsextract_cli.core import (
     parabricks,
 )
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.reference_evidence import (
+    INDEX_ROLE,
+    ROLE,
+    ReferenceEvidence,
+    State,
+)
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
     WGSExtractError,
     run_command,
 )
+from wgsextract_cli.core.variant_confidence import Thresholds
 
 # Found before a test replaces PATH.
 CORE_TOOLS = {tool: shutil.which(tool) for tool in ("samtools", "bcftools", "tabix")}
@@ -1951,3 +1959,101 @@ def test_deepvariant_rerun_with_finished_stages_warns_instead_of_refusing(
     assert "this DeepVariant run needs" in caplog.text
     assert "Running anyway (finished stages are kept)" in caplog.text
     assert dv.deepvariant.stages() == ["call_variants", "postprocess_variants"]
+
+
+# Reference evidence (#863) ------------------------------------------------
+
+EVIDENCE_THRESHOLDS = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+
+
+def call_with_evidence(dv):
+    """vcf deepvariant --reference-evidence gvcf; its outputs by role."""
+    result = api.vcf.deepvariant(
+        api.VcfDeepvariantParams(
+            input=Path(dv.sample.bam), ref=Path(dv.sample.ref), outdir=dv.out,
+            threads=4, reference_evidence="gvcf",
+        )
+    )  # fmt: skip
+    return {o.role: o for o in result.outputs}
+
+
+def evidence_state(gvcf, contig, position):
+    spans = ReferenceEvidence(str(gvcf)).spans(
+        EVIDENCE_THRESHOLDS, [(contig, position, position)]
+    )
+    return next(iter(spans)).state
+
+
+@pytest.mark.parametrize("engine", ["image", "wgse-deepvariant"])
+def test_gvcf_tells_confident_reference_from_bases_without_reads_863(
+    dv, request, engine
+):
+    """Issue #863: DeepVariant writes bases without reads as 0/0 blocks with
+    GQ 0 and MIN_DP 0. --reference-evidence gvcf publishes its gVCF beside
+    the unchanged VCF, and those bases read as uncovered, not reference."""
+    if engine == "wgse-deepvariant":
+        dv = request.getfixturevalue("linux_native")
+    outputs = call_with_evidence(dv)
+
+    assert vcf_calls(dv.out / "deepvariant.vcf.gz") == dv.sample.calls
+    gvcf = outputs[ROLE]
+    assert Path(gvcf.path).name == "deepvariant.g.vcf.gz"
+    assert outputs[INDEX_ROLE].path == gvcf.path + ".tbi"
+    assert gvcf.metrics["engine"] == "deepvariant"
+    assert gvcf.metrics["quality_model"] == "gq"
+    # snp_sample's reads cover 500-2499 at 20x.
+    assert evidence_state(gvcf.path, "chr1", 100) is State.UNCOVERED
+    assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+    assert evidence_state(gvcf.path, "chr1", 1000) is State.VARIANT
+    assert not (dv.out / deepvariant.WORK_DIRECTORY).exists()
+
+
+def test_a_missing_gvcf_is_written_again_by_a_rerun_863(dv):
+    """Issue #863: the gVCF and its index are outputs of the final stage. An
+    interrupted postprocess_variants reruns alone; a deleted gVCF reruns
+    DeepVariant, whose stages' work is gone; nothing missing reruns nothing."""
+    dv.deepvariant.fail("postprocess_variants", write=False)
+    with pytest.raises(WGSExtractError, match="resume"):
+        call(dv, "--reference-evidence", "gvcf")
+    assert visible(dv.out) == []
+    rerun(dv, "--reference-evidence", "gvcf")
+    assert dv.deepvariant.stages() == ["postprocess_variants"]
+    gvcf = dv.out / "deepvariant.g.vcf.gz"
+    assert evidence_state(gvcf, "chr1", 1500) is State.CALLABLE_REFERENCE
+
+    gvcf.unlink()
+    rerun(dv, "--reference-evidence", "gvcf")
+    assert dv.deepvariant.stages() == STAGES
+    assert evidence_state(gvcf, "chr1", 1500) is State.CALLABLE_REFERENCE
+
+    dv.deepvariant.clear()
+    assert ROLE in call_with_evidence(dv)
+    assert dv.deepvariant.stages() == []
+
+
+def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv):
+    """Issue #863: ploidy-0 intervals (a woman's chrY) are left out of
+    calling, so the gVCF has no records there; its provenance must say they
+    were excluded, or they would read as bases nobody could read."""
+    rng = random.Random(863)
+    seq = "".join(rng.choice("ACGT") for _ in range(3000))
+    root = dv.tmp / "hg38"
+    root.mkdir()
+    ref = write_fasta(root / "ref.fa", {"chr1": seq, "chrY": seq})
+    lines = ["@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:3000"]
+    lines += ["@SQ\tSN:chrY\tLN:3000", "@RG\tID:rg\tSM:S"]
+    lines += [
+        f"{chrom}{i}\t0\t{chrom}\t{start}\t60\t100M\t*\t0\t0\t"
+        f"{seq[start - 1 : start + 99]}\t{'I' * 100}\tRG:Z:rg"
+        for chrom in ("chr1", "chrY")
+        for i, start in enumerate(range(500, 2400, 5))
+    ]
+    bam = sam_to_bam(lines, root / "woman.bam")
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Female")
+    dv.sample = SimpleNamespace(ref=str(ref), bam=bam)
+    gvcf = call_with_evidence(dv)[ROLE]
+
+    assert gvcf.metrics["sex"] == "F"
+    assert gvcf.metrics["ploidy_zero"] == "chrY:1-3000"
+    assert evidence_state(gvcf.path, "chrY", 1500) is State.EXCLUDED_BY_POLICY
+    assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE

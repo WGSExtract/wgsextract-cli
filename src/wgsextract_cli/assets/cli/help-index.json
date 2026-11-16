@@ -97,7 +97,7 @@
 {"path":"vcf sv","tier":"advanced","summary":"Call Structural Variants (SVs) using Delly for short reads, Sniffles for Nanopore (ONT, auto-detected) or other long reads, or pbsv/Sniffles for PacBio.","key_flags":["--region","--caller","--pacbio","--ont","--long-read","--ccs","--tandem-repeats"]},
 {"path":"vcf freebayes","tier":"advanced","summary":"A Bayesian genetic variant detector.","key_flags":["--region"]},
 {"path":"vcf gatk","tier":"advanced","summary":"Industry-standard GATK HaplotypeCaller.","key_flags":["--region","--scatter","--gpu"]},
-{"path":"vcf deepvariant","tier":"advanced","summary":"Google's Deep Variant variant caller.","key_flags":["--region","--wes","--ont","--pacbio","--gpu","--no-resume","--force-step","--dry-run"]},
+{"path":"vcf deepvariant","tier":"advanced","summary":"Google's Deep Variant variant caller.","key_flags":["--region","--wes","--ont","--pacbio","--gpu","--reference-evidence","--no-resume","--force-step","--dry-run"]},
 {"path":"vcf clair3","tier":"advanced","summary":"Clair3 small-variant caller for Oxford Nanopore reads (optional; Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e clair3`).","key_flags":["--region","--model","--gpu"]},
 {"path":"vcf phase","tier":"advanced","summary":"Phase a sample's heterozygous calls with its reads (WhatsHap, or LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.","key_flags":["--region","--vcf-input","--phaser","--haplotag"]},
 {"path":"vcf impute","tier":"advanced","summary":"Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle.","key_flags":["--vcf-input","--chromosomes","--min-gp","--min-info"]},

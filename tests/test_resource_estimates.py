@@ -914,3 +914,28 @@ def test_long_read_disk_covers_the_measured_spills_and_cram_output():
         "PAO83395.pass.cram", 103_700_000_000, "CRAM", 7 * 512 * mib
     )
     assert whole.output >= 185_500_000_000
+
+
+def test_native_deepvariant_gvcf_budgets_the_whole_call_set_863(
+    source, tmp_path, monkeypatch
+):
+    """Issue #863: wgse-deepvariant's postprocess_variants keeps every
+    contig's calls until it writes the gVCF (its patch 0005), so a genome's
+    gVCF needs the whole call set in memory, not only its largest contig's;
+    chr20's measured 0.74 GiB must still fit a small host."""
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(host_platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
+    _regions, ref = _whole_genome(tmp_path)
+
+    def stage(region=None, gvcf=False):
+        estimate = resources.estimate_resources(
+            "deepvariant", input_paths=[str(source)], output_dir=str(tmp_path),
+            reference=str(ref), threads="4", inference_batch_size=256,
+            deepvariant_native=True, region=region, reference_evidence=gvcf,
+        )  # fmt: skip
+        return estimate.resources[0].components["largest_sequential_stage"]
+
+    assert stage() < 8 * GIB
+    assert stage(gvcf=True) > 25 * GIB
+    assert 0.74 * GIB < stage("chr20", gvcf=True) < 8 * GIB
