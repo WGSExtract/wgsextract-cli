@@ -736,3 +736,35 @@ def test_per_run_refuses_when_the_publisher_has_no_data(
     assert result.exit_code == 1
     assert result.error is not None and named in result.error.message
     assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()
+
+
+def test_per_run_refuses_to_copy_library_databases_it_cannot_link(
+    tmp_path, monkeypatch
+):
+    """Issue 629: where links can't be made (Windows without symlink rights,
+    the output on another drive), the run folder copied every library
+    database, gnomAD's included, onto the output drive."""
+    import os
+
+    from wgsextract_cli.core import acmg_sites
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    library, cache = tmp_path / "sa", tmp_path / "sites" / "entry"
+    library.mkdir()
+    cache.mkdir(parents=True)
+    (library / "clinvar.osa2").write_bytes(b"library")
+    (cache / "gnomad_chr1.osa2").write_bytes(b"per run")
+    per_run = acmg_sites.SiteDatabase("gnomad", "chr1", cache, ["gnomad_chr1.osa2"])
+
+    def refuse(*_args, **_kwargs):
+        raise OSError("links not allowed")
+
+    monkeypatch.setattr(os, "link", refuse)
+    monkeypatch.setattr(os, "symlink", refuse)
+    with pytest.raises(WGSExtractError, match="library's drive"):
+        acmg_sites.link_folder(library, set(), [per_run], tmp_path / "run")
+    assert not (tmp_path / "run" / "clinvar.osa2").exists()
+
+    (library / "clinvar.osa2").unlink()
+    acmg_sites.link_folder(library, set(), [per_run], tmp_path / "run2")
+    assert (tmp_path / "run2" / "gnomad_chr1.osa2").read_bytes() == b"per run"

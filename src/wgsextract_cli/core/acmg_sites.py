@@ -31,7 +31,8 @@ import time
 from array import array
 from collections import defaultdict
 from collections.abc import Iterable
-from contextlib import nullcontext
+from concurrent.futures import FIRST_EXCEPTION, wait
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -393,6 +394,8 @@ def build_databases(
             )  # fmt: skip
             for source in SOURCES
         ]
+        # A source that fails stops the other, rather than reading on for hours.
+        wait(futures, return_when=FIRST_EXCEPTION)
         found = [db for future in futures for db in future.result()]
     except BaseException:
         stop.set()
@@ -463,15 +466,18 @@ def _prune(cache: Path) -> None:
     left staged; nothing used in the last two days, which a run going on
     beside this one may be reading."""
     old = time.time() - _IN_USE
-    entries = [p for p in cache.iterdir() if p.is_dir()]
-    staged = [p for p in entries if p.name.startswith(".")]
+    used: dict[Path, float] = {}
+    for entry in cache.iterdir():
+        # Another run on the same cache may remove an entry meanwhile.
+        with suppress(OSError):
+            if entry.is_dir():
+                used[entry] = entry.stat().st_mtime
+    staged = [p for p in used if p.name.startswith(".")]
     kept = sorted(
-        (p for p in entries if p not in staged),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
+        (p for p in used if p not in staged), key=used.__getitem__, reverse=True
     )
     for stale in [*staged, *kept[_KEEP:]]:
-        if stale.stat().st_mtime < old:
+        if used[stale] < old:
             shutil.rmtree(stale, ignore_errors=True)
 
 
@@ -479,9 +485,10 @@ def link_folder(
     library: Path, leave_out: set[Path], databases: list[SiteDatabase], dest: Path
 ) -> None:
     """A new folder ``dest`` holding the library's databases but
-    ``leave_out`` (and their ``.idx``), and the per-run ones, as links (copies
-    where links can't be made). A per-run database replaces a library file of
-    its name; nothing is ever written through to either. The per-run ones are
+    ``leave_out`` (and their ``.idx``), and the per-run ones, as links (the
+    per-run ones copied where links can't be made). A per-run database
+    replaces a library file of its name; nothing is ever written through to
+    either. The per-run ones are
     hard links where they can be, which outlive their cache entry."""
     dest.mkdir(parents=True)
     skip = {p.name for p in leave_out} | {f"{p.name}.idx" for p in leave_out}
@@ -502,6 +509,13 @@ def link_folder(
             except OSError:
                 continue
         else:
+            if not per_run:
+                # Copying the library's databases could fill the output drive.
+                raise WGSExtractError(
+                    f"Can't link {path} into {dest.parent}: links aren't allowed "
+                    "there and the library's databases are too large to copy. "
+                    "Use an output folder on the library's drive."
+                )
             shutil.copyfile(path, link)
         if not link.is_file():
             raise WGSExtractError(f"{path} went missing while the run was set up.")
