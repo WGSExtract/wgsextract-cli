@@ -25,7 +25,7 @@ jobs:
       workflow: cli_smoke.yml
   smoke:
     needs: nightly
-    if: ${{ !cancelled() && needs.nightly.result != 'failure' && needs.nightly.outputs.skip != 'true' }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') }}
     name: smoke (${{ matrix.os }})
     strategy:
       fail-fast: false

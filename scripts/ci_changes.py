@@ -85,6 +85,18 @@ def setup_checks(paths: list[str]) -> bool:
     )
 
 
+def queue_windows_required(paths: list[str]) -> bool:
+    """Code and uncertain runtime inputs require Windows, even without consumers."""
+    return any(
+        not path.endswith(".md")
+        and not ci_path(path)
+        and path not in GENERATED_DOCS
+        and path not in DOCS_ONLY_SCRIPTS
+        and path not in DOCS_TEST_MODULES
+        for path in paths
+    )
+
+
 def site_validation(paths: list[str]) -> bool:
     return any(
         path.startswith(("site_src/", "gui/site_src/"))
@@ -209,7 +221,7 @@ def main() -> None:
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
-    queue_windows = selected["cli"]
+    queue_windows = queue_windows_required(paths)
     tests = "all" if args.full_suite else select_tests(paths)
     moves = None if args.full_suite else select_moves(args.base, args.head)
     if moves is not None:

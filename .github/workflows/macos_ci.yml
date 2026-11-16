@@ -39,7 +39,7 @@ jobs:
       workflow: macos_ci.yml
   test-macos:
     needs: nightly
-    if: ${{ !cancelled() && needs.nightly.result != 'failure' && needs.nightly.outputs.skip != 'true' && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: macos

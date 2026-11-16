@@ -5,10 +5,11 @@ from __future__ import annotations
 import ast
 import subprocess
 from dataclasses import dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from scripts.ci_select_tests import import_graph, selection_context
-from scripts.ci_test_dependencies import ROOT
+from scripts.ci_test_dependencies import ROOT, test_inputs
 
 
 class WithoutImports(ast.NodeTransformer):
@@ -27,6 +28,51 @@ def definitions(source: bytes) -> str:
 class MoveSelection:
     tests: list[str]
     modules: list[str]
+
+
+def references_removed(files: dict[str, Path], removed: set[str], root: Path) -> bool:
+    old_modules = set()
+    for path in removed:
+        parts = Path(path).relative_to("src").with_suffix("").parts
+        old_modules.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
+
+    def missing(reference: str) -> bool:
+        return any(
+            reference in {old, old.rsplit(".", 1)[-1]}
+            or reference.startswith(old + ".")
+            for old in old_modules
+        )
+
+    if any(
+        fnmatchcase(path, pattern) for path in removed for pattern in test_inputs(root)
+    ):
+        return True
+    for name, file in files.items():
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        package = name if file.name == "__init__.py" else name.rpartition(".")[0]
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                if any(missing(alias.name) for alias in node.names):
+                    return True
+            elif isinstance(node, ast.ImportFrom):
+                prefix = node.module or ""
+                if node.level:
+                    package_parts = package.split(".")
+                    prefix = ".".join(
+                        package_parts[: len(package_parts) - node.level + 1]
+                    )
+                    if node.module:
+                        prefix += "." + node.module
+                if missing(prefix) or any(
+                    missing(f"{prefix}.{alias.name}") for alias in node.names
+                ):
+                    return True
+            elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if any(old in node.value for old in old_modules) or any(
+                    Path(path).name in node.value for path in removed
+                ):
+                    return True
+    return False
 
 
 def select_moves(
@@ -60,7 +106,7 @@ def select_moves(
         if not fields or fields == [""]:
             return None
         changed: set[str] = set()
-        renamed = False
+        removed: set[str] = set()
         index = 0
         while index < len(fields):
             status, old = fields[index : index + 2]
@@ -69,7 +115,7 @@ def select_moves(
             if status == "R100":
                 new = fields[index]
                 index += 1
-                renamed = True
+                removed.add(old)
             elif status != "M":
                 return None
             for path in (old, new):
@@ -85,19 +131,24 @@ def select_moves(
                 return None
             # Imports rewritten in other modules also need their consumers tested.
             changed.update((old, new))
-        if not renamed:
+        if not removed:
             return None
         root = repository.resolve()
         context = selection_context(root)
         graph = import_graph(root)
+        if references_removed(graph.files, removed, root):
+            return None
         modules = {context.by_path[path] for path in changed if path in context.by_path}
         if not modules or modules & graph.unsafe:
             return None
-        tests = sorted(
-            test
-            for test, closure in context.direct_closures.items()
-            if closure & modules
-        )
-        return MoveSelection(tests, sorted(modules))
+        tests = {
+            test for test, closure in context.closures.items() if closure & modules
+        }
+        for test, closure in context.closures.items():
+            if closure & graph.unsafe:
+                if {"wgsextract_cli.main", "wgsextract_cli.cli.parser"} & closure:
+                    return None
+                tests.add(test)
+        return MoveSelection(sorted(tests), sorted(modules))
     except (OSError, ValueError, SyntaxError, IndexError, subprocess.SubprocessError):
         return None

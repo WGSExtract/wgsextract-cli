@@ -9,16 +9,20 @@ import subprocess
 from pathlib import Path
 
 
+def import_modules(modules: list[str]) -> None:
+    for module in modules:
+        if not (
+            module == "wgsextract_cli" or module.startswith("wgsextract_cli.")
+        ) or not all(part.isidentifier() for part in module.split(".")):
+            raise ValueError(f"Not a CLI module: {module!r}")
+        importlib.import_module(module)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--modules", required=True, help="JSON CLI module names")
     modules = json.loads(parser.parse_args().modules)
-    for module in modules:
-        if not module.startswith("wgsextract_cli.") or not all(
-            part.isidentifier() for part in module.split(".")
-        ):
-            raise ValueError(f"Not a CLI module: {module!r}")
-        importlib.import_module(module)
+    import_modules(modules)
     output = Path("out/pure-move-collection.log")
     output.parent.mkdir(exist_ok=True)
     with output.open("w", encoding="utf-8") as log:

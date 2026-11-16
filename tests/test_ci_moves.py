@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ci_changes import queue_windows_required, routes
 from scripts.ci_moves import select_moves
+from scripts.ci_select_tests import select_tests
 from scripts.ci_test_dependencies import ROOT
 from tests.test_ci_selection import repository
 
@@ -19,7 +21,9 @@ def git(root: Path, *args: str) -> str:
     ).strip()
 
 
-def moved_repository(root: Path, *, body: str = "VALUE = 1\n") -> tuple[Path, str]:
+def moved_repository(
+    root: Path, *, body: str = "VALUE = 1\n", extra: dict[str, str] | None = None
+) -> tuple[Path, str]:
     repository(
         root,
         {
@@ -27,6 +31,7 @@ def moved_repository(root: Path, *, body: str = "VALUE = 1\n") -> tuple[Path, st
             "src/wgsextract_cli/core/reader.py": "from .old import VALUE\n",
             "tests/test_reader.py": "from wgsextract_cli.core.reader import VALUE\n",
             "tests/test_other.py": "import json\n",
+            **(extra or {}),
         },
     )
     git(root, "init", "-q")
@@ -148,3 +153,107 @@ def test_1045_import_failure_cannot_pass_move_validation() -> None:
     )
     assert result.returncode != 0
     assert "ModuleNotFoundError" in result.stderr
+
+
+def test_1045_root_package_reexports_are_imported_after_moves(tmp_path: Path) -> None:
+    root, base = moved_repository(
+        tmp_path, extra={"src/wgsextract_cli/__init__.py": ""}
+    )
+    (root / "src/wgsextract_cli/__init__.py").write_text(
+        "from .core.new import VALUE\n"
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move and reexport")
+    selection = select_moves(base, "HEAD", repository=root)
+    assert selection is not None and "wgsextract_cli" in selection.modules
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys; runpy.run_path(sys.argv[1])['import_modules'](['wgsextract_cli'])",
+            str(ROOT / "scripts/ci_check_moves.py"),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [
+        "def load():\n    from . import old\n    return old.VALUE\n",
+        "def load():\n    import old\n    return old.VALUE\n",
+        "from importlib import import_module\ndef load():\n    return import_module('wgsextract_cli.core.old').VALUE\n",
+    ],
+)
+def test_1045_deferred_old_name_consumers_force_normal_selection(
+    tmp_path: Path, loader: str
+) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "src/wgsextract_cli/core/loader.py": loader,
+            "tests/test_loader.py": "from wgsextract_cli.core.loader import load\ndef test_load():\n    assert load() == 1\n",
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move with unresolved consumer")
+    assert select_moves(base, "HEAD", repository=root) is None
+
+
+def test_1045_renamed_away_source_readers_force_normal_selection(
+    tmp_path: Path,
+) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "tests/test_source.py": "from pathlib import Path\ndef test_source():\n    assert Path('src/wgsextract_cli/core/old.py').read_text()\n"
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move with source reader")
+    assert select_moves(base, "HEAD", repository=root) is None
+
+
+def test_1045_opaque_importer_consumers_are_not_omitted(tmp_path: Path) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "src/wgsextract_cli/core/loader.py": "from importlib import import_module\ndef load(name):\n    return import_module(name)\n",
+            "tests/test_loader.py": "from wgsextract_cli.core.loader import load\n",
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move beside opaque importer")
+    selected = select_moves(base, "HEAD", repository=root)
+    assert selected is not None
+    assert "tests/test_loader.py" in selected.tests
+
+
+def test_1045_autouse_fixture_consumers_run_after_import_rewrites(
+    tmp_path: Path,
+) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "tests/conftest.py": "import pytest\nfrom wgsextract_cli.core.reader import VALUE\n@pytest.fixture(autouse=True)\ndef isolate():\n    assert VALUE == 1\n"
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move behind fixture")
+    selected = select_moves(base, "HEAD", repository=root)
+    assert selected is not None
+    assert "tests/test_other.py" in selected.tests
+
+
+def test_1045_new_code_without_discovered_consumers_still_requires_queue_windows(
+    tmp_path: Path,
+) -> None:
+    path = "src/wgsextract_cli/core/unreferenced.py"
+    root = repository(
+        tmp_path, {path: "VALUE = 1\n", "tests/test_other.py": "import json\n"}
+    )
+    assert select_tests([path], repository=root) == []
+    assert not routes([path], repository=root)["cli"]
+    assert queue_windows_required([path])

@@ -113,8 +113,50 @@ def test_1045_nightly_full_matrix_is_gated_before_setup(workflow: str) -> None:
         if name == "nightly":
             continue
         assert "needs: nightly" in body
-        assert "needs.nightly.outputs.skip != 'true'" in body
-        assert "needs.nightly.result != 'failure'" in body
+        gate = re.search(r"\((needs\.nightly\.[^)]+)\)", body)
+        assert gate is not None
+        for result, skip, run in [
+            ("success", "true", False),
+            ("success", "false", True),
+            ("failure", "", True),
+            ("failure", "true", True),
+            ("skipped", "", True),
+        ]:
+            expression = (
+                gate[1]
+                .replace("needs.nightly.result", repr(result))
+                .replace("needs.nightly.outputs.skip", repr(skip))
+            )
+            tree = ast.parse(expression.replace("||", " or "), mode="eval").body
+            assert isinstance(tree, ast.BoolOp) and isinstance(tree.op, ast.Or)
+            decisions = []
+            for compare in tree.values:
+                assert isinstance(compare, ast.Compare)
+                assert isinstance(compare.ops[0], ast.NotEq)
+                decisions.append(
+                    ast.literal_eval(compare.left)
+                    != ast.literal_eval(compare.comparators[0])
+                )
+            assert any(decisions) is run, (workflow, name, result, skip)
+
+
+def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    for platform in ("linux_x64", "linux_arm64", "macos_arm64", "windows_x64"):
+        output = re.search(rf"^      {platform}: (.+)$", source, re.MULTILINE)
+        assert output is not None
+        assert "steps.diff.outputs.move_modules == '[]' &&" in output[1]
+        assert "|| 'false'" in output[1]
+
+
+def test_1045_bundle_compatibility_keeps_affected_parser_dependencies() -> None:
+    source = (WORKFLOWS / "os_tests.yml").read_text()
+    bundle = source.split(
+        "      - name: Check the app's bundle commands parse with this CLI", 1
+    )[1]
+    condition = bundle.splitlines()[1]
+    assert "inputs.setup-checks ||" in condition
+    assert "contains(inputs.tests, 'tests/test_cli_parser.py')" in condition
 
 
 def test_1045_queue_windows_is_a_required_dependency_not_pr_only() -> None:

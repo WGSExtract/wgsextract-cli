@@ -54,10 +54,11 @@ jobs:
       windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
       arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
       generic_tests: ${{ steps.diff.outputs.generic_tests }}
-      linux_x64: ${{ steps.cert.outputs.linux_x64 }}
-      linux_arm64: ${{ steps.cert.outputs.linux_arm64 }}
-      macos_arm64: ${{ steps.cert.outputs.macos_arm64 }}
-      windows_x64: ${{ steps.cert.outputs.windows_x64 }}
+      # Certificates do not yet include move imports/full collection.
+      linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
+      linux_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_arm64 || 'false' }}
+      macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
+      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier

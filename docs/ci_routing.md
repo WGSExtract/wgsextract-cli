@@ -85,11 +85,14 @@ complete diff touches their setup inputs: installers, packaging, GUI files,
 Pixi/project manifests, CLI parser/registration, workflow/actions or Install
 Lab/bootstrap scripts. Parser/registration inputs remain covered because they
 can invalidate the app's bundled command lines.
+The bundle check also retains its affected `test_cli_parser.py` trigger:
+API wrappers and command-registry dependencies outside `cli/` can change the
+bundled command contract even when installer setup is unrelated.
 The same routing bit gates both macOS Install Lab jobs; Linux and Windows
 Install Lab selection is unchanged. The Tauri installer keeps its input path
 filter, including its Rust cache/build wrappers and root packaging/manifests.
 Main and scheduled runs retain those checks whenever their workflow runs.
-Thus an ordinary CLI implementation edit runs **zero** OS-installer steps
+Thus a CLI edit unrelated to setup and the parser contract runs **zero** OS-installer steps
 and **zero** Ubuntu app-bundle checks rather than four installer steps and one
 app-bundle check. `run-install-lab` remains an explicit full-platform override.
 
@@ -99,11 +102,16 @@ pushes and dispatches skip it without a runner. A scheduled workflow skips its
 expensive jobs only if its own successful **push** run exists for the exact
 current main SHA in this repository. A different SHA, a failed/cancelled run,
 a PR/nightly success, missing evidence or an API error retains full coverage.
+Failure or timeout of the guard runner itself also runs coverage; a skip
+requires both a successful guard and its explicit `skip=true` output.
 Manual dispatch always runs. Green exact-HEAD evidence reduces ten nightly
 runner jobs (four OS tests, Ubuntu lint/two supplemental jobs and three smoke
 jobs) to five small Ubuntu guard jobs, with no scientific work repeated.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
+Queue Windows selection uses changed code/runtime-input paths, independently
+of whether PR selection discovers consumers. A new unreferenced CLI module
+therefore still receives the full Windows queue safety net.
 
 ### Conservative pure-move PR selection (#1045)
 
@@ -116,15 +124,19 @@ must remain identical. Entry-point moves, changed assets/tests/configuration,
 partial renames, parsing errors and uncertain module mappings retain normal
 fail-open selection. Import-only edits without a move retain normal selection.
 
-The narrow set contains tests whose import closure reaches the moved modules
-**or** modules with rewritten imports, without widening through unrelated
-fixture closures or treating a deleted old filename as an unknown new input.
+The narrow set contains tests whose import closure, including conftest/autouse
+fixtures, reaches moved modules **or** modules with rewritten imports.
+Unsafe importer consumers retain the normal selector's inclusion/fail-open
+rules. Remaining old-name imports, deferred literal imports or renamed-away
+file readers force normal selection instead of silently omitting consumers.
 Before pytest, every selected OS imports the surviving changed modules and
 collects the full suite; collection logs are uploaded even on failure. If no
 test imports the moved modules, the existing tiny smoke pair still supplies
 the runner for import/collection validation. The merge queue never uses this
 optimization: full Linux and code-selected Windows remain its safety net,
 with only their existing passed-on-main test-cache exclusions.
+Writer platform certifications cannot skip these hosted move checks: their
+current commands do not yet attest import/full-collection validation.
 
 ### Writer self-certification
 

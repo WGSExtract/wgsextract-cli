@@ -259,7 +259,7 @@ jobs:
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && inputs.setup-checks
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.setup-checks || inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
