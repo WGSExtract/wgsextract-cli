@@ -219,6 +219,17 @@ def test_y_mt_extract_with_chrm_before_chry_gives_a_sorted_bam(tmp_path):
     ]
 
 
+def test_custom_long_region_list_is_not_file_name_too_long_977(genome, tmp_path):
+    # Issue #977: a --region list longer than a path (PATH_MAX, 4096) crashed
+    # with "[Errno 36] File name too long" when checked for being a BED file.
+    region = ",".join(f"chr1:{s}-{s}" for s in range(1, 501))
+    assert len(region) > 4096
+    _extract("custom", genome["male"], tmp_path, "-r", region)
+    (out,) = tmp_path.glob("*.bam")
+    assert len(out.name) < 255
+    assert _names(out) == _on("chr1")
+
+
 def test_custom_extracts_bed_regions(genome, tmp_path):
     bed = tmp_path / "targets.bed"
     bed.write_text("chrX\t200\t260\n")

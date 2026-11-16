@@ -49,10 +49,22 @@ def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
     return rows
 
 
+def is_region_file(region: str | None) -> bool:
+    """Whether a ``--region`` value names a file (a BED) rather than regions.
+
+    A long region list is no path: ``Path.is_file`` raises ENAMETOOLONG on it."""
+    if not region:
+        return False
+    try:
+        return Path(region).is_file()
+    except OSError:
+        return False
+
+
 def region_items(region: str, *, commas: bool) -> list[str]:
     """The regions and BED files in a ``--region`` list: GATK and Parabricks
     separate them with commas, DeepVariant on the CPU with whitespace."""
-    if Path(region).is_file():
+    if is_region_file(region):
         return [region]
     if commas:
         return [item.strip() for item in region.split(",") if item.strip()]
