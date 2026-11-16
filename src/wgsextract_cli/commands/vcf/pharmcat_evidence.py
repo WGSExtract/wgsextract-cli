@@ -148,7 +148,13 @@ def _from_gvcf(
     reference where the classifier calls every base callable reference (with
     one ploidy), else a no-call whose PGX_STATE is the worst base's state."""
     states = [found.states.get(locus, evidence.State.NOT_ASSESSED) for locus in loci]
-    worst = min(states, key=list(evidence.State).index)
+    # Any state but callable reference outweighs it, not_assessed included.
+    failing = [s for s in states if s is not evidence.State.CALLABLE_REFERENCE]
+    worst = (
+        min(failing, key=list(evidence.State).index)
+        if failing
+        else evidence.State.CALLABLE_REFERENCE
+    )
     ploidies = {found.ploidy.get(locus) for locus in loci}
     matches = "".join(sequence[locus] for locus in loci).upper() == target[3].upper()
     callable_reference = (
