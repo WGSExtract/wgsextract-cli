@@ -51,10 +51,11 @@ def _dataclass_hints(model: type) -> dict[str, object]:
 
     hints: dict[str, object] = {}
     for item in fields(model):
+        # Descendants reuse Fields; annotations can be lazy or belong to a mixin.
         owner = next(
             base
-            for base in model.__mro__
-            if item.name in vars(base).get("__annotations__", {})
+            for base in reversed(model.__mro__)
+            if vars(base).get("__dataclass_fields__", {}).get(item.name) is item
         )
         namespace: dict[str, object] = {
             name: value
