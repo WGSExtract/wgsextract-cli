@@ -18,7 +18,7 @@ import sys
 import tempfile
 from collections import defaultdict
 from collections.abc import Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +33,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
@@ -220,7 +221,7 @@ def run_whatshap(
         )
 
     # A failed or interrupted batch stops the others rather than waiting on them.
-    with ThreadPoolExecutor(max_workers=len(parts)) as pool:
+    with ContextThreadPoolExecutor(max_workers=len(parts)) as pool:
         futures = [pool.submit(phase, part) for part in parts]
         try:
             for future in as_completed(futures):

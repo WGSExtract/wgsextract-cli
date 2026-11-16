@@ -23,7 +23,6 @@ import math
 import re
 import signal
 import subprocess
-import threading
 from collections import Counter, deque
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -33,6 +32,7 @@ from typing import IO, Any
 from wgsextract_cli.core import clinical_evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import typed_settings
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
@@ -785,7 +785,7 @@ class _Stderr:
 
     def __init__(self, process: subprocess.Popen[str]) -> None:
         self.lines: deque[str] = deque(maxlen=20)
-        self._thread = threading.Thread(
+        self._thread = context_thread(
             target=self._drain, args=(process.stderr,), daemon=True
         )
         self._thread.start()

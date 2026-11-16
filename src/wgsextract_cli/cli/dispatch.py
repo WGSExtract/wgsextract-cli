@@ -4,10 +4,9 @@ import logging
 import sys
 from pathlib import Path
 
-from wgsextract_cli.api._runtime import _context_of, cancel_event
 from wgsextract_cli.commands._command_needs import COMMAND_NEEDS, HOURS, MINUTES
 from wgsextract_cli.commands.registry import DEPRECATED
-from wgsextract_cli.core import live_status
+from wgsextract_cli.core import execution_context, live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
@@ -140,11 +139,11 @@ def _progress_line(
     return live_status.LiveStatus(command, stream)
 
 
-def _rendering_progress(line: object) -> contextlib.AbstractContextManager[None]:
+def _rendering_progress(line: object) -> contextlib.AbstractContextManager[object]:
     """Show the run's progress events (see api.ProgressEvent) on the line."""
     if not isinstance(line, live_status.LiveStatus):
         return contextlib.nullcontext()
-    return _context_of(live_status.show_progress, cancel_event())
+    return execution_context.bound(progress=live_status.show_progress)
 
 
 def _index_output(

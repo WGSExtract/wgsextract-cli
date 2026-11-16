@@ -24,20 +24,15 @@ def command_config(config: str | None) -> Iterator[bool]:
     if not config:
         yield True
         return
-    from wgsextract_cli.core import config as cfg
+    from wgsextract_cli.core.config import scoped_config
 
-    outer = cfg._config_path_override
-    try:
-        cfg.set_config_path(config)
+    with contextlib.ExitStack() as stack:
         try:
-            cfg.reload_settings()
+            stack.enter_context(scoped_config(config))
         except WGSExtractError:
             yield False
             return
         yield True
-    finally:
-        cfg.set_config_path(outer)
-        cfg.reload_settings()
 
 
 def _with_config(item: MissingReference, config: str | None) -> MissingReference:

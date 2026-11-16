@@ -234,12 +234,14 @@ def get_tool_version(tool: str) -> str | None:
             full_cmd.insert(full_cmd.index("run") + 1, "--no-install")
 
     key = (tool, *full_cmd)
-    if key not in tool_versions:
+    # One lookup: a config reload on another thread may clear the cache.
+    version = tool_versions.get(key)
+    if version is None:
         version = _probe_version(tool, full_cmd)
         if version.startswith("Error:"):
             return version
         tool_versions[key] = version
-    return tool_versions[key]
+    return version
 
 
 def _probe_version(tool: str, full_cmd: list[str]) -> str:

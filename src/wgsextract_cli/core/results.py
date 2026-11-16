@@ -35,6 +35,7 @@ from typing import Any, Literal, TextIO
 from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
+from wgsextract_cli.core import execution_context
 
 SCHEMA_ID = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
@@ -690,35 +691,31 @@ def load_schema() -> dict[str, Any]:
 
 # --- the active result -----------------------------------------------------
 
-# One command runs per process, and its worker threads must reach the same
-# result, so this is a process global rather than a ContextVar.
-_active: CommandResult | None = None
-_json_mode = False
+# The running command's result is on its ExecutionContext, which worker threads
+# started through core.execution_context inherit; concurrent library calls on
+# other threads each have their own.
 
 
 def current_result() -> CommandResult:
     """The result of the running command; a throwaway one outside dispatch."""
-    return _active if _active is not None else CommandResult(command="")
+    active = execution_context.current().result
+    return active if active is not None else CommandResult(command="")
 
 
 def json_mode() -> bool:
-    return _json_mode
+    return execution_context.current().json_mode
 
 
 @contextlib.contextmanager
 def collecting(result: CommandResult, *, as_json: bool = False) -> Iterator[None]:
-    global _active, _json_mode
-    previous = (_active, _json_mode)
-    _active, _json_mode = result, as_json
-    try:
+    with execution_context.bound(result=result, json_mode=as_json):
         yield
-    finally:
-        _active, _json_mode = previous
 
 
 def record_tool_command(command: Sequence[str]) -> None:
-    if _active is not None:
-        _active.record_tool_command(command)
+    active = execution_context.current().result
+    if active is not None:
+        active.record_tool_command(command)
 
 
 def warn(code: str, message: str, **details: Scalar) -> None:
@@ -732,9 +729,10 @@ def human_output(*values: object, sep: str = " ", end: str = "\n") -> None:
     command's ``CommandResult.text``, which the CLI streams to stdout unless
     --json is given. Outside a command it is printed."""
     text = sep.join(map(str, values)) + end
-    if _active is not None:
-        _active.add_text(text)
-    elif not _json_mode:
+    context = execution_context.current()
+    if context.result is not None:
+        context.result.add_text(text)
+    elif not context.json_mode:
         print(text, end="")
 
 

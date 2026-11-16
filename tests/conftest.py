@@ -10,6 +10,7 @@ import pytest
 
 from tests.fake_tools import FakePixi
 from tests.smoke_utils import isolate_home, state_directory_setting
+from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.runtime import repo_root, source_checkout_root
@@ -173,7 +174,7 @@ def _isolate(
     in the data folder, which is this checkout; keep them in ``home``, from
     CLI subprocesses through the config and in-process also when a test
     replaces the config."""
-    monkeypatch.setattr("wgsextract_cli.core.config._config_path_override", None)
+    monkeypatch.setattr(config_module._PROCESS_CONFIG, "path", None)
     isolate_home(monkeypatch, home)
     config = get_config_path()
     config.parent.mkdir(parents=True, exist_ok=True)

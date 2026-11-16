@@ -8,6 +8,8 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from typing import NamedTuple
 
+from wgsextract_cli.core.execution_context import context_thread
+
 _READS = re.compile(r"(?:Processed|mapped)\s+(\d+)\s+(?:reads|sequences)", re.I)
 # Aligners report reads per batch; a batch of ultra-long ONT reads from a
 # centromeric satellite can take hours, so a quiet aligner is not news before this.
@@ -79,7 +81,7 @@ class Heartbeat:
         self._write_start: tuple[float, float] | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread = context_thread(target=self._run, daemon=True)
 
     def __enter__(self) -> "Heartbeat":
         self.report()
