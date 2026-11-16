@@ -1,6 +1,6 @@
 """Generate public output schemas from a deliberately small Python type subset.
 
-Dictionary documents use TypedDict, not a second set of schema dictionaries.
+Documents use TypedDict or dataclasses, not a second set of schema dictionaries.
 Generation is a development operation; writers need only their type definitions.
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import types
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from typing import (
     Annotated,
     Literal,
@@ -52,13 +52,19 @@ def output_schema(
     title: str,
     description: str,
 ) -> Schema:
-    """Generate from TypedDict, Literal, Annotated, primitives, lists and dicts.
+    """Generate from TypedDict/dataclass records and supported field annotations.
 
-    Naming is scoped to this call. Dataclasses, Enum, tuple and Mapping fields
-    are not supported; unsupported annotations fail instead of widening.
+    Dataclasses describe their complete ``asdict``-style field projection:
+    defaults do not imply omission and factories are never called. Custom
+    serializers must model their serialized shape explicitly.
+    Naming is scoped to this call. Enum, tuple and Mapping fields are not
+    supported; unsupported annotations fail instead of widening.
     """
     definitions: dict[str, Schema] = {}
     owners: dict[str, object] = {}
+
+    def is_document(tp: object) -> bool:
+        return is_typeddict(tp) or (isinstance(tp, type) and is_dataclass(tp))
 
     def claim(tp: object, spec: Shape) -> None:
         if spec.name in owners and owners[spec.name] != tp:
@@ -67,7 +73,7 @@ def output_schema(
 
     def describe(tp: object, *, inline: bool = False) -> Schema:
         spec = shapes.get(tp)
-        if spec is not None and not is_typeddict(tp) and not inline:
+        if spec is not None and not is_document(tp) and not inline:
             claim(tp, spec)
             if spec.name not in definitions:
                 definitions[spec.name] = describe(tp, inline=True)
@@ -105,7 +111,7 @@ def output_schema(
         }
         if tp in primitive:
             return {"type": primitive[tp]}
-        if is_typeddict(tp):
+        if is_document(tp):
             spec = shapes.get(tp)
             if spec is None:
                 raise TypeError(f"Output shape needs an explicit name: {tp!r}")
@@ -118,9 +124,14 @@ def output_schema(
 
     def describe_object(tp: object, spec: Shape) -> Schema:
         if not isinstance(tp, type):
-            raise TypeError(f"Expected a TypedDict class: {tp!r}")
+            raise TypeError(f"Expected a TypedDict or dataclass class: {tp!r}")
         hints: dict[str, object] = get_type_hints(tp, include_extras=True)
-        required = cast(_TypedDictKeys, tp).__required_keys__
+        if is_dataclass(tp):
+            hints = {item.name: hints[item.name] for item in fields(tp)}
+            # asdict emits defaulted and init=False fields, unlike a constructor.
+            required = frozenset(hints)
+        else:
+            required = cast(_TypedDictKeys, tp).__required_keys__
         result: Schema = {
             "type": "object",
             "properties": {name: describe(kind) for name, kind in hints.items()},
@@ -137,8 +148,8 @@ def output_schema(
             )
         return result
 
-    if not is_typeddict(document) or document not in shapes:
-        raise TypeError(f"Expected a named output TypedDict: {document!r}")
+    if not is_document(document) or document not in shapes:
+        raise TypeError(f"Expected a named output TypedDict or dataclass: {document!r}")
     claim(document, shapes[document])
     root = describe_object(document, shapes[document])
     return {

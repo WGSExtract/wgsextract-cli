@@ -102,11 +102,20 @@ Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
 help. It updates the API snapshot, `docs/api.md`, `docs/commands.md`, the bundled
 compact discovery index, and the generated command cards in `site_src/cli.md`.
 It also generates the public sample-workspace JSON Schema from the output
-types in `core/sample_document.py`. Output types use `TypedDict` and
+types in `core/sample_document.py`. Output types use `TypedDict`, dataclasses and
 `Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
-Its supported subset is TypedDict, Literal, Annotated, primitives, unions,
-lists and string-keyed dicts; dataclasses, Enum, tuple and Mapping fields are
-not yet supported. Definition names and extension-key policies are supplied
+Its supported subset is TypedDict, dataclasses, Literal, Annotated, primitives,
+unions, lists and string-keyed dicts; Enum, tuple and Mapping fields are
+not yet supported. Dataclasses describe complete `dataclasses.asdict`-style
+projections: every field, including nullable/defaulted and `init=False` fields,
+is required in the output. `ClassVar` and `InitVar` pseudo-fields are excluded.
+Generation never constructs instances or calls default factories, and does not
+infer field omission or custom `to_dict` behavior. Use an explicit serialized
+model when a custom writer changes the field projection.
+For recursive fields on Python 3.10, postpone the whole annotation
+(`children: "list[Tree]"`), not only the element (`list["Tree"]`): that version's
+`get_type_hints` leaves partial PEP 585 forward references unresolved.
+Definition names and extension-key policies are supplied
 explicitly to each generation call, never registered globally. Workspace
 reads retain unrecognised TOML data in `WorkspaceState`; new fact/override/output
 records are written through the typed document models rather than casting
@@ -170,8 +179,8 @@ schemas and request validation, and lookup readers consume the resulting typed
 objects. This deliberately supports strings, booleans, integers and string
 arrays; unsupported annotations fail closed. Optional `None` defaults represent
 omitted fields internally: explicitly supplied JSON null is still rejected.
-This input-specific adapter does not add dataclass support to the public
-output-schema generator.
+This input-specific adapter keeps its constructor/omission semantics separate
+from the output-schema generator's complete dataclass projections.
 
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
