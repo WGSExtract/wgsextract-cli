@@ -8,6 +8,7 @@ server. A local HTTP server stands in for EBI's.
 import hashlib
 import os
 import secrets
+import sys
 import threading
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -88,6 +89,17 @@ def orphan_cram(tmp_path: Path) -> Path:
     return cram
 
 
+def _samtools_fetches_http_references() -> bool:
+    # Windows' REF_PATH splits on ';' and its build resolves URL entries
+    # differently, so this positive control runs where htslib has libcurl.
+    if sys.platform == "win32":
+        return False
+    version = run_command(
+        [get_tool_path("samtools"), "--version"], capture_output=True, check=False
+    ).stdout
+    return "libcurl=yes" in version
+
+
 @needs_htslib
 def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
     orphan_cram, reference_server
@@ -97,6 +109,8 @@ def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
     import urllib.error
     import urllib.request
 
+    if not _samtools_fetches_http_references():
+        pytest.skip("samtools here does not fetch http REF_PATH entries")
     port = reference_server.server_address[1]
     probe = urllib.request.Request(
         f"http://127.0.0.1:{port}/", headers={"Range": "bytes=0-16383"}
@@ -112,8 +126,6 @@ def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
         check=False,
         env=env,
     )
-    if not reference_server.requests and "http" not in result.stderr.lower():
-        pytest.skip("this samtools has no HTTP support")
     assert result.returncode != 0
     md5 = hashlib.md5(SEQUENCE.encode(), usedforsecurity=False).hexdigest()
     assert reference_server.requests == [reference_server.prefix + md5]
