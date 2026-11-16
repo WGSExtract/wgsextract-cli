@@ -17,7 +17,7 @@ from tests.htslib_helpers import needs_tools, write_fasta, write_read_pairs
 from tests.smoke_utils import ensure_fake_data, run_cli
 from wgsextract_cli import api
 from wgsextract_cli.api._params import from_namespace
-from wgsextract_cli.core import results
+from wgsextract_cli.core import execution_context, results
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.process_registry import proc_registry
 from wgsextract_cli.core.utils import child_stdout_to_stderr, popen, run_command
@@ -274,8 +274,8 @@ def test_config_is_loaded_on_first_call(monkeypatch, tmp_path):
 
     path = tmp_path / "config.toml"
     path.write_text("cpu_threads = 3\n")
-    monkeypatch.setattr(config, "_config_path_override", path)
-    monkeypatch.setattr(config, "_settings_loaded", False)
+    monkeypatch.setattr(config._PROCESS_CONFIG, "path", path)
+    monkeypatch.setattr(config._PROCESS_CONFIG, "loaded", False)
     saved = dict(settings)
     settings.clear()
     try:
@@ -297,25 +297,131 @@ def test_tools_started_after_cancel_are_stopped():
     assert process.wait(timeout=10) == 0
 
 
-def _child_context() -> tuple[bool, bool]:
-    from wgsextract_cli.api import _runtime
+def test_cancelling_a_call_leaves_other_calls_tools_running():
+    """#824: cancelling one library call stopped every tool in the process."""
+    other = popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        token = api.CancelToken()
+        token.cancel()
+        result = api.info.chip(
+            api.ChipParams(list_revisions=True), cancel=token, check=False
+        )
+        assert result.status == "cancelled"
+        assert other.poll() is None
+    finally:
+        other.kill()
+        other.wait()
 
-    return _runtime._context.progress is None, _runtime._context.cancel is None
+
+def _library_config(tmp_path: Path, name: str) -> tuple[Path, Path]:
+    library = tmp_path / name
+    library.mkdir()
+    config = tmp_path / f"{name}.toml"
+    config.write_text(f"reference_library = {json.dumps(str(library))}\n")
+    return config, library
+
+
+@needs_tools("samtools")
+def test_read_only_calls_run_at_once_on_threads_without_cross_talk(fake_data, tmp_path):
+    """#824: library calls ran one at a time, sharing one process-wide result,
+    progress callback, cancel token and config.toml. Read-only calls on three
+    threads now overlap, each with its own."""
+    import threading
+
+    bam, ref = fake_data
+    configs = {name: _library_config(tmp_path, name) for name in ("a", "b", "c")}
+    calls = {
+        "a": lambda **kw: api.info.info(
+            api.InfoParams(input=bam, ref=ref, outdir=tmp_path / "info"), **kw
+        ),
+        "b": lambda **kw: api.ref.status(api.RefStatusParams(), **kw),
+        "c": lambda **kw: api.deps.check(api.DepsCheckParams(tool="samtools"), **kw),
+    }
+    together = threading.Barrier(len(calls), timeout=60)
+    met: set[str] = set()
+    events: dict[str, list[api.ProgressEvent]] = {name: [] for name in calls}
+    tokens = {name: api.CancelToken() for name in calls}
+    results: dict[str, api.Result] = {}
+
+    def run(name: str) -> None:
+        def progress(event: api.ProgressEvent) -> None:
+            events[name].append(event)
+            if event.stage == "start":
+                together.wait()  # all three calls are running now
+                met.add(name)
+                if name == "c":
+                    tokens[name].cancel()
+
+        with api.scoped_config(configs[name][0]):
+            results[name] = calls[name](
+                progress=progress, cancel=tokens[name], check=False
+            )
+
+    threads = [threading.Thread(target=run, args=(name,)) for name in calls]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=120)
+    assert met == set(calls)
+
+    info, status, deps = results["a"], results["b"], results["c"]
+    assert info.status == "ok" and info.metrics["reference_model"]
+    assert status.status == "ok"
+    assert status.details["referenceLibrary"]["path"] == str(configs["b"][1])
+    assert (deps.status, deps.exit_code) == ("cancelled", 130)
+    for name, result in results.items():
+        assert {e.message for e in events[name] if e.stage in ("start", "finish")} == {
+            result.command
+        }
+    assert any("samtools" in e.message for e in events["a"] if e.stage == "tool")
+    assert not [e for e in events["b"] + events["c"] if e.stage == "tool"]
+    assert "Reference library:" in status.text
+    assert "Reference library:" not in info.text + deps.text
+    assert settings.get("reference_library") not in {
+        str(library) for _, library in configs.values()
+    }
+
+
+def test_worker_threads_inherit_the_calls_context(tmp_path):
+    """#824: a command's worker threads and pool tasks, and the pool's
+    done-callbacks, record into the command's result and read its settings."""
+    from wgsextract_cli.core.execution_context import (
+        ContextThreadPoolExecutor,
+        context_thread,
+    )
+
+    config, library = _library_config(tmp_path, "lib")
+    result = results.CommandResult(command="test")
+    seen: list[object] = []
+
+    def work(code: str) -> None:
+        results.warn(code, code)
+        seen.append(settings.get("reference_library"))
+
+    with api.scoped_config(config), results.collecting(result):
+        thread = context_thread(target=work, args=("thread",))
+        thread.start()
+        thread.join()
+        with ContextThreadPoolExecutor(2) as pool:
+            future = pool.submit(work, "task")
+            future.add_done_callback(lambda _: work("callback"))
+            future.result()
+    assert {w.code for w in result.warnings} == {"thread", "task", "callback"}
+    assert seen == [str(library)] * 3
+
+
+def _child_context() -> tuple[bool, bool]:
+    context = execution_context.current()
+    return context.progress is None, context.cancel is None
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="needs fork")
 def test_forked_workers_do_not_inherit_the_callers_context():
     import multiprocessing
 
-    from wgsextract_cli.api import _runtime
-
-    _runtime._context.progress = lambda event: None
-    _runtime._context.cancel = api.CancelToken()
-    try:
+    with execution_context.bound(progress=lambda event: None, cancel=api.CancelToken()):
         with multiprocessing.get_context("fork").Pool(1) as pool:
             assert pool.apply(_child_context) == (True, True)
-    finally:
-        _runtime._context.progress = _runtime._context.cancel = None
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX sessions")

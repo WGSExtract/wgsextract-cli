@@ -17,9 +17,9 @@ import logging
 import re
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -187,7 +187,7 @@ def joint_trio_vcf(
         # Threads, not processes: each worker only waits on bcftools, and threads
         # keep the selected --config (and its tool paths) that new processes
         # would lose on Windows and macOS.
-        with ThreadPoolExecutor(max_workers=max(1, threads)) as pool:
+        with ContextThreadPoolExecutor(max_workers=max(1, threads)) as pool:
             futures = [
                 pool.submit(
                     _call_region,

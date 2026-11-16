@@ -19,6 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from wgsextract_cli import __version__
+from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.results import redact_argv
 
 # A log_dir keeps the newest runs' logs; only names it generated are ever removed.
@@ -31,7 +32,6 @@ _GENERATED_LOG_NAME = re.compile(r"run-\d{8}T\d{6}-[0-9a-f]{32}\.log")
 _RUNNING_LOG_IDLE_SECONDS = 7 * 24 * 60 * 60
 
 _active: "RunLog | None" = None
-_tool_hook: Callable[[Sequence[str]], None] | None = None
 
 
 class RunLogError(OSError):
@@ -58,19 +58,16 @@ def is_run_log_path(path: Path) -> bool:
 def tool_hook(hook: Callable[[Sequence[str]], None]) -> Iterator[None]:
     """Call ``hook`` with each external command just before it starts; the
     hook may raise to stop it starting."""
-    global _tool_hook
-    previous, _tool_hook = _tool_hook, hook
-    try:
+    with execution_context.bound(tool_hook=hook):
         yield
-    finally:
-        _tool_hook = previous
 
 
 def record_command(command: Sequence[str]) -> None:
     from wgsextract_cli.core.results import record_tool_command
 
-    if _tool_hook is not None:
-        _tool_hook(command)
+    hook = execution_context.current().tool_hook
+    if hook is not None:
+        hook(command)
     record_tool_command(command)
     if _active:
         _active.record(command)

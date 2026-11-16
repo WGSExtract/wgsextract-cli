@@ -30,6 +30,8 @@ import time
 from collections.abc import Iterator
 from typing import IO, TYPE_CHECKING, Any
 
+from wgsextract_cli.core.execution_context import context_thread
+
 if TYPE_CHECKING:
     from wgsextract_cli.api._runtime import ProgressEvent
 
@@ -103,7 +105,7 @@ class LiveStatus:
         self._drawn = 0
         self._started = time.monotonic()
         self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread = context_thread(target=self._run, daemon=True)
         self._saved: list[tuple[Any, str, Any]] = []
 
     def text(self) -> str:

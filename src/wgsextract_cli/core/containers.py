@@ -18,6 +18,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.reference_lookup import REF_PATH
 from wgsextract_cli.core.steps import RUN_TAG
 from wgsextract_cli.core.utils import (
@@ -256,7 +257,7 @@ def _oom_watch(docker_path: str, name: str) -> Iterator[threading.Event]:
             # Only now: the caller reports the OOM once this is set.
             killed.set()
 
-    watcher = threading.Thread(target=watch, daemon=True)
+    watcher = context_thread(target=watch, daemon=True)
     watcher.start()
     try:
         yield killed

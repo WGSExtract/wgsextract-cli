@@ -23,6 +23,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.execution_context import context_thread
 
 from .segmented import user_agent
 
@@ -105,8 +106,7 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
                     found[url] = size
 
     workers = [
-        threading.Thread(target=work, daemon=True)
-        for _ in range(min(WORKERS, len(urls)))
+        context_thread(target=work, daemon=True) for _ in range(min(WORKERS, len(urls)))
     ]
     for worker in workers:
         worker.start()

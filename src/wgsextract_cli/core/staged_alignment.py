@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES, output_profile_options
 from wgsextract_cli.core.results import current_result, fingerprint, warn
 from wgsextract_cli.core.samtools_commands import indexed_output, parse_memory
@@ -173,7 +174,7 @@ def _disk_guard(paths: Sequence[Path], reads: int | None) -> Iterator[threading.
                 cancelled.set()
                 return
 
-    thread = threading.Thread(target=watch, daemon=True)
+    thread = context_thread(target=watch, daemon=True)
     thread.start()
     try:
         yield cancelled

@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import logging
 import subprocess
-import threading
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
     from _typeshed import WriteableBuffer
 
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.utils import WGSExtractError, popen, wait_with_cancel
 
 _GZIP_MAGIC = b"\x1f\x8b"
@@ -171,7 +171,7 @@ def ensure_bgzf(
             if compressed:
                 # Decompress here, not with gzip(1): Windows has no native gzip.
                 proc = popen(["bgzip", "-c"], stdin=subprocess.PIPE, stdout=f_out)
-                feeder = threading.Thread(
+                feeder = context_thread(
                     target=_feed_decompressed,
                     args=(path, proc, feed_errors),
                     daemon=True,

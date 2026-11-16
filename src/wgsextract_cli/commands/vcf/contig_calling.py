@@ -36,15 +36,19 @@ import logging
 import os
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import groupby
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event
 from typing import IO
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.execution_context import (
+    ContextThreadPoolExecutor,
+    context_thread,
+)
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
@@ -277,9 +281,9 @@ def _pump(
             # or the writer see a broken pipe, once the child has gone.
             os.close(own)
 
-    threads = [Thread(target=run, args=([source], None, source_write))]
+    threads = [context_thread(target=run, args=([source], None, source_write))]
     threads += [
-        Thread(target=run, args=(stages, read, None))
+        context_thread(target=run, args=(stages, read, None))
         for stages, (read, _) in zip(sinks, pipes, strict=True)
     ]
     for thread in threads:
@@ -443,7 +447,7 @@ class _ContigCaller:
             )  # fmt: skip
 
     def run_all(self, tasks: Sequence[Callable[[], None]]) -> None:
-        with ThreadPoolExecutor(max_workers=self.workers) as pool:
+        with ContextThreadPoolExecutor(max_workers=self.workers) as pool:
             futures = [pool.submit(task) for task in tasks]
             try:
                 for future in as_completed(futures):

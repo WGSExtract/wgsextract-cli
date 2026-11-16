@@ -8,7 +8,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import threading
 from collections import deque
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack
@@ -18,6 +17,7 @@ from wgsextract_cli.api.vcf import VcfTableParams
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.results import (
@@ -156,7 +156,7 @@ class _VcfStream:
         self.stdout = self.proc.stdout
         self._stderr: deque[str] = deque(maxlen=20)
         stderr = self.proc.stderr
-        self._drain = threading.Thread(
+        self._drain = context_thread(
             target=lambda: self._stderr.extend(stderr), daemon=True
         )
         self._drain.start()

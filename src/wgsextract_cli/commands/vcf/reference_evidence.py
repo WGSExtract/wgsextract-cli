@@ -16,7 +16,7 @@ import logging
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from functools import partial
 from pathlib import Path
 from threading import Event
@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
@@ -157,7 +158,7 @@ def write_gvcf(
 
         # Longest contigs first, so a large one late in the order doesn't run alone.
         order = sorted(range(len(jobs)), key=lambda i: -contigs.get(jobs[i][0], 0))
-        with ThreadPoolExecutor(
+        with ContextThreadPoolExecutor(
             max_workers=max(1, min(int(threads), len(jobs)))
         ) as pool:
             futures = [pool.submit(partial(call, index)) for index in order]

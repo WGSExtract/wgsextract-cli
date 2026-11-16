@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.resource_estimates import (
     GIB,
@@ -183,8 +184,6 @@ _PARALLEL_DOWNLOADS = 6
 def _fetch(sources: list[_Source]) -> None:
     """Download each file not already complete, several at a time, resuming a
     partial one, and check each against its folder's Ensembl CHECKSUMS."""
-    from concurrent.futures import ThreadPoolExecutor
-
     from ._vep_resources import _require_in_scope
 
     checksums: dict[str, dict[str, _Sum]] = {}
@@ -245,7 +244,7 @@ def _fetch(sources: list[_Source]) -> None:
                     failed.set()
             raise
 
-    with ThreadPoolExecutor(max_workers=_PARALLEL_DOWNLOADS) as pool:
+    with ContextThreadPoolExecutor(max_workers=_PARALLEL_DOWNLOADS) as pool:
         futures = [pool.submit(fetch, *item) for item in todo]
     checkpoint()
     if first_error:

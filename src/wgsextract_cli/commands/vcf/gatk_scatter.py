@@ -5,7 +5,7 @@ import math
 import subprocess
 import tempfile
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from contextlib import nullcontext
 from pathlib import Path
 from threading import Event
@@ -13,6 +13,7 @@ from threading import Event
 import psutil
 
 from wgsextract_cli.core.alignment_memory import available_memory
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.progress import Heartbeat
 from wgsextract_cli.core.reference_assets import read_fai_lengths
@@ -197,7 +198,7 @@ def call_scattered(
     )
     logging.debug("GATK scatter intervals: %s", shards)
     with (
-        ThreadPoolExecutor(max_workers=len(shards)) as pool,
+        ContextThreadPoolExecutor(max_workers=len(shards)) as pool,
         Heartbeat("GATK scatter", len(shards), "shards") as progress,
     ):
         futures = [

@@ -15,7 +15,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import FIRST_EXCEPTION, Future, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_EXCEPTION, Future, wait
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -29,6 +29,7 @@ from wgsextract_cli.core.download_progress import (
     PercentProgressLogger,
     ProgressCallback,
 )
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 
 CONNECTIONS = 8
 SEGMENTED_MIN_SIZE = 1024**3
@@ -190,7 +191,7 @@ def download_segmented(
     logging.info(f"Downloading {label} over {CONNECTIONS} connections...")
     start_time = time.monotonic()
     already = sum(received.values())
-    with ThreadPoolExecutor(CONNECTIONS) as pool:
+    with ContextThreadPoolExecutor(CONNECTIONS) as pool:
         futures: set[Future[None]] = {
             pool.submit(fetch, start)
             for start in starts

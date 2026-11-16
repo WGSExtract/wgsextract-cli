@@ -11,7 +11,11 @@ Every operation takes a frozen ``*Params`` dataclass and returns a
 
 Operations raise ``CommandFailed`` (carrying the failed ``Result``) unless
 called with ``check=False``. They accept a ``progress`` callback and a
-``CancelToken``. Operations run one at a time per process. They write the same
+``CancelToken``. Operations that write files or run long run one at a time
+per process; quick read-only ones (``info``, ``info chip``, ``sample show``,
+``ref status``, ``ref library-list``, ``example-genome list``, ``deps check``)
+may run on several threads at once, each call with its own result, progress,
+cancellation and settings. They write the same
 output files and manifests as the CLI but print nothing to stdout: the
 human-readable report the CLI would print is in ``Result.text`` instead, and
 external tools' stdout goes to stderr.
@@ -19,7 +23,9 @@ Stdout itself is left alone, so the caller's own writes (including from a
 progress callback or other threads) still reach it, e.g. a stdio JSON-RPC server.
 
 Unset fields with a config.toml setting take it, as on the CLI. The user's
-config.toml is loaded on the first call; ``use_config(path)`` selects another.
+config.toml is loaded on the first call; ``use_config(path)`` selects another
+for the process, and ``with scoped_config(path):`` one for the calls made in
+the block, on that thread and the worker threads they start.
 
 The CLI is built on this layer: each migrated command's options are generated
 from its Params fields, so the API and ``--help`` cannot drift.
@@ -82,6 +88,7 @@ from ._runtime import (
     CommandFailed,
     ProgressCallback,
     ProgressEvent,
+    scoped_config,
     use_config,
 )
 from .align import AlignParams, BasecallParams, RealignParams
@@ -361,6 +368,7 @@ __all__ = [
     "repair",
     "report",
     "sample",
+    "scoped_config",
     "score",
     "sign",
     "support",

@@ -2,7 +2,6 @@ import logging
 import subprocess
 import tempfile
 from collections.abc import Iterator, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from wgsextract_cli.api._params import param_fields
 from wgsextract_cli.api.vcf import _VcfFileParams
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     vcf_record_count,
@@ -198,7 +198,7 @@ def _run_annotate(cmd: list[str], vcf: str, out: str, work: str, threads: int) -
         regions[c] = part[: -len(".vcf.gz")] + ".regions.txt"
         with open(regions[c], "w", newline="\n") as f:
             f.write(f"{c}\t1\t2147483647\n")
-    with ThreadPoolExecutor(max_workers=threads) as pool:
+    with ContextThreadPoolExecutor(max_workers=threads) as pool:
         futures = [
             pool.submit(
                 run_command,
