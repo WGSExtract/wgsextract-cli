@@ -1,0 +1,49 @@
+From 259740f199f196d8abb6bd00f4cc1d6b28b12885 Mon Sep 17 00:00:00 2001
+From: "Mahyar (Mac) McDonald" <22130+theontho@users.noreply.github.com>
+Date: Mon, 16 Nov 2026 02:26:50 -0800
+Subject: [PATCH] gVCF: PL covers the <*> allele's genotypes (wgsextract #999)
+
+postprocess_variants writes PL from the call's info map
+(retrieve_gl_and_pl_from_info_map), so it can write Integer PL, but
+TransfromToGvcf, which adds <*> to each variant for the gVCF, extended
+only the GLs, AD and VAF. PL kept the genotypes of REF and the called
+ALTs: 3 values for REF,ALT,<*> where FORMAT/PL (Number=G) needs 6. It
+now appends the PL the writer derives from the added GLs (-99, zero-
+shifted, phred, truncated: 990), as google/deepvariant:1.10.0 writes.
+The VCF and the reference blocks are unchanged.
+---
+ third_party/nucleus/io/merge_variants.cc | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/third_party/nucleus/io/merge_variants.cc b/third_party/nucleus/io/merge_variants.cc
+index 690fb9d..37d912a 100644
+--- a/third_party/nucleus/io/merge_variants.cc
++++ b/third_party/nucleus/io/merge_variants.cc
+@@ -75,9 +75,26 @@ void TransfromToGvcf(Variant* variant) {
+     // Add one new GL for het allele/gVCF for each of the other alleles, plus
+     // one for the homozygous gVCF allele.
+     genomics::v1::VariantCall* call = variant->mutable_calls()->Mutable(0);
+-    for (size_t i = 0; i < variant->alternate_bases().size() + 1; i++) {
++    const size_t num_new_gls = variant->alternate_bases().size() + 1;
++    for (size_t i = 0; i < num_new_gls; i++) {
+       call->mutable_genotype_likelihood()->Add(_GVCF_ALT_ALLELE_GL);
+     }
++    // A writer with retrieve_gl_and_pl_from_info_map takes PL from the info
++    // map rather than from the GLs: extend it with the PL the writer would
++    // derive from the new GLs (zero-shifted, phred, truncated), so PL keeps
++    // one value per genotype (wgsextract #999).
++    if (call->info().contains("PL")) {
++      const double max_gl =
++          *std::max_element(call->genotype_likelihood().cbegin(),
++                            call->genotype_likelihood().cend());
++      auto* pl = call->mutable_info()->at("PL").mutable_values();
++      for (size_t i = 0; i < num_new_gls; i++) {
++        genomics::v1::Value v;
++        v.set_int_value(
++            static_cast<int>(-10.0 * (_GVCF_ALT_ALLELE_GL - max_gl)));
++        pl->Add(std::move(v));
++      }
++    }
+     genomics::v1::Value iv;
+     iv.set_int_value(0);
+     if (call->info().contains("AD")) {

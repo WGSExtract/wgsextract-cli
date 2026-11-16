@@ -78,9 +78,9 @@ and `NoCall` records as `filtered`. Only the gVCF's header changes when it is
 published (`bcftools reheader`), so every record stays as DeepVariant wrote
 it. Bases a sex/PAR ploidy of 0 leaves out of calling (a woman's chrY) are
 recorded in `PloidyZero`; Parabricks and `wgse-deepvariant` call diploid
-genomes only, as without the gVCF. `wgse-deepvariant` 0.3.0's gVCF agrees
-with Google's in every field the states read, but its `<*>` records lack the
-PL values of genotypes with `<*>` (#999).
+genomes only, as without the gVCF. `wgse-deepvariant`'s gVCF agrees
+with Google's in every field the states read; before 0.3.1 its variant
+records lacked the PL values of genotypes with `<*>` (#999).
 
 The gVCF and its index are outputs of the `postprocess_variants` stage: if
 that stage is interrupted, a rerun repeats it alone. Its stages' work is
