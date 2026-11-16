@@ -315,6 +315,30 @@ def settings_suspended() -> Iterator[None]:
         _settings_loaded = was_loaded
 
 
+def _update_dev_table(config: dict[str, Any], updates: object) -> None:
+    """Merge ``updates`` into config's [dev] table the way save_config merges
+    top-level settings: None or "" clears a key, and None clears the table."""
+    if updates is None:
+        config.pop(DEV_TABLE, None)
+        return
+    if not isinstance(updates, Mapping):
+        config[DEV_TABLE] = updates  # rejected by _validate_config_types
+        return
+    current = config.get(DEV_TABLE)
+    dev = dict(current) if isinstance(current, Mapping) else {}
+    for key, value in updates.items():
+        if value is None or value == "":
+            dev.pop(key, None)
+        elif key in DEV_PATH_SETTINGS:
+            dev[key] = _normalize_path_setting(value)
+        else:
+            dev[key] = value
+    if dev:
+        config[DEV_TABLE] = dev
+    else:
+        config.pop(DEV_TABLE, None)
+
+
 def save_config(updates: dict[str, Any]) -> None:
     """Save configuration updates to the config.toml file."""
     import tomli_w
@@ -335,6 +359,15 @@ def save_config(updates: dict[str, Any]) -> None:
     for legacy_key in LEGACY_SETTINGS:
         current_config.pop(legacy_key, None)
     for key, value in updates.items():
+        if key == DEV_TABLE:
+            _update_dev_table(current_config, value)
+            continue
+        if key in MOVED_TO_DEV:
+            if value is None or value == "":
+                current_config.pop(key, None)
+            else:
+                current_config[key] = value  # rejected below, naming its [dev] key
+            continue
         if key not in SETTINGS:
             continue
         # Aliases are mapped onto the canonical key on load, so a stale alias

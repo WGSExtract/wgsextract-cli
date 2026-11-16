@@ -246,6 +246,45 @@ def test_typed_settings_reject_invalid_host_values(temp_config, monkeypatch):
         config.typed_settings()
 
 
+@pytest.mark.parametrize("value", ['"max"', "0", '"-2"'])
+def test_typed_settings_read_invalid_config_threads_as_auto(temp_config, value):
+    # PR #934 review: typed settings returned cpu_threads = 0 or "max" as-is
+    # instead of the documented auto fallback.
+    temp_config.write_text(f"cpu_threads = {value}\n")
+    config.reload_settings()
+    assert config.typed_settings().cpu_threads == "auto"
+
+
+def test_save_config_writes_and_clears_the_dev_table(temp_config):
+    # PR #934 review: save_config silently dropped [dev] updates, which were
+    # writable as top-level dev_* settings before the move.
+    temp_config.write_text('[dev]\npet_r2_fastq = "/r2.fq"\n')
+    config.save_config({"dev": {"download_cache": True, "pet_r1_fastq": "~/r1.fq"}})
+    dev = tomllib.loads(temp_config.read_text())["dev"]
+    assert dev == {
+        "pet_r2_fastq": "/r2.fq",
+        "download_cache": True,
+        "pet_r1_fastq": str(Path.home() / "r1.fq"),
+    }
+    assert config.typed_settings().dev.download_cache is True
+
+    with pytest.raises(WGSExtractError, match=r"dev\.download_cache.*boolean"):
+        config.save_config({"dev": {"download_cache": "yes"}})
+    assert tomllib.loads(temp_config.read_text())["dev"]["download_cache"] is True
+
+    config.save_config({"dev": None})
+    assert "dev" not in tomllib.loads(temp_config.read_text())
+    assert config.typed_settings().dev.download_cache is False
+
+
+def test_save_config_names_the_dev_table_for_old_dev_keys(temp_config):
+    # PR #934 review: an old top-level dev key passed to save_config was
+    # silently discarded; it fails like the same key in config.toml.
+    with pytest.raises(WGSExtractError, match=r"\[dev\].*download_cache ="):
+        config.save_config({"dev_download_cache": True})
+    assert not temp_config.exists()
+
+
 def test_config_threads_retains_supported_numeric_string(temp_config):
     temp_config.write_text('cpu_threads = "4"\n')
     config.reload_settings()

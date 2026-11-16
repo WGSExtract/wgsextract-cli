@@ -494,7 +494,7 @@ class SettingField:
             "threads": "a positive TOML integer, positive integer string, or 'auto'",
         }[self.kind]
 
-    def check(self, value: object, *, strict_threads: bool = True) -> object:
+    def check(self, value: object) -> object:
         """``value`` as the setting holds it (paths expanded, arrays as tuples).
         Raises ValueError, whose text is what was found, if it isn't valid."""
         kind = self.kind
@@ -508,7 +508,7 @@ class SettingField:
                 value = float(cast(float, value))
         elif kind == "threads":
             ok = type(value) is int or isinstance(value, str)
-            if ok and strict_threads:
+            if ok:
                 from wgsextract_cli.core.resource_policy import parse_thread_count
 
                 try:
@@ -630,7 +630,7 @@ def check_values(
         if setting_field is None or value is None:
             continue
         try:
-            checked = setting_field.check(value, strict_threads=strict_threads)
+            checked = setting_field.check(value)
         except ValueError as error:
             if setting_field.kind == "threads" and not strict_threads:
                 continue
