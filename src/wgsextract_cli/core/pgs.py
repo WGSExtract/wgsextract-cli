@@ -411,10 +411,16 @@ class EvidenceStates:
         db: sqlite3.Connection,
         positions: Iterable[tuple[str, int]],
         thresholds: Thresholds,
+        reference: Reference | None = None,
     ) -> None:
         self.path = gvcf
         self.db = db
-        source = evidence.ReferenceEvidence(gvcf)
+        known = {
+            name: entry[0]
+            for chrom, entry in (reference.entries if reference else {}).items()
+            for name in (chrom, f"chr{chrom}")
+        }
+        source = evidence.ReferenceEvidence(gvcf, known)
         self.quality_model = source.quality_model
         self.provenance = source.provenance
         names = {name.removeprefix("chr"): name for name in source.lengths}
@@ -422,10 +428,11 @@ class EvidenceStates:
             "CREATE TABLE evidence (chrom TEXT, pos INTEGER, state TEXT, "
             "PRIMARY KEY (chrom, pos)) WITHOUT ROWID"
         )
+        # Every scored position is kept, so describe() counts sites on
+        # contigs the gVCF lacks as not assessed; only the rest are read.
         batch: list[tuple[str, int]] = []
         for chrom, pos in positions:
-            if chrom in names:
-                batch.append((chrom, pos))
+            batch.append((chrom, pos))
             if len(batch) == 10000:
                 db.executemany(
                     "INSERT OR IGNORE INTO evidence VALUES (?,?,NULL)", batch
@@ -439,7 +446,9 @@ class EvidenceStates:
             (*last, self.CHUNK),
         ).fetchall():
             last = chunk[-1]
-            spans = source.spans(thresholds, ((names[c], p, p) for c, p in chunk))
+            spans = source.spans(
+                thresholds, ((names[c], p, p) for c, p in chunk if c in names)
+            )
             db.executemany(
                 "UPDATE evidence SET state=? WHERE chrom=? AND pos BETWEEN ? AND ?",
                 (
@@ -519,7 +528,13 @@ class Genotypes:
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
         if chr1 and chr1[1] in {"248956422", "249250621"} and chr1[1] != expected:
             raise UsageError("VCF contig lengths disagree with --build.")
-        self.has_blocks = self.is_gvcf = False
+        self.has_blocks = False
+        # A gVCF of only single-base reference records (ALT ".") is known by
+        # its header: WGS Extract's reference-evidence line or GATK's bands.
+        self.is_gvcf = any(
+            line.startswith((f"##{evidence.HEADER_KEY}=", "##GVCFBlock"))
+            for line in header.splitlines()
+        )
         command = [
             "bcftools",
             "query",

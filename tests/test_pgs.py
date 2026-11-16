@@ -121,6 +121,95 @@ def test_863_gvcf_blocks_need_quality_and_reads_to_be_hom_ref(tmp_path: Path) ->
     }
 
 
+def _gvcf_score(
+    tmp_path: Path, header: list[str], records: list[str], sample: str = "SAMPLE"
+) -> api.Result:
+    """Score sites chr1:20 (reference C) and chr2:5 on a gVCF of chr1."""
+    lines = (FIXTURES / "sample.vcf").read_text().splitlines()
+    gvcf = tmp_path / "input.g.vcf"
+    gvcf.write_text(
+        "\n".join(
+            [*header, *lines[2:6], "\t".join([*lines[6].split("\t")[:9], sample])]
+            + records
+        )
+        + "\n"
+    )
+    scoring = tmp_path / "score.txt"
+    scoring.write_text(
+        "#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n"
+        "1\t20\tC\tT\t1\n2\t5\tA\tC\t1\n"
+    )
+    ref = tmp_path / "reference.fa"
+    ref.write_text(">chr1\n" + "C" * 100 + "\n>chr2\n" + "A" * 100 + "\n")
+    subprocess.run(["samtools", "faidx", str(ref)], check=True)
+    return api.score.pgs(
+        replace(_params(tmp_path), input=gvcf, scoring_file=scoring, ref=ref)
+    )
+
+
+GOOD_REFERENCE = "chr1\t1\t.\tC\t<*>\t.\tPASS\tEND=100\tGT:GQ:DP\t0/0:50:30"
+
+
+def test_863_gvcf_sample_named_with_a_space_keeps_its_reference_evidence(
+    tmp_path: Path,
+) -> None:
+    """Issue #863 review: a sample name with a space was split into two
+    names, so its own gVCF was taken for another sample's and ignored."""
+    result = _gvcf_score(
+        tmp_path,
+        ["##fileformat=VCFv4.2", "##contig=<ID=chr1,length=100>"],
+        [GOOD_REFERENCE],
+        sample="HG002 child",
+    )
+    assert "pgs_reference_evidence_other_sample" not in {
+        w.code for w in result.warnings
+    }
+    assert result.details["match_counts"]["callable_reference"] == 1
+    # The chr2 site, off the gVCF, is counted too.
+    assert result.details["reference_evidence"]["site_states"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+
+
+def test_863_contig_declared_without_length_is_assessed_from_the_ref(
+    tmp_path: Path,
+) -> None:
+    """Issue #863 review: a gVCF declaring ``##contig=<ID=chr1>`` without a
+    length had every site not assessed, even with --ref; and a scored site on
+    a contig the gVCF lacks was left out of the reported site states."""
+    result = _gvcf_score(
+        tmp_path, ["##fileformat=VCFv4.2", "##contig=<ID=chr1>"], [GOOD_REFERENCE]
+    )
+    assert result.details["match_counts"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+    assert result.details["reference_evidence"]["site_states"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+
+
+def test_863_gvcf_of_single_base_records_known_by_its_header(tmp_path: Path) -> None:
+    """Issue #863 review: a gVCF of only single-base ``ALT=.`` reference
+    records wasn't recognised, so a 0/0 read by 3 reads scored as a call."""
+    from wgsextract_cli.core.reference_evidence import DEPTH_ONLY, Provenance
+
+    result = _gvcf_score(
+        tmp_path,
+        [
+            "##fileformat=VCFv4.2",
+            Provenance("bcftools", "1.21", DEPTH_ONLY).header(),
+            "##contig=<ID=chr1,length=100>",
+        ],
+        ["chr1\t20\t.\tC\t.\t.\tPASS\t.\tGT:GQ:DP\t0/0:50:3"],
+    )
+    assert result.details["match_counts"]["low_quality_reference"] == 1
+    assert result.metrics["variants_matched"] == 0
+
+
 @pytest.mark.parametrize("compressed", [False, True])
 def test_617_unsorted_scores_seek_across_fasta_blocks(
     tmp_path: Path, compressed: bool

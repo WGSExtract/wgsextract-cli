@@ -339,11 +339,17 @@ def _joined(spans: Iterable[Span]) -> Iterator[Span]:
         yield pending
 
 
+_CONTIG_ID = re.compile(r"^##contig=<(?:.*?,)?ID=([^,>]+)", re.MULTILINE)
+
+
 @dataclass
 class ReferenceEvidence:
-    """An indexed gVCF, read as reference evidence."""
+    """An indexed gVCF, read as reference evidence. ``known_lengths`` (say,
+    from the reference FASTA's index) supplies the length of a contig the
+    header declares without one; a contig of unknown length is not assessed."""
 
     path: str
+    known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
@@ -352,7 +358,12 @@ class ReferenceEvidence:
         header = run_command(
             ["bcftools", "view", "-h", self.path], capture_output=True
         ).stdout
-        self.lengths = header_contig_lengths(header)
+        declared = header_contig_lengths(header)
+        self.lengths = {}
+        for name in _CONTIG_ID.findall(header):
+            length = declared.get(name) or self.known_lengths.get(name)
+            if length:
+                self.lengths.setdefault(name, length)
         self.provenance = next(
             (p for line in header.splitlines() if (p := parse_provenance(line))), None
         )
@@ -524,7 +535,9 @@ def _recorded_file(
     record: Mapping[str, object], manifest: Path, document: Mapping[str, object]
 ) -> Path | None:
     """A file a result manifest recorded, where it is now (relative to the
-    manifest when its folder has moved), if it is unchanged since."""
+    manifest when its folder has moved), if its recorded fingerprint shows
+    it unchanged since; without one the file can't be trusted to be the
+    run's."""
     from wgsextract_cli.core.results import fingerprint
 
     recorded = Path(str(record.get("path") or ""))
@@ -536,7 +549,7 @@ def _recorded_file(
         except ValueError:
             return None
     expected = record.get("fingerprint")
-    if not place.is_file() or (expected and fingerprint(place) != expected):
+    if not expected or not place.is_file() or fingerprint(place) != expected:
         return None
     return place
 

@@ -203,7 +203,8 @@ A command given a variant VCF finds its gVCF through the
 [result manifest](result-manifest.md) of the run that wrote the VCF: a
 manifest in the VCF's folder, or one its [sample workspace](sample-workspace.md)
 recorded, that lists the VCF and a `reference_evidence` output, both
-unchanged since (same fingerprint), the gVCF indexed. Without one, the
+unchanged since (same recorded fingerprint; a manifest without fingerprints
+isn't trusted), the gVCF indexed. Without one, the
 command works as before.
 
 - `score pgs` counts a scoring site the VCF doesn't list as homozygous

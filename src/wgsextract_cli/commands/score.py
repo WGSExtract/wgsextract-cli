@@ -81,7 +81,7 @@ def run_pgs(params: ScorePgsParams) -> None:
             params.input, Path(work) / "calls.sqlite", params.sample, params.build
         )
         handles.callback(genotypes.close)
-        states = _reference_evidence(params, scoring, genotypes, Path(work))
+        states = _reference_evidence(params, scoring, genotypes, reference, Path(work))
         report("pgs", "Matching alleles and summing effect dosages")
         data = pgs.score(
             scoring,
@@ -210,6 +210,7 @@ def _reference_evidence(
     params: ScorePgsParams,
     scoring: pgs.ScoringFile,
     genotypes: pgs.Genotypes,
+    reference: pgs.Reference | None,
     work: Path,
 ) -> tuple[pgs.EvidenceStates, str] | None:
     """The reference evidence for the scored sites, and where it came from:
@@ -224,7 +225,7 @@ def _reference_evidence(
         gvcf, origin = found, "manifest"
     samples = run_command(
         ["bcftools", "query", "-l", gvcf], capture_output=True
-    ).stdout.split()
+    ).stdout.splitlines()
     if genotypes.sample not in samples:
         warn(
             "pgs_reference_evidence_other_sample",
@@ -259,6 +260,7 @@ def _reference_evidence(
         genotypes.db,
         ((v.chrom, v.pos) for v in scoring.variants() if v.supported),
         variant_confidence.thresholds_from(None),
+        reference,
     )
     states.path = gvcf
     return states, origin

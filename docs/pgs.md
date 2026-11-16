@@ -83,7 +83,8 @@ or citation is reported explicitly, never guessed.
   `uncovered`, `low_quality_reference`, `filtered`, `no_call`, `variant`,
   `excluded_by_policy` or `not_assessed` stay missing, counted under that
   name. Sites the VCF doesn't list need an indexed `--ref` to check their
-  alleles. See [reference-evidence.md](reference-evidence.md).
+  alleles; `--ref` also gives the length of a contig the gVCF declares
+  without one (otherwise its sites are `not_assessed`). See [reference-evidence.md](reference-evidence.md).
 - For a variants-only callset with a same-sample, same-build confident BED,
   add `--confident-bed sample.confident.bed --ref reference.fa.gz`. Only
   positions inside the BED may be inferred reference; positions outside it

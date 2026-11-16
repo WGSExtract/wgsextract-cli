@@ -1,5 +1,6 @@
 """Reference evidence (#863): ``--reference-evidence gvcf`` and the classifier."""
 
+import json
 import random
 import sys
 from pathlib import Path
@@ -206,6 +207,17 @@ def test_863_pgs_counts_callable_reference_but_never_uncovered_sites(
     }
     assert with_gvcf.metrics["score_sum"] == 2
     assert any(i.role == ROLE for i in with_gvcf.inputs)
+
+    # Issue #863 review: a manifest without fingerprints can't vouch that its
+    # gVCF belongs to this VCF, so it isn't used.
+    manifests = list(tmp_path.glob("*.manifest.json"))
+    for manifest in manifests:
+        document = json.loads(manifest.read_text())
+        for output in document["outputs"]:
+            output.pop("fingerprint", None)
+        manifest.write_text(json.dumps(document))
+    assert manifests
+    assert score().details["reference_evidence"] is None
 
     # Without the gVCF the same VCF scores as before: absent sites are missing.
     for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):

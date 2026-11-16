@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,7 +57,9 @@ def gvcf_evidence(
          "%CHROM\t%POS\t%INFO/END\t%REF\t[%GT\t%DP\t%MIN_DP\t%GQ]\n", gvcf],
         capture_output=True,
     ).stdout  # fmt: skip
-    wanted_set = set(wanted)
+    positions: dict[str, list[int]] = {}
+    for chrom, pos in wanted:
+        positions.setdefault(chrom, []).append(pos)
     for line in records.splitlines():
         chrom, start, end, ref, gt, dp, min_dp, gq = line.split("\t")
         alleles = re.split(r"[/|]", gt)
@@ -65,9 +68,9 @@ def gvcf_evidence(
         first = int(start)
         last = int(end) if end.isdigit() else first + len(ref) - 1
         depths = [float(v) for v in (dp, min_dp) if _is_number(v)]
-        for p in range(first, last + 1):
-            if (chrom, p) not in wanted_set:
-                continue
+        # A block can span a chromosome: visit only the requested loci in it.
+        inside = positions.get(chrom, [])
+        for p in inside[bisect_left(inside, first) : bisect_right(inside, last)]:
             key = (back.get(chrom, chrom), p)
             found.ploidy[key] = len(alleles)
             if depths:
