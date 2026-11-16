@@ -1021,6 +1021,72 @@ def test_617_pr925_confident_bed_limits_hom_ref_ancestry_sites(
     assert result.details["percentile"] is None
 
 
+def test_863_ancestry_projection_takes_only_callable_reference_from_the_gvcf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #863: the PCA projection of a whole-genome variants-only VCF took
+    every ancestry site it doesn't list as hom-ref, even where its caller's
+    gVCF says no read covered it. With that gVCF, only callable reference is
+    hom-ref."""
+    from tests.ancestry_helpers import calls_vcf
+
+    world = _calibrated_world(tmp_path / "genome", monkeypatch, whole_genome=True)
+    calls = tmp_path / "calls"
+    calls.mkdir()
+    world["vcf"] = calls_vcf(world["world"], calls / "v.vcf.gz", variants_only=True)
+    genotypes = world["world"]["genotypes"]
+    half = len(genotypes) // 2
+    # Calls at every variant; reference blocks over the first half's other
+    # sites (chr1-chr11); nothing over the second half's: uncovered.
+    lines = [
+        "##fileformat=VCFv4.2",
+        *(f"##contig=<ID=chr{c},length=40000>" for c in range(1, 23)),
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+        '##ALT=<ID=*,Description="Any other allele">',
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">',
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">',
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS",
+    ]
+    for i, ((c, pos, ref, alt), g) in enumerate(
+        zip(world["world"]["sites"], genotypes, strict=True)
+    ):
+        if g:
+            gt = ("0/1", "1/1")[g - 1]
+            lines.append(f"chr{c}\t{pos}\t.\t{ref}\t{alt},<*>\t50\tPASS\t.\tGT:DP:GQ\t{gt}:30:50")  # fmt: skip
+        elif i < half:
+            lines.append(f"chr{c}\t{pos}\t.\t{ref}\t<*>\t.\tPASS\tEND={pos}\tGT:DP:GQ\t0/0:30:50")  # fmt: skip
+    plain = calls / "v.g.vcf"
+    plain.write_text("\n".join(lines) + "\n")
+    subprocess.run(["bgzip", "-f", str(plain)], check=True)
+    subprocess.run(["tabix", "-p", "vcf", str(calls / "v.g.vcf.gz")], check=True)
+    # The caller's result manifest lists the VCF and its gVCF.
+    (calls / "v.manifest.json").write_text(
+        json.dumps(
+            {
+                "status": "ok",
+                "outputs": [
+                    {"path": str(world["vcf"]), "role": "variants"},
+                    {"path": str(calls / "v.g.vcf.gz"), "role": "reference_evidence"},
+                ],
+            }
+        )
+    )
+
+    result = _calibrated(world, tmp_path / "out")
+    assert result.exit_code == 0, result.error
+    calibration = result.details["ancestry_calibration"]
+    second = genotypes[half:]
+    assert calibration["pca_sites_fraction"] == pytest.approx(
+        (half + int((second > 0).sum())) / len(genotypes)
+    )
+    assert calibration["pca_missing_site_states"] == {
+        "callable_reference": int((genotypes[:half] == 0).sum()),
+        "uncovered": int((second == 0).sum()),
+    }
+    assert result.details["percentile_status"] == "ancestry_projection_incomplete"
+
+
 def test_617_pr925_sample_filtered_calls_dont_count_toward_ancestry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

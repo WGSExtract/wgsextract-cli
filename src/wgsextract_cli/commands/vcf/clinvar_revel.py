@@ -1,6 +1,7 @@
 import logging
 import subprocess
-from collections.abc import Iterable
+import tempfile
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfClinvarParams, VcfRevelParams
@@ -114,6 +115,13 @@ def run_clinvar(params: VcfClinvarParams) -> None:
             summary_columns=CLINVAR_TABLE_COLUMNS,
             samples=(input_file,),
         )
+        with tempfile.TemporaryDirectory(prefix=".wgse_evidence_", dir=outdir) as work:
+            variant_confidence.add_reference_evidence(
+                summary,
+                input_file,
+                work,
+                clinvar_sites=pathogenic_sites(clinvar_vcf, include),
+            )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"ClinVar filtering failed: {e}") from e
     table = str(Path(outdir, "clinvar_pathogenic.confidence.tsv"))
@@ -177,6 +185,14 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         )
     current_result().add_output(conflict_table, "clinvar_conflict_table", kind="tsv")
     logging.info(LOG_MESSAGES["vcf_clinvar_done"].format(output=path_out))
+
+
+def pathogenic_sites(clinvar_vcf: str, include: str) -> Iterator[tuple[str, int, int]]:
+    """The ClinVar records ``include`` selects, as (contig, start, end)."""
+    query = ["bcftools", "query", "-i", include, "-f", "%CHROM\t%POS\t%REF\n", clinvar_vcf]  # fmt: skip
+    for line in run_command(query, capture_output=True).stdout.splitlines():
+        contig, pos, ref = line.split("\t")
+        yield contig, int(pos), int(pos) + max(len(ref), 1) - 1
 
 
 def _vcf_header(vcf: str) -> str:

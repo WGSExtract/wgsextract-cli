@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from wgsextract_cli.commands.lineage import alignment_mito_problem
-from wgsextract_cli.core import variant_confidence
+from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -189,6 +189,9 @@ def detect_vcf_type(vcf_path: str) -> str:
 DISCOVERY_COLUMNS = (
     "CLNSIG", "CLNDN", "GNOMAD_AF", "REVEL", "SpliceAI", "am_pathogenicity",
 )  # fmt: skip
+CLINVAR_PATHOGENIC_EXPR = (
+    'INFO/CLNSIG ~ "Pathogenic" || INFO/CLNSIG ~ "Likely_pathogenic"'
+)
 SPLICEAI_HIGH_EXPR = 'INFO/SpliceAI ~ "[|]0[.][89]" || INFO/SpliceAI ~ "[|]1[.]0"'
 
 
@@ -198,6 +201,8 @@ def run_discovery_filter(
     out_vcf: str,
     thresholds: variant_confidence.Thresholds | None = None,
     samples: Sequence[str | None] = (),
+    called: str | None = None,
+    clinvar: str | None = None,
 ) -> int:
     """Dynamically builds filter based on type and headers."""
     try:
@@ -226,9 +231,7 @@ def run_discovery_filter(
 
     # Pathogenic
     if has_info("CLNSIG"):
-        filters.append(
-            'INFO/CLNSIG ~ "Pathogenic" || INFO/CLNSIG ~ "Likely_pathogenic"'
-        )
+        filters.append(CLINVAR_PATHOGENIC_EXPR)
 
     if v_type == "snp-indel":
         if has_info("REVEL"):
@@ -284,6 +287,22 @@ def run_discovery_filter(
             summary_columns=columns,
             samples=samples,
         )
+        if called is not None:
+            # The reference evidence of the caller's VCF: at the significant
+            # calls, and at the ClinVar pathogenic sites the filter looked for.
+            from wgsextract_cli.commands.vcf.clinvar_revel import pathogenic_sites
+
+            sites = (
+                pathogenic_sites(clinvar, CLINVAR_PATHOGENIC_EXPR)
+                if clinvar and has_info("CLNSIG")
+                else None
+            )
+            with tempfile.TemporaryDirectory(
+                prefix=".wgse_evidence_", dir=Path(out_vcf).parent
+            ) as work:
+                variant_confidence.add_reference_evidence(
+                    summary, called, work, clinvar_sites=sites
+                )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Discovery filter failed for {v_type}: {e}") from e
     count = summary.records
@@ -507,9 +526,13 @@ def run_vcf_workflow(
 
     discovery_vcf = str(Path(outdir, f"significant_{v_type}_{base_name}.vcf.gz"))
     thresholds = variant_confidence.thresholds_from(job)
+    discovery_inputs = {"annotated": actual_ann_vcf}
+    # A gVCF published (or replaced) since redoes the step's evidence counts.
+    if gvcf := reference_evidence.companion(vcf_path):
+        discovery_inputs["reference_evidence"] = gvcf
     discovery_step = Step(
         f"discovery:{tag}",
-        inputs={"annotated": actual_ann_vcf},
+        inputs=discovery_inputs,
         outputs=[discovery_vcf],
         params={"type": v_type, "thresholds": dataclasses.asdict(thresholds)},
         tools=["bcftools"],
@@ -534,6 +557,8 @@ def run_vcf_workflow(
             discovery_vcf,
             thresholds,
             samples=(job.input, vcf_path),
+            called=vcf_path,
+            clinvar=dataset("clinvar", lib) if "clinvar" in available else None,
         )
         handle.metrics["variants"] = count
         for index in (".tbi", ".csi"):

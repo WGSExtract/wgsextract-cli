@@ -224,3 +224,35 @@ def test_1052_reference_download_needs_consent_then_cached_runs_stay_offline(
     deleted = api.ref.ancestry(api.RefAncestryParams(ref=library, delete=True))
     assert deleted.exit_code == 0
     assert not (library / "ancestry").exists()
+
+
+@needs_htslib
+def test_863_partial_variants_only_vcf_uses_its_gvcf_for_reference_sites(
+    tmp_path, sample
+):
+    """Issue #863: a variants-only VCF of part of the genome was refused, since
+    a site it lacks may be hom-ref or never looked at. With the gVCF its
+    caller published beside it, a missing site is hom-ref only where the gVCF
+    calls it callable reference; the sites no read covered stay missing."""
+    bam = reads_bam(sample, tmp_path / "s.bam", depth=20, sites=2400)
+    called = api.vcf.snp(
+        api.VcfSnpParams(
+            input=bam, ref=sample["fasta"], outdir=tmp_path / "calls", threads=2,
+            ploidy="GRCh38", reference_evidence="gvcf",
+        )
+    )  # fmt: skip
+    assert called.status == "ok", called.error
+    vcf = tmp_path / "calls" / "snps.vcf.gz"
+    result = _run(sample, vcf)
+    assert result.exit_code == 0, result.error
+    # The 2,400 covered sites: their variants called, the rest from the gVCF.
+    assert result.metrics["ancestry_sites"] == 2400
+    hom_ref = int((sample["genotypes"][:2400] == 0).sum())
+    assert result.metrics["ancestry_missing_sites_callable_reference"] == hom_ref
+    assert result.metrics["ancestry_missing_sites_uncovered"] == 600
+    _close_to_truth(_k7(tmp_path / "calls" / "snps.ancestry.tsv"), 0.1)
+
+    # Without the gVCF the same VCF is refused, as before.
+    for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):
+        (tmp_path / "calls" / name).unlink()
+    assert _run(sample, vcf).exit_code == 1
