@@ -1765,3 +1765,91 @@ def test_report_falls_back_to_the_contamination_run_without_a_workspace(tmp_path
     overview = report["sections"]["overview"]
     assert "qc contamination" in {s["command"] for s in overview["sources"]}
     assert not any("qc contamination" in m["command"] for m in overview["missing"])
+
+
+def _acmg_run(folder: Path) -> None:
+    """A `vcf acmg` run (issue 629) on the sample's VEP VCF: a carried LP in
+    MUTYH and P elsewhere, a carried VUS, and an LP the sample doesn't carry."""
+    brca2, mutyh = _mid("BRCA2"), _mid("MUTYH")
+    csq = "Allele|Consequence|IMPACT|SYMBOL|HGVSc|HGVSp|CANONICAL"
+    lines = [
+        "##fileformat=VCFv4.2",
+        "##contig=<ID=chr1,length=248956422>",
+        "##contig=<ID=chr13,length=114364328>",
+        f'##INFO=<ID=CSQ,Number=.,Type=String,Description="VEP. Format: {csq}">',
+        '##INFO=<ID=ACMG_CLASS,Number=A,Type=String,Description="Research only">',
+        '##INFO=<ID=ACMG_CRITERIA,Number=A,Type=String,Description="Criteria">',
+        '##INFO=<ID=ACMG_TRANSCRIPT,Number=A,Type=String,Description="Transcript">',
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+        '##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">',
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">',
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">',
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS",
+    ]
+    records = [
+        ("chr1", 1000, "A", "G", "P", "GENEX", "0/1:20,20:40:99"),
+        (*mutyh, "G", "A", "LP", "MUTYH", "0/1:20,20:40:99"),
+        (*mutyh[:1], mutyh[1] + 5, "C", "T", "VUS", "MUTYH", "0/1:20,20:40:99"),
+        (*brca2, "C", "T", "LP", "BRCA2", "0/0:40,0:40:99"),
+    ]
+    for chrom, pos, ref, alt, cls, gene, sample_fields in sorted(records):
+        info = (
+            f"CSQ={alt}|stop_gained|HIGH|{gene}|ENST1:c.1C>T|ENSP1:p.Gln1Ter|YES;"
+            f"ACMG_CLASS={cls};ACMG_CRITERIA=PVS1&PM2_Supporting;"
+            "ACMG_TRANSCRIPT=ENST1"
+        )
+        lines.append(
+            f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t{info}\tGT:AD:DP:GQ\t"
+            + sample_fields
+        )
+    plain = folder / "acmg_annotated.vcf"
+    plain.write_text("\n".join(lines) + "\n")
+    vcf = Path(bgzip_index(plain))
+    summary = folder / "acmg_summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "tool": {"name": "fastVEP", "version": "0.5.0"},
+                "criteria_not_evaluated": ["PS3", "BS3", "PS4", "PP1", "PP4"],
+            }
+        )
+    )
+    _manifest(
+        folder,
+        "acmg",
+        "vcf acmg",
+        inputs=((folder / "HG002.vcf.gz", "input"),),
+        outputs=((vcf, "annotated_vcf"), (summary, "acmg_summary")),
+    )
+
+
+@needs_htslib
+def test_629_acmg_section_lists_listed_genes_plp_calls_as_research_only(sample):
+    _acmg_run(sample)
+    report = pr.build_report(sample)
+    jsonschema.validate(json.loads(json.dumps(report)), pr.load_schema())
+
+    section = report["sections"]["acmg_research"]
+    assert section["disclaimer"].startswith("Research use only; not a diagnosis")
+    # The P call is in a gene off the list; the BRCA2 LP isn't carried.
+    assert section["counts"] == {
+        "p": 1, "lp": 1, "vus": 1, "lb": 0, "b": 0,
+        "in_gene_list": 1, "outside_gene_list": 1, "unplaced": 0,
+    }  # fmt: skip
+    (finding,) = section["findings"]
+    assert (finding["gene"], finding["value"]) == (
+        "MUTYH",
+        "Likely pathogenic (automated)",
+    )
+    assert "biallelic" in finding["note"]  # the gene list's reporting rule
+    assert finding["disclaimer"] == "Research use only; not a diagnosis."
+    assert finding["confidence"] == "high"
+    assert "PVS1" in finding["detail"]
+    assert finding["evidence"]["file"] == "acmg_annotated.vcf.gz"
+    assert section["criteria_not_evaluated"] == ["PS3", "BS3", "PS4", "PP1", "PP4"]
+
+    for page in (pr.render_html(report), pr.render_markdown(report)):
+        # At the top of the section, and on its finding.
+        assert page.count("Research use only; not a diagnosis.") >= 2
+        assert "without a clinical genetics professional" in page
+        assert "fastVEP 0.5.0" in page

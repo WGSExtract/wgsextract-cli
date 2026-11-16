@@ -32,6 +32,7 @@ from typing import Any
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import (
+    acmg,
     clinical_evidence,
     contamination,
     gene_lists,
@@ -51,11 +52,15 @@ from wgsextract_cli.core.sample_workspace import WORKSPACE_FILE, SampleWorkspace
 from wgsextract_cli.core.table_writer import Column, Value
 from wgsextract_cli.core.utils import UsageError
 
+from . import acmg_calls
 from .rendering import (
     NEWER_ATTEMPT_FAILED as NEWER_ATTEMPT_FAILED,
 )
 from .rendering import (
     NOT_DIAGNOSIS as NOT_DIAGNOSIS,
+)
+from .rendering import (
+    RESEARCH_ONLY as RESEARCH_ONLY,
 )
 from .rendering import (
     _number,
@@ -112,6 +117,7 @@ SECTIONS = {
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
+    "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
     "microarray": "Microarray export",
 }
@@ -151,7 +157,8 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "section",
         TEXT,
-        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar or structural_variants.",
+        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar, "
+        "acmg_research or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
@@ -172,7 +179,11 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column("confidence_reasons", TEXT, "Reason codes, '|'-separated."),
     Column("evidence_file", TEXT, "Evidence file, relative to the sample folder."),
     Column("evidence_region", TEXT, "Region of the evidence (chrom:pos, gene)."),
-    Column("disclaimer", TEXT, "Technical result, not diagnosis."),
+    Column(
+        "disclaimer",
+        TEXT,
+        "Technical result, not diagnosis (research use only for acmg_research).",
+    ),
     Column("clinvar_id", TEXT, "ClinVar resource record identity."),
     Column("clinvar_review_status", TEXT, "CLNREVSTAT assertion review status."),
     Column(
@@ -544,6 +555,7 @@ def _finding(
     note: str | None = None,
     variant: Mapping[str, Any] | None = None,
     links: Sequence[tuple[str, str]] = (),
+    disclaimer: str = NOT_DIAGNOSIS,
 ) -> dict[str, Any]:
     return {
         "section": section,
@@ -558,7 +570,7 @@ def _finding(
         "evidence": {"file": evidence, "region": region, "manifest": manifest},
         "variant": dict(variant) if variant else None,
         "links": [{"label": label, "url": url} for label, url in links],
-        "disclaimer": NOT_DIAGNOSIS,
+        "disclaimer": disclaimer,
     }
 
 
@@ -1521,6 +1533,166 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     return section
 
 
+def _acmg_research(ctx: _Context) -> dict[str, Any] | None:
+    """fastVEP's automated ACMG/AMP classes (`vcf acmg`, issue 629): the
+    carried alleles' classes, and the P/LP calls in the gene list's genes
+    under its reporting rules. Research only; None when `vcf acmg` never ran."""
+    source = ctx.latest(_command_or_role("vcf acmg", "acmg_summary"))
+    if source is None:
+        return None
+    section = _section("acmg_research", [source], ctx)
+    described = gene_lists.describe(ctx.gene_list)
+    section["title"] = SECTIONS["acmg_research"].format(gene_list=described["name"])
+    section["gene_list"] = described
+    section["disclaimer"] = acmg.DISCLAIMER
+    # The disclaimer heads the section; the run's warning would repeat it.
+    section["warnings"] = [
+        w for w in section["warnings"] if w["code"] != "acmg_research_only"
+    ]
+    if source.status != "ok":
+        return section
+    summary: Mapping[str, Any] = {}
+    if path := source.output("acmg_summary"):
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            loaded = None
+        summary = loaded if isinstance(loaded, Mapping) else {}
+    tool = summary.get("tool") or {}
+    section["tool"] = (
+        f"{tool.get('name', 'fastVEP')} {tool['version']}"
+        if tool.get("version")
+        else None
+    )
+    section["criteria_not_evaluated"] = [
+        str(c) for c in summary.get("criteria_not_evaluated") or []
+    ]
+    vcf = source.output("annotated_vcf")
+    section["all_calls"] = ctx.rel(vcf)
+    if vcf is None:
+        section["warnings"].append(
+            {
+                "code": "evidence_missing",
+                "message": "The classified VCF of the vcf acmg run is missing; "
+                "rerun vcf acmg.",
+            }
+        )
+        section["summary"] = "The classified VCF is missing."
+        return section
+    found = acmg_calls.scan(vcf, variant_confidence.thresholds_from())
+    build = _gene_build(_vcf_build(vcf))
+    section["build"] = build
+    gene_list = gene_lists.GeneList(described["id"], described["name"], ())
+    unavailable = False
+    if found.calls:
+        try:
+            gene_list = gene_lists.load(ctx.gene_list)
+        except gene_lists.GeneListUnavailable as error:
+            unavailable = True
+            section["warnings"].append(
+                {"code": "gene_list_unavailable", "message": str(error)}
+            )
+    findings = []
+    outside = unplaced = 0
+    for call in () if unavailable else found.calls:
+        row = call.row
+        chrom, pos = str(row["chrom"]), _int(row["pos"])
+        symbol = str(row["gene"] or "")
+        if symbol:
+            genes = gene_list.named([symbol])
+        elif pos is not None and gene_list.has_spans(build):
+            genes = gene_list.genes_at(build, chrom, pos)
+        else:
+            unplaced += 1
+            continue
+        if not genes:
+            outside += 1
+            continue
+        cls = str(row["acmg_class"])
+        symbols = "/".join(g.symbol for g in genes)
+        criteria = str(row["acmg_criteria"] or "").replace("&", ", ")
+        findings.append(
+            _finding(
+                "acmg_research",
+                f"{symbols} {cls} (automated)",
+                f"{acmg.CLASSES[cls]} (automated)",
+                detail="; ".join(
+                    filter(
+                        None,
+                        [
+                            f"criteria met: {criteria}" if criteria else "",
+                            f"classified on {row['acmg_transcript']}"
+                            if row["acmg_transcript"]
+                            else "",
+                            str(row["hgvs_p"] or row["hgvs_c"] or ""),
+                            str(row["consequence"] or ""),
+                        ],
+                    )
+                ),
+                gene=symbols,
+                note="; ".join(
+                    f"{g.symbol}: {g.note}" if len(genes) > 1 else g.note
+                    for g in genes
+                    if g.note
+                )
+                or None,
+                confidence=call.confidence,
+                reasons=call.reasons,
+                basis="not assessed: a sites-only VCF has no genotype to judge"
+                if found.sites_only
+                else variant_confidence.SCHEME,
+                evidence=ctx.rel(vcf),
+                region=f"{chrom}:{pos}",
+                manifest=ctx.rel(source.manifest),
+                variant={
+                    "chrom": chrom,
+                    "pos": pos,
+                    "ref": row["ref"],
+                    "alt": row["alt"],
+                    "genotype": row["genotype"],
+                    "zygosity": row["zygosity"],
+                    "depth": row["depth"],
+                    "genotype_quality": row["gq"],
+                    "alt_fraction": call.alt_fraction,
+                    "phase_set": call.phase_set,
+                },
+                disclaimer=RESEARCH_ONLY,
+            )
+        )
+    order = {label: i for i, label in enumerate(CONFIDENCE)}
+    findings.sort(key=lambda f: (order.get(f["confidence"], 9), f["gene"] or ""))
+    section["findings"] = findings
+    pathogenic = len(found.calls)
+    if unavailable:
+        unplaced = pathogenic
+    section["counts"] = {
+        **{cls.lower(): found.carried[cls] for cls in acmg.CLASSES},
+        "in_gene_list": len(findings),
+        "outside_gene_list": outside,
+        "unplaced": unplaced,
+    }
+    if unplaced and not unavailable:
+        section["warnings"].append(
+            {
+                "code": "gene_annotation_missing",
+                "message": f"{unplaced} P/LP call{'s' * (unplaced != 1)} have no "
+                "VEP gene symbol and the gene list has no spans to place them by; "
+                "see the classified VCF.",
+            }
+        )
+    classes = ", ".join(f"{found.carried[c]:,} {c}" for c in acmg.CLASSES)
+    alleles = "alleles" if found.sites_only else "carried alleles"
+    section["summary"] = (
+        f"fastVEP's automated classes of the {sum(found.carried.values()):,} "
+        f"{alleles} it classified: {classes}. "
+        f"{len(findings):,} P/LP call{'s' * (len(findings) != 1)} in "
+        f"{described['name']} genes; {outside:,} more elsewhere"
+        + (f"; {unplaced:,} not placed" if unplaced else "")
+        + ". Research use only; not a diagnosis."
+    )
+    return section
+
+
 # Rare SVs listed as findings, rarest first; the rest are in the table.
 MAX_SV_FINDINGS = 100
 _NOT_CARRIED = {"0/0", "0|0", "./.", ".|.", ".", "0"}
@@ -1932,6 +2104,7 @@ def build_report(
         )
         or folder.name
     )
+    research = _acmg_research(ctx)
     sections = {
         "overview": _overview(ctx),
         "lineage": _lineage(ctx),
@@ -1939,6 +2112,8 @@ def build_report(
         "pharmacogenomics": _pharmacogenomics(ctx),
         "carrier_screening": _carrier_screening(ctx),
         "clinvar": _clinvar(ctx),
+        # Opt-in research: shown only when `vcf acmg` ran, never asked for.
+        **({"acmg_research": research} if research is not None else {}),
         "structural_variants": _structural_variants(ctx),
         "microarray": _microarray(ctx),
     }

@@ -19,6 +19,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   protein index, gnomAD v4.1 and its constraint, ClinGen, REVEL, SpliceAI,
   phyloP), which you build with `fastvep sa-build`. GRCh38; Linux and macOS,
   not Windows. See [acmg.md](../acmg.md).
+- On a `vcf acmg` VCF, `vcf table` fills the columns `acmg_class`,
+  `acmg_criteria` and `acmg_transcript` (empty otherwise) and records the
+  research-only disclaimer in its metadata and manifest; `report` adds an
+  **Automated ACMG classes (research only)** section, headed by the
+  disclaimer, with the carried alleles' classes and the P/LP calls in the
+  gene list's genes; and the desktop app runs `vcf acmg` once you tick that
+  you understand it is research use only.
 - `vcf snp` and `vcf indel` can also write reference evidence:
   `--reference-evidence gvcf` (or `reference_evidence = "gvcf"` in
   `config.toml`) adds `bcftools.g.vcf.gz` (+ `.tbi`), a gVCF of every assessed

@@ -83,18 +83,7 @@
           "allOf": [{"$ref": "#/$defs/section"}],
           "required": ["gene_list"],
           "properties": {
-            "gene_list": {
-              "type": "object",
-              "required": ["name", "version", "citation", "url", "genes"],
-              "properties": {
-                "id": {"type": "string", "description": "A built-in list's id (acmg-sf-3.3), or the name of the user's TSV or BED file."},
-                "name": {"type": "string"},
-                "version": {"type": "string", "description": "Empty for a user's file."},
-                "citation": {"type": "string", "description": "Empty for a user's file."},
-                "url": {"type": "string", "description": "The published gene table a built-in list was checked against; empty for a user's file."},
-                "genes": {"type": "integer", "minimum": 1}
-              }
-            },
+            "gene_list": {"$ref": "#/$defs/gene_list"},
             "build": {"enum": ["hg19", "hg38", null]},
             "all_calls": {"type": ["string", "null"], "description": "Every carried ClinVar P/LP call (confidence TSV), relative to the folder."},
             "all_conflicts": {"type": ["string", "null"], "description": "Conflicting ClinVar assertions for review, not consensus P/LP, relative to the folder."},
@@ -123,6 +112,25 @@
                   "status_text": {"type": "string", "description": "The status explained; empty when status is null."}
                 }
               }
+            }
+          }
+        },
+        "acmg_research": {
+          "description": "fastVEP's automated ACMG/AMP classes (vcf acmg), research use only and not a diagnosis. Present only when vcf acmg ran.",
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["gene_list", "disclaimer"],
+          "properties": {
+            "gene_list": {"$ref": "#/$defs/gene_list"},
+            "disclaimer": {"type": "string", "description": "The research-only disclaimer, shown at the top of the section."},
+            "tool": {"type": ["string", "null"], "description": "The classifier and its version, e.g. 'fastVEP 0.5.0'."},
+            "criteria_not_evaluated": {"type": "array", "items": {"type": "string"}, "description": "ACMG/AMP criteria the classifier never evaluated."},
+            "build": {"enum": ["hg19", "hg38", null]},
+            "all_calls": {"type": ["string", "null"], "description": "The classified VCF (acmg_annotated.vcf.gz), relative to the folder."},
+            "counts": {
+              "type": "object",
+              "description": "Carried alleles by automated class (p, lp, vus, lb, b), and the carried P/LP calls in_gene_list (the findings), outside_gene_list and unplaced.",
+              "required": ["p", "lp", "vus", "lb", "b", "in_gene_list", "outside_gene_list", "unplaced"],
+              "additionalProperties": {"type": "integer", "minimum": 0}
             }
           }
         },
@@ -172,6 +180,18 @@
     }
   },
   "$defs": {
+    "gene_list": {
+      "type": "object",
+      "required": ["name", "version", "citation", "url", "genes"],
+      "properties": {
+        "id": {"type": "string", "description": "A built-in list's id (acmg-sf-3.3), or the name of the user's TSV or BED file."},
+        "name": {"type": "string"},
+        "version": {"type": "string", "description": "Empty for a user's file."},
+        "citation": {"type": "string", "description": "Empty for a user's file."},
+        "url": {"type": "string", "description": "The published gene table a built-in list was checked against; empty for a user's file."},
+        "genes": {"type": "integer", "minimum": 1}
+      }
+    },
     "section": {
       "type": "object",
       "required": ["title", "status", "summary", "findings", "missing", "warnings", "sources"],
@@ -255,7 +275,7 @@
       ],
       "additionalProperties": false,
       "properties": {
-        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar", "structural_variants"]},
+        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar", "acmg_research", "structural_variants"]},
         "label": {"type": "string", "minLength": 1},
         "value": {"type": "string"},
         "detail": {"type": ["string", "null"]},
@@ -337,7 +357,7 @@
             "properties": {"label": {"type": "string"}, "url": {"type": "string"}}
           }
         },
-        "disclaimer": {"const": "Technical result, not diagnosis."}
+        "disclaimer": {"enum": ["Technical result, not diagnosis.", "Research use only; not a diagnosis."], "description": "Research use only for acmg_research findings."}
       }
     },
     "fact": {

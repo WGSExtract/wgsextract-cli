@@ -32,6 +32,14 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg \
   the class counts as metrics (`acmg_p`, `acmg_lp`, ...), and the warning
   `acmg_research_only`.
 
+[`vcf table`](variant-table.md) of `acmg_annotated.vcf.gz` has the columns
+`acmg_class`, `acmg_criteria` and `acmg_transcript`, with the disclaimer in
+its metadata. [`report`](personal-report.md) then adds a research-only
+section: the classes of the alleles the sample carries, and its P/LP calls in
+the gene list's genes. In the desktop app, `vcf acmg` is an action of the VCF
+page's annotations that runs only once you tick that you understand it is
+research use only.
+
 ## How it works
 
 vep-rs stays the consequence engine. fastVEP reads the same records with its
