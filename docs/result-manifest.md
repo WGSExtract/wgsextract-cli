@@ -240,6 +240,10 @@ Variant callers and annotators record `variants` per output VCF;
 bcftools ran with wgse-mimalloc on Apple Silicon, else `system`; see
 [hardware.md](hardware.md#bcftools-with-mimalloc)); filtered
 outputs (`--min-score`, `--max-af`) are separate outputs with their own counts.
+With `--reference-evidence gvcf` the gVCF is an output with role
+`reference_evidence`, whose metrics are its provenance (`engine`,
+`quality_model`, `bands`, `ploidy_policy`, ...), and its index one with role
+`reference_evidence_index`; see [reference-evidence.md](reference-evidence.md).
 
 Other commands' metrics:
 

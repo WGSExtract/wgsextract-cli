@@ -43,6 +43,8 @@ FASTQ_BYTES_PER_READ = 100
 # HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
 # Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
 _BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
+# --reference-evidence gvcf, HG002 35x chr20 (#863): 7.8 MB from 19.5M reads.
+_BCFTOOLS_GVCF_BYTES_PER_READ = 2.0
 _BCFTOOLS_PART_HEADER_BYTES = 16 * 1024
 _BCFTOOLS_JOBS_PER_WORKER = 16
 # Long reads realigned with minimap2 -Y, which keeps every supplementary
@@ -374,13 +376,15 @@ def estimate_resources(
     keep_fastq: bool = False,
     retire_fastqs: tuple[str, ...] = (),
     staged_workspace: str | None = None,
+    reference_evidence: bool = False,
 ) -> PreflightEstimate:
     """Estimate a resolved command without creating files or running tools.
 
     ``bcftools_contigs`` is the caller's resolved parallel plan (empty for a
     serial fallback); None conservatively infers it from the reference index.
     ``alignment_header`` helps budget full headers without launching metadata
-    tools in this read-only API.
+    tools in this read-only API. ``reference_evidence`` adds the disk of
+    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts.
 
     ``reads`` counts individual reads, not pairs. Callers may provide a cheap
     FASTQ sample/indexed count. Otherwise disk uses a conservative byte-size
@@ -862,6 +866,20 @@ def estimate_resources(
                     f"{raw_copies} possible full uncompressed replay headers "
                     f"({raw_header} bytes each)."
                 )
+            if reference_evidence:
+                gvcf = (
+                    None
+                    if disk_reads is None
+                    else max(
+                        64 * 1024,
+                        math.ceil(disk_reads * _BCFTOOLS_GVCF_BYTES_PER_READ),
+                    )
+                )
+                # Per-contig parts coexist with the merged gVCF until it's published.
+                demands += [
+                    (output_dir, "reference_evidence", gvcf),
+                    (output_dir, "reference_evidence_parts", gvcf),
+                ]
             notes.append(
                 "bcftools compressed VCF disk uses the HG002 30x envelope "
                 "(BAM/CRAM read-count normalization); serial calling writes "

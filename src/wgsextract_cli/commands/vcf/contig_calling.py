@@ -99,8 +99,17 @@ def _parallel_contigs(
 ) -> dict[str, int]:
     # A region may overlap itself or request a different order; keep bcftools'
     # region semantics. Unindexed alignments still support sequential calling.
+    if int(threads) <= 1 or region:
+        return {}
+    contigs = populated_contigs(alignment, ref)
+    return contigs if len(contigs) > 1 else {}
+
+
+def populated_contigs(alignment: str, ref: str) -> dict[str, int]:
+    """The alignment's contigs with reads and their lengths, in its (and the
+    reference's) order; empty when it has no index or the orders differ."""
     index = alignment_index(alignment)
-    if int(threads) <= 1 or region or not index:
+    if not index:
         return {}
     if not Path(ref + ".fai").is_file():
         run_command(["samtools", "faidx", ref], capture_output=True)
@@ -124,8 +133,7 @@ def _parallel_contigs(
         )
     else:
         populated = _bam_contigs(alignment, alignment_contigs)
-    contigs = {name: length for name, length in contigs.items() if name in populated}
-    return contigs if len(contigs) > 1 else {}
+    return {name: length for name, length in contigs.items() if name in populated}
 
 
 def _pipeline(
