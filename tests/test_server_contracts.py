@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
 
 
-def validate(value, name):
+def validate(value: object, name: str) -> None:
     schema = json.loads(
         (SCHEMAS / "wgsextract.server.responses.1.schema.json").read_text(
             encoding="utf-8"
@@ -27,7 +27,7 @@ def validate(value, name):
     Draft202012Validator(schema).validate(value)
 
 
-def test_929_checked_in_openapi_and_response_schemas_do_not_drift():
+def test_929_checked_in_openapi_and_response_schemas_do_not_drift() -> None:
     subprocess.run(
         [sys.executable, "scripts/gen_server_contracts.py", "--check"],
         cwd=ROOT,
@@ -41,7 +41,7 @@ def test_929_checked_in_openapi_and_response_schemas_do_not_drift():
     for schema in components.values():
         Draft202012Validator.check_schema(schema)
 
-    def check_refs(value):
+    def check_refs(value: object) -> None:
         if isinstance(value, dict):
             if "$ref" in value:
                 prefix = "#/components/schemas/"
@@ -57,7 +57,7 @@ def test_929_checked_in_openapi_and_response_schemas_do_not_drift():
 
 
 @pytest.mark.parametrize("full", [False, True])
-def test_929_job_projections_preserve_omission_and_extension_data(full):
+def test_929_job_projections_preserve_omission_and_extension_data(full: bool) -> None:
     job = Job("example", "info", "query", {"input": "sample.bam"})
     queued = job.view(full=full)
     validate(queued, "Job")
@@ -86,7 +86,9 @@ def test_929_job_projections_preserve_omission_and_extension_data(full):
     validate(job.summary(), "JobSummary")
 
 
-def test_929_http_response_schemas_match_live_discovery_and_errors(tmp_path):
+def test_929_http_response_schemas_match_live_discovery_and_errors(
+    tmp_path: Path,
+) -> None:
     table = tmp_path / "example_variants.tsv"
     table.write_text("chrom\tpos\tgene\nchr1\t100\tBRCA1\n", encoding="utf-8")
     with _serve(tmp_path, [tmp_path]) as client:

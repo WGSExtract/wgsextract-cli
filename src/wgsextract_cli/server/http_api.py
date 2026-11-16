@@ -505,6 +505,7 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                 "delete": {
                     "operationId": "cancel_job",
                     "summary": "Cancel a queued or running job",
+                    "parameters": [_FULL],
                     "responses": {
                         "200": _response("Cancelled", "Job"),
                         "202": _response("Cancelling", "Job"),
@@ -518,6 +519,7 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                     "operationId": "rerun_job",
                     "summary": "Run a job's params again; long workflows resume "
                     "from their completed steps",
+                    "parameters": [_FULL],
                     "responses": {
                         "202": _response("The new job", "Job"),
                         **_errors(401, 403, 404),
@@ -533,7 +535,14 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                     "responses": {
                         "200": {
                             "description": "An event stream",
-                            "content": {"text/event-stream": {}},
+                            "content": {
+                                "text/event-stream": {
+                                    "schema": {"type": "string"},
+                                    "x-event-schema": {
+                                        "$ref": "#/components/schemas/JobEvent"
+                                    },
+                                }
+                            },
                         }
                     },
                 },

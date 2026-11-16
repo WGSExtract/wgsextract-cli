@@ -62,6 +62,16 @@ export interface JobProgress {
     fraction?: number;
 }
 
+export interface JobEvent {
+    stage?: string;
+    message?: string;
+    fraction?: number;
+    seq: number;
+    type: "status" | "progress";
+    time: string;
+    status?: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted" | "cancelling";
+}
+
 export interface Job {
     id: string;
     op: string;

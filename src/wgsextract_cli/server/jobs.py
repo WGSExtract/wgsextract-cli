@@ -24,7 +24,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
@@ -38,7 +38,7 @@ from .operations import (
     params_from_json,
 )
 from .transport import Job as JobView
-from .transport import JobProgress, JobSummary, Kind, Status
+from .transport import JobEvent, JobProgress, JobSummary, Kind, Status
 
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
@@ -72,7 +72,7 @@ class Job:
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
     server_pid: int = field(default_factory=os.getpid)
-    events: list[dict[str, Any]] = field(default_factory=list, repr=False)
+    events: list[JobEvent] = field(default_factory=list, repr=False)
 
     @property
     def done(self) -> bool:
@@ -243,7 +243,7 @@ class JobManager:
 
     def events(
         self, job_id: str, after: int, timeout: float
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[JobEvent], bool]:
         """Events with ``seq`` above ``after``, waiting up to ``timeout`` for
         one; and whether the job has finished."""
         deadline = time.monotonic() + timeout
@@ -343,9 +343,27 @@ class JobManager:
 
     # Internals (called with the lock held unless noted) --------------------
 
-    def _event(self, job: Job, kind: str, **data: Any) -> None:
+    def _event(
+        self,
+        job: Job,
+        kind: Literal["status", "progress"],
+        *,
+        status: Status | Literal["cancelling"] | None = None,
+        stage: str | None = None,
+        message: str | None = None,
+        fraction: float | None = None,
+    ) -> None:
         seq = job.events[-1]["seq"] + 1 if job.events else 1
-        job.events.append({"seq": seq, "type": kind, "time": _now(), **data})
+        event: JobEvent = {"seq": seq, "type": kind, "time": _now()}
+        if status is not None:
+            event["status"] = status
+        if stage is not None:
+            event["stage"] = stage
+        if message is not None:
+            event["message"] = message
+        if fraction is not None:
+            event["fraction"] = fraction
+        job.events.append(event)
         self._lock.notify_all()
 
     def _pump(self) -> None:

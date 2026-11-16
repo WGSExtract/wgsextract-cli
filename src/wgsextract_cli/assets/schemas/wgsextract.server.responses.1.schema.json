@@ -220,6 +220,55 @@
         }
       }
     },
+    "JobEvent": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "fraction": {
+          "type": "number"
+        },
+        "seq": {
+          "type": "integer"
+        },
+        "type": {
+          "enum": [
+            "status",
+            "progress"
+          ]
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "queued",
+                "running",
+                "succeeded",
+                "failed",
+                "cancelled",
+                "interrupted"
+              ]
+            },
+            {
+              "const": "cancelling"
+            }
+          ]
+        }
+      },
+      "required": [
+        "seq",
+        "type",
+        "time"
+      ]
+    },
     "Job": {
       "type": "object",
       "properties": {

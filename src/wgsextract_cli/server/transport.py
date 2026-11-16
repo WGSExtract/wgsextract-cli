@@ -81,6 +81,16 @@ class JobProgress(TypedDict, total=False):
     fraction: float
 
 
+class JobEventRequired(TypedDict):
+    seq: int
+    type: Literal["status", "progress"]
+    time: Timestamp
+
+
+class JobEvent(JobProgress, JobEventRequired, total=False):
+    status: Status | Literal["cancelling"]
+
+
 class Job(JobRequired, total=False):
     started: Timestamp
     finished: Timestamp

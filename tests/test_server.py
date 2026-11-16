@@ -49,6 +49,17 @@ from wgsextract_cli.server.operations import (
 CLI_ROOT = Path(__file__).resolve().parents[1]
 FAKE_DIR = CLI_ROOT / "out" / "fake_30x"
 VALIDATOR = Draft202012Validator(results.load_schema())
+JOB_VALIDATOR = Draft202012Validator(
+    {
+        **json.loads(
+            (
+                CLI_ROOT
+                / "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
+            ).read_text(encoding="utf-8")
+        ),
+        "$ref": "#/$defs/Job",
+    }
+)
 TOKEN = "test-token"
 
 
@@ -730,15 +741,22 @@ def test_vcf_snp_runs_as_a_job_with_progress_and_a_manifest(client, work, fake_d
         "ploidy": "1",
     }
     status, job = client.request("POST", "/ops/vcf/snp", params)
+    JOB_VALIDATOR.validate(job)
     assert status == 202 and job["status"] in ("queued", "running")
 
     events = client.events(job["id"])
+    event_validator = JOB_VALIDATOR.evolve(
+        schema={**JOB_VALIDATOR.schema, "$ref": "#/$defs/JobEvent"}
+    )
+    for event in events:
+        event_validator.validate(event)
     statuses = [e["status"] for e in events if e["type"] == "status"]
     assert statuses[0] == "queued" and statuses[-1] == "succeeded"
     assert any(e["type"] == "progress" for e in events)
     assert [e["seq"] for e in events] == list(range(1, len(events) + 1))
 
     status, job = client.request("GET", f"/jobs/{job['id']}")
+    JOB_VALIDATOR.validate(job)
     assert (status, job["status"], job["exit_code"]) == (200, "succeeded", 0)
     vcf = work / "snps.vcf.gz"
     assert str(vcf) in [o["path"] for o in job["result"]["outputs"]]
@@ -752,6 +770,7 @@ def test_vcf_snp_runs_as_a_job_with_progress_and_a_manifest(client, work, fake_d
     # Compact by default; provenance with full=1.
     assert "provenance" not in job["result"]
     _, full = client.request("GET", f"/jobs/{job['id']}?full=1")
+    JOB_VALIDATOR.validate(full)
     assert full["result"]["provenance"]["params"]["region"] == "chrM"
 
 
@@ -767,6 +786,7 @@ def test_info_query_waits_and_reports_failures_as_failed_jobs(client, work, fake
         "POST", "/ops/info?wait=120", {"input": str(work / "missing.bam")}
     )
     assert (status, job["status"], job["exit_code"]) == (200, "failed", 1)
+    JOB_VALIDATOR.validate(job)
     assert "missing.bam" in job["error"]["message"]
 
 
