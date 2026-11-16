@@ -197,12 +197,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     # vcf: calling
     "vcf snp": _h(
-        "snps.vcf.gz (+ .tbi).",
+        "snps.vcf.gz (+ .tbi); with --reference-evidence gvcf also "
+        "bcftools.g.vcf.gz (+ .tbi).",
         "wgsextract vcf snp --input sample.cram",
         "wgsextract vcf snp --input sample.cram --region chrM",
     ),
     "vcf indel": _h(
-        "indels.vcf.gz (+ .tbi).",
+        "indels.vcf.gz (+ .tbi); with --reference-evidence gvcf also "
+        "bcftools.g.vcf.gz (+ .tbi).",
         "wgsextract vcf indel --input sample.cram",
     ),
     "vcf freebayes": _h(

@@ -924,6 +924,10 @@ that VCF. Annotators take their data file from the
 field, else config.toml, else the reference library (`ref`); see
 `wgsextract ref` to download it.
 
+### `api.vcf.reference_evidence_param(gvcf: str, cost: str) -> Any`
+
+`--reference-evidence`: every caller's opt-in gVCF (#863).
+
 ### `api.vcf.snp(VcfSnpParams)`
 
 CLI: `wgsextract vcf snp`.
@@ -948,6 +952,7 @@ length, `.dict` assembly, header description or file name).
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes bcftools.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
 | `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | auto: bcftools uses wgse-mimalloc on Apple Silicon if installed. One of: `auto`, `off` |
 
 ### `api.vcf.indel(VcfIndelParams)`
@@ -969,6 +974,7 @@ Call indels; the `indels` output carries the record count in its metrics.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes bcftools.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
 | `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | auto: bcftools uses wgse-mimalloc on Apple Silicon if installed. One of: `auto`, `off` |
 
 ### `api.vcf.annotate(VcfAnnotateParams)`
