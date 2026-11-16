@@ -57,10 +57,11 @@ don't fire and the variant reads as VUS. `vcf acmg` refuses instead, before
 reading any record, when the databases lack one of the eight sources below,
 when a database isn't built for GRCh38, when fastVEP skips a database file,
 or when the gnomAD database holds nothing of an autosome, X or Y the input
-has records on (by default those chromosomes' gnomAD is read per run instead;
-see [gnomAD and SpliceAI per run](#gnomad-and-spliceai-per-run)). Records on other contigs gnomAD holds nothing of (chrM, which
-gnomAD v4.1 lacks, and unplaced, alt or decoy contigs) are left unclassified,
-with the warning `acmg_contigs_not_classified`, and listed in the summary's
+has records on (by default those chromosomes' gnomAD is read per run
+instead; see [gnomAD and SpliceAI per run](#gnomad-and-spliceai-per-run)).
+Records on other contigs gnomAD holds nothing of (chrM, which gnomAD v4.1
+lacks, and unplaced, alt or decoy contigs) are left unclassified, with the
+warning `acmg_contigs_not_classified`, and listed in the summary's
 `contigs_not_classified`.
 
 ## Requirements
@@ -184,7 +185,9 @@ them).
 - The databases are cached in the databases folder's `sites/` (in the run's
   temporary folder when that can't be written), keyed on the sites and the
   file's ETag or size and date, and the 200 most recently used are kept. A
-  rerun with the same sites reads nothing.
+  rerun with the same sites reads nothing. A server job refuses a `sites/`
+  folder or library SpliceAI VCF that leads outside its allowed folders, and
+  holds the job lock on `sites/` while it writes there.
 - `acmg_summary.json`'s `site_data` lists, per source and chromosome, the file
   read, its release, ETag and date, the sites, records, bytes and requests
   read, and whether the cache had it. SpliceAI read per run warns
