@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
-from tests.smoke_utils import run_cli
+from tests.smoke_utils import run_cli, state_directory_setting
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -964,7 +964,10 @@ def test_issue_894_missing_configured_resource_names_its_setting(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
     missing = tmp_path / "missing.vcf.gz"
     config = tmp_path / "config.toml"
-    config.write_text(f"clinvar_vcf_path = {json.dumps(str(missing))}\n")
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"clinvar_vcf_path = {json.dumps(str(missing))}\n"
+    )
     rc, _, stderr = run_cli(
         ["--config", str(config), "vcf", "clinvar", "--vcf-input", sample,
          "--outdir", str(tmp_path / "out")]
