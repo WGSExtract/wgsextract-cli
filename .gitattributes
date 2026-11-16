@@ -29,3 +29,6 @@ docs/api.md merge=generated
 docs/commands.md merge=generated
 src/wgsextract_cli/assets/cli/help-index.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json merge=generated
+src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json merge=generated
+src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json merge=generated
+gui/app/shared/generated/server-transport.ts merge=generated

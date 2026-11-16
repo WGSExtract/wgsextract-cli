@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Literal
+from typing import Any
 
 from wgsextract_cli import api
 from wgsextract_cli.api._params import (
@@ -28,7 +28,7 @@ from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
-Kind = Literal["query", "job"]
+from .transport import Error, Kind, OperationSummary
 
 # Quick reads that describe a sample or the reference library; everything else
 # makes new files, takes longer or changes what is recorded about a sample, so
@@ -60,7 +60,7 @@ class RequestError(Exception):
         self.status = status
         self.code = code
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> Error:
         return {"error": {"code": self.code, "message": str(self)}}
 
 
@@ -125,11 +125,15 @@ class Operation:
         """Whether some request to it deletes data it didn't make."""
         return self.deletes or any(f.spec.deletes for f in self.fields())
 
-    def describe(self) -> dict[str, Any]:
-        out: dict[str, Any] = {"op": self.name, "kind": self.kind}
+    def describe(self) -> OperationSummary:
+        out: OperationSummary = {
+            "op": self.name,
+            "kind": self.kind,
+            "summary": self.summary,
+        }
         if self.may_delete:
             out["destructive"] = True
-        return {**out, "summary": self.summary}
+        return out
 
 
 def _group_modules() -> list[ModuleType]:
