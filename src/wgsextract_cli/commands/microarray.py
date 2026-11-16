@@ -495,6 +495,12 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     # Reuse what an earlier run made from these same inputs (see
     # _microarray_reuse); regenerate only what changed or is missing.
+    if not ref_vcf_tab and not aadr_panels:
+        raise WGSExtractError(
+            "--ref-vcf-tab is required and could not be auto-resolved."
+        )
+    if ref_vcf_tab and not Path(ref_vcf_tab).is_file():
+        raise WGSExtractError(f"--ref-vcf-tab not found: {ref_vcf_tab}")
     Path(outdir).mkdir(parents=True, exist_ok=True)
     region_args = ["-r", params.region] if params.region else []
     input_chroms = None
