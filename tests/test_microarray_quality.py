@@ -1,7 +1,7 @@
 import pytest
 
 from tests.microarray_helpers import microarray_params
-from wgsextract_cli.core import microarray_quality as quality
+from wgsextract_cli.core.microarray import quality
 from wgsextract_cli.core.utils import WGSExtractError
 
 

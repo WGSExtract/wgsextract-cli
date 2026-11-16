@@ -40,7 +40,7 @@ from microarray_chip_catalogue import (  # noqa: E402
     _member_text,
 )
 
-from wgsextract_cli.core.microarray_quirks import STRAND_TABLE  # noqa: E402
+from wgsextract_cli.core.microarray.quirks import STRAND_TABLE  # noqa: E402
 from wgsextract_cli.core.microarray_revisions import (  # noqa: E402
     _COLUMN_LABELS,
     CATALOGUE,

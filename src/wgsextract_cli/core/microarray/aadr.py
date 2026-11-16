@@ -29,7 +29,7 @@ AADR_FORMATS = {
     "aadr_1240k_ho": "1240k_ho",
     "aadr_2m": "2m",
 }
-_MARKERS = Path(__file__).resolve().parents[1] / "assets/microarray/aadr/v66.p1.tsv.gz"
+_MARKERS = Path(__file__).resolve().parents[2] / "assets/microarray/aadr/v66.p1.tsv.gz"
 _COMPLEMENT = str.maketrans("ACGT", "TGCA")
 _BED_CODE = {"2": 0, "1": 2, "0": 3, "9": 1}
 _PRIMARY_CHROMS = {*(f"chr{i}" for i in range(1, 23)), "chrX", "chrY"}
