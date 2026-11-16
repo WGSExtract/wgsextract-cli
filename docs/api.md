@@ -1465,6 +1465,7 @@ Call with GATK; output role `variants`.
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes gatk.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
 
 ### `api.vcf.deepvariant(VcfDeepvariantParams)`
 
@@ -1522,6 +1523,7 @@ Call with Clair3; output role `variants`.
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes clair3.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
 
 ### `api.vcf.phase(VcfPhaseParams)`
 

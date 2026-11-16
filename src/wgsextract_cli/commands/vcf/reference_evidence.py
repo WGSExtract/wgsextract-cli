@@ -12,11 +12,15 @@ subsamples columns deeper than 255 bases with one random stream per process).
 
 from __future__ import annotations
 
+import bisect
 import logging
 import os
+import re
+import subprocess
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import as_completed
+from contextlib import ExitStack, suppress
 from functools import partial
 from pathlib import Path
 from threading import Event
@@ -24,15 +28,18 @@ from typing import TYPE_CHECKING
 
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
-from wgsextract_cli.core.utils import run_command, run_pipeline
+from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
+from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
+from .basic import plain_reference
 from .call_cleanup import indel_cleanup_pipeline
 from .contig_calling import populated_contigs
 
@@ -201,11 +208,15 @@ def caller_provenance(
     engine: str,
     version: str,
     intervals: list[PloidyInterval],
-    region: str | None,
+    bounded: object,
+    *,
+    bands: str = "",
+    min_mapping_quality: int | None = None,
 ) -> evidence.Provenance:
-    """The provenance of a GQ caller's gVCF, called over ``region`` with the
-    sex/PAR ploidy ``intervals`` (caller_ploidy.calling_ploidy's), which
-    cover the selection: its Region is theirs, resolved."""
+    """The provenance of a GQ caller's gVCF, called with the sex/PAR ploidy
+    ``intervals`` (caller_ploidy.calling_ploidy's), which cover what it
+    called. When ``bounded`` (a --region, or a caller that calls only some
+    contigs by default) its Region is theirs, resolved; else every contig."""
     from .caller_ploidy import policy_sex
 
     def span(item: PloidyInterval) -> str:
@@ -215,15 +226,172 @@ def caller_provenance(
         engine=engine,
         version=version,
         quality_model=evidence.GQ,
+        bands=bands,
+        min_mapping_quality=min_mapping_quality,
         region=(
             evidence.canonical_region((i.chrom, i.start, i.end) for i in intervals)
-            if region
+            if bounded
             else None
         ),
         ploidy=",".join(f"{span(i)}={i.ploidy}" for i in intervals if i.ploidy != 2),
         sex=policy_sex(intervals),
         ploidy_zero=tuple(span(i) for i in intervals if i.ploidy == 0),
     )
+
+
+def clip_gvcf(
+    source: str,
+    intervals: Sequence[PloidyInterval],
+    ref: str,
+    output: str,
+    called: Sequence[PloidyInterval] | None = None,
+) -> None:
+    """Write ``source``'s records inside ``intervals`` (one ploidy
+    partition, zero-based half-open) to ``output`` (+ .tbi), so partitions
+    gathered side by side never claim one base twice: a reference block is
+    cut at the partition's edges (its REF becomes the base it now starts on),
+    and any other record belongs to the partition its POS is in, as in the
+    partitioned VCF. A record starting outside every partition ``called``
+    (default ``intervals``) is kept where it covers the partition, so a
+    deletion starting before the selection still covers its bases there.
+    Every other field stays as the caller wrote it."""
+    spans, owned = _spans(intervals), _spans(called or intervals)
+
+    with (
+        tempfile.TemporaryDirectory(
+            dir=Path(output).parent, prefix=".wgse_gvcf_clip_"
+        ) as work,
+        ExitStack() as stack,
+    ):
+        fasta: list[str] = []
+
+        def base(contig: str, position: int) -> str:
+            if not fasta:
+                # samtools faidx reads plain or bgzipped FASTA, not gzip.
+                gzip_only = ref.lower().endswith(".gz") and not is_bgzf(ref)
+                fasta.append(
+                    stack.enter_context(plain_reference(ref, work))
+                    if gzip_only
+                    else ref
+                )
+            fetched = run_command(
+                ["samtools", "faidx", fasta[0], f"{{{contig}}}:{position}-{position}"],
+                capture_output=True,
+            )
+            return "".join(fetched.stdout.splitlines()[1:]).upper() or "N"
+
+        errors = Path(work, "stderr.txt")
+        with open(errors, "w+", encoding="utf-8", newline="\n") as stderr:
+            reader = popen(
+                ["bcftools", "view", "--no-version", source],
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+            )
+            writer = popen(
+                ["bcftools", "view", "--no-version", "-Oz", "-o", output],
+                stdin=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+            )
+            assert reader.stdout is not None and writer.stdin is not None
+            broken = False
+            try:
+                for line in reader.stdout:
+                    if not line.startswith("#"):
+                        line = _cut_record(line, spans, owned, base)
+                    writer.stdin.write(line)
+            except BrokenPipeError:
+                broken = True  # The writer failed; its stderr says why.
+            finally:
+                reader.stdout.close()
+                with suppress(BrokenPipeError):
+                    writer.stdin.close()
+                codes = reader.wait(), writer.wait()
+            if broken or any(codes):
+                stderr.seek(0)
+                raise WGSExtractError(
+                    f"Cutting the gVCF {source} to its partition failed: "
+                    f"{stderr.read().strip()[-500:]}"
+                )
+    ensure_vcf_indexed(output)
+
+
+def _spans(intervals: Sequence[PloidyInterval]) -> dict[str, list[tuple[int, int]]]:
+    """Each contig's sorted 1-based inclusive spans."""
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for item in intervals:
+        spans.setdefault(item.chrom, []).append((item.start + 1, item.end))
+    for ranges in spans.values():
+        ranges.sort()
+    return spans
+
+
+_END = re.compile(r"(?<![^;])END=(\d+)")
+
+
+def _first_ending_after(ranges: list[tuple[int, int]], position: int) -> int:
+    """The index of the first of the sorted, disjoint ``ranges`` ending at
+    or after ``position``."""
+    return bisect.bisect_left(ranges, position, key=lambda span: span[1])
+
+
+def _cut_record(
+    line: str,
+    spans: Mapping[str, list[tuple[int, int]]],
+    owned: Mapping[str, list[tuple[int, int]]],
+    base: Callable[[str, int], str],
+) -> str:
+    """``line`` (one gVCF record) cut to the sorted, disjoint 1-based
+    ``spans``: "" when outside them, else one record per span it covers.
+    A record other than a block is kept whole when its POS is in ``spans``,
+    or outside ``owned`` while the bases it covers reach into ``spans``."""
+    fields = line.split("\t", 8)
+    contig, pos = fields[0], int(fields[1])
+    ranges = spans.get(contig, [])
+    index = _first_ending_after(ranges, pos)
+    end_match = _END.search(fields[7])
+    end = max(pos + len(fields[3]) - 1, int(end_match.group(1)) if end_match else 0)
+    block = end_match is not None and all(
+        alt in SYMBOLIC_REFERENCE_ALTS for alt in fields[4].split(",")
+    )
+    if not block:
+        if index < len(ranges) and ranges[index][0] <= pos:
+            return line
+        claimed = owned.get(contig, [])
+        at = _first_ending_after(claimed, pos)
+        if at < len(claimed) and claimed[at][0] <= pos:
+            return ""  # Its POS is another partition's.
+        return line if index < len(ranges) and ranges[index][0] <= end else ""
+    pieces = []
+    while index < len(ranges) and ranges[index][0] <= end:
+        first, last = ranges[index]
+        index += 1
+        start, stop = max(pos, first), min(end, last)
+        if start == pos and stop == end:
+            return line
+        fields[1] = str(start)
+        fields[3] = fields[3] if start == pos else base(contig, start)
+        fields[7] = _END.sub(f"END={stop}", fields[7], count=1)
+        pieces.append("\t".join(fields))
+    return "".join(pieces)
+
+
+def gather_gvcf(parts: Sequence[str], work: str, output: str) -> None:
+    """Gather partition gVCFs cut by ``clip_gvcf`` into ``output`` in
+    reference order. A record starting before the selection may reach into
+    two partitions, so each copy after the first (same POS, REF and ALT) is
+    dropped."""
+    combined = str(Path(work, "combined.g.vcf.gz"))
+    run_command(["bcftools", "concat", "--no-version", "-a", "-Oz", "-o", combined, *parts])  # fmt: skip
+    run_pipeline(
+        [
+            ["bcftools", "sort", "-T", work, "-Ou", combined],
+            ["bcftools", "norm", "--no-version", "-d", "exact", "-Oz", "-o", output],
+        ],
+        description="Reference evidence (gVCF) gather",
+    )
+    Path(combined).unlink()
 
 
 def publish_gvcf(source: str, output: str, provenance: evidence.Provenance) -> None:

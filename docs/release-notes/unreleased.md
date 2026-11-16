@@ -25,7 +25,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   base, beside the unchanged variant VCF. A shared classifier tells confident
   reference from low-quality reference, coverage gaps, filtered and no-call
   bases, and ploidy-0 bases such as a woman's chrY. Off by default: it adds a
-  second bcftools pass. GATK and Clair3 are to follow. See
+  second bcftools pass. See
   [reference-evidence.md](../reference-evidence.md).
 
 - `vcf deepvariant --reference-evidence gvcf` (or the same `config.toml`
@@ -35,6 +35,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   to the run and 21 MB. `wgse-deepvariant` keeps the whole call set in memory
   to write it, so its preflight allows about 20 GiB for a whole genome (5
   without).
+
+- `vcf gatk --reference-evidence gvcf` writes `gatk.g.vcf.gz` (+ `.tbi`):
+  HaplotypeCaller's gVCF, banded by GQ at 10, 20, 30 and 60 (about 1.4 GB a
+  genome, against 6.5 GB with GATK's default bands), and the VCF genotyped
+  from it by GenotypeGVCFs. Not with `--gpu` or `--scatter`.
+  `vcf clair3 --reference-evidence gvcf` writes `clair3.g.vcf.gz` from the
+  same run, on the CPU or the GPU; it is about 2.5-6x slower, which the run
+  warns about. A man's haploid chrX and chrY are called apart from the rest,
+  and their gVCF parts are cut at the partition edges and gathered in order.
 
 - `wgse-deepvariant` 0.3.1 writes a gVCF PL value for every genotype, those
   with `<*>` included, as Google's image does; 0.3.0 left them out of variant

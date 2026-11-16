@@ -245,17 +245,41 @@ def require_diploid(intervals: list[PloidyInterval], caller: str) -> None:
 P = TypeVar("P", VcfClair3Params, VcfGatkParams)
 
 
+@dataclass(frozen=True)
+class GvcfEngine:
+    """The engine that writes ``--reference-evidence gvcf``'s gVCF, as its
+    provenance records it."""
+
+    engine: str
+    version: str
+    bands: str = ""
+    min_mapping_quality: int | None = None
+
+
 def call_partitioned(
     params: P,
     setup: CallerSetup,
     name: str,
-    run: Callable[[P, int, CallerSetup | None, bool], None],
+    run: Callable[[P, int, CallerSetup | None, bool, str | None], None],
+    gvcf: GvcfEngine | None = None,
 ) -> None:
-    """Run haploid and diploid jobs separately, then gather in reference order."""
+    """Run haploid and diploid jobs separately, then gather in reference order.
+
+    ``run`` writes the VCF, and with ``gvcf`` the caller's raw gVCF at the
+    path it is given. Each partition's gVCF is cut at its edges, gathered and
+    published as ``<name>.g.vcf.gz`` with its provenance."""
     from wgsextract_cli.commands.vcf.basic import record_variants
     from wgsextract_cli.core.atomic_output import safe_output
     from wgsextract_cli.core.output_checks import warn_if_no_variants
     from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+
+    from .reference_evidence import (
+        caller_provenance,
+        clip_gvcf,
+        gather_gvcf,
+        publish_gvcf,
+        record_gvcf,
+    )
 
     default_contigs = None
     if name == "clair3":
@@ -273,8 +297,32 @@ def call_partitioned(
     active = {i.ploidy for i in intervals if i.ploidy}
     if not active:
         raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
+    out_gvcf = str(Path(setup.outdir, f"{name}.g.vcf.gz"))
+    provenance = (
+        caller_provenance(
+            gvcf.engine,
+            gvcf.version,
+            intervals,
+            # Clair3 calls chr1-22, X and Y unless told otherwise.
+            params.region is not None or default_contigs is not None,
+            bands=gvcf.bands,
+            min_mapping_quality=gvcf.min_mapping_quality,
+        )
+        if gvcf
+        else None
+    )
     if active == {2} and all(i.ploidy == 2 for i in intervals):
-        run(params, 2, setup, True)
+        if provenance is None:
+            run(params, 2, setup, True, None)
+            return
+        with tempfile.TemporaryDirectory(
+            dir=setup.outdir, prefix=".wgse_gvcf_"
+        ) as work:
+            raw, cut = Path(work, "raw.g.vcf.gz"), Path(work, "cut.g.vcf.gz")
+            run(params, 2, setup, True, str(raw))
+            clip_gvcf(str(raw), intervals, setup.ref, str(cut))
+            publish_gvcf(str(cut), out_gvcf, provenance)
+        record_gvcf(out_gvcf)
         return
     if params.gpu:
         require_diploid(intervals, f"{name} --gpu")
@@ -293,21 +341,24 @@ def call_partitioned(
             )
     from wgsextract_cli.core.dependency_checks import verify_dependencies
 
-    verify_dependencies(["bcftools", "tabix"])
+    verify_dependencies(["bcftools", "tabix", *(["samtools"] if gvcf else [])])
     output = str(Path(setup.outdir, f"{name}.vcf.gz"))
+    called = [i for i in intervals if i.ploidy]
     with tempfile.TemporaryDirectory(dir=setup.outdir, prefix=".ploidy_") as work:
         parts: list[str] = []
+        evidence: list[str] = []
         for ploidy in sorted(active):
             part = Path(work, str(ploidy))
-            bed = write_intervals(
-                part / "regions.bed", [i for i in intervals if i.ploidy == ploidy]
-            )
+            partition = [i for i in intervals if i.ploidy == ploidy]
+            bed = write_intervals(part / "regions.bed", partition)
+            raw = part / "raw.g.vcf.gz"
             # The final manifest must name only persistent outputs.
             run(
                 replace(params, outdir=part, region=bed),
                 ploidy,
                 replace(setup, outdir=str(part)),
                 False,
+                str(raw) if gvcf else None,
             )
             bounded = str(part / "bounded.vcf.gz")
             # Callers may emit variants overlapping an interval edge; each POS
@@ -328,11 +379,23 @@ def call_partitioned(
             )
             ensure_vcf_indexed(bounded)
             parts.append(bounded)
+            if gvcf:
+                clipped = str(part / "bounded.g.vcf.gz")
+                clip_gvcf(str(raw), partition, setup.ref, clipped, called)
+                for suffix in ("", ".tbi"):
+                    Path(f"{raw}{suffix}").unlink(missing_ok=True)
+                evidence.append(clipped)
         with safe_output(output) as staged:
             combined = str(Path(work, "combined.vcf.gz"))
             run_command(["bcftools", "concat", "-a", "-Oz", "-o", combined, *parts])
             run_command(["bcftools", "sort", "-T", work, "-Oz", "-o", staged, combined])
+        if provenance:
+            gathered = str(Path(work, "gathered.g.vcf.gz"))
+            gather_gvcf(evidence, work, gathered)
+            publish_gvcf(gathered, out_gvcf, provenance)
     ensure_vcf_indexed(output)
     record_variants(
         output, "variants", warn_if_no_variants(output, setup.ref, params.region)
     )
+    if provenance:
+        record_gvcf(out_gvcf)

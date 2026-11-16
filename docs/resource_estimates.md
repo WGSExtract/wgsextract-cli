@@ -602,6 +602,12 @@ that an older Clair3 build needs is checked again once it is written. On a
 compressing filesystem (btrfs with zstd), the 99.7 GiB took about 60 GB of the
 disk; the estimate doesn't count on that.
 
+With `--reference-evidence gvcf` (#863) the estimate adds three copies of the
+gVCF at 0.35 bytes per called base (1.6 MB for chr20:10-15 Mb; a partitioned
+run's parts, their gathered copy and the published gVCF can coexist), and the
+host requirement's calling time is multiplied by 3.8 on the CPU and 6 on the
+GPU, the slowdowns #863's research measured.
+
 ## Whole-genome ONT requirements
 
 Measured on the whole HG002 ONT R10.4.1 CRAM (103.7 GB, about 51x, hs38;
@@ -803,6 +809,11 @@ filesystem for reference-index storage.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   the **output volume**, where they coexist with the gathered output; JVM
   temporary storage remains a separate demand on the system temporary volume.
+  With `--reference-evidence gvcf` the gVCF (GQ bands 10,20,30,60) is
+  budgeted at 3% of the input's BAM-equivalent bytes (its read count, so a
+  CRAM of the same reads gets the same budget), three times over for its
+  partition parts, gathered copy and published file (2.6% of the BAM
+  measured on HG002 chr20, #863); GenotypeGVCFs runs after HaplotypeCaller, within its memory.
 - Sort RAM is threads × `--memory` plus 25% and 256 MiB overhead; conversion
   allows 64 MiB per codec thread plus 256 MiB overhead. bcftools allows 1 GiB per
   active contig worker plus 256 MiB. With more than one thread, contigs
