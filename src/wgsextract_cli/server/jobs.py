@@ -24,7 +24,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
@@ -37,8 +37,9 @@ from .operations import (
     is_network_path,
     params_from_json,
 )
+from .transport import Job as JobView
+from .transport import JobProgress, JobSummary, Kind, Status
 
-Status = Literal["queued", "running", "succeeded", "failed", "cancelled", "interrupted"]
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
 
@@ -59,7 +60,7 @@ def _now() -> str:
 class Job:
     id: str
     op: str
-    kind: str
+    kind: Kind
     params: dict[str, Any]
     status: Status = "queued"
     created: str = field(default_factory=_now)
@@ -67,7 +68,7 @@ class Job:
     finished: str | None = None
     exit_code: int | None = None
     error: dict[str, Any] | None = None
-    progress: dict[str, Any] | None = None
+    progress: JobProgress | None = None
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
     server_pid: int = field(default_factory=os.getpid)
@@ -82,13 +83,43 @@ class Job:
         data = {k: v for k, v in vars(self).items() if k != "events"}
         return {"schema": RECORD_SCHEMA, **data}
 
-    def view(self, *, full: bool = False) -> dict[str, Any]:
+    def summary(self) -> JobSummary:
+        data: JobSummary = {
+            "id": self.id,
+            "op": self.op,
+            "status": self.status,
+            "created": self.created,
+        }
+        if self.finished is not None:
+            data["finished"] = self.finished
+        return data
+
+    def view(self, *, full: bool = False) -> JobView:
         """The job as a client sees it: unset fields left out and, unless
         ``full``, the result without its provenance."""
-        hidden = {"events", "server_pid"} | (set() if full else {"params"})
-        data = {
-            k: v for k, v in vars(self).items() if k not in hidden and v is not None
+        data: JobView = {
+            "id": self.id,
+            "op": self.op,
+            "kind": self.kind,
+            "status": self.status,
+            "created": self.created,
         }
+        if full:
+            data["params"] = self.params
+        if self.started is not None:
+            data["started"] = self.started
+        if self.finished is not None:
+            data["finished"] = self.finished
+        if self.exit_code is not None:
+            data["exit_code"] = self.exit_code
+        if self.error is not None:
+            data["error"] = self.error
+        if self.progress is not None:
+            data["progress"] = self.progress
+        if self.cancel_requested is not None:
+            data["cancel_requested"] = self.cancel_requested
+        if self.result is not None:
+            data["result"] = self.result
         if self.result is not None and not full:
             data["result"] = {
                 k: v
@@ -427,11 +458,13 @@ class JobManager:
                 continue
             if message["event"] == "progress":
                 with self._lock:
-                    progress = {
-                        k: message.get(k)
-                        for k in ("stage", "message", "fraction")
-                        if message.get(k) is not None
-                    }
+                    progress: JobProgress = {}
+                    if message.get("stage") is not None:
+                        progress["stage"] = message["stage"]
+                    if message.get("message") is not None:
+                        progress["message"] = message["message"]
+                    if message.get("fraction") is not None:
+                        progress["fraction"] = message["fraction"]
                     # Tools often run in many short steps with the same message.
                     if progress != job.progress:
                         job.progress = progress

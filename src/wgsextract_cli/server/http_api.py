@@ -24,6 +24,8 @@ from wgsextract_cli import __version__
 from .jobs import Job, JobManager
 from .operations import PathGuard, RequestError, find, operations, params_from_json
 from .queries import QUERIES
+from .transport import Health, Index, Jobs, OperationDescription, Operations
+from .transport import Job as JobView
 
 MAX_BODY_BYTES = 1 << 20
 MAX_WAIT_SECONDS = 600.0
@@ -57,7 +59,7 @@ class Server(ThreadingHTTPServer):
         return local_hosts(self.server_address[1])
 
 
-def job_view(job: Job, query: dict[str, list[str]]) -> dict[str, Any]:
+def job_view(job: Job, query: dict[str, list[str]]) -> JobView:
     return job.view(full=_flag(query, "full"))
 
 
@@ -205,20 +207,20 @@ class Handler(BaseHTTPRequestHandler):
     # Routes ----------------------------------------------------------------
 
     def health(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
-        self._send_json(200, {"ok": True, "version": __version__})
+        self._send_json(200, Health(ok=True, version=__version__))
 
     def index(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         self._send_json(
             200,
-            {
-                "name": "wgsextract",
-                "version": __version__,
-                "ops": "/v1/ops",
-                "jobs": "/v1/jobs",
-                "openapi": "/v1/openapi.json",
-                "lookups": [f"/v1/{q.route}" for q in QUERIES.values()],
-                "allowed_paths": [str(p) for p in self.server.guard.roots],
-            },
+            Index(
+                name="wgsextract",
+                version=__version__,
+                ops="/v1/ops",
+                jobs="/v1/jobs",
+                openapi="/v1/openapi.json",
+                lookups=[f"/v1/{q.route}" for q in QUERIES.values()],
+                allowed_paths=[str(p) for p in self.server.guard.roots],
+            ),
         )
 
     def openapi(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
@@ -230,12 +232,17 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(200, lookup.run(self.server.guard, arguments))
 
     def list_ops(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
-        self._send_json(200, {"ops": [op.describe() for op in operations().values()]})
+        self._send_json(
+            200, Operations(ops=[op.describe() for op in operations().values()])
+        )
 
     def describe_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         op = find(match["op"])
         self._send_json(
-            200, {**op.describe(), "command": op.command, "params": op.schema()}
+            200,
+            OperationDescription(
+                **op.describe(), command=op.command, params=op.schema()
+            ),
         )
 
     def run_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
@@ -260,23 +267,9 @@ class Handler(BaseHTTPRequestHandler):
         status = query.get("status", [None])[-1]
         self._send_json(
             200,
-            {
-                "jobs": [
-                    {
-                        k: v
-                        for k, v in (
-                            ("id", j.id),
-                            ("op", j.op),
-                            ("status", j.status),
-                            ("created", j.created),
-                            ("finished", j.finished),
-                        )
-                        if v is not None
-                    }
-                    for j in jobs
-                    if status is None or j.status == status
-                ]
-            },
+            Jobs(
+                jobs=[j.summary() for j in jobs if status is None or j.status == status]
+            ),
         )
 
     def get_job(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
@@ -379,58 +372,6 @@ ROUTES: list[tuple[str, re.Pattern[str], Route]] = [
 
 # OpenAPI ---------------------------------------------------------------------
 
-_ERROR = {
-    "type": "object",
-    "properties": {
-        "error": {
-            "type": "object",
-            "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
-            "required": ["code", "message"],
-        }
-    },
-    "required": ["error"],
-}
-_JOB = {
-    "type": "object",
-    "description": "A job. `result` is its result manifest (wgsextract.result/1, "
-    "docs/result-manifest.md), without `provenance` unless ?full=1.",
-    "properties": {
-        "id": {"type": "string"},
-        "op": {"type": "string"},
-        "kind": {"enum": ["query", "job"]},
-        "status": {
-            "enum": [
-                "queued",
-                "running",
-                "succeeded",
-                "failed",
-                "cancelled",
-                "interrupted",
-            ]
-        },
-        "created": {"type": "string", "format": "date-time"},
-        "started": {"type": "string", "format": "date-time"},
-        "finished": {"type": "string", "format": "date-time"},
-        "cancel_requested": {"type": "string", "format": "date-time"},
-        "exit_code": {"type": "integer"},
-        "progress": {
-            "type": "object",
-            "properties": {
-                "stage": {"type": "string"},
-                "message": {"type": "string"},
-                "fraction": {"type": "number"},
-            },
-        },
-        "error": {
-            "type": "object",
-            "properties": {"kind": {"type": "string"}, "message": {"type": "string"}},
-        },
-        "params": {"type": "object", "description": "With ?full=1."},
-        "result": {"type": "object"},
-    },
-    "required": ["id", "op", "kind", "status", "created"],
-}
-
 
 def _response(description: str, schema: str) -> dict[str, Any]:
     return {
@@ -469,7 +410,9 @@ _DELETES = (
 def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
     """The OpenAPI 3.1 description of the HTTP API, generated from the API's
     Params classes."""
-    schemas: dict[str, Any] = {"Error": _ERROR, "Job": _JOB}
+    from .transport_schema import response_schemas
+
+    schemas: dict[str, Any] = response_schemas()
     paths: dict[str, Any] = {}
     for op in operations().values():
         name = op.params.__name__
@@ -478,7 +421,11 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
             "get": {
                 "operationId": f"describe_{op.tool_name}",
                 "summary": f"Describe {op.command}",
-                "responses": {"200": {"description": "The operation and its params"}},
+                "responses": {
+                    "200": _response(
+                        "The operation and its params", "OperationDescription"
+                    )
+                },
             },
             "post": {
                 "operationId": op.tool_name,
@@ -518,7 +465,16 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                     for name, spec in lookup.properties.items()
                 ],
                 "responses": {
-                    "200": {"description": "The answer"},
+                    "200": (
+                        _response("The answer", "VariantPage")
+                        if lookup.name == "query_variants"
+                        else {
+                            "description": "The loaded document (not fully validated)",
+                            "content": {
+                                "application/json": {"schema": {"type": "object"}}
+                            },
+                        }
+                    ),
                     **_errors(400, 401, 403, 404),
                 },
             }
@@ -532,7 +488,7 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                     "parameters": [
                         {"name": "status", "in": "query", "schema": {"type": "string"}}
                     ],
-                    "responses": {"200": {"description": "The jobs"}},
+                    "responses": {"200": _response("The jobs", "Jobs")},
                 }
             },
             "/v1/jobs/{id}": {
@@ -600,6 +556,18 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
             },
         }
     )
+    for path, name, model in (
+        ("/v1/health", "health", "Health"),
+        ("/v1/", "index", "Index"),
+        ("/v1/ops", "list_ops", "Operations"),
+    ):
+        paths[path] = {
+            "get": {
+                "operationId": name,
+                "responses": {"200": _response("The answer", model)},
+                **({"security": []} if name == "health" else {}),
+            }
+        }
     return {
         "openapi": "3.1.0",
         "info": {

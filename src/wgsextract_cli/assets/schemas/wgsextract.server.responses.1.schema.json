@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:server:responses:1",
+  "$defs": {
+    "ErrorDetail": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "$ref": "#/$defs/ErrorDetail"
+        }
+      },
+      "required": [
+        "error"
+      ]
+    },
+    "Health": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ok",
+        "version"
+      ]
+    },
+    "Index": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "ops": {
+          "type": "string"
+        },
+        "jobs": {
+          "type": "string"
+        },
+        "openapi": {
+          "type": "string"
+        },
+        "lookups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "allowed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "version",
+        "ops",
+        "jobs",
+        "openapi",
+        "lookups",
+        "allowed_paths"
+      ]
+    },
+    "OperationSummary": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "query",
+            "job"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "destructive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "summary"
+      ]
+    },
+    "OperationDescription": {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "query",
+            "job"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "destructive": {
+          "type": "boolean"
+        },
+        "command": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "op",
+        "kind",
+        "summary",
+        "command",
+        "params"
+      ]
+    },
+    "Operations": {
+      "type": "object",
+      "properties": {
+        "ops": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationSummary"
+          }
+        }
+      },
+      "required": [
+        "ops"
+      ]
+    },
+    "JobSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ]
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finished": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "status",
+        "created"
+      ]
+    },
+    "Jobs": {
+      "type": "object",
+      "properties": {
+        "jobs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JobSummary"
+          }
+        }
+      },
+      "required": [
+        "jobs"
+      ]
+    },
+    "JobProgress": {
+      "type": "object",
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "fraction": {
+          "type": "number"
+        }
+      }
+    },
+    "Job": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "op": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled",
+            "interrupted"
+          ]
+        },
+        "created": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "kind": {
+          "enum": [
+            "query",
+            "job"
+          ]
+        },
+        "started": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finished": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "progress": {
+          "$ref": "#/$defs/JobProgress"
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "cancel_requested": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "id",
+        "op",
+        "status",
+        "created",
+        "kind"
+      ]
+    },
+    "VariantPage": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "rows",
+        "next_cursor"
+      ]
+    }
+  }
+}

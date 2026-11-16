@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, TextIO
 
 from wgsextract_cli import __version__
@@ -211,7 +211,7 @@ class McpTools:
         arguments: dict[str, Any],
         progress: Progress | None,
         started: Callable[[str], None] | None,
-    ) -> tuple[dict[str, Any], bool]:
+    ) -> tuple[Mapping[str, object], bool]:
         op = find_tool(name)
         if op is not None and self._offered(op):
             params = params_from_json(op, arguments, read_only=not self.allow_jobs)
