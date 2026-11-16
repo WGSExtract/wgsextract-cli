@@ -100,10 +100,11 @@ v4.2.1:
 | --- | --- | --- | --- |
 | Google's image, CPU | 859 s | 1,030 s | 20.8 MB (about 1 GB for a genome) |
 | `wgse-deepvariant`, CPU | 500 s | 575 s | 19.4 MB |
-| Parabricks, RTX 3090 | PB_NONE | PB_GVCF | PB_SIZE |
+| Parabricks, RTX 3090 | 78 s | 99 s | 21.0 MB |
 
 Times are from a shared host (load 9-20 on 12 cores); on a quieter one
-Google's image took 943 and 989 s.
+Google's image took 943 and 989 s. Parabricks' row is pbrun with the same
+options, run directly.
 
 The variant VCFs were identical with and without the gVCF. Of the 82,588
 truth variants in chr20's confident regions, 116 sit on bases the gVCF calls
