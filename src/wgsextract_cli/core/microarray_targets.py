@@ -25,7 +25,7 @@ from pyliftover import LiftOver
 
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
-from wgsextract_cli.core.microarray_coordinates import sole_placement
+from wgsextract_cli.core.microarray.coordinates import sole_placement
 from wgsextract_cli.core.microarray_utils import (
     _chrom_for_liftover,
     _resolve_templates_roots,

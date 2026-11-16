@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from wgsextract_cli.core.microarray_site_map import (
+from wgsextract_cli.core.microarray.site_map import (
     _CHROMS,
     SiteMap,
     load_site_map,

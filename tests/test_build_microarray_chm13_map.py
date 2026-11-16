@@ -13,7 +13,7 @@ from scripts.build_microarray_chm13_map import (
     project_sites,
     write_site_map,
 )
-from wgsextract_cli.core.microarray_site_map import SiteProjection, load_site_map
+from wgsextract_cli.core.microarray.site_map import SiteProjection, load_site_map
 from wgsextract_cli.core.utils import WGSExtractError
 
 

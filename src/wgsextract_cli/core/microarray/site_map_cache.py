@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from wgsextract_cli.core.library_cache import short_key
 
 if TYPE_CHECKING:
-    from wgsextract_cli.core.microarray_site_map import SiteMap, _Metadata
+    from wgsextract_cli.core.microarray.site_map import SiteMap, _Metadata
 
 _HEADER = struct.Struct("<8sII")
 _MAGIC = b"WGSCOL\x01\x00"
@@ -35,7 +35,7 @@ def cache_path(directory: Path, manifest: bytes) -> Path:
 
 
 def read(path: Path, metadata: _Metadata) -> SiteMap | None:
-    from wgsextract_cli.core.microarray_site_map import SiteMap
+    from wgsextract_cli.core.microarray.site_map import SiteMap
 
     rows = sum(contig.rows for contig in metadata.source)
     maximum = _HEADER.size + 15 * rows

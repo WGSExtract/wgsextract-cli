@@ -9,6 +9,7 @@ import pytest
 from scripts.build_microarray_chm13_map import write_site_map
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
 from tests.microarray_helpers import microarray_params
+from wgsextract_cli.core.microarray.site_map import SiteProjection, load_site_map
 from wgsextract_cli.core.microarray_chm13 import CHM13Catalogue, ReferenceContig
 from wgsextract_cli.core.microarray_chm13_indels import (
     FlankedSite,
@@ -22,7 +23,6 @@ from wgsextract_cli.core.microarray_chm13_indels import (
     supported_call,
 )
 from wgsextract_cli.core.microarray_indel_probes import IndelProbe, IndelSite
-from wgsextract_cli.core.microarray_site_map import SiteProjection, load_site_map
 
 LEFT = "ACCGTGACTGCATGC"
 RIGHT = "GACTACGTAGCTGCA"

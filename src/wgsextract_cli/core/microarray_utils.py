@@ -10,7 +10,7 @@ from typing import TextIO, TypedDict
 
 from pyliftover import LiftOver
 
-from wgsextract_cli.core.microarray_coordinates import (
+from wgsextract_cli.core.microarray.coordinates import (
     LiftoverCounts,
     project_coordinates,
     sole_placement,

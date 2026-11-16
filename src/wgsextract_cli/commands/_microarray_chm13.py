@@ -26,6 +26,7 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genotype_qc import warn_about_genotypes
 from wgsextract_cli.core.library_cache import microarray_cache_root
+from wgsextract_cli.core.microarray.site_map import SiteProjection
 from wgsextract_cli.core.microarray_aadr import (
     _chrom_name,
     aadr_markers,
@@ -51,7 +52,6 @@ from wgsextract_cli.core.microarray_chm13_markers import (
 from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.microarray_quirks import quirks_mode
-from wgsextract_cli.core.microarray_site_map import SiteProjection
 from wgsextract_cli.core.microarray_targets import collect_template_markers
 from wgsextract_cli.core.microarray_utils import (
     GenotypeTally,
