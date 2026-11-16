@@ -30,6 +30,7 @@ docs/commands.md merge=generated
 src/wgsextract_cli/assets/cli/help-index.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json merge=generated
+src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json merge=generated
