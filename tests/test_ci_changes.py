@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 
 from scripts import pr_checks_ready
-from scripts.ci_changes import routes, site_validation
+from scripts.ci_changes import routes, setup_checks, site_validation
 from scripts.ci_select_tests import ci_path, select_tests
 from scripts.ci_test_dependencies import (
     DOCS_ONLY_SCRIPTS,
@@ -88,6 +88,8 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
+        "setup_checks": "true",
+        "move_modules": "[]",
         "tests": "[]",
         "ci": "false",
         "ci_tests": "[]",
@@ -797,6 +799,52 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
         text=True,
     )
     assert (result.returncode == 0) is ready
+
+
+@LINUX_BASH
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "success"])
+def test_1045_queue_required_rejects_failed_windows(conclusion: str) -> None:
+    needs = {
+        "changes": {"result": "success"},
+        "ubuntu": {"result": "success"},
+        "windows": {"result": conclusion},
+        "ready-gate": {"result": "skipped"},
+    }
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            workflow_shell("Require routing and every selected required job to pass"),
+        ],
+        env={
+            **os.environ,
+            "NEEDS": json.dumps(needs),
+            "ROUTED": "true",
+            "EVENT_NAME": "merge_group",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert (result.returncode == 0) is (conclusion == "success")
+
+
+@pytest.mark.parametrize(
+    ("path", "selected"),
+    [
+        ("src/wgsextract_cli/commands/info.py", False),
+        ("src/wgsextract_cli/core/alignment.py", False),
+        ("src/wgsextract_cli/cli/parser.py", True),
+        ("src/wgsextract_cli/cli/registration/align.py", True),
+        ("gui/app/shared/config.ts", True),
+        ("packaging/windows/pin.py", True),
+        ("install.sh", True),
+        ("pixi.lock", True),
+        (".github/workflows/os_tests.yml", True),
+        ("gui/README.md", False),
+    ],
+)
+def test_1045_setup_heavy_checks_follow_their_inputs(path: str, selected: bool) -> None:
+    assert setup_checks([path]) is selected
 
 
 @LINUX_BASH

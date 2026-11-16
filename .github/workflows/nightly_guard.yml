@@ -1,0 +1,32 @@
+name: Reuse green main for nightly
+
+on:
+  workflow_call:
+    inputs:
+      workflow:
+        type: string
+        required: true
+    outputs:
+      skip:
+        value: ${{ jobs.check.outputs.skip }}
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  check:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      skip: ${{ steps.main.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ inputs.workflow }}
+        run: python3 scripts/ci_nightly.py --repository "$GITHUB_REPOSITORY" --workflow "$WORKFLOW" --sha "$GITHUB_SHA" --output "$GITHUB_OUTPUT"

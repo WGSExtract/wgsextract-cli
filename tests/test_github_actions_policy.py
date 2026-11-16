@@ -83,6 +83,49 @@ def test_1038_smoke_shares_setup_and_preserves_first_failure_evidence() -> None:
     assert "tests/test_smoke_real_full.py --ci-require-real-data" in source
 
 
+def test_1045_draft_review_request_never_executes_pr_code() -> None:
+    source = (WORKFLOWS / "copilot_review_collaborators.yml").read_text()
+    assert "pull_request_target:" in source
+    assert "!github.event.pull_request.draft" not in source
+    assert "author_association" in source
+    assert "COLLABORATOR" in source and "MEMBER" in source
+    assert "actions/checkout" not in source
+    assert "gh pr edit" in source and "--add-reviewer @copilot" in source
+    assert "permissions: {}" in source
+
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "ubuntu_ci.yml",
+        "macos_ci.yml",
+        "windows_ci.yml",
+        "linux_arm64.yml",
+        "cli_smoke.yml",
+    ],
+)
+def test_1045_nightly_full_matrix_is_gated_before_setup(workflow: str) -> None:
+    source = (WORKFLOWS / workflow).read_text()
+    assert "uses: ./.github/workflows/nightly_guard.yml" in source
+    assert f"workflow: {workflow}" in source
+    jobs = re.split(r"^  ([\w-]+):\s*\n", source.split("\njobs:\n", 1)[1], flags=re.M)
+    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
+        if name == "nightly":
+            continue
+        assert "needs: nightly" in body
+        assert "needs.nightly.outputs.skip != 'true'" in body
+        assert "needs.nightly.result != 'failure'" in body
+
+
+def test_1045_queue_windows_is_a_required_dependency_not_pr_only() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    windows = source.split("\n  windows:\n", 1)[1].split("\n  arm64:", 1)[0]
+    assert "github.event_name != 'merge_group'" not in windows
+    required = source.split("\n  required:\n", 1)[1]
+    needs = re.search(r"needs: \[([^]]+)\]", required)
+    assert needs is not None and "windows" in needs[1]
+
+
 def test_923_fork_code_cannot_write_certification_outputs() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     before_route = source.split("      - name: Route the complete PR diff", 1)[0]
@@ -243,6 +286,8 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
 ) -> None:
     """Check scheduler gates, including reusable callers and failure summaries."""
     text = workflow.read_text()
+    if workflow.name == "copilot_review_collaborators.yml":
+        pytest.skip("Owner-approved API-only draft review request (#1045)")
     events = list(
         re.finditer(
             r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",

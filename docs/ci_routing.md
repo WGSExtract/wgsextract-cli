@@ -9,7 +9,11 @@ and ownership/review path lists. The remote-resource/real-chip concordance
 workflow covers both remaining flat `core/microarray_*.py` modules and the
 `core/microarray/**` package; Markdown exclusions still apply.
 
-Drafts run **no CI runner jobs**, including documentation and secret checks.
+Drafts run **no validation runner jobs**, including documentation and secret checks.
+The API-only collaborator Copilot-review requester is the deliberate exception:
+it can request a draft review on `opened`, but never checks out or executes PR
+code. The default-branch ruleset also reviews owner drafts. Readiness remains
+the point where validation starts, not the first opportunity for review.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -39,7 +43,7 @@ Draft summaries also use a different check name from `required`: GitHub accepts
 skipped checks as passing, so a delayed draft suite must not satisfy the ready
 run's merge requirement while its selected checks are still pending.
 Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
-still allocate zero runners, and readiness always retains its own full run.
+still allocate zero validation runners, and readiness always retains its own full run.
 
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory
@@ -55,7 +59,7 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
-| Any draft PR | None; validate locally before readiness | 0 |
+| Any draft PR | No validation; API-only review request for eligible collaborators | 0 validation minutes |
 | Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
 | Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
 | CLI source/tests | Affected test files on four OSes, input-selected freshness, CodeQL | Depends on graph reachability; full-suite fallback remains |
@@ -73,6 +77,54 @@ depends on the proportion of docs/site/native PR pushes and must be measured
 after deployment.
 
 ## Coverage
+
+### Setup-heavy checks and repeated nightly coverage (#1045)
+
+PR installer checks and the Ubuntu app-bundle command test run only when the
+complete diff touches their setup inputs: installers, packaging, GUI files,
+Pixi/project manifests, CLI parser/registration, workflow/actions or Install
+Lab/bootstrap scripts. Parser/registration inputs remain covered because they
+can invalidate the app's bundled command lines.
+The same routing bit gates both macOS Install Lab jobs; Linux and Windows
+Install Lab selection is unchanged. The Tauri installer keeps its input path
+filter, including its Rust cache/build wrappers and root packaging/manifests.
+Main and scheduled runs retain those checks whenever their workflow runs.
+Thus an ordinary CLI implementation edit runs **zero** OS-installer steps
+and **zero** Ubuntu app-bundle checks rather than four installer steps and one
+app-bundle check. `run-install-lab` remains an explicit full-platform override.
+
+The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its only
+runner is a small Ubuntu API check, allocated only on `schedule`; PRs,
+pushes and dispatches skip it without a runner. A scheduled workflow skips its
+expensive jobs only if its own successful **push** run exists for the exact
+current main SHA in this repository. A different SHA, a failed/cancelled run,
+a PR/nightly success, missing evidence or an API error retains full coverage.
+Manual dispatch always runs. Green exact-HEAD evidence reduces ten nightly
+runner jobs (four OS tests, Ubuntu lint/two supplemental jobs and three smoke
+jobs) to five small Ubuntu guard jobs, with no scientific work repeated.
+The `required` queue summary now directly depends on Windows as well as Ubuntu;
+it cannot pass while code-selected Windows failed or was cancelled.
+
+### Conservative pure-move PR selection (#1045)
+
+`scripts/ci_moves.py` inspects Git's complete base...head diff with 100% rename
+detection. It uses the actual merge base and reads both Git blobs. The cheaper
+path requires at least one exact rename and only Python files under
+`src/wgsextract_cli/`; every other edit must have an identical AST after removing
+`import` and `from` statements. Definitions, values, control flow and docstrings
+must remain identical. Entry-point moves, changed assets/tests/configuration,
+partial renames, parsing errors and uncertain module mappings retain normal
+fail-open selection. Import-only edits without a move retain normal selection.
+
+The narrow set contains tests whose import closure reaches the moved modules
+**or** modules with rewritten imports, without widening through unrelated
+fixture closures or treating a deleted old filename as an unknown new input.
+Before pytest, every selected OS imports the surviving changed modules and
+collects the full suite; collection logs are uploaded even on failure. If no
+test imports the moved modules, the existing tiny smoke pair still supplies
+the runner for import/collection validation. The merge queue never uses this
+optimization: full Linux and code-selected Windows remain its safety net,
+with only their existing passed-on-main test-cache exclusions.
 
 ### Writer self-certification
 
@@ -174,7 +226,8 @@ Generic classification rejects uncertain imports/fixtures, subprocess/tool use,
 platform branches, concrete pathlib operations, permissions, signals, symlinks
 and line-ending behavior. Currently no existing module is proven generic under
 these deliberately strict rules; modules remain platform-sensitive until proven.
-Uncertified generic tests run once on Ubuntu; main/nightly behavior is unchanged.
+Uncertified generic tests run once on Ubuntu; main retains full coverage.
+Nightly may reuse successful exact-HEAD main evidence as described below.
 Gitleaks, CodeQL, Install Lab, native/app builds and package/benchmark smoke stay
 hosted when routed. Merge groups never consume attestations. `required` and the
 ready-gate accept certified skips only after successful routing, and the landing
@@ -283,7 +336,7 @@ OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
 freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
 when their test files are affected. Main pushes and nightly/manual runs
-retain full-suite coverage; merge-queue Ubuntu runs the full suite minus files
+retain full-suite coverage; merge-queue Ubuntu and code-selected Windows run the full suite minus files
 the test cache already saw pass on main.
 
 Local callers can use
@@ -380,7 +433,8 @@ runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
 do anyway. Merge groups read only main's manifest (owner decision,
 2026-11-15): a skipped file's every tracked input matches a tree that passed
-on main. Main pushes and nightly always run the full suite, so an undeclared
+on main. Main pushes always run the full suite; nightly either does too or
+reuses that workflow's successful main push at the exact same SHA, so an undeclared
 input the hash misses fails the next main run instead of going unnoticed.
 
 Each test job's summary lists the cache-skipped files, where they passed
@@ -498,7 +552,8 @@ diagnosis:
 
 Both tiers run together within the affected files on CLI-routed PRs; an empty selection
 passes without testing unrelated files. Non-prose main pushes and nightly runs
-retain full coverage; merge-queue Ubuntu skips only cache hits from main. ARM64 runs its selection in one
+retain full coverage (or exact-SHA green-main nightly evidence);
+merge-queue Ubuntu and code-selected Windows skip only cache hits from main. ARM64 runs its selection in one
 job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
@@ -598,14 +653,15 @@ required check as passing.
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
 | Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
-| Merge-queue group | full Ubuntu CLI suite (less test files cached as passed on main) plus ancillary required checks selected by the group's diff | other OSes, package smoke and Install Lab not run |
+| Merge-queue group | full Ubuntu CLI suite and, for code changes, full Windows suite (less test files cached as passed on main), plus ancillary required checks selected by the group's diff | macOS/ARM64, package smoke and Install Lab not run |
 
 On PRs, `required` waits for the existing `ready-gate` verdict and requires it
 to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
 Routing/selection skips and valid self-certifications remain accepted by that
 gate. The area gate does not depend on `required`, avoiding a dependency cycle.
 Merge groups skip the area gate and retain the same smaller required set;
-main pushes run selected workflows in full and nightly runs cover all paths.
+main pushes run selected workflows in full and nightly runs cover all paths
+unless the identical workflow already passed that exact main SHA.
 A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
