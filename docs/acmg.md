@@ -12,9 +12,10 @@ The command is off unless you ask for it: it refuses to run without
 runs it for you.
 
 ```bash
+wgsextract ref acmg-data --dry-run   # the plan, terms and sizes
+wgsextract ref acmg-data             # download and build, once
 wgsextract vep run --input sample.vcf.gz --engine vep-rs
-wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg \
-  --sa-dir ~/acmg/sa --gff3 ~/acmg/Homo_sapiens.GRCh38.116.gff3.gz
+wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 ```
 
 ## What it writes
@@ -64,25 +65,67 @@ with the warning `acmg_contigs_not_classified`, and listed in the summary's
   `Homo_sapiens.GRCh38.116.gff3.gz` from
   <https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/>. fastVEP
   writes a transcript cache beside it on first use.
-- A folder of fastVEP databases built with `fastvep sa-build` (see fastVEP's
-  `docs/ACMG_SETUP.md`), one per source, all with `--assembly GRCh38`. A
-RepeatMasker track (`--source custom_bed --name repeatmasker`, an `.osi`)
-is optional and lets fastVEP evaluate BP3. Set `acmg_sa_dir` and `acmg_gff3` in
-  config.toml to avoid passing them each time.
+- The folder of fastVEP databases and the GFF3 that `wgsextract ref
+  acmg-data` builds (below). `vcf acmg` reads them from the reference library
+  unless `--sa-dir` and `--gff3` (or `acmg_sa_dir` and `acmg_gff3` in
+  config.toml) name others. A folder built with `fastvep sa-build` yourself
+  (see fastVEP's `docs/ACMG_SETUP.md`) works too, one database per source, all
+  with `--assembly GRCh38`. A RepeatMasker track (`--source custom_bed --name
+  repeatmasker`, an `.osi`) is optional and lets fastVEP evaluate BP3.
 
-| Source | `sa-build --source` | Terms |
-|---|---|---|
-| ClinVar VCF | `clinvar` | NCBI, no restrictions |
-| ClinVar `variant_summary.txt.gz` | `clinvar_protein` | NCBI, no restrictions |
-| gnomAD v4.1 joint sites (AC, AN, nhomalt, faf95 and filters) | `gnomad` | CC0 |
-| gnomAD v4.1 constraint metrics | `gnomad_genes` | CC0 |
-| ClinGen gene-disease validity (converted with fastVEP's `clingen_gdv_to_oga.py`) | `omim` | CC0; attribution requested |
-| REVEL | `revel` | free for non-commercial use; others contact the authors |
-| SpliceAI scores (Illumina, via Ensembl) | `spliceai` | academic and not-for-profit use only |
-| UCSC phyloP100way | `phylop` | freely available for public use |
+## Building the databases: `ref acmg-data`
 
-You download these yourself and their terms apply to you; WGS Extract
-doesn't mirror them. `wgsextract ref` doesn't build these databases yet.
+`wgsextract ref acmg-data` downloads the eight sources and the Ensembl GFF3
+from their publishers, checks them, shows their terms and builds the
+databases with `fastvep sa-build`:
+
+- The GFF3 goes in `ref/acmg/` in the library, the downloads in
+  `ref/acmg/sources/` and the databases in `ref/acmg/sa/`, or in `--sa-dir`
+  (`acmg_sa_dir`). `--ensembl-release` (default 116) should match your vep-rs
+  cache.
+- Each download is checked against the checksum its publisher gives: the
+  `.md5` files of NCBI, UCSC's `md5sum.txt`, the MD5 Google Cloud Storage gives
+  for gnomAD and Ensembl's `CHECKSUMS`. ClinGen and REVEL publish none. A file
+  that fails is removed, and the run says so. `acmg_data.json` beside the
+  databases records each file's URL, release, size, SHA-256 and check, and
+  each database's record count and SHA-256.
+- gnomAD's joint sites (877 GB) are streamed, one chromosome at a time, never
+  stored: bcftools keeps the INFO fields fastVEP reads (AC, AN, AF and
+  nhomalt, faf95, the population AFs and each callset's filters), filtered
+  sites included. A dropped connection resumes at the byte it stopped at.
+- SpliceAI is the library's `spliceai_hg38.vcf.gz` (`ref spliceai`, from
+  Ensembl), downloaded when missing, or `--spliceai-file`: Illumina's own
+  files need a BaseSpace login and licence acceptance, so download them
+  yourself and pass the file. It must be GRCh38 and tabix-indexed.
+- `--chromosomes` (such as `chr22`, or `chr1-22,chrX`; default all) limits
+  gnomAD, SpliceAI, REVEL and phyloP; the others are genome-wide. `vcf acmg`
+  refuses inputs with records on a chromosome gnomAD wasn't built for.
+- It's resumable: a rerun builds only what is missing, resuming interrupted
+  downloads, and a source that failed doesn't stop the others. To take a new
+  ClinVar or ClinGen release, delete its database (`clinvar.osa2`,
+  `clinvar_protein.oga`, `omim.oga`) and its download, and rerun.
+- `--dry-run` prints the plan, the terms and the sizes, and downloads nothing;
+  the build refuses to start without the free space it needs. `--threads`
+  sets how many chromosomes build at a time (default 4).
+
+| Source | Download | Database | Terms |
+|---|---|---|---|
+| Ensembl GRCh38 GFF3 (release 116) | 103 MB | (fastVEP caches 144 MB beside it) | no restrictions |
+| ClinVar VCF | 192 MB | `clinvar.osa2`, 41 MB | NCBI, no restrictions |
+| ClinVar `variant_summary.txt.gz` | 437 MB | `clinvar_protein.oga`, 19 MB | NCBI, no restrictions |
+| gnomAD v4.1 joint sites | streams 817 GB | `gnomad_chrN.osa2`, GNOMAD_DB | CC0 |
+| gnomAD v4.1 constraint metrics | 91 MB | `gnomad_genes.oga`, 1.4 MB | CC0 |
+| ClinGen gene-disease validity | 1 MB | `omim.oga`, 0.5 MB | CC0; credit ClinGen and give the access date |
+| REVEL v1.3 | 636 MB | `revel_chrN.osa2`, REVEL_DB | free for non-commercial use; others contact the authors |
+| SpliceAI (Illumina, MANE SNVs via Ensembl) | 27 GB | `spliceai_chrN.osa2`, about 14 GB | academic and not-for-profit use only |
+| UCSC phyloP100way | 5.1 GB | `phylop_chrN.osa2`, about 5.8 GB | freely available for public use |
+
+You download these yourself and their terms apply to you; WGS Extract never
+mirrors them or the databases built from them, and you shouldn't share the
+databases either. The run shows each source's terms and warns
+`acmg_data_terms` about REVEL's and SpliceAI's.
+
+CHR22_TIMINGS
 
 ## Validation
 

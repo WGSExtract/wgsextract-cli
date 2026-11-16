@@ -187,7 +187,7 @@ GFF3_TERMS = "Ensembl: no restrictions on use; cite Ensembl."
 # Database bytes, measured on chromosome 22 with fastVEP 0.5 (issue 629): per
 # byte fetched for the sources fetched per chromosome, per megabase for those
 # cut from one genome-wide file, and whole for the rest.
-_DB_PER_SOURCE_BYTE = {"gnomad": 0.06, "phylop": 1.15}
+_DB_PER_SOURCE_BYTE = {"gnomad": 0.0135, "phylop": 1.15}
 _DB_PER_MB = {"spliceai": 4.9e6, "revel": 1.4e5}
 _DB_BYTES = {
     "clinvar": 45e6,
@@ -1089,13 +1089,29 @@ def build(
         "spliceai": run.prepare_spliceai,
         "revel": lambda: run.split_revel(revel),
     }
-    for key, prepare in preparations.items():
-        if any(s.source == key for s in per_chromosome) and not attempt(key, prepare):
-            per_chromosome = [s for s in per_chromosome if s.source != key]
-    # The largest first, so the last to finish is a short one.
-    per_chromosome.sort(key=lambda s: -_MB[s.chromosome or "chr1"])
-    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
-        list(pool.map(lambda s: attempt(s.name, run.run, s), per_chromosome))
+    needed = {
+        k: f
+        for k, f in preparations.items()
+        if any(s.source == k for s in per_chromosome)
+    }
+
+    def task(step: Step) -> None:
+        if step.source in ready and not ready[step.source].result():
+            return  # its preparation failed, and says so
+        attempt(step.name, run.run, step)
+
+    # The SpliceAI download and the REVEL split run beside the builds that
+    # don't wait for them, which go first, the largest first so the last to
+    # finish is a short one.
+    per_chromosome.sort(
+        key=lambda s: (s.source in needed, -_MB[s.chromosome or "chr1"])
+    )
+    with (
+        ThreadPoolExecutor(max_workers=max(1, len(needed))) as preparing,
+        ThreadPoolExecutor(max_workers=max(1, workers)) as pool,
+    ):
+        ready = {k: preparing.submit(attempt, k, f) for k, f in needed.items()}
+        list(pool.map(task, per_chromosome))
     shutil.rmtree(run.staging, ignore_errors=True)
     if failed:
         raise WGSExtractError(
