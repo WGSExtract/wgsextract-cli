@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: ci-macos-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test-macos:
@@ -32,7 +32,7 @@ jobs:
     with:
       os: macos
       runner: macos-latest
-      timeout-minutes: 90
+      timeout-minutes: 59
       environments: default dev vep-rs
       reference: true
       tests: ${{ inputs.tests || 'all' }}

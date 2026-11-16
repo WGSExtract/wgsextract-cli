@@ -31,6 +31,58 @@ def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> N
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 
 
+@pytest.mark.parametrize(
+    "workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name
+)
+def test_1038_started_main_pushes_are_never_cancelled(workflow: Path) -> None:
+    if event_path_filters(workflow, "push") is None:
+        pytest.skip("No push trigger")
+    if workflow.name == "mockup_previews.yml":
+        pytest.skip("Only mockups branches, not main")
+    concurrency = workflow_concurrency(workflow)
+    if not concurrency:
+        return
+    # CI contract: only PR events may cancel started runs; main keeps one pending.
+    cancel = concurrency["cancel-in-progress"]
+    assert cancel in {
+        "false",
+        "${{ github.event_name == 'pull_request' }}",
+        "${{ inputs.tag == '' && github.event_name == 'pull_request' }}",
+    }, workflow.name
+
+
+def test_1038_shared_os_callers_run_all_tiers_without_shard_fanout() -> None:
+    suite = (WORKFLOWS / "os_tests.yml").read_text()
+    default = suite.split("      matrix:\n", 1)[1].split("      reference:\n", 1)[0]
+    entries = json.loads(default.split("default: >-\n", 1)[1])
+    assert len(entries) == 1
+    assert entries[0]["tier"] == entries[0]["shard"] == "all"
+    for workflow in WORKFLOWS.glob("*.yml"):
+        source = workflow.read_text()
+        if "uses: ./.github/workflows/os_tests.yml" not in source:
+            continue
+        overrides = re.findall(r"^      matrix: '(.+)'$", source, re.MULTILINE)
+        for override in overrides:
+            entries = json.loads(override)
+            assert len(entries) == 1, workflow.name
+            assert entries[0]["tier"] == entries[0]["shard"] == "all"
+    assert "writer: ${{ strategy.job-index == 0 }}" in suite
+    assert "--cache-record" in suite and "--cache-read" in suite
+    assert "matrix.tier == 'integration'" not in suite
+
+
+def test_1038_smoke_shares_setup_and_preserves_first_failure_evidence() -> None:
+    source = (WORKFLOWS / "cli_smoke.yml").read_text()
+    assert "matrix.check" not in source
+    assert "check: [package, benchmark]" not in source
+    assert source.count("uses: ./.github/actions/setup-pixi") == 1
+    assert "run: pixi run package-smoke" in source
+    benchmark = source.split("      - name: Run Benchmark\n", 1)[1]
+    # A second failed step could mask a package regression as a known test flake.
+    assert "if:" not in benchmark.split("      - name:", 1)[0]
+    assert "tests/test_smoke_real_full.py --ci-require-real-data" in source
+
+
 def test_923_fork_code_cannot_write_certification_outputs() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     before_route = source.split("      - name: Route the complete PR diff", 1)[0]

@@ -28,8 +28,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-ubuntu-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-ubuntu-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
@@ -61,7 +61,7 @@ jobs:
     with:
       os: ubuntu
       runner: ubuntu-latest
-      timeout-minutes: 90
+      timeout-minutes: 48
       environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
