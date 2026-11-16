@@ -16,6 +16,7 @@ GENERATED = (
     "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
     "gui/app/shared/generated/server-transport.ts",
@@ -42,6 +43,7 @@ def main() -> None:
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
         "scripts/gen_output_schemas.py",
+        "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
     ):
         subprocess.run([sys.executable, script], cwd=ROOT, check=True)

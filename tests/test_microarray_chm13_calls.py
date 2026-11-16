@@ -8,12 +8,12 @@ from wgsextract_cli.core.microarray.chm13_calls import (
     parse_native_calls,
     project_native_calls,
 )
+from wgsextract_cli.core.microarray.identity import MicroarrayIdentity
 from wgsextract_cli.core.microarray.site_map import (
     SiteMap,
     SiteProjection,
     load_site_map,
 )
-from wgsextract_cli.core.microarray_identity import MicroarrayIdentity
 from wgsextract_cli.core.microarray_quality import MicroarrayQuality
 
 

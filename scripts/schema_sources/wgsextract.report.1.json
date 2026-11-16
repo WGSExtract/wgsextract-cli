@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:report:1",
+  "title": "wgsextract.report/1",
+  "description": "A sample's personal report: what earlier wgsextract runs found, by section, each finding with a confidence label, its evidence and the 'technical result, not diagnosis' disclaimer. Written by `wgsextract report` as <sample>_personal_report.json. See docs/personal-report.md.",
+  "type": "object",
+  "required": [
+    "schema",
+    "generated",
+    "wgsextract_version",
+    "sample",
+    "disclaimer",
+    "guide",
+    "confidence_reasons",
+    "sections"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "wgsextract.report/1"},
+    "generated": {"type": "string", "format": "date-time", "description": "When the report was built (UTC)."},
+    "wgsextract_version": {"type": "string"},
+    "sample": {
+      "type": "object",
+      "required": ["name", "folder", "alignment", "vcf", "workspace"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "description": "The sample's name: its alignment's (or VCF's) file name without extensions."},
+        "folder": {"type": "string", "description": "The sample folder's name (not its full path). Every file path in the report is relative to this folder."},
+        "alignment": {"type": ["string", "null"], "description": "The BAM/CRAM the report describes, relative to the folder."},
+        "vcf": {"type": ["string", "null"], "description": "The sample's VCF used in hints, relative to the folder."},
+        "workspace": {"type": ["string", "null"], "description": "The sample workspace file, when there is one."}
+      }
+    },
+    "disclaimer": {"type": "string"},
+    "guide": {"type": "string"},
+    "confidence_reasons": {
+      "type": "object",
+      "description": "Reason code -> plain-language explanation.",
+      "additionalProperties": {"type": "string"}
+    },
+    "sections": {
+      "type": "object",
+      "required": ["overview", "lineage", "pharmacogenomics", "clinvar", "structural_variants", "microarray"],
+      "additionalProperties": false,
+      "properties": {
+        "overview": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["facts", "qc"],
+          "properties": {
+            "facts": {"type": "array", "items": {"$ref": "#/$defs/fact"}},
+            "qc": {"type": "array", "items": {"$ref": "#/$defs/metric"}}
+          }
+        },
+        "lineage": {"$ref": "#/$defs/section"},
+        "ancestry": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["note", "components"],
+          "properties": {
+            "note": {"type": "string"},
+            "evidence": {"type": ["string", "null"]},
+            "metrics": {"type": "object"},
+            "components": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["k", "name", "region", "proportion", "lower", "upper", "reference_populations"],
+                "properties": {
+                  "k": {"type": "integer", "minimum": 1},
+                  "name": {"type": "string"},
+                  "region": {"type": "string"},
+                  "proportion": {"type": "number", "minimum": 0, "maximum": 1},
+                  "lower": {"type": "number", "minimum": 0, "maximum": 1},
+                  "upper": {"type": "number", "minimum": 0, "maximum": 1},
+                  "reference_populations": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "pharmacogenomics": {"$ref": "#/$defs/section"},
+        "carrier_screening": {"$ref": "#/$defs/section"},
+        "clinvar": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["gene_list"],
+          "properties": {
+            "gene_list": {"$ref": "#/$defs/gene_list"},
+            "build": {"enum": ["hg19", "hg38", null]},
+            "all_calls": {"type": ["string", "null"], "description": "Every carried ClinVar P/LP call (confidence TSV), relative to the folder."},
+            "all_conflicts": {"type": ["string", "null"], "description": "Conflicting ClinVar assertions for review, not consensus P/LP, relative to the folder."},
+            "counts": {
+              "type": "object",
+              "required": ["carried", "in_gene_list", "outside_gene_list", "high", "moderate", "low"],
+              "additionalProperties": {"type": "integer", "minimum": 0}
+            },
+            "genes": {
+              "type": "array",
+              "description": "Each listed gene with P/LP calls, counted by zygosity.",
+              "items": {
+                "type": "object",
+                "required": ["gene", "inheritance", "heterozygous", "homozygous", "hemizygous", "partial", "phase", "confidence", "status", "status_text"],
+                "additionalProperties": false,
+                "properties": {
+                  "gene": {"type": "string"},
+                  "inheritance": {"type": ["string", "null"], "description": "The gene list's mode of inheritance (AD, AR, SD, XL); null when it gives none."},
+                  "heterozygous": {"type": "integer", "minimum": 0},
+                  "homozygous": {"type": "integer", "minimum": 0},
+                  "hemizygous": {"type": "integer", "minimum": 0, "description": "Haploid calls (one allele in the genotype)."},
+                  "partial": {"type": "integer", "minimum": 0, "description": "Calls whose other allele was not called (1/.)."},
+                  "phase": {"enum": ["trans", "cis", "unknown", null], "description": "The phase of two or more heterozygous calls: trans when two are on opposite copies (two ALTs of one call such as 1/2, or phased in one phase set), cis when all are phased on one copy in one phase set, else unknown (unphased, phased without a PS, or in different phase sets). Null for fewer than two, and when the calls are incomplete (calls_truncated) unless trans."},
+                  "confidence": {"enum": ["high", "moderate", "low", "not_assessed"], "description": "The weakest confidence label of the gene's calls."},
+                  "status": {"enum": ["biallelic", "possible_biallelic", "carrier", null], "description": "For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two heterozygous calls in trans), possible_biallelic (two or more heterozygous calls not all phased together, or a hemizygous or partly called genotype) or carrier (one heterozygous call, or several in cis). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic."},
+                  "status_text": {"type": "string", "description": "The status explained; empty when status is null."}
+                }
+              }
+            }
+          }
+        },
+        "acmg_research": {
+          "description": "fastVEP's automated ACMG/AMP classes (vcf acmg), research use only and not a diagnosis. Present only when vcf acmg ran.",
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["gene_list", "disclaimer"],
+          "properties": {
+            "gene_list": {"$ref": "#/$defs/gene_list"},
+            "disclaimer": {"type": "string", "description": "The research-only disclaimer, shown at the top of the section."},
+            "tool": {"type": ["string", "null"], "description": "The classifier and its version, e.g. 'fastVEP 0.5.0'."},
+            "criteria_not_evaluated": {"type": "array", "items": {"type": "string"}, "description": "ACMG/AMP criteria the classifier never evaluated."},
+            "build": {"enum": ["hg19", "hg38", null]},
+            "all_calls": {"type": ["string", "null"], "description": "The classified VCF (acmg_annotated.vcf.gz), relative to the folder."},
+            "counts": {"type": "object", "description": "Carried alleles by automated class (p, lp, vus, lb, b), and the carried P/LP calls in_gene_list (the findings), outside_gene_list and unplaced.", "required": ["p", "lp", "vus", "lb", "b", "in_gene_list", "outside_gene_list", "unplaced"], "additionalProperties": {"type": "integer", "minimum": 0}}
+          }
+        },
+        "structural_variants": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "properties": {
+            "all_svs": {"type": ["string", "null"], "description": "Every SV with its frequency class (sv_freq.tsv), relative to the folder."},
+            "sources": {"type": "array"},
+            "thresholds": {
+              "type": "object",
+              "properties": {
+                "common_af": {"type": "number"},
+                "rare_af": {"type": "number"}
+              }
+            },
+            "counts": {
+              "type": "object",
+              "description": "Carried SVs by frequency class (common, low, rare, novel), and listed: the rare SVs shown as findings.",
+              "additionalProperties": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        "microarray": {
+          "allOf": [{"$ref": "#/$defs/section"}],
+          "required": ["files"],
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["file", "role", "format", "exists", "sites", "called", "no_call_rate"],
+                "properties": {
+                  "file": {"type": ["string", "null"]},
+                  "role": {"type": "string"},
+                  "format": {"type": ["string", "null"]},
+                  "exists": {"type": "boolean"},
+                  "sites": {"type": ["integer", "null"]},
+                  "called": {"type": ["integer", "null"]},
+                  "no_call_rate": {"type": ["number", "null"]}
+                }
+              }
+            },
+            "metrics": {"type": "object"}
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gene_list": {
+      "type": "object",
+      "required": ["name", "version", "citation", "url", "genes"],
+      "properties": {
+        "id": {"type": "string", "description": "A built-in list's id (acmg-sf-3.3), or the name of the user's TSV or BED file."},
+        "name": {"type": "string"},
+        "version": {"type": "string", "description": "Empty for a user's file."},
+        "citation": {"type": "string", "description": "Empty for a user's file."},
+        "url": {"type": "string", "description": "The published gene table a built-in list was checked against; empty for a user's file."},
+        "genes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["title", "status", "summary", "findings", "missing", "warnings", "sources"],
+      "properties": {
+        "title": {"type": "string"},
+        "status": {
+          "enum": ["ok", "not_run", "failed"],
+          "description": "ok: at least one source run succeeded; not_run: no run found (see missing); failed: only failed runs found (see error)."
+        },
+        "summary": {"type": "string"},
+        "error": {"type": "string"},
+        "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "missing": {
+          "type": "array",
+          "description": "Parts of the section not run yet, with the command that produces each (relative to the sample folder).",
+          "items": {"$ref": "#/$defs/reportMissing"}
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reportWarning"}
+        },
+        "sources": {
+          "type": "array",
+          "description": "The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer.",
+          "items": {"$ref": "#/$defs/reportSource"}
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "section",
+        "label",
+        "value",
+        "detail",
+        "gene",
+        "note",
+        "confidence",
+        "confidence_reasons",
+        "confidence_basis",
+        "evidence",
+        "variant",
+        "links",
+        "disclaimer"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "section": {"enum": ["lineage", "pharmacogenomics", "carrier_screening", "clinvar", "acmg_research", "structural_variants"]},
+        "label": {"type": "string", "minLength": 1},
+        "value": {"type": "string"},
+        "detail": {"type": ["string", "null"]},
+        "gene": {"type": ["string", "null"]},
+        "pgx": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "alternatives", "phenotype_consistent", "source"],
+          "properties": {
+            "status": {"enum": ["resolved", "ambiguous", "no_call"]},
+            "phenotype_consistent": {"type": "boolean"},
+            "source": {"const": "PharmCAT"},
+            "alternatives": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["diplotype", "phenotype"],
+                "properties": {
+                  "diplotype": {"type": "string"},
+                  "phenotype": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "note": {"type": ["string", "null"], "description": "A caveat from the gene list, e.g. only biallelic calls are reportable."},
+        "confidence": {"enum": ["high", "moderate", "low", "not_assessed"]},
+        "confidence_reasons": {"type": "array", "items": {"type": "string"}},
+        "confidence_basis": {"type": "string", "description": "What the label was derived from."},
+        "evidence": {
+          "type": "object",
+          "required": ["file", "region", "manifest"],
+          "additionalProperties": false,
+          "properties": {
+            "file": {"type": ["string", "null"], "description": "Evidence file, relative to the sample folder."},
+            "region": {"type": ["string", "null"], "description": "chrom:pos, a chromosome or 'gene SYMBOL'."},
+            "manifest": {"type": ["string", "null"], "description": "The run's result manifest, relative to the sample folder."}
+          }
+        },
+        "variant": {
+          "type": ["object", "null"],
+          "required": ["chrom", "pos", "ref", "alt", "genotype", "zygosity", "depth", "genotype_quality", "alt_fraction"],
+          "additionalProperties": false,
+          "properties": {
+            "clinical_evidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {"type": ["string", "null"]},
+                "review_status": {"type": ["string", "null"]},
+                "stars": {"type": ["integer", "null"], "minimum": 0, "maximum": 4},
+                "review_tier": {"type": "string"},
+                "conflict": {"type": "boolean"},
+                "conflict_evidence": {"type": ["string", "null"]}
+              }
+            },
+            "original_record": {"type": ["string", "null"]},
+            "mnv_components": {"type": ["string", "null"]},
+            "mnv_residual_copies": {"type": ["integer", "null"], "minimum": 1, "maximum": 2},
+            "chrom": {"type": "string"},
+            "pos": {"type": ["integer", "null"]},
+            "ref": {"type": ["string", "null"]},
+            "alt": {"type": ["string", "null"]},
+            "genotype": {"type": ["string", "null"]},
+            "zygosity": {"type": ["string", "null"]},
+            "depth": {"type": ["integer", "null"]},
+            "genotype_quality": {"type": ["integer", "null"]},
+            "alt_fraction": {"type": ["number", "null"]},
+            "phase_set": {"type": ["string", "null"], "description": "FORMAT/PS of a ClinVar call: calls phased (0|1) in one phase set are on known copies."}
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reportLink"}
+        },
+        "disclaimer": {"enum": ["Technical result, not diagnosis.", "Research use only; not a diagnosis."], "description": "Research use only for acmg_research findings."}
+      }
+    },
+    "fact": {
+      "type": "object",
+      "required": ["name", "label", "value", "text", "source", "method", "confidence", "file", "at"],
+      "properties": {
+        "name": {"type": "string"},
+        "label": {"type": "string"},
+        "value": {},
+        "text": {"type": "string"},
+        "source": {"type": ["string", "null"], "description": "detected or override."},
+        "method": {"type": ["string", "null"]},
+        "confidence": {"type": ["string", "null"]},
+        "file": {"type": ["string", "null"]},
+        "at": {"type": ["string", "null"]}
+      }
+    },
+    "metric": {
+      "type": "object",
+      "required": ["name", "label", "value", "text"],
+      "properties": {
+        "name": {"type": "string"},
+        "label": {"type": "string"},
+        "value": {},
+        "text": {"type": "string"}
+      }
+    }
+  }
+}

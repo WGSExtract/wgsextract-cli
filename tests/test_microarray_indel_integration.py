@@ -5,8 +5,8 @@ from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from tests.test_microarray_vendor_formats import _kit, _templates
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core import microarray_identity as identity
-from wgsextract_cli.core.microarray_indels import indel_manifest_bindings
+from wgsextract_cli.core.microarray import identity
+from wgsextract_cli.core.microarray.indels import indel_manifest_bindings
 from wgsextract_cli.core.microarray_utils import convert_to_vendor_format
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

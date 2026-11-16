@@ -42,6 +42,7 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
+from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.site_map import SiteProjection
 from wgsextract_cli.core.microarray_aadr import (
     _chrom_name,
@@ -49,7 +50,6 @@ from wgsextract_cli.core.microarray_aadr import (
     aadr_panel,
     write_aadr_outputs,
 )
-from wgsextract_cli.core.microarray_identity import identity_policy
 from wgsextract_cli.core.microarray_quality import quality_policy
 from wgsextract_cli.core.microarray_quirks import quirks_mode
 from wgsextract_cli.core.microarray_targets import collect_template_markers

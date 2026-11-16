@@ -780,7 +780,7 @@ def test_retired_identity_is_reported_and_cannot_reappear_in_vendor_output(
     tmp_path, quality_library, monkeypatch, kind
 ):
     from wgsextract_cli.commands import microarray
-    from wgsextract_cli.core import microarray_identity
+    from wgsextract_cli.core.microarray import identity as microarray_identity
 
     fasta, seqs = quality_library
     for template in (
