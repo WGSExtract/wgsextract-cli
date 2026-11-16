@@ -197,13 +197,13 @@ clair3 = ">=2.0.5,<3"
 # an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
 # other environment takes feature.standard-platforms). WGS Extract's build from
 # packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
-# linux-deepvariant-2 and pinned by URL
+# linux-deepvariant-3 and pinned by URL
 # and SHA-256; its weights are a separate download (deepvariant_weights).
 [feature.deepvariant]
 platforms = ["linux-64-cuda"]
 
 [feature.deepvariant.dependencies]
-wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-2/wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda", sha256 = "e5ad2e951c0cc6224a2f3ff784b5d76ef259a4e8f47adfd6dccc0e4066be9a02" }
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-3/wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda", sha256 = "f2ab6bad55fb978cf2d674605612f4c78e2cf990b772f8c9f99409e49ff0271f" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
