@@ -15,7 +15,15 @@ from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 
 @pytest.mark.parametrize(
     "name",
-    ["notchm13.fa", "samplehg19.bam", "hg380.fa", "hs37d50.fa", "hg19backup.fa"],
+    [
+        "notchm13.fa",
+        "samplehg19.bam",
+        "hg380.fa",
+        "hs37d50.fa",
+        "hg19backup.fa",
+        "hg38p.fa",
+        "hg38p14backup.fa",
+    ],
 )
 def test_issue_1004_build_tokens_do_not_match_inside_other_words(name: str) -> None:
     assert build_from_path(name) is None
@@ -25,6 +33,9 @@ def test_issue_1004_build_tokens_do_not_match_inside_other_words(name: str) -> N
     ("text", "build"),
     [
         ("sample_GRCh38.bam", "hg38"),
+        ("hg38p12.fa.gz", "hg38"),
+        ("hg38p14.fa.gz", "hg38"),
+        ("GRCh38p14.fa.gz", "hg38"),
         ("hs37d5.fa.gz", "hg19"),
         ("hs38DH.fa.gz", "hg38"),
         ("hs38d1s.fa.gz", "hg38"),
@@ -114,6 +125,29 @@ def test_issue_1004_reference_selection_ignores_parent_and_partial_tokens() -> N
 
     assert select_reference_fasta(candidates, "/chm13/sample.bam") == ""
     assert select_reference_fasta(candidates, "/hg19/sample_chm13.bam") == ""
+
+
+@needs_htslib
+@pytest.mark.parametrize("name", ["hg38p12.fa", "hg38p14.fa", "GRCh38p14.fa"])
+def test_issue_1004_patch_suffix_preserves_reference_selection_and_mismatch_check(
+    tmp_path: Path, name: str
+) -> None:
+    library = tmp_path / "references"
+    fasta = write_fasta(library / name, {"chrTest": "ACGT"})
+    sample = sam_to_bam(
+        ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:249250621"],
+        tmp_path / "sample.bam",
+    )
+
+    assert fasta_build(fasta) == "hg38"
+    assert select_reference_fasta(
+        ["/refs/hg19.fa", str(fasta)], "sample_hg38.bam"
+    ) == str(fasta)
+
+    lib = ReferenceLibrary(library, input_path=sample, skip_full_search=True)
+
+    assert lib.build == "hg19"
+    assert lib.fasta is None
 
 
 @needs_htslib

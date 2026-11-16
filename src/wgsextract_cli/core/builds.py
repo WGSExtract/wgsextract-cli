@@ -48,7 +48,9 @@ BUILD_PATH_TOKENS = {
 
 _BUILD_PATH_PATTERNS = {
     build: re.compile(
-        r"(?<![a-z0-9])(?:" + "|".join(map(re.escape, tokens)) + r")(?![a-z0-9])",
+        r"(?<![a-z0-9])(?:"
+        + "|".join(map(re.escape, tokens))
+        + r")(?:p[0-9]+)?(?![a-z0-9])",
         re.IGNORECASE,
     )
     for build, tokens in BUILD_PATH_TOKENS.items()
