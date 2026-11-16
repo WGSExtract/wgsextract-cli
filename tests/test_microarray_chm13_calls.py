@@ -9,12 +9,12 @@ from wgsextract_cli.core.microarray.chm13_calls import (
     project_native_calls,
 )
 from wgsextract_cli.core.microarray.identity import MicroarrayIdentity
+from wgsextract_cli.core.microarray.quality import MicroarrayQuality
 from wgsextract_cli.core.microarray.site_map import (
     SiteMap,
     SiteProjection,
     load_site_map,
 )
-from wgsextract_cli.core.microarray_quality import MicroarrayQuality
 
 
 @pytest.fixture

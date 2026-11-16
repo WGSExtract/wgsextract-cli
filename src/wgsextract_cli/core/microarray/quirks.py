@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 STRAND_TABLE = (
-    Path(__file__).resolve().parents[1] / "assets/microarray/revisions/strand.tsv"
+    Path(__file__).resolve().parents[2] / "assets/microarray/revisions/strand.tsv"
 )
 MODES = ("corrected", "vendor")
 _COLUMNS = (

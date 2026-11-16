@@ -18,6 +18,11 @@ from typing import Protocol, TypedDict
 
 from pyliftover import LiftOver
 
+from wgsextract_cli.core.microarray.aadr import (
+    _MARKERS,
+    _chrom_name,
+    aadr_markers,
+)
 from wgsextract_cli.core.microarray.chm13_markers import non_snv_alleles
 from wgsextract_cli.core.microarray.site_map import (
     _CHROMS,
@@ -26,11 +31,6 @@ from wgsextract_cli.core.microarray.site_map import (
     _STATUSES,
     SiteProjection,
     load_site_map,
-)
-from wgsextract_cli.core.microarray_aadr import (
-    _MARKERS,
-    _chrom_name,
-    aadr_markers,
 )
 from wgsextract_cli.core.microarray_targets import _FORMATS, _template_paths
 from wgsextract_cli.core.microarray_utils import (

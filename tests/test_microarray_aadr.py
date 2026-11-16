@@ -13,7 +13,7 @@ from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
 from wgsextract_cli.core import aadr_resources, microarray_targets
-from wgsextract_cli.core import microarray_aadr as aadr
+from wgsextract_cli.core.microarray import aadr
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

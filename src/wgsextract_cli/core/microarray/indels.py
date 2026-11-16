@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.microarray.aadr import aadr_lifter, aadr_panel
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.indel_probes import (
     IndelProbe,
@@ -19,8 +20,7 @@ from wgsextract_cli.core.microarray.indel_probes import (
     match_indel_reference,
     read_indel_manifest,
 )
-from wgsextract_cli.core.microarray_aadr import aadr_lifter, aadr_panel
-from wgsextract_cli.core.microarray_quality import quality_policy
+from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray_utils import (
     _haploid_letter,
     _resolve_templates_for_format,

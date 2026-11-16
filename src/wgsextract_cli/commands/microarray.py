@@ -32,14 +32,7 @@ from wgsextract_cli.core.genotype_qc import (
     warn_low_depth,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
-from wgsextract_cli.core.microarray.indels import (
-    IndelCalls,
-    call_manifest_indels,
-    indel_manifest_bindings,
-    prepare_indel_vcf,
-)
-from wgsextract_cli.core.microarray_aadr import (
+from wgsextract_cli.core.microarray.aadr import (
     aadr_lifter,
     aadr_panel,
     aadr_vcf_nocalls,
@@ -47,8 +40,15 @@ from wgsextract_cli.core.microarray_aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
-from wgsextract_cli.core.microarray_quality import quality_policy
-from wgsextract_cli.core.microarray_quirks import (
+from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
+from wgsextract_cli.core.microarray.indels import (
+    IndelCalls,
+    call_manifest_indels,
+    indel_manifest_bindings,
+    prepare_indel_vcf,
+)
+from wgsextract_cli.core.microarray.quality import quality_policy
+from wgsextract_cli.core.microarray.quirks import (
     load_strand_quirks,
     quirks_mode,
 )

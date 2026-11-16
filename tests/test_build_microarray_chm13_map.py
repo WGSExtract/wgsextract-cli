@@ -77,7 +77,7 @@ def test_full_union_includes_aadr_numeric_and_sex_chromosome_sites(
         builder, "template_rows", lambda *_args: iter([("rs1", "1", "10")])
     )
     monkeypatch.setattr(builder, "LiftOver", lambda _path: _Lifter({}))
-    from wgsextract_cli.core.microarray_aadr import AADRMarker
+    from wgsextract_cli.core.microarray.aadr import AADRMarker
 
     monkeypatch.setattr(
         builder,
