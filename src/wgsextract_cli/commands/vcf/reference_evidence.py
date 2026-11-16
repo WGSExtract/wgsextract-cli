@@ -26,7 +26,7 @@ from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.region_selection import region_items
+from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
 from wgsextract_cli.core.utils import run_command, run_pipeline
@@ -81,8 +81,17 @@ def _provenance(
     rows = evidence.ploidy_definitions(ploidy_args)
     zero = evidence.ploidy_zero(rows, sex, lengths)
     if region:
-        named = {part.strip().rpartition(":")[0] or part.strip() for part in region.split(",")}  # fmt: skip
-        zero = tuple(item for item in zero if item.rpartition(":")[0] in named)
+        try:
+            selected = selected_intervals(region, lengths, commas=True)
+        except (OSError, ValueError):
+            selected = None
+        if selected is not None:
+            region = evidence.canonical_region(
+                (contig, start, end)
+                for contig in lengths
+                for start, end in selected.get(contig, ())
+            )
+            zero = tuple(item for item in zero if item.rpartition(":")[0] in selected)
     return evidence.Provenance(
         engine="bcftools",
         version=version.stdout.splitlines()[0].removeprefix("bcftools ").strip(),
@@ -192,11 +201,10 @@ def caller_provenance(
     version: str,
     intervals: list[PloidyInterval],
     region: str | None,
-    *,
-    commas: bool,
 ) -> evidence.Provenance:
     """The provenance of a GQ caller's gVCF, called over ``region`` with the
-    sex/PAR ploidy ``intervals`` (caller_ploidy.calling_ploidy's)."""
+    sex/PAR ploidy ``intervals`` (caller_ploidy.calling_ploidy's), which
+    cover the selection: its Region is theirs, resolved."""
     from .caller_ploidy import policy_sex
 
     def span(item: PloidyInterval) -> str:
@@ -206,7 +214,11 @@ def caller_provenance(
         engine=engine,
         version=version,
         quality_model=evidence.GQ,
-        region=",".join(region_items(region, commas=commas)) if region else None,
+        region=(
+            evidence.canonical_region((i.chrom, i.start, i.end) for i in intervals)
+            if region
+            else None
+        ),
         ploidy=",".join(f"{span(i)}={i.ploidy}" for i in intervals if i.ploidy != 2),
         sex=policy_sex(intervals),
         ploidy_zero=tuple(span(i) for i in intervals if i.ploidy == 0),

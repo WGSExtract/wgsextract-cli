@@ -39,7 +39,7 @@ The gVCF's `##wgseReferenceEvidence` header (schema
 | `QualityModel` | `gq`: reference blocks carry a genotype quality. `depth_only`: they carry only depth (bcftools). |
 | `Bands` | The depth (bcftools) or GQ bands its blocks are grouped by. |
 | `MinMQ` | Reads below this mapping quality are left out of the evidence. |
-| `Region` | The `--region` the run assessed; empty for the whole genome. |
+| `Region` | The bases the run assessed, as `contig:start-end` items (a BED or literal `--region`, resolved); empty for the whole genome. |
 | `Ploidy`, `Sex`, `PloidyPolicy` | The ploidy rules and sex used, and a digest of both. |
 | `PloidyZero` | Bases with ploidy 0 for this sample, such as a woman's chrY. |
 
@@ -85,8 +85,10 @@ PL values of genotypes with `<*>` (#999).
 The gVCF and its index are outputs of the `postprocess_variants` stage: if
 that stage is interrupted, a rerun repeats it alone. Its stages' work is
 deleted once the run finishes, so a gVCF deleted later reruns every stage, as
-does turning `--reference-evidence` on or off, which changes what
-`make_examples` writes.
+do turning `--reference-evidence` on or off, which changes what
+`make_examples` writes, and a change to the gVCF's provenance alone (such as
+a wider `--region` on a woman's chrY). A run that keeps no stage gets the
+full preflight check.
 
 Memory: Google's `postprocess_variants` streams each partition's reference
 records into the gVCF, so it needs no more memory (chr20 as one partition:

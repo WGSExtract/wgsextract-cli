@@ -721,9 +721,8 @@ def _deepvariant_parabricks(
                 elif suffix:
                     Path(out_vcf + suffix).unlink(missing_ok=True)
             provenance = caller_provenance(
-                "parabricks-deepvariant", parabricks_image(), ploidy, region,
-                commas=True,
-            )  # fmt: skip
+                "parabricks-deepvariant", parabricks_image(), ploidy, region
+            )
             publish_gvcf(str(staged), out_gvcf, provenance)
     ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
@@ -1068,9 +1067,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 dv_args += ["--haploid_contigs", ",".join(haploid)]
                 if par is not None:
                     dv_args += ["--par_regions_bed", host_path(par)]
-        if not journal.dry_run:
-            # A rerun with finished stages needs less than this: it warns.
-            fresh = not any(journal.recorded(s) for s in STEPS)
+
+        def preflight(fresh: bool) -> None:
+            """State the host requirement; refuse a shortfall only when
+            ``fresh`` (no stage is kept): kept stages need less, so it warns."""
 
             def estimate_with(
                 threads: str, batch: int, plan: PostprocessPlan | None
@@ -1114,6 +1114,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 "or call a --region.",
                 memory_advice="Lower --batch-size or --threads.",
             )  # fmt: skip
+
         recorded_image: dict[str, str | None] = {"image": local_dv}
         if native:
             recorded_image["version"] = native.version
@@ -1130,9 +1131,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 version = f"run_deepvariant ({local_dv})"
             evidence = (
                 out_gvcf,
-                caller_provenance(
-                    "deepvariant", version, ploidy, called_region, commas=False
-                ),
+                caller_provenance("deepvariant", version, ploidy, called_region),
             )
         logging.info(LOG_MESSAGES["vcf_calling_deepvariant"].format(output=out_vcf))
         try:
@@ -1154,6 +1153,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 ),
                 out_vcf=out_vcf,
                 evidence=evidence,
+                preflight=None if journal.dry_run else preflight,
             )  # fmt: skip
         except (OSError, subprocess.SubprocessError) as e:
             raise WGSExtractError(
@@ -1367,12 +1367,14 @@ def _run_stages(
     staging: Callable[[], str] | None,
     out_vcf: str,
     evidence: tuple[str, Provenance] | None = None,
+    preflight: Callable[[bool], None] | None = None,
 ) -> bool:
     """Run DeepVariant stage by stage, skipping the ones an earlier run
     finished. A killed make_examples keeps its finished shards, and runs
     ``jobs`` of them at once. ``evidence``: the gVCF postprocess_variants
-    also publishes, and its provenance. Returns whether the VCF was made or
-    kept (not in --dry-run)."""
+    also publishes, and its provenance. ``preflight`` is called once the
+    stages are known, with whether none of them is kept. Returns whether
+    the VCF was made or kept (not in --dry-run)."""
     work = run.work
     work.mkdir(parents=True, exist_ok=True)
     try:
@@ -1387,8 +1389,13 @@ def _run_stages(
     # The gVCF and its index are the final stage's outputs too, so a missing
     # one reruns it; without --reference-evidence its record is as before.
     final_outputs = [out_vcf]
+    final_params: dict[str, Any] = {}
     if evidence:
         final_outputs += [evidence[0], evidence[0] + ".tbi"]
+        # The provenance (region, ploidy exclusions) can change while the
+        # stage commands don't (a woman's chrY is never called).
+        header = evidence[1].header().encode()
+        final_params["reference_evidence"] = hashlib.sha256(header).hexdigest()
 
     def step(name: str) -> Step:
         # A stage's key holds its own and every earlier stage's commands, so
@@ -1396,11 +1403,16 @@ def _run_stages(
         # when an earlier stage's settings (such as the model) change.
         upto = STEPS[1 : STEPS.index(name) + 1]
         text = "\n".join(c for stage in upto for c in commands[stage])
+        last = name == "postprocess_variants"
         return Step(
             name,
             inputs=inputs,
-            outputs=final_outputs if name == "postprocess_variants" else (),
-            params={**params, "commands": _RESOURCE_FLAGS.sub("", text)},
+            outputs=final_outputs if last else (),
+            params={
+                **params,
+                "commands": _RESOURCE_FLAGS.sub("", text),
+                **(final_params if last else {}),
+            },
         )
 
     staging_step = Step(
@@ -1414,7 +1426,17 @@ def _run_stages(
         params={"region": region},
         tools=["samtools"],
     )
-    final = step("postprocess_variants")
+    stages = [
+        staging_step if name == "stage_reads" else step(name)
+        for name in STEPS
+        if name != "stage_reads" or staging is not None
+    ]
+    if preflight is not None:
+        checked: list[Decision] = []
+        for current in stages:
+            checked.append(journal.check(current, after=checked))
+        preflight(all(d.run and not d.partial for d in checked))
+    final = stages[-1]
     if not any(journal.policy.forced(s) for s in STEPS[:-1]):
         if not journal.check(final).run:
             journal.decide(final)
@@ -1424,10 +1446,8 @@ def _run_stages(
 
     decisions: list[Decision] = []
     claimed: set[Path] = set()
-    for name in STEPS:
-        if name == "stage_reads" and staging is None:
-            continue
-        current = staging_step if name == "stage_reads" else step(name)
+    for current in stages:
+        name = current.name
         decision = journal.decide(current, after=decisions)
         decisions.append(decision)
         if journal.dry_run:

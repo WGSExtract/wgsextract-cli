@@ -1966,12 +1966,12 @@ def test_deepvariant_rerun_with_finished_stages_warns_instead_of_refusing(
 EVIDENCE_THRESHOLDS = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
 
 
-def call_with_evidence(dv):
+def call_with_evidence(dv, region=None):
     """vcf deepvariant --reference-evidence gvcf; its outputs by role."""
     result = api.vcf.deepvariant(
         api.VcfDeepvariantParams(
             input=Path(dv.sample.bam), ref=Path(dv.sample.ref), outdir=dv.out,
-            threads=4, reference_evidence="gvcf",
+            threads=4, reference_evidence="gvcf", region=region,
         )
     )  # fmt: skip
     return {o.role: o for o in result.outputs}
@@ -2031,10 +2031,8 @@ def test_a_missing_gvcf_is_written_again_by_a_rerun_863(dv):
     assert dv.deepvariant.stages() == []
 
 
-def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv):
-    """Issue #863: ploidy-0 intervals (a woman's chrY) are left out of
-    calling, so the gVCF has no records there; its provenance must say they
-    were excluded, or they would read as bases nobody could read."""
+def woman_sample(dv):
+    """An hg38-named woman with reads on chr1 and chrY, 500-2499."""
     rng = random.Random(863)
     seq = "".join(rng.choice("ACGT") for _ in range(3000))
     root = dv.tmp / "hg38"
@@ -2050,10 +2048,65 @@ def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv):
     ]
     bam = sam_to_bam(lines, root / "woman.bam")
     run_wgsextract("sample", "set", "--input", bam, "--sex", "Female")
-    dv.sample = SimpleNamespace(ref=str(ref), bam=bam)
+    return SimpleNamespace(ref=str(ref), bam=bam)
+
+
+def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv):
+    """Issue #863: ploidy-0 intervals (a woman's chrY) are left out of
+    calling, so the gVCF has no records there; its provenance must say they
+    were excluded, or they would read as bases nobody could read."""
+    dv.sample = woman_sample(dv)
     gvcf = call_with_evidence(dv)[ROLE]
 
     assert gvcf.metrics["sex"] == "F"
     assert gvcf.metrics["ploidy_zero"] == "chrY:1-3000"
     assert evidence_state(gvcf.path, "chrY", 1500) is State.EXCLUDED_BY_POLICY
     assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+
+
+def test_a_rerun_over_more_excluded_bases_rewrites_the_gvcf_provenance_863(dv):
+    """#863 review: widening a woman's chrY selection leaves every stage
+    command alike (chrY isn't called), but the gVCF's provenance must grow
+    with it, or the new chrY bases read as not assessed."""
+    dv.sample = woman_sample(dv)
+    call_with_evidence(dv, "chr1:1-3000 chrY:1-100")
+    gvcf = call_with_evidence(dv, "chr1:1-3000 chrY:1-200")[ROLE]
+
+    assert gvcf.metrics["region"] == "chr1:1-3000,chrY:1-200"
+    assert gvcf.metrics["ploidy_zero"] == "chrY:1-200"
+    assert evidence_state(gvcf.path, "chrY", 150) is State.EXCLUDED_BY_POLICY
+
+
+@pytest.mark.parametrize("selection", ["bed", "thousands"])
+def test_the_gvcf_records_the_bases_it_assessed_not_the_selection_863(dv, selection):
+    """#863 review: a BED --region was recorded by name, so moving or
+    editing it changed what a published gVCF assessed, and "1,001" split
+    the recorded region apart; either read callable bases as not assessed."""
+    if selection == "bed":
+        bed = dv.tmp / "target.bed"
+        bed.write_text("chr1\t1000\t2000\n", encoding="utf-8")
+        region = str(bed)
+    else:
+        region = "chr1:1,001-2,000"
+    gvcf = call_with_evidence(dv, region)[ROLE]
+    if selection == "bed":
+        bed.unlink()
+
+    assert gvcf.metrics["region"] == "chr1:1001-2000"
+    assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+    assert evidence_state(gvcf.path, "chr1", 2500) is State.NOT_ASSESSED
+
+
+def test_turning_on_the_gvcf_in_a_finished_outdir_keeps_the_ram_check_863(
+    dv, monkeypatch, ram
+):
+    """#863 review: --reference-evidence gvcf reruns every stage of a
+    finished VCF-only run, but its journal records made the RAM shortfall a
+    warning; with nothing kept, the run is refused as a fresh one is."""
+    call(dv)
+    ram(4 * GIB)
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 4 * GIB)
+    dv.deepvariant.clear()
+    with pytest.raises(WGSExtractError, match=r"this computer has 4\.0 GiB"):
+        call(dv, "--reference-evidence", "gvcf")
+    assert dv.deepvariant.stages() == []
