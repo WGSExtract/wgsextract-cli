@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createRequire } from "node:module";
 import test from "node:test";
 
 globalThis.localStorage = { getItem: () => null, setItem() {} };
@@ -12,6 +14,41 @@ const { runBundleTest } = await import("../dist/web/src/server/bundle-test-runne
 const { parseResultDocument, resultNotice } = await import("../dist/shared/result-document.js");
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { renderResultNotice, renderResultSummary } = await import("../dist/web/src/client/result-view.js");
+
+test("929 writer-generated record types require emitted defaults without narrowing normalized future errors", async (t) => {
+  const directory = path.resolve(import.meta.dirname, "../../out/tests/result-records-929", `${process.pid}-${Date.now()}`);
+  await mkdir(directory, { recursive: true });
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "contract.mts");
+  const modulePath = (name) => path.relative(directory, path.resolve(import.meta.dirname, "../shared", name)).replaceAll("\\", "/");
+  const source = `
+import type { ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "${modulePath("generated/server-transport.js")}";
+import type { ResultError, ResultFile } from "${modulePath("result-document.js")}";
+const wire: ResultFileRecord = {
+  path: "out.bam", role: "output", kind: "bam", exists: false,
+  size_bytes: null, mtime: null, fingerprint: null, index: null,
+  metrics: { count: 1, ratio: 0.5, flag: true, missing: null, label: "test" },
+};
+// @ts-expect-error The writer emits defaults; they are not optional on the wire.
+const incomplete: ResultFileRecord = { path: "out.bam", role: "output", kind: "bam" };
+const warning: ResultWarningRecord = { code: "low_coverage", message: "", details: { depth: 1 } };
+const error: ResultErrorRecord = { kind: "usage", message: "" };
+// @ts-expect-error A canonical writer error uses a declared ErrorKind.
+const unknown: ResultErrorRecord = { kind: "future_kind", message: "" };
+const normalized: ResultFile = { path: wire.path, role: wire.role, kind: wire.kind,
+  exists: wire.exists, sizeBytes: wire.size_bytes, metrics: wire.metrics };
+const tolerant: ResultError = { kind: "future_kind", message: error.message };
+`;
+  await writeFile(file, source);
+  const require = createRequire(import.meta.url);
+  const packageFile = require.resolve("typescript/package.json");
+  const compiler = path.resolve(path.dirname(packageFile), require(packageFile).bin.tsc);
+  const compiled = spawnSync(process.execPath, [compiler, "--ignoreConfig", "--strict", "--noEmit",
+    "--skipLibCheck", "--target", "es2022", "--module", "nodenext", "--moduleResolution", "nodenext",
+    "--types", "node", "--typeRoots", path.resolve(import.meta.dirname, "../node_modules/@types"), file],
+  { encoding: "utf8", cwd: path.resolve(import.meta.dirname, "..") });
+  assert.equal(compiled.status, 0, `${compiled.stdout}${compiled.stderr}${compiled.error?.message ?? ""}`);
+});
 
 // A CLI following the wgsextract.result/1 contract: logs on stderr, a human summary on stdout, and
 // the document in the --result-file file or, with --json, alone on stdout. MODE picks the run: ok
