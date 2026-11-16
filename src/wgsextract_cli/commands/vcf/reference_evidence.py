@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import subprocess
 import tempfile
 from collections.abc import Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,7 +31,8 @@ from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
-from wgsextract_cli.core.utils import run_command, run_pipeline
+from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
+from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .call_cleanup import indel_cleanup_pipeline
@@ -200,11 +203,15 @@ def caller_provenance(
     engine: str,
     version: str,
     intervals: list[PloidyInterval],
-    region: str | None,
+    bounded: object,
+    *,
+    bands: str = "",
+    min_mapping_quality: int | None = None,
 ) -> evidence.Provenance:
-    """The provenance of a GQ caller's gVCF, called over ``region`` with the
-    sex/PAR ploidy ``intervals`` (caller_ploidy.calling_ploidy's), which
-    cover the selection: its Region is theirs, resolved."""
+    """The provenance of a GQ caller's gVCF, called with the sex/PAR ploidy
+    ``intervals`` (caller_ploidy.calling_ploidy's), which cover what it
+    called. When ``bounded`` (a --region, or a caller that calls only some
+    contigs by default) its Region is theirs, resolved; else every contig."""
     from .caller_ploidy import policy_sex
 
     def span(item: PloidyInterval) -> str:
@@ -214,15 +221,111 @@ def caller_provenance(
         engine=engine,
         version=version,
         quality_model=evidence.GQ,
+        bands=bands,
+        min_mapping_quality=min_mapping_quality,
         region=(
             evidence.canonical_region((i.chrom, i.start, i.end) for i in intervals)
-            if region
+            if bounded
             else None
         ),
         ploidy=",".join(f"{span(i)}={i.ploidy}" for i in intervals if i.ploidy != 2),
         sex=policy_sex(intervals),
         ploidy_zero=tuple(span(i) for i in intervals if i.ploidy == 0),
     )
+
+
+def clip_gvcf(
+    source: str, intervals: Sequence[PloidyInterval], ref: str, output: str
+) -> None:
+    """Write ``source``'s records inside ``intervals`` (one ploidy
+    partition, zero-based half-open) to ``output`` (+ .tbi), so partitions
+    gathered side by side never claim one base twice: a reference block is
+    cut at the partition's edges (its REF becomes the base it now starts on),
+    and any other record belongs to the partition its POS is in, as in the
+    partitioned VCF. Every other field stays as the caller wrote it."""
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for item in intervals:
+        spans.setdefault(item.chrom, []).append((item.start + 1, item.end))
+    for ranges in spans.values():
+        ranges.sort()
+
+    def base(contig: str, position: int) -> str:
+        fetched = run_command(
+            ["samtools", "faidx", ref, f"{{{contig}}}:{position}-{position}"],
+            capture_output=True,
+        )
+        return "".join(fetched.stdout.splitlines()[1:]).upper() or "N"
+
+    with tempfile.TemporaryDirectory(
+        dir=Path(output).parent, prefix=".wgse_gvcf_clip_"
+    ) as work:
+        errors = Path(work, "stderr.txt")
+        with open(errors, "w+", encoding="utf-8", newline="\n") as stderr:
+            reader = popen(
+                ["bcftools", "view", "--no-version", source],
+                stdout=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+            )
+            writer = popen(
+                ["bcftools", "view", "--no-version", "-Oz", "-o", output],
+                stdin=subprocess.PIPE,
+                stderr=stderr,
+                text=True,
+            )
+            assert reader.stdout is not None and writer.stdin is not None
+            try:
+                for line in reader.stdout:
+                    if line.startswith("#"):
+                        writer.stdin.write(line)
+                        continue
+                    fields = line.split("\t", 8)
+                    contig, pos = fields[0], int(fields[1])
+                    ranges = spans.get(contig, [])
+                    end_match = _END.search(fields[7])
+                    block = end_match is not None and all(
+                        alt in SYMBOLIC_REFERENCE_ALTS for alt in fields[4].split(",")
+                    )
+                    if not block:
+                        if any(first <= pos <= last for first, last in ranges):
+                            writer.stdin.write(line)
+                        continue
+                    assert end_match is not None
+                    end = int(end_match.group(1))
+                    for first, last in ranges:
+                        start, stop = max(pos, first), min(end, last)
+                        if start > stop:
+                            continue
+                        if start == pos and stop == end:
+                            writer.stdin.write(line)
+                            continue
+                        fields[1] = str(start)
+                        fields[3] = fields[3] if start == pos else base(contig, start)
+                        fields[7] = _END.sub(f"END={stop}", fields[7], count=1)
+                        writer.stdin.write("\t".join(fields))
+            finally:
+                reader.stdout.close()
+                writer.stdin.close()
+                codes = reader.wait(), writer.wait()
+            if any(codes):
+                stderr.seek(0)
+                raise WGSExtractError(
+                    f"Cutting the gVCF {source} to its partition failed: "
+                    f"{stderr.read().strip()[-500:]}"
+                )
+    ensure_vcf_indexed(output)
+
+
+_END = re.compile(r"(?<![^;])END=(\d+)")
+
+
+def gather_gvcf(parts: Sequence[str], work: str, output: str) -> None:
+    """Gather partition gVCFs cut by ``clip_gvcf`` into ``output`` in
+    reference order."""
+    combined = str(Path(work, "combined.g.vcf.gz"))
+    run_command(["bcftools", "concat", "--no-version", "-a", "-Oz", "-o", combined, *parts])  # fmt: skip
+    run_command(["bcftools", "sort", "-T", work, "-Oz", "-o", output, combined])
+    Path(combined).unlink()
 
 
 def publish_gvcf(source: str, output: str, provenance: evidence.Provenance) -> None:

@@ -211,17 +211,51 @@ def _gatk_gpu(params: VcfGatkParams, setup: CallerSetup | None = None) -> None:
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
+def _gatk_version() -> str:
+    text = get_tool_version("gatk") or ""
+    match = re.search(
+        r"(?:GATK|Genome Analysis Toolkit)[^\n]*?\bv?(\d+(?:\.\d+)+)",
+        text,
+        re.IGNORECASE,
+    )
+    return (
+        match.group(1)
+        if match
+        else text.strip().splitlines()[0]
+        if text.strip()
+        else ""
+    )
+
+
 def run_gatk(params: VcfGatkParams) -> None:
-    from .caller_ploidy import call_partitioned
+    from wgsextract_cli.core import reference_evidence as evidence
+
+    from .caller_ploidy import GvcfEngine, call_partitioned
 
     require_native_tool("gatk")
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
+    gvcf = None
+    if params.reference_evidence == "gvcf":
+        if params.gpu or params.scatter:
+            raise UsageError(
+                "--reference-evidence gvcf needs CPU HaplotypeCaller in one "
+                "process; it can't be combined with --gpu or --scatter. Use "
+                "--reference-evidence none."
+            )
+        verify_dependencies(["gatk", "samtools", "bcftools", "tabix"])
+        gvcf = GvcfEngine(
+            "gatk-haplotypecaller",
+            _gatk_version(),
+            evidence.GATK_BANDS,
+            evidence.GATK_MIN_MAPPING_QUALITY,
+        )
     call_partitioned(
         params,
         setup_caller(params),
         "gatk",
         partial(_run_gatk, stage_region=params.region is not None),
+        gvcf,
     )
 
 
@@ -230,10 +264,14 @@ def _run_gatk(
     sample_ploidy: int = 2,
     setup: CallerSetup | None = None,
     record: bool = True,
+    gvcf: str | None = None,
     *,
     stage_region: bool = True,
 ) -> None:
-    """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks."""
+    """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks.
+
+    With ``gvcf``, HaplotypeCaller writes its gVCF there (-ERC GVCF, GQ
+    bands GATK_BANDS) and GenotypeGVCFs genotypes it into the VCF."""
     require_native_tool("gatk")
     scatter = params.scatter
     if params.gpu:
@@ -283,6 +321,7 @@ def _run_gatk(
             temp_dir=configured_temp_directory() or tempfile.gettempdir(),
             gatk_staging_dir=configured_temp_directory(),
             gatk_workers=len(shards) or 1,
+            reference_evidence=gvcf is not None,
         )
     )
     out_vcf = str(Path(outdir, "gatk.vcf.gz"))
@@ -359,7 +398,7 @@ def _run_gatk(
                 "-I",
                 java_local_path(gatk_input),
                 "-O",
-                java_local_path(out_vcf),
+                java_local_path(gvcf or out_vcf),
                 "--tmp-dir",
                 java_local_path(gatk_tmp),
             ]
@@ -367,9 +406,34 @@ def _run_gatk(
             + ["--sample-ploidy", str(sample_ploidy)]
             + region_args
         )
-        with safe_output(out_vcf) as staged:
-            cmd[cmd.index("-O") + 1] = java_local_path(staged)
+        if gvcf:
+            from wgsextract_cli.core.reference_evidence import GATK_BANDS
+
+            # contract: reference confidence blocks banded by GQ (GATK_BANDS)
+            # are what the gVCF's evidence means.
+            cmd += ["-ERC", "GVCF"]
+            for band in GATK_BANDS.split(","):
+                cmd += ["-GQB", band]
             run_command(cmd)
+            with safe_output(out_vcf) as staged:
+                run_command(
+                    [
+                        "gatk",
+                        "GenotypeGVCFs",
+                        "-R",
+                        java_local_path(ref),
+                        "-V",
+                        java_local_path(gvcf),
+                        "-O",
+                        java_local_path(staged),
+                        "--tmp-dir",
+                        java_local_path(gatk_tmp),
+                    ]
+                )
+        else:
+            with safe_output(out_vcf) as staged:
+                cmd[cmd.index("-O") + 1] = java_local_path(staged)
+                run_command(cmd)
         ensure_vcf_indexed(out_vcf)
         if record:
             record_variants(

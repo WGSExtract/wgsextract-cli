@@ -227,6 +227,83 @@ class FakePixi:
         return (self.root / "envs" / name / "conda-meta" / "pixi").is_file()
 
 
+# What GATK's and Clair3's fakes share for --reference-evidence: a gVCF from
+# their VCF and real `samtools depth`.
+_GVCF_BLOCKS = r"""
+import os as _os, subprocess as _subprocess
+
+
+def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samtools):
+    # As GATK -ERC GVCF and Clair3 --gvcf: the VCF's records with <NON_REF>
+    # added, and <NON_REF> blocks over every other base of ``bed``, by GQ
+    # band: GQ 99 at 10 reads or more, 15 below, and 0 (MIN_DP 0) without.
+    sequence, name = {}, None
+    for line in open(ref):
+        if line.startswith(">"):
+            name = line[1:].split()[0]
+            sequence[name] = []
+        else:
+            sequence[name].append(line.strip())
+    sequence = {k: "".join(v) for k, v in sequence.items()}
+    depth = _subprocess.run([samtools, "depth", "-aa", "-b", bed, reads],
+                            capture_output=True, text=True, check=True).stdout
+    header = _subprocess.run([bcftools, "view", "-h", vcf], capture_output=True,
+                             text=True, check=True).stdout.splitlines()
+    records = _subprocess.run([bcftools, "view", "-H", vcf], capture_output=True,
+                              text=True, check=True).stdout.splitlines()
+    called = {(r.split("\t")[0], int(r.split("\t")[1]) + i)
+              for r in records for i in range(len(r.split("\t")[3]))}
+    genotype = "0" if haploid else "0/0"
+    blocks = []
+    for line in depth.splitlines():
+        chrom, pos, here = line.split("\t")
+        pos, here = int(pos), int(here)
+        if (chrom, pos) in called:
+            continue
+        gq = 99 if here >= 10 else 15 if here else 0
+        band = max([b for b in bands if b <= gq], default=0)
+        last = blocks[-1] if blocks else None
+        if last and last[0] == chrom and last[2] == pos - 1 and last[5] == band:
+            last[2], last[3], last[4] = pos, min(last[3], here), min(last[4], gq)
+        else:
+            blocks.append([chrom, pos, pos, here, gq, band])
+    rows = [f"{c}\t{a}\t.\t{sequence[c][a - 1]}\t<NON_REF>\t.\t.\tEND={b}\t"
+            f"GT:DP:GQ:MIN_DP\t{genotype}:{d}:{gq}:{d}" for c, a, b, d, gq, _ in blocks]
+    variants = []
+    for record in records:
+        fields = record.split("\t")
+        fields[4] += ",<NON_REF>"
+        variants.append("\t".join(fields))
+    extra = ['##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+             '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">',
+             '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">',
+             '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum DP">',
+             '##ALT=<ID=NON_REF,Description="Any other allele">']
+    extra = [e for e in extra if e.split(",")[0] + "," not in "".join(header)]
+    text = "\n".join(header[:-1] + extra + header[-1:] + variants + rows) + "\n"
+    unsorted = out + ".unsorted.vcf"
+    open(unsorted, "w").write(text)
+    _subprocess.run([bcftools, "sort", "-Oz", "-o", out, unsorted], check=True,
+                    stdout=_subprocess.DEVNULL)
+    _os.unlink(unsorted)
+    _subprocess.run([bcftools, "index", "-t", "-f", out], check=True)
+
+
+def regions_bed(regions, ref, path):
+    # GATK's -L lines (contig, contig:start-end, or a BED) as a BED.
+    lengths = dict(line.split("\t")[:2] for line in open(ref + ".fai"))
+    with open(path, "w") as bed:
+        for item in regions:
+            if "\t" in item:
+                bed.write(item + "\n")
+                continue
+            contig, _, span = item.rpartition(":") if ":" in item else (item, "", "")
+            first, _, last = span.partition("-")
+            bed.write(f"{contig}\t{int(first) - 1 if first else 0}\t"
+                      f"{last or lengths[contig]}\n")
+"""
+
+
 _FAKE_GATK = """\
 import json, os, subprocess, sys, time
 
@@ -241,6 +318,23 @@ tool, rest = args[0], args[1:]
 opts = dict(zip(rest[::2], rest[1::2]))
 with open(state["log"], "a") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
+if tool == "GenotypeGVCFs":
+    # The gVCF's variant records, without <NON_REF>.
+    gvcf = opts["-V"]
+    lines = subprocess.run([{bcftools!r}, "view", gvcf], capture_output=True, text=True,
+                           check=True).stdout.splitlines()
+    kept = []
+    for line in lines:
+        fields = line.split("\\t")
+        if not line.startswith("#"):
+            alts = [a for a in fields[4].split(",") if a != "<NON_REF>"]
+            if not alts:
+                continue
+            fields[4] = ",".join(alts)
+        kept.append("\\t".join(fields))
+    subprocess.run([{bcftools!r}, "view", "-Oz", "-o", opts["-O"]],
+                   input="\\n".join(kept) + "\\n", text=True, check=True)
+    sys.exit(0)
 
 
 def local(flag):
@@ -286,11 +380,33 @@ mpileup = subprocess.Popen(
     [{bcftools!r}, "mpileup", "-f", ref, *regions, "-Ou", alignment],
     stdout=subprocess.PIPE,
 )
+gvcf = opts.get("-ERC") == "GVCF"
+calls = out + ".calls.vcf.gz" if gvcf else out
 call = subprocess.run(
     [{bcftools!r}, "call", "--ploidy", opts.get("--sample-ploidy", "2"),
-     "-mv", "-Oz", "-o", out], stdin=mpileup.stdout
+     "-mv", "-Oz", "-o", calls], stdin=mpileup.stdout
 )
-sys.exit(mpileup.wait() or call.returncode)
+if mpileup.wait() or call.returncode:
+    sys.exit(1)
+if gvcf:
+    bands = [int(v) for k, v in zip(rest[::2], rest[1::2]) if k == "-GQB"] or list(range(1, 61))
+    lines = (open(local("-L")).read().splitlines() if "-L" in opts
+             else [line.split("\\t")[0] for line in open(ref + ".fai")])
+    bed = out + ".regions.bed"
+    regions_bed([line for line in lines if line.strip()], ref, bed)
+    if state.get("block_padding"):
+        # A caller whose reference blocks run past its intervals' edges.
+        lengths = dict(line.split("\\t")[:2] for line in open(ref + ".fai"))
+        padded = []
+        for line in open(bed).read().splitlines():
+            contig, first, last = line.split("\\t")
+            padded.append(f"{{contig}}\\t{{max(0, int(first) - state['block_padding'])}}\\t"
+                          f"{{min(int(lengths[contig]), int(last) + state['block_padding'])}}\\n")
+        open(bed, "w").write("".join(padded))
+    write_caller_gvcf(calls, alignment, ref, out, bed, bands,
+                      opts.get("--sample-ploidy") == "1", {bcftools!r}, {samtools!r})
+    os.unlink(calls)
+    os.unlink(bed)
 """
 
 
@@ -299,13 +415,21 @@ class FakeGatk:
 
     Like GATK 4.6 it needs the reference's .dict, a --tmp-dir without a space
     and, when ``windows``, native paths; ``reads_cram=False`` is a GATK that can't read
-    CRAM 3.1. It calls the -L intervals (or the whole file). ``fail`` makes it
+    CRAM 3.1. With -ERC GVCF it writes a gVCF of <NON_REF> blocks banded by
+    -GQB (``block_padding`` runs them that many bases past the intervals),
+    which GenotypeGVCFs turns into the VCF. It calls the -L intervals (or the whole file). ``fail`` makes it
     fail with that message, and ``on_contig`` maps contigs in its intervals to
     "fail", "slow" (1 s) or "hang" (with a child "java" process; both PIDs go
     to ``pids``). Each run's arguments are appended to ``log`` as JSON.
     """
 
-    def __init__(self, bindir: Path, bcftools: str, **state: object) -> None:
+    def __init__(
+        self,
+        bindir: Path,
+        bcftools: str,
+        samtools: str | None = None,
+        **state: object,
+    ) -> None:
         self.log = bindir / "gatk-runs.jsonl"
         self.pids = bindir / "gatk-pids.txt"
         self._state = bindir / "gatk-state.json"
@@ -317,8 +441,9 @@ class FakeGatk:
             "fail": None,
             "on_contig": {},
         }
-        python_tool(bindir, "gatk", _FAKE_GATK.format(
-            state=str(self._state), bcftools=bcftools
+        python_tool(bindir, "gatk", _GVCF_BLOCKS + _FAKE_GATK.format(
+            state=str(self._state), bcftools=bcftools,
+            samtools=samtools or shutil.which("samtools") or "samtools",
         ))  # fmt: skip
         self.set(**state)
 
@@ -420,6 +545,24 @@ subprocess.run(
      os.path.join(out, "merge_output.vcf.gz"), named],
     check=True,
 )
+stats = subprocess.run([{samtools!r}, "idxstats", opts["bam_fn"]], capture_output=True,
+                       text=True, check=True).stdout.splitlines()
+with_reads = {{row.split("\\t")[0] for row in stats if int(row.split("\\t")[2])}}
+wanted = ({{line.split("\\t")[0] for line in open(opts["bed_fn"])}} if "bed_fn" in opts
+          else with_reads)
+if "gvcf" in opts and not wanted & with_reads:
+    # Like Clair3: no reads on the contigs asked for, a header-only VCF, no gVCF.
+    print("[WARNING] No contig intersection found, output header only")
+elif "gvcf" in opts:
+    bed = opts.get("bed_fn")
+    if not bed:
+        bed = os.path.join(out, "all.bed")
+        regions_bed([line.split("\\t")[0] for line in open(opts["ref_fn"] + ".fai")],
+                    opts["ref_fn"], bed)
+    write_caller_gvcf(os.path.join(out, "merge_output.vcf.gz"), opts["bam_fn"],
+                      opts["ref_fn"], os.path.join(out, "merge_output.gvcf.gz"), bed,
+                      list(range(0, 100, 5)), "haploid_precise" in opts,
+                      {bcftools!r}, {samtools!r})
 """
 
 
@@ -437,13 +580,20 @@ class FakeClair3:
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
-    def __init__(self, bindir: Path, bcftools: str, version: str = "2.0.5") -> None:
+    def __init__(
+        self,
+        bindir: Path,
+        bcftools: str,
+        version: str = "2.0.5",
+        samtools: str | None = None,
+    ) -> None:
         self.log = bindir / "clair3-runs.jsonl"
         self.models = bindir / "models"
         self.models.mkdir(parents=True)
         self.failure = bindir / "clair3-failure.json"
-        python_tool(bindir, "run_clair3.sh", _FAKE_CLAIR3.format(
+        python_tool(bindir, "run_clair3.sh", _GVCF_BLOCKS + _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure),
+            samtools=samtools or shutil.which("samtools") or "samtools",
             version=version,
             old_htslib=not version[:1].isdigit()
             or tuple(map(int, version.split("."))) < (2, 0, 5),

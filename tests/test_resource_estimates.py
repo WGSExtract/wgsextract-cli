@@ -227,6 +227,31 @@ def test_regional_gatk_and_scatter_artifacts_are_budgeted_on_the_selected_volume
     assert not expected & disks["output"].components.keys()
 
 
+def test_gatk_gvcf_disk_is_budgeted_beside_the_vcf_863(tmp_path):
+    """Issue #863: `vcf gatk --reference-evidence gvcf` keeps the partitions'
+    gVCF parts, their gathered copy and the published gVCF on the output
+    volume; HG002's 1.09 GB chr20 BAM gave a 23 MB gVCF (GQ bands
+    10,20,30,60), and three copies of it must fit the budget."""
+    bam = tmp_path / "chr20.bam"
+    with open(bam, "wb") as sparse:
+        sparse.truncate(1_093_938_924)
+
+    def disk(gvcf):
+        estimate = resources.estimate_resources(
+            "gatk", input_paths=[str(bam)], output_dir=str(tmp_path),
+            reference_evidence=gvcf,
+        )  # fmt: skip
+        return {
+            name: value
+            for row in estimate.resources
+            if row.resource == "disk"
+            for name, value in row.components.items()
+        }
+
+    assert "reference_evidence" not in disk(False)
+    assert disk(True)["reference_evidence"] >= 3 * 23_000_000
+
+
 def _tiny_bam(tmp_path: Path) -> tuple[Path, Path]:
     """A one-read BAM on a 100 bp chr1, and its reference."""
     seq = "ACGT" * 25
