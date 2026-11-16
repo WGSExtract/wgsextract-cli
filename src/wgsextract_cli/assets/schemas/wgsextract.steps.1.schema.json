@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:steps:1",
+  "title": "wgsextract.steps/1",
+  "description": "Internal step journal. New writer records are described by runningStep/completeStep definitions; unclassified historical records remain opaque objects and are not validated by the reader.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "wgsextract.steps/1"
+    },
+    "workflow": {
+      "type": "string"
+    },
+    "steps": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/runningStep"
+          },
+          {
+            "$ref": "#/$defs/completeStep"
+          },
+          {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "workflow",
+    "steps"
+  ],
+  "$defs": {
+    "runningStep": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "running"
+        },
+        "token": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "started": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "token",
+        "key",
+        "params",
+        "started",
+        "inputs"
+      ]
+    },
+    "input": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "from_step": {
+          "type": "string"
+        },
+        "from_run": {},
+        "kind": {
+          "const": "directory"
+        },
+        "files": {
+          "type": "integer"
+        },
+        "missing": {
+          "type": "boolean"
+        },
+        "declared": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "role",
+        "path"
+      ]
+    },
+    "completeStep": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "const": "complete"
+        },
+        "key": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/fileOutput"
+              },
+              {
+                "$ref": "#/$defs/directoryOutput"
+              }
+            ]
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "started": {},
+        "finished": {
+          "type": "string"
+        },
+        "seconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "status",
+        "key",
+        "version",
+        "params",
+        "tools",
+        "inputs",
+        "outputs",
+        "metrics",
+        "run_id",
+        "started",
+        "finished",
+        "seconds"
+      ]
+    },
+    "fileOutput": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "path",
+        "size",
+        "fingerprint"
+      ]
+    },
+    "directoryOutput": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "const": "directory"
+        }
+      },
+      "required": [
+        "path",
+        "kind"
+      ]
+    }
+  }
+}

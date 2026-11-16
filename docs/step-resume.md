@@ -22,6 +22,13 @@ When a step finishes, the journal (JSON, schema `wgsextract.steps/1`) records:
   and the run of the step that made it
 - the size and [content fingerprint](result-manifest.md) of each output
 
+The internal journal's [JSON Schema](../src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json)
+is generated from the Python models used by its writers. Its `runningStep`
+and `completeStep` definitions describe newly written records. Historical
+records remain opaque at the read boundary, so unknown record fields survive an
+unrelated write and existing resume decisions do not change. Regenerate
+with `scripts/gen_output_schemas.py` (or `just regen`); `--check` detects drift.
+
 A rerun skips the step only if all of the following hold:
 
 - the key is unchanged

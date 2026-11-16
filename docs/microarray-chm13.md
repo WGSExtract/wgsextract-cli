@@ -197,6 +197,8 @@ them to reclaim their space when no older release is running.
 
 The internal `core/microarray/` package holds assembly-chain coordinate
 projection (`coordinates.py`), verified CHM13 asset decoding (`site_map.py`),
-and the disposable decoded-column cache (`site_map_cache.py`). Other
-microarray orchestration remains in its existing modules; public
+and the disposable decoded-column cache (`site_map_cache.py`). The `chm13*.py`
+modules alongside them handle CHM13 reference validation, calls, indel probes,
+marker exclusions, and native-target caches. Command orchestration remains
+in `commands/_microarray_chm13.py`; public
 `wgsextract_cli.api.microarray` operations are unchanged.

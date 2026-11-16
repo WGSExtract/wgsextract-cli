@@ -1,3 +1,5 @@
+import re
+
 HG37_BUILD_ALIASES = {"hg19", "hg37", "grch37", "hs37", "hs37d5"}
 HG38_BUILD_ALIASES = {"hg38", "grch38", "hs38", "hs38dh", "hs38d1", "hs38d1v0"}
 T2T_BUILD_ALIASES = {
@@ -10,11 +12,48 @@ T2T_BUILD_ALIASES = {
     "chm13v2.0",
 }
 
-# Filename substrings that identify each canonical build, in preference order.
+# Build-name tokens, including catalog variants, in preference order.
 BUILD_PATH_TOKENS = {
-    "hg38": ("hg38", "grch38", "hs38"),
-    "hg19": ("hg19", "hg37", "grch37", "hs37"),
-    "t2t": ("t2t", "chm13"),
+    "hg38": (
+        "hg38",
+        "grch38",
+        "hs38",
+        "hs38dh",
+        "hs38a",
+        "hs38d1",
+        "hs38d1v0",
+        "hs38d1a",
+        "hs38d1s",
+        "hs38d1t",
+        "hs38d1c",
+        "hs38d1v",
+    ),
+    "hg19": ("hg19", "hg37", "grch37", "hs37", "hs37d5"),
+    "t2t": (
+        "t2t",
+        "chm13",
+        "t2tv20",
+        "t2tv20a",
+        "t2tv2",
+        "t2tv2.0",
+        "t2tv11",
+        "t2tv10",
+        "t2tv09",
+        "chm13v2",
+        "chm13v2.0",
+        "chm13v11y",
+        "chm13v1y",
+    ),
+}
+
+_BUILD_PATH_PATTERNS = {
+    build: re.compile(
+        r"(?<![a-z0-9])(?:"
+        + "|".join(map(re.escape, tokens))
+        + r")(?:p[0-9]+)?(?![a-z0-9])",
+        re.IGNORECASE,
+    )
+    for build, tokens in BUILD_PATH_TOKENS.items()
 }
 
 # chr1 lengths are distinct per assembly and survive any contig naming scheme.
@@ -78,9 +117,13 @@ def ploidy_for_build(build: str) -> str:
 
 
 def build_from_path(path: str) -> str | None:
-    path_lower = path.lower()
-    for build, tokens in BUILD_PATH_TOKENS.items():
-        if any(token in path_lower for token in tokens):
+    """Recognize build tokens in a name or metadata text.
+
+    Filesystem callers must pass the file or reference folder's own name,
+    not its ancestors. Metadata callers may pass descriptions or header values.
+    """
+    for build, pattern in _BUILD_PATH_PATTERNS.items():
+        if pattern.search(path):
             return build
     return None
 

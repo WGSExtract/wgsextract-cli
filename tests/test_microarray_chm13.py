@@ -9,13 +9,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from scripts.build_microarray_chm13_map import write_site_map
-from wgsextract_cli.core.microarray.site_map import _CHROMS, SiteProjection
-from wgsextract_cli.core.microarray_chm13 import (
+from wgsextract_cli.core.microarray.chm13 import (
     load_chm13_catalogue,
     validate_chm13_alignment_header,
     validate_chm13_reference,
     write_chm13_ploidy,
 )
+from wgsextract_cli.core.microarray.site_map import _CHROMS, SiteProjection
 from wgsextract_cli.core.sample_ploidy import _sex_aware
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -210,7 +210,7 @@ def test_reference_rejects_same_length_wrong_mitochondrial_sequence(
             "wgsextract_cli.core.utils._normalize_subprocess_cmd",
             side_effect=lambda command: ["resolved-samtools", *command[1:]],
         ),
-        patch("wgsextract_cli.core.microarray_chm13.subprocess.Popen", command),
+        patch("wgsextract_cli.core.microarray.chm13.subprocess.Popen", command),
         pytest.raises(WGSExtractError, match="chrM"),
     ):
         validate_chm13_reference(fasta, catalogue)

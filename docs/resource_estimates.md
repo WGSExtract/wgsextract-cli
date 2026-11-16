@@ -11,6 +11,82 @@ The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
 or 2.8 h at eight, excluding one-time panel preparation. These are not measured
 whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
 
+## Lossless output profile measurements
+
+The opt-in [alignment output profiles](ont.md#lossless-output-profiles)
+were measured on retained ONT slices from
+[#431 (ONT realignment disk growth)](https://github.com/WGSExtract/wgsextract-cli/issues/431)
+and a public short-read full genome for
+[#691 (slimmer alignment output)](https://github.com/WGSExtract/wgsextract-cli/issues/691).
+The unchanged installed encoder default was CRAM 3.1 in these runs.
+These are **single shared-host observations**, not established speed ratios
+or changes to the automatic resource estimates.
+
+### Public HG002 30× full genome
+
+The input was Google's public HG002 NovaSeq PCR-free 30× BAM: 43,667,905,004
+bytes, 723,327,664 records, against full hs38DH (3,366 reference contigs).
+On lin-mid (Linux x86-64, hostname lin-omarchy), samtools/htslib 1.24 encoded
+the same coordinate-sorted input with four additional threads and the
+product's profile options. **Write time includes encoding and indexing
+only**, not mapping or sorting. `vcf snp --threads 4 --parallel --ploidy 2`
+then read each CRAM unchanged, without compatibility conversion; its time
+includes calling and output, not just decoding.
+
+| Profile | CRAM bytes | Change vs default | Write s | Read + SNP calling s | Encoder peak RSS, GB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| default (3.1) | 15,211,213,916 | — | 568.07 | 2,218.83 | 1.38 |
+| archive (3.1/archive) | 13,785,972,677 | −9.37% | 1,762.11 | 3,627.04 | 5.19 |
+| calling (3.0) | 17,034,596,626 | +11.99% | 749.56 | 3,019.26 | 1.28 |
+
+Archive saved 1.43 GB, but took 3.10× as long to write and used 3.76× the
+encoder RSS in this observation; SNP calling took 1.63× as long. The calling
+profile prioritizes older-reader compatibility, not smaller or faster output.
+RSS here is the encoder process's peak, **not total pipeline memory**.
+Profiles ran sequentially, default/archive/calling, on SSD with warm caches
+and other shared-host activity; do not compare these timings as equivalent
+end-to-end runs with the earlier M1 Pro slice observation.
+
+All three produced **4,504,821 exactly identical non-header SNP VCF records**,
+including genotypes and annotations, SHA-256:
+`87118740ebf81fadaec346e73d4c6cf9468976a947bb00d4160b47c441d86270`.
+Decoded-record checksums also matched the source over all 723,327,664
+records, including unmapped, secondary and supplementary records, checking
+names, flags, sequence, qualities, coordinates, CIGAR and mates.
+New CRAMs were deleted only after recording verified results, keeping one
+profile's output on disk at a time; the source BAM was already on SSD.
+
+### Retained ONT slices
+
+The original 104 GB input is unavailable, but its retained original-input
+slice and a chr20:10–11 Mb slice of the realigned output remain. The latter
+contains 3,493 records with the full supplementary sequences and modification
+tags. Both used full hs38, the same samtools build and four additional encoder
+threads. Here write time includes **sort/encode/index** (`sort -m 256M`),
+not mapping; `vcf snp` used four threads, serial traversal and diploid ploidy.
+
+| ONT slice | Profile | CRAM bytes | Write s | Read + SNP calling s | SNP records |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Original input | default | 70,333,743 | 1.16 | 7.17 | 3,105 |
+| Original input | archive | 67,826,668 | 19.59 | 11.82 | 3,105 |
+| Original input | calling | 70,187,889 | 1.04 | 7.66 | 3,105 |
+| Realigned chr20 | default | 56,213,264 | 1.31 | 4.18 | 1,742 |
+| Realigned chr20 | archive | 52,545,253 | 24.75 | 7.16 | 1,742 |
+| Realigned chr20 | calling | 56,105,626 | 1.08 | 4.32 | 1,742 |
+
+Archive saved 3.56% and 6.53%, respectively, versus the newly encoded default.
+These slices do **not** reproduce or establish the retrospective's earlier
+27% saving, nor measure a full ONT genome. Within each slice, every non-header
+SNP record hashed identically across profiles. All realigned-slice records
+also matched source checksums, including MM/ML/MN methylation tags.
+This tests direct reader compatibility, **not ONT calling accuracy**.
+
+Evidence from 2026-11-15 is retained on lin-mid under `out/691/`:
+`full/`, `ont/`, `original-ont/` contain commands, timing/RSS JSON and logs,
+result tables and identical-call hashes; `ont-checksums.tsv` records ONT
+sequence/tag preservation. The full run used coordinator lease L6448
+(6 cores, 14 GiB RAM, 35 GiB additional SSD reserved) and completed with exit 0.
+
 ## Whole-genome host requirement
 
 Before a run starts, `realign` (chunked or not), `vcf deepvariant` and `vcf

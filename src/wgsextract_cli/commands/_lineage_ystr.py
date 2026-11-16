@@ -61,7 +61,7 @@ def run_y_str(params: YStrParams) -> None:
     if lib.fasta:
         reference_build = build_from_chr1_length(
             read_fai_lengths(lib.fasta)
-        ) or build_from_path(lib.fasta)
+        ) or build_from_path(Path(lib.fasta).name)
         if is_cram and reference_build and reference_build != build:
             raise WGSExtractError(
                 f"The selected reference FASTA is {reference_build}, but the "

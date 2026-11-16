@@ -79,6 +79,18 @@ with default CRAM 3.1. These are single warm-cache observations on a shared
 M1 Pro, not established performance guarantees; the trade-off depends on
 the reads and reader.
 
+The follow-up public **30× full HG002 genome** observation on Linux saved
+**9.37%** with archive, but encoding/indexing took **3.10×** as long, used
+**5.19 vs 1.38 GB encoder RSS**, and SNP calling took **1.63×** as long.
+Calling output was **11.99% larger** than default. Retained ONT slices from
+the realignment disk-growth investigation saved **3.56–6.53%** with archive;
+the realigned slice's sequences, qualities and MM/ML/MN tags were unchanged.
+Every profile gave identical SNP records within each dataset, including
+**4,504,821 full-genome records**, read directly without conversion.
+These are single shared-host measurements, not ONT caller-accuracy validation
+or a full ONT-genome benchmark. See the [size/time tables and methodology](
+resource_estimates.md#lossless-output-profile-measurements).
+
 ```bash
 wgsextract realign --input ont.cram --ref hs38.fa --output-profile archive
 wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
