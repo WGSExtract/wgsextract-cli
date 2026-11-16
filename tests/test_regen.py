@@ -18,6 +18,9 @@ GENERATED = (
     "src/wgsextract_cli/assets/cli/help-index.json",
     "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
+    "gui/app/shared/generated/server-transport.ts",
 )
 
 
@@ -50,6 +53,8 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
         "scripts/gen_output_schemas.py",
+        "scripts/gen_server_contracts.py",
+        "scripts/server_transport_typescript.py",
         "tests/cli_snapshot.py",
         "site_src/cli.md",
     ):
@@ -141,6 +146,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         "gen_command_docs.py",
         "gen_config_docs.py",
         "gen_output_schemas.py",
+        "gen_server_contracts.py",
     ):
         checked = subprocess.run(
             [sys.executable, f"scripts/{generator}", "--check"],
@@ -149,3 +155,38 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
             text=True,
         )
         assert checked.returncode == 0, checked.stderr
+
+
+def test_989_stale_compact_openapi_reports_readable_field_diff(
+    regen_repo: Path,
+) -> None:
+    regenerated = resolve(regen_repo)
+    assert regenerated.returncode == 0, regenerated.stderr
+    path = (
+        regen_repo / "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+    )
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["info"]["version"] = "stale-version"
+    path.write_text(
+        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+    )
+
+    checked = subprocess.run(
+        [sys.executable, "scripts/gen_server_contracts.py", "--check"],
+        cwd=regen_repo,
+        capture_output=True,
+        text=True,
+    )
+
+    assert checked.returncode == 1
+    assert (
+        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        in checked.stderr
+    )
+    assert '-    "version": "stale-version",' in checked.stderr
+    assert '+    "version":' in checked.stderr
+    assert len(checked.stderr) < 5000
+    assert (
+        json.loads(path.read_text(encoding="utf-8"))["info"]["version"]
+        == "stale-version"
+    )

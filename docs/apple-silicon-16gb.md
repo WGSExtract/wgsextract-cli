@@ -119,10 +119,10 @@ A whole short-read genome on this Mac normally uses **staged Metal** when the
 concurrent pipeline is too large. The manifest records
 `alignment_mode="staged_metal"` and
 `native_aligner_backend_reason="memory_budget_metal_staged"`.
-Only staged alignment caps BWA at three workers; K100M remains fixed.
-Postprocessing uses compressed level3 BAM chunks, up to2 GiB per single sort
-(a smaller explicit/config memory limit is retained), followed by a bounded
-merge. Generated FASTQs are removed after the validated alignment checkpoint
+Staged alignment uses the [per-stage thread plan](hardware.md#apple-silicon-stage-plan);
+K100M remains fixed. Postprocessing uses compressed level3 BAM chunks, with
+up to 2 GiB per sort thread (stepping down to 256M when needed to fit all workers),
+followed by a bounded merge. Generated FASTQs are removed after the validated alignment checkpoint
 unless `--keep-fastq`; user-provided FASTQs are never deleted. Failed stages
 retain checkpoints in the reported workspace for unchanged-input recovery.
 
@@ -313,6 +313,22 @@ run with `-K 10000000` wrote the same records, from either aligner.
 | `wgse-bwa-mem3 --metal`, 4 threads | 721 s | 10.6 GiB |
 | `wgse-bwa-mem3` on the CPU, 8 threads | 797 s; over 900 s | 10.6 GiB |
 | `wgse-bwa-mem3` on the CPU, 4 threads | over 900 s | 10.5 GiB |
+
+The follow-up [thread study, issue #968](https://github.com/WGSExtract/wgsextract-cli/issues/968)
+used 278,929 chr20 pairs and kept at least 6 GiB available. CPU `wgse-bwa` took
+13.72 s at four threads and 9.14 s at eight; Metal took 3.30–3.31 s.
+The 1-second periodic responsiveness task had a worst observed scheduling/launch
+delay of 43 ms during CPU mapping and 17 ms during sort. All decoded records
+matched across thread counts with fixed `-K 10000000`.
+This did **not** reproduce an OS-thrashing problem from sort's extra workers.
+It does not establish safety under memory pressure: the much larger
+`wgse-bwa-mem3` runs below are a separate memory-pressure failure.
+The accompanying 8P+2E M1 Pro study used four balanced rounds under normal
+desktop load: CPU mapping benefited from extra workers, Metal and markdup did
+not materially benefit, and sort at ten workers was slower than at eight without
+seconds-long scheduling stalls. Its tiny codec/calling gains are sensitive to
+background work on efficiency cores; see the
+[thread-plan measurements and limitations](hardware.md#apple-silicon-stage-plan).
 
 - **`wgse-bwa-mem3` thrashed.** macOS compressed memory to make room, free
   memory fell to 36–39%, and the load average was seen at about 50. The Mac

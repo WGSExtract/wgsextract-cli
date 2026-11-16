@@ -420,6 +420,7 @@ class ChunkedAlignment:
     decode: list[str]
     resume: bool = False
     output_profile: str = "default"
+    compression_threads: str | None = None
 
     @property
     def workdir(self) -> Path:
@@ -766,7 +767,7 @@ class ChunkedAlignment:
         sizes = []
         for group, regions in enumerate(groups):
             path = self._group_file(group, number)
-            options = ["--no-PG", "-@", self.threads, *self._output_options(),
+            options = ["--no-PG", "-@", self.compression_threads or self.threads, *self._output_options(),
                        "-o", str(path)]  # fmt: skip
             run_command(
                 self._view(options, str(sorted_chunk), regions, f"group-{group:03d}")

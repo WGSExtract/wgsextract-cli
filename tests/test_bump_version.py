@@ -1,13 +1,15 @@
 """scripts/bump_version.py changes every version, the app's CLI pin too, or none."""
 
 import importlib.util
+import json
 import shutil
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "bump_version.py"
-FILES = ["pyproject.toml", "pixi.toml", "src/wgsextract_cli/__init__.py"]
+OPENAPI = "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+FILES = ["pyproject.toml", "pixi.toml", "src/wgsextract_cli/__init__.py", OPENAPI]
 SITE = ["site_src/index.md", "site_src/install.md"]
 GUI_TAG = "gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt"
 GUI_FILES = [
@@ -43,10 +45,13 @@ def bump(tmp_path, monkeypatch):
     return module
 
 
-def test_bumps_all_three(bump, tmp_path):
+def test_989_bumps_release_versions_and_openapi(bump, tmp_path):
+    original = json.loads((tmp_path / OPENAPI).read_text(encoding="utf-8"))
     assert bump.main(["bump", "9.8.7"]) == 0
     for name in FILES:
         assert '"9.8.7"' in (tmp_path / name).read_text()
+    original["info"]["version"] = "9.8.7"
+    assert json.loads((tmp_path / OPENAPI).read_text(encoding="utf-8")) == original
     # Issue #510: the app ships in the same release, so it bundles this CLI.
     assert (tmp_path / GUI_TAG).read_text() == "v9.8.7\n"
     # The CLI site names it as the current release; past releases stay.

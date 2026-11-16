@@ -7,7 +7,7 @@ import tempfile
 from collections.abc import Callable, Iterator, Sequence
 from os import devnull, fspath
 from pathlib import Path
-from typing import IO, NamedTuple
+from typing import IO, Literal, NamedTuple
 
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -48,6 +48,7 @@ def base_args(
     threads: int | str | None,
     memory: str | None,
     region: str | None = None,
+    stage: Literal["sort", "compression"] = "compression",
 ) -> BaseArgs:
     """Validate the input, create the output directory and resolve the reference."""
     if not input_path:
@@ -56,7 +57,7 @@ def base_args(
     verify_paths_exist({"--input": input_path})
     logging.debug(f"Input file: {str(absolute_path(input_path))}")
 
-    threads, memory = get_resource_defaults(threads, memory)
+    threads, memory = get_resource_defaults(threads, memory, stage=stage)
     outdir = fspath(outdir) if outdir else str(absolute_path(input_path).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
@@ -268,6 +269,7 @@ def collate_working_memory(
 ) -> int:
     """Estimated resident memory of `samtools collate` holding its largest bucket.
 
+    ``threads`` sizes the sort-memory budget, not the codec worker count.
     With the input's record count and the largest sampled BAM record, each
     held record costs that record's power-of-two buffer plus fixed overhead;
     the largest bucket allows six standard deviations over the mean for mates
@@ -305,6 +307,7 @@ def _fastq_stages(
     region: str | None = None,
     out_other: PathInput | None = None,
     from_stdin: bool = False,
+    memory_threads: str | None = None,
 ) -> list[list[str]]:
     view = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
     view += cram_opt or []
@@ -312,7 +315,7 @@ def _fastq_stages(
     collate = ["samtools", "collate", "-u", "-O", "--no-PG", "-@", threads]
     collate += [
         "-n",
-        str(_collate_buckets(input_path, threads, memory)),
+        str(_collate_buckets(input_path, memory_threads or threads, memory)),
         "-T",
         str(Path(temporary, "collate")),
         "-",
@@ -375,8 +378,9 @@ def paired_fastq_stream(
     memory: str,
     temp_parent: PathInput,
     cram_opt: list[str] | None = None,
+    memory_threads: str | None = None,
 ) -> Iterator[list[list[str]]]:
-    """File extraction's collate/filtering with interleaved pairs on stdout."""
+    """Interleaved pairs; ``memory_threads`` keeps sort RAM separate from codecs."""
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or temp_parent, prefix=".collate_"
     ) as tmp:
@@ -387,6 +391,7 @@ def paired_fastq_stream(
             "-",
             threads=threads,
             memory=memory,
+            memory_threads=memory_threads,
             temporary=tmp,
             singletons=devnull,
             out_other=other,
@@ -409,6 +414,7 @@ def alignments_to_fastq(
     out_singletons: PathInput | None = None,
     heartbeat: bool = False,
     expected_reads: int | None = None,
+    memory_threads: str | None = None,
 ) -> None:
     """
     Pair up a BAM/CRAM's reads and write FASTQs (samtools view | collate | fastq).
@@ -419,7 +425,8 @@ def alignments_to_fastq(
     ``temp_parent`` (the output directory) because a whole genome needs far more
     space than the system temp dir usually has. Singletons are discarded unless
     ``out_singletons`` is given; READ_OTHER reads go to ``out_other`` if given,
-    else are discarded with a warning.
+    else are discarded with a warning. ``memory_threads`` sizes the bucket
+    budget independently of the codec worker count.
     """
     with (
         cleanup_files(
@@ -462,6 +469,7 @@ def alignments_to_fastq(
                 staged_r2,
                 threads=threads,
                 memory=memory,
+                memory_threads=memory_threads,
                 temporary=tmp,
                 singletons=staged_singletons or Path(tmp, "singletons.fastq"),
                 cram_opt=cram_opt,

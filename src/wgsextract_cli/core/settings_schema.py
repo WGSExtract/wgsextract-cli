@@ -117,8 +117,8 @@ class Settings:
     )
     cpu_threads: int | str = setting(
         "auto",
-        "CPU threads: a positive integer, or auto (Apple Silicon performance "
-        "cores, otherwise all cores)",
+        "CPU threads: a positive integer for every stage, or auto "
+        "(per-stage core-layout plan on Apple Silicon; all cores elsewhere)",
     )
     memory_limit: str = setting(
         "auto",

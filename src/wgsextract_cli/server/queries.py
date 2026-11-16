@@ -25,6 +25,7 @@ from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_table import COLUMN_NAMES, COLUMNS, INTEGER, REAL
 
 from .operations import PathGuard, RequestError
+from .transport import VariantPage
 
 MAX_ROWS = 1000
 _FAR = 2**62
@@ -339,7 +340,8 @@ def query_variants(guard: PathGuard, arguments: Mapping[str, Any]) -> dict[str, 
         close = getattr(rows, "close", None)
         if close:
             close()
-    return {"path": str(path), "rows": found, "next_cursor": next_cursor}
+    page: VariantPage = {"path": str(path), "rows": found, "next_cursor": next_cursor}
+    return dict(page)
 
 
 # Report ----------------------------------------------------------------------
