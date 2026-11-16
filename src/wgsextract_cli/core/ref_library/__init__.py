@@ -1,4 +1,8 @@
-"""Reference library package: genome catalog (`catalog`) and downloads (`downloads`)."""
+"""Reference library helpers.
+
+``catalog`` and ``downloads`` manage available genomes and transfers.
+``ncount`` writes FASTA N-run sidecars; ``needs`` finds missing command resources.
+"""
 
 from .catalog import get_available_genomes
 from .downloads import download_file
