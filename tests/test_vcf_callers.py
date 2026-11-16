@@ -162,20 +162,30 @@ def _1000_genomes_style_cram(genome: Namespace, folder: Path) -> Path:
 
 
 @needs_tools("gatk", "samtools", "tabix")
-def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(genome, tmp_path, caplog):
+@pytest.mark.parametrize("linked", [False, True])
+def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(
+    genome, tmp_path, caplog, linked
+):
     """#1034 (vcf gatk rejects 1000 Genomes CRAM indexes): htsjdk refused the
     .crai ("unmapped slice with unexpected alignment start (0) or span"). GATK
     now reads the whole CRAM through a fresh temporary index in --tmp-dir, and
-    the CRAM and its index are left as they were."""
+    the CRAM and its index are left as they were. htsjdk also finds the index
+    beside the file a link without one points to."""
     require_runnable("gatk", "samtools", "tabix")
     ref = _reference_copy(genome, tmp_path / "ref")
     cram = _1000_genomes_style_cram(genome, tmp_path / "reads")
     before = {p.name: p.read_bytes() for p in cram.parent.iterdir()}
+    reads = tmp_path / "link.cram" if linked else cram
+    if linked:
+        try:
+            reads.symlink_to(cram)
+        except OSError:
+            pytest.skip("can't make a symbolic link here")
     scratch, outdir = tmp_path / "scratch", tmp_path / "out"
     scratch.mkdir()
     caplog.set_level(logging.INFO)
     run_wgsextract(
-        "vcf", "gatk", "--input", cram.as_posix(), "--ref", ref,
+        "vcf", "gatk", "--input", reads.as_posix(), "--ref", ref,
         "--outdir", outdir.as_posix(), "--tmp-dir", scratch.as_posix(),
     )  # fmt: skip
 

@@ -46,11 +46,15 @@ def needs_cram30(alignment: str) -> bool:
 
 
 def _htsjdk_crai(alignment: str) -> Path | None:
-    """The .crai htsjdk opens beside a CRAM: x.crai, else x.cram.crai."""
-    cram = Path(alignment)
-    for index in (cram.with_suffix(".crai"), Path(f"{alignment}.crai")):
-        if index.is_file():
-            return index
+    """The .crai htsjdk opens for a CRAM: x.crai or x.cram.crai (before
+    x.cram.bai or .csi) beside it, else beside the file a link points to."""
+    for cram in (Path(alignment), Path(alignment).resolve()):
+        for index in (
+            *([cram.with_suffix(".crai")] if cram.suffix == ".cram" else []),
+            *(Path(f"{cram}{ext}") for ext in (".crai", ".bai", ".csi")),
+        ):
+            if index.is_file():
+                return index if index.suffix == ".crai" else None
     return None
 
 
