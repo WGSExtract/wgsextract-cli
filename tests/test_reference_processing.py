@@ -690,7 +690,7 @@ def test_bgzf_decoder_failure_preserves_the_archive(tmp_path, encrypted, filenam
 
 
 def test_an_interrupted_bootstrap_extraction_is_resumed_review_514(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, fake_aadr_download
 ):
     """A disk that fills up after the chains are extracted must not leave the
     library reported as bootstrapped."""

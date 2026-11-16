@@ -1,6 +1,7 @@
 """download_file against a real local HTTP server: resume, restarts, cancellation,
 checksums and the dev cache. Nothing here reaches the network."""
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -9,7 +10,8 @@ import shutil
 import subprocess
 import threading
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -736,3 +738,21 @@ def test_an_unfinished_segmented_partial_is_never_taken_as_complete(
 
     downloads.download_file(srv.url, str(dest))
     assert not dest.exists() or dest.read_bytes() == srv.data
+
+
+def test_a_port_probe_by_other_software_is_not_a_download_request_issue_987(
+    server: RangeServer, tmp_path: Path
+) -> None:
+    """Software on the host probed the test server's new port with
+    `GET /` and `Range: bytes=0-16383`, so a test counting the download's
+    requests saw one more than the download made."""
+    probe = Request(
+        f"http://127.0.0.1:{server.httpd.server_port}/",
+        headers={"Range": "bytes=0-16383"},
+    )
+    with contextlib.suppress(HTTPError):
+        urlopen(probe, timeout=10).close()
+    dest = tmp_path / "file.bin"
+    assert downloads.download_file(server.url, str(dest))
+    assert dest.read_bytes() == DATA
+    assert server.gets() == [None]
