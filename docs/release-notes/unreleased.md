@@ -3,6 +3,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `vcf acmg --research-acmg` adds automated ACMG/AMP classes from fastVEP
+  (`ACMG_CLASS`, `ACMG_CRITERIA`, `ACMG_TRANSCRIPT`) to a `vep run` VCF, on the
+  transcript the variant table shows. **Research use only; not a diagnosis**:
+  it is off unless asked for, and every output carries the disclaimer. It
+  refuses databases that lack any of its eight sources (ClinVar and its
+  protein index, gnomAD v4.1 and its constraint, ClinGen, REVEL, SpliceAI,
+  phyloP), which you build with `fastvep sa-build`. GRCh38; Linux and macOS,
+  not Windows. See [acmg.md](../acmg.md).
+
 - Low-memory Macs retain Metal BWA rather than the slower CPU fallback when
   compressed staging fits the existing physical-RAM gate. Alignment no longer
   overlaps duplicate marking/sorting; bounded compressed BAM checkpoints avoid

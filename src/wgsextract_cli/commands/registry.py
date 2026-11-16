@@ -206,6 +206,7 @@ ADVANCED_SUBCOMMANDS = frozenset(
         "vcf gerp",
         "vcf spliceai",
         "vcf alphamissense",
+        "vcf acmg",
         "vcf phylop",
     }
 )

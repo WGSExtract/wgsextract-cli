@@ -16,6 +16,7 @@ _WINDOWS_VCF_TOOLS = {
     "cnv": "delly",
     "freebayes": "FreeBayes",
     "deepvariant": "DeepVariant",
+    "acmg": "fastVEP",
 }
 _WINDOWS_TYPING_TOOLS = {
     "cyp2d6": "Cyrius",
@@ -74,6 +75,10 @@ def verify_platform_support(args: argparse.Namespace) -> None:
             from wgsextract_cli.commands.vcf.clair3 import require_supported_platform
 
             require_supported_platform()
+        elif subcommand == "acmg":
+            from wgsextract_cli.commands.vcf.acmg import require_opt_in
+
+            require_opt_in(bool(getattr(args, "research_acmg", False)))
         elif subcommand == "impute":
             from wgsextract_cli.commands.vcf.imputation import (
                 require_supported_platform as require_imputation_platform,

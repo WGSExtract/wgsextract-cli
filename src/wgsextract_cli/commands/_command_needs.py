@@ -164,6 +164,9 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),
     "vcf phylop": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf cadd": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf acmg": _n(
+        MINUTES, "bcftools", "bgzip", "tabix", "fastvep", optional="samtools"
+    ),
     "vcf gerp": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),

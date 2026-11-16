@@ -6,6 +6,7 @@ from collections.abc import Callable
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api._params import Params
 from wgsextract_cli.api.vcf import (
+    VcfAcmgParams,
     VcfAlphamissenseParams,
     VcfAnnotateParams,
     VcfCaddParams,
@@ -42,6 +43,7 @@ from wgsextract_cli.core.messages import CLI_HELP
 cmd_alphamissense = command_handler(
     "wgsextract_cli.commands.vcf.splicing", "cmd_alphamissense"
 )
+cmd_acmg = command_handler("wgsextract_cli.commands.vcf.acmg", "cmd_acmg")
 cmd_annotate = command_handler("wgsextract_cli.commands.vcf.basic", "cmd_annotate")
 cmd_cadd = command_handler("wgsextract_cli.commands.vcf.deleteriousness", "cmd_cadd")
 cmd_chain_annotate = command_handler(
@@ -229,6 +231,12 @@ def register(
             "Annotate VCF with AlphaMissense pathogenicity scores.",
             VcfAlphamissenseParams,
             cmd_alphamissense,
+        ),
+        (
+            "acmg",
+            "Research-only ACMG/AMP classes with fastVEP (opt-in).",
+            VcfAcmgParams,
+            cmd_acmg,
         ),
         (
             "pharmgkb",

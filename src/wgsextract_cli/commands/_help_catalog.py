@@ -306,6 +306,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         _SCORED.format(name="alphamissense"),
         f"wgsextract vcf alphamissense {_VCF_IN}",
     ),
+    "vcf acmg": _h(
+        "acmg_annotated.vcf.gz (+ .tbi) with INFO ACMG_CLASS, ACMG_CRITERIA and "
+        "ACMG_TRANSCRIPT, and acmg_summary.json; research only, not a diagnosis.",
+        "wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg "
+        "--sa-dir acmg_sa --gff3 Homo_sapiens.GRCh38.116.gff3.gz",
+    ),
     "vcf chain-annotate": _h(
         "chain_annotated.vcf.gz (+ .tbi).",
         f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad",

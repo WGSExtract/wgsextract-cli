@@ -2395,6 +2395,18 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/xz-gpl-tools-5.8.3-hd0f0c4f_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/xz-tools-5.8.3-h8088a28_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
+  fastvep:
+    channels:
+    - url: https://conda.anaconda.org/conda-forge/
+    - url: https://conda.anaconda.org/bioconda/
+    packages:
+      linux-64:
+      - conda: https://conda.anaconda.org/bioconda/linux-64/fastvep-0.5.0-hfa8f182_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgcc-16.2.0-ha9f2e26_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgomp-16.2.0-he0feb66_7.conda
+      osx-64:
+      - conda: https://conda.anaconda.org/bioconda/osx-64/fastvep-0.5.0-h87b00fb_0.conda
   freebayes:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -8145,6 +8157,21 @@ packages:
     - fasttree >=2.2.0,<3.0a0
   size: 197973
   timestamp: 1764102501456
+- conda: https://conda.anaconda.org/bioconda/linux-64/fastvep-0.5.0-hfa8f182_0.conda
+  sha256: 13b30f2a919064ea93c95bb67e29aaa7295be5ea094cf8e0fd945633ada148a1
+  md5: f3c91893e576e62ddb90f8cdfa63b067
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  constrains:
+  - __glibc >=2.17
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports:
+    weak:
+    - fastvep >=0.5.0,<0.6.0a0
+  size: 5594737
+  timestamp: 1794361078006
 - conda: https://conda.anaconda.org/bioconda/linux-64/freebayes-1.3.10-h3752d28_1.conda
   sha256: 5e1f7c753b79c88c7823b09646bb3a721a2a82487ec9e9d426c99b96e496a4ae
   md5: 5dc06794b30835794c911d351a8be85a
@@ -11973,6 +12000,20 @@ packages:
     - fasttree >=2.2.0,<3.0a0
   size: 181656
   timestamp: 1764103227722
+- conda: https://conda.anaconda.org/bioconda/osx-64/fastvep-0.5.0-h87b00fb_0.conda
+  sha256: 0233626c317897592137c529961bad8fed518bcc4c94586d1da8cbb84e772925
+  md5: 240db63e928b74dcfdf0c2bc2fc6698d
+  depends:
+  - __osx >=10.13
+  constrains:
+  - __osx >=10.13
+  license: Apache-2.0
+  license_family: APACHE
+  run_exports:
+    weak:
+    - fastvep >=0.5.0,<0.6.0a0
+  size: 4296225
+  timestamp: 1794362374546
 - conda: https://conda.anaconda.org/bioconda/osx-64/freebayes-1.3.10-h6b87194_1.conda
   sha256: b303ae002464943ebdec973890d0a014cfe254839d203f2efb02e4cf298037be
   md5: a9c72944ebda4717aef6f7aab524d964
@@ -34551,55 +34592,46 @@ packages:
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
   subdir: win-64
   sha256: 5b462dffdec0d1f38fd6c07010b74554f1e6b484e3cbc8987a5488cfcc80b799
-  channel: null
   license: MIT
   timestamp: 1794794359530
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
   subdir: win-64
   sha256: f1afc4d1048aa99912510b42a8f1e037b80c151ab6e56052fed9df953d34fd80
-  channel: null
   license: GPL-3.0-only
   timestamp: 1794794359540
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
   subdir: win-64
   sha256: 5e73e9d98f91f5a595bf71d7e9028c140d2e3a000042fd3f1ce0ee1214d68e63
-  channel: null
   license: MIT
   timestamp: 1794794359542
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/fastp-1.4.0-wgse_1.conda
   subdir: win-64
   sha256: 5eb220baf09497eff42cf175f4cdc8a3d85de88e0e37987c2b4815e3e32e6bed
-  channel: null
   license: MIT
   timestamp: 1794794359543
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/gkl-0.8.11-wgse_1.conda
   subdir: win-64
   sha256: 1ea538cb6e08b31a7bd37def0195ccd417634f221477a76f7e5e5aeb147ff6b2
-  channel: null
   license: MIT AND BSD-3-Clause AND (GPL-3.0-or-later WITH GCC-exception-3.1)
   timestamp: 1794794359545
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/htslib-1.24-wgse_2.conda
   subdir: win-64
   sha256: cf4d42c7c0a3b0867394485bed2511296b84e819deac1577cb132971a686c4f9
-  channel: null
   license: MIT
   timestamp: 1794794359547
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/minimap2-2.31-wgse_1.conda
   subdir: win-64
   sha256: 1cd0e2770487968abf684a04fbe591f1f81d23d60b2edd30c5207a19fe547bbf
-  channel: null
   license: MIT
   timestamp: 1794794359548
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samblaster-0.1.26-wgse_2.conda
   subdir: win-64
   sha256: 195387af307f978dee16cac77ad332c7943a118a6c2c66c20d3fa5afd27b1003
-  channel: null
   license: MIT
   timestamp: 1794794359550
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samtools-1.24-wgse_3.conda
   subdir: win-64
   sha256: 5aeb7f62293a8dd1b3e75982d53b258be02d38a39a81ff3ff76dec530190ad48
-  channel: null
   license: MIT
   timestamp: 1794794359552
 - pypi: ./

@@ -543,6 +543,33 @@ class VcfSpliceaiParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfAcmgParams(_AnnotatorParams):
+    """Research-only ACMG/AMP classes from fastVEP for a ``vep run`` (vep-rs)
+    VCF, as ``acmg_annotated.vcf.gz`` (INFO ACMG_CLASS, ACMG_CRITERIA,
+    ACMG_TRANSCRIPT) and ``acmg_summary.json``. Not a diagnosis. Refused
+    unless ``research_acmg`` is set; GRCh38 only."""
+
+    COMMAND = "vcf acmg"
+
+    research_acmg: bool = param(
+        False,
+        help="Required: confirm these automated classes are for research "
+        "only, not a diagnosis.",
+        action="store_true",
+    )
+    sa_dir: Path | None = param(
+        None,
+        help="Folder of fastVEP databases (fastvep sa-build): ClinVar, its "
+        "protein index, gnomAD, gene constraint, ClinGen, REVEL, SpliceAI, phyloP.",
+        path="directory",
+        config_key="acmg_sa_dir",
+    )
+    gff3: Path | None = _resource_param(
+        "Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz).", "acmg_gff3"
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfAlphamissenseParams(_AnnotatorParams):
     """AlphaMissense pathogenicity scores as ``alphamissense_annotated.vcf.gz``."""
 
@@ -826,6 +853,20 @@ def spliceai(
     return _run_on_vcf(params, run_spliceai, progress, cancel, check)
 
 
+def acmg(
+    params: VcfAcmgParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Classify with fastVEP (research only); output roles ``annotated_vcf``
+    and ``acmg_summary``, with the class counts in the metrics."""
+    from wgsextract_cli.commands.vcf.acmg import run_acmg
+
+    return _run_on_vcf(params, run_acmg, progress, cancel, check)
+
+
 def alphamissense(
     params: VcfAlphamissenseParams,
     *,
@@ -883,6 +924,7 @@ def chain_annotate(
 
 __all__ = [
     "HAPLOTYPES",
+    "VcfAcmgParams",
     "VcfAlphamissenseParams",
     "VcfAnnotateParams",
     "VcfCaddParams",
@@ -901,6 +943,7 @@ __all__ = [
     "VcfTableParams",
     "VcfToFastaParams",
     "VcfTrioParams",
+    "acmg",
     "alphamissense",
     "annotate",
     "cadd",

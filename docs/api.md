@@ -1264,6 +1264,29 @@ Annotate with SpliceAI; output role `annotated_vcf`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `spliceai_file` | `Path \| None` | `None` (config `spliceai_vcf_path`) | `--spliceai-file` | Path to SpliceAI VCF data file. |
 
+### `api.vcf.acmg(VcfAcmgParams)`
+
+CLI: `wgsextract vcf acmg`.
+
+Classify with fastVEP (research only); output roles `annotated_vcf`
+and `acmg_summary`, with the class counts in the metrics.
+
+`VcfAcmgParams`: Research-only ACMG/AMP classes from fastVEP for a `vep run` (vep-rs)
+VCF, as `acmg_annotated.vcf.gz` (INFO ACMG_CLASS, ACMG_CRITERIA,
+ACMG_TRANSCRIPT) and `acmg_summary.json`. Not a diagnosis. Refused
+unless `research_acmg` is set; GRCh38 only.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `research_acmg` | `bool` | `False` | `--research-acmg` | Required: confirm these automated classes are for research only, not a diagnosis. |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder of fastVEP databases (fastvep sa-build): ClinVar, its protein index, gnomAD, gene constraint, ClinGen, REVEL, SpliceAI, phyloP. |
+| `gff3` | `Path \| None` | `None` (config `acmg_gff3`) | `--gff3` | Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz). |
+
 ### `api.vcf.alphamissense(VcfAlphamissenseParams)`
 
 CLI: `wgsextract vcf alphamissense`.
