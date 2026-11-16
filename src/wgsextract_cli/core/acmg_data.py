@@ -351,12 +351,20 @@ def make_plan(
     """What a build of ``chromosomes`` still has to do; ``probe`` asks the
     servers for download sizes."""
     plan = Plan(Path(reflib), Path(sa_dir), release, chromosomes, spliceai)
-    built = _built(plan.sa_dir, load_manifest(sa_dir))
+    manifest = load_manifest(sa_dir)
+    built = _built(plan.sa_dir, manifest)
 
     def size(url: str) -> int | None:
         return _remote_size(url) if probe else None
 
-    if plan.gff3.is_file():
+    # Only a GFF3 the manifest records was checked: one an interrupted run
+    # left is checked and recorded again (fetch reuses the file).
+    gff3 = manifest.get("gff3") or {}
+    if (
+        gff3.get("file") == str(plan.gff3)
+        and plan.gff3.is_file()
+        and plan.gff3.stat().st_size == gff3.get("bytes")
+    ):
         plan.done.append("gff3")
     else:
         url = ENSEMBL.format(release=release) + plan.gff3.name
@@ -753,7 +761,7 @@ class _Build:
         sa-build's memory."""
         dest = self.plan.sources_dir / Path(REVEL_URL).name
         recorded = self.manifest["sources"].get("revel", {}).get("files", {})
-        if dest.name not in recorded:
+        if dest.name not in recorded or not dest.is_file():
             entry = self.fetch(REVEL_URL, dest)
             entry["release"] = "1.3"
             self.record_source("revel", dest.name, entry)

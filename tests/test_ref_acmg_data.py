@@ -299,3 +299,27 @@ def test_a_spliceai_vcf_of_another_assembly_is_refused(publishers, library, tmp_
 def test_chromosomes_other_than_1_to_22_x_and_y_are_refused(chromosomes, tmp_path):
     with pytest.raises(UsageError, match="chr1-22, X or Y"):
         RefAcmgDataParams(ref=tmp_path, chromosomes=chromosomes)
+
+
+@needs_fastvep
+def test_files_an_interrupted_run_left_are_checked_and_recorded_again(
+    publishers, library
+):
+    """#629 review: a GFF3 downloaded but not yet recorded stayed unrecorded
+    (so vcf acmg never found it), and a REVEL zip deleted after it was recorded
+    was never fetched again."""
+    lib, _ = library
+    api.ref.acmg_data(_params(library))
+    manifest = _manifest(library)
+    del manifest["gff3"]
+    (_sa(library) / "acmg_data.json").write_text(json.dumps(manifest))
+    (lib / "ref" / "acmg" / "sources" / "revel.zip").unlink()
+    for path in _sa(library).glob("revel_chr1*"):
+        path.unlink()
+
+    api.ref.acmg_data(_params(library))
+
+    manifest = _manifest(library)
+    assert manifest["gff3"]["verified"].startswith("Ensembl CHECKSUMS")
+    assert manifest["databases"]["revel_chr1"]["records"] == 1
+    assert api.ref.status(RefStatusParams(ref=lib)).details["acmgData"]["installed"]
