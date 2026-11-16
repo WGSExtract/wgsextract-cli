@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -50,4 +51,8 @@ def test_fake_data_generation_keeps_its_run_record_out_of_the_checkout(
 
     assert (fake / "fake.bam.bai").is_file()
     record = repo_root() / "state" / "last-run.json"
-    assert not record.is_file() or str(fake) not in record.read_text()
+    if record.is_file():
+        outputs = json.loads(record.read_text())["result"]["outputs"]
+        assert not any(
+            Path(o["path"]).resolve().is_relative_to(fake.resolve()) for o in outputs
+        )
