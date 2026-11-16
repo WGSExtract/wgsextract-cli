@@ -259,6 +259,16 @@ same document is the `details` of the report's result manifest
 (`<sample>_personal_report.manifest.json`), of `--json` output and of
 `api.report.build()`.
 
+The committed schema is regenerated with `scripts/gen_report_schema.py`
+(`--check` detects drift), also included in `just regen`. Source-run,
+newest-attempt, warning, missing-command and external-link components come
+from the writer-used types in `core/report_documents.py`; their renderers
+use the same types.
+The remaining section/finding rules are still handwritten in
+`scripts/schema_sources/wgsextract.report.1.json`, separate from the generated
+artifact, while those writer models are migrated. This does not add runtime
+validation or change how old reports render.
+
 ```json
 {
   "schema": "wgsextract.report/1",

@@ -47,6 +47,13 @@ from wgsextract_cli.core.builds import (
 from wgsextract_cli.core.multiqc import find_documents
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.report_documents import (
+    ReportAttemptDocument,
+    ReportLinkDocument,
+    ReportMissingDocument,
+    ReportSourceDocument,
+    ReportWarningDocument,
+)
 from wgsextract_cli.core.sample_workspace import WORKSPACE_FILE, SampleWorkspace
 from wgsextract_cli.core.table_writer import Column, Value
 from wgsextract_cli.core.utils import UsageError
@@ -281,9 +288,11 @@ class Source:
             if r.get("role") in SAMPLE_ROLES and r.get("path")
         ]
 
-    def warnings(self) -> list[dict[str, str]]:
+    def warnings(self) -> list[ReportWarningDocument]:
         return [
-            {"code": str(w.get("code", "")), "message": str(w.get("message", ""))}
+            ReportWarningDocument(
+                code=str(w.get("code", "")), message=str(w.get("message", ""))
+            )
             for w in self.records("warnings")
         ]
 
@@ -557,7 +566,7 @@ def _finding(
         "confidence_basis": basis,
         "evidence": {"file": evidence, "region": region, "manifest": manifest},
         "variant": dict(variant) if variant else None,
-        "links": [{"label": label, "url": url} for label, url in links],
+        "links": [ReportLinkDocument(label=label, url=url) for label, url in links],
         "disclaimer": NOT_DIAGNOSIS,
     }
 
@@ -579,34 +588,34 @@ def _section(
     for s in used:
         newer = ctx.superseded.get(_key(s.manifest))
         section["sources"].append(
-            {
-                "command": s.command,
-                "status": s.status,
-                "finished": s.finished or None,
-                "manifest": ctx.rel(s.manifest),
-                "latest_attempt": None
+            ReportSourceDocument(
+                command=s.command,
+                status=s.status,
+                finished=s.finished or None,
+                manifest=ctx.rel(s.manifest),
+                latest_attempt=None
                 if newer is None
-                else {
-                    "command": newer.command,
-                    "status": newer.status,
-                    "finished": newer.finished or None,
-                    "manifest": ctx.rel(newer.manifest),
-                },
-            }
+                else ReportAttemptDocument(
+                    command=newer.command,
+                    status=newer.status,
+                    finished=newer.finished or None,
+                    manifest=ctx.rel(newer.manifest),
+                ),
+            )
         )
         if newer is not None:
             error = (newer.document.get("error") or {}).get("message")
             section["warnings"].append(
-                {
-                    "code": NEWER_ATTEMPT_FAILED,
-                    "message": f"The newest {newer.command} run"
+                ReportWarningDocument(
+                    code=NEWER_ATTEMPT_FAILED,
+                    message=f"The newest {newer.command} run"
                     f" ({newer.finished or 'time not recorded'})"
                     f" {_ENDED.get(newer.status, f'ended {newer.status}')}"
                     + (f": {error}" if error else "")
                     + f". Shown is the older {s.status} run"
                     f" ({s.finished or 'time not recorded'}), which may be out"
                     " of date.",
-                }
+                )
             )
     errors = [
         f"{s.command}: {(s.document.get('error') or {}).get('message', s.status)}"
@@ -618,11 +627,11 @@ def _section(
 
 
 def _missing(section: dict[str, Any], what: str, command: str) -> None:
-    section["missing"].append({"what": what, "command": command})
+    section["missing"].append(ReportMissingDocument(what=what, command=command))
 
 
 def _quality_label(
-    quality: Any, warnings: Sequence[Mapping[str, str]]
+    quality: object, warnings: Sequence[Mapping[str, object]]
 ) -> tuple[str, list[str]]:
     if any(w["code"] == "low_coverage" for w in warnings):
         return variant_confidence.LOW, ["low_coverage"]
