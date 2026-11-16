@@ -225,7 +225,7 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 ### Installing on Linux
 
 From a checkout of this repository, `pixi install -e deepvariant` installs the
-CUDA build from `linux-deepvariant-2` (0.3.0), pinned by its checksum (about
+CUDA build from `linux-deepvariant-3` (0.3.1), pinned by its checksum (about
 3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
 there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
 older standalone install (such as 0.2.0, which sends ONT reads to Google's
@@ -235,17 +235,17 @@ have the WGS and ONT_R104 models, and set `deepvariant_weights` in
 
 ```bash
 mkdir wgse-deepvariant-weights && cd wgse-deepvariant-weights
-gh release download linux-deepvariant-2 -R WGSExtract/wgsextract-cli \
+gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli \
   -p 'wgse-deepvariant-weights-*' -p SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS && tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
-Otherwise, download the whole `linux-deepvariant-2` prerelease into an empty
+Otherwise, download the whole `linux-deepvariant-3` prerelease into an empty
 directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download linux-deepvariant-2 -R WGSExtract/wgsextract-cli
+gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli
 sha256sum -c SHA256SUMS
 tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
@@ -261,7 +261,7 @@ channels = ["conda-forge", "bioconda"]
 platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
-wgse-deepvariant = { path = "./wgse-deepvariant-0.3.0-linux64_cuda129_wgse_0.conda" }
+wgse-deepvariant = { path = "./wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda" }
 ```
 
 ```bash
