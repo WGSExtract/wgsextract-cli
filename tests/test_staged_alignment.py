@@ -214,7 +214,9 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
 
 
 @needs_tools("bwa", "samtools", "samblaster")
-def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkeypatch):
+def test_issue968_multithreaded_real_metal_gate_and_speed_preference(
+    tmp_path, monkeypatch
+):
     native = native_aligners.find_native_aligner("bwa", "auto", quiet=True)
     if native is None or not native.metal_available or native.tool != "bwa":
         pytest.skip("Genuine wgse-bwa Metal hardware/build required")
@@ -222,11 +224,12 @@ def test_issue872_real_metal_physical_gate_and_speed_preference(tmp_path, monkey
     ordinary, _ = _align(reads, reads.ref, tmp_path / "ordinary")
     monkeypatch.setitem(settings, "memory_limit", None)
     gpu = bwa_gpu_memory(reads.ref, 280)
+    # Trigger staging at its floor; a 2G-per-worker budget may fit streaming.
     needed = estimate_mapping_memory(
         reads.ref,
         "bwa",
         threads="2",
-        memory="2G",
+        memory="256M",
         samblaster=True,
         reads=280,
         read_length=100,
