@@ -312,6 +312,12 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
     input_file = str(params.input)
+    current_result().provenance.params["baq"] = bool(params.baq)
+    if params.baq and ultima.alignment_is_ultima(input_file):
+        raise UsageError(
+            "--baq is not supported for Ultima input: bcftools' Ultima "
+            "profile disables BAQ. Use --no-baq."
+        )
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     parallel = int(threads) > 1 if params.parallel is None else params.parallel
@@ -371,6 +377,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
                 profile=profile,
                 call_args=[*ploidy, *sex_args, *prior],
                 indels=indels,
+                baq=bool(params.baq),
                 contigs=contigs,
                 environment=environment,
             )
@@ -393,6 +400,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
                 ploidy_args=ploidy,
                 sex_args=sex_args,
                 prior_args=prior,
+                baq=bool(params.baq),
                 environment=environment,
             )
 
