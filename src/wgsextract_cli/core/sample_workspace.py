@@ -703,6 +703,10 @@ class SampleWorkspace:
 
         return self._update(mutate)
 
+    def recorded_manifests(self) -> list[Path]:
+        """The result manifests ``record_output`` indexed here."""
+        return [self.file_path(key) for key in self._load().section("outputs")]
+
     # --- reporting -------------------------------------------------------------
 
     def _status(self, key: str, entry: Mapping[str, object]) -> FileStatus:

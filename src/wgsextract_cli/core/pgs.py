@@ -22,19 +22,24 @@ import urllib.error
 import urllib.request
 import zlib
 from collections import Counter, OrderedDict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.api._runtime import checkpoint
+from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
 
 if TYPE_CHECKING:
     from wgsextract_cli.core.pgs_reference import Accumulator
 
+# Reasons a variant's genotype was observed (the rest leave it missing).
+MATCHED = ("called", "confident_reference", "reference_block", "callable_reference")
+REFERENCE_ALTS = {".", *SYMBOLIC_REFERENCE_ALTS}
 DISCLAIMER = (
     "Research use only; not a diagnosis. A polygenic score is not absolute "
     "disease risk, and must not guide treatment or screening."
@@ -378,6 +383,96 @@ class Reference:
         return chr(self.cache[block][offset - self.offsets[block]]).upper()
 
 
+def _carries_variant(alt: str, gt: str) -> bool:
+    alts = alt.split(",")
+    return any(
+        a.isdigit()
+        and 0 < int(a) <= len(alts)
+        and alts[int(a) - 1] not in REFERENCE_ALTS
+        for a in re.split(r"[/|]", gt)
+    )
+
+
+def _reference_only(gt: str) -> bool:
+    alleles = re.split(r"[/|]", gt)
+    return bool(alleles) and all(a == "0" for a in alleles)
+
+
+class EvidenceStates:
+    """The reference-evidence state (core/reference_evidence) of every scored
+    position, read from an indexed gVCF and kept in the genotype database,
+    so memory stays bounded by neither the gVCF nor the scoring file."""
+
+    CHUNK = 100_000
+
+    def __init__(
+        self,
+        gvcf: str,
+        db: sqlite3.Connection,
+        positions: Iterable[tuple[str, int]],
+        thresholds: Thresholds,
+    ) -> None:
+        self.path = gvcf
+        self.db = db
+        source = evidence.ReferenceEvidence(gvcf)
+        self.quality_model = source.quality_model
+        self.provenance = source.provenance
+        names = {name.removeprefix("chr"): name for name in source.lengths}
+        db.execute(
+            "CREATE TABLE evidence (chrom TEXT, pos INTEGER, state TEXT, "
+            "PRIMARY KEY (chrom, pos)) WITHOUT ROWID"
+        )
+        batch: list[tuple[str, int]] = []
+        for chrom, pos in positions:
+            if chrom in names:
+                batch.append((chrom, pos))
+            if len(batch) == 10000:
+                db.executemany(
+                    "INSERT OR IGNORE INTO evidence VALUES (?,?,NULL)", batch
+                )
+                batch.clear()
+        db.executemany("INSERT OR IGNORE INTO evidence VALUES (?,?,NULL)", batch)
+        last = ("", 0)
+        while chunk := db.execute(
+            "SELECT chrom,pos FROM evidence WHERE (chrom,pos) > (?,?) "
+            "ORDER BY chrom,pos LIMIT ?",
+            (*last, self.CHUNK),
+        ).fetchall():
+            last = chunk[-1]
+            spans = source.spans(thresholds, ((names[c], p, p) for c, p in chunk))
+            db.executemany(
+                "UPDATE evidence SET state=? WHERE chrom=? AND pos BETWEEN ? AND ?",
+                (
+                    (s.state.value, s.contig.removeprefix("chr"), s.start, s.end)
+                    for s in spans
+                ),
+            )
+            checkpoint()
+        db.commit()
+
+    def state(self, chrom: str, pos: int) -> evidence.State:
+        row = self.db.execute(
+            "SELECT state FROM evidence WHERE chrom=? AND pos=?", (chrom, pos)
+        ).fetchone()
+        return evidence.State(row[0]) if row and row[0] else evidence.State.NOT_ASSESSED
+
+    def describe(self, origin: str) -> dict[str, Any]:
+        """Where the evidence came from, and the states of the scored sites."""
+        provenance = self.provenance
+        counts: Counter[str] = Counter()
+        for state, n in self.db.execute(
+            "SELECT state, count(*) FROM evidence GROUP BY state"
+        ):
+            counts[state or evidence.State.NOT_ASSESSED.value] += n
+        return {
+            "file": self.path,
+            "origin": origin,
+            "engine": provenance.engine if provenance else None,
+            "quality_model": self.quality_model,
+            "site_states": dict(counts),
+        }
+
+
 class Genotypes:
     def __init__(
         self, vcf: Path, database: Path, sample: str | None, build: str
@@ -424,7 +519,7 @@ class Genotypes:
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
         if chr1 and chr1[1] in {"248956422", "249250621"} and chr1[1] != expected:
             raise UsageError("VCF contig lengths disagree with --build.")
-        self.has_blocks = False
+        self.has_blocks = self.is_gvcf = False
         command = [
             "bcftools",
             "query",
@@ -448,6 +543,9 @@ class Genotypes:
                     int(end) if end != "." else int(pos), int(pos) + len(ref) - 1
                 )
                 self.has_blocks |= end_pos > int(pos)
+                self.is_gvcf |= any(
+                    a in SYMBOLIC_REFERENCE_ALTS for a in alt.split(",")
+                ) or (alt == "." and end_pos > int(pos))
                 batch.append(
                     (chrom.removeprefix("chr"), int(pos), end_pos, ref, alt, gt, filt)
                 )
@@ -464,12 +562,19 @@ class Genotypes:
             )
         self.db.commit()
         blocked: dict[str, list[tuple[int, int]]] = {}
-        for chrom, pos, end in self.db.execute(
-            "SELECT chrom,pos,end FROM calls WHERE end>pos "
-            "AND NOT (gt IN ('0/0','0|0') AND filter IN ('.','PASS'))"
+        variants: dict[str, list[tuple[int, int]]] = {}
+        for chrom, pos, end, alt, gt, filt in self.db.execute(
+            "SELECT chrom,pos,end,alt,gt,filter FROM calls WHERE end>pos"
         ):
-            blocked.setdefault(chrom, []).append((pos, end))
+            if not (gt in ("0/0", "0|0") and filt in (".", "PASS")):
+                blocked.setdefault(chrom, []).append((pos, end))
+            if _carries_variant(alt, gt):
+                variants.setdefault(chrom, []).append((pos, end))
         self.blocked = IntervalIndex(blocked)
+        # With reference evidence, only a called variant spanning a site
+        # blocks it; the classifier judges reference, no-call and filtered
+        # blocks (a haploid "0" block is reference, not a conflict).
+        self.spanning_variants = IntervalIndex(variants)
 
     def close(self) -> None:
         self.db.close()
@@ -480,7 +585,12 @@ class Genotypes:
         confident: ConfidentBed | None,
         reference: Reference | None,
         keep_ambiguous: bool = False,
+        states: EvidenceStates | None = None,
     ) -> tuple[int | None, str]:
+        """The effect-allele dosage at ``variant`` and why. With ``states``
+        (a gVCF's reference evidence), a site is homozygous reference only
+        where the classifier calls it callable reference; otherwise the
+        state's name is the reason it stays missing."""
         if not variant.supported:
             return None, "unsupported"
         if not keep_ambiguous and variant.effect + variant.other in (
@@ -493,11 +603,19 @@ class Genotypes:
         chrom, pos = variant.chrom, variant.pos
         if confident is not None and not confident.contains(chrom, pos):
             return None, "outside_confident"
-        if self.blocked.contains(chrom, pos):
+        blocking = self.blocked if states is None else self.spanning_variants
+        if blocking.contains(chrom, pos):
             return None, "overlapping_nonreference"
         rows = self.db.execute(
             "SELECT ref,alt,gt,filter FROM calls WHERE chrom=? AND pos=?", (chrom, pos)
         ).fetchall()
+        if states is not None and len(rows) == 1 and rows[0][3] in (".", "PASS"):
+            ref, _, gt, _ = rows[0]
+            if _reference_only(gt):
+                dosage, reason = self._evidence_reference(
+                    variant, states, reference, ref[0]
+                )
+                return dosage, "called" if dosage is not None else reason
         if rows:
             if len(rows) != 1:
                 return None, "ambiguous"
@@ -523,6 +641,8 @@ class Genotypes:
                 return called.count(variant.effect), "called"
             except (ValueError, IndexError):
                 return None, "no_call"
+        if states is not None:
+            return self._evidence_reference(variant, states, reference, None)
         reason = "confident_reference" if confident is not None else ""
         if not reason and self.has_blocks:
             block = self.db.execute(
@@ -544,6 +664,25 @@ class Genotypes:
             return None, "allele_mismatch"
         return None, "missing"
 
+    def _evidence_reference(
+        self,
+        variant: Variant,
+        states: EvidenceStates,
+        reference: Reference | None,
+        ref_base: str | None,
+    ) -> tuple[int | None, str]:
+        state = states.state(variant.chrom, variant.pos)
+        if state is not evidence.State.CALLABLE_REFERENCE:
+            return None, state.value
+        base = ref_base.upper() if ref_base else None
+        if base is None and reference is not None:
+            base = reference.base(variant.chrom, variant.pos)
+        if not base:
+            return None, "missing"
+        if base in {variant.effect, variant.other}:
+            return 2 * (base == variant.effect), "callable_reference"
+        return None, "allele_mismatch"
+
 
 def score(
     scoring: ScoringFile,
@@ -555,6 +694,7 @@ def score(
     matched_file: Path | None = None,
     keep_ambiguous: bool = False,
     calibration: Accumulator | None = None,
+    states: EvidenceStates | None = None,
 ) -> dict[str, Any]:
     """Sum observed effect-allele dosages; count every source row in coverage.
     ``calibration`` also accumulates the reference-calibrated score."""
@@ -572,7 +712,7 @@ def score(
             target.write("id\tchrom\tpos\teffect\tother\tweight\tdosage\n")
         for number, variant in enumerate(scoring.variants(), 1):
             dosage, reason = genotypes.dosage(
-                variant, confident, reference, keep_ambiguous
+                variant, confident, reference, keep_ambiguous, states
             )
             counts[reason] += 1
             if calibration is not None:
@@ -594,9 +734,7 @@ def score(
         if target:
             target.close()
     total = sum(counts.values())
-    matched = sum(
-        counts[k] for k in ("called", "confident_reference", "reference_block")
-    )
+    matched = sum(counts[k] for k in MATCHED)
     rate = matched / total if total else 0.0
     if total == 0:
         raise WGSExtractError("The scoring file contains no variants.")

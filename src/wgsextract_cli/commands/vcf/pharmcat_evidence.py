@@ -3,10 +3,86 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.variant_files import chromosome_rename_mapping, vcf_chromosomes
+
+
+@dataclass
+class GvcfEvidence:
+    """What the gVCF a caller published beside a variant-only input says about
+    PharmCAT's definition bases (in PharmCAT's contig names): each base's
+    state (core/reference_evidence) and, where a reference record covers it,
+    that record's ploidy and depth and genotype quality."""
+
+    path: str
+    states: dict[tuple[str, int], evidence.State] = field(default_factory=dict)
+    ploidy: dict[tuple[str, int], int] = field(default_factory=dict)
+    depth: dict[tuple[str, int], float] = field(default_factory=dict)
+    quality: dict[tuple[str, int], float] = field(default_factory=dict)
+
+
+def gvcf_evidence(
+    gvcf: str,
+    loci: Iterable[tuple[str, int]],
+    to_gvcf: Mapping[str, str],
+    thresholds: vc.Thresholds,
+    work: str,
+) -> GvcfEvidence:
+    """The gVCF's evidence at ``loci`` (PharmCAT names; ``to_gvcf`` renames
+    them to the gVCF's)."""
+    source = evidence.ReferenceEvidence(gvcf)
+    back = {name: pharmcat for pharmcat, name in to_gvcf.items()}
+    wanted = sorted(
+        {(to_gvcf.get(c, c), p) for c, p in loci if to_gvcf.get(c, c) in source.lengths}
+    )
+    found = GvcfEvidence(gvcf)
+    if not wanted:
+        return found
+    for span in source.spans(thresholds, ((c, p, p) for c, p in wanted)):
+        for pos in range(span.start, span.end + 1):
+            found.states[(back.get(span.contig, span.contig), pos)] = span.state
+    regions = Path(work, "gvcf_loci.tsv")
+    regions.write_text(
+        "".join(f"{c}\t{p}\t{p}\n" for c, p in wanted), encoding="utf-8", newline="\n"
+    )
+    records = run_command(
+        ["bcftools", "query", "--allow-undef-tags", "-R", str(regions), "-f",
+         "%CHROM\t%POS\t%INFO/END\t%REF\t[%GT\t%DP\t%MIN_DP\t%GQ]\n", gvcf],
+        capture_output=True,
+    ).stdout  # fmt: skip
+    wanted_set = set(wanted)
+    for line in records.splitlines():
+        chrom, start, end, ref, gt, dp, min_dp, gq = line.split("\t")
+        alleles = re.split(r"[/|]", gt)
+        if not all(a == "0" for a in alleles):
+            continue
+        first = int(start)
+        last = int(end) if end.isdigit() else first + len(ref) - 1
+        depths = [float(v) for v in (dp, min_dp) if _is_number(v)]
+        for p in range(first, last + 1):
+            if (chrom, p) not in wanted_set:
+                continue
+            key = (back.get(chrom, chrom), p)
+            found.ploidy[key] = len(alleles)
+            if depths:
+                found.depth[key] = min([*depths, found.depth.get(key, min(depths))])
+            if _is_number(gq):
+                found.quality[key] = min(float(gq), found.quality.get(key, float(gq)))
+    return found
+
+
+def _is_number(value: str) -> bool:
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _info(text: str) -> dict[str, str]:
@@ -62,6 +138,45 @@ def _support_reasons(supporting: list[vc.CallConfidence]) -> str:
     return "|".join(sorted({reason for call in supporting for reason in call.reasons}))
 
 
+def _from_gvcf(
+    target: list[str],
+    loci: list[tuple[str, int]],
+    sequence: Mapping[tuple[str, int], str],
+    found: GvcfEvidence,
+) -> list[str]:
+    """The record of a definition the input doesn't list, from the gVCF: its
+    reference where the classifier calls every base callable reference (with
+    one ploidy), else a no-call whose PGX_STATE is the worst base's state."""
+    states = [found.states.get(locus, evidence.State.NOT_ASSESSED) for locus in loci]
+    worst = min(states, key=list(evidence.State).index)
+    ploidies = {found.ploidy.get(locus) for locus in loci}
+    matches = "".join(sequence[locus] for locus in loci).upper() == target[3].upper()
+    callable_reference = (
+        worst is evidence.State.CALLABLE_REFERENCE
+        and matches
+        and len(ploidies) == 1
+        and None not in ploidies
+    )
+    state = "reference" if callable_reference else worst.value
+    if worst is evidence.State.CALLABLE_REFERENCE and not callable_reference:
+        state = "overlap_conflict"
+    depths = [found.depth.get(locus) for locus in loci]
+    qualities = [found.quality.get(locus) for locus in loci]
+    metrics = [
+        f"{min(v for v in values if v is not None):g}"
+        if values and None not in values
+        else "."
+        for values in (depths, qualities)
+    ]
+    ploidy = next(iter(ploidies)) if callable_reference else 2
+    gt = "/".join(("0" if callable_reference else ".") for _ in range(ploidy or 2))
+    return [
+        target[0], target[1], ".", target[3], target[4], ".", "PASS",
+        f"PGX_STATE={state}",
+        "GT:DP:GQ", f"{gt}:{metrics[0]}:{metrics[1]}",
+    ]  # fmt: skip
+
+
 def expand(
     source: str,
     directory: str,
@@ -69,12 +184,15 @@ def expand(
     work: str,
     regions: list[tuple[str, int, int]],
     thresholds: vc.Thresholds,
+    gvcf: str | None = None,
 ) -> str:
     """Keep original support in evidence.vcf; mask unsupported reference in expanded.vcf.
 
     Expand only intersections with gene regions, not whole input blocks. Definition
     REF spans need exactly one reference observation at every base, a consistent
     ploidy, and known depth/GQ meeting the minimum across the entire span.
+    With ``gvcf`` (the caller's gVCF beside a variant-only input), a definition the input has no record at takes the gVCF's states:
+    reference only where every base of its span is callable reference.
     """
     definitions = next(
         (
@@ -119,6 +237,20 @@ def expand(
         ).stdout
         bases = "".join(fasta.splitlines()[1:])
         sequence.update(((chrom, start + i + 1), base) for i, base in enumerate(bases))
+    reference_evidence = None
+    if gvcf is not None:
+        pharmcat_chroms = sorted({target[0] for target in targets})
+        reference_evidence = gvcf_evidence(
+            gvcf,
+            (
+                (target[0], pos)
+                for target in targets
+                for pos in range(int(target[1]), int(target[1]) + len(target[3]))
+            ),
+            dict(chromosome_rename_mapping(pharmcat_chroms, vcf_chromosomes(gvcf))),
+            thresholds,
+            work,
+        )
     observations: dict[tuple[str, int], list[int]] = {}
     calls: dict[int, vc.CallConfidence] = {}
     reference_records: set[int] = set()
@@ -199,6 +331,10 @@ def expand(
         span_indices = {
             index for locus in loci for index in observations.get(locus, [])
         }
+        if not span_indices and reference_evidence is not None:
+            output.append(_from_gvcf(target, loci, sequence, reference_evidence))
+            existing.add((chrom, start, ref))
+            continue
         supporting = [calls[index] for index in span_indices if index in calls]
         gap = any(not observations.get(locus) for locus in loci)
         conflict = any(len(observations.get(locus, [])) > 1 for locus in loci) or any(

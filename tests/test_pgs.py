@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 
 def _params(outdir: Path, **options: object) -> api.ScorePgsParams:
     return api.ScorePgsParams(
-        input=FIXTURES / "sample.vcf",
+        input=FIXTURES / "variants.vcf",
         build="GRCh38",
         scoring_file=FIXTURES / "additive.txt",
         outdir=outdir,
@@ -85,10 +85,40 @@ def test_617_confident_bed_does_not_override_explicit_no_call(tmp_path: Path) ->
 
 
 def test_617_reference_block_only_covers_its_interval(tmp_path: Path) -> None:
-    result = api.score.pgs(_params(tmp_path, ref=_reference(tmp_path)))
+    gvcf = FIXTURES / "sample.vcf"
+    params = replace(_params(tmp_path), input=gvcf, ref=_reference(tmp_path))
+    result = api.score.pgs(params)
     assert result.metrics["score_sum"] == pytest.approx(1.2)
-    assert result.details["match_counts"]["reference_block"] == 1
-    assert result.details["match_counts"]["missing"] == 2
+    assert result.details["match_counts"]["callable_reference"] == 1
+    # A gVCF that doesn't list a base read nothing there (#863).
+    assert result.details["match_counts"]["uncovered"] == 2
+
+
+def test_863_gvcf_blocks_need_quality_and_reads_to_be_hom_ref(tmp_path: Path) -> None:
+    """Issue #863: a `<NON_REF>` block with no GQ or depth, or a DeepVariant
+    `<*>` block that no read covered (MIN_DP 0), was counted as homozygous
+    reference; neither says the bases were read well."""
+    lines = (FIXTURES / "sample.vcf").read_text().splitlines()
+    lines[-1] = "chr1\t60\t.\tA\t<NON_REF>\t.\tPASS\tEND=75\tGT\t0/0"
+    lines.insert(4, '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="m">')
+    lines.append("chr1\t76\t.\tA\t<*>\t.\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:0:0")
+    gvcf = tmp_path / "blocks.g.vcf"
+    gvcf.write_text("\n".join(lines) + "\n")
+    scoring = tmp_path / "score.txt"
+    scoring.write_text(
+        "#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n"
+        "1\t70\tA\tC\t1\n1\t90\tA\tC\t1\n"
+    )
+    result = api.score.pgs(
+        replace(_params(tmp_path), input=gvcf, scoring_file=scoring,
+                ref=_reference(tmp_path))
+    )  # fmt: skip
+    assert result.metrics["variants_matched"] == 0
+    assert result.details["match_counts"] == {
+        "low_quality_reference": 1,
+        "uncovered": 1,
+    }
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -164,9 +194,8 @@ def test_617_palindromic_strand_is_not_inferred_from_matching_alleles(
     assert "pgs_ambiguous_strand_assumed" in {w.code for w in kept.warnings}
 
 
-@pytest.mark.parametrize("with_bed", [False, True])
 def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
-    tmp_path: Path, with_bed: bool
+    tmp_path: Path,
 ) -> None:
     source = (FIXTURES / "sample.vcf").read_text().splitlines()
     lines = []
@@ -177,7 +206,7 @@ def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
             )
         elif not line.startswith("#"):
             fields = line.split("\t")
-            fields[8] = "GT:FT"
+            fields[8] += ":FT"
             fields[9] += ":LowGQ" if fields[1] in ("10", "60") else ":PASS"
             line = "\t".join(fields)
         lines.append(line)
@@ -190,12 +219,13 @@ def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
             _params(tmp_path),
             input=vcf,
             ref=_reference(tmp_path),
-            confident_bed=bed if with_bed else None,
+            confident_bed=bed,
         )
     )
-    assert result.metrics["score_sum"] == pytest.approx(2.0 if with_bed else 0.5)
-    assert result.details["match_counts"]["filtered"] == 1
-    assert result.details["match_counts"]["overlapping_nonreference"] == 1
+    # The BED can't make the bases this gVCF never read reference (#863).
+    assert result.metrics["score_sum"] == pytest.approx(0.5)
+    assert result.details["match_counts"]["filtered"] == 2
+    assert result.details["match_counts"]["uncovered"] == 1
 
 
 def test_617_confident_bed_uses_configured_reference(tmp_path: Path) -> None:

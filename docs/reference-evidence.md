@@ -125,7 +125,7 @@ state higher in this table wins.
 | --- | --- |
 | `excluded_by_policy` | Ploidy 0 for this sample (`PloidyZero`): not expected to exist. |
 | `variant` | Inside the REF span of a called non-reference allele. |
-| `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example). |
+| `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example) or sample filter (`FORMAT/FT`). |
 | `no_call` | A missing genotype (`.` or `./.`). |
 | `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`. |
 | `uncovered` | Assessed, but no reads: no record (bcftools, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
@@ -133,5 +133,35 @@ state higher in this table wins.
 | `not_assessed` | Outside the region the caller assessed. |
 
 The thresholds are the `confidence_*` settings shared with
-[variant confidence labels](variant-confidence.md). `score pgs`, `vcf pharmcat` and the
-confidence labels are to move onto this classifier.
+[variant confidence labels](variant-confidence.md).
+
+## Commands that read it
+
+A command given a variant VCF finds its gVCF through the
+[result manifest](result-manifest.md) of the run that wrote the VCF: a
+manifest in the VCF's folder, or one its [sample workspace](sample-workspace.md)
+recorded, that lists the VCF and a `reference_evidence` output, both
+unchanged since (same fingerprint), the gVCF indexed. Without one, the
+command works as before.
+
+- `score pgs` counts a scoring site the VCF doesn't list as homozygous
+  reference only where the gVCF calls it `callable_reference` (an indexed
+  `--ref` checks the alleles). Anywhere else the site stays missing, counted
+  under its state's name in `match_counts`; `details.reference_evidence`
+  names the gVCF and counts the scored sites in each state. A gVCF given as
+  the input itself is read the same way, its explicit `0/0` records
+  included. See [pgs.md](pgs.md#inputs-and-matching).
+- `vcf pharmcat` gives a PharmCAT definition the VCF doesn't list a
+  reference genotype only where every base of it is `callable_reference`
+  with one ploidy; otherwise it is passed as a no-call (so `--absent-to-ref`
+  can't make it reference) with the state as its `PGX_STATE`. See
+  [variant-confidence.md](variant-confidence.md).
+
+Measured on HG002 chr20 (35x Illumina), with PGS000018 (CAD, 1.75 million
+sites, about 44,000 on chr20): `score pgs` matched 12,723 sites from the
+variant VCF alone and 44,307 with bcftools' gVCF (31,584 more callable
+reference sites; 10 low-quality), 44,185 with DeepVariant's (31,475 more; 56
+low-quality, 31 filtered, 36 no-call, 12 uncovered). Inside GIAB v4.2.1's
+confident regions, 30,771 of the 30,774 sites bcftools' gVCF made homozygous
+reference agree with the truth set, and all 30,694 of DeepVariant's. Reading
+the gVCF at the 1.75 million sites added 30-50 s to the run.

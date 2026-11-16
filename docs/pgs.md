@@ -75,8 +75,15 @@ or citation is reported explicitly, never guessed.
   sample-filtered (`FILTER` or `FORMAT/FT`) calls, unresolved alleles and
   ambiguous duplicate records are unmatched.
   **Missing never means homozygous reference by default**, even in WGS.
-- A called, passing gVCF reference block can supply a reference genotype
-  within its bounds when an indexed `--ref` FASTA is supplied.
+- Reference evidence: given a gVCF, or a variant VCF whose caller published
+  a gVCF beside it (`--reference-evidence gvcf`, found through the caller's
+  result manifest), a site is homozygous reference only where the gVCF
+  calls it callable reference: enough depth and, where the gVCF has GQ,
+  genotype quality (the `confidence_*` settings). Sites the gVCF calls
+  `uncovered`, `low_quality_reference`, `filtered`, `no_call`, `variant`,
+  `excluded_by_policy` or `not_assessed` stay missing, counted under that
+  name. Sites the VCF doesn't list need an indexed `--ref` to check their
+  alleles. See [reference-evidence.md](reference-evidence.md).
 - For a variants-only callset with a same-sample, same-build confident BED,
   add `--confident-bed sample.confident.bed --ref reference.fa.gz`. Only
   positions inside the BED may be inferred reference; positions outside it
