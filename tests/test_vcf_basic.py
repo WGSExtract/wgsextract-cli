@@ -5,6 +5,7 @@ import argparse
 import gzip
 import logging
 import random
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 # A het SNP (A>G) at 500 and a het 2 bp deletion (CGT>C) at 700, each carried by
@@ -101,6 +103,52 @@ def test_caller_applies_the_ploidy_file(sample, tmp_path):
     )  # fmt: skip
     # Diploid, the site is a 0/1 het; haploid, half the reads carrying G is no call.
     assert vcf_calls(tmp_path / "snps.vcf.gz") == []
+
+
+@needs_htslib
+def test_vcf_indel_default_prior_keeps_low_support_het_indel_issue_860(tmp_path):
+    """#860: `vcf indel` calls with a flat prior (-P 0), which raised indel
+    recall on GIAB HG002 at equal precision. A 2 bp deletion in 3 of 30 reads
+    must stay in indels.vcf.gz; bcftools' default prior drops it."""
+    rng = random.Random(11)
+    seq = list("".join(rng.choice("ACGT") for _ in range(1000)))
+    seq[DEL_POS - 2 : DEL_POS + 4] = "ACGTCA"
+    ref_seq = "".join(seq)
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": ref_seq})
+    lines = ["@SQ\tSN:chr1\tLN:1000"]
+    for i in range(30):
+        start, cigar = 640 + 2 * i % 50, "100M"
+        bases = ref_seq[start - 1 : start + 99]
+        if i < 3:
+            left = DEL_POS - start + 1
+            cigar = f"{left}M2D{100 - left}M"
+            bases = ref_seq[start - 1 : DEL_POS] + ref_seq[DEL_POS + 2 : start + 101]
+        lines.append(
+            f"r{i}\t{16 * (i % 2)}\tchr1\t{start}\t60\t{cigar}\t*\t0\t0\t"
+            f"{bases}\t{'I' * len(bases)}"
+        )
+    bam = sam_to_bam(lines, tmp_path / "low.bam")
+
+    _call("indel", {"bam": bam, "ref": str(ref)}, tmp_path)
+    assert vcf_calls(tmp_path / "indels.vcf.gz") == [
+        ("chr1", str(DEL_POS), "CGT", "C", "0/1")
+    ]
+
+    # The fixture must discriminate: the same pileup under bcftools' default
+    # prior (1.1e-3) calls nothing.
+    bcftools = str(get_tool_path("bcftools"))
+    pileup = subprocess.run(
+        [bcftools, "mpileup", "-B", "-C", "50", "-f", str(ref), bam],
+        capture_output=True,
+        check=True,
+    ).stdout
+    calls = subprocess.run(
+        [bcftools, "call", "-m", "-v"],
+        input=pileup,
+        capture_output=True,
+        check=True,
+    ).stdout.decode()
+    assert [line for line in calls.splitlines() if not line.startswith("#")] == []
 
 
 def test_caller_requires_input(tmp_path):

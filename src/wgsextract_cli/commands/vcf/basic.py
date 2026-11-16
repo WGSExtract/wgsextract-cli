@@ -344,6 +344,8 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
 
     out_vcf = str(Path(outdir, "indels.vcf.gz" if indels else "snps.vcf.gz"))
     profile, prior = ultima.bcftools_options(input_file)
+    # A flat prior beat bcftools' 1.1e-3 for indels on GIAB HG002 and matches it
+    # for SNPs after QUAL>30 (#860, docs/variant-confidence.md).
     prior = ["-P", "0"] if prior is None else prior
     message = "vcf_calling_indels" if indels else "vcf_calling_snps"
     logging.info(LOG_MESSAGES[message].format(output=out_vcf))

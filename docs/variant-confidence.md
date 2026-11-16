@@ -308,6 +308,32 @@ over 100 times as likely to be wrong as a `high` one, while `high` kept over
 80% of the correct calls. Errors in `high` remain, as
 the limits above say: a `high` label is not a confirmation.
 
+## The calling prior in `vcf snp` and `vcf indel`
+
+`vcf snp` and `vcf indel` run `bcftools call -m` with a flat prior (`-P 0`)
+instead of bcftools' default variant prior of 1.1e-3, so they keep more
+low-QUAL calls. On HG002 chr20 and chr22 (Illumina 35x, scored by hap.py with
+vcfeval against GIAB v4.2.1 inside its confident regions;
+[#860](https://github.com/WGSExtract/wgsextract-cli/issues/860)):
+
+- **Indels:** the flat prior is better. F1 94.98% against 94.61%: recall
+  94.90% against 94.06% at about equal precision (95.07% against 95.17%).
+- **SNPs:** the prior only shifts the QUAL scale. Unfiltered, the flat prior
+  trades 1.6 points of precision (97.26% against 98.88%) for 0.25 points of
+  recall. Filtering its calls to `QUAL>30` (for example
+  `vcf filter --expr 'QUAL>30'`) reproduces the default prior's call set
+  (precision 98.88%, recall 98.94%), and the best F1 over all QUAL thresholds
+  is 99.06% either way.
+- The extra flat-prior SNP errors concentrate in homopolymers and tandem
+  repeats: in homopolymers of 12 bases or more precision was 49.9% against
+  76.0%, in all tandem repeats and homopolymers 78.4% against 90.6%. Outside
+  GIAB's difficult regions the flat prior's precision was 99.28%.
+
+Precision is only meaningful inside a confident-region BED such as GIAB's.
+Without one, the same `QUAL>30` SNP calls scored 73.9% precision instead of
+98.9%, because calls outside the benchmark's regions count as false positives
+whatever their quality.
+
 ## References
 
 - Rehm HL, et al. ACMG clinical laboratory standards for next-generation
