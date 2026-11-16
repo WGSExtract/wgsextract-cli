@@ -95,3 +95,12 @@ manifest conflicts, quality masking and explicit unsupported VCF records.
 Chromosome-only validation uses public HG002; no whole-genome validation is
 necessary to enable this opt-in path. Without `--indel-manifest`, existing
 consumer and AADR output behavior and paths are unchanged.
+
+## Implementation layout
+
+The internal `core/microarray/` package keeps marker identity policy and the
+packaged rsID lookup in `identity.py`, sequence-defined manufacturer probe
+parsing/matching in `indel_probes.py`, and GRCh37/38 indel call preparation and
+export overlays in `indels.py`. Scientific rules and the packaged rsID asset
+are unchanged by this grouping; public API operations retain their existing
+import paths.

@@ -9,13 +9,13 @@ import pytest
 from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam, write_fasta
 from tests.microarray_helpers import microarray_params
 from tests.test_vcf_basic import sample
-from wgsextract_cli.core.microarray_indel_probes import (
+from wgsextract_cli.core.microarray.indel_probes import (
     IndelProbe,
     IndelSite,
     match_indel_reference,
     read_indel_manifest,
 )
-from wgsextract_cli.core.microarray_indels import (
+from wgsextract_cli.core.microarray.indels import (
     _calls_from_vcf,
     _normalize_sites,
     call_manifest_indels,
@@ -323,7 +323,7 @@ def test_vcf_quality_unsupported_alleles_and_conflicts_cannot_restore_calls(
 def test_identity_rejection_of_probe_or_source_cannot_be_restored(
     tmp_path, monkeypatch, retired_source
 ):
-    from wgsextract_cli.core import microarray_identity as identity
+    from wgsextract_cli.core.microarray import identity
 
     monkeypatch.setattr(
         identity,
@@ -362,7 +362,7 @@ def test_haploid_indels_follow_each_verified_vendor_ploidy_style(
     tmp_path, alignment, monkeypatch, gt, code, chrom, build, ancestry_chrom
 ):
     if chrom == "MT":
-        from wgsextract_cli.core import microarray_indels
+        from wgsextract_cli.core.microarray import indels as microarray_indels
 
         monkeypatch.setattr(
             microarray_indels,

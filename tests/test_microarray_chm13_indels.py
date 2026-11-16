@@ -21,8 +21,8 @@ from wgsextract_cli.core.microarray.chm13_indels import (
     read_haplotype,
     supported_call,
 )
+from wgsextract_cli.core.microarray.indel_probes import IndelProbe, IndelSite
 from wgsextract_cli.core.microarray.site_map import SiteProjection, load_site_map
-from wgsextract_cli.core.microarray_indel_probes import IndelProbe, IndelSite
 
 LEFT = "ACCGTGACTGCATGC"
 RIGHT = "GACTACGTAGCTGCA"

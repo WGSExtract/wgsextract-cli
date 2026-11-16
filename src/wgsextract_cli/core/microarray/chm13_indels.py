@@ -14,14 +14,14 @@ from typing import TYPE_CHECKING
 
 from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
 from wgsextract_cli.core.microarray.chm13_calls import canonical_chromosome
-from wgsextract_cli.core.microarray_identity import identity_policy
-from wgsextract_cli.core.microarray_indel_probes import (
+from wgsextract_cli.core.microarray.identity import identity_policy
+from wgsextract_cli.core.microarray.indel_probes import (
     IndelProbe,
     IndelSite,
     match_indel_reference,
     read_indel_manifest,
 )
-from wgsextract_cli.core.microarray_indels import (
+from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
     _calling_regions,
     _normalize_sites,
@@ -381,7 +381,7 @@ def _native_calls(
     marker_ids: dict[str, str],
     ploidies: dict[str, int],
 ) -> dict[str, str]:
-    from wgsextract_cli.core.microarray_indels import _calls_from_vcf
+    from wgsextract_cli.core.microarray.indels import _calls_from_vcf
 
     quality = quality_policy(params)
     query_params = replace(params, min_dp=max(4, quality.min_dp), min_gq=0)
