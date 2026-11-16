@@ -7,7 +7,7 @@ disk space and an interrupted run starts over. Here each chunk (a run of
 genome regions of the input, about ``chunk_size`` bytes of it) is aligned
 and sorted on its own, then split into the output's contig groups. Once
 every chunk is done, each group is sorted across the chunks and appended to
-the output (core.alignment_splice), and its pieces are deleted. Temporary
+the output (core.alignment.splice), and its pieces are deleted. Temporary
 files therefore stay chunk-sized and the output is written once, beside the
 groups it replaces. ``<output>.chunks/state.json`` records each finished
 chunk and appended group, so a rerun resumes at the first unfinished one.
@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core import alignment_splice
+from wgsextract_cli.core.alignment import splice as alignment_splice
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.reference_assets import header_sequences
 from wgsextract_cli.core.remote_input import copy_range, is_url

@@ -21,7 +21,7 @@ import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from tests.http_server import serving
-from wgsextract_cli.core import alignment_splice
+from wgsextract_cli.core.alignment import splice as alignment_splice
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
 from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.resource_estimates import GIB
@@ -547,7 +547,7 @@ def test_a_one_pass_rerun_removes_an_interrupted_runs_chunks(tmp_path, ont):
 @needs_tools("samtools")
 @pytest.mark.parametrize("fmt", ["BAM", "CRAM", "CRAM 3.1"])
 def test_spliced_pieces_are_one_valid_file(tmp_path, ont, fmt):
-    """Pieces appended one at a time (core.alignment_splice) make the file
+    """Pieces appended one at a time (core.alignment.splice) make the file
     samtools cat would, readable and indexable; a truncated piece is
     refused rather than appended."""
     ref = ont["ref"]

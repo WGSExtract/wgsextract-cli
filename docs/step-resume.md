@@ -176,3 +176,9 @@ Wait for them to exit, or stop them (`kill PID`, `docker stop NAME`), then rerun
   rerun can't check, and goes ahead.
 - The GPU (`--gpu`) DeepVariant path runs as one step, so it doesn't take
   `--dry-run` or `--force-step`.
+
+## Chunk assembly implementation
+
+Raw BAM/CRAM chunk assembly lives in `core/alignment/splice.py`, called by
+`core/chunked_alignment.py`. This binary I/O layer preserves encoded records
+and is separate from step-journal serialization.
