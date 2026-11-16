@@ -1,12 +1,14 @@
 """Local polygenic sums, with explicit missingness and research-only labels.
 
-Percentiles are withheld until score-specific ancestry calibration is available.
+Curated GRCh38 scores also get an ancestry-adjusted percentile against the
+HGDP+1KG reference (docs/pgs.md), or a reason it is withheld.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -92,6 +94,20 @@ class ScorePgsParams(Params):
             not math.isfinite(self.min_match) or not 0 <= self.min_match <= 1
         ):
             raise UsageError("--min-match must be a fraction between 0 and 1.")
+
+    def write_folders(self) -> Iterator[Path]:
+        # A calibrated score downloads its references into the library.
+        if self.build != "GRCh38":
+            return
+        from wgsextract_cli.core import ancestry_reference, pgs_reference
+        from wgsextract_cli.core.paths import expand_path
+
+        from ._params import with_config_defaults
+
+        ref = with_config_defaults(self).ref
+        ref_path = expand_path(ref) if ref else None
+        yield pgs_reference.folder(pgs_reference.library_for(ref_path))
+        yield ancestry_reference.folder(ancestry_reference.library_for(ref_path))
 
 
 def pgs(

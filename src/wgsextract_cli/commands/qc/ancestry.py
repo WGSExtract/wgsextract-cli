@@ -28,9 +28,12 @@ from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.pgs import IntervalIndex
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import cancel_event
@@ -254,10 +257,28 @@ def _vcf_genotypes(
     work: Path,
 ) -> tuple[Genotypes, str, str | None]:
     vcf = expand_path(params.input)
+    genotypes = vcf_genotypes(
+        vcf, reference, work, sample=params.sample, build=_given_build(params)
+    )
+    return genotypes, vcf, None
+
+
+def vcf_genotypes(
+    vcf: str,
+    reference: ancestry_reference.AncestryReference,
+    work: Path,
+    *,
+    sample: str | None = None,
+    build: str | None = None,
+    confident: IntervalIndex | None = None,
+) -> Genotypes:
+    """A VCF sample's genotypes at the reference sites (also used by `score
+    pgs` for its PCA projection). A whole-genome variants-only VCF's absent
+    sites are hom-ref, only inside ``confident`` when it is given."""
     verify_dependencies(["bcftools"])
     header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
     lengths = header_contig_lengths(header)
-    build = _given_build(params) or build_from_chr1_length(lengths) or ""
+    build = build or build_from_chr1_length(lengths) or ""
     if not build:
         raise WGSExtractError(
             f"{Path(vcf).name}'s header doesn't give chr1's length, so its build "
@@ -268,7 +289,7 @@ def _vcf_genotypes(
             f"{Path(vcf).name} is a gVCF; its no-call blocks can't be told from "
             "reference blocks. Give the BAM/CRAM, or a VCF called from it."
         )
-    sample = _vcf_sample(vcf, params.sample)
+    sample = _vcf_sample(vcf, sample)
     sites = reference.sites(build)
     chr_prefix = "chr1" in lengths or not any(c == "1" for c in lengths)
     regions = work / "sites.tsv"
@@ -281,13 +302,13 @@ def _vcf_genotypes(
         ((_contig(int(c), chr_prefix), int(p)), i)
         for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
     )
-    query = ["bcftools", "query", "-T", str(regions), "-s", sample,
-             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT]\n", vcf]  # fmt: skip
+    query = ["bcftools", "query", "--allow-undef-tags", "-T", str(regions), "-s", sample,
+             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT]\n", vcf]  # fmt: skip
     called: dict[int, int] = {}
     unknown: set[int] = set()
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
-        contig, pos, ref, alts, filt, gt = line.split("\t")
+        contig, pos, ref, alts, filt, gt, sample_filter = line.split("\t")
         names = alts.split(",")
         for i in lookup.get((contig, int(pos)), ()):
             if ref.upper() != sites.ref[i] or i in called:
@@ -295,7 +316,8 @@ def _vcf_genotypes(
             k = names.index(sites.alt[i]) + 1 if sites.alt[i] in names else None
             if k is None and not set(names) <= {".", "<*>", "<NON_REF>"}:
                 continue
-            dosage = _dosage(gt, k) if filt in _PASSING else None
+            passed = filt in _PASSING and sample_filter in _PASSING
+            dosage = _dosage(gt, k) if passed else None
             if dosage is None:
                 unknown.add(i)
                 continue
@@ -327,7 +349,11 @@ def _vcf_genotypes(
                 f"whole-genome VCF. See {GUIDE}."
             )
         for i in range(len(sites.pos)):
-            if i not in called and i not in unknown:
+            if i in called or i in unknown:
+                continue
+            if confident is None or confident.contains(
+                str(int(sites.chrom[i])), int(sites.pos[i])
+            ):
                 called[i] = 0
                 filled += 1
     order = sorted(called)
@@ -343,7 +369,7 @@ def _vcf_genotypes(
         method=method,
         sites_available=len(sites.pos),
     )
-    return genotypes, vcf, None
+    return genotypes
 
 
 # --- Microarray raw data -------------------------------------------------------------
@@ -417,6 +443,21 @@ def _microarray_genotypes(
 
 
 # --- Projection and output --------------------------------------------------------------
+
+
+def pca_projection(
+    genotypes: Genotypes, reference: ancestry_reference.AncestryReference
+) -> tuple[np.ndarray, float]:
+    """The sample's 10 reference PCs from its called genotypes, and the share
+    of the reference sites they use (see core/ancestry.py)."""
+    pca = reference.pca()
+    dosage = np.full(len(pca["frequency"]), np.nan)
+    dosage[genotypes.rows] = genotypes.likelihoods.argmax(axis=1)
+    have = ~np.isnan(dosage)
+    pcs = ancestry.principal_components(
+        pca["frequency"][have], pca["loadings"][have], dosage[have]
+    )
+    return pcs, float(have.mean())
 
 
 def _confidence(sites: int, widest: float) -> sample_workspace.Confidence:
@@ -502,6 +543,12 @@ def run_ancestry(params: QcAncestryParams) -> None:
             if params.bootstrap:
                 metrics[f"ancestry_k{k}_{_slug(c.name)}_lower"] = round(float(lo), 4)
                 metrics[f"ancestry_k{k}_{_slug(c.name)}_upper"] = round(float(hi), 4)
+    if kind != "alignment":
+        # Hard calls only: the projection of read-count likelihoods is biased.
+        pcs, share = pca_projection(genotypes, reference)
+        metrics["ancestry_pca_sites_fraction"] = round(share, 4)
+        for i, value in enumerate(pcs, 1):
+            metrics[f"ancestry_pc{i}"] = round(float(value), 4)
     result.add_metrics(**metrics)
     _report(projections, reference, genotypes, n)
     value = {

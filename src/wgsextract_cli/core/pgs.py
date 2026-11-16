@@ -26,11 +26,14 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+
+if TYPE_CHECKING:
+    from wgsextract_cli.core.pgs_reference import Accumulator
 
 DISCLAIMER = (
     "Research use only; not a diagnosis. A polygenic score is not absolute "
@@ -541,8 +544,10 @@ def score(
     min_match: float = 0.75,
     matched_file: Path | None = None,
     keep_ambiguous: bool = False,
+    calibration: Accumulator | None = None,
 ) -> dict[str, Any]:
-    """Sum observed effect-allele dosages; count every source row in coverage."""
+    """Sum observed effect-allele dosages; count every source row in coverage.
+    ``calibration`` also accumulates the reference-calibrated score."""
     import numpy as np
 
     counts: Counter[str] = Counter()
@@ -560,6 +565,8 @@ def score(
                 variant, confident, reference, keep_ambiguous
             )
             counts[reason] += 1
+            if calibration is not None:
+                calibration.add(number - 1, variant.weight, dosage)
             if dosage is None:
                 continue
             weights.append(variant.weight)

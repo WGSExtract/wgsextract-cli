@@ -1,0 +1,31 @@
+# Offline tooling to build the `score pgs` reference distributions (issue #617).
+# Not part of the CLI: `pixi run -m scripts/pgs_reference/pixi.toml python scripts/pgs_reference/build.py ...`.
+[workspace]
+name = "wgsextract-pgs-reference"
+channels = ["conda-forge", "bioconda"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12.*"
+numpy = ">=2"
+scipy = ">=1.14"
+plink2 = "*"
+bcftools = "*"
+zstd = "*"
+# For the CLI's scoring-file reader (src/wgsextract_cli/core/pgs.py).
+platformdirs = "*"
+psutil = "*"
+tomli-w = "*"
+pyliftover = "*"
+
+# pgscatalog.calc's ancestry step, to check our models against it (validate.py).
+# It pins numpy 1.x, so it gets its own environment.
+[feature.validate.dependencies]
+python = "3.11.*"
+numpy = "1.26.*"
+
+[feature.validate.pypi-dependencies]
+"pgscatalog.calc" = "==0.3.1"
+
+[environments]
+validate = { features = ["validate"], no-default-feature = true }
