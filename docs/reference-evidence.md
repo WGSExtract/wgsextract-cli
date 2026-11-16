@@ -7,7 +7,8 @@ need the difference: treating every missing base as reference turns a
 coverage gap into a confident genotype.
 
 `--reference-evidence gvcf` asks a caller to also write a gVCF, which records
-every base it assessed, beside its variant VCF. The variant VCF is unchanged.
+every base it assessed, beside its variant VCF. The variant VCF is unchanged,
+except that GATK genotypes it from the gVCF (see [GATK](#gatk)).
 It is opt-in (`reference_evidence = "gvcf"` in `config.toml` makes it the
 default) because it costs time, memory and disk.
 
@@ -121,7 +122,7 @@ HaplotypeCaller writes the gVCF (`-ERC GVCF`), and GenotypeGVCFs genotypes
 the variant VCF from it, so one HaplotypeCaller run makes both. Its blocks
 carry GQ and MIN_DP, with `<NON_REF>`, banded by GQ at `10,20,30,60`: GATK's
 default (one band per GQ below 60) made a genome's gVCF about 6.5 GB, these
-about 1.3 GB, with the same bases at GQ 20 or more. Reads below mapping
+about 1.4 GB, with the same bases at GQ 20 or more. Reads below mapping
 quality 20 are left out, GATK's default. Parabricks' HaplotypeCaller
 (`--gpu`) and Ultima's `--scatter` aren't supported with the gVCF; a run
 asking for both stops before calling.
@@ -131,9 +132,15 @@ Measured on HG002 (35x Illumina, GRCh38) against GIAB v4.2.1, 4 threads:
 | Region | VCF only | with the gVCF | gVCF + index |
 | --- | --- | --- | --- |
 | chr20:10-12 Mb | 25.5 s | 38.4 s | 0.76 MB |
-| chr20 | CHR20_NONE | CHR20_GVCF | CHR20_SIZE |
+| chr20 | 1,374 s | 1,432 s | 28.3 MB (about 1.4 GB for a genome) |
 
-CHR20_RECORDS
+HaplotypeCaller took the same time either way; GenotypeGVCFs added 17 s and
+cutting and publishing the gVCF 4 s. GenotypeGVCFs' VCF had 134,083
+records against HaplotypeCaller's 134,073 without the gVCF: it genotypes
+each site from the gVCF's likelihoods, so a few borderline sites differ. Of
+the 82,588 truth variants in chr20's confident regions, 102 sit on bases the
+gVCF calls callable reference (DeepVariant 116, bcftools 432). GATK also
+writes blocks over reference N, with MIN_DP 0, so they read as `uncovered`.
 
 ## Clair3
 

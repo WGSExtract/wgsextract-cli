@@ -735,7 +735,7 @@ filesystem for reference-index storage.
   temporary storage remains a separate demand on the system temporary volume.
   With `--reference-evidence gvcf` the gVCF (GQ bands 10,20,30,60) is
   budgeted at 3% of the input bytes, three times over for its partition
-  parts, gathered copy and published file (CHR20_GATK_PCT measured on HG002
+  parts, gathered copy and published file (2.6% measured on HG002
   chr20, #863); GenotypeGVCFs runs after HaplotypeCaller, within its memory.
 - Sort RAM is threads × `--memory` plus 25% and 256 MiB overhead; conversion
   allows 64 MiB per codec thread plus 256 MiB overhead. bcftools allows 1 GiB per

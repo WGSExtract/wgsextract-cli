@@ -29,7 +29,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   without).
 
 - `vcf gatk --reference-evidence gvcf` writes `gatk.g.vcf.gz` (+ `.tbi`):
-  HaplotypeCaller's gVCF, banded by GQ at 10, 20, 30 and 60 (about 1.3 GB a
+  HaplotypeCaller's gVCF, banded by GQ at 10, 20, 30 and 60 (about 1.4 GB a
   genome, against 6.5 GB with GATK's default bands), and the VCF genotyped
   from it by GenotypeGVCFs. Not with `--gpu` or `--scatter`.
   `vcf clair3 --reference-evidence gvcf` writes `clair3.g.vcf.gz` from the

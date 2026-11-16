@@ -230,7 +230,7 @@ def test_regional_gatk_and_scatter_artifacts_are_budgeted_on_the_selected_volume
 def test_gatk_gvcf_disk_is_budgeted_beside_the_vcf_863(tmp_path):
     """Issue #863: `vcf gatk --reference-evidence gvcf` keeps the partitions'
     gVCF parts, their gathered copy and the published gVCF on the output
-    volume; HG002's 1.09 GB chr20 BAM gave a 23 MB gVCF (GQ bands
+    volume; HG002's 1.09 GB chr20 BAM gave a 28.3 MB gVCF (GQ bands
     10,20,30,60), and three copies of it must fit the budget."""
     bam = tmp_path / "chr20.bam"
     with open(bam, "wb") as sparse:
@@ -249,7 +249,7 @@ def test_gatk_gvcf_disk_is_budgeted_beside_the_vcf_863(tmp_path):
         }
 
     assert "reference_evidence" not in disk(False)
-    assert disk(True)["reference_evidence"] >= 3 * 23_000_000
+    assert disk(True)["reference_evidence"] >= 3 * 28_320_658
 
 
 def _tiny_bam(tmp_path: Path) -> tuple[Path, Path]:
