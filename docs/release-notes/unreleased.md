@@ -17,8 +17,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   it is off unless asked for, and every output carries the disclaimer. It
   refuses databases that lack any of its eight sources (ClinVar and its
   protein index, gnomAD v4.1 and its constraint, ClinGen, REVEL, SpliceAI,
-  phyloP), which you build with `fastvep sa-build`. GRCh38; Linux and macOS,
-  not Windows. See [acmg.md](../acmg.md).
+  phyloP). GRCh38; Linux and macOS, not Windows. See [acmg.md](../acmg.md).
+- `ref acmg-data` downloads those eight sources and the Ensembl GFF3 from
+  their publishers, checks them against the checksums they publish, shows
+  their terms (REVEL and SpliceAI are non-commercial) and builds the fastVEP
+  databases into the library, where `vcf acmg` now finds them. gnomAD's 877 GB
+  are streamed; `--chromosomes` builds part of the genome, `--dry-run` shows
+  the sizes, and reruns resume. See [acmg.md](../acmg.md).
 - `vcf snp` and `vcf indel` can also write reference evidence:
   `--reference-evidence gvcf` (or `reference_evidence = "gvcf"` in
   `config.toml`) adds `bcftools.g.vcf.gz` (+ `.tbi`), a gVCF of every assessed

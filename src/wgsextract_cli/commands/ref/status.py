@@ -10,6 +10,7 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefStatusParams
 from wgsextract_cli.core import (
+    acmg_data,
     ancestry_reference,
     bwa_mem2,
     gnomad_sv,
@@ -20,7 +21,7 @@ from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.config import dataset_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
-from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     build_hint,
     default_reference_library,
@@ -34,6 +35,7 @@ from wgsextract_cli.core.reference_assets import (
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.utils import WGSExtractError
 
 # Annotation data the ref commands download into <library>/ref, as
 # (key, label, file extensions, builds): <key>_<build><ext>, tabix-indexed
@@ -153,6 +155,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "file": pharmgkb_file,
         },
         "annotations": _annotation_status(reflib),
+        "acmgData": _acmg_status(reflib),
         "vepCache": _vep_cache_status(lib, reflib),
         "pharmcat": _pharmcat_status(reflib),
         "genomes": _genome_status(reflib),
@@ -195,6 +198,7 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
             for key, builds in status["annotations"].items()
             if key not in ("spliceai", "alphamissense", "pharmgkb")
         },
+        "library.acmgDataInstalled": _json_bool(status["acmgData"]["installed"]),
         "library.vepCacheInstalled": _json_bool(bool(status["vepCache"]["versions"])),
         "library.pharmcatInstalled": _json_bool(status["pharmcat"]["installed"]),
         "library.testGenomeInstalled": _json_bool(status["testGenome"]["installed"]),
@@ -229,6 +233,17 @@ def print_ref_status(status: dict[str, Any]) -> None:
             for build in ("hg19", "hg38")
         ]
         human_output(f"  {labels[key]:<14}{cells[0]:<14}{cells[1]}")
+    acmg = status["acmgData"]
+    human_output(
+        "ACMG data (vcf acmg): "
+        + (
+            f"installed for {_chromosome_span(acmg['chromosomes'])} ({acmg['folder']})"
+            if acmg["installed"]
+            else f"unusable: {acmg['problem']}"
+            if acmg.get("problem")
+            else "not installed ('wgsextract ref acmg-data')"
+        )
+    )
     vep = status["vepCache"]
     versions = ", ".join(vep["versions"]) or "missing"
     human_output(
@@ -285,6 +300,40 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
             )
             status[key][build] = {"file": path, "installed": indexed}
     return status
+
+
+def _acmg_status(reflib: str) -> dict[str, Any]:
+    configured = settings.get("acmg_sa_dir")
+    sa_dir = (
+        expand_path(configured)
+        if isinstance(configured, str) and configured
+        else str(acmg_data.default_sa_dir(reflib))
+    )
+    try:
+        return acmg_data.installed(sa_dir)
+    except (
+        WGSExtractError,
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        AttributeError,
+    ) as e:
+        # An unreadable or damaged acmg_data.json is a finding, not a crash.
+        return {
+            "installed": False,
+            "folder": sa_dir,
+            "gff3": "",
+            "chromosomes": [],
+            "releases": {},
+            "problem": str(e),
+        }
+
+
+def _chromosome_span(chromosomes: list[str]) -> str:
+    if chromosomes == list(acmg_data.CHROMOSOMES):
+        return "all chromosomes"
+    return ", ".join(chromosomes) or "no chromosome"
 
 
 def _ybrowse_status(reflib: str) -> dict[str, Any]:

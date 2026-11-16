@@ -664,6 +664,97 @@ class RefGerpParams(_Resource):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefAcmgDataParams(_ConfiguredLibrary):
+    """Download the eight sources of ``vcf acmg`` (ClinVar and its protein
+    index, gnomAD v4.1 and its gene constraint, ClinGen, REVEL, SpliceAI,
+    phyloP) and the Ensembl GFF3 from their publishers, check them, and build
+    fastVEP's databases. Shows each source's terms; reruns resume."""
+
+    COMMAND = "ref acmg-data"
+
+    chromosomes: str | None = param(
+        None,
+        help="Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, "
+        "chr1-22,chrX or all (default).",
+    )
+    sa_dir: Path | None = param(
+        None,
+        help="Folder to build the databases in (default: ref/acmg/sa in the library).",
+        path="directory",
+        config_key="acmg_sa_dir",
+    )
+    spliceai_file: Path | None = param(
+        None,
+        help="A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the "
+        "library's, downloaded from Ensembl when missing).",
+        path="file",
+    )
+    ensembl_release: str = param(
+        "116", help="Ensembl release of the GFF3; match your vep-rs cache."
+    )
+    dry_run: bool = param(
+        False,
+        help="Show the sources, their terms, sizes and the disk needed; "
+        "download nothing.",
+        action="store_true",
+    )
+    threads: int | None = threads_param()
+    ref: Path | None = ref_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        from wgsextract_cli.core.acmg_data import parse_chromosomes
+
+        parse_chromosomes(self.chromosomes)
+        if not self.ensembl_release.isdigit():
+            raise UsageError("--ensembl-release is a release number, such as 116.")
+
+    def databases(self) -> Path:
+        """The folder the databases go in."""
+        from wgsextract_cli.core.acmg_data import default_sa_dir
+
+        from ._params import with_config_defaults
+
+        filled = with_config_defaults(self)
+        sa_dir = filled.sa_dir
+        return sa_dir.expanduser() if sa_dir else default_sa_dir(filled.library())
+
+    def _destinations(self) -> tuple[list[Path], list[Path]]:
+        """The folders the run writes in and the files it names there, from
+        the library and ``sa_dir`` it resolves, config included."""
+        from wgsextract_cli.core.acmg_data import default_sa_dir, destinations
+
+        from ._params import with_config_defaults
+
+        filled = with_config_defaults(self)
+        # Lexically, as the guard checks ref, so a Windows request is checked
+        # as such; links are resolved when each path is checked.
+        library = (
+            _library_named(filled.ref) if filled.ref is not None else self.library()
+        )
+        sa_dir = filled.sa_dir.expanduser() if filled.sa_dir else None
+        return destinations(
+            library,
+            sa_dir or default_sa_dir(library),
+            filled.ensembl_release,
+        )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # The library (configured when ref is omitted), then everything written
+        # in it and in sa_dir: a server checks each with links resolved, so a
+        # linked ref/acmg or sa folder can't lead outside the allowed ones.
+        yield from super().implied_paths()
+        folders, files = self._destinations()
+        databases = folders[3]  # destinations(): ref/acmg, sources, ref, sa_dir, ...
+        for path in (*folders, *files):
+            yield "sa_dir" if path.is_relative_to(databases) else "ref", path
+
+    def write_folders(self) -> Iterator[Path]:
+        yield from super().write_folders()
+        yield from self._destinations()[0]
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefBootstrapParams(_InLibrary, Params):
     """Download the reference library bootstrap (liftover chains, chip
     templates, N counts and other support files). The AADR 2M SNP panel is a
@@ -1062,6 +1153,21 @@ def gerp(
     from wgsextract_cli.commands.ref.library_commands import run_gerp
 
     return execute(params, run_gerp, progress=progress, cancel=cancel, check=check)
+
+
+def acmg_data(
+    params: RefAcmgDataParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Build the databases (output role ``reference_resource`` for each file,
+    the GFF3 and ``acmg_data.json``); with ``dry_run``, only the plan in
+    ``details``."""
+    from wgsextract_cli.commands.ref.acmg_data import run_acmg_data
+
+    return execute(params, run_acmg_data, progress=progress, cancel=cancel, check=check)
 
 
 def bootstrap(

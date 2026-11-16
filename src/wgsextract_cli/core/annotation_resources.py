@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.request import urlopen
@@ -175,8 +175,11 @@ def _download_resource(
     reflib_dir: str,
     cancel_event: CancelEvent | None,
     progress_callback: ProgressCallback | None,
+    builds: Collection[str] | None = None,
 ) -> bool:
-    """Download (or pick up a manual copy of) each build, then BGZF + tabix it."""
+    """Download (or pick up a manual copy of) each build (of ``builds``, else
+    all), then BGZF + tabix it."""
+    urls = {b: u for b, u in resource.urls.items() if builds is None or b in builds}
     target_dir = str(Path(reflib_dir, "ref"))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
@@ -187,7 +190,7 @@ def _download_resource(
     # Builds with no download URL that the user hasn't supplied: not a failure
     # while another build installs (SpliceAI hg38 downloads, hg19 is manual).
     manual_missing = 0
-    for build, url in resource.urls.items():
+    for build, url in urls.items():
         if cancelled():
             return False
         label = f"{resource.label} {build}"
@@ -243,7 +246,7 @@ def _download_resource(
             logging.error(f"Failed to prepare {label}: {e}")
             success = False
 
-    return success and manual_missing < len(resource.urls)
+    return success and manual_missing < len(urls)
 
 
 # The empty block every complete BGZF file ends with (SAM spec 4.1.2).
@@ -324,11 +327,14 @@ def download_spliceai(
     reflib_dir: str,
     cancel_event: CancelEvent | None = None,
     progress_callback: ProgressCallback | None = None,
+    builds: Collection[str] | None = None,
 ) -> bool:
     """Downloads SpliceAI scores for hg38 (Ensembl) and indexes a manually
-    downloaded hg19 file."""
+    downloaded hg19 file; only ``builds`` when given."""
     logging.info(SPLICEAI_TERMS)
-    return _download_resource(_SPLICEAI, reflib_dir, cancel_event, progress_callback)
+    return _download_resource(
+        _SPLICEAI, reflib_dir, cancel_event, progress_callback, builds
+    )
 
 
 def download_alphamissense(
