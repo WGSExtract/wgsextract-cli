@@ -265,6 +265,10 @@ class Params:
         write the same folder at once."""
         return iter(())
 
+    def preflight(self) -> None:
+        """Refuse a run before anything is written, its output folder
+        included, as the CLI does before dispatch (an opt-in not given)."""
+
     def __post_init__(self) -> None:
         for item in param_fields(type(self)):
             value = getattr(self, item.name)

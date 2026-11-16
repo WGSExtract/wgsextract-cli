@@ -223,6 +223,16 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 [feature.somalier.dependencies]
 somalier = ">=0.3.7,<0.4"
 
+# fastVEP classifies variants by ACMG/AMP criteria for the opt-in, research-only
+# `vcf acmg`. Opt-in environment (`pixi install -e fastvep`); Bioconda builds it
+# for linux-64 and osx-64 only. On Linux ARM64 and Apple Silicon the CLI uses the
+# upstream release binary on PATH; there is no Windows build.
+[feature.fastvep]
+platforms = ["linux-64", "osx-64"]
+
+[feature.fastvep.dependencies]
+fastvep = ">=0.5.0,<0.6"
+
 # VerifyBamID2 estimates nuclear-DNA contamination (FREEMIX) from a GRCh37/38
 # BAM/CRAM (`qc contamination`) with the 1000 Genomes SVD resources its package
 # ships. Opt-in environment (`pixi install -e verifybamid2`) that the CLI runs
@@ -445,6 +455,7 @@ deepvariant = { features = ["deepvariant"], no-default-feature = true }
 modkit = { features = ["standard-platforms", "modkit"], no-default-feature = true }
 verifybamid2 = { features = ["standard-platforms", "verifybamid2"], no-default-feature = true }
 somalier = { features = ["standard-platforms", "somalier"], no-default-feature = true }
+fastvep = { features = ["standard-platforms", "fastvep"], no-default-feature = true }
 phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
 imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }

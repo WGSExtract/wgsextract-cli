@@ -438,6 +438,12 @@ class Settings:
         None, "Path to GERP++ RS bigWig data", path=True
     )
     gnomad_vcf_path: str | None = setting(None, "Path to gnomAD VCF data", path=True)
+    acmg_sa_dir: str | None = setting(
+        None, "Folder of fastVEP annotation databases for vcf acmg", path=True
+    )
+    acmg_gff3: str | None = setting(
+        None, "Ensembl GFF3 of transcript models for vcf acmg", path=True
+    )
     gnomad_sv_path: str | None = setting(
         None, "Path to a gnomAD-SV sites table (ref gnomad-sv)", path=True
     )

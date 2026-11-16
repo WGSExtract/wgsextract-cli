@@ -90,6 +90,8 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `cadd_indel_tsv_path` | string, path (`~` expands) | unset | Path to CADD indel TSV data |
 | `gerp_bigwig_path` | string, path (`~` expands) | unset | Path to GERP++ RS bigWig data |
 | `gnomad_vcf_path` | string, path (`~` expands) | unset | Path to gnomAD VCF data |
+| `acmg_sa_dir` | string, path (`~` expands) | unset | Folder of fastVEP annotation databases for vcf acmg |
+| `acmg_gff3` | string, path (`~` expands) | unset | Ensembl GFF3 of transcript models for vcf acmg |
 | `gnomad_sv_path` | string, path (`~` expands) | unset | Path to a gnomAD-SV sites table (ref gnomad-sv) |
 | `gnomad_lr_sv_path` | string, path (`~` expands) | unset | Path to a gnomAD-LR SV sites table (ref gnomad-sv --source lr) |
 | `spliceai_vcf_path` | string, path (`~` expands) | unset | Path to SpliceAI VCF data |

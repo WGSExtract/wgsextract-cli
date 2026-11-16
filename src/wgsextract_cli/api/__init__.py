@@ -173,6 +173,7 @@ from .score import ScorePgsParams
 from .sign import SignCreateParams, SignVerifyParams
 from .support import IssueReport, ReportIssueParams
 from .vcf import (
+    VcfAcmgParams,
     VcfAlphamissenseParams,
     VcfAnnotateParams,
     VcfCaddParams,
@@ -302,6 +303,7 @@ __all__ = [
     "TypingHlaParams",
     "TypingStrParams",
     "UsageError",
+    "VcfAcmgParams",
     "VcfAlphamissenseParams",
     "VcfAnnotateParams",
     "VcfCaddParams",

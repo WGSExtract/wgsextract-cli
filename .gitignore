@@ -32,6 +32,7 @@ genomes/
 !tests/fixtures/ont_hg002_phasing/*
 !tests/fixtures/vep_rs/*
 !tests/fixtures/pharmcat_hg002/*
+!tests/fixtures/acmg/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

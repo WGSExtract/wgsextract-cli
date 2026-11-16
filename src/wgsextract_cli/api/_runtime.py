@@ -291,6 +291,7 @@ def _prepare(params: Params, result: CommandResult) -> None:
 
     if reports_status(params):
         return
+    params.preflight()
     input_path = getattr(params, "input", None)
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.

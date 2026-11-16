@@ -216,7 +216,7 @@ def platform_commands(
         return commands
     if not smoke:
         environments = {
-            "linux-x64": ["default", "dev", "vep-rs"],
+            "linux-x64": ["default", "dev", "vep-rs", "fastvep"],
             "macos-arm64": ["default", "dev", "vep-rs"],
             "macos-x64": ["default", "dev", "vep-rs"],
             "windows-x64": ["default", "dev", "gatk", "vep-rs"],

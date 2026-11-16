@@ -340,7 +340,7 @@ def pick_csq(entries: Sequence[Mapping[str, str]]) -> Mapping[str, str] | None:
     )
 
 
-def _entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
+def csq_entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
     if not raw:
         return []
     return [
@@ -380,7 +380,28 @@ def _for_allele(
     return []
 
 
-def _split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
+def csq_for_allele(
+    entries: list[dict[str, str]],
+    ref: str,
+    alts: Sequence[str],
+    alt_index: int,
+    origin: tuple[str, list[str], int] | None = None,
+) -> list[dict[str, str]]:
+    """The CSQ entries of ALT number ``alt_index`` (1-based) of a record;
+    ``origin`` is :func:`split_origin` of its INFO, for a record split from a
+    multi-allelic one. ``pick_csq`` of them is the variant table's choice."""
+    alt = alts[alt_index - 1]
+    spellings: tuple[str, ...] = (vep_allele(ref, alts, alt), alt)
+    index, n_alts = alt_index, len(alts)
+    split = origin is not None and n_alts == 1
+    if origin is not None and split:
+        o_ref, o_alts, index = origin
+        o_alt = o_alts[index - 1]
+        spellings = (vep_allele(o_ref, o_alts, o_alt), *spellings, o_alt)
+    return _for_allele(entries, "Allele", spellings, index, n_alts, split=split)
+
+
+def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
     """REF, ALTs and this ALT's 1-based index of the record a biallelic one
     was split from (bcftools norm ``--old-rec-tag``: CHR|POS|REF|ALT|IDX)."""
     parts = (raw or "").split("|")
@@ -510,9 +531,9 @@ def variant_rows(
         pos = int(pos_text)
         qual = _to_float(qual_text)
         filter_value = _value(filt)
-        csq_all = _entries(info.get("CSQ"), csq_names)
-        ann_all = _entries(info.get("ANN"), ann_names)
-        origin = _split_origin(info.get(SPLIT_TAG))
+        csq_all = csq_entries(info.get("CSQ"), csq_names)
+        ann_all = csq_entries(info.get("ANN"), ann_names)
+        origin = split_origin(info.get(SPLIT_TAG))
 
         for alt_index, alt in enumerate(alts, start=1):
             if alt in _NON_VARIANT_ALTS:
@@ -522,21 +543,13 @@ def variant_rows(
                 zyg = zygosity(gt, alt_index) or "no_call"
             if carried_only and zyg is not None and zyg not in CARRIED:
                 continue
-            csq_spellings: tuple[str, ...] = (vep_allele(ref, alts, alt), alt)
             ann_spellings: tuple[str, ...] = (alt,)
             index, n_alts = alt_index, len(alts)
             split = origin is not None and n_alts == 1
             if origin is not None and split:
                 o_ref, o_alts, index = origin
-                o_alt = o_alts[index - 1]
-                o_vep = vep_allele(o_ref, o_alts, o_alt)
-                csq_spellings = (o_vep, *csq_spellings, o_alt)
-                ann_spellings = (alt, o_alt)
-            csq = pick_csq(
-                _for_allele(
-                    csq_all, "Allele", csq_spellings, index, n_alts, split=split
-                )
-            )
+                ann_spellings = (alt, o_alts[index - 1])
+            csq = pick_csq(csq_for_allele(csq_all, ref, alts, alt_index, origin))
             ann_matches = _for_allele(
                 ann_all, "Allele", ann_spellings, index, n_alts, split=split
             )
