@@ -18,6 +18,7 @@ from wgsextract_cli.api.info import (
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment_health import alignment_health
 from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
     build_from_path,
@@ -127,8 +128,8 @@ def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
 
 def _save_cache(path: str, data: dict[str, Any]) -> bool:
     try:
-        with open(path, "w", newline="\n") as f:
-            json.dump(data, f, indent=2)
+        # Atomic: concurrent info calls may read the cache while one writes it.
+        atomic_write(path, json.dumps(data, indent=2).encode("utf-8"))
     except (OSError, TypeError) as exc:
         logging.warning(f"Failed to write metrics cache {path}: {exc}")
         return False
