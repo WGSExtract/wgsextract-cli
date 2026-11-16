@@ -125,11 +125,14 @@ class ToolLaunchError(MissingDependencyError, OSError):
 
 
 def get_resource_defaults(
-    threads_arg: int | str | None = None, memory_arg: str | None = None
+    threads_arg: int | str | None = None,
+    memory_arg: str | None = None,
+    *,
+    stage: Literal["sort", "markdup", "compression", "calling"] = "sort",
 ) -> tuple[str, str]:
     """Calculate default CPU threads and memory if not provided."""
     return _get_resource_defaults(
-        threads_arg, memory_arg, default_thread_tuning_profile
+        threads_arg, memory_arg, default_thread_tuning_profile, stage=stage
     )
 
 

@@ -346,6 +346,7 @@ def estimate_resources(
     output_dir: str,
     reference: str | None = None,
     threads: str = "1",
+    alignment_threads: str | None = None,
     memory: str = "512M",
     aligner: str = "bwa",
     preset: str | None = None,
@@ -394,8 +395,6 @@ def estimate_resources(
     ``postprocess_plan`` and the ``available_ram`` it was sized against (for
     example capped by Docker's VM); otherwise both are derived here.
     """
-    if staged:
-        threads = str(min(3, int(threads)))
     count = int(threads)
     if (
         count < 1
@@ -453,6 +452,7 @@ def estimate_resources(
             reference,
             aligner,
             threads=threads,
+            alignment_threads=alignment_threads,
             memory=memory,
             samblaster=samblaster and duplicate_marking != "gatk-flow",
             reads=reads,
@@ -488,12 +488,7 @@ def estimate_resources(
             notes.append(
                 f"BWA working memory uses {platform or 'short-read'} / {length:g} bp "
                 f"({'sampled/provided' if read_length is not None else 'fallback'}), "
-                "fixed -K 100000000; "
-                + (
-                    "staged Metal uses at most three alignment workers."
-                    if staged
-                    else "threads are not auto-capped."
-                )
+                "fixed -K 100000000; thread budgets follow the resolved stage plan."
             )
         memory_components = dict(zip(mapping._fields, mapping, strict=True))
         if additional_ram_bytes:

@@ -81,6 +81,98 @@ def genome_and_ref(tmp_path):
 
 
 @needs_tools("bwa", "samtools")
+def test_968_realign_auto_plan_survives_extraction_and_matches_explicit_threads(
+    tmp_path, genome_and_ref, monkeypatch
+):
+    from tests.test_alignment_commands import _m1_core_levels
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    records = []
+    for threads, alignment, sort in ((None, 8, 4), (2, 2, 2)):
+        result = realign_api(
+            _args(
+                source,
+                threads=threads,
+                ref=ref,
+                outdir=tmp_path / str(threads),
+                aligner="bwa",
+                native_aligners="off",
+            )
+        )
+        plan = result.provenance.params["thread_plan"]
+        assert plan["alignment"] == alignment
+        assert plan["sort"] == sort
+        (output,) = (tmp_path / str(threads)).glob("*_aligned.bam")
+        records.append(_view("view", str(output)))
+    assert records[0] == records[1]
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+@pytest.mark.parametrize("keep_fastq", [False, True], ids=["stream", "files"])
+def test_997_codec_workers_do_not_expand_realign_collation_budget(
+    tmp_path, genome_and_ref, monkeypatch, keep_fastq
+):
+    from tests.test_alignment_commands import _m1_core_levels
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    lines = _view("view", "-H", source).splitlines()
+    rng = random.Random(997)
+    # Budget-sensitive buckets and coincident fragments expose reordered duplicates.
+    padding = "".join(
+        rng.choices(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", k=200_000
+        )
+    )
+    for row in _view("view", source).splitlines():
+        fields = row.split("\t")
+        first = int(fields[1]) & 64
+        fields[3], fields[7], fields[8] = (
+            ("101", "301", "300") if first else ("301", "101", "-300")
+        )
+        fields[9] = genome[100:200] if first else genome[300:400]
+        lines.append("\t".join([*fields, f"ZZ:Z:{padding}"]))
+    source = sam_to_bam(lines, tmp_path / "old" / "padded.bam")
+    run_command(["bwa", "index", ref])
+    outputs, requirements, fastqs = [], [], []
+    # Equal 8M sort budgets: auto is 4 x 2M, explicit is 8 x 1M.
+    for name, threads, memory in (("auto", None, "2M"), ("explicit", 8, "1M")):
+        out = tmp_path / name
+        result = realign_api(
+            _args(
+                source,
+                ref=ref,
+                outdir=out,
+                threads=threads,
+                memory=memory,
+                aligner="bwa",
+                native_aligners="off",
+                keep_fastq=keep_fastq,
+            )
+        )
+        outputs.append(_view("view", str(out / "padded_aligned.bam")))
+        if not keep_fastq:
+            requirements.append(result.details["host_requirement"]["memory_bytes"])
+        else:
+            fastqs.append(
+                tuple(
+                    gzip.decompress(path.read_bytes())
+                    for path in sorted(out.glob("*.fastq.gz"))
+                )
+            )
+    assert outputs[0] == outputs[1]
+    if keep_fastq:
+        assert fastqs[0] and fastqs[0] == fastqs[1]
+    else:
+        assert requirements[0] == requirements[1]
+
+
+@needs_tools("bwa", "samtools")
 def test_realign_bam_to_new_reference(tmp_path, genome_and_ref):
     genome, ref = genome_and_ref
     source, pairs = _old_alignment(tmp_path, genome)

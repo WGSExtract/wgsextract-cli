@@ -94,6 +94,36 @@ def _records(path, ref: str | None = None) -> list[tuple[str, ...]]:
     return rows
 
 
+def test_968_sort_and_standalone_cram_use_their_own_auto_budgets(
+    genome, tmp_path, monkeypatch
+):
+    from tests.test_alignment_commands import _m1_core_levels
+    from wgsextract_cli import api
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    sorted_result = api.bam.sort(
+        api.BamSortParams(
+            input=genome["bam"],
+            ref=genome["ref"],
+            outdir=tmp_path / "sort",
+            memory="16M",
+        )
+    )
+    assert sorted_result.provenance.params["thread_plan"]["sort"] == 4
+    (sorted_bam,) = (tmp_path / "sort").glob("*_sorted.bam")
+    converted = api.bam.to_cram(
+        api.BamToCramParams(
+            input=sorted_bam,
+            ref=genome["ref"],
+            outdir=tmp_path / "cram",
+        )
+    )
+    assert converted.provenance.params["thread_plan"]["compression"] == 8
+    (cram,) = (tmp_path / "cram").glob("*.cram")
+    assert _records(cram, genome["ref"]) == _records(genome["bam"])
+
+
 def _header(path) -> list[str]:
     """Header lines other than @PG, which every samtools step appends to."""
     return [

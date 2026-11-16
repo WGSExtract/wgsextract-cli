@@ -112,7 +112,9 @@ def run_region(params: ExtractRegionParams) -> None:
                 assert ref is not None
                 vcf = out_vcf if keep_vcf else str(Path(work, "calls.vcf.gz"))
                 if params.target == "autox":
-                    _call_diploid_snps(base, input_path, ref, contigs, vcf)
+                    _call_diploid_snps(
+                        base, input_path, ref, contigs, vcf, threads=params.threads
+                    )
                 else:
                     _call_haploid(base, input_path, ref, contigs, vcf)
                 if keep_vcf:
@@ -186,6 +188,8 @@ def _call_diploid_snps(
     ref: str,
     contigs: list[str],
     out_vcf: str,
+    *,
+    threads: int | None,
 ) -> None:
     """Autosome and chrX SNPs, called contig by contig as ``vcf snp --parallel``
     does, chrX with the sample's sex-aware ploidy."""
@@ -195,7 +199,7 @@ def _call_diploid_snps(
     region = ",".join(contigs)
     setup = caller_setup(
         input_path,
-        threads=base.threads,
+        threads=threads,
         outdir=base.outdir,
         ref=ref,
         region=region,

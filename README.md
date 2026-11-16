@@ -578,7 +578,7 @@ reference_genome_library = "/data/reference/genomes"
 dataset_library = "/data/datasets"
 
 # Resources: a number, or "auto"
-threads = "auto"   # Apple Silicon performance cores, otherwise all cores
+threads = "auto"   # Per-stage core-layout plan on Apple Silicon; all cores elsewhere
 memory = "auto"    # per thread, e.g. "2G"; auto uses 25% of RAM split across threads
 
 # External tool overrides (optional when the tools are on PATH)

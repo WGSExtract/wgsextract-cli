@@ -132,8 +132,10 @@ otherwise on the CPU, with the same records either way. The manifest records
 
 ### Threads and memory
 
-- `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores, or
-  the performance cores on Apple Silicon.
+- `--threads` (or `threads` in `config.toml`) defaults to `auto`: all cores
+  outside Apple Silicon; on Apple Silicon, the per-stage plan below.
+  An explicit positive count applies to every parallel stage, including
+  staged alignment. No CPU affinity is set: macOS still decides where workers run.
 - `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
   2 GB) split across the threads, with at least 1 GiB per thread; for example
   16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
@@ -147,7 +149,118 @@ otherwise on the CPU, with the same records either way. The manifest records
   The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
   threads use more memory; when it reports `LOW`, lower `--threads` or
-  `--memory`, or use `--aligner bwa`. Threads are never lowered automatically.
+  `--memory`, or use `--aligner bwa`. Explicit thread counts are not lowered.
+
+#### Apple Silicon stage plan
+
+The plan reads `hw.perflevelN.name` and `hw.perflevelN.physicalcpu`, not the chip
+name or just level 0. **Big** means every level not named `Efficiency`, including
+both `Super` and `Performance`; **all** adds the efficiency levels. Without
+level names, the conservative fallback uses all but the last level as big
+when there are several levels (a single level is all big).
+
+| Stage | Automatic budget |
+|---|---|
+| CPU mapper | All |
+| Metal mapper | Big |
+| Sort, including its fused output encoder | Big |
+| samtools markdup, including its fused output encoder | Big |
+| Standalone CRAM encoding / bgzip / FASTQ compression | All |
+| Contig-parallel SNP and indel calling | All |
+
+These are tool thread arguments or calling worker budgets, not exact OS thread
+counts: some tools also have a main/I/O thread. Serial tools such as samblaster
+remain serial. The effective plan is in the result manifest's
+`provenance.params.thread_plan`; `--threads N` or `threads = N` makes every
+budget N. CPU mapping and sorting have separate memory estimates. Staged Metal
+retains these worker budgets and lowers sort buffers when needed, rather than
+silently reducing the requested worker count. Existing staged checkpoints made
+with different thread plans must be discarded before restarting.
+
+Measurements on the base M1 distinguish throughput from desktop responsiveness:
+CPU mapping benefited from the efficiency cores, whereas Metal and markdup did
+not. Standalone sort was faster with all cores but used roughly twice the sort
+memory; giving all cores to sort in the overlapping mapping pipeline gained
+less than 2%. Big-core sort is therefore a pipeline/memory tradeoff, **not**
+evidence that efficiency cores inherently thrash macOS. Standalone compression
+and contig jobs benefited from all cores without comparable scheduling stalls.
+See [issue #968 (Apple per-stage thread measurements)](https://github.com/WGSExtract/wgsextract-cli/issues/968)
+for wall/CPU times, periodic-task latency and the experiment's limitations.
+
+Mean wall seconds, comparing big versus all workers within each host:
+
+| Stage | M1, 4 / 8 | M1 Pro, 8 / 10, **desktop load** |
+|---|---:|---:|
+| CPU mapper | 13.72 / 9.14 | 26.03 / 23.26 |
+| Metal mapper | 3.31 / 3.30 | 7.30 / 7.22 |
+| Standalone sort | 3.78 / 3.04 | 1.80 / 1.98 |
+| markdup | 2.65 / 2.66 | 1.94 / 1.94 |
+| Standalone CRAM encoding | 2.72 / 2.13 | 8.08 / 8.03 |
+| bgzip | 1.69 / 1.25 | 0.96 / 0.95 |
+| Pipeline, varying sort only | 9.84 / 9.67 | 22.04 / 22.10 |
+| Contig-parallel SNP calling | 1.94 / 1.46 | 6.49 / 6.33 |
+
+These are not absolute cross-host speed comparisons: M1 used 278,929 chr20
+pairs, M1 Pro 200k pairs on hs38. Standalone processing used tenfold repeated
+records, which compress unusually well; small standalone tools were repeated
+five times per timing. M1 had two interleaved rounds per count. M1 Pro had
+four balanced interleaved rounds under normal desktop load, with backup paused,
+finishing in 25 minutes. Its per-run load averages, CPU seconds and wall times
+are recorded together in the issue's detailed table.
+
+On the busy M1 Pro, nine and ten CPU workers were effectively tied
+(23.34/23.26 s); standalone codec gains were below 1% and calling gained 2.6%.
+Background work that tends to occupy efficiency cores can hide or reverse
+those small gains, change the best interactive worker count, and affect latency
+tails. Interleaving reduces drift but cannot remove this contention; no per-core
+placement was measured. Do not treat these as quiet-host optima or predictions
+for other chips. The all-core mapper/codec/calling budgets retain the base M1's
+clear gains; explicit thread overrides remain available.
+
+The M1 Pro's standalone sort probe had p95 13.6/14.1 ms and maxima 15.5/16.5 ms
+at 8/10 workers, despite the larger worker count being slower and using more
+RAM (1.19/1.46 GiB largest-process RSS). No seconds-long probe stall was observed;
+the largest delay anywhere was 183 ms with ten Metal workers. The probe includes
+tiny-process launch overhead, not GUI latency, and spare-memory tests do not
+rule out thrashing under memory pressure. Neither integer topology detection,
+explicit overrides nor the record-equality checks depend on desktop timing noise.
+
+Correctness was also checked through the actual CLI on 200k and 5M HG002
+read pairs against the whole hs38 reference. M1 Pro's automatic budgets
+(CPU mapper 10, sort/markdup 8, standalone codec/calling 10) and explicit 8
+everywhere produced identical decoded CRAM records,
+with valid indexes and manifests. These ordinary-load correctness runs are
+separate from the interleaved timing experiment, and are not full 30x genomes.
+
+The following are **derived budgets**, not measurements of unowned hardware.
+Slash-separated figures correspond to the listed layouts in the same order.
+The layouts are reported hardware configurations; runtime detection does not
+contain this table. Only M1 and the 10-core M1 Pro are available for measurement.
+
+| Chip | Core layout | CPU mapper / standalone codec / calling | Metal mapper / sort / markdup | Evidence |
+|---|---|---:|---:|---|
+| M1 | 4P + 4E | 8 | 4 | Measured |
+| M1 Pro (8-core) | 6P + 2E | 8 | 6 | Derived |
+| M1 Pro (10-core) | 8P + 2E | 10 | 8 | Measured, desktop load |
+| M1 Max | 8P + 2E | 10 | 8 | Derived |
+| M1 Ultra | 16P + 4E | 20 | 16 | Derived |
+| M2 | 4P + 4E | 8 | 4 | Derived |
+| M2 Pro | 6P + 4E / 8P + 4E | 10 / 12 | 6 / 8 | Derived |
+| M2 Max | 8P + 4E | 12 | 8 | Derived |
+| M2 Ultra | 16P + 8E | 24 | 16 | Derived |
+| M3 | 4P + 4E | 8 | 4 | Derived |
+| M3 Pro | 5P + 6E / 6P + 6E | 11 / 12 | 5 / 6 | Derived |
+| M3 Max | 10P + 4E / 12P + 4E | 14 / 16 | 10 / 12 | Derived |
+| M3 Ultra | 20P + 8E / 24P + 8E | 28 / 32 | 20 / 24 | Derived |
+| M4 | 4P + 4E / 4P + 6E | 8 / 10 | 4 | Derived |
+| M4 Pro | 8P + 4E / 10P + 4E | 12 / 14 | 8 / 10 | Derived |
+| M4 Max | 10P + 4E / 12P + 4E | 14 / 16 | 10 / 12 | Derived |
+| M5 | 4S + 6E | 10 | 4 | Derived |
+| M5 Pro | 5S + 10P / 6S + 12P | 15 / 18 | 15 / 18 | Derived |
+| M5 Max | 6S + 12P | 18 | 18 | Derived |
+| M5 Ultra | 10S + 20P / 12S + 24P | 30 / 36 | 30 / 36 | Derived |
+| M6 (10-core) | 2S + 3P + 5E | 10 | 5 | Derived |
+| M6 (12-core) | 2S + 4P + 6E | 12 | 6 | Derived |
 
 ### Around the aligner
 
@@ -368,9 +481,10 @@ the check, or is older than the oldest supported release, raises the
   when realignment extracts FASTQs rather than streaming them.
   An oversized CPU estimate does **not** make an oversized GPU plan safe.
   Without a speed override, paired Metal BWA tries a staged plan next:
-  at most three BWA workers write a compressed checkpoint, then duplicate
+  the Metal mapper writes a compressed checkpoint, then duplicate
   marking and bounded compressed sorting run after the aligner exits.
-  This plan must also fit the same physical-RAM budget. Its manifest mode is
+  Sort buffers may step down to 256M per thread while retaining the stage
+  thread plan. This plan must also fit the same physical-RAM budget. Its manifest mode is
   `alignment_mode="staged_metal"`, reason `memory_budget_metal_staged`.
   If even staging cannot fit (or for CUDA), `wgse-bwa` runs on the CPU. If its pipeline with the
   requested sort memory is also over budget, sort memory is capped at 256M
