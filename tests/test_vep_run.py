@@ -695,3 +695,15 @@ def test_forced_assembly_drops_a_conflicting_fasta(fasta, forced, kept):
     _apply_forced_assembly(lib, forced)  # type: ignore[arg-type]
     assert lib.build == ("hg38" if forced == "GRCh38" else "hg19")
     assert lib.fasta == (fasta if kept else None)
+
+
+@pytest.mark.parametrize("name", ["GRCh38.fa", "custom.fa"])
+def test_issue_1004_forced_assembly_keeps_fasta_under_misleading_parent(name):
+    from wgsextract_cli.commands._vep_run import _apply_forced_assembly
+
+    fasta = f"/refs/hg19/{name}"
+    lib = SimpleNamespace(build="hg38", fasta=fasta)
+
+    _apply_forced_assembly(lib, "GRCh38")  # type: ignore[arg-type]
+
+    assert lib.fasta == fasta

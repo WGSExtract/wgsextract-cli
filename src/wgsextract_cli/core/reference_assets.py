@@ -32,10 +32,11 @@ TARGET_PATTERNS = (
 
 
 def build_hint(*values: PathInput | None) -> str:
+    """Infer a build from file/folder names, never their ancestor directories."""
     for value in values:
         if not value:
             continue
-        build = build_from_path(fspath(value))
+        build = build_from_path(Path(value).name)
         if build:
             return build
     return ""
@@ -198,7 +199,7 @@ def fasta_build(fasta: PathInput) -> str | None:
     return (
         build
         or build_from_path(_fasta_description(fasta))
-        or build_from_path(fspath(fasta))
+        or build_from_path(Path(fasta).name)
     )
 
 
@@ -308,7 +309,8 @@ def select_reference_fasta(candidates: list[str], *hints: PathInput | None) -> s
     if build:
         for alias in BUILD_PATH_TOKENS.get(build, (build,)):
             for candidate in candidates:
-                if alias in Path(candidate).name.lower():
+                name = Path(candidate).name.lower()
+                if alias in name and build_from_path(name) == build:
                     return candidate
     if len(candidates) == 1:
         return candidates[0]

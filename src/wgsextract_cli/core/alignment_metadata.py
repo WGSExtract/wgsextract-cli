@@ -6,7 +6,7 @@ from os import PathLike, fspath
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput
 
-from .builds import build_from_chr1_length
+from .builds import build_from_chr1_length, build_from_path
 from .reference_assets import (
     header_sequences,
     read_fai_lengths,
@@ -108,11 +108,13 @@ def get_vcf_build(vcf_path: str) -> str | None:
         build = build_from_chr1_length(sequence_lengths(res.stdout))
         if build:
             return build
-        header = res.stdout.lower()
-        if "hg38" in header or "grch38" in header:
-            return "hg38"
-        if "hg19" in header or "grch37" in header:
-            return "hg19"
+        # Tool provenance lines contain command paths, not assembly evidence.
+        metadata = "\n".join(
+            line
+            for line in res.stdout.splitlines()
+            if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
+        )
+        return build_from_path(metadata)
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
         logging.debug("Unable to infer VCF build from header.", exc_info=True)
     return None

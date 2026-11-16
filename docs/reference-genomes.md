@@ -20,6 +20,18 @@ the result manifest's `details` (fields in [api.md](api.md), `library_list`).
 lookup gives up after 8 s). Sizes found are kept for 30 days in the library's `.remote-sizes.json`,
 and later listings show them without going online.
 
+## Detecting the genome build
+
+Build detection prefers sequence-dictionary signatures and chromosome lengths
+over name hints. When only a file or reference-folder name is available, only
+that name is considered, not its ancestor folders. Build identifiers must be
+separate tokens (for example `sample_GRCh38.bam`), with catalog variants such
+as `hs37d5`, `hs38d1s` and `CHM13v2.0` recognized. An unknown build stays unknown;
+placing it under a folder named `hg19` or `chm13` does not identify it.
+
+FASTA descriptions and assembly tags, and VCF reference/assembly metadata,
+remain build evidence. Tool command-history lines in VCF headers are not.
+
 ## The test genome
 
 `wgsextract ref test-genome --install` downloads and verifies the small

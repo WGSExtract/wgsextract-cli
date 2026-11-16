@@ -189,7 +189,7 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
     if needs_reference and lib.fasta:
         reference_build = build_from_chr1_length(
             read_fai_lengths(lib.fasta)
-        ) or build_from_path(lib.fasta)
+        ) or build_from_path(Path(lib.fasta).name)
         if reference_build and reference_build != yleaf_build:
             raise WGSExtractError(
                 f"The selected reference FASTA is {reference_build}, but the "

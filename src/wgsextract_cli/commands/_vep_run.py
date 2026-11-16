@@ -143,7 +143,7 @@ def _apply_forced_assembly(lib: ReferenceLibrary, vep_assembly: str | None) -> N
     lib.build = forced_build
     if not lib.fasta:
         return
-    fasta_build = build_from_path(str(lib.fasta))
+    fasta_build = build_from_path(Path(lib.fasta).name)
     if fasta_build and fasta_build != forced_build:
         logging.warning(
             f"Discarding auto-resolved FASTA '{lib.fasta}' because it conflicts "
