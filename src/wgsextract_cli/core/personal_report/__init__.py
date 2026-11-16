@@ -715,13 +715,13 @@ def _overview(ctx: _Context) -> dict[str, Any]:
         and not warned
     ):
         section["warnings"].append(
-            {
-                "code": contamination.WARNING,
-                "message": f"qc contamination estimated {freemix:.1%} of the "
+            ReportWarningDocument(
+                code=contamination.WARNING,
+                message=f"qc contamination estimated {freemix:.1%} of the "
                 "reads are another person's (FREEMIX, at or above "
                 f"qc_max_contamination {threshold:.1%}): every finding below "
                 f"may be affected. See {contamination.GUIDE}.",
-            }
+            )
         )
     qc = []
     if info is not None and info.status == "ok":
@@ -1006,7 +1006,9 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
         rows = summarize(str(phenotypes)) if phenotypes else []
     except (OSError, ValueError) as e:
         section["warnings"].append(
-            {"code": "unreadable_evidence", "message": f"PharmCAT phenotypes: {e}"}
+            ReportWarningDocument(
+                code="unreadable_evidence", message=f"PharmCAT phenotypes: {e}"
+            )
         )
         rows = []
     calls: dict[str, list[dict[str, Any]]] = {}
@@ -1238,7 +1240,9 @@ def _hla_findings(section: dict[str, Any], source: Source, ctx: _Context) -> Non
         calls = {c.gene: c for c in parse_t1k(str(evidence))} if evidence else None
     except (OSError, ValueError, IndexError) as e:
         section["warnings"].append(
-            {"code": "unreadable_evidence", "message": f"T1K genotypes: {e}"}
+            ReportWarningDocument(
+                code="unreadable_evidence", message=f"T1K genotypes: {e}"
+            )
         )
         calls = None
     release = source.metrics.get("ipd_imgt_hla_release")
@@ -1250,11 +1254,11 @@ def _hla_findings(section: dict[str, Any], source: Source, ctx: _Context) -> Non
             # e.g. a later, interrupted run replaced the genotypes
             label, reasons = NOT_ASSESSED, ["evidence_mismatch"]
             section["warnings"].append(
-                {
-                    "code": "evidence_mismatch",
-                    "message": f"The T1K genotypes no longer give the {gene} call "
+                ReportWarningDocument(
+                    code="evidence_mismatch",
+                    message=f"The T1K genotypes no longer give the {gene} call "
                     "typing hla recorded; rerun it.",
-                }
+                )
             )
         elif not diplotype:
             label, reasons = variant_confidence.LOW, ["no_call"]
@@ -1351,7 +1355,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         except gene_lists.GeneListUnavailable as error:
             unavailable = True
             section["warnings"].append(
-                {"code": "gene_list_unavailable", "message": str(error)}
+                ReportWarningDocument(code="gene_list_unavailable", message=str(error))
             )
     if not unavailable:
         for call in calls:
@@ -1453,13 +1457,13 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     )
     if not complete:
         section["warnings"].append(
-            {
-                "code": "calls_truncated",
-                "message": "The run's confidence table is missing, and its "
+            ReportWarningDocument(
+                code="calls_truncated",
+                message="The run's confidence table is missing, and its "
                 "manifest lists only some calls: gene counts may be incomplete, "
                 "and only a biallelic status (which more calls can't change) is "
                 "given. Rerun vcf clinvar.",
-            }
+            )
         )
     section["build"] = build
     section["counts"] = {
@@ -1494,21 +1498,21 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
         return section
     if unplaced and build is None and gene_list.needs_build():
         section["warnings"].append(
-            {
-                "code": "build_unknown",
-                "message": "The VCF's build could not be identified, so its calls "
+            ReportWarningDocument(
+                code="build_unknown",
+                message="The VCF's build could not be identified, so its calls "
                 "could not be placed in genes; see the full table.",
-            }
+            )
         )
     elif unplaced:
         section["warnings"].append(
-            {
-                "code": "gene_annotation_missing",
-                "message": f"{unplaced} call{'s' * (unplaced != 1)} have no ClinVar "
+            ReportWarningDocument(
+                code="gene_annotation_missing",
+                message=f"{unplaced} call{'s' * (unplaced != 1)} have no ClinVar "
                 "GENEINFO and the gene list has no spans to place them by; rerun "
                 "vcf clinvar with a current ClinVar file, or use a list with "
                 "spans. See the full table.",
-            }
+            )
         )
     flagged = [
         f"{g['gene']} {g['status'].replace('_', ' ')}" + _qualifiers(g)
@@ -1612,11 +1616,11 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
     section["counts"] = {**counts, "listed": len(findings)}
     if len(rare_rows) > len(findings):
         section["warnings"].append(
-            {
-                "code": "svs_truncated",
-                "message": f"Only the {len(findings)} rarest of {len(rare_rows)} "
+            ReportWarningDocument(
+                code="svs_truncated",
+                message=f"Only the {len(findings)} rarest of {len(rare_rows)} "
                 "rare SVs are listed; see the full table.",
-            }
+            )
         )
     section["summary"] = (
         f"{sum(counts.values())} carried PASS SVs: {counts['common']} common "
@@ -1962,10 +1966,10 @@ def build_report(
                 file = finding["evidence"][key]
                 if file and not (folder / file).exists():
                     section["warnings"].append(
-                        {
-                            "code": "evidence_missing",
-                            "message": f"Evidence file not found: {file}",
-                        }
+                        ReportWarningDocument(
+                            code="evidence_missing",
+                            message=f"Evidence file not found: {file}",
+                        )
                     )
     return {
         "schema": SCHEMA_ID,
