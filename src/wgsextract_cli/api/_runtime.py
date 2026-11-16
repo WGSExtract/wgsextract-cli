@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Protocol, TypeVar
 
 from wgsextract_cli.core import execution_context
+from wgsextract_cli.core.execution_context import ConfigState
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -19,7 +20,7 @@ from wgsextract_cli.core.results import (
     redact_params,
 )
 
-from ._params import Params, with_config_defaults
+from ._params import Params, param_fields, with_config_defaults
 
 P = TypeVar("P", bound=Params)
 
@@ -122,7 +123,8 @@ class CommandFailed(Exception):
 
 
 # Quick reads that describe a sample, the reference library or the tools and
-# change nothing, so library calls of them run concurrently; other operations
+# change nothing, so library calls of them run concurrently unless a ``writes``
+# field asks them to save files (see ``_runs_concurrently``); other operations
 # run one at a time per process (see ``_LOCK``). The server offers these
 # without --allow-jobs.
 READ_ONLY_COMMANDS = frozenset(
@@ -139,6 +141,18 @@ READ_ONLY_COMMANDS = frozenset(
 
 # Serializes the operations that write files or run long, and config changes.
 _LOCK = threading.RLock()
+
+
+def _runs_concurrently(params: Params) -> bool:
+    """Whether a library call with ``params`` runs beside others rather than
+    one at a time: a read-only command whose ``writes`` fields save nothing,
+    except the ``ATOMIC_WRITES`` ones, whose saves may race."""
+    return params.COMMAND in READ_ONLY_COMMANDS and not any(
+        item.spec.writes
+        and item.name not in params.ATOMIC_WRITES
+        and getattr(params, item.name) not in (None, item.safe_value)
+        for item in param_fields(type(params))
+    )
 
 
 def report(stage: str, message: str = "", fraction: float | None = None) -> None:
@@ -185,13 +199,13 @@ def use_config(path: str | os.PathLike[str] | None = None) -> None:
     """Read settings for later calls from ``path``, or from the user's
     config.toml when None. Raises ``WGSExtractError`` for an invalid file.
 
-    This sets the process's configuration; ``scoped_config`` gives one
+    This sets the process's configuration, even when called inside a
+    ``scoped_config`` block or a progress callback; ``scoped_config`` gives one
     thread's calls their own."""
-    from wgsextract_cli.core.config import reload_settings, set_config_path
+    from wgsextract_cli.core.config import select_process_config
 
     with _LOCK:
-        set_config_path(path)
-        reload_settings()
+        select_process_config(path)
 
 
 @contextlib.contextmanager
@@ -227,7 +241,7 @@ def execute(
     stopped. config.toml is loaded on the first call unless the host already
     loaded or selected one (see ``use_config``).
     """
-    read_only = params.COMMAND in READ_ONLY_COMMANDS
+    read_only = _runs_concurrently(params)
     with contextlib.nullcontext() if read_only else _LOCK:
         result, error = _run(params, impl, progress, cancel, read_only)
         if write_manifest:
@@ -258,10 +272,14 @@ def _run(
     from wgsextract_cli.core.reference_lookup import local_reference_lookup
     from wgsextract_cli.core.temp_directory import run_temporary_directory
 
-    ensure_settings_loaded()
     # A read-only call, running beside others, reads the configuration as it
     # was when it started, unaffected by a later use_config.
-    config = snapshot_config() if read_only else execution_context.current().config
+    config: ConfigState | None
+    if read_only:
+        config = snapshot_config()
+    else:
+        ensure_settings_loaded()
+        config = execution_context.current().config
     scope = object()  # this call's tools, for cancel
     result = CommandResult(command=params.COMMAND)
     error: BaseException | None = None

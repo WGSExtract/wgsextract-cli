@@ -187,8 +187,9 @@ settings, where its tools' stdout goes) is on the `ExecutionContext` in
 `core/execution_context.py`, a `ContextVar`, so concurrent library calls keep
 apart. Reach it through `current_result()`, `report()`, `checkpoint()` and
 `settings` as before. Start worker threads with `context_thread` or
-`ContextThreadPoolExecutor`, which run them in the caller's context; ruff
-rejects a bare `threading.Thread` or `ThreadPoolExecutor` in command code.
+`ContextThreadPoolExecutor`, which run them in the caller's context (a
+future's done-callbacks in the context they were added in); ruff rejects a
+bare `threading.Thread` or `ThreadPoolExecutor` in command code.
 
 ### Issue-report package
 

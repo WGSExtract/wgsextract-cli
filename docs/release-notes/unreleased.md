@@ -6,8 +6,9 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 - Python API: quick read-only calls (`info`, `info chip`, `sample show`,
   `ref status`, `ref library-list`, `example-genome list`, `deps check`) can
   run on several threads at once, each with its own result, progress
-  callback, cancel token and settings; other operations still run one at a
-  time. `with api.scoped_config(path):` gives one thread's calls their own
+  callback, cancel token and settings; other operations, and those asked to
+  save files (`info --detailed`/`--format`, `ref library --list
+  --remote-sizes`), still run one at a time. `with api.scoped_config(path):` gives one thread's calls their own
   `config.toml`. Cancelling a call now stops only its own tools. See
   [api.md](../api.md).
 - `vcf acmg --research-acmg` adds automated ACMG/AMP classes from fastVEP

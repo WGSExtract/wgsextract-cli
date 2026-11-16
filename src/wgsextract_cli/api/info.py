@@ -34,6 +34,9 @@ class InfoParams(Params):
     ``<input>.wgse_info.json``."""
 
     COMMAND = "info"
+    # Without detailed or table_format, outdir only places the metrics cache,
+    # which is written atomically.
+    ATOMIC_WRITES = frozenset({"cache", "outdir"})
 
     input: Path = input_param(_ALIGNMENT, "--input required.")
     ref: Path | None = ref_param()

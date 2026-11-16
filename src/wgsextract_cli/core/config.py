@@ -166,6 +166,8 @@ def get_config_dir() -> Path:
 # calls use unless they run inside ``scoped_config``. Its path is set from
 # --config by a caller (such as the GUI) keeping its own settings file.
 _PROCESS_CONFIG = ConfigState()
+# Held while a configuration's path is chosen or its settings are loaded, so a
+# load publishes the settings of the path it read, never another's.
 _load_lock = threading.RLock()
 
 
@@ -180,7 +182,8 @@ def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
 
 def set_config_path(path: str | os.PathLike[str] | None) -> None:
     """Use this config.toml instead of the per-user one (None restores it)."""
-    _state().path = _resolve(path)
+    with _load_lock:
+        _state().path = _resolve(path)
 
 
 def config_args(*, keep_awake: bool | None = None) -> list[str]:
@@ -293,26 +296,43 @@ def reload_settings() -> None:
     """Re-load configuration from disk and drop results derived from it."""
     from wgsextract_cli.core.dependencies import clear_tool_caches
 
-    state = _state()
-    state.values = load_config()
-    state.loaded = True
+    _load()
     clear_tool_caches()
+
+
+def _load() -> None:
+    """Load the running operation's config.toml into its settings."""
+    with _load_lock:
+        state = _state()
+        state.values = load_config()
+        state.loaded = True
 
 
 def ensure_settings_loaded() -> None:
     """Load config.toml for library use, unless the host application already
     loaded settings or filled them itself."""
-    state = _state()
     with _load_lock:
+        state = _state()
         if not state.loaded and not state.values:
             reload_settings()
 
 
 def snapshot_config() -> ConfigState:
-    """A copy of the running operation's configuration that later changes to
-    it (``use_config``, ``reload_settings``) leave alone."""
-    state = _state()
-    return ConfigState(path=state.path, values=dict(state.values), loaded=True)
+    """A copy of the running operation's configuration, loaded first if
+    nothing was, that later changes to it (``use_config``,
+    ``reload_settings``) leave alone."""
+    with _load_lock:
+        ensure_settings_loaded()
+        state = _state()
+        return ConfigState(path=state.path, values=dict(state.values), loaded=True)
+
+
+def select_process_config(path: str | os.PathLike[str] | None) -> None:
+    """Select and load the process's config.toml (the user's when None), even
+    from inside a ``scoped_config`` or a call running on its own snapshot."""
+    with _load_lock, bound(config=None):
+        set_config_path(path)
+        reload_settings()
 
 
 @contextmanager
@@ -321,8 +341,10 @@ def scoped_config(path: str | os.PathLike[str] | None = None) -> Iterator[None]:
     from ``path`` (the user's config.toml when None), leaving the process's
     and other threads' settings alone. Raises ``WGSExtractError`` for an
     invalid file."""
+    # Unlike reload_settings, this leaves the tool caches: they are shared
+    # with the calls running beside this one and don't depend on settings.
     with bound(config=ConfigState(path=_resolve(path))):
-        reload_settings()
+        _load()
         yield
 
 

@@ -437,7 +437,8 @@ def run_command(
         )
     except KeyboardInterrupt:
         if sys.platform == "win32":
-            cleanup_processes()
+            # Only this operation's tools: other library calls keep theirs.
+            proc_registry.cleanup(execution_context.current().process_scope)
         else:
             # The tool runs in its own session, so Ctrl-C did not reach it.
             terminate_trees([process])

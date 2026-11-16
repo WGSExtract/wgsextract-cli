@@ -114,29 +114,24 @@ def context_thread(
     )
 
 
+class _ContextFuture(Future[T]):
+    """A future whose done-callbacks run in a copy of the context they were
+    added in, whichever thread completes or cancels it (or adds them to a
+    future already done)."""
+
+    def add_done_callback(self, fn: Callable[[Future[T]], object]) -> None:
+        context = contextvars.copy_context()
+        super().add_done_callback(lambda future: context.run(fn, future))
+
+
 class ContextThreadPoolExecutor(ThreadPoolExecutor):
     """A ``ThreadPoolExecutor`` whose tasks each run in a copy of the context
     of the thread that submitted them, and whose futures' done-callbacks run
-    in that of the thread that created the pool."""
-
-    def __init__(
-        self,
-        max_workers: int | None = None,
-        thread_name_prefix: str = "",
-        initializer: Callable[..., object] | None = None,
-        initargs: tuple[Any, ...] = (),
-    ) -> None:
-        context = contextvars.copy_context()
-
-        def start() -> None:
-            # Callbacks run on the worker thread after the task's own context
-            # is left, so the worker's starts as a copy of the creator's.
-            for var, value in context.items():
-                var.set(value)
-            if initializer is not None:
-                initializer(*initargs)
-
-        super().__init__(max_workers, thread_name_prefix, start)
+    in a copy of the context they were added in."""
 
     def submit(self, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> Future[T]:
-        return super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+        future = super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
+        # The executor makes a plain Future; give it context-bound callbacks
+        # before anyone can add one.
+        future.__class__ = _ContextFuture
+        return future

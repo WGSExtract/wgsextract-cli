@@ -410,6 +410,212 @@ def test_worker_threads_inherit_the_calls_context(tmp_path):
     assert seen == [str(library)] * 3
 
 
+def test_done_callbacks_run_in_the_context_they_were_added_in(tmp_path):
+    """#824 review: a pool future's done-callbacks ran in the context of
+    whichever thread completed or cancelled the future, so a callback could
+    report into another operation's result."""
+    import threading
+
+    from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
+
+    mine = results.CommandResult(command="mine")
+    release = threading.Event()
+    with ContextThreadPoolExecutor(1) as pool:
+        busy = pool.submit(release.wait, 60)
+        queued = pool.submit(lambda: None)
+        with results.collecting(mine):
+            queued.add_done_callback(lambda _: results.warn("callback", "callback"))
+        canceller = threading.Thread(target=queued.cancel)
+        canceller.start()
+        canceller.join()
+        release.set()
+        busy.result()
+    assert queued.cancelled()
+    assert [w.code for w in mine.warnings] == ["callback"]
+
+
+@pytest.mark.parametrize(
+    ("variant", "overlaps"),
+    [("plain", True), ("detailed", False), ("table", False), ("sizes", False)],
+)
+def test_read_only_calls_asked_to_save_files_run_one_at_a_time(
+    variant, overlaps, fake_data, tmp_path, monkeypatch
+):
+    """#824 review: info --detailed/--format and ref library-list
+    --remote-sizes ran beside each other like plain reads, racing on their
+    tables and the library's size cache."""
+    import threading
+
+    from wgsextract_cli.core.ref_library import remote_sizes
+
+    monkeypatch.setattr(remote_sizes, "probe_size", lambda url: None)  # network
+    bam, ref = fake_data
+    info = {
+        "plain": {},
+        "detailed": {"detailed": True},
+        "table": {"table_format": "tsv"},
+    }
+
+    def call(progress, cancel):
+        if variant == "sizes":
+            params = api.RefLibraryListParams(ref=tmp_path, remote_sizes=True)
+            return api.ref.library_list(
+                params, progress=progress, cancel=cancel, check=False
+            )
+        params = api.InfoParams(input=bam, ref=ref, outdir=tmp_path, **info[variant])
+        return api.info.info(params, progress=progress, cancel=cancel, check=False)
+
+    second_started = threading.Event()
+    tokens = [api.CancelToken(), api.CancelToken()]
+    waited: list[bool] = []
+
+    def second_progress(event: api.ProgressEvent) -> None:
+        if event.stage == "start":
+            second_started.set()
+            tokens[1].cancel()
+
+    second = threading.Thread(target=call, args=(second_progress, tokens[1]))
+
+    def first_progress(event: api.ProgressEvent) -> None:
+        if event.stage == "start":
+            second.start()
+            # A call kept waiting can't start before this one finishes.
+            waited.append(second_started.wait(timeout=5 if overlaps else 2))
+            tokens[0].cancel()
+
+    call(first_progress, tokens[0])
+    second.join(timeout=60)
+    assert waited == [overlaps]
+    assert second_started.is_set()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="simulates Windows on POSIX")
+def test_interrupted_tool_on_windows_leaves_other_calls_tools(monkeypatch):
+    """#824 review: on Windows, Ctrl-C in one library call's tool stopped the
+    tools of every other call in the process."""
+    other = popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    started: list[subprocess.Popen[str]] = []
+
+    def interrupted(self, *args, **kwargs):
+        started.append(self)
+        raise KeyboardInterrupt
+
+    try:
+        monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+        monkeypatch.setattr(sys, "platform", "win32")
+        with (
+            execution_context.bound(process_scope=object()),
+            pytest.raises(KeyboardInterrupt),
+        ):
+            run_command([sys.executable, "-c", "import time; time.sleep(60)"])
+        monkeypatch.undo()
+        assert started[0].wait(timeout=10) != 0
+        assert other.poll() is None
+    finally:
+        other.kill()
+        other.wait()
+
+
+_SWITCH_DURING_FIRST_LOAD = """
+import json, logging, sys, threading
+from wgsextract_cli import api
+from wgsextract_cli.core import config
+
+first, second = sys.argv[1:3]
+config.set_config_path(first)
+loading, switched = threading.Event(), threading.Event()
+
+
+class HoldFirstLoad(logging.Handler):
+    def emit(self, record):
+        if "zz_first_only" in record.getMessage() and not loading.is_set():
+            loading.set()
+            switched.wait(timeout=2)  # use_config waits for this load
+
+
+logging.getLogger().addHandler(HoldFirstLoad())
+reader = threading.Thread(
+    target=api.info.chip, args=(api.ChipParams(list_revisions=True),)
+)
+reader.start()
+assert loading.wait(timeout=60)
+switcher = threading.Thread(target=lambda: (api.use_config(second), switched.set()))
+switcher.start()
+reader.join()
+switcher.join()
+print(json.dumps([str(config.get_config_path()), config.settings["output_directory"]]))
+"""
+
+
+def test_use_config_during_a_read_only_calls_first_load(tmp_path):
+    """#824 review: a read-only call's first settings load, running without
+    the operation lock, finished after a concurrent use_config(B) and left
+    B's path selected with the first file's settings."""
+    first, second = tmp_path / "first.toml", tmp_path / "second.toml"
+    first.write_text(
+        f"output_directory = {json.dumps(str(tmp_path / 'one'))}\nzz_first_only = 1\n"
+    )
+    second.write_text(f"output_directory = {json.dumps(str(tmp_path / 'two'))}\n")
+    done = subprocess.run(
+        [sys.executable, "-c", _SWITCH_DURING_FIRST_LOAD, str(first), str(second)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=CLI_ROOT,
+    )
+    assert done.returncode == 0, done.stderr
+    path, output_directory = json.loads(done.stdout.splitlines()[-1])
+    assert (Path(path), Path(output_directory)) == (
+        second.resolve(),
+        tmp_path / "two",
+    )
+
+
+def test_use_config_inside_a_scope_selects_the_process_config(tmp_path):
+    """#824 review: use_config inside scoped_config (or a read-only call's
+    progress callback) changed that scope's settings, which vanished with it,
+    not the process's."""
+    scoped, scoped_library = _library_config(tmp_path, "scoped")
+    chosen, chosen_library = _library_config(tmp_path, "chosen")
+    later, later_library = _library_config(tmp_path, "later")
+    seen: list[object] = []
+
+    def progress(event: api.ProgressEvent) -> None:
+        if event.stage == "start":
+            api.use_config(later)
+            seen.append(settings.get("reference_library"))
+
+    with api.scoped_config(scoped):
+        api.use_config(chosen)
+        seen.append(settings.get("reference_library"))
+    seen.append(settings.get("reference_library"))
+    api.info.chip(api.ChipParams(list_revisions=True), progress=progress)
+    # The running call keeps the settings it started with.
+    assert seen == [str(scoped_library), str(chosen_library), str(chosen_library)]
+    assert settings.get("reference_library") == str(later_library)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell script tool")
+def test_entering_a_scoped_config_keeps_the_tool_versions_found(tmp_path, monkeypatch):
+    """#824 review: entering scoped_config cleared the process's tool caches
+    while other calls read them (a KeyError in deps check); a scope's settings
+    don't change which tools are installed."""
+    from wgsextract_cli.core.dependency_checks import get_tool_version
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    tool = bin_dir / "samtools"
+    tool.write_text('#!/bin/sh\ncat "$(dirname "$0")/version.txt"\n')
+    tool.chmod(0o755)
+    (bin_dir / "version.txt").write_text("samtools 1.21\n")
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    found = get_tool_version("samtools")
+    assert found and "1.21" in found
+    (bin_dir / "version.txt").write_text("samtools 1.22\n")
+    with api.scoped_config(_library_config(tmp_path, "lib")[0]):
+        assert get_tool_version("samtools") == found
+
+
 def _child_context() -> tuple[bool, bool]:
     context = execution_context.current()
     return context.progress is None, context.cancel is None
