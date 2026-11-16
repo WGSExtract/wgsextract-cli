@@ -5,7 +5,6 @@ import argparse
 import gzip
 import logging
 import random
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,7 +20,7 @@ from tests.htslib_helpers import (
 from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 # A het SNP (A>G) at 500 and a het 2 bp deletion (CGT>C) at 700, each carried by
 # half of 24 reads; the deletion's flanks differ, so it can't be left-shifted.
@@ -136,19 +135,18 @@ def test_vcf_indel_default_prior_keeps_low_support_het_indel_issue_860(tmp_path)
 
     # The fixture must discriminate: the same pileup under bcftools' default
     # prior (1.1e-3) calls nothing.
-    bcftools = str(get_tool_path("bcftools"))
-    pileup = subprocess.run(
-        [bcftools, "mpileup", "-B", "-C", "50", "-f", str(ref), bam],
-        capture_output=True,
-        check=True,
-    ).stdout
-    calls = subprocess.run(
-        [bcftools, "call", "-m", "-v"],
-        input=pileup,
-        capture_output=True,
-        check=True,
-    ).stdout.decode()
-    assert [line for line in calls.splitlines() if not line.startswith("#")] == []
+    bcftools = get_tool_path("bcftools")
+    default_vcf = tmp_path / "default-prior.vcf"
+    with default_vcf.open("wb") as out:
+        run_pipeline(
+            [
+                [bcftools, "mpileup", "-B", "-C", "50", "-f", str(ref), bam],
+                [bcftools, "call", "-m", "-v"],
+            ],
+            stdout=out,
+        )
+    calls = default_vcf.read_text().splitlines()
+    assert [line for line in calls if not line.startswith("#")] == []
 
 
 def test_caller_requires_input(tmp_path):

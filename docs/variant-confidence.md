@@ -329,6 +329,10 @@ vcfeval against GIAB v4.2.1 inside its confident regions;
   76.0%, in all tandem repeats and homopolymers 78.4% against 90.6%. Outside
   GIAB's difficult regions the flat prior's precision was 99.28%.
 
+Ultima reads are the exception: they keep bcftools' default prior (with its
+Ultima profile, `-X ultima`), because on GIAB HG008 chr20 the flat prior let
+homopolymer-length errors through as indels (precision 0.13 against 0.29).
+
 Precision is only meaningful inside a confident-region BED such as GIAB's.
 Without one, the same `QUAL>30` SNP calls scored 73.9% precision instead of
 98.9%, because calls outside the benchmark's regions count as false positives
