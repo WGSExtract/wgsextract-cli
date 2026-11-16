@@ -1,0 +1,4 @@
+##fileformat=VCFv4.2
+##INFO=<ID=SpliceAI,Number=.,Type=String,Description="SpliceAI">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	1014	.	A	G	.	.	SpliceAI=G|TINY1|0.00|0.00|0.01|0.00|5|-28|2|-13
