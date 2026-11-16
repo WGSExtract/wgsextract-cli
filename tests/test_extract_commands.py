@@ -230,6 +230,15 @@ def test_custom_long_region_list_is_not_file_name_too_long_977(genome, tmp_path)
     assert _names(out) == _on("chr1")
 
 
+def test_custom_distinct_long_region_lists_keep_distinct_bams_977(genome, tmp_path):
+    # PR #978 review: with an 8-hex-digit digest these two lists both became
+    # "13regions-2ee86e87", so the second extraction replaced the first's BAM.
+    head = ",".join(f"chr1:{s}-{s}" for s in range(1, 13))
+    for last in ("chr1:25281-25281", "chr1:77215-77215"):
+        _extract("custom", genome["male"], tmp_path, "-r", f"{head},{last}")
+    assert len(list(tmp_path.glob("*.bam"))) == 2
+
+
 def test_custom_extracts_bed_regions(genome, tmp_path):
     bed = tmp_path / "targets.bed"
     bed.write_text("chrX\t200\t260\n")

@@ -1,5 +1,4 @@
 import contextlib
-import hashlib
 import logging
 import subprocess
 from pathlib import Path
@@ -32,7 +31,7 @@ from wgsextract_cli.core.output_checks import (
     warn_if_no_variants,
 )
 from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
-from wgsextract_cli.core.region_selection import is_region_file, region_items
+from wgsextract_cli.core.region_selection import is_region_file, region_output_suffix
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -60,9 +59,6 @@ from ._extract_region import run_region
 
 _SAMTOOLS = ["samtools"]
 _CALLING_TOOLS = ["samtools", "bcftools", "tabix"]
-
-
-_MAX_REGION_LABEL = 100  # characters of a --region list kept in a file name
 
 
 def _setup(params: _ExtractParams, tools: list[str]) -> BaseArgs:
@@ -460,11 +456,7 @@ def run_custom(params: CustomParams) -> None:
 
     is_bed = is_region_file(region)
     label = Path(region).name if is_bed else region
-    region_suffix = label.replace(":", "_").replace(",", "_")
-    if not is_bed and len(region_suffix) > _MAX_REGION_LABEL:
-        # A long region list would make a file name the OS refuses (#977).
-        digest = hashlib.sha256(region.encode()).hexdigest()[:8]
-        region_suffix = f"{len(region_items(region, commas=True))}regions-{digest}"
+    region_suffix = region_output_suffix(region)
     out_bam = derive_output_path(input_path, base.outdir, f"_{region_suffix}.bam")
 
     logging.info(

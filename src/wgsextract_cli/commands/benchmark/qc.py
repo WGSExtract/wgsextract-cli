@@ -2,6 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.region_selection import region_output_suffix
 
 from ..info.render import region_file_tag
 from ..qc.commands import fastp_stem
@@ -16,10 +17,6 @@ from .models import BenchmarkJob, BenchmarkResult
 
 def _benchmark_tool_available(tool: str) -> bool:
     return _tool_active_for_benchmark(tool, get_tool_path(tool))
-
-
-def _region_output_suffix(region: str) -> str:
-    return region.replace(":", "_").replace(",", "_")
 
 
 def _fastqc_output_stem(input_path: Path) -> str:
@@ -243,9 +240,9 @@ def _run_heavy_coverage_extract_and_qc_steps(
                 logs_dir=logs_dir,
                 expected_outputs=[
                     custom_dir
-                    / f"{base_name}_{_region_output_suffix(heavy_region)}.bam",
+                    / f"{base_name}_{region_output_suffix(heavy_region)}.bam",
                     custom_dir
-                    / f"{base_name}_{_region_output_suffix(heavy_region)}.bam.bai",
+                    / f"{base_name}_{region_output_suffix(heavy_region)}.bam.bai",
                 ],
             )
         )
