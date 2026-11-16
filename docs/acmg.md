@@ -57,7 +57,8 @@ don't fire and the variant reads as VUS. `vcf acmg` refuses instead, before
 reading any record, when the databases lack one of the eight sources below,
 when a database isn't built for GRCh38, when fastVEP skips a database file,
 or when the gnomAD database holds nothing of an autosome, X or Y the input
-has records on. Records on other contigs gnomAD holds nothing of (chrM, which
+has records on (by default those chromosomes' gnomAD is read per run instead;
+see [gnomAD and SpliceAI per run](#gnomad-and-spliceai-per-run)). Records on other contigs gnomAD holds nothing of (chrM, which
 gnomAD v4.1 lacks, and unplaced, alt or decoy contigs) are left unclassified,
 with the warning `acmg_contigs_not_classified`, and listed in the summary's
 `contigs_not_classified`.
@@ -109,7 +110,9 @@ databases with `fastvep sa-build`:
   yourself and pass the file. It must be GRCh38 and tabix-indexed.
 - `--chromosomes` (such as `chr22`, or `chr1-22,chrX`; default all) limits
   gnomAD, SpliceAI, REVEL and phyloP; the others are genome-wide. `vcf acmg`
-  refuses inputs with records on a chromosome gnomAD wasn't built for.
+  reads gnomAD and SpliceAI per run for the chromosomes they weren't built for.
+- `--site-data per-run` doesn't build gnomAD and SpliceAI at all (below); the
+  folder remembers it, and `ref status` says so.
 - It's resumable: a rerun builds only what is missing, resuming interrupted
   downloads (a failed run keeps them), and a source that failed doesn't stop
   the others. Ctrl-C stops the builds running and starts no more. To take a new
@@ -148,6 +151,60 @@ chromosomes at a time where the network keeps up; `--dry-run` says it needs
 about 80 GB (75 GiB) free: 47 GiB for the databases and their staging, 27 GiB
 for the SpliceAI download in the library's `ref/` and 1.4 GiB for the other
 downloads.
+
+## gnomAD and SpliceAI per run
+
+A whole genome's gnomAD database takes an 877 GB stream to build, and
+SpliceAI a 29 GB download, for about 27 GB of databases. `vcf acmg` can
+instead read only the input's own sites of them, from the publishers' indexed
+files: gnomAD v4.1's joint sites on Google Cloud Storage, and the library's
+`spliceai_hg38.vcf.gz` or else Ensembl's copy of it. It builds them into small
+databases for the run with the same `fastvep sa-build` and INFO fields as
+`ref acmg-data`, so every variant finds what it would find in the full
+database: fastVEP looks gnomAD and SpliceAI up by the variant's own position
+and alleles, never a neighbour's (no criterion reads a nearby record of
+them).
+
+- `--site-data auto` (the default) uses the library's gnomAD and SpliceAI
+  databases, and reads per run those of the input's chromosomes they don't
+  hold; `per-run` always reads them per run, leaving the library's out;
+  `library` never does, and refuses as before. `ref acmg-data --site-data
+  per-run` builds the other six sources only.
+- A site is each record's span, one base wider on each side, both as written
+  and left-aligned by `bcftools norm` against the reference, as fastVEP
+  left-aligns an indel before it looks gnomAD up.
+- A tabix index only places records to 16 kb windows, about 5 MB of gnomAD,
+  so each site is found within its window by searching the compressed file:
+  2.9 requests and about 52 KB a site on gnomAD. Every BGZF block's CRC-32 is
+  checked, and a file that changes during the run (`If-Range`) stops it.
+- A source or chromosome that can't be read is refused as a missing database
+  is. A chromosome whose sites have no gnomAD record gets its first record, so
+  the database says it holds that chromosome and its sites read as absent from
+  gnomAD, as they are.
+- The databases are cached in the databases folder's `sites/` (in the run's
+  temporary folder when that can't be written), keyed on the sites and the
+  file's ETag or size and date, and the 200 most recently used are kept. A
+  rerun with the same sites reads nothing.
+- `acmg_summary.json`'s `site_data` lists, per source and chromosome, the file
+  read, its release, ETag and date, the sites, records, bytes and requests
+  read, and whether the cache had it. SpliceAI read per run warns
+  `acmg_data_terms` with its terms.
+
+Measured on HG002's chromosome 22 (50,284 records, 49,239 sites) with 4
+threads (64 connections to Google Cloud Storage, 16 to Ensembl, which refuses
+more), the two sources read side by side:
+
+| | gnomAD v4.1 joint | SpliceAI (Ensembl) | Whole genome, estimated |
+|---|---|---|---|
+| Read | 2.6 GB of 15.6 GB in 141,959 requests, 208 s | 355 MB of 452 MB in 12,917 requests, 136 s | gnomAD about 250 GB, 14 million requests, 5.6 hours; SpliceAI about 23 GB beside it |
+| Database | 8.7 MB, 217,251 records | 1.8 MB, 231,900 records | about 1 GB together |
+
+The run took 249 s (40 s with the library's databases, 44 s from the cache),
+at most 6.8 GB of memory, fastVEP's. The whole-genome estimate scales
+chromosome 22 by HG002's 97 times as many variants; reading is bound by
+round trips, not bandwidth. That is a quarter of gnomAD's 877 GB stream and
+leaves no 27 GB of databases on disk, but a genome takes hours, so a library
+that classifies many genomes is better off building them once.
 
 ## Validation
 

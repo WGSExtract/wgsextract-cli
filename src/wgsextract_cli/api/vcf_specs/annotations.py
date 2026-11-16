@@ -221,6 +221,14 @@ class VcfAcmgParams(_AnnotatorParams):
     gff3: Path | None = _resource_param(
         "Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz).", "acmg_gff3"
     )
+    site_data: str = param(
+        "auto",
+        help="Where gnomAD and SpliceAI come from: library (the --sa-dir "
+        "databases), per-run (only the input's sites, read from gnomAD's and "
+        "Ensembl's indexed files and cached in the folder's sites/), or auto "
+        "(default): the library's, per-run for chromosomes it lacks.",
+        choices=("auto", "library", "per-run"),
+    )
 
     def preflight(self) -> None:
         from wgsextract_cli.commands.vcf.acmg import require_opt_in
@@ -251,17 +259,42 @@ class VcfAcmgParams(_AnnotatorParams):
             if gff3 is not None:
                 yield "gff3", gff3
 
+    def _site_data_paths(self) -> tuple[Path | None, Path | None]:
+        """With gnomAD and SpliceAI read per run: the databases folder's
+        sites/ cache, which the run writes, and the library's SpliceAI VCF,
+        which it reads."""
+        from wgsextract_cli.core import acmg_data
+        from wgsextract_cli.core.reference_resolver import library_roots
+
+        from ._params import with_config_defaults
+
+        if self.site_data == "library":
+            return None, None
+        filled = with_config_defaults(self)
+        root = library_roots(filled.ref).root
+        sa_dir = acmg_data.acmg_sa_dir(root, filled.sa_dir)
+        return (
+            sa_dir / acmg_data.SITES_CACHE if sa_dir is not None else None,
+            acmg_data.library_spliceai_path(root) if root else None,
+        )
+
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         yield from super().implied_paths()
         for name, path in self._acmg_inputs():
             if getattr(self, name) is None:
                 yield name, path
+        for site_path in self._site_data_paths():
+            if site_path is not None:
+                yield "site_data", site_path
 
     def write_folders(self) -> Iterator[Path]:
         # fastVEP saves its transcript cache beside the GFF3.
         for name, path in self._acmg_inputs():
             if name == "gff3":
                 yield path.parent
+        cache, _ = self._site_data_paths()
+        if cache is not None:
+            yield cache
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -28,8 +28,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfAcmgParams
-from wgsextract_cli.core import acmg_data, read_scope
+from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -38,6 +39,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
@@ -586,42 +588,51 @@ def run_acmg(params: VcfAcmgParams) -> None:
             "so the classes are taken on the transcript the variant table shows."
         )
     contigs = vcf_index_chromosomes(vcf)
-    skipped = _unclassifiable(databases, contigs)
-    if skipped:
-        warn(
-            "acmg_contigs_not_classified",
-            "No gnomAD data covers "
-            + ", ".join(skipped[:10])
-            + (" ..." if len(skipped) > 10 else "")
-            + "; their records are left unclassified.",
-        )
-    result = current_result()
-    result.add_input(gff3, "transcript_models")
-    result.add_input(sa_dir, "acmg_databases")
-    warn("acmg_research_only", DISCLAIMER)
-
     threads = int(get_resource_defaults(params.threads)[0])
-    fastvep = get_tool_path("fastvep") or "fastvep"
-    command = [
-        fastvep, "annotate", "-i", "-", "-o", "-",
-        "--gff3", gff3, "--fasta", lib.fasta, "--sa-dir", sa_dir,
-        "--acmg", "--pick-allele", "--pick-order", PICK_ORDER, "--no-progress",
-    ]  # fmt: skip
-    strip = ["bcftools", "annotate", "--no-version", "-x", "INFO/CSQ", "-Ov", vcf]
-    if skipped:
-        # In the index's order, which is the file's: fastVEP's records must
-        # come in the input's order.
-        strip[-1:-1] = ["-r", ",".join(c for c in contigs if c not in skipped)]
-    meta = [
-        f'##WGSE_ACMG=<Disclaimer="{DISCLAIMER}",Tool="fastVEP {version}",'
-        f'PickOrder="{PICK_ORDER}",GFF3="{Path(gff3).name}",'
-        f'Databases="{Path(sa_dir).name}">'
-    ]
-    env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
-    logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
-    with tempfile.TemporaryDirectory(
-        dir=scratch_parent(outdir), prefix=".wgse_acmg_"
-    ) as work:
+    wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
+    result = current_result()
+    with tempfile.TemporaryDirectory(dir=scratch_parent(outdir), prefix=".wgse_acmg_") as work:
+        run_sa, site_dbs = sa_dir, []
+        if any(wanted.values()):
+            site_dbs = _site_databases(wanted, vcf, lib, sa_dir, work, threads)
+            run_sa = str(Path(work, "sa"))
+            acmg_sites.link_folder(Path(sa_dir), left_out, site_dbs, Path(run_sa))
+            databases = _databases(run_sa)
+        inventory = _inventory(databases)
+        skipped = _unclassifiable(databases, contigs)
+        if skipped:
+            warn(
+                "acmg_contigs_not_classified",
+                "No gnomAD data covers "
+                + ", ".join(skipped[:10])
+                + (" ..." if len(skipped) > 10 else "")
+                + "; their records are left unclassified.",
+            )
+        result.add_input(gff3, "transcript_models")
+        result.add_input(sa_dir, "acmg_databases")
+        warn("acmg_research_only", DISCLAIMER)
+
+        fastvep = get_tool_path("fastvep") or "fastvep"
+        command = [
+            fastvep, "annotate", "-i", "-", "-o", "-",
+            "--gff3", gff3, "--fasta", lib.fasta, "--sa-dir", run_sa,
+            "--acmg", "--pick-allele", "--pick-order", PICK_ORDER, "--no-progress",
+        ]  # fmt: skip
+        strip = ["bcftools", "annotate", "--no-version", "-x", "INFO/CSQ", "-Ov", vcf]
+        if skipped:
+            # In the index's order, which is the file's: fastVEP's records must
+            # come in the input's order.
+            strip[-1:-1] = ["-r", ",".join(c for c in contigs if c not in skipped)]
+        per_run = sorted({db.source for db in site_dbs})
+        meta = [
+            f'##WGSE_ACMG=<Disclaimer="{DISCLAIMER}",Tool="fastVEP {version}",'
+            f'PickOrder="{PICK_ORDER}",GFF3="{Path(gff3).name}",'
+            f'Databases="{Path(sa_dir).name}"'
+            + (f',PerRun="{",".join(per_run)}"' if per_run else "")
+            + ">"
+        ]
+        env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
+        logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
         partial = str(Path(work, ACMG_ANNOTATED))
         run = _FastVep(command, strip, env)
         try:
@@ -669,7 +680,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         "reference": str(Path(lib.fasta).absolute()),
         "databases": {
             "folder": str(Path(sa_dir).absolute()),
-            "files": _inventory(databases),
+            "files": inventory,
             # Where `ref acmg-data` built them: each source's release and terms.
             "sources": {
                 key: {k: info.get(k, "") for k in ("label", "release", "url", "terms")}
@@ -677,6 +688,11 @@ def run_acmg(params: VcfAcmgParams) -> None:
                     acmg_data.load_manifest(sa_dir).get("sources") or {}
                 ).items()
             },
+        },
+        "site_data": {
+            "mode": params.site_data,
+            "per_run": acmg_sites.summary(site_dbs),
+            "library_databases_left_out": sorted(p.name for p in left_out),
         },
         "sources_required": sorted(REQUIRED_SOURCES.values()),
         "sources_not_used": sorted(unused),
@@ -704,6 +720,91 @@ def run_acmg(params: VcfAcmgParams) -> None:
     logging.info(
         "Wrote %s and %s (research only, not a diagnosis).", out_vcf, summary_path
     )
+
+
+def _per_run_plan(
+    databases: list[_Database], contigs: list[str], mode: str, sa_dir: str
+) -> tuple[dict[str, list[str]], set[Path]]:
+    """The input's nuclear chromosomes to read gnomAD and SpliceAI for per
+    run, by source, and the library databases to leave out: in ``per-run``
+    mode all of them and the library's; in ``auto``, those no library database
+    holds (or that ``ref acmg-data`` found the source has nothing of)."""
+    if mode == "library":
+        return {}, set()
+    recorded = (acmg_data.load_manifest(sa_dir).get("databases") or {}).values()
+    nuclear = [c for c in contigs if _contig_key(c) in _NUCLEAR]
+    wanted: dict[str, list[str]] = {}
+    left_out: set[Path] = set()
+    for source in acmg_sites.SOURCES:
+        # SpliceAI's databases are keyed spliceAI by fastVEP's builder.
+        held = [db for db in databases if db.source.lower().replace("_", "") == source]
+        covered: set[str] = set()
+        if mode == "per-run":
+            left_out.update(db.path for db in held)
+        elif any(db.chromosomes is None for db in held):
+            continue  # a database that doesn't say: taken to hold everything
+        else:
+            covered = {_contig_key(c) for db in held for c in db.chromosomes or ()}
+            covered |= {
+                _contig_key(str(e.get("chromosome")))
+                for e in recorded
+                if e.get("source") == source and e.get("absent") and e.get("chromosome")
+            }
+        wanted[source] = [c for c in nuclear if _contig_key(c) not in covered]
+    return wanted, left_out
+
+
+def _site_databases(
+    wanted: dict[str, list[str]],
+    vcf: str,
+    lib: ReferenceLibrary,
+    sa_dir: str,
+    work: str,
+    threads: int,
+) -> list[acmg_sites.SiteDatabase]:
+    """The per-run gnomAD and SpliceAI databases of the input's sites, cached
+    in the databases folder's sites/ (in ``work`` when it can't be written)."""
+    assert lib.fasta
+    cache = Path(sa_dir, acmg_sites.CACHE)
+    if not read_scope.may_follow(cache):
+        raise UsageError(f"{cache} is outside the folders this run may use.")
+    try:
+        cache.mkdir(exist_ok=True)
+        writable = os.access(cache, os.W_OK)
+    except OSError:
+        writable = False
+    if not writable:
+        logging.info("%s can't be written; the per-run databases aren't kept.", cache)
+        cache = Path(work, acmg_sites.CACHE)
+    reading = ", ".join(
+        f"{acmg_data.BY_KEY[k].label.split(' (')[0]} ({_chromosome_span(v)})"
+        for k, v in wanted.items()
+        if v
+    )
+    logging.info("Reading the input's sites of %s...", reading)
+    sites = acmg_sites.input_sites(vcf, lib.fasta)
+    found = acmg_sites.build_databases(
+        wanted,
+        sites,
+        lib.root,
+        cache,
+        connections=min(64, max(8, 16 * threads)),
+        cancel=cancel_event(),
+    )
+    sources = {db.source for db in found}
+    restricted = [acmg_data.BY_KEY[k] for k in sorted(sources)]
+    if any(s.restricted for s in restricted):
+        warn(
+            "acmg_data_terms",
+            "This run read these sources under their publishers' terms: "
+            + " ".join(s.terms for s in restricted if s.restricted),
+            sources=",".join(s.key for s in restricted if s.restricted),
+        )
+    return found
+
+
+def _chromosome_span(contigs: list[str]) -> str:
+    return ", ".join(contigs) if len(contigs) <= 3 else f"{len(contigs)} chromosomes"
 
 
 def _refuse_overwrite(source: str, out_vcf: str) -> None:

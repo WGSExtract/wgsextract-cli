@@ -43,7 +43,11 @@ GNOMAD = """##fileformat=VCFv4.2
 ##INFO=<ID=AC_genomes,Number=A,Type=Integer,Description="not kept">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
 chr1\t1150\t.\tT\tA\t.\tPASS\tAF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000;AC_genomes=1
+chr1\t1668\t.\tGA\tG\t.\tPASS\tAF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
 """
+# A one-base deletion in the AAAAAA at 1669-1674, written right-shifted:
+# gnomAD has it left-aligned, at 1668.
+SHIFTED_DELETION = "1\t1673\t.\tAA\tA\t50\tPASS\t.\tGT\t0/1\n"
 CLINGEN = (
     '"CLINGEN GENE DISEASE VALIDITY CURATIONS","","","","","",""\n'
     '"FILE CREATED: 2026-11-16","","","","","",""\n'
@@ -102,7 +106,10 @@ def publishers(tmp_path, monkeypatch):
     summary = gzip.compress((FIXTURES / "variant_summary.txt").read_bytes(), mtime=0)
     constraint = (FIXTURES / "constraint.tsv").read_bytes()
     phylop = gzip.compress((FIXTURES / "phylop.wigFix").read_bytes(), mtime=0)
-    gnomad = _bgzf(_write(tmp_path / "gnomad.vcf", GNOMAD)).read_bytes()
+    gnomad_vcf = _bgzf(_write(tmp_path / "gnomad.vcf", GNOMAD))
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(gnomad_vcf)])
+    gnomad = gnomad_vcf.read_bytes()
+    spliceai = _spliceai(tmp_path / "served")
     files = {
         f"ensembl/{GFF3}": gff3,
         "ensembl/CHECKSUMS": f"{_bsd_sum(gff3)} {GFF3}\n".encode(),
@@ -116,6 +123,9 @@ def publishers(tmp_path, monkeypatch):
         "phylop/chr1.phyloP100way.wigFix.gz": phylop,
         "phylop/md5sum.txt": f"{_md5(phylop)}  chr1.phyloP100way.wigFix.gz\n".encode(),
         "gnomad/chr1.vcf.bgz": gnomad,
+        "gnomad/chr1.vcf.bgz.tbi": Path(f"{gnomad_vcf}.tbi").read_bytes(),
+        "spliceai.vcf.gz": spliceai.read_bytes(),
+        "spliceai.vcf.gz.tbi": Path(f"{spliceai}.tbi").read_bytes(),
     }
     with serving(None, files) as server:
         server.headers = {
@@ -131,9 +141,20 @@ def publishers(tmp_path, monkeypatch):
             "REVEL_URL": "revel.zip",
             "PHYLOP_DIR": "phylop/",
             "GNOMAD_URL": "gnomad/{chrom}.vcf.bgz",
+            "SPLICEAI_URL": "spliceai.vcf.gz",
         }.items():
             monkeypatch.setattr(acmg_data, name, server.url_for(path))
         yield server
+
+
+def _spliceai(folder: Path) -> Path:
+    """The fixture SpliceAI VCF, GRCh38 by its header, bgzipped and indexed."""
+    folder.mkdir(exist_ok=True)
+    text = (FIXTURES / "spliceai.vcf").read_text()
+    text = text.replace("##INFO", "##contig=<ID=1,length=248956422>\n##INFO", 1)
+    spliceai = _bgzf(_write(folder / "spliceai.vcf", text))
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(spliceai)])
+    return spliceai
 
 
 @pytest.fixture
@@ -142,11 +163,7 @@ def library(tmp_path):
     lib = tmp_path / "lib"
     (lib / "genomes").mkdir(parents=True)
     shutil.copy(GENE / "genome.fa", lib / "genomes" / "genome.fa")
-    text = (FIXTURES / "spliceai.vcf").read_text()
-    text = text.replace("##INFO", "##contig=<ID=1,length=248956422>\n##INFO", 1)
-    spliceai = _bgzf(_write(tmp_path / "spliceai.vcf", text))
-    run_command([get_tool_path("tabix"), "-p", "vcf", str(spliceai)])
-    return lib, spliceai
+    return lib, _spliceai(tmp_path)
 
 
 def _params(library, **extra) -> RefAcmgDataParams:
@@ -167,6 +184,20 @@ def _manifest(library) -> dict:
 
 def _gets(server: RangeServer) -> int:
     return sum(method == "GET" for method, _ in server.requests)
+
+
+def _acmg(vcf: Path) -> dict[int, dict[str, str]]:
+    """Each record's ACMG_* INFO values, by position."""
+    out = {}
+    with gzip.open(vcf, "rt") as f:
+        for line in f:
+            if not line.startswith("#"):
+                cols = line.split("\t")
+                info = dict(kv.partition("=")[::2] for kv in cols[7].split(";"))
+                out[int(cols[1])] = {
+                    k: v for k, v in info.items() if k.startswith("ACMG")
+                }
+    return out
 
 
 def _classes(vcf: Path) -> dict[int, str]:
@@ -574,3 +605,134 @@ def test_a_server_checks_the_gff3_vcf_acmg_finds_through_its_databases(tmp_path)
             PathGuard([allowed]).check(params)
         assert outside in set(params.write_folders())
     PathGuard([tmp_path]).check(params_from_json(op, {**request, "sa_dir": str(sa)}))
+
+
+@pytest.mark.parametrize("linked", ["ref/acmg/sa/sites", "ref/spliceai_hg38.vcf.gz"])
+def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
+    tmp_path, linked
+):
+    """Issue 629: per-run site data writes the databases folder's sites/ cache
+    and reads the library's SpliceAI VCF; either linked out of an allowed
+    library would lead the run outside serve --allow."""
+    from wgsextract_cli.server.operations import (
+        PathGuard,
+        RequestError,
+        find,
+        params_from_json,
+    )
+
+    allowed, outside = tmp_path / "allowed", tmp_path / "outside"
+    lib = allowed / "lib"
+    (lib / "ref" / "acmg" / "sa").mkdir(parents=True)
+    _link(lib / linked, outside / "target")
+    op = find("vcf/acmg")
+    request = {"input": str(allowed / "in.vcf.gz"), "research_acmg": True}
+
+    params = params_from_json(op, {**request, "ref": str(lib)})
+    with pytest.raises(RequestError, match="outside the folders"):
+        PathGuard([allowed]).check(params)
+    library = {**request, "ref": str(lib), "site_data": "library"}
+    PathGuard([allowed]).check(params_from_json(op, library))
+    # The job lock covers the cache a per-run job writes.
+    assert lib / "ref" / "acmg" / "sa" / "sites" in set(params.write_folders())
+
+
+def _input(tmp_path: Path, extra: str = "") -> Path:
+    lines = (FIXTURES / "in_vep.vcf").read_text().splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.startswith("1\t2500\t"))
+    vcf = _bgzf(
+        _write(tmp_path / "in_vep.vcf", "".join([*lines[:at], extra, *lines[at:]]))
+    )
+    run_command([get_tool_path("tabix"), "-p", "vcf", str(vcf)])
+    return vcf
+
+
+def _acmg_run(lib: Path, vcf: Path, out: Path, site_data: str = "auto"):
+    return api.vcf.acmg(
+        VcfAcmgParams(
+            research_acmg=True,
+            input=vcf,
+            ref=lib / "genomes" / "genome.fa",
+            outdir=out,
+            site_data=site_data,
+        ),
+        check=False,
+    )
+
+
+@needs_fastvep
+def test_per_run_gnomad_and_spliceai_classify_as_the_full_databases_do(
+    publishers, library, tmp_path
+):
+    # Issue 629: a whole genome's gnomAD and SpliceAI databases are tens of GB;
+    # read per run, only the input's sites are fetched and built.
+    lib, _ = library
+    api.ref.acmg_data(_params(library, site_data="per-run"))
+    manifest = _manifest(library)
+    assert manifest["site_data"] == "per-run"
+    built = {e["source"] for e in manifest["databases"].values()}
+    assert not built & {"gnomad", "spliceai"}
+    assert "gnomad/chr1.vcf.bgz" not in publishers.paths
+    status = api.ref.status(RefStatusParams(ref=lib)).details["acmgData"]
+    assert status["installed"] and status["siteData"] == "per-run"
+
+    vcf = _input(tmp_path, SHIFTED_DELETION)
+    first = _acmg_run(lib, vcf, tmp_path / "per_run")
+    assert first.exit_code == 0, first.error
+    per_run = _acmg(tmp_path / "per_run" / "acmg_annotated.vcf.gz")
+    # gnomAD holds the deletion left-aligned, 5 bases before where it's written.
+    assert per_run[1673]["ACMG_CLASS"] == "B"
+    assert per_run[1150]["ACMG_CLASS"] == "B"
+    summary = json.loads((tmp_path / "per_run" / "acmg_summary.json").read_text())
+    read = summary["site_data"]["per_run"]
+    assert read["gnomad"]["chr1"]["records"] == 2
+    assert read["gnomad"]["chr1"]["bytes_read"] > 0
+    assert read["spliceai"]["chr1"]["cached"] is False
+    assert "acmg_data_terms" in {w.code for w in first.warnings}
+
+    # The same sites again: the databases are reused, nothing is read.
+    gets = len(publishers.gets())
+    again = _acmg_run(lib, vcf, tmp_path / "again")
+    assert len(publishers.gets()) == gets
+    assert _acmg(tmp_path / "again" / "acmg_annotated.vcf.gz") == per_run
+    summary = json.loads((tmp_path / "again" / "acmg_summary.json").read_text())
+    assert summary["site_data"]["per_run"]["gnomad"]["chr1"]["cached"] is True
+    assert again.exit_code == 0
+
+    # Built whole, they give every record the same class and criteria.
+    api.ref.acmg_data(_params(library, site_data="library"))
+    full = _acmg_run(lib, vcf, tmp_path / "library")
+    assert full.exit_code == 0, full.error
+    assert _acmg(tmp_path / "library" / "acmg_annotated.vcf.gz") == per_run
+    summary = json.loads((tmp_path / "library" / "acmg_summary.json").read_text())
+    assert summary["site_data"]["per_run"] == {}
+
+    # Per run beside them: theirs are left out, and left as they were (a
+    # per-run SpliceAI database was once copied over the library's).
+    forced = _acmg_run(lib, vcf, tmp_path / "forced", site_data="per-run")
+    assert forced.exit_code == 0, forced.error
+    assert _acmg(tmp_path / "forced" / "acmg_annotated.vcf.gz") == per_run
+    for entry in _manifest(library)["databases"].values():
+        if entry.get("sha256"):
+            data = (_sa(library) / entry["file"]).read_bytes()
+            assert hashlib.sha256(data).hexdigest() == entry["sha256"], entry["file"]
+
+
+@needs_fastvep
+@pytest.mark.parametrize(
+    ("missing", "named"),
+    [("gnomad/chr1.vcf.bgz", "lack gnomAD"),
+     ("spliceai.vcf.gz", "SpliceAI")],
+)  # fmt: skip
+def test_per_run_refuses_when_the_publisher_has_no_data(
+    publishers, library, tmp_path, missing, named
+):
+    # A source that can't be read per run is refused, as a library without it
+    # is: fastVEP alone would classify without it, which reads as VUS.
+    lib, _ = library
+    api.ref.acmg_data(_params(library, site_data="per-run"))
+    publishers.statuses[missing] = 404
+    result = _acmg_run(lib, _input(tmp_path), tmp_path / "out")
+    assert result.exit_code == 1
+    assert result.error is not None and named in result.error.message
+    assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()

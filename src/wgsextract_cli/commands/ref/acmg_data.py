@@ -40,10 +40,16 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
         acmg_data.parse_chromosomes(params.chromosomes),
         params.ensembl_release,
         spliceai,
+        site_data=params.site_data,
     )
     for line in acmg_data.describe(plan, workers):
         human_output(line)
-    restricted = [s for s in acmg_data.SOURCES if s.restricted]
+    restricted = [
+        s
+        for s in acmg_data.SOURCES
+        if s.restricted
+        and not (plan.site_data == "per-run" and s.key in acmg_data.PER_RUN)
+    ]
     warn(
         "acmg_data_terms",
         "You download these sources yourself, under their publishers' terms; "
@@ -57,6 +63,7 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
             "sa_dir": str(sa_dir),
             "gff3": str(plan.gff3),
             "chromosomes": plan.chromosomes,
+            "site_data": plan.site_data,
             "built": plan.done,
             "to_build": [
                 {
@@ -77,6 +84,7 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
     if params.dry_run:
         return
     if not plan.steps:
+        acmg_data.record_site_data(sa_dir, plan.site_data)
         human_output("Everything is built; nothing to do.")
         return
     # Only a build records its outputs there: a dry run or a run with nothing
