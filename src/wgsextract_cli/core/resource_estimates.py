@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from . import alignment_memory
+from .alignment import memory as alignment_memory
 from .native_support import is_arm64_docker_host
 from .reference_assets import read_fai_lengths
 from .region_selection import selected_intervals

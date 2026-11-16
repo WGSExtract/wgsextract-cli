@@ -287,7 +287,7 @@ def ram(monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
     own cgroup can be capped)."""
     import psutil
 
-    from wgsextract_cli.core import alignment_memory
+    from wgsextract_cli.core.alignment import memory as alignment_memory
 
     def set_ram(total: int, available: int | None = None) -> None:
         memory = psutil.virtual_memory()._replace(

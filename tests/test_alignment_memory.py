@@ -11,8 +11,9 @@ from tests.htslib_helpers import (
     write_fasta,
     write_read_pairs,
 )
-from wgsextract_cli.core import alignment_memory, results
 from wgsextract_cli.core import resource_estimates as resources
+from wgsextract_cli.core import results
+from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

@@ -25,7 +25,7 @@ from tests.test_realign import _args as _realign_args
 from tests.test_realign import _old_alignment
 from wgsextract_cli.commands import realign
 from wgsextract_cli.core import native_aligners, results
-from wgsextract_cli.core.alignment_memory import (
+from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     estimate_mapping_memory,
 )

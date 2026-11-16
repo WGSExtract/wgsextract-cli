@@ -16,7 +16,7 @@ from tests.test_alignment_commands import _samtools, _short_reads
 from wgsextract_cli import api
 from wgsextract_cli.commands.align import read_group, run_streamed_alignment
 from wgsextract_cli.core import native_aligners, results
-from wgsextract_cli.core.alignment_memory import bwa_gpu_memory, estimate_mapping_memory
+from wgsextract_cli.core.alignment.memory import bwa_gpu_memory, estimate_mapping_memory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.resource_estimates import estimate_resources

@@ -40,11 +40,11 @@ from tests.htslib_helpers import (
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core import (
-    alignment_memory,
     containers,
     native_deepvariant,
     parabricks,
 )
+from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
