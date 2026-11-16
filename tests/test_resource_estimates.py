@@ -227,18 +227,24 @@ def test_regional_gatk_and_scatter_artifacts_are_budgeted_on_the_selected_volume
     assert not expected & disks["output"].components.keys()
 
 
-def test_gatk_gvcf_disk_is_budgeted_beside_the_vcf_863(tmp_path):
+# A CRAM holds the same reads in about 12/80 of the BAM's bytes.
+@pytest.mark.parametrize(
+    "name,size", [("chr20.bam", 1_093_938_924), ("chr20.cram", 164_090_839)]
+)
+def test_gatk_gvcf_disk_is_budgeted_beside_the_vcf_863(tmp_path, name, size):
     """Issue #863: `vcf gatk --reference-evidence gvcf` keeps the partitions'
     gVCF parts, their gathered copy and the published gVCF on the output
     volume; HG002's 1.09 GB chr20 BAM gave a 28.3 MB gVCF (GQ bands
-    10,20,30,60), and three copies of it must fit the budget."""
-    bam = tmp_path / "chr20.bam"
-    with open(bam, "wb") as sparse:
-        sparse.truncate(1_093_938_924)
+    10,20,30,60), and three copies of it must fit the budget. #1009 review:
+    the gVCF doesn't shrink with CRAM compression, so the same reads as a
+    CRAM get the same budget."""
+    alignment = tmp_path / name
+    with open(alignment, "wb") as sparse:
+        sparse.truncate(size)
 
     def disk(gvcf):
         estimate = resources.estimate_resources(
-            "gatk", input_paths=[str(bam)], output_dir=str(tmp_path),
+            "gatk", input_paths=[str(alignment)], output_dir=str(tmp_path),
             reference_evidence=gvcf,
         )  # fmt: skip
         return {

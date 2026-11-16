@@ -343,6 +343,7 @@ def call_partitioned(
 
     verify_dependencies(["bcftools", "tabix", *(["samtools"] if gvcf else [])])
     output = str(Path(setup.outdir, f"{name}.vcf.gz"))
+    called = [i for i in intervals if i.ploidy]
     with tempfile.TemporaryDirectory(dir=setup.outdir, prefix=".ploidy_") as work:
         parts: list[str] = []
         evidence: list[str] = []
@@ -380,7 +381,7 @@ def call_partitioned(
             parts.append(bounded)
             if gvcf:
                 clipped = str(part / "bounded.g.vcf.gz")
-                clip_gvcf(str(raw), partition, setup.ref, clipped)
+                clip_gvcf(str(raw), partition, setup.ref, clipped, called)
                 for suffix in ("", ".tbi"):
                     Path(f"{raw}{suffix}").unlink(missing_ok=True)
                 evidence.append(clipped)

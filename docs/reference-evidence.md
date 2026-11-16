@@ -150,8 +150,9 @@ blocks carry GQ, in Clair3's bins of 5, and MIN_DP; reads below mapping
 quality 5 (Clair3's default) are left out. Its pileup step is much slower
 with it, so a run that asks for it warns (`clair3_gvcf_cost`) and its
 preflight scales the time it reports: about 3.8x on the CPU and 6x on the
-GPU. Clair3 writes no gVCF for contigs it has no reads on; their bases read
-as `uncovered`. Without a `--region` it calls chr1-22, X and Y, so the
+GPU. Clair3 skips contigs the index places no reads on, and with none left
+writes no gVCF; their bases read as `uncovered`. A missing gVCF when a
+called contig has reads fails the run. Without a `--region` it calls chr1-22, X and Y, so the
 gVCF's `Region` lists those and other contigs read as `not_assessed`.
 
 Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: 75 s for the VCF,
@@ -164,9 +165,12 @@ truth variants, 2 sit on bases the gVCF calls callable reference.
 GATK and Clair3 call a man's haploid chrX and chrY apart from the diploid
 rest (see [caller-ploidy.md](caller-ploidy.md)), so the gVCF is written in
 parts. Each part's blocks are cut at its edges (a block cut at its start
-begins on its own reference base) and the parts are gathered in reference
-order, so every base has one record in the ploidy it was called with: `0`
-on a man's chrX, `0/0` in its PAR. Bases the policy gives ploidy 0, such as
+begins on its own reference base, read from the FASTA or, for a gzip one,
+its decompressed copy) and the parts are gathered in reference order, so
+every base has one record in the ploidy it was called with: `0` on a man's
+chrX, `0/0` in its PAR. Any other record belongs to the part its POS is in;
+one starting before the selection, such as a deletion whose REF reaches
+into it, is kept where it covers the selected bases, once. Bases the policy gives ploidy 0, such as
 a woman's chrY, aren't called and are recorded in `PloidyZero`.
 
 `vcf gatk` and `vcf clair3` keep no step journal: a rerun calls again,

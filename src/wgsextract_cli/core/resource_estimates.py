@@ -109,8 +109,9 @@ NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE = 0.06
 NATIVE_DV_GVCF_BYTES_PER_BASE = 5.0
 NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE = 0.4
 DV_GVCF_PER_INPUT_BYTE = 0.05
-# GATK's gVCF with GQ bands 10,20,30,60 (#863), HG002 35x chr20 BAM.
-GATK_GVCF_PER_INPUT_BYTE = 0.03
+# GATK's gVCF with GQ bands 10,20,30,60 (#863): 2.6% of HG002 35x chr20's
+# BAM; 3% of its bytes at the 80 BAM bytes per read disk_reads infers.
+GATK_GVCF_BYTES_PER_READ = 0.03 * 80
 
 
 @dataclass(frozen=True)
@@ -929,8 +930,8 @@ def estimate_resources(
         # gathered copies and the published gVCF.
         gvcf_bytes = (
             None
-            if size is None
-            else math.ceil(size * GATK_GVCF_PER_INPUT_BYTE * GVCF_COPIES)
+            if disk_reads is None
+            else math.ceil(disk_reads * GATK_GVCF_BYTES_PER_READ * GVCF_COPIES)
         )
         demands.append((output_dir, "reference_evidence", gvcf_bytes))
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))

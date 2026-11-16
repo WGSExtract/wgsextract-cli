@@ -57,6 +57,7 @@ from wgsextract_cli.core.resource_estimates import (
     report_resources,
 )
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
@@ -614,6 +615,22 @@ def clair3_errors(output: Path, limit: int = 8) -> str:
     return "\n".join(list(seen)[:limit])
 
 
+def _calls_contigs_with_reads(
+    reads: str, ref: str, intervals: Intervals | None
+) -> bool:
+    """Whether a contig Clair3 calls (the region's, else chr1-22, X and Y)
+    has mapped reads by the index, as Clair3's CheckEnvs asks; True when
+    the index can't say."""
+    try:
+        with_reads = contigs_with_reads(reads, ref) if alignment_index(reads) else None
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.debug(f"Could not list the contigs with reads in {reads}: {e}")
+        with_reads = None
+    if with_reads is None:
+        return True
+    return bool(set(intervals or _MAJOR_CONTIGS) & set(with_reads))
+
+
 def called_bases(reads: str, ref: str, intervals: Intervals | None) -> int:
     """Reference bases Clair3 calls: the region's, else chr1-22, X and Y
     (its default), on the contigs the index places reads on (all of them
@@ -896,11 +913,9 @@ def _run_clair3(
             if evidence.is_file():
                 named = restore_vcf_paths(str(evidence), real_paths, work)
                 run_command(["bcftools", "view", "-Oz", "-o", gvcf, named])
-            elif not run_command(
-                ["bcftools", "view", "-H", out_vcf], capture_output=True
-            ).stdout.strip():
-                # Without reads on its contigs Clair3 writes a header-only VCF
-                # and no gVCF: no records, so its bases read as uncovered.
+            elif not _calls_contigs_with_reads(input_file, use_ref, intervals):
+                # Clair3 skips contigs without reads, and with none left writes
+                # a header-only VCF and no gVCF: its bases read as uncovered.
                 run_command(["bcftools", "view", "-h", "-Oz", "-o", gvcf, out_vcf])
             else:
                 raise WGSExtractError("Clair3 failed to produce merge_output.gvcf.gz.")

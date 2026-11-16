@@ -289,6 +289,17 @@ def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samto
     _subprocess.run([bcftools, "index", "-t", "-f", out], check=True)
 
 
+def pad_bed(bed, ref, padding):
+    # A caller whose reference blocks run ``padding`` bases past its intervals.
+    lengths = dict(line.split("\t")[:2] for line in open(ref + ".fai"))
+    padded = []
+    for line in open(bed).read().splitlines():
+        contig, first, last = line.split("\t")[:3]
+        padded.append(f"{contig}\t{max(0, int(first) - padding)}\t"
+                      f"{min(int(lengths[contig]), int(last) + padding)}\n")
+    open(bed, "w").write("".join(padded))
+
+
 def regions_bed(regions, ref, path):
     # GATK's -L lines (contig, contig:start-end, or a BED) as a BED.
     lengths = dict(line.split("\t")[:2] for line in open(ref + ".fai"))
@@ -394,15 +405,7 @@ if gvcf:
              else [line.split("\\t")[0] for line in open(ref + ".fai")])
     bed = out + ".regions.bed"
     regions_bed([line for line in lines if line.strip()], ref, bed)
-    if state.get("block_padding"):
-        # A caller whose reference blocks run past its intervals' edges.
-        lengths = dict(line.split("\\t")[:2] for line in open(ref + ".fai"))
-        padded = []
-        for line in open(bed).read().splitlines():
-            contig, first, last = line.split("\\t")
-            padded.append(f"{{contig}}\\t{{max(0, int(first) - state['block_padding'])}}\\t"
-                          f"{{min(int(lengths[contig]), int(last) + state['block_padding'])}}\\n")
-        open(bed, "w").write("".join(padded))
+    pad_bed(bed, ref, state.get("block_padding", 0))
     write_caller_gvcf(calls, alignment, ref, out, bed, bands,
                       opts.get("--sample-ploidy") == "1", {bcftools!r}, {samtools!r})
     os.unlink(calls)
@@ -458,7 +461,7 @@ class FakeGatk:
 
 
 _FAKE_CLAIR3 = """\
-import json, os, select, subprocess, sys
+import json, os, select, shutil, subprocess, sys
 
 if sys.argv[1:] in ([], ["-v"], ["--version"], ["-h"], ["--help"]):
     print("Clair3 v{version}")
@@ -550,15 +553,20 @@ stats = subprocess.run([{samtools!r}, "idxstats", opts["bam_fn"]], capture_outpu
 with_reads = {{row.split("\\t")[0] for row in stats if int(row.split("\\t")[2])}}
 wanted = ({{line.split("\\t")[0] for line in open(opts["bed_fn"])}} if "bed_fn" in opts
           else with_reads)
-if "gvcf" in opts and not wanted & with_reads:
+if "gvcf" in opts and os.path.exists({no_gvcf!r}):
+    pass  # A gVCF step that wrote nothing, yet exited 0.
+elif "gvcf" in opts and not wanted & with_reads:
     # Like Clair3: no reads on the contigs asked for, a header-only VCF, no gVCF.
     print("[WARNING] No contig intersection found, output header only")
 elif "gvcf" in opts:
-    bed = opts.get("bed_fn")
-    if not bed:
-        bed = os.path.join(out, "all.bed")
+    bed = os.path.join(out, "gvcf.bed")
+    if "bed_fn" in opts:
+        shutil.copyfile(opts["bed_fn"], bed)
+    else:
         regions_bed([line.split("\\t")[0] for line in open(opts["ref_fn"] + ".fai")],
                     opts["ref_fn"], bed)
+    if os.path.exists({block_padding!r}):
+        pad_bed(bed, opts["ref_fn"], int(open({block_padding!r}).read()))
     write_caller_gvcf(os.path.join(out, "merge_output.vcf.gz"), opts["bam_fn"],
                       opts["ref_fn"], os.path.join(out, "merge_output.gvcf.gz"), bed,
                       list(range(0, 100, 5)), "haploid_precise" in opts,
@@ -576,7 +584,8 @@ class FakeClair3:
     CRAM 3.1 reads, reporting only on stdout and in its step logs; ``fail`` makes it fail that way on any
     reads. With ``--use_gpu=True`` it needs a container started with
     ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
-    nothing, yet exits 0, when a path it is given contains a space. Each run's options, resolved model, reads' CRAM
+    nothing, yet exits 0, when a path it is given contains a space; ``lose_gvcf``
+    makes it skip the gVCF it was asked for. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -591,8 +600,11 @@ class FakeClair3:
         self.models = bindir / "models"
         self.models.mkdir(parents=True)
         self.failure = bindir / "clair3-failure.json"
+        self.no_gvcf = bindir / "clair3-no-gvcf"
+        self.block_padding = bindir / "clair3-block-padding"
         python_tool(bindir, "run_clair3.sh", _GVCF_BLOCKS + _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure),
+            no_gvcf=str(self.no_gvcf), block_padding=str(self.block_padding),
             samtools=samtools or shutil.which("samtools") or "samtools",
             version=version,
             old_htslib=not version[:1].isdigit()
@@ -610,6 +622,15 @@ class FakeClair3:
         self.failure.write_text(
             json.dumps({"errors": list(errors), "log": log, "stderr": stderr})
         )
+
+    def pad_blocks(self, padding: int) -> None:
+        """Later --gvcf runs write reference blocks ``padding`` bases past
+        the regions asked for, as Clair3 calls its regions extended."""
+        self.block_padding.write_text(str(padding))
+
+    def lose_gvcf(self) -> None:
+        """Later --gvcf runs write the VCF but no gVCF, and still exit 0."""
+        self.no_gvcf.touch()
 
     def runs(self) -> list[dict]:
         if not self.log.exists():

@@ -222,3 +222,83 @@ def test_a_gvcf_that_cant_be_written_reports_bcftools_error_863(sample, tmp_path
         clip_gvcf(
             str(source), [PloidyInterval("chr20", 0, 12000, 2)], sample.ref, str(target)
         )
+
+
+def test_a_lost_clair3_gvcf_fails_when_its_contigs_have_reads_1009(sample, request):
+    """#1009 review: a header-only VCF proves no variants, not no reads. When
+    Clair3 writes no gVCF for a region with reads (here chr20 between the
+    SNPs), the run fails rather than reading every base as uncovered."""
+    request.getfixturevalue("fake_clair3").lose_gvcf()
+
+    result = call(sample, "clair3", request, "Female", "chr20:1200-1500")
+
+    assert result.status == "failed"
+    assert "merge_output.gvcf.gz" in str(result.error)
+
+
+def test_clair3_gvcf_blocks_are_cut_on_a_gzip_reference_1009(sample, request):
+    """#1009 review: Clair3 reads a plain-gzip FASTA through a decompressed
+    copy; cutting its partitions' blocks at the PAR edge must still find
+    each cut block's reference base instead of failing after calling."""
+    folder = sample.root / "gzip"
+    folder.mkdir()
+    ref = folder / "hg38.fa.gz"
+    with open(sample.ref, "rb") as plain, gzip.open(ref, "wb") as packed:
+        packed.write(plain.read())
+    request.getfixturevalue("fake_clair3").pad_blocks(300)
+    sample.ref = ref
+
+    result = call(sample, "clair3", request, "Male", "chrX:9000-11000")
+
+    assert result.status == "ok", result.error
+    gvcf = {output.role: output for output in result.outputs}[ROLE].path
+    # Blocks begin 300 bases before the region; the first is cut at 9,000.
+    assert min(int(f[1]) for f in records(gvcf)) == 9000
+    for fields in records(gvcf):
+        assert fields[3][0] == sample.sequences["chrX"][int(fields[1]) - 1]
+    assert state(gvcf, "chrX", PAR_START + 200) is State.CALLABLE_REFERENCE
+
+
+@pytest.mark.parametrize("before", ["selection", "partition"])
+def test_a_deletion_starting_before_a_partition_covers_its_bases_1009(
+    sample, tmp_path, before
+):
+    """#1009 review: a deletion at 99 (REF of three bases) covers bases
+    100-101. Starting before the selection, it was dropped and those bases
+    read as uncovered; it must be kept, once, however many partitions it
+    reaches into. Starting in a called partition, that partition keeps it."""
+    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf, gather_gvcf
+
+    seq = sample.sequences["chr20"]
+    deletion = f"chr20\t99\t.\t{seq[98:101]}\t{seq[98]},<NON_REF>\t30\tPASS\t.\tGT:GQ\t0/1:30"  # fmt: skip
+    rows = ["##fileformat=VCFv4.2", f"##contig=<ID=chr20,length={LENGTH}>"]
+    rows += ['##INFO=<ID=END,Number=1,Type=Integer,Description="End">']
+    rows += ['##FORMAT=<ID=GT,Number=1,Type=String,Description="GT">']
+    rows += ['##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">']
+    rows += ['##FORMAT=<ID=DP,Number=1,Type=Integer,Description="DP">']
+    rows += ['##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="MIN_DP">']
+    rows += ['##ALT=<ID=NON_REF,Description="Any other allele">']
+    rows.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts")
+    rows += [deletion, f"chr20\t102\t.\t{seq[101]}\t<NON_REF>\t.\t.\tEND=300\tGT:DP:GQ:MIN_DP\t0/0:30:60:30"]  # fmt: skip
+    source = tmp_path / "raw.vcf"
+    source.write_text("\n".join(rows) + "\n")
+    first = 0 if before == "partition" else 99
+    partitions = [
+        [PloidyInterval("chr20", first, 100, 1)],
+        [PloidyInterval("chr20", 100, 300, 2)],
+    ]
+    parts = []
+    for index, partition in enumerate(partitions):
+        parts.append(str(tmp_path / f"part{index}.g.vcf.gz"))
+        clip_gvcf(str(source), partition, sample.ref, parts[-1], sum(partitions, []))
+    gathered = tmp_path / "gathered.g.vcf.gz"
+    gather_gvcf(parts, str(tmp_path), str(gathered))
+    from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+
+    ensure_vcf_indexed(str(gathered))
+
+    assert [f[1] for f in records(gathered)].count("99") == 1
+    assert state(gathered, "chr20", 100) is State.VARIANT
+    assert state(gathered, "chr20", 101) is State.VARIANT
+    assert state(gathered, "chr20", 200) is State.CALLABLE_REFERENCE
