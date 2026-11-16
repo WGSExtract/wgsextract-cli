@@ -128,12 +128,28 @@ def _is_current(target: str, inputs: dict[str, object]) -> bool:
         return False
     try:
         with gzip.open(target, "rt") as f:
-            return (
-                f.readline() == _VERSION_LINE
-                and json.loads(Path(target + ".inputs.json").read_text()) == inputs
-            )
+            if f.readline() != _VERSION_LINE:
+                return False
+        try:
+            recorded = Path(target + ".inputs.json").read_text(encoding="utf-8")
+        except FileNotFoundError:
+            # Current-version targets predate resource sidecars.
+            return True
+        return bool(json.loads(recorded) == inputs)
     except (OSError, EOFError, ValueError):
         return False
+
+
+def _write_inputs(target: str, inputs: dict[str, object]) -> None:
+    metadata = Path(target + ".inputs.json")
+    with tempfile.TemporaryDirectory(
+        dir=metadata.parent, prefix=".target-inputs-"
+    ) as work:
+        staged = Path(work, "inputs.json")
+        staged.write_text(
+            json.dumps(inputs, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
+        staged.replace(metadata)
 
 
 def _template_paths(roots: list[str]) -> Iterator[tuple[str, bool, list[str]]]:
@@ -214,10 +230,12 @@ def build_genome_wide_target(
 ) -> str:
     """Write and index microarray/All_SNPs_<build>_ref.tab.gz unless it's
     current; return its path. Liftover chains are looked for in chain_roots,
-    then in reflib_dir, where a missing one is downloaded.
+    then in reflib_dir, where missing chains are downloaded only for rebuilds.
 
     Runs that start together on one library take turns (a lock file), and a run
-    that finds the target already built by another uses it."""
+    that finds the target already built by another uses it. Current-version
+    targets predating resource sidecars remain usable in read-only libraries;
+    their sidecars are added opportunistically when writable."""
     target_build = canonical_build(build)
     if target_build not in ("hg19", "hg38"):
         raise WGSExtractError(
@@ -235,30 +253,63 @@ def build_genome_wide_target(
         }
         for name, _ncbi36, paths in _template_paths(roots)
     ]
+    chain36_needed = needs_ncbi36_chain(template_roots)
+    chain38_needed = target_build == "hg38" and bool(template_files)
     chain36 = (
-        ncbi36_chain(reflib_dir, chain_roots)
-        if needs_ncbi36_chain(template_roots)
+        _installed_chain(reflib_dir, HG18_TO_HG19_CHAIN, chain_roots)
+        if chain36_needed
         else None
     )
     chain38 = (
-        hg19_to_hg38_chain(reflib_dir, chain_roots)
-        if target_build == "hg38" and template_files
+        _installed_chain(reflib_dir, HG19_TO_HG38_CHAIN, chain_roots)
+        if chain38_needed
         else None
     )
+    recorded_inputs: dict[str, object] = {}
+    try:
+        recorded = json.loads(Path(out + ".inputs.json").read_text(encoding="utf-8"))
+        if isinstance(recorded, dict):
+            recorded_inputs = recorded
+    except (OSError, ValueError):
+        pass
     inputs: dict[str, object] = {
         "version": TARGET_VERSION,
         "templates": templates,
         "corrections": resource_identity(
             _PACKAGED_TEMPLATES / "corrections.tsv", include_path=False
         ),
-        "chain36": resource_identity(chain36, include_path=False),
-        "chain38": resource_identity(chain38, include_path=False),
+        # Missing source chains don't invalidate a completed offline target.
+        "chain36": resource_identity(chain36, include_path=False)
+        if chain36
+        else recorded_inputs.get("chain36")
+        if chain36_needed
+        else None,
+        "chain38": resource_identity(chain38, include_path=False)
+        if chain38
+        else recorded_inputs.get("chain38")
+        if chain38_needed
+        else None,
     }
     # Before taking the lock, so a current target in a read-only library is used.
     if _is_current(out, inputs):
+        if not Path(out + ".inputs.json").exists():
+            try:
+                _write_inputs(out, inputs)
+            except OSError as error:
+                logging.debug(
+                    "Using current target without a resource sidecar: %s", error
+                )
         return out
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     with _build_lock(out + ".lock"):
+        if _is_current(out, inputs):
+            return out
+        chain36 = ncbi36_chain(reflib_dir, chain_roots) if chain36_needed else None
+        chain38 = (
+            hg19_to_hg38_chain(reflib_dir, chain_roots) if chain38_needed else None
+        )
+        inputs["chain36"] = resource_identity(chain36, include_path=False)
+        inputs["chain38"] = resource_identity(chain38, include_path=False)
         if _is_current(out, inputs):
             return out
         markers = collect_template_markers(template_roots, chain36)
@@ -281,12 +332,7 @@ def build_genome_wide_target(
             assert chain38 is not None
             markers = _lift_to_hg38(markers, chain38)
         _write_target(markers, out)
-        metadata = Path(out + ".inputs.json")
-        staged = metadata.with_suffix(metadata.suffix + ".tmp")
-        staged.write_text(
-            json.dumps(inputs, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
-        )
-        staged.replace(metadata)
+        _write_inputs(out, inputs)
     logging.info(f"Saved the {target_build} microarray target: {out}")
     return out
 
@@ -323,10 +369,21 @@ def download_chain(source: ChainSource, dest: str) -> bool:
     return False
 
 
-def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
-    found = next(
-        (c for d in search if Path(c := str(Path(d, source.name))).is_file()), None
+def _installed_chain(
+    reflib_dir: str, source: ChainSource, search: Sequence[str] = ()
+) -> str | None:
+    return next(
+        (
+            str(path)
+            for directory in (*search, reflib_dir)
+            if (path := Path(directory, source.name)).is_file()
+        ),
+        None,
     )
+
+
+def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
+    found = _installed_chain(reflib_dir, source, search)
     if found:
         return found
     chain = str(Path(reflib_dir, source.name))

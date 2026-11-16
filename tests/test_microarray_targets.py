@@ -305,6 +305,85 @@ def test_a_current_target_in_a_read_only_library_is_used(tmp_path):
         microarray_dir.chmod(0o755)
 
 
+def _pre_inputs_target(root: Path) -> str:
+    # Output of the pre-#1051 v3 builder (81313d8b), indexed with real tools.
+    source = Path(__file__).parent / "fixtures" / "microarray-target-pre-inputs.tab"
+    target = mt.genome_wide_target_path(str(root), "hg38")
+    Path(target).parent.mkdir(parents=True, exist_ok=True)
+    with open(target, "wb") as output:
+        subprocess.run(
+            [get_tool_path("bgzip"), "-c", str(source)], stdout=output, check=True
+        )
+    subprocess.run(
+        [get_tool_path("tabix"), "-s", "1", "-b", "2", "-e", "2", target], check=True
+    )
+    return target
+
+
+@needs_tools("bgzip", "tabix")
+@pytest.mark.parametrize("read_only", [False, True], ids=["writable", "read-only"])
+def test_issue_1043_pre_sidecar_current_target_is_reused_offline(
+    tmp_path, monkeypatch, read_only
+):
+    if read_only and os.name == "nt":
+        pytest.skip("POSIX directory permissions")
+    root = tmp_path / "library"
+    templates = _templates(root)
+    (root / _HG18_CHAIN_NAME).unlink()
+    target = _pre_inputs_target(root)
+    metadata = Path(target + ".inputs.json")
+    stamp = Path(target).stat().st_mtime_ns
+    before = Path(target).read_bytes()
+    monkeypatch.setattr(
+        mt,
+        "download_file",
+        lambda *_args, **_kwargs: pytest.fail("current target downloaded a chain"),
+    )
+    microarray = Path(target).parent
+    if read_only:
+        root.chmod(0o555)
+        microarray.chmod(0o555)
+    try:
+        assert (
+            mt.build_genome_wide_target(str(root), "hg38", [str(templates)]) == target
+        )
+        assert Path(target).stat().st_mtime_ns == stamp
+        assert Path(target).read_bytes() == before
+        assert metadata.is_file() is not read_only
+        assert not list(root.glob("*.lock*"))
+        assert not list(microarray.glob("*.lock*"))
+        assert (
+            mt.build_genome_wide_target(str(root), "hg38", [str(templates)]) == target
+        )
+    finally:
+        root.chmod(0o755)
+        microarray.chmod(0o755)
+
+
+@needs_tools("bgzip", "tabix")
+def test_issue_1043_current_fingerprinted_target_does_not_need_removed_chains(
+    tmp_path, monkeypatch
+):
+    templates = _templates(tmp_path)
+    chain = tmp_path / "hg19ToHg38.over.chain.gz"
+    chain.write_bytes(gzip.compress(_CHAIN.encode()))
+    target = mt.build_genome_wide_target(str(tmp_path), "hg38", [str(templates)])
+    metadata = Path(target + ".inputs.json")
+    before = (Path(target).stat().st_mtime_ns, metadata.read_bytes())
+    chain.unlink()
+    (tmp_path / _HG18_CHAIN_NAME).unlink()
+    monkeypatch.setattr(
+        mt,
+        "download_file",
+        lambda *_args, **_kwargs: pytest.fail("current target downloaded a chain"),
+    )
+    assert (
+        mt.build_genome_wide_target(str(tmp_path), "hg38", [str(templates)]) == target
+    )
+    assert (Path(target).stat().st_mtime_ns, metadata.read_bytes()) == before
+    assert not list(tmp_path.glob("*.lock*"))
+
+
 @pytest.fixture
 def chain_servers(monkeypatch):
     """A primary (UCSC) and a mirror server for the hg19ToHg38 chain, each
