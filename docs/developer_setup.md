@@ -108,7 +108,9 @@ Its supported subset is TypedDict, dataclasses, Literal, Annotated, primitives,
 unions, lists and string-keyed dicts; Enum, tuple and Mapping fields are
 not yet supported. Dataclasses describe complete `dataclasses.asdict`-style
 projections: every field, including nullable/defaulted and `init=False` fields,
-is required in the output. `ClassVar` and `InitVar` pseudo-fields are excluded.
+is required in the output. `ClassVar`, `InitVar` and `KW_ONLY` pseudo-fields are
+excluded before resolving annotations, including postponed Python 3.10 hints.
+Real fields resolve in their declaring module and class/MRO namespaces.
 Generation never constructs instances or calls default factories, and does not
 infer field omission or custom `to_dict` behavior. Use an explicit serialized
 model when a custom writer changes the field projection.

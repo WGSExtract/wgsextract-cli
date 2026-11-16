@@ -6,6 +6,7 @@ Generation is a development operation; writers need only their type definitions.
 
 from __future__ import annotations
 
+import sys
 import types
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
@@ -42,6 +43,36 @@ class Shape:
 
 class _TypedDictKeys(Protocol):
     __required_keys__: frozenset[str]
+
+
+def _dataclass_hints(model: type) -> dict[str, object]:
+    def projection() -> None:
+        pass
+
+    hints: dict[str, object] = {}
+    for item in fields(model):
+        owner = next(
+            base
+            for base in model.__mro__
+            if item.name in vars(base).get("__annotations__", {})
+        )
+        namespace: dict[str, object] = {
+            name: value
+            for base in reversed(owner.__mro__)
+            for name, value in vars(base).items()
+        }
+        namespace[owner.__name__] = owner
+        # Python 3.10 cannot resolve postponed InitVar/KW_ONLY pseudo-fields.
+        annotation: object = item.type
+        projection.__annotations__ = {item.name: annotation}
+        resolved: dict[str, object] = get_type_hints(
+            projection,
+            globalns=vars(sys.modules[owner.__module__]),
+            localns=namespace,
+            include_extras=True,
+        )
+        hints[item.name] = resolved[item.name]
+    return hints
 
 
 def output_schema(
@@ -125,12 +156,12 @@ def output_schema(
     def describe_object(tp: object, spec: Shape) -> Schema:
         if not isinstance(tp, type):
             raise TypeError(f"Expected a TypedDict or dataclass class: {tp!r}")
-        hints: dict[str, object] = get_type_hints(tp, include_extras=True)
         if is_dataclass(tp):
-            hints = {item.name: hints[item.name] for item in fields(tp)}
+            hints = _dataclass_hints(tp)
             # asdict emits defaulted and init=False fields, unlike a constructor.
             required = frozenset(hints)
         else:
+            hints = get_type_hints(tp, include_extras=True)
             required = cast(_TypedDictKeys, tp).__required_keys__
         result: Schema = {
             "type": "object",
