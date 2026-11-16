@@ -7,11 +7,13 @@ UCSC's hg18ToHg19 chain), so their union is the genome-wide target; for GRCh38
 its positions are lifted with UCSC's hg19ToHg38 chain, except chrM: GRCh37's MT
 and hg38's chrM are both the rCRS. The result is saved in the library as
 ``microarray/All_SNPs_<build>_ref.tab.gz`` and rebuilt when it was built by an
-older version of this builder.
+older version of this builder, or its template bodies, corrections or chains
+change. The adjacent inputs sidecar records content identities for those resources.
 """
 
 import gzip
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -26,7 +28,9 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
 from wgsextract_cli.core.microarray.coordinates import sole_placement
+from wgsextract_cli.core.microarray.resource_identity import resource_identity
 from wgsextract_cli.core.microarray_utils import (
+    _PACKAGED_TEMPLATES,
     _chrom_for_liftover,
     _resolve_templates_roots,
     _template_body_paths,
@@ -119,13 +123,16 @@ def is_genome_wide_target(path: str, reflib_dir: str, build: str) -> bool:
         return False
 
 
-def _is_current(target: str) -> bool:
+def _is_current(target: str, inputs: dict[str, object]) -> bool:
     if not (Path(target).is_file() and Path(target + ".tbi").is_file()):
         return False
     try:
         with gzip.open(target, "rt") as f:
-            return f.readline() == _VERSION_LINE
-    except (OSError, EOFError):
+            return (
+                f.readline() == _VERSION_LINE
+                and json.loads(Path(target + ".inputs.json").read_text()) == inputs
+            )
+    except (OSError, EOFError, ValueError):
         return False
 
 
@@ -217,18 +224,34 @@ def build_genome_wide_target(
             f"Microarray targets can only be built for hg19 or hg38, not {build}."
         )
     out = genome_wide_target_path(reflib_dir, target_build)
+    roots = _resolve_templates_roots(list(template_roots))
+    template_files = [
+        path for _name, _ncbi36, paths in _template_paths(roots) for path in paths
+    ]
+    chain36 = (
+        ncbi36_chain(reflib_dir, chain_roots)
+        if needs_ncbi36_chain(template_roots)
+        else None
+    )
+    chain38 = (
+        hg19_to_hg38_chain(reflib_dir, chain_roots)
+        if target_build == "hg38" and template_files
+        else None
+    )
+    inputs: dict[str, object] = {
+        "version": TARGET_VERSION,
+        "templates": [resource_identity(path) for path in template_files],
+        "corrections": resource_identity(_PACKAGED_TEMPLATES / "corrections.tsv"),
+        "chain36": resource_identity(chain36),
+        "chain38": resource_identity(chain38),
+    }
     # Before taking the lock, so a current target in a read-only library is used.
-    if _is_current(out):
+    if _is_current(out, inputs):
         return out
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     with _build_lock(out + ".lock"):
-        if _is_current(out):
+        if _is_current(out, inputs):
             return out
-        chain36 = (
-            ncbi36_chain(reflib_dir, chain_roots)
-            if needs_ncbi36_chain(template_roots)
-            else None
-        )
         markers = collect_template_markers(template_roots, chain36)
         if not markers:
             if Path(out).is_file() and Path(out + ".tbi").is_file():
@@ -246,10 +269,13 @@ def build_genome_wide_target(
             "chip template markers (once; it's saved in the reference library)."
         )
         if target_build == "hg38":
-            markers = _lift_to_hg38(
-                markers, hg19_to_hg38_chain(reflib_dir, chain_roots)
-            )
+            assert chain38 is not None
+            markers = _lift_to_hg38(markers, chain38)
         _write_target(markers, out)
+        metadata = Path(out + ".inputs.json")
+        staged = metadata.with_suffix(metadata.suffix + ".tmp")
+        staged.write_text(json.dumps(inputs, sort_keys=True) + "\n")
+        staged.replace(metadata)
     logging.info(f"Saved the {target_build} microarray target: {out}")
     return out
 
@@ -293,11 +319,13 @@ def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> 
     if found:
         return found
     chain = str(Path(reflib_dir, source.name))
-    if not Path(chain).is_file() and not download_chain(source, chain):
-        raise WGSExtractError(
-            f"Could not download {source.name} (tried {', '.join(source.urls)}), "
-            "needed to place the chip markers on another genome build."
-        )
+    if not Path(chain).is_file():
+        with _build_lock(chain + ".lock"):
+            if not Path(chain).is_file() and not download_chain(source, chain):
+                raise WGSExtractError(
+                    f"Could not download {source.name} (tried {', '.join(source.urls)}), "
+                    "needed to place the chip markers on another genome build."
+                )
     return chain
 
 

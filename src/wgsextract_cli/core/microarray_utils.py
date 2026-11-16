@@ -243,6 +243,21 @@ def _resolve_templates_for_format(
     raise WGSExtractError(f"Template body not found: {first_missing}")
 
 
+def template_resource_paths(
+    templates_dir: TemplateSearchInput, format_name: str
+) -> list[Path]:
+    """The actual selected vendor header, bodies and packaged corrections."""
+    fmt = get_template_format(format_name)
+    if fmt is None:
+        return []
+    root, bodies = _resolve_templates_for_format(templates_dir, format_name, fmt)
+    return [
+        Path(root, "head", format_name + fmt["suffix"]),
+        *(Path(body) for body in bodies),
+        _PACKAGED_TEMPLATES / "corrections.tsv",
+    ]
+
+
 def liftover_hg38_to_hg19(
     input_txt: str,
     output_txt: str,

@@ -495,6 +495,36 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     # Reuse what an earlier run made from these same inputs (see
     # _microarray_reuse); regenerate only what changed or is missing.
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    region_args = ["-r", params.region] if params.region else []
+    input_chroms = None
+    if params.region and not is_vcf:
+        try:
+            input_chroms = _alignment_chromosomes(input_path, ref_fasta)
+            region_args = _normalize_region_args_for_input(region_args, input_chroms)
+        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+            raise WGSExtractError(f"Microarray target normalization failed: {e}") from e
+    if ploidy_file:
+        ploidy_args = ["--ploidy-file", ploidy_file]
+    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
+        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
+    else:
+        warn(
+            "build_unknown",
+            f"Unknown reference build {lib.build!r}; calling all chromosomes diploid.",
+            build=lib.build,
+        )
+        ploidy_args = ["--ploidy", "2"]
+    # Resolve declarations and evidence before deciding outputs are fresh.
+    sex_args = cleanup.enter_context(
+        sex_samples_args(
+            input_path,
+            outdir,
+            ploidy_args,
+            region=region_args[1] if region_args else None,
+            reference=ref_fasta,
+        )
+    )
     inputs = reuse.run_inputs(
         params,
         input_path=input_path,
@@ -509,6 +539,22 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
+    from wgsextract_cli.core.microarray.resource_identity import resource_identity
+    from wgsextract_cli.core.microarray_utils import (
+        get_template_format,
+        template_resource_paths,
+    )
+
+    for key, item in unit_formats.items():
+        if not aadr_panel(item):
+            units[key].extra["templates"] = [
+                resource_identity(path)
+                for path in template_resource_paths(
+                    _template_search_roots(ref_fasta, lib), key
+                )
+            ]
+            if (fmt := get_template_format(key)) and fmt.get("ncbi36"):
+                units[key].extra["ncbi36_chain"] = resource_identity(_ncbi36_chain(lib))
     for unit in units.values():
         reuse.check(unit, inputs)
     stale = [key for key, unit in units.items() if not unit.fresh]
@@ -623,71 +669,39 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             ),
         )
 
-    region_args = ["-r", params.region] if params.region else []
-    input_chroms = None
-    if params.region and not is_vcf:
-        # Custom ploidy rows must be matched against the same chromosome name
-        # used for calling, including a chr20 <-> 20 input alias.
-        try:
-            input_chroms = _alignment_chromosomes(input_path, ref_fasta)
-            region_args = _normalize_region_args_for_input(region_args, input_chroms)
-        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-            raise WGSExtractError(f"Microarray target normalization failed: {e}") from e
-
-    # Without a ploidy file, use the build's predefined ploidy; for an unknown
-    # build fall back to all-diploid (never haploid autosomes).
-    if ploidy_file:
-        ploidy_args = ["--ploidy-file", ploidy_file]
-    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
-    else:
-        warn(
-            "build_unknown",
-            f"Unknown reference build {lib.build!r}; calling all chromosomes diploid.",
-            build=lib.build,
-        )
-        ploidy_args = ["--ploidy", "2"]
-
     start_vcf = time.time()
     indel_calls = None
 
-    with sex_samples_args(
-        input_path,
-        outdir,
-        ploidy_args,
-        region=region_args[1] if region_args else None,
-        reference=ref_fasta,
-    ) as sex_args:
-        out_vcf, ref_vcf_tab = _prepare_microarray_vcf(
+    out_vcf, ref_vcf_tab = _prepare_microarray_vcf(
+        params=calling_params,
+        outdir=calling_outdir,
+        base_name=base_name,
+        is_vcf=is_vcf,
+        ref_vcf_tab=ref_vcf_tab,
+        region_args=region_args,
+        ploidy_args=ploidy_args + sex_args,
+        ref_fasta=ref_fasta,
+        threads=threads,
+        start_vcf=start_vcf,
+        out_vcf=out_vcf,
+        input_chroms=input_chroms,
+        # An indel run's calling input is already the selected sample.
+        sample=None if calling_params is not params else vcf_sample,
+        gvcf=gvcf,
+    )
+    record_kept(combined_vcf, outdir, "combined_vcf")
+    if out_vcf != combined_vcf:
+        record_kept(out_vcf, outdir, "annotated_vcf")
+    if indel_bindings:
+        indel_calls = call_manifest_indels(
+            indel_bindings,
+            _template_search_roots(ref_fasta, lib),
             params=calling_params,
-            outdir=calling_outdir,
-            base_name=base_name,
-            is_vcf=is_vcf,
-            ref_vcf_tab=ref_vcf_tab,
-            region_args=region_args,
+            lib=lib,
+            outdir=outdir,
             ploidy_args=ploidy_args + sex_args,
-            ref_fasta=ref_fasta,
             threads=threads,
-            start_vcf=start_vcf,
-            out_vcf=out_vcf,
-            input_chroms=input_chroms,
-            # An indel run's calling input is already the selected sample.
-            sample=None if calling_params is not params else vcf_sample,
-            gvcf=gvcf,
         )
-        record_kept(combined_vcf, outdir, "combined_vcf")
-        if out_vcf != combined_vcf:
-            record_kept(out_vcf, outdir, "annotated_vcf")
-        if indel_bindings:
-            indel_calls = call_manifest_indels(
-                indel_bindings,
-                _template_search_roots(ref_fasta, lib),
-                params=calling_params,
-                lib=lib,
-                outdir=outdir,
-                ploidy_args=ploidy_args + sex_args,
-                threads=threads,
-            )
     combined_kit_txt = _write_microarray_combined_kit(
         params=params,
         outdir=calling_outdir,
