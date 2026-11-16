@@ -344,9 +344,14 @@ or a replacement for quality filtering. The flat prior was held fixed.
 
 This option does **not** request full BAQ (`-D`) or redo BAQ (`-E`, which
 ignores existing BQ tags). Those modes were not qualified by this study.
+The opt-in requires bcftools **1.13 or newer**, which supports heuristic
+BAQ; an older or unidentifiable version fails before calling. The BAQ-off
+default keeps the existing dependency requirements.
 Ultima input rejects `--baq` (including `baq = true` from config), because
 its automatic `-X ultima` profile itself disables BAQ. Use `--no-baq` for
 Ultima; the other profile settings and its prior stay unchanged.
+`analyze comprehensive` records the effective config choice in its calling
+step keys, so changing `baq` reruns SNP and indel calling on resume.
 
 ## The calling prior in `vcf snp` and `vcf indel`
 

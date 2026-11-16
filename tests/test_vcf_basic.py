@@ -199,6 +199,24 @@ def test_982_ultima_profile_cannot_silently_disable_requested_baq(
 
 
 @needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+@pytest.mark.parametrize("version", ["1.12", "unknown"])
+def test_982_heuristic_baq_refuses_old_or_unknown_bcftools(
+    sample, tmp_path, monkeypatch, kind, version
+):
+    from wgsextract_cli.core.utils import MissingDependencyError
+
+    # Boundary: the installed tool's reported version, not its command execution.
+    monkeypatch.setattr(basic, "get_tool_version", lambda tool: version)
+    output = tmp_path / "rejected"
+    with pytest.raises(MissingDependencyError, match="bcftools 1.13"):
+        _call(kind, sample, output, "--baq", "--reference-evidence", "gvcf")
+    assert not output.exists()
+    _call(kind, sample, tmp_path, "--no-baq")
+    assert vcf_calls(tmp_path / f"{kind}s.vcf.gz")
+
+
+@needs_htslib
 @pytest.mark.parametrize("cmd", ["snp", "indel"])
 def test_caller_warns_when_its_region_has_no_variants(sample, tmp_path, caplog, cmd):
     with caplog.at_level(logging.WARNING):

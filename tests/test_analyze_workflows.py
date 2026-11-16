@@ -680,6 +680,22 @@ def test_863_missing_reference_evidence_reruns_the_snp_step(
 
 
 @needs_bcftools
+def test_982_changing_baq_reruns_both_callers_on_resume(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    for mode in ("false", "true", "false"):
+        fake.tables = f"\nbaq = {mode}\n"
+        run = fake.run("--input", bam, "--outdir", str(out))
+        assert run.code == 0
+        assert {"snp", "indel"} <= set(run.ran)
+        if mode == "true":
+            assert not {"info", "mt-haplogroup", "y-haplogroup"} & set(run.ran)
+        resumed = fake.run("--input", bam, "--outdir", str(out))
+        assert resumed.code == 0 and not resumed.ran
+
+
+@needs_bcftools
 def test_updated_reference_or_annotation_data_redo_the_steps_that_read_them(
     fake: FakeSteps, bam: str, tmp_path: Path
 ) -> None:

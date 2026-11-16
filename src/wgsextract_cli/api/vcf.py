@@ -96,7 +96,8 @@ class _SmallVariantParams(Params):
         doc="Omit mpileup -B for both variant calls and optional reference "
         "evidence. This is heuristic BAQ, not full BAQ (-D) or redo BAQ (-E). "
         "Ultima input is rejected because its profile disables BAQ. "
-        "None uses config baq, else off. See docs/variant-confidence.md.",
+        "Requires bcftools 1.13 or newer. None uses config baq, else off. "
+        "See docs/variant-confidence.md.",
         action="boolean_optional",
         config_key="baq",
     )
