@@ -10,7 +10,7 @@ import pytest
 
 from wgsextract_cli import api
 from wgsextract_cli.commands.ref import core_commands
-from wgsextract_cli.core import genome_library, reference_ncount, reference_resolver
+from wgsextract_cli.core import genome_library, reference_resolver
 from wgsextract_cli.core.gene_map import (
     GeneMap,
     _merge_gene_range,
@@ -19,6 +19,7 @@ from wgsextract_cli.core.gene_map import (
     resolve_gene_map_reflib,
 )
 from wgsextract_cli.core.ref_library import downloads
+from wgsextract_cli.core.ref_library import ncount as reference_ncount
 from wgsextract_cli.core.reference_assets import (
     fasta_signature,
     n_count_paths,

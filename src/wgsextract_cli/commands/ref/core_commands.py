@@ -35,6 +35,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_genome_status,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.ncount import write_n_count_files
 from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
 from wgsextract_cli.core.reference_assets import (
     fasta_prefix,
@@ -45,7 +46,6 @@ from wgsextract_cli.core.reference_assets import (
     sequence_signature,
     verify_sequence_signature,
 )
-from wgsextract_cli.core.reference_ncount import write_n_count_files
 from wgsextract_cli.core.reference_processing import has_ref_ns
 from wgsextract_cli.core.results import (
     current_result,
