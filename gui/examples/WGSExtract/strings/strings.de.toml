@@ -283,6 +283,8 @@
 "controls.library.library-paths.ref_path.label" = "Pfad der Referenzdaten"  # i18n-source-hash:5bb4450f
 "controls.library.library-paths.ref_path.tooltip" = "Pfad zum Speichern heruntergeladener Referenzgenome und Datenbanken."  # i18n-source-hash:315cd245
 "sections.library.genome-management.title" = "Referenzgenome verwalten"  # i18n-source-hash:e250f092
+"actions.reference-genomes.lookup-sizes.title" = "Größen abfragen"  # i18n-source-hash:b7f8357e
+"actions.reference-genomes.lookup-sizes.tooltip" = "Fragt bei Referenzanbietern (darunter UCSC, NCBI und EBI) per HTTP HEAD oder FTP SIZE die Größen öffentlicher Referenzdateien ab, wenn sie fehlen oder mindestens 30 Tage alt sind. Es werden keine Probendateien, Positionen oder Genotypen gesendet."  # i18n-source-hash:8f0ec6c2
 "controls.library.genome-management.reference_genome.label" = "Referenzgenom"  # i18n-source-hash:4ff94bd8
 "options.library.genome-management.reference_genome.hs38DH.title" = "hs38DH"  # i18n-ignore i18n-source-hash:1237158e
 "options.library.genome-management.reference_genome.GRCh38.title" = "GRCh38"  # i18n-ignore i18n-source-hash:a38f4f7f

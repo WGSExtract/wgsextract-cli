@@ -283,6 +283,8 @@
 "controls.library.library-paths.ref_path.label" = "Reference Data Path"
 "controls.library.library-paths.ref_path.tooltip" = "Path to store downloaded reference genomes and databases."
 "sections.library.genome-management.title" = "Manage Reference Genomes"
+"actions.reference-genomes.lookup-sizes.title" = "Look up sizes"
+"actions.reference-genomes.lookup-sizes.tooltip" = "Contacts reference publishers (including UCSC, NCBI and EBI) with HTTP HEAD or FTP SIZE requests for public reference filenames when sizes are missing or at least 30 days old. No sample files, positions or genotypes are sent."
 "controls.library.genome-management.reference_genome.label" = "Reference Genome"
 "options.library.genome-management.reference_genome.hs38DH.title" = "hs38DH"
 "options.library.genome-management.reference_genome.GRCh38.title" = "GRCh38"

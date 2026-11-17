@@ -54,7 +54,7 @@ genotypes or variant coordinates.
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
-| `ref library --remote-sizes` | Each catalog entry's host | HTTP HEAD requests for public reference filenames; cached sizes reused |
+| `ref library --remote-sizes` / desktop **Look up sizes** | Each catalog entry's host, including UCSC, NCBI and EBI | HTTP(S) HEAD or FTP SIZE requests for public reference filenames with missing or at least 30-day-old cached sizes; no sample data |
 | `realign --input https://…` | The URL's host and redirects | Explicitly selected remote alignment/index; HEAD, index download and sample-derived genomic byte ranges. Use a local file to avoid disclosing access patterns. Server clients cannot supply URLs. |
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
 | Desktop **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
@@ -64,6 +64,9 @@ Opening an external report/documentation link is an explicit browser action;
 the browser's own privacy settings apply. Generated reports do not load remote
 scripts, fonts or images automatically. The desktop's UI and job server talk
 over authenticated loopback connections on this computer, not a remote service.
+Opening the desktop's Reference Genomes page reads only local/catalog metadata
+and cached sizes, including old sizes. **Look up sizes** requires confirmation
+of the destinations and requests before any remote size lookup.
 
 ## Audit for issue #1052 (offline defaults)
 
@@ -94,6 +97,7 @@ behavior. Classification describes the baseline, before this change.
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |
 | Desktop launch | GitHub update check | **Default-violation**: only the explicit update action checks (automated update testing remains explicitly enabled by its harness) |
+| Desktop Reference Genomes page rendering | Automatically ran `ref library --list --remote-sizes`, querying catalog hosts when sizes were missing/stale | **Default-violation** found in independent review: the automatic data source now uses cached sizes only; a separate, confirmed **Look up sizes** action opts in |
 | `deps check` / shared optional-tool discovery and version probes | Pixi could resolve a changed manifest | **Default-violation**: frozen lockfile queries/probes, without environment installation |
 | Installed CLI/desktop analysis launchers | Pixi could complete/update environments or resolve a changed manifest | **Default-violation**: always `--no-install --frozen`; Setup remains explicit |
 | CLI/app telemetry | None found | No default telemetry endpoint |

@@ -1,5 +1,6 @@
 """#1052: local operations must not even attempt DNS or a socket connection."""
 
+import json
 import os
 import shutil
 import socket
@@ -9,9 +10,17 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib, needs_tools, sam_to_bam, write_fasta
+from tests.htslib_helpers import (
+    needs_htslib,
+    needs_tools,
+    run_wgsextract,
+    sam_to_bam,
+    write_fasta,
+)
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.ref_library.remote_sizes import CACHE_FILE
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.server.operations import RequestError, find, params_from_json
 
 
@@ -62,6 +71,44 @@ def test_1052_empty_library_status_does_not_probe_servers(tmp_path, blocked_netw
     settings["reference_library"] = str(tmp_path / "library")
     result = api.ref.library_list(api.RefLibraryListParams(ref=tmp_path / "library"))
     assert result.exit_code == 0
+    assert not blocked_network
+
+
+def test_1052_reference_genomes_page_lists_offline_and_keeps_stale_cached_sizes(
+    tmp_path, blocked_network
+):
+    page = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "gui/examples/WGSExtract/pages/reference-genomes.json"
+        ).read_text(encoding="utf-8")
+    )
+    control = next(
+        control
+        for section in page["sections"]
+        for control in section.get("controls", [])
+        if control["id"] == "reference_genomes"
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    command = [*control["dataSource"]["arguments"], "--ref", str(library)]
+    empty = CommandResult(command="ref library")
+    with collecting(empty):
+        run_wgsextract(*command)
+    assert empty.details is not None
+    genomes = empty.details["genomes"]
+    assert genomes
+    url = next(genome["url"] for genome in genomes if genome["url"])
+    (library / CACHE_FILE).write_text(
+        json.dumps({url: {"bytes": 123456, "fetched_at": 0}}),
+        encoding="utf-8",
+    )
+    cached = CommandResult(command="ref library")
+    with collecting(cached):
+        run_wgsextract(*command)
+    assert cached.details is not None
+    genome = next(g for g in cached.details["genomes"] if g["url"] == url)
+    assert genome["remote_bytes"] == 123456
     assert not blocked_network
 
 

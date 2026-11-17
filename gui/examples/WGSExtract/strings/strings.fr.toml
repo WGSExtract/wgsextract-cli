@@ -283,6 +283,8 @@
 "controls.library.library-paths.ref_path.label" = "Chemin des données de référence"  # i18n-source-hash:5bb4450f
 "controls.library.library-paths.ref_path.tooltip" = "Chemin où stocker les génomes de référence et bases de données téléchargés."  # i18n-source-hash:315cd245
 "sections.library.genome-management.title" = "Gérer les génomes de référence"  # i18n-source-hash:e250f092
+"actions.reference-genomes.lookup-sizes.title" = "Rechercher les tailles"  # i18n-source-hash:b7f8357e
+"actions.reference-genomes.lookup-sizes.tooltip" = "Interroge les fournisseurs de références (dont UCSC, NCBI et EBI) par HTTP HEAD ou FTP SIZE pour les noms de fichiers publics dont la taille manque ou date d'au moins 30 jours. Aucun fichier, position ou génotype de l'échantillon n'est envoyé."  # i18n-source-hash:8f0ec6c2
 "controls.library.genome-management.reference_genome.label" = "Génome de référence"  # i18n-source-hash:4ff94bd8
 "options.library.genome-management.reference_genome.hs38DH.title" = "hs38DH"  # i18n-ignore i18n-source-hash:1237158e
 "options.library.genome-management.reference_genome.GRCh38.title" = "GRCh38"  # i18n-ignore i18n-source-hash:a38f4f7f
