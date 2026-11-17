@@ -4,8 +4,9 @@
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
 ##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum block depth">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
 chr1	10	.	A	G	50	PASS	.	GT:GQ:DP	0/1:50:30
 chr1	20	.	C	T	50	PASS	.	GT:GQ:DP	0/0:50:30
 chr1	40	.	G	A	50	PASS	.	GT:GQ:DP	./.:0:30
-chr1	60	.	A	<NON_REF>	50	PASS	END=80	GT:GQ:DP	0/0:50:30
+chr1	60	.	A	<NON_REF>	50	PASS	END=80	GT:GQ:DP:MIN_DP	0/0:50:30:30

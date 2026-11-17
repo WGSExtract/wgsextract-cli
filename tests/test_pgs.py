@@ -100,7 +100,6 @@ def test_863_gvcf_blocks_need_quality_and_reads_to_be_hom_ref(tmp_path: Path) ->
     reference; neither says the bases were read well."""
     lines = (FIXTURES / "sample.vcf").read_text().splitlines()
     lines[-1] = "chr1\t60\t.\tA\t<NON_REF>\t.\tPASS\tEND=75\tGT\t0/0"
-    lines.insert(4, '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="m">')
     lines.append("chr1\t76\t.\tA\t<*>\t.\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:0:0")
     gvcf = tmp_path / "blocks.g.vcf"
     gvcf.write_text("\n".join(lines) + "\n")
@@ -126,12 +125,15 @@ def _gvcf_score(
 ) -> api.Result:
     """Score sites chr1:20 (reference C) and chr2:5 on a gVCF of chr1."""
     lines = (FIXTURES / "sample.vcf").read_text().splitlines()
+    declarations = [
+        line
+        for line in lines
+        if line.startswith("##") and not line.startswith(("##fileformat=", "##contig="))
+    ]
+    columns = next(line for line in lines if line.startswith("#CHROM")).split("\t")
     gvcf = tmp_path / "input.g.vcf"
     gvcf.write_text(
-        "\n".join(
-            [*header, *lines[2:6], "\t".join([*lines[6].split("\t")[:9], sample])]
-            + records
-        )
+        "\n".join([*header, *declarations, "\t".join([*columns[:9], sample])] + records)
         + "\n"
     )
     scoring = tmp_path / "score.txt"
@@ -148,7 +150,7 @@ def _gvcf_score(
     )
 
 
-GOOD_REFERENCE = "chr1\t1\t.\tC\t<*>\t.\tPASS\tEND=100\tGT:GQ:DP\t0/0:50:30"
+GOOD_REFERENCE = "chr1\t1\t.\tC\t<*>\t.\tPASS\tEND=100\tGT:GQ:DP:MIN_DP\t0/0:50:30:30"
 
 
 def test_863_gvcf_sample_named_with_a_space_keeps_its_reference_evidence(

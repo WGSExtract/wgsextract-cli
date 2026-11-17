@@ -804,9 +804,12 @@ def test_863_definition_partly_outside_the_gvcfs_region_is_not_reference(tmp_pat
     provenance = Provenance("deepvariant", "1", GQ, region="chr1:1-105").header()
     gvcf = _vcf(
         tmp_path / "caller.g.vcf.gz",
-        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:40:60\n",
+        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=110\tGT:DP:MIN_DP:GQ\t0/0:40:40:60\n",
         contig="chr1",
-        header=QUALITY_HEADER + provenance + "\n",
+        header=QUALITY_HEADER
+        + '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum block depth">\n'
+        + provenance
+        + "\n",
     )
     work = tmp_path / "work"
     work.mkdir()
