@@ -37,9 +37,7 @@ def python_sizes(root: Path) -> dict[str, int]:
                 if file.suffix != ".py" or file.is_symlink():
                     continue
                 data = file.read_bytes()
-                sizes[file.relative_to(root).as_posix()] = data.count(b"\n") + int(
-                    bool(data) and not data.endswith(b"\n")
-                )
+                sizes[file.relative_to(root).as_posix()] = len(data.splitlines())
     return sizes
 
 

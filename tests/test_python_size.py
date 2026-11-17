@@ -82,18 +82,19 @@ def test_826_refresh_cannot_grandfather_new_or_growing_modules(tmp_path):
     assert file.read_bytes() == original
 
 
-def test_826_size_scan_excludes_gui_and_scratch_and_counts_crlf_last_lines(tmp_path):
+@pytest.mark.parametrize("ending", [b"\n", b"\r\n", b"\r"])
+def test_826_size_scan_excludes_gui_and_scratch_and_counts_last_lines(tmp_path, ending):
     baseline(tmp_path, {})
     module(tmp_path, "gui/tool.py", 1500)
     module(tmp_path, "out/capture.py", 1500)
     module(tmp_path, "scratch/experiment.py", 1500)
     file = module(tmp_path, "src/portable.py", 0)
-    file.write_bytes(b"pass\r\n" * 799 + b"pass")
+    file.write_bytes((b"pass" + ending) * 799 + b"pass")
     assert check(tmp_path).returncode == 0
     nested = module(tmp_path, "src/scratch/real_module.py", 801)
     assert "src/scratch/real_module.py" in check(tmp_path).stdout
     nested.unlink()
-    file.write_bytes(file.read_bytes() + b"\r\npass")
+    file.write_bytes(file.read_bytes() + ending + b"pass")
     result = check(tmp_path)
     assert result.returncode == 1
     assert "801 lines" in result.stdout
