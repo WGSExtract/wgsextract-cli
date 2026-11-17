@@ -221,6 +221,19 @@
     WGSM.v2tools.start();
     WGSM.v2terms.start();
     WGSM.qs("[data-v2-mock-slot]").appendChild(WGSM.v2clock.control());
+    /* The Jobs count: running, queued, and what needs you */
+    WGSM.v2api.on(function () {
+      WGSM.v2api.get("/v1/jobs").then(function (res) {
+        if (res.status !== 200) return;
+        var n = res.body.jobs.filter(function (j) {
+          return ["running", "queued", "failed", "interrupted"].indexOf(j.status) >= 0;
+        }).length;
+        WGSM.qsa(".v2-nav__count, .v2-tab__count").forEach(function (el) {
+          el.textContent = String(n);
+          el.hidden = !n;
+        });
+      });
+    });
     WGSM.v2terms.wrap(WGSM.qs("#main"));
     recount();
   };
