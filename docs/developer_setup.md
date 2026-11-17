@@ -236,6 +236,35 @@ helper import paths. Its `deepvariant_pipeline/` package separates model/image
 selection (`models.py`), host/postprocess resource planning (`resources.py`) and
 resumable stage execution (`stages.py`).
 
+### Python module size ratchet
+
+`pixi run lint` checks Python files under `src/`, `tests/` and `scripts/`.
+New modules must stay at or below 800 physical lines. The desktop app (`gui/`)
+keeps its own policy; generated run outputs, scratch work and environments are
+not scanned.
+
+Existing oversized files have fixed, reviewable ceilings in
+`scripts/python_size_baseline.json`; exceeding one fails with
+`python_size_exceeded`. Split responsibilities rather than add or raise an
+exemption. The initial ceilings include the bounded positive growth already
+present in pinned, open pre-policy PRs, so introducing the guard does not break
+those in-flight changes.
+
+After shortening, splitting or deleting an outlier, run
+`pixi run python scripts/check_python_size.py --refresh` and commit the reduced
+baseline. Refresh only lowers/removes existing ceilings: it cannot grandfather
+a new megafile or increase a budget, and refuses to write while a new/growing
+module violates its ceiling. Removed files require their obsolete entries to be
+removed (`python_size_stale_baseline`); remove only that entry if other budgets
+still reserve in-flight work. Global refresh also removes exemptions for files
+reduced to 800 lines or less.
+Wait for reserved pre-policy versions to land before globally refreshing their
+budgets; individual ceilings may be edited downward in the meantime.
+
+The same guard runs in pre-commit, PR/main lint and exact-head generic
+certification. It uses no network, extra dependencies or environment settings.
+For a separate checkout, use the run-specific `--root`/`--baseline` arguments.
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
@@ -255,6 +284,11 @@ explicit repository-relative paths, so affected-test selection runs it whenever
 those consumer modules change.
 Its companion `test_server_shared_data_routing.py` checks that selection and runs
 when the worker guard changes; both guards stay outside the CI-only test list.
+
+CI routing and workflow-policy tests also have focused landing/required-gate and
+readiness/path-filter siblings. Original modules retain shared helper owners;
+all siblings stay in the CI-only and documentation selections, so splitting
+tests never removes their checks from readiness or certification.
 
 - **Assert observable behaviour.** That means:
   - output files and their content
