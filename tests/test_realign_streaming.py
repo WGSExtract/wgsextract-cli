@@ -35,6 +35,7 @@ from tests.test_realign import (
     source as source,
 )
 from wgsextract_cli.commands import realign
+from wgsextract_cli.commands.alignment import common, preparation, short_reads
 from wgsextract_cli.core import parabricks
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -156,9 +157,8 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
     if realign.align_cmd.get_tool_path(aligner) is None:
         pytest.skip(f"{aligner} unavailable")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * 1024**3)
-    monkeypatch.setattr(
-        realign.align_cmd, "streaming_mapping_fits", lambda *_a, **_kw: True
-    )
+    for module in (realign.align_cmd, preparation, short_reads):
+        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
     genome, ref = genome_and_ref
     source, pairs = _old_alignment(tmp_path, genome)
     records = _view("view", source).splitlines()
@@ -183,11 +183,12 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
         source = str(encoded)
     if markdup:
         original = realign.align_cmd.get_tool_path
-        monkeypatch.setattr(
-            realign.align_cmd,
-            "get_tool_path",
-            lambda tool: None if tool == "samblaster" else original(tool),
-        )
+        for module in (realign.align_cmd, common, preparation, short_reads):
+            monkeypatch.setattr(
+                module,
+                "get_tool_path",
+                lambda tool: None if tool == "samblaster" else original(tool),
+            )
     for mode in ("files", "stream"):
         realign.run(
             _args(
@@ -217,9 +218,8 @@ def test_single_end_reads_are_refused_before_extraction(
     tmp_path, genome_and_ref, monkeypatch, keep_fastq
 ):
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * 1024**3)
-    monkeypatch.setattr(
-        realign.align_cmd, "streaming_mapping_fits", lambda *_a, **_kw: True
-    )
+    for module in (realign.align_cmd, preparation, short_reads):
+        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
     genome, ref = genome_and_ref
     lines = ["@HD\tVN:1.6\tSO:unsorted", f"@SQ\tSN:old1\tLN:{len(genome)}"]
     for i, flag in enumerate((0, 4, 0)):
@@ -238,9 +238,8 @@ def test_single_end_reads_are_refused_before_extraction(
 
 @needs_tools("bwa", "samtools")
 def test_streamed_cram_output_matches_file_path(tmp_path, genome_and_ref, monkeypatch):
-    monkeypatch.setattr(
-        realign.align_cmd, "streaming_mapping_fits", lambda *_a, **_kw: True
-    )
+    for module in (realign.align_cmd, preparation, short_reads):
+        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
     genome, ref = genome_and_ref
     source, _ = _old_alignment(tmp_path, genome)
     for mode in ("files", "stream"):
@@ -270,12 +269,11 @@ def test_native_stream_failure_removes_partial_output_and_collation(
     genome_and_ref,
     monkeypatch,
 ):
-    monkeypatch.setattr(
-        realign.align_cmd, "streaming_mapping_fits", lambda *_a, **_kw: True
-    )
+    for module in (realign.align_cmd, preparation, short_reads):
+        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
     genome, ref = genome_and_ref
     source, _ = _old_alignment(tmp_path, genome)
-    monkeypatch.setattr(realign.align_cmd, "ensure_bwa_index", lambda _ref: None)
+    monkeypatch.setattr(preparation, "ensure_bwa_index", lambda _ref: None)
     outdir = tmp_path / "failure"
     with pytest.raises(WGSExtractError, match="bwa alignment failed"):
         realign.run(_args(source, ref=ref, outdir=str(outdir), aligner="bwa"))

@@ -843,7 +843,7 @@ def test_a_resumed_chunked_realign_keeps_chunks_when_the_gpu_comes_back(
     a GPU that was busy when the run was killed and is free when it resumes
     (or the reverse) must not discard the finished chunks."""
     from tests.fake_tools import python_tool
-    from wgsextract_cli.commands import align
+    from wgsextract_cli.commands.alignment import backends
     from wgsextract_cli.core import native_aligners
 
     monkeypatch.setattr(
@@ -854,7 +854,7 @@ def test_a_resumed_chunked_realign_keeps_chunks_when_the_gpu_comes_back(
     # #768: on a busy CI runner the GPU backend's extra 1 GiB didn't fit the
     # RAM then free, so the resume rightly ran on the CPU. Fix free RAM so the
     # test checks chunk reuse, not the runner's load.
-    monkeypatch.setattr(align, "available_memory", lambda: 64 * GIB)
+    monkeypatch.setattr(backends, "available_memory", lambda: 64 * GIB)
     bindir = tmp_path / "bin"
     monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
     die, log = tmp_path / "die", tmp_path / "mappings.log"

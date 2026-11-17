@@ -22,6 +22,7 @@ from tests.prepared_data import sparse_truncate as sparse_truncate
 from wgsextract_cli.api.align import RealignParams as RealignParams
 from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign as realign
+from wgsextract_cli.commands.alignment import short_reads
 from wgsextract_cli.commands.realign import RealignJob as RealignJob
 from wgsextract_cli.core import parabricks as parabricks
 from wgsextract_cli.core.alignment.cram_staging import cram_version as cram_version
@@ -268,7 +269,7 @@ class _Fakes:
         monkeypatch.setattr(
             realign, "unpaired_sample", lambda *_a, **_k: UnpairedSample(2, 0, None)
         )
-        monkeypatch.setattr(realign.align_cmd, "available_memory", lambda: 1024**4)
+        monkeypatch.setattr(short_reads, "available_memory", lambda: 1024**4)
         monkeypatch.setattr(realign, "available_memory", lambda: 1024**4)
 
     def extract(self, _input, r1, r2, **_kwargs):
