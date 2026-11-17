@@ -121,6 +121,7 @@ jobs:
       - name: Lint, workflow policy and type checks
         run: |
           pixi run -e lint -x ruff check .
+          pixi run -e lint -x python scripts/check_python_size.py
           pixi run -e lint -x python scripts/validate_site_sources.py
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
@@ -189,6 +190,7 @@ jobs:
         run: |
           pixi run -e lint -x python - <<'PY'
           import json, os, subprocess, sys
+          subprocess.run([sys.executable, "scripts/check_python_size.py"], check=True)
           files = json.loads(os.environ["PYTHON_FILES"])
           cli = [path for path in files if not path.startswith("gui/")]
           gui = [path for path in files if path.startswith("gui/")]
@@ -257,6 +259,7 @@ jobs:
       - run: |
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
+          pixi run -e lint -x python scripts/check_python_size.py
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"

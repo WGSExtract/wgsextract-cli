@@ -407,7 +407,7 @@ smoke-test = "pytest tests/test_smoke.py tests/test_smoke_real_basics.py tests/t
 smoke-test-full = "pytest tests/test_smoke.py tests/test_smoke_real_basics.py tests/test_smoke_real_vcf.py tests/test_smoke_real_vcf_ann.py tests/test_smoke_real_expert.py tests/test_smoke_real_ref.py tests/test_smoke_real_full.py tests/test_smoke_real_pet.py"
 actionlint = "actionlint"
 validate-actions = "python scripts/validate_github_actions.py"
-lint = "ruff check . && python scripts/validate_site_sources.py && actionlint && python scripts/validate_github_actions.py"
+lint = "ruff check . && python scripts/check_python_size.py && python scripts/validate_site_sources.py && actionlint && python scripts/validate_github_actions.py"
 format = "ruff format ."
 typecheck = "mypy src/wgsextract_cli"
 test-smells = { cmd = "python scripts/test_smells.py", description = "Advisory: flag change-detector patterns in test lines added since origin/main." }

@@ -351,6 +351,7 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     commands = [
         [*pixi, "ruff", "check", "."],
         [*pixi, "mypy", "src/wgsextract_cli"],
+        [*pixi, "python", "scripts/check_python_size.py"],
         [*pixi, "actionlint"],
         [*pixi, "python", "scripts/validate_github_actions.py"],
         [*pixi, "python", "scripts/validate_site_sources.py"],

@@ -50,6 +50,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.github/workflows/.*\.ya?ml$
+      - id: python-size
+        name: Python module size ratchet
+        entry: python scripts/check_python_size.py
+        language: python
+        pass_filenames: false
+        files: ^((src|tests|scripts)/.*\.py|scripts/python_size_baseline\.json)$
       - id: validate-github-actions
         name: validate GitHub Actions versions
         entry: python scripts/validate_github_actions.py
