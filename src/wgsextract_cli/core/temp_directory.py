@@ -57,6 +57,16 @@ def scratch_parent(fallback: PathInput) -> str:
     return configured_temp_directory() or str(fallback)
 
 
+@contextlib.contextmanager
+def scratch_directory(fallback: PathInput, prefix: str) -> Iterator[str]:
+    """A new folder for a command's temporary work under ``scratch_parent``,
+    removed with everything in it when the block ends."""
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(fallback), prefix=prefix
+    ) as work:
+        yield work
+
+
 _process_scratch: list[str] = []
 
 
