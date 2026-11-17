@@ -10,6 +10,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `bcftools.g.vcf.gz` instead, in one pass. `--merge` joins the parts by
   position into `variants.vcf.gz` (`variants.g.vcf.gz` with the gVCF, + `.tbi`)
   and removes them. SV and CNV calling stay Linux and macOS only.
+- `vcf pharmcat` takes the bcftools gVCF that `vcf call --reference-evidence
+  gvcf` writes: its variants are the calls and its depth-only blocks the
+  reference evidence for absent PharmCAT sites, as for a gVCF found beside a
+  variant VCF.
 - Python API: quick read-only calls (`info`, `info chip`, `sample show`,
   `ref status`, `ref library-list`, `example-genome list`, `deps check`) can
   run on several threads at once, each with its own result, progress

@@ -817,3 +817,36 @@ def test_863_definition_partly_outside_the_gvcfs_region_is_not_reference(tmp_pat
     assert row[9] == "./."
     evidence = (work / "evidence.vcf").read_text()
     assert "PGX_STATE=not_assessed" in evidence
+
+
+@needs_htslib
+def test_a_depth_only_gvcf_given_directly_reads_its_blocks_as_reference_evidence(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    """PR 1060 review: vcf call --reference-evidence gvcf writes SNPs and
+    indels only as bcftools' depth-only gVCF. Given to vcf pharmcat directly,
+    its variants are the calls and its blocks the reference evidence, so a
+    covered definition is reference, not a no-call for want of GQ."""
+    from wgsextract_cli.core.reference_evidence import DEPTH_ONLY, Provenance
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    provenance = Provenance("bcftools", "1.21", DEPTH_ONLY).header()
+    gvcf = _vcf(
+        tmp_path / "bcftools.g.vcf.gz",
+        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=104\tGT:DP\t0/0:30\n"
+        f"{{c}}\t103\t.\t{_base(103)}\tT,<*>\t50\tPASS\t.\tGT:DP\t0/1:30\n"
+        "{c}\t105\t.\tA\t<*>\t.\tPASS\tEND=110\tGT:DP\t0/0:30\n",
+        contig="chr1",
+        header='##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">\n'
+        + provenance
+        + "\n",
+    )
+    run_wgsextract("vcf", "pharmcat", "--vcf-input", gvcf, "--pharmcat-dir",
+                   str(release), "--outdir", str(tmp_path / "out"))  # fmt: skip
+
+    rows = [r.split("\t") for r in _view(release / "seen.vcf.gz", "-H")]
+    by_pos = {row[1]: row for row in rows}
+    assert by_pos["103"][4] == "T" and by_pos["103"][9] == "0/1"
+    assert by_pos["105"][9] == "0/0"
