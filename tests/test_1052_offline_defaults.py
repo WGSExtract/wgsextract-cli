@@ -112,6 +112,91 @@ def test_1052_reference_genomes_page_lists_offline_and_keeps_stale_cached_sizes(
     assert not blocked_network
 
 
+@pytest.mark.parametrize(
+    "page_name", ["extract", "vcf", "microarray", "library", "datasets"]
+)
+def test_1052_1060_page_catalog_data_sources_stay_offline(
+    tmp_path, blocked_network, page_name
+):
+    page = Path(__file__).parents[1] / f"gui/examples/WGSExtract/pages/{page_name}.json"
+    pending = [json.loads(page.read_text(encoding="utf-8"))]
+    commands = set()
+    while pending:
+        node = pending.pop()
+        if isinstance(node, dict):
+            source = node.get("dataSource")
+            if (
+                isinstance(source, dict)
+                and source.get("path") == "scripts/run-wgsextract.sh"
+            ):
+                commands.add(tuple(source["arguments"]))
+            pending.extend(node.values())
+        elif isinstance(node, list):
+            pending.extend(node)
+    assert commands
+    library = tmp_path / "library"
+    library.mkdir()
+    for command in commands:
+        result = CommandResult(command=" ".join(command))
+        with collecting(result):
+            run_wgsextract(*command, "--ref", str(library))
+    assert not blocked_network
+
+
+@needs_htslib
+def test_1052_1060_gui_default_vcf_call_uses_real_tools_offline(
+    tmp_path, blocked_network
+):
+    page = json.loads(
+        (
+            Path(__file__).parents[1] / "gui/examples/WGSExtract/pages/extract.json"
+        ).read_text(encoding="utf-8")
+    )
+    section = next(s for s in page["sections"] if s["id"] == "variant-calling")
+    types = next(c for c in section["controls"] if c["id"] == "vcf_call_types")
+    action = next(a for a in section["actions"] if a["id"] == "vcf-call")
+    sequence = "ACGT" * 250
+    ref = write_fasta(tmp_path / "fake_hg38.fa", {"chr1": sequence})
+    read = sequence[:39] + "G" + sequence[40:100]
+    bam = sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:1000",
+            *(
+                f"fake{i}\t0\tchr1\t1\t60\t100M\t*\t0\t0\t{read}\t{'I' * 100}"
+                for i in range(20)
+            ),
+        ],
+        tmp_path / "fake.bam",
+    )
+    out = tmp_path / "calls"
+    values = {
+        "{{bam_path}}": str(bam),
+        "{{vcf_call_types}}": ",".join(
+            option["id"] for option in types["options"] if option.get("selected")
+        ),
+        "{{ref_path}}": str(ref),
+        "{{out_dir}}": str(out),
+    }
+    arguments = [values.get(arg, arg) for arg in action["command"]["arguments"]]
+    for group in action["command"].get("optionalArguments", []):
+        expanded = [values.get(arg, arg) for arg in group]
+        if not any("{{" in arg for arg in expanded):
+            arguments.extend(expanded)
+    with collecting(CommandResult(command="vcf call")):
+        run_wgsextract(*arguments)
+    from wgsextract_cli.core.utils import run_command
+
+    snps = out / "snps.vcf.gz"
+    assert (out / "indels.vcf.gz").is_file()
+    observed = run_command(
+        ["bcftools", "query", "-f", "%CHROM\\t%POS\\t%ALT\\n", str(snps)],
+        capture_output=True,
+    )
+    assert observed.stdout.splitlines() == ["chr1\t40\tG"]
+    assert not blocked_network
+
+
 @pytest.mark.parametrize("configured", [False, True])
 def test_1052_missing_ancestry_names_data_and_confirmation_without_connecting(
     tmp_path, blocked_network, configured

@@ -736,6 +736,7 @@ and the `ancestry` fact; see docs/ancestry.md.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, VCF, or microarray raw-data file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
@@ -788,11 +789,13 @@ Basecall POD5 signal into an unaligned BAM (output role
 `BasecallParams`: Basecall Nanopore POD5 signal with ONT's Dorado into an unaligned BAM,
 `<input stem>.<model>[.<modifications>].bam`, that keeps the MM/ML
 base-modification tags and feeds `align` (`r1`) directly. Dorado is
-an optional tool the user installs; models download into
-`models_dir`.
+an optional tool the user installs; `download` permits model selection
+and downloads into `models_dir` (including chemistry/model identifiers
+sent to Oxford Nanopore). Without it, use a local model directory.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | A POD5 file, or a folder searched (recursively) for them. |
 | `model` | `str` | `'hac'` | `--model` | Dorado model: fast, hac or sup (optionally pinned, e.g. sup@v5.2.0; picked for the run's chemistry), or a model folder (default: hac) |
 | `modified_bases` | `str \| None` | `None` | `--modified-bases` | Also call base modifications, e.g. 5mCG_5hmCG (CpG methylation) or 5mC_5hmC; comma-separated for several. Writes MM/ML tags. |
@@ -1349,10 +1352,12 @@ Run PharmCAT; output roles `pharmcat_report`, `pharmcat_report_json` and
 
 `VcfPharmcatParams`: Star-allele diplotypes and drug-response phenotypes from a GRCh38 VCF
 with PharmCAT: `<stem>.report.html`, `.report.json` and
-`.phenotype.json`.
+`.phenotype.json`. Missing PharmCAT reference FASTA needs `download`;
+no sample data is sent to its public reference publisher.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
@@ -1695,8 +1700,8 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 
 `MtHaplogroupParams`: Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
 called first; needs the reference) or a VCF, into
-`haplogrep_results.txt`; the tree is downloaded once into the reference
-library. With `contamination`, haplocheck also looks for a mixture of
+`haplogrep_results.txt`; a missing tree needs `download` permission.
+With `contamination`, haplocheck also looks for a mixture of
 two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
@@ -1708,6 +1713,7 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or VCF with chrM/MT. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
@@ -1732,6 +1738,7 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or single-sample VCF/BCF. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
@@ -1820,10 +1827,12 @@ Generate the kits; each output carries its marker tallies in `metrics`.
 formats from a BAM, CRAM or VCF.
 
 Fields left at `None` fall back to config.toml (`microarray_*`
-settings) and then to the documented default.
+settings) and then to the documented default. Missing public liftOver
+chains require `download`; lifting sample coordinates stays local.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or VCF to genotype. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
@@ -1985,8 +1994,9 @@ dictionary and the aligner's index, written beside it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | The reference FASTA (required; default: config reference_fasta). |
-| `aligner` | `str` | `'bwa'` | `--aligner` | Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; hs38DH's is downloaded, others need ~90 GB of memory to build. One of: `bwa`, `bwa-mem2` |
+| `aligner` | `str` | `'bwa'` | `--aligner` | Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; --download permits fetching hs38DH's, others need ~90 GB of memory to build. One of: `bwa`, `bwa-mem2` |
 
 ### `api.ref.dense_sa(RefDenseSaParams)`
 
@@ -2441,6 +2451,7 @@ Custom scoring files take precedence over Catalog selection.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Single-sample VCF/gVCF, or choose --sample. |
 | `build` | `Literal` | required | `--build` | Input/scoring coordinate build (must match). One of: `GRCh37`, `GRCh38` |
 | `pgs_id` | `str \| None` | `None` | `--pgs-id` | Catalog PGS ID; uncurated IDs carry a warning. |
@@ -2543,11 +2554,12 @@ decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one, built from IPD-IMGT/HLA on first use. |
+| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one; download permits building it if missing. |
 
 ### `api.genotyping.repeats(TypingStrParams)`
 
@@ -2584,7 +2596,8 @@ The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
 gene list) and the microarray export. It runs no analysis; its only network
-use is downloading a built-in gene list once into the reference library:
+use, only with `download` permission, is fetching a missing built-in gene
+list into the reference library:
 
 ```python
 res = api.report.build(api.ReportParams(workspace=Path("HG002")))
@@ -2609,12 +2622,13 @@ plus a findings table, from the result manifests in its folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | BAM, CRAM or VCF of the sample: only its runs (and runs on files made from it) are reported. Its folder holds the results unless workspace is given. |
 | `workspace` | `Path \| None` | `None` | `--workspace` | Sample folder whose results are reported (default: the --genome folder, else the --input's folder). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the sample folder). |
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
-| `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; downloaded once into the reference library), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+| `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
 
 ## `api.sample`
 
