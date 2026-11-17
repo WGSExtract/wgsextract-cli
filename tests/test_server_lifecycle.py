@@ -13,6 +13,8 @@ from typing import Any
 import psutil
 import pytest
 
+# The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
+from tests.smoke_utils import ensure_fake_data as ensure_fake_data
 from tests.smoke_utils import get_cli_command
 from tests.test_server import (
     FAKE_DIR,

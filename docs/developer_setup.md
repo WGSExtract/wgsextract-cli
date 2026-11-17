@@ -218,6 +218,9 @@ Large DeepVariant, native-aligner and server suites are divided into focused
 `test_<family>_<topic>.py` modules. Their original `test_<family>.py` modules
 keep shared helpers and function-scoped fixtures, so existing imports and fixture
 behavior remain stable. New integration modules must retain their CI tier.
+Modules using the shared `out/fake_30x` fixtures also retain a direct
+`ensure_fake_data` import: the loadgroup scheduler uses it to keep shared-data
+generation on one worker, even when the fixture itself is imported.
 
 - **Assert observable behaviour.** That means:
   - output files and their content

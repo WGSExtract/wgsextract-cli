@@ -4,6 +4,8 @@ import json
 import shutil
 from pathlib import Path
 
+# The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
+from tests.smoke_utils import ensure_fake_data as ensure_fake_data
 from tests.test_server import (
     FAKE_DIR,
     Mcp,

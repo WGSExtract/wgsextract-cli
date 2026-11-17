@@ -6,6 +6,8 @@ import subprocess
 
 import pytest
 
+# The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
+from tests.smoke_utils import ensure_fake_data as ensure_fake_data
 from tests.test_server import (
     FAKE_DIR,
     JOB_VALIDATOR,

@@ -1,3 +1,4 @@
+import ast
 import os
 from pathlib import Path
 
@@ -42,6 +43,43 @@ def test_worker(request):
         str(pytester.path / "out" / "pytest"),
     )
 
+    result.assert_outcomes(passed=2)
+    workers = (pytester.path / "workers.txt").read_text().splitlines()
+    assert len(workers) == 2 and len(set(workers)) == 1
+
+
+@pytest.mark.parametrize("topic", ["jobs", "lifecycle", "mcp"])
+def test_826_split_server_fixture_users_keep_shared_data_on_one_worker(
+    pytester: pytest.Pytester, topic: str
+) -> None:
+    source = (REPO_ROOT / "tests" / f"test_server_{topic}.py").read_text()
+    imports = "\n".join(
+        ast.get_source_segment(source, node) or ""
+        for node in ast.parse(source).body
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+    )
+    test = """
+from pathlib import Path
+
+def test_worker(request):
+    with Path("workers.txt").open("a") as output:
+        output.write(request.config.workerinput["workerid"] + "\\n")
+"""
+    pytester.makeconftest("from tests.conftest import pytest_xdist_make_scheduler")
+    pytester.makepyfile(
+        test_split=imports + "\n" + test,
+        test_other="from tests.smoke_utils import ensure_fake_data\n" + test,
+    )
+    (pytester.path / "out").mkdir()
+    result = pytester.runpytest_subprocess(
+        "-n",
+        "2",
+        "--dist",
+        "loadgroup",
+        "-q",
+        "--basetemp",
+        str(pytester.path / "out" / "pytest"),
+    )
     result.assert_outcomes(passed=2)
     workers = (pytester.path / "workers.txt").read_text().splitlines()
     assert len(workers) == 2 and len(set(workers)) == 1
