@@ -79,8 +79,10 @@ blocks with GQ 0 and MIN_DP 0, which read as `uncovered`, and its `RefCall`
 and `NoCall` records as `filtered`. Only the gVCF's header changes when it is
 published (`bcftools reheader`), so every record stays as DeepVariant wrote
 it. Bases a sex/PAR ploidy of 0 leaves out of calling (a woman's chrY) are
-recorded in `PloidyZero`; Parabricks and `wgse-deepvariant` call diploid
-genomes only, as without the gVCF. `wgse-deepvariant`'s gVCF agrees
+recorded in `PloidyZero`. Parabricks calls a man's haploid chrX and chrY
+apart from the rest and its gVCF is gathered from the parts (see
+[Sex and PAR](#sex-and-par)); `wgse-deepvariant` calls diploid genomes only,
+as without the gVCF. `wgse-deepvariant`'s gVCF agrees
 with Google's in every field the states read; before 0.3.1 its variant
 records lacked the PL values of genotypes with `<*>` (#999).
 
@@ -162,19 +164,19 @@ truth variants, 2 sit on bases the gVCF calls callable reference.
 
 ## Sex and PAR
 
-GATK and Clair3 call a man's haploid chrX and chrY apart from the diploid
-rest (see [caller-ploidy.md](caller-ploidy.md)), so the gVCF is written in
+GATK, Clair3 and Parabricks DeepVariant call a man's haploid chrX and chrY
+apart from the diploid rest (see [caller-ploidy.md](caller-ploidy.md)), so the gVCF is written in
 parts. Each part's blocks are cut at its edges (a block cut at its start
 begins on its own reference base, read from the FASTA or, for a gzip one,
 its decompressed copy) and the parts are gathered in reference order, so
 every base has one record in the ploidy it was called with: `0` on a man's
-chrX, `0/0` in its PAR. Any other record belongs to the part its POS is in;
+chrX, `0/0` in its PAR (DeepVariant writes `0/0` in both). Any other record belongs to the part its POS is in;
 one starting before the selection, such as a deletion whose REF reaches
 into it, is kept where it covers the selected bases, once. Bases the policy gives ploidy 0, such as
 a woman's chrY, aren't called and are recorded in `PloidyZero`.
 
-`vcf gatk` and `vcf clair3` keep no step journal: a rerun calls again,
-with or without the gVCF.
+`vcf gatk`, `vcf clair3` and Parabricks DeepVariant keep no step journal:
+a rerun calls again, with or without the gVCF.
 
 ## Evidence states
 

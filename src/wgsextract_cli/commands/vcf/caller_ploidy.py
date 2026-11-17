@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TypeVar
 
-from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
+from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGatkParams
 from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.bgzf import is_bgzf
@@ -242,7 +242,7 @@ def require_diploid(intervals: list[PloidyInterval], caller: str) -> None:
         )
 
 
-P = TypeVar("P", VcfClair3Params, VcfGatkParams)
+P = TypeVar("P", VcfClair3Params, VcfDeepvariantParams, VcfGatkParams)
 
 
 @dataclass(frozen=True)
@@ -262,11 +262,14 @@ def call_partitioned(
     name: str,
     run: Callable[[P, int, CallerSetup | None, bool, str | None], None],
     gvcf: GvcfEngine | None = None,
+    *,
+    gpu_ploidy: bool = False,
 ) -> None:
     """Run haploid and diploid jobs separately, then gather in reference order.
 
     ``run`` writes the VCF, and with ``gvcf`` the caller's raw gVCF at the
-    path it is given. Each partition's gVCF is cut at its edges, gathered and
+    path it is given. ``gpu_ploidy``: ``run`` calls a haploid partition on
+    the GPU too. Each partition's gVCF is cut at its edges, gathered and
     published as ``<name>.g.vcf.gz`` with its provenance."""
     from wgsextract_cli.commands.vcf.basic import record_variants
     from wgsextract_cli.core.atomic_output import safe_output
@@ -324,7 +327,7 @@ def call_partitioned(
             publish_gvcf(str(cut), out_gvcf, provenance)
         record_gvcf(out_gvcf)
         return
-    if params.gpu:
+    if params.gpu and not gpu_ploidy:
         require_diploid(intervals, f"{name} --gpu")
     if getattr(params, "scatter", False):
         raise WGSExtractError(

@@ -12,6 +12,7 @@ import sys
 import tempfile
 from collections.abc import Callable
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -665,70 +666,113 @@ def _check_gpu_free(
 def _deepvariant_parabricks(
     params: VcfDeepvariantParams, model_type: str, caller: CallerSetup | None
 ) -> None:
+    """Parabricks DeepVariant, one pbrun run per sex/PAR ploidy partition
+    (caller_ploidy.call_partitioned): pbrun has --haploid-contigs but no PAR
+    regions, so a man's non-PAR chrX and chrY are called apart from the rest."""
     from wgsextract_cli.core.parabricks import (
-        call_variants,
         parabricks_image,
         plan_gpu_memory,
         verify_parabricks,
     )
+
+    from .caller_ploidy import GvcfEngine, call_partitioned
 
     if params.batch_size is not None:
         raise UsageError("DeepVariant --batch-size doesn't apply to Parabricks.")
     if params.dry_run or params.force_steps:
         raise UsageError(
             "--dry-run and --force-step apply to DeepVariant's stages; "
-            "Parabricks (--gpu) always runs in one step."
+            "Parabricks (--gpu) has no resumable stages."
         )
     require_native_tool("parabricks")
     gvcf = params.reference_evidence == "gvcf"
     verify_dependencies(["samtools", "tabix", *(["bcftools"] if gvcf else [])])
     verify_parabricks()
-    fit = plan_gpu_memory(
-        "deepvariant", "deepvariant", check=not params.no_gpu_memory_check
-    )
+    # Refuse a GPU or host that can't run it before any work; each partition
+    # fits itself to the GPU's memory again just before it runs.
+    plan_gpu_memory("deepvariant", "deepvariant", check=not params.no_gpu_memory_check)
     setup = caller or setup_caller(params)
-    outdir, ref = setup.outdir, setup.ref
-    input_file, region = str(params.input), params.region
-    from .caller_ploidy import calling_ploidy, require_diploid
-
-    ploidy = calling_ploidy(input_file, ref, setup.lib, outdir, region)
-    require_diploid(ploidy, "Parabricks DeepVariant")
     _require_ont_x86(model_type)
     if model_type == "ONT_R104":
-        _warn_ont_chemistry(input_file, ref)
-    out_vcf = str(Path(outdir, "deepvariant.vcf.gz"))
-    logging.info(LOG_MESSAGES["vcf_calling_deepvariant"].format(output=out_vcf))
-    mode = _PARABRICKS_MODES[model_type] + fit
-    if not gvcf:
-        call_variants("deepvariant", input_file, ref, out_vcf, region, mode)
+        _warn_ont_chemistry(str(params.input), setup.ref)
+    logging.info(
+        LOG_MESSAGES["vcf_calling_deepvariant"].format(
+            output=Path(setup.outdir, "deepvariant.vcf.gz")
+        )
+    )
+    call_partitioned(
+        params,
+        setup,
+        "deepvariant",
+        partial(_pbrun_deepvariant, mode=_PARABRICKS_MODES[model_type]),
+        GvcfEngine("parabricks-deepvariant", parabricks_image()) if gvcf else None,
+        gpu_ploidy=True,
+    )
+
+
+def _pbrun_deepvariant(
+    params: VcfDeepvariantParams,
+    sample_ploidy: int,
+    setup: CallerSetup | None,
+    record: bool,
+    gvcf: str | None,
+    *,
+    mode: list[str],
+) -> None:
+    """One pbrun deepvariant run over ``params.region`` into the outdir's
+    ``deepvariant.vcf.gz``, and with ``gvcf`` its gVCF there. A haploid run
+    lists its contigs in --haploid-contigs; its region (a partition's BED,
+    which pbrun takes as --interval-file) keeps it off their PARs."""
+    from wgsextract_cli.core.parabricks import call_variants, plan_gpu_memory
+
+    assert setup is not None
+    ref, region = setup.ref, params.region
+    out_vcf = str(Path(setup.outdir, "deepvariant.vcf.gz"))
+    options = [
+        *mode,
+        *plan_gpu_memory(
+            "deepvariant",
+            "deepvariant",
+            check=not params.no_gpu_memory_check,
+            report=False,
+        ),
+    ]
+    if sample_ploidy == 1:
+        assert region is not None
+        contigs = dict.fromkeys(
+            line.split("\t", 1)[0]
+            for line in Path(region).read_text().splitlines()
+            if line.strip()
+        )
+        options += ["--haploid-contigs", ",".join(contigs)]
+    if gvcf is None:
+        call_variants("deepvariant", str(params.input), ref, out_vcf, region, options)
     else:
         # One run writes both: --out-variants names the gVCF, and pbrun
         # writes the VCF beside it without the .g (X.g.vcf.gz -> X.vcf.gz).
-        out_gvcf = str(Path(outdir, GVCF_NAME))
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pb_gvcf_") as work:
-            staged = Path(work, GVCF_NAME)
-            call_variants(
-                "deepvariant", input_file, ref, str(staged), region,
-                [*mode, "--gvcf"],
-            )  # fmt: skip
-            variants = Path(work, Path(out_vcf).name)
-            if not variants.is_file() or not staged.is_file():
-                raise WGSExtractError(
-                    "Parabricks DeepVariant didn't write both its VCF and gVCF."
-                )
-            for suffix in ("", ".tbi"):
-                if Path(f"{variants}{suffix}").exists():
-                    os.replace(f"{variants}{suffix}", out_vcf + suffix)
-                elif suffix:
-                    Path(out_vcf + suffix).unlink(missing_ok=True)
-            provenance = caller_provenance(
-                "parabricks-deepvariant", parabricks_image(), ploidy, region
+        call_variants(
+            "deepvariant", str(params.input), ref, gvcf, region,
+            [*options, "--gvcf"],
+        )  # fmt: skip
+        variants = Path(gvcf).with_name(
+            Path(gvcf).name.removesuffix(".g.vcf.gz") + ".vcf.gz"
+        )
+        if not variants.is_file() or not Path(gvcf).is_file():
+            raise WGSExtractError(
+                "Parabricks DeepVariant didn't write both its VCF and gVCF."
             )
-            publish_gvcf(str(staged), out_gvcf, provenance)
+        for suffix in ("", ".tbi"):
+            if Path(f"{variants}{suffix}").exists():
+                os.replace(f"{variants}{suffix}", out_vcf + suffix)
+            elif suffix:
+                Path(out_vcf + suffix).unlink(missing_ok=True)
     ensure_vcf_indexed(out_vcf)
-    record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
-    if gvcf:
-        record_gvcf(out_gvcf)
+    if record:
+        record_variants(
+            out_vcf,
+            "variants",
+            warn_if_no_variants(out_vcf, ref, params.region),
+        )
 
 
 def _native_gpu_preflight(native: native_deepvariant.NativeDeepVariant | None) -> None:
