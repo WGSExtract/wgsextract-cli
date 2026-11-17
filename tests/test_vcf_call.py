@@ -123,3 +123,19 @@ def test_gvcf_replaces_the_snp_and_indel_vcfs(tmp_path):
     roles, _document = _call(tmp_path, "--reference-evidence", "gvcf")
     assert roles == ["reference_evidence", "reference_evidence_index"]
     assert _vcfs(tmp_path) == ["bcftools.g.vcf.gz"]
+
+
+@needs_htslib
+def test_the_run_counts_every_type_it_called(tmp_path):
+    # PR 1060 review: each step overwrote the run's count with its own.
+    _roles, document = _call(tmp_path)
+    per_type = {o["role"]: o["metrics"]["variants"] for o in document["outputs"]}
+    assert document["metrics"]["variants"] == per_type["snps"] + per_type["indels"]
+
+
+@needs_htslib
+def test_merge_with_one_type_still_writes_the_merged_vcf(tmp_path):
+    # PR 1060 review: one part used to skip --merge silently.
+    roles, _document = _call(tmp_path, "--merge", "--types", "snp")
+    assert roles == ["merged_variants"]
+    assert _vcfs(tmp_path) == ["variants.vcf.gz"]

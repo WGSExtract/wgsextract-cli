@@ -1103,7 +1103,8 @@
               "--input",
               "{{bam_path}}",
               "--types",
-              "{{vcf_call_types}}"
+              "{{vcf_call_types}}",
+              "--reference-evidence=none"
             ],
             "optionalArguments": [
               [
@@ -1120,9 +1121,6 @@
               ],
               [
                 "{{vcf_merge}}"
-              ],
-              [
-                "{{vcf_gvcf}}"
               ],
               [
                 "{{sv_read_type}}"
@@ -1148,6 +1146,9 @@
               [
                 "--qc-min-depth",
                 "{{qc_min_depth}}"
+              ],
+              [
+                "{{vcf_gvcf}}"
               ]
             ]
           }
@@ -1195,7 +1196,8 @@
               "vcf",
               "gatk",
               "--input",
-              "{{bam_path}}"
+              "{{bam_path}}",
+              "--reference-evidence=none"
             ],
             "optionalArguments": [
               [
@@ -1240,7 +1242,8 @@
               "vcf",
               "deepvariant",
               "--input",
-              "{{bam_path}}"
+              "{{bam_path}}",
+              "--reference-evidence=none"
             ],
             "optionalArguments": [
               [
@@ -1281,11 +1284,11 @@
                 "{{deepvariant_checkpoint}}"
               ],
               [
-                "{{vcf_gvcf}}"
-              ],
-              [
                 "--force-step",
                 "{{deepvariant_force_step}}"
+              ],
+              [
+                "{{vcf_gvcf}}"
               ]
             ]
           },

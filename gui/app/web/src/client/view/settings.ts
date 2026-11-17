@@ -20,9 +20,11 @@ export function renderSetupStatusSection() {
     : state.labels.setupRunButtonTitle ?? "Run Setup";
   // The steps start hidden once setup has run, and show while it runs, before it has run or after it failed.
   const expanded = hasSteps && (isRunning || (state.setupExpanded ?? !hasRun));
-  const toggleTitle = escapeAttribute(expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section");
+  const toggleVerb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
+  const toggleTitle = escapeAttribute(toggleVerb);
+  const toggleName = escapeAttribute(`${toggleVerb}: ${state.labels.setupTitle ?? "Setup"}`);
   const toggle = hasSteps && !isRunning
-    ? `<button type="button" class="section-toggle" data-setup-toggle aria-expanded="${expanded}" title="${toggleTitle}" aria-label="${toggleTitle}">${expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄")}</button>`
+    ? `<button type="button" class="section-toggle" data-setup-toggle aria-expanded="${expanded}" title="${toggleTitle}" aria-label="${toggleName}">${expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄")}</button>`
     : "";
   return `
     <section class="card setup-status-card${expanded ? "" : " collapsed"}">

@@ -48,8 +48,10 @@ test("WGSExtract new options do not change default argv or selected formats", ()
 });
 
 test("WGSExtract variant calling: type checkboxes, gVCF and Merged drive one vcf call", () => {
-  // Default: SNP and InDel checked, one file per type, no gVCF.
-  assert.deepEqual(wgsCommand("extract", "vcf-call"), ["vcf", "call", "--input", "sample.bam", "--types", "indel,snp"]);
+  // Default: SNP and InDel checked, one file per type, and no gVCF even if config.toml asks for one.
+  assert.deepEqual(wgsCommand("extract", "vcf-call"), [
+    "vcf", "call", "--input", "sample.bam", "--types", "indel,snp", "--reference-evidence=none",
+  ]);
   const all = wgsCommand("extract", "vcf-call", {}, {
     vcf_call_types: ["snp", "indel", "sv", "cnv"], vcf_merge: ["--merge"], vcf_gvcf: ["--reference-evidence=gvcf"],
   });
@@ -57,8 +59,11 @@ test("WGSExtract variant calling: type checkboxes, gVCF and Merged drive one vcf
   assert.ok(all.includes("--merge") && all.includes("--reference-evidence=gvcf"), all.join(" "));
   // gVCF also reaches the callers that write one; FreeBayes has none.
   const gvcf = { vcf_gvcf: ["--reference-evidence=gvcf"] };
-  for (const action of ["vcf-gatk", "vcf-deepvariant"]) {
-    assert.ok(wgsCommand("extract", action, {}, gvcf).includes("--reference-evidence=gvcf"), action);
+  for (const action of ["vcf-call", "vcf-gatk", "vcf-deepvariant"]) {
+    // The checked box comes after the explicit none, so it wins.
+    const argv = wgsCommand("extract", action, {}, gvcf);
+    assert.ok(argv.indexOf("--reference-evidence=gvcf") > argv.indexOf("--reference-evidence=none"), action);
+    assert.ok(wgsCommand("extract", action).includes("--reference-evidence=none"), action);
   }
   assert.ok(!wgsCommand("extract", "vcf-freebayes", {}, gvcf).includes("--reference-evidence=gvcf"));
 });

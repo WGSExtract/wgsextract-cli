@@ -200,7 +200,7 @@
       "id": "mt_haplo",
       "kind": "action",
       "pageID": "ancestry",
-      "sectionID": "ancestry-inputs",
+      "sectionID": "haplogroup-analysis",
       "actionID": "run-haplogrep",
       "timeoutSeconds": 3600,
       "inputs": {
@@ -214,12 +214,15 @@
       "kind": "action",
       "pageID": "extract",
       "sectionID": "variant-calling",
-      "actionID": "vcf-snp",
+      "actionID": "vcf-call",
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
           "out_dir": "{{bundleWorkspace}}/lab-output/snp",
           "vcf_region": "20"
+        },
+        "checkedOptions": {
+          "vcf_call_types": ["snp"]
         }
       }
     },

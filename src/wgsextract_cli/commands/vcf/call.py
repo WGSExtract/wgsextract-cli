@@ -19,12 +19,12 @@ from wgsextract_cli.api.vcf import (
 )
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .basic import record_variants, run_small_variants
+from .structural import _sv_caller as sv_caller
 from .structural import run_cnv, run_sv
 
 #: The output role of each type's VCF, as its own command records it.
@@ -38,11 +38,12 @@ MERGED_NAME = "variants.vcf.gz"
 MERGED_GVCF_NAME = "variants.g.vcf.gz"
 
 
-def _run_step(
-    params: VcfCallParams, kind: str, *, gvcf: bool, variants: bool = True
-) -> None:
-    """Run one type as its own command would. Settings ``vcf call`` doesn't
-    take (mimalloc, parallel) come from config.toml, as they would there."""
+def _step_params(
+    params: VcfCallParams, kind: str, *, gvcf: bool = False
+) -> VcfSnpParams | VcfIndelParams | VcfSvParams | VcfCnvParams:
+    """The params of one type's own command. Settings ``vcf call`` doesn't
+    take (mimalloc, parallel) come from config.toml, as they would there; the
+    ones it passes on are already resolved, so config doesn't override them."""
     common: dict[str, Any] = {
         "input": params.input,
         "ref": params.ref,
@@ -51,17 +52,14 @@ def _run_step(
         "region": params.region,
         "qc_min_depth": params.qc_min_depth,
     }
+    step: VcfSnpParams | VcfIndelParams | VcfSvParams | VcfCnvParams
     if kind in ("snp", "indel"):
         cls = VcfSnpParams if kind == "snp" else VcfIndelParams
-        small = cls(
-            **common,
-            ploidy=params.ploidy,
-            reference_evidence="gvcf" if gvcf else "none",
-        )
-        run_small_variants(with_config_defaults(small), variants=variants)
+        common["ploidy"] = params.ploidy
+        common["reference_evidence"] = "gvcf" if gvcf else "none"
+        step = cls(**common)
     elif kind == "sv":
-        sv = VcfSvParams(
-            **common,
+        common.update(
             caller=params.sv_caller,
             pacbio=params.pacbio,
             ont=params.ont,
@@ -69,10 +67,39 @@ def _run_step(
             ccs=params.ccs,
             tandem_repeats=params.tandem_repeats,
         )
-        run_sv(with_config_defaults(sv))
+        step = VcfSvParams(**common)
     else:
-        cnv = VcfCnvParams(**common, ploidy=params.cnv_ploidy)
-        run_cnv(with_config_defaults(cnv))
+        common["ploidy"] = params.cnv_ploidy
+        step = VcfCnvParams(**common)
+    return with_config_defaults(step, keep=common)
+
+
+def _run_step(
+    params: VcfCallParams, kind: str, *, gvcf: bool, variants: bool = True
+) -> None:
+    """Run one type as its own command would."""
+    step = _step_params(params, kind, gvcf=gvcf)
+    if isinstance(step, VcfSnpParams | VcfIndelParams):
+        run_small_variants(step, variants=variants)
+    elif isinstance(step, VcfSvParams):
+        run_sv(step)
+    else:
+        run_cnv(step)
+
+
+def _preflight(params: VcfCallParams, types: list[str]) -> None:
+    """Refuse SV and CNV calling that can't run before any type is called,
+    so a missing caller or a bad SV flag doesn't surface hours in."""
+    tools: list[str] = []
+    if "sv" in types:
+        sv = _step_params(params, "sv")
+        assert isinstance(sv, VcfSvParams)
+        caller, _reason, _hifi = sv_caller(sv)
+        tools.append(caller)
+    if "cnv" in types:
+        tools.append("delly")
+    if tools:
+        verify_dependencies([*dict.fromkeys(tools), "bcftools", "tabix", "samtools"])
 
 
 def _output_for(role: str) -> str:
@@ -106,7 +133,7 @@ def merge_vcfs(vcfs: list[str], out_vcf: str) -> None:
             elif names[0] != sample:
                 renamed = str(Path(work, f"part{index}.vcf.gz"))
                 samples_file = Path(work, f"part{index}.samples")
-                samples_file.write_text(f"{sample}\n", encoding="utf-8")
+                samples_file.write_text(f"{sample}\n", encoding="utf-8", newline="\n")
                 run_command(
                     ["bcftools", "reheader", "-s", str(samples_file)]
                     + ["-o", renamed, vcf]
@@ -134,6 +161,7 @@ def run_call(params: VcfCallParams) -> None:
     VCFs, since it holds both. With ``merge`` the parts are removed once
     they are joined, leaving the merged file."""
     types = call_types(params.types)
+    _preflight(params, types)
     small = [kind for kind in types if kind in ("snp", "indel")]
     gvcf = params.reference_evidence == "gvcf"
     parts: list[str] = []
@@ -147,15 +175,29 @@ def run_call(params: VcfCallParams) -> None:
         logging.info(f"vcf call: calling {kind}")
         _run_step(params, kind, gvcf=False)
         parts.append(_output_for(TYPE_ROLES[kind]))
-    current_result().add_metrics(types=",".join(types))
-    if params.merge and len(parts) > 1:
+    # Each step set the run's variant count to its own; the run's is their sum,
+    # unknown when a count is: the gVCF, whose records include reference
+    # blocks, has none, so with it the SNP and indel counts are unknown.
+    counts = [_variant_count(TYPE_ROLES[kind]) for kind in types]
+    known = [count for count in counts if count is not None]
+    total = sum(known) if len(known) == len(counts) else None
+    current_result().add_metrics(types=",".join(types), variants=total)
+    if params.merge and parts:
         outdir = params.outdir or Path(params.input).absolute().parent
         name = MERGED_GVCF_NAME if small and gvcf else MERGED_NAME
         out_vcf = str(Path(outdir, name))
         logging.info(f"vcf call: merging {len(parts)} VCFs into {out_vcf}")
         merge_vcfs(parts, out_vcf)
-        record_variants(out_vcf, "merged_variants", vcf_record_count(out_vcf))
         _remove_parts(parts)
+        record_variants(out_vcf, "merged_variants", None if small and gvcf else total)
+
+
+def _variant_count(role: str) -> int | None:
+    for record in current_result().outputs:
+        if record.role == role:
+            count = record.metrics.get("variants")
+            return count if isinstance(count, int) else None
+    return None
 
 
 def _remove_parts(parts: list[str]) -> None:

@@ -159,9 +159,11 @@ function renderSections(page: BundlePage): string {
         .join("");
 }
 function renderSectionToggle(page: BundlePage, section: PageSection, expanded: boolean): string {
-    const title = escapeAttribute(expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section");
+    const verb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
+    // Screen readers list the buttons apart from their headings, so each names its section.
+    const name = escapeAttribute(`${verb}: ${String(section.title ?? "")}`);
     const icon = expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄");
-    return `<button type="button" class="section-toggle" data-section-toggle="${escapeAttribute(sectionExpansionKey(page, section))}" aria-expanded="${expanded}" aria-controls="section-body-${escapeAttribute(section.id)}" title="${title}" aria-label="${title}">${icon}</button>`;
+    return `<button type="button" class="section-toggle" data-section-toggle="${escapeAttribute(sectionExpansionKey(page, section))}" aria-expanded="${expanded}" aria-controls="section-body-${escapeAttribute(section.id)}" title="${escapeAttribute(verb)}" aria-label="${name}">${icon}</button>`;
 }
 /** Each section data source's last values, shown while it reloads. */
 const lastSectionValues = new Map<string, ValueMap>();

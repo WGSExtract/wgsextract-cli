@@ -84,7 +84,7 @@ test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide 
   const calling = sections.find((section) => section.id === "variant-calling");
   const callCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-call").command, context);
   const deepVariantCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-deepvariant").command, context);
-  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats|--merge|--reference-evidence/.test(callCommand), callCommand);
+  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats|--merge|--reference-evidence=gvcf/.test(callCommand), callCommand);
   assert.ok(!/--ont|--model-type/.test(deepVariantCommand), deepVariantCommand);
 
   const methylation = sections.find((section) => section.id === "methylation");

@@ -1136,6 +1136,17 @@ def call_types(value: str) -> list[str]:
     return [t for t in CALL_TYPES if t in given]
 
 
+def _call_types_arg(text: str) -> str:
+    """``--types`` checked as it is parsed, so a bad list is a usage error
+    before the input is looked at."""
+    import argparse
+
+    try:
+        return ",".join(call_types(text))
+    except UsageError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
 @dataclass(frozen=True, kw_only=True)
 class VcfCallParams(_CallerParams):
     """Call the chosen variant types in one run, each into the file its own
@@ -1153,6 +1164,7 @@ class VcfCallParams(_CallerParams):
         help="Comma-separated variant types to call: snp and indel (bcftools), "
         "sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel.",
         metavar="LIST",
+        cli_type=_call_types_arg,
     )
     merge: bool = param(
         False,
