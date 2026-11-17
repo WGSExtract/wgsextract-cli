@@ -25,20 +25,9 @@ def component_validator(name: str) -> Draft202012Validator:
     )
 
 
-def test_929_report_components_and_handwritten_rules_cannot_drift() -> None:
+def test_929_complete_writer_report_schema_cannot_drift() -> None:
     published = json.loads(SCHEMA.read_text(encoding="utf-8"))
     assert published == report_schema()
-    handwritten = json.loads(
-        (ROOT / "scripts/schema_sources/wgsextract.report.1.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    for key, value in handwritten.items():
-        if key == "$defs":
-            for name, definition in value.items():
-                assert published[key][name] == definition
-        else:
-            assert published[key] == value
     subprocess.run(
         [sys.executable, "scripts/gen_report_schema.py", "--check"],
         cwd=ROOT,
@@ -262,5 +251,79 @@ def test_929_missing_sv_chromosome_does_not_emit_schema_invalid_null(
         gene_list=genes,
     )
     variant = report["sections"]["structural_variants"]["findings"][0]["variant"]
+    assert variant is not None
     assert variant["chrom"] == ""
     component_validator("reportVariant").validate(variant)
+
+
+def test_929_complete_report_keeps_closed_headers_and_open_section_extensions(
+    tmp_path: Path,
+) -> None:
+    genes = tmp_path / "genes.tsv"
+    genes.write_text("gene\tcategory\tinheritance\nGENEA\ttest\tAD\n", encoding="utf-8")
+    document = json.loads(
+        json.dumps(personal_report.build_report(tmp_path, sources=[], gene_list=genes))
+    )
+    validate = Draft202012Validator(report_schema())
+    validate.validate(document)
+    for field in document:
+        assert not validate.is_valid(
+            {key: value for key, value in document.items() if key != field}
+        )
+    assert not validate.is_valid({**document, "future": True})
+    assert not validate.is_valid(
+        {**document, "sample": {**document["sample"], "future": True}}
+    )
+    assert not validate.is_valid(
+        {**document, "sections": {**document["sections"], "future": {}}}
+    )
+    for section in document["sections"].values():
+        section["future"] = {"unrecognized": [None, True]}
+    validate.validate(document)
+    legacy = {**document["sections"]}
+    legacy.pop("ancestry")
+    legacy.pop("carrier_screening")
+    validate.validate({**document, "sections": legacy})
+    for field in (
+        "overview",
+        "lineage",
+        "pharmacogenomics",
+        "clinvar",
+        "structural_variants",
+        "microarray",
+    ):
+        assert not validate.is_valid(
+            {
+                **document,
+                "sections": {
+                    key: value for key, value in legacy.items() if key != field
+                },
+            }
+        )
+    for field in ("facts", "qc"):
+        overview = {
+            key: value for key, value in legacy["overview"].items() if key != field
+        }
+        assert not validate.is_valid(
+            {**document, "sections": {**legacy, "overview": overview}}
+        )
+
+
+def test_929_generated_counts_keep_required_counters_and_bounded_extensions() -> None:
+    validate = component_validator("reportClinvarCounts")
+    counts = {
+        "carried": 0,
+        "in_gene_list": 0,
+        "outside_gene_list": 0,
+        "high": 0,
+        "moderate": 0,
+        "low": 0,
+    }
+    validate.validate({**counts, "future_counter": 2})
+    for field in counts:
+        assert not validate.is_valid(
+            {key: value for key, value in counts.items() if key != field}
+        )
+    assert not validate.is_valid({**counts, "future_counter": -1})
+    assert not validate.is_valid({**counts, "high": -1})
+    assert not validate.is_valid({**counts, "future_counter": "2"})

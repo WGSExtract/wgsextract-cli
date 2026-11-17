@@ -14,6 +14,12 @@ from wgsextract_cli.core import (
     variant_confidence,
 )
 from wgsextract_cli.core.report_documents import (
+    ReportAcmgCountsDocument,
+    ReportAcmgDocument,
+    ReportAcmgFields,
+    ReportSvDocument,
+    ReportSvFields,
+    ReportSvThresholdsDocument,
     ReportVariantDocument,
     ReportWarningDocument,
 )
@@ -42,18 +48,22 @@ from .rendering import (
 )
 
 
-def _acmg_research(ctx: _Context) -> dict[str, Any] | None:
+def _acmg_research(ctx: _Context) -> ReportAcmgDocument | None:
     """fastVEP's automated ACMG/AMP classes (`vcf acmg`, issue 629): the
     carried alleles' classes, and the P/LP calls in the gene list's genes
     under its reporting rules. Research only; None when `vcf acmg` never ran."""
     source = ctx.latest(_command_or_role("vcf acmg", "acmg_summary"))
     if source is None:
         return None
-    section = _section("acmg_research", [source], ctx)
+    common = _section("acmg_research", [source], ctx)
     described = gene_lists.describe(ctx.gene_list)
+    section: ReportAcmgDocument = {
+        **common,
+        **ReportAcmgFields(),
+        "gene_list": described,
+        "disclaimer": acmg.DISCLAIMER,
+    }
     section["title"] = SECTIONS["acmg_research"].format(gene_list=described["name"])
-    section["gene_list"] = described
-    section["disclaimer"] = acmg.DISCLAIMER
     # The disclaimer heads the section; the run's warning would repeat it.
     section["warnings"] = [
         w for w in section["warnings"] if w["code"] != "acmg_research_only"
@@ -211,12 +221,16 @@ def _acmg_research(ctx: _Context) -> dict[str, Any] | None:
     pathogenic = len(found.calls)
     if unavailable:
         unplaced = pathogenic
-    section["counts"] = {
-        **{cls.lower(): found.carried[cls] for cls in acmg.CLASSES},
-        "in_gene_list": len(findings),
-        "outside_gene_list": outside,
-        "unplaced": unplaced,
-    }
+    section["counts"] = ReportAcmgCountsDocument(
+        p=found.carried["P"],
+        lp=found.carried["LP"],
+        vus=found.carried["VUS"],
+        lb=found.carried["LB"],
+        b=found.carried["B"],
+        in_gene_list=len(findings),
+        outside_gene_list=outside,
+        unplaced=unplaced,
+    )
     if unplaced and not unavailable:
         section["warnings"].append(
             {
@@ -244,9 +258,12 @@ MAX_SV_FINDINGS = 100
 _NOT_CARRIED = {"0/0", "0|0", "./.", ".|.", ".", "0"}
 
 
-def _structural_variants(ctx: _Context) -> dict[str, Any]:
+def _structural_variants(ctx: _Context) -> ReportSvDocument:
     source = ctx.latest(_command_or_role("vcf sv-freq", "sv_frequencies"))
-    section = _section("structural_variants", [source], ctx)
+    section: ReportSvDocument = {
+        **_section("structural_variants", [source], ctx),
+        **ReportSvFields(),
+    }
     if source is None or source.status != "ok":
         command = ctx.command_for("vcf sv-freq", "sv.vcf.gz", "vcf.gz")
         if ctx.alignment:
@@ -318,7 +335,7 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
         )
     section["findings"] = findings
     section["all_svs"] = ctx.rel(table)
-    section["thresholds"] = {"common_af": common, "rare_af": rare}
+    section["thresholds"] = ReportSvThresholdsDocument(common_af=common, rare_af=rare)
     section["counts"] = {**counts, "listed": len(findings)}
     if len(rare_rows) > len(findings):
         section["warnings"].append(

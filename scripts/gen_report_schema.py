@@ -1,8 +1,4 @@
-"""Generate report/1's common components and finding graph from writer types.
-
-The remaining section/root contract is still handwritten in schema_sources;
-it is kept separate from the generated artifact and migrated in later slices.
-"""
+"""Generate the complete report/1 contract from actual writer document types."""
 
 from __future__ import annotations
 
@@ -15,87 +11,59 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from wgsextract_cli.core import report_documents as report  # noqa: E402
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
-from wgsextract_cli.core.report_documents import (  # noqa: E402
-    ReportAttemptDocument,
-    ReportEvidenceDocument,
-    ReportFactDocument,
-    ReportFindingDocument,
-    ReportLinkDocument,
-    ReportMetricDocument,
-    ReportMissingDocument,
-    ReportPgxAlternativeDocument,
-    ReportPgxDocument,
-    ReportSourceDocument,
-    ReportVariantDocument,
-    ReportWarningDocument,
-)
 
-SOURCE = ROOT / "scripts/schema_sources/wgsextract.report.1.json"
 OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json"
 
 
 def report_schema() -> dict[str, object]:
-    document = json.loads(SOURCE.read_text(encoding="utf-8"))
-    if not isinstance(document, dict) or not isinstance(document.get("$defs"), dict):
-        raise TypeError("Report schema source must contain an object of definitions.")
-    definitions: dict[str, object] = document["$defs"]
     shapes: dict[object, Shape] = {
-        ReportAttemptDocument: Shape("reportAttempt", additional=False),
-        ReportSourceDocument: Shape("reportSource", additional=False),
-        ReportWarningDocument: Shape("reportWarning"),
-        ReportMissingDocument: Shape("reportMissing", additional=False),
-        ReportLinkDocument: Shape("reportLink", additional=False),
-        ReportFindingDocument: Shape("finding", additional=False),
-        ReportEvidenceDocument: Shape("reportEvidence", additional=False),
-        ReportVariantDocument: Shape("reportVariant", additional=False),
+        report.ReportDocument: Shape("report", additional=False),
+        report.ReportSampleDocument: Shape("reportSample", additional=False),
+        report.ReportSectionsDocument: Shape("reportSections", additional=False),
+        report.ReportSectionDocument: Shape("section"),
+        report.ReportOverviewDocument: Shape("reportOverview"),
+        report.ReportAncestryDocument: Shape("reportAncestry"),
+        report.ReportAncestryComponentDocument: Shape("reportAncestryComponent"),
+        report.ReportClinvarDocument: Shape("reportClinvar"),
+        report.ReportClinvarCountsDocument: Shape(
+            "reportClinvarCounts", additional=report.NonnegativeCount
+        ),
+        report.ReportGeneDocument: Shape("reportGene", additional=False),
+        report.ReportGeneListDocument: Shape("gene_list"),
+        report.ReportAcmgDocument: Shape("reportAcmg"),
+        report.ReportAcmgCountsDocument: Shape(
+            "reportAcmgCounts", additional=report.NonnegativeCount
+        ),
+        report.ReportSvDocument: Shape("reportSv"),
+        report.ReportSvThresholdsDocument: Shape("reportSvThresholds"),
+        report.ReportMicroarrayDocument: Shape("reportMicroarray"),
+        report.ReportMicroarrayFileDocument: Shape("reportMicroarrayFile"),
+        report.ReportAttemptDocument: Shape("reportAttempt", additional=False),
+        report.ReportSourceDocument: Shape("reportSource", additional=False),
+        report.ReportWarningDocument: Shape("reportWarning"),
+        report.ReportMissingDocument: Shape("reportMissing", additional=False),
+        report.ReportLinkDocument: Shape("reportLink", additional=False),
+        report.ReportFindingDocument: Shape("finding", additional=False),
+        report.ReportEvidenceDocument: Shape("reportEvidence", additional=False),
+        report.ReportVariantDocument: Shape("reportVariant", additional=False),
         ClinicalEvidenceDocument: Shape("reportClinicalEvidence", additional=False),
-        ReportPgxDocument: Shape("reportPgx", additional=False),
-        ReportPgxAlternativeDocument: Shape("reportPgxAlternative", additional=False),
-        ReportFactDocument: Shape("fact"),
-        ReportMetricDocument: Shape("metric"),
+        report.ReportPgxDocument: Shape("reportPgx", additional=False),
+        report.ReportPgxAlternativeDocument: Shape(
+            "reportPgxAlternative", additional=False
+        ),
+        report.ReportFactDocument: Shape("fact"),
+        report.ReportMetricDocument: Shape("metric"),
     }
-    if {shape.name for shape in shapes.values()} & definitions.keys():
-        raise TypeError("Typed report definitions must not also be handwritten.")
-    properties = document["$defs"]["section"]["properties"]
-    for field, name in (
-        ("sources", "reportSource"),
-        ("warnings", "reportWarning"),
-        ("missing", "reportMissing"),
-        ("findings", "finding"),
-    ):
-        if properties[field]["items"] != {"$ref": f"#/$defs/{name}"}:
-            raise TypeError(f"Report {field} must reference its generated definition.")
-    overview = document["properties"]["sections"]["properties"]["overview"][
-        "properties"
-    ]
-    for field, name in (("facts", "fact"), ("qc", "metric")):
-        if overview[field]["items"] != {"$ref": f"#/$defs/{name}"}:
-            raise TypeError(f"Report {field} must reference its generated definition.")
-    for model in (
-        ReportSourceDocument,
-        ReportWarningDocument,
-        ReportMissingDocument,
-        ReportFindingDocument,
-        ReportFactDocument,
-        ReportMetricDocument,
-    ):
-        name = shapes[model].name
-        component = output_schema(
-            model,
-            shapes=shapes,
-            schema_id=f"urn:wgsextract:report:component:{name}",
-            title=name,
-            description="A writer-used report component.",
-        )
-        nested = component.pop("$defs")
-        for key in ("$schema", "$id", "title", "description"):
-            component.pop(key)
-        definitions[name] = component
-        if isinstance(nested, dict):
-            definitions.update(nested)
-    return document
+    return output_schema(
+        report.ReportDocument,
+        shapes=shapes,
+        schema_id="urn:wgsextract:schema:report:1",
+        title="wgsextract.report/1",
+        description="A sample's personal report: what earlier wgsextract runs found, by section, each finding with a confidence label, its evidence and the 'technical result, not diagnosis' disclaimer. Written by `wgsextract report` as <sample>_personal_report.json. See docs/personal-report.md.",
+    )
 
 
 def main() -> None:

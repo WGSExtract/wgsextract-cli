@@ -25,6 +25,7 @@ import os as os
 import re as re
 import zlib as zlib
 from collections.abc import Callable as Callable
+from collections.abc import ItemsView
 from collections.abc import Iterable as Iterable
 from collections.abc import Mapping as Mapping
 from collections.abc import Sequence as Sequence
@@ -36,6 +37,7 @@ from importlib import resources as resources
 from pathlib import Path as Path
 from pathlib import PureWindowsPath as PureWindowsPath
 from typing import Any as Any
+from typing import Final, cast
 
 from wgsextract_cli import __version__ as __version__
 from wgsextract_cli.core import acmg as acmg
@@ -53,6 +55,13 @@ from wgsextract_cli.core.reference_assets import input_stem as input_stem
 from wgsextract_cli.core.reference_models import sequence_lengths as sequence_lengths
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument as ReportAttemptDocument,
+)
+from wgsextract_cli.core.report_documents import (
+    ReportDocument,
+    ReportResearchSection,
+    ReportSampleDocument,
+    ReportSectionDocument,
+    ReportSectionsDocument,
 )
 from wgsextract_cli.core.report_documents import (
     ReportEvidenceDocument as ReportEvidenceDocument,
@@ -310,7 +319,7 @@ from .variant_sections import (
     _structural_variants as _structural_variants,
 )
 
-SCHEMA_ID = "wgsextract.report/1"
+SCHEMA_ID: Final = "wgsextract.report/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.report.1.schema.json"
 GUIDE = "docs/personal-report.md"
 DISCLAIMER = (
@@ -416,6 +425,13 @@ def _path_scrubber(ctx: _Context) -> Callable[[str], str]:
     return scrub
 
 
+def section_items(
+    sections: ReportSectionsDocument,
+) -> ItemsView[str, ReportSectionDocument]:
+    # This closed, writer-built map has a shared base that TypedDict.items erases.
+    return cast(Mapping[str, ReportSectionDocument], sections).items()
+
+
 def build_report(
     folder: Path,
     *,
@@ -423,7 +439,7 @@ def build_report(
     results: Iterable[Path] = (),
     sources: list[Source] | None = None,
     gene_list: str | Path | None = None,
-) -> dict[str, Any]:
+) -> ReportDocument:
     """The report document (``wgsextract.report/1``) of the sample in ``folder``.
 
     ``gene_list`` is a built-in list's id or a TSV or BED file (core/gene_lists.py);
@@ -446,27 +462,29 @@ def build_report(
         or folder.name
     )
     research = _acmg_research(ctx)
-    sections = {
-        "overview": _overview(ctx),
-        "lineage": _lineage(ctx),
-        "ancestry": _ancestry(ctx),
-        "pharmacogenomics": _pharmacogenomics(ctx),
-        "carrier_screening": _carrier_screening(ctx),
-        "clinvar": _clinvar(ctx),
-        # Opt-in research: shown only when `vcf acmg` ran, never asked for.
-        **({"acmg_research": research} if research is not None else {}),
-        "structural_variants": _structural_variants(ctx),
-        "microarray": _microarray(ctx),
-    }
+    research_section = ReportResearchSection()
+    # Opt-in research: shown only when `vcf acmg` ran, never asked for.
+    if research is not None:
+        research_section["acmg_research"] = research
+    sections = ReportSectionsDocument(
+        overview=_overview(ctx),
+        lineage=_lineage(ctx),
+        ancestry=_ancestry(ctx),
+        pharmacogenomics=_pharmacogenomics(ctx),
+        carrier_screening=_carrier_screening(ctx),
+        clinvar=_clinvar(ctx),
+        **research_section,
+        structural_variants=_structural_variants(ctx),
+        microarray=_microarray(ctx),
+    )
     scrub = _path_scrubber(ctx)
-    for section in sections.values():
+    for _, section in section_items(sections):
         for warning in section["warnings"]:
             warning["message"] = scrub(warning["message"])
-        if section.get("error"):
-            section["error"] = scrub(section["error"])
+        if error := section.get("error"):
+            section["error"] = scrub(error)
         for finding in section["findings"]:
-            for key in ("file", "manifest"):
-                file = finding["evidence"][key]
+            for file in (finding["evidence"]["file"], finding["evidence"]["manifest"]):
                 if file and not (folder / file).exists():
                     section["warnings"].append(
                         ReportWarningDocument(
@@ -474,22 +492,22 @@ def build_report(
                             message=f"Evidence file not found: {file}",
                         )
                     )
-    return {
-        "schema": SCHEMA_ID,
-        "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "wgsextract_version": __version__,
-        "sample": {
-            "name": name,
-            "folder": folder.name,
-            "alignment": alignment,
-            "vcf": vcf,
-            "workspace": WORKSPACE_FILE if described.get("exists") else None,
-        },
-        "disclaimer": DISCLAIMER,
-        "guide": GUIDE,
-        "confidence_reasons": REASONS,
-        "sections": sections,
-    }
+    return ReportDocument(
+        schema=SCHEMA_ID,
+        generated=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        wgsextract_version=__version__,
+        sample=ReportSampleDocument(
+            name=name,
+            folder=folder.name,
+            alignment=alignment,
+            vcf=vcf,
+            workspace=WORKSPACE_FILE if described.get("exists") else None,
+        ),
+        disclaimer=DISCLAIMER,
+        guide=GUIDE,
+        confidence_reasons=REASONS,
+        sections=sections,
+    )
 
 
 def findings(report: Mapping[str, Any]) -> list[dict[str, Any]]:

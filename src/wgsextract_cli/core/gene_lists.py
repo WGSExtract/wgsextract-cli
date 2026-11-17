@@ -23,6 +23,7 @@ from typing import Any
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.reference_assets import resolve_reference_library
+from wgsextract_cli.core.report_documents import ReportGeneListDocument
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 MANIFEST: dict[str, Any] = json.loads(
@@ -67,16 +68,16 @@ class GeneList:
     citation: str | None = None
     url: str | None = None
 
-    def metadata(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
+    def metadata(self) -> ReportGeneListDocument:
+        return ReportGeneListDocument(
+            id=self.id,
+            name=self.name,
             # A user's file has none: empty, as report/1 keeps them strings.
-            "version": self.version or "",
-            "citation": self.citation or "",
-            "url": self.url or "",
-            "genes": len(self.genes),
-        }
+            version=self.version or "",
+            citation=self.citation or "",
+            url=self.url or "",
+            genes=len(self.genes),
+        )
 
     def needs_build(self) -> bool:
         return any(ANY_BUILD not in gene.spans for gene in self.genes)
@@ -122,17 +123,20 @@ def default_id() -> str:
     return str(MANIFEST["default"])
 
 
-def describe(spec: str | Path | None) -> dict[str, Any]:
+def describe(spec: str | Path | None) -> ReportGeneListDocument:
     """A list's metadata without downloading it (a user's file is read)."""
     list_id = str(spec or default_id())
     meta = MANIFEST["lists"].get(list_id)
     if meta is None:
         return load(list_id).metadata()
-    return {
-        "id": list_id,
-        **{k: meta[k] for k in ("name", "version", "citation", "url")},
-        "genes": len(meta["genes"]),
-    }
+    return ReportGeneListDocument(
+        id=list_id,
+        name=meta["name"],
+        version=meta["version"],
+        citation=meta["citation"],
+        url=meta["url"],
+        genes=len(meta["genes"]),
+    )
 
 
 def builtin_symbols(list_id: str, category: str | None = None) -> tuple[str, ...]:

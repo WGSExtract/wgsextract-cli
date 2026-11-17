@@ -22,6 +22,10 @@ from wgsextract_cli.core.builds import (
 )
 from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.report_documents import (
+    ReportClinvarCountsDocument,
+    ReportClinvarDocument,
+    ReportClinvarFields,
+    ReportGeneDocument,
     ReportVariantDocument,
     ReportWarningDocument,
 )
@@ -69,12 +73,16 @@ def _vcf_build(path: Path) -> str | None:
     return canonical_build(build_from_chr1_length(sequence_lengths("".join(lines))))
 
 
-def _clinvar(ctx: _Context) -> dict[str, Any]:
+def _clinvar(ctx: _Context) -> ReportClinvarDocument:
     source = ctx.latest(_command_or_role("vcf clinvar", "clinvar_pathogenic"))
-    section = _section("clinvar", [source], ctx)
+    common = _section("clinvar", [source], ctx)
     described = gene_lists.describe(ctx.gene_list)
+    section: ReportClinvarDocument = {
+        **common,
+        **ReportClinvarFields(),
+        "gene_list": described,
+    }
     section["title"] = SECTIONS["clinvar"].format(gene_list=described["name"])
-    section["gene_list"] = described
     if source is None or source.status != "ok":
         command = ctx.command_for("vcf clinvar", ctx.vcf, "vcf.gz")
         if ctx.vcf is None and ctx.alignment:
@@ -230,29 +238,32 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
             )
         )
     section["build"] = build
-    section["counts"] = {
-        "carried": len(calls),
-        "in_gene_list": sum(
+    confidence_counts = {
+        label: sum(
+            f["confidence"] == label
+            and not (
+                f["variant"]
+                and f["variant"].get("clinical_evidence", {}).get("conflict")
+            )
+            for f in findings
+        )
+        for label in variant_confidence.LABELS
+    }
+    section["counts"] = ReportClinvarCountsDocument(
+        carried=len(calls),
+        in_gene_list=sum(
             not (
                 f["variant"]
                 and f["variant"].get("clinical_evidence", {}).get("conflict")
             )
             for f in findings
         ),
-        "outside_gene_list": outside,
-        "unplaced": unplaced,
-        **{
-            label: sum(
-                f["confidence"] == label
-                and not (
-                    f["variant"]
-                    and f["variant"].get("clinical_evidence", {}).get("conflict")
-                )
-                for f in findings
-            )
-            for label in variant_confidence.LABELS
-        },
-    }
+        outside_gene_list=outside,
+        unplaced=unplaced,
+        high=confidence_counts["high"],
+        moderate=confidence_counts["moderate"],
+        low=confidence_counts["low"],
+    )
     if conflicts:
         section["counts"]["conflicts_for_review"] = len(conflicts)
         section["all_conflicts"] = ctx.rel(
@@ -353,7 +364,7 @@ def _phased_copy(
 
 def _gene_calls(
     gene: gene_lists.Gene, calls: Sequence[Mapping[str, Any]], complete: bool = True
-) -> dict[str, Any]:
+) -> ReportGeneDocument:
     """A listed gene's P/LP calls by zygosity, and for a gene the list reports
     only when biallelic (AR) whether this sample is a carrier or (possibly)
     biallelic, with the weakest confidence of those calls.
@@ -420,36 +431,34 @@ def _gene_calls(
     )
     order = {label: i for i, label in enumerate(CONFIDENCE)}
     labels = [str(c.get("confidence") or NOT_ASSESSED) for c in calls]
-    return {
-        "gene": gene.symbol,
-        "inheritance": gene.inheritance or None,
-        "heterozygous": het,
-        "homozygous": hom,
-        "hemizygous": hemi,
-        "partial": partial,
-        "phase": phase,
-        "confidence": max(labels, key=lambda label: order.get(label, len(order))),
-        "status": status,
-        "status_text": (PHASED_STATUS if by_phase else GENE_STATUS).get(
-            status or "", ""
-        ),
-    }
+    return ReportGeneDocument(
+        gene=gene.symbol,
+        inheritance=gene.inheritance or None,
+        heterozygous=het,
+        homozygous=hom,
+        hemizygous=hemi,
+        partial=partial,
+        phase=phase,
+        confidence=max(labels, key=lambda label: order.get(label, len(order))),
+        status=status,
+        status_text=(PHASED_STATUS if by_phase else GENE_STATUS).get(status or "", ""),
+    )
 
 
-def _qualifiers(gene: Mapping[str, Any]) -> str:
+def _qualifiers(gene: ReportGeneDocument) -> str:
     """' (cis; low-confidence calls)': the known phase behind the status, and
     the calls' confidence when not high."""
     known = (gene["status"], gene["phase"]) in {
         ("carrier", "cis"),
         ("biallelic", "trans"),
     }
-    parts = [gene["phase"]] if known else []
+    parts = [gene["phase"]] if known and gene["phase"] is not None else []
     if gene["confidence"] != "high":
         parts.append(_confidence_text(gene))
     return f" ({'; '.join(parts)})" if parts else ""
 
 
-def _confidence_text(gene: Mapping[str, Any]) -> str:
+def _confidence_text(gene: ReportGeneDocument) -> str:
     if gene["confidence"] == NOT_ASSESSED:
         return "calls not assessed"
     return f"{gene['confidence']}-confidence calls"

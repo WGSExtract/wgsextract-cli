@@ -66,14 +66,14 @@ def run_report(params: ReportParams) -> None:
     result.add_output(json_path, "report_json")
     result.add_output(table, "findings_table", metrics={"rows": rows})
 
-    sections = report["sections"]
+    sections = pr.section_items(report["sections"])
     labels = [f["confidence"] for f in pr.findings(report)]
     result.add_metrics(
         findings=len(labels),
         **{f"findings_{label}": labels.count(label) for label in pr.CONFIDENCE},
-        **{f"section_{name}": s["status"] for name, s in sections.items()},
+        **{f"section_{name}": s["status"] for name, s in sections},
     )
-    for name, section in sections.items():
+    for name, section in sections:
         if section["status"] == "failed":
             result.warn(
                 "section_failed",
@@ -90,7 +90,7 @@ def run_report(params: ReportParams) -> None:
     result.set_details(report)
 
     human_output(f"Report of {report['sample']['name']} ({folder})")
-    for section in sections.values():
+    for _, section in sections:
         line = section["summary"] or section["status"].replace("_", " ")
         human_output(f"  {section['title']}: {line}")
         for warning in section["warnings"]:

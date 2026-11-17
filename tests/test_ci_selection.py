@@ -25,7 +25,8 @@ from scripts.ci_test_dependencies import ROOT
     [
         "src/wgsextract_cli/core/report_documents.py",
         "scripts/gen_report_schema.py",
-        "scripts/schema_sources/wgsextract.report.1.json",
+        "src/wgsextract_cli/core/personal_report/overview.py",
+        "src/wgsextract_cli/core/gene_lists.py",
         "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     ],
 )
