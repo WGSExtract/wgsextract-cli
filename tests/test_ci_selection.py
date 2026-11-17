@@ -54,6 +54,8 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
     [
         "scripts/server_transport_typescript.py",
         "gui/app/shared/generated/server-transport.ts",
+        "gui/app/shared/generated/result-records.ts",
+        "gui/app/shared/generated/report-records.ts",
     ],
 )
 def test_989_transport_changes_select_committed_contract_freshness(path: str) -> None:

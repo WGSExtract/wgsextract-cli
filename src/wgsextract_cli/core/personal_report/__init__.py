@@ -25,7 +25,6 @@ import os as os
 import re as re
 import zlib as zlib
 from collections.abc import Callable as Callable
-from collections.abc import ItemsView
 from collections.abc import Iterable as Iterable
 from collections.abc import Mapping as Mapping
 from collections.abc import Sequence as Sequence
@@ -37,7 +36,7 @@ from importlib import resources as resources
 from pathlib import Path as Path
 from pathlib import PureWindowsPath as PureWindowsPath
 from typing import Any as Any
-from typing import Final, cast
+from typing import Final
 
 from wgsextract_cli import __version__ as __version__
 from wgsextract_cli.core import acmg as acmg
@@ -60,7 +59,6 @@ from wgsextract_cli.core.report_documents import (
     ReportDocument,
     ReportResearchSection,
     ReportSampleDocument,
-    ReportSectionDocument,
     ReportSectionsDocument,
 )
 from wgsextract_cli.core.report_documents import (
@@ -97,6 +95,7 @@ from wgsextract_cli.core.report_documents import (
 from wgsextract_cli.core.report_documents import (
     ReportWarningDocument as ReportWarningDocument,
 )
+from wgsextract_cli.core.report_documents import section_items as section_items
 from wgsextract_cli.core.sample_workspace import WORKSPACE_FILE as WORKSPACE_FILE
 from wgsextract_cli.core.sample_workspace import SampleWorkspace as SampleWorkspace
 from wgsextract_cli.core.table_writer import Column as Column
@@ -425,13 +424,6 @@ def _path_scrubber(ctx: _Context) -> Callable[[str], str]:
     return scrub
 
 
-def section_items(
-    sections: ReportSectionsDocument,
-) -> ItemsView[str, ReportSectionDocument]:
-    # This closed, writer-built map has a shared base that TypedDict.items erases.
-    return cast(Mapping[str, ReportSectionDocument], sections).items()
-
-
 def build_report(
     folder: Path,
     *,
@@ -510,15 +502,19 @@ def build_report(
     )
 
 
-def findings(report: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [f for s in report["sections"].values() for f in s["findings"]]
+def findings(report: ReportDocument) -> list[ReportFindingDocument]:
+    return [
+        f
+        for _, section in section_items(report["sections"])
+        for f in section["findings"]
+    ]
 
 
-def table_rows(report: Mapping[str, Any]) -> list[list[Value]]:
+def table_rows(report: ReportDocument) -> list[list[Value]]:
     rows: list[list[Value]] = []
     for f in findings(report):
-        v = f["variant"] or {}
-        clinical = v.get("clinical_evidence") or {}
+        v = f["variant"]
+        clinical = v.get("clinical_evidence") if v else None
         rows.append(
             [
                 f["section"],
@@ -526,28 +522,28 @@ def table_rows(report: Mapping[str, Any]) -> list[list[Value]]:
                 f["value"],
                 f["detail"],
                 f["gene"],
-                v.get("chrom"),
-                v.get("pos"),
-                v.get("ref"),
-                v.get("alt"),
-                v.get("genotype"),
-                v.get("zygosity"),
-                v.get("depth"),
-                v.get("genotype_quality"),
-                v.get("alt_fraction"),
+                v.get("chrom") if v else None,
+                v.get("pos") if v else None,
+                v.get("ref") if v else None,
+                v.get("alt") if v else None,
+                v.get("genotype") if v else None,
+                v.get("zygosity") if v else None,
+                v.get("depth") if v else None,
+                v.get("genotype_quality") if v else None,
+                v.get("alt_fraction") if v else None,
                 f["confidence"],
                 "|".join(f["confidence_reasons"]),
                 f["evidence"]["file"],
                 f["evidence"]["region"],
                 f["disclaimer"],
-                clinical.get("id"),
-                clinical.get("review_status"),
-                clinical.get("stars"),
-                clinical.get("review_tier"),
-                clinical.get("conflict_evidence"),
-                v.get("original_record"),
-                v.get("mnv_components"),
-                v.get("mnv_residual_copies"),
+                clinical.get("id") if clinical else None,
+                clinical.get("review_status") if clinical else None,
+                clinical.get("stars") if clinical else None,
+                clinical.get("review_tier") if clinical else None,
+                clinical.get("conflict_evidence") if clinical else None,
+                v.get("original_record") if v else None,
+                v.get("mnv_components") if v else None,
+                v.get("mnv_residual_copies") if v else None,
             ]
         )
     return rows

@@ -305,6 +305,9 @@ HTML and Markdown renderers use the same types.
 The sample, section map, section-specific records and root also come from
 writer-used Python types: no handwritten structural schema template remains.
 This does not add runtime validation or change how old reports render.
+The HTML, Markdown and findings-table consumers use those document types too;
+the complete raw TypeScript contract is generated into
+`gui/app/shared/generated/report-records.ts` by `scripts/gen_server_contracts.py`.
 
 ```json
 {

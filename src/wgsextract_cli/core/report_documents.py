@@ -1,6 +1,7 @@
 """Typed report components used at both construction and presentation boundaries."""
 
-from typing import Annotated, Literal, TypedDict
+from collections.abc import ItemsView, Mapping
+from typing import Annotated, Literal, TypedDict, cast
 
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
@@ -500,3 +501,10 @@ class ReportDocument(TypedDict):
         Constraints(description="Reason code -> plain-language explanation."),
     ]
     sections: ReportSectionsDocument
+
+
+def section_items(
+    sections: ReportSectionsDocument,
+) -> ItemsView[str, ReportSectionDocument]:
+    # This closed, writer-built map has a shared base that TypedDict.items erases.
+    return cast(Mapping[str, ReportSectionDocument], sections).items()

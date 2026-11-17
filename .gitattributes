@@ -38,3 +38,5 @@ src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json merge=generate
 src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json merge=generated
 gui/app/shared/generated/server-transport.ts merge=generated
+gui/app/shared/generated/result-records.ts merge=generated
+gui/app/shared/generated/report-records.ts merge=generated

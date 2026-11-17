@@ -7,18 +7,35 @@ import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any
 from urllib.parse import quote
 
 from wgsextract_cli.core.report_documents import (
+    ReportAcmgDocument,
+    ReportAncestryDocument,
     ReportAttemptDocument,
+    ReportClinvarDocument,
+    ReportDocument,
     ReportFactDocument,
     ReportFindingDocument,
     ReportLinkDocument,
     ReportMetricDocument,
+    ReportMicroarrayDocument,
     ReportMissingDocument,
+    ReportOverviewDocument,
+    ReportSectionsDocument,
     ReportSourceDocument,
+    ReportSvDocument,
     ReportWarningDocument,
+    section_items,
+)
+
+RenderedSection = (
+    ReportOverviewDocument
+    | ReportClinvarDocument
+    | ReportAcmgDocument
+    | ReportAncestryDocument
+    | ReportSvDocument
+    | ReportMicroarrayDocument
 )
 
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
@@ -70,7 +87,7 @@ def _h(value: object) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _link(text: str, href: str | None) -> str:
+def _link(text: object, href: str | None) -> str:
     return f'<a href="{_h(href)}">{_h(text)}</a>' if href else _h(text)
 
 
@@ -124,7 +141,7 @@ def _finding_links(
     return " ".join(link(item["label"], item["url"]) for item in links)
 
 
-def render_html(report: Mapping[str, Any], base: str = ".") -> str:
+def render_html(report: ReportDocument, base: str = ".") -> str:
     """A self-contained HTML page: inline CSS, no scripts, fonts or remote
     resources, so it renders offline. ``base`` is the sample folder relative
     to the page, for the evidence links."""
@@ -144,14 +161,14 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
         f'<p class="disclaimer"><b>{_h(NOT_DIAGNOSIS)}</b> '
         f"{_h(report['disclaimer'])}</p>",
     ]
-    for name, section in report["sections"].items():
+    for name, section in section_items(report["sections"]):
         out.append(
             f'<h2 id="{_h(name)}">{_h(section["title"])} '
             f'<span class="status {_h(section["status"])}">'
             f"{_h(section['status'].replace('_', ' '))}</span></h2>"
         )
-        if section.get("disclaimer"):
-            out.append(f'<p class="disclaimer"><b>{_h(section["disclaimer"])}</b></p>')
+        if disclaimer := section.get("disclaimer"):
+            out.append(f'<p class="disclaimer"><b>{_h(disclaimer)}</b></p>')
         if section.get("summary"):
             out.append(f"<p>{_h(section['summary'])}</p>")
         if section.get("error"):
@@ -160,7 +177,7 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             f'<p class="stale"><b>Newer attempt failed:</b> {_h(w["message"])}</p>'
             for w in _warning_rows(section["warnings"], newer=True)
         )
-        out.extend(_html_section_body(name, section, base))
+        out.extend(_html_section_body(name, report["sections"], base))
         if section["findings"]:
             out.append(
                 _html_findings(section["findings"], report["confidence_reasons"], base)
@@ -188,11 +205,16 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
     return "\n".join(out) + "\n"
 
 
-def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list[str]:
+def _html_section_body(
+    name: str, sections: ReportSectionsDocument, base: str
+) -> list[str]:
     out: list[str] = []
+    section: RenderedSection
     if name == "overview":
+        section = sections["overview"]
         out.extend(_html_overview(section["facts"], section["qc"]))
     elif name == "clinvar":
+        section = sections["clinvar"]
         gl = section["gene_list"]
         source = [_h(gl["citation"])] if gl["citation"] else []
         source += [_link("Table 1", gl["url"])] if gl["url"] else []
@@ -233,13 +255,15 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                 )
             out.append("</table>")
     elif name == "acmg_research":
+        section = sections["acmg_research"]
         out.extend(f'<p class="muted">{_h(line)}</p>' for line in _acmg_notes(section))
         if section.get("all_calls"):
             out.append(
                 f'<p class="muted">Every classified allele: '
                 f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
             )
-    elif name == "ancestry" and section["components"]:
+    elif name == "ancestry" and sections["ancestry"]["components"]:
+        section = sections["ancestry"]
         out.append(f'<p class="muted">{_h(section["note"])}</p>')
         for k in sorted({c["k"] for c in section["components"]}):
             out.append(
@@ -259,12 +283,16 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                     f"</div></td><td>{_h(c['reference_populations'])}</td></tr>"
                 )
             out.append("</table>")
-    elif name == "structural_variants" and section.get("all_svs"):
+    elif name == "structural_variants" and sections["structural_variants"].get(
+        "all_svs"
+    ):
+        section = sections["structural_variants"]
         out.append(
             f'<p class="muted">Every SV and its frequency: '
             f"{_link(section['all_svs'], _href(section['all_svs'], base))}</p>"
         )
-    elif name == "microarray" and section["files"]:
+    elif name == "microarray" and sections["microarray"]["files"]:
+        section = sections["microarray"]
         out.append("<table><tr><th>File</th><th>Format</th><th>Sites</th>"
                    "<th>Called</th><th>No-call rate</th></tr>")  # fmt: skip
         for f in section["files"]:
@@ -280,7 +308,7 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
     return out
 
 
-def _acmg_notes(section: Mapping[str, Any]) -> list[str]:
+def _acmg_notes(section: ReportAcmgDocument) -> list[str]:
     """The gene list, classifier and criteria never evaluated behind the
     automated ACMG classes."""
     gl = section["gene_list"]
@@ -396,7 +424,7 @@ def _md_code(value: object, *, cell: bool = False) -> str:
     return f"{fence}{pad}{text}{pad}{fence}"
 
 
-def _md_link(text: str, href: str | None) -> str:
+def _md_link(text: object, href: str | None) -> str:
     if not href:
         return _md(text)
     return f"[{_md(text)}](<{quote(href, safe=_URL_SAFE)}>)"
@@ -450,7 +478,7 @@ def _markdown_findings(
     return out
 
 
-def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
+def render_markdown(report: ReportDocument, base: str = ".") -> str:
     """The report as Markdown, with the same sections, findings and links."""
     sample = report["sample"]
     reasons = report["confidence_reasons"]
@@ -463,20 +491,24 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
         "",
         f"> **{_md(NOT_DIAGNOSIS)}** {_md(report['disclaimer'])}",
     ]
-    for name, section in report["sections"].items():
-        status = section["status"].replace("_", " ")
-        out += ["", f"## {_md(section['title'])} ({_md(status)})"]
-        if section.get("disclaimer"):
-            out += ["", f"> **{_md(section['disclaimer'])}**"]
-        if section.get("summary"):
-            out += ["", _md(section["summary"])]
-        if section.get("error"):
-            out += ["", f"**Failed:** {_md(section['error'])}"]
-        for w in _warning_rows(section["warnings"], newer=True):
+    section: RenderedSection
+    sections = report["sections"]
+    for name, common in section_items(sections):
+        status = common["status"].replace("_", " ")
+        out += ["", f"## {_md(common['title'])} ({_md(status)})"]
+        if disclaimer := common.get("disclaimer"):
+            out += ["", f"> **{_md(disclaimer)}**"]
+        if common.get("summary"):
+            out += ["", _md(common["summary"])]
+        if common.get("error"):
+            out += ["", f"**Failed:** {_md(common['error'])}"]
+        for w in _warning_rows(common["warnings"], newer=True):
             out += ["", f"**Newer attempt failed:** {_md(w['message'])}"]
         if name == "overview":
+            section = sections["overview"]
             out += _markdown_overview(section["facts"], section["qc"])
         if name == "clinvar":
+            section = sections["clinvar"]
             gl = section["gene_list"]
             source = [_md(gl["citation"])] if gl["citation"] else []
             source += [_md_link("Table 1", gl["url"])] if gl["url"] else []
@@ -516,13 +548,15 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                         + " |"
                     )
         if name == "acmg_research":
+            section = sections["acmg_research"]
             out += ["", *(_md(line) for line in _acmg_notes(section))]
             if section.get("all_calls"):
                 href = _href(section["all_calls"], base)
                 out.append(
                     f"Every classified allele: {_md_link(section['all_calls'], href)}"
                 )
-        if name == "ancestry" and section["components"]:
+        if name == "ancestry" and sections["ancestry"]["components"]:
+            section = sections["ancestry"]
             out += ["", f"_{_md(section['note'])}_"]
             for k in sorted({c["k"] for c in section["components"]}):
                 out += [
@@ -539,12 +573,16 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                     for c in section["components"]
                     if c["k"] == k and c["upper"] >= 0.005
                 ]
-        if name == "structural_variants" and section.get("all_svs"):
+        if name == "structural_variants" and sections["structural_variants"].get(
+            "all_svs"
+        ):
+            section = sections["structural_variants"]
             href = _href(section["all_svs"], base)
             out.append(
                 f"Every SV and its frequency: {_md_link(section['all_svs'], href)}"
             )
-        if name == "microarray" and section["files"]:
+        if name == "microarray" and sections["microarray"]["files"]:
+            section = sections["microarray"]
             out += [
                 "",
                 "| File | Format | Sites | Called | No-call rate |",
@@ -557,18 +595,18 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                     f"{_md(f['format'])} | {_md(f['sites'])} | {_md(f['called'])} | "
                     f"{f'{rate:.1%}' if isinstance(rate, (int, float)) else ''} |"
                 )
-        if section["findings"]:
-            out += _markdown_findings(section["findings"], reasons, base)
-        if section["missing"]:
+        if common["findings"]:
+            out += _markdown_findings(common["findings"], reasons, base)
+        if common["missing"]:
             out += ["", "Not run yet (run in the sample folder):", ""]
-            out += _missing_lines(section["missing"], markdown=True)
-        warnings = _warning_rows(section["warnings"], newer=False)
+            out += _missing_lines(common["missing"], markdown=True)
+        warnings = _warning_rows(common["warnings"], newer=False)
         if warnings:
             out.append("")
             out += [f"- ⚠ {_md(w['message'])}" for w in warnings]
-        if section["sources"]:
+        if common["sources"]:
             links = _sources_text(
-                section["sources"], lambda text, f: _md_link(text, _href(f, base))
+                common["sources"], lambda text, f: _md_link(text, _href(f, base))
             )
             out += ["", f"Sources: {links}"]
     out += [
