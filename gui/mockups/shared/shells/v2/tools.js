@@ -3,7 +3,8 @@
  * checks whenever an option or the input file changes.
  *
  * A definition: { slug, label, op, group, desc, accepts: ["reads"|"vcf"|
- * "fastq"|"kit"], file, requires: [tools this computer must have], fields,
+ * "fastq"|"kit"], file, requires: [tools this computer must have], learn
+ * (plain-language "what is this for", paragraphs split by blank lines), fields,
  * more, moreTitle, checklist, extra(ctx), run(ctx) }.
  * run(ctx) returns { hours, memGB, disk: [[where, GB]], checks, notes,
  * warnings, command: [lines], makes, blocked, button, timeText }; timeText
@@ -295,6 +296,10 @@
       h("section.v2-section", { dataset: { annotId: "tool-head" } },
         h("div.v2-section__head", h("h2.v2-h2--lg", def.label), h("code.v2-cmd.v2-dim.v2-small", def.op)),
         h("p.v2-muted", def.desc),
+        def.learn ? h("details.v2-more", { dataset: { annotId: "learn" } }, h("summary", "What is this for?"),
+          h("div.v2-more__body.v2-section", def.learn.split("\n\n").map(function (para) {
+            return h("p.v2-small", para);
+          }))) : null,
         input ? input.row : null),
       h("div.v2-stack", { dataset: { v2Notes: "" } }),
       def.checklist ? checklist(def.checklist, ctx) : null,
