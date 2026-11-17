@@ -1237,7 +1237,7 @@ def _append(path: Path, line: str) -> None:
 
 
 def copy_mutation_evidence(source: Path, destination: Path) -> None:
-    """Copy evidence, not the workload user's library coordination files."""
+    """Copy the whole results tree for mutation, excluding coordination files."""
     shutil.copytree(
         source,
         destination,

@@ -269,15 +269,34 @@ def test_dead_builder_lock_is_reclaimed(tmp_path):
 def test_1065_shared_library_lock_permissions_honour_umask(tmp_path, mask):
     lock = tmp_path / "hg19ToHg38.over.chain.gz.lock"
     guard = Path(f"{lock}.guard")
-    previous = os.umask(mask)
-    try:
-        with build_lock(str(lock)):
-            assert stat.S_IMODE(lock.stat().st_mode) == 0o666 & ~mask
-            assert stat.S_IMODE(guard.stat().st_mode) == 0o666 & ~mask
-        with exclusive_lock(lock):
-            assert guard.exists()
-    finally:
-        os.umask(previous)
+    modes = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+from wgsextract_cli.core.file_lock import build_lock
+
+lock = Path(sys.argv[1])
+os.umask(int(sys.argv[2]))
+with build_lock(str(lock)):
+    print(json.dumps([
+        stat.S_IMODE(lock.stat().st_mode),
+        stat.S_IMODE(Path(f"{lock}.guard").stat().st_mode),
+    ]))
+""",
+            str(lock),
+            str(mask),
+        ],
+        text=True,
+    )
+    assert json.loads(modes) == [0o666 & ~mask, 0o666 & ~mask]
+    with exclusive_lock(lock):
+        assert stat.S_IMODE(guard.stat().st_mode) == 0o666 & ~mask
     assert not lock.exists()
 
 

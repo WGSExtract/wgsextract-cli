@@ -42,7 +42,8 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
         fd = os.open(guard, os.O_CREAT | os.O_RDWR, 0o666)
     except PermissionError as error:
         raise WGSExtractError(
-            f"Cannot open lock guard {guard}: permission denied. Ask the file "
+            f"Cannot open lock guard {guard}: {error.strerror or error} "
+            f"(errno {error.errno}). Ask the file "
             "owner or administrator to grant read/write access to this file "
             "and access to its parent directory for users sharing the library. "
             "Do not delete the guard while any run may be using the library."
