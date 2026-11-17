@@ -177,9 +177,10 @@
   function fillInput(root, ctx, many) {
     var row = WGSM.qs("[data-v2-input]", root);
     if (!row) return;
-    row.replaceChildren(h("span.v2-muted", "For"), h("strong", ctx.name), h("span.v2-dim", "·"), h("span.v2-tag", ctx.file.tag),
+    row.replaceChildren();
+    WGSM.append(row, [h("span.v2-muted", "For"), h("strong", ctx.name), h("span.v2-dim", "·"), h("span.v2-tag", ctx.file.tag),
       h("span.v2-file__name", ctx.file.name),
-      many ? h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", "data-open": "#pick-" + ctx.def.slug }, "Change") : null);
+      many ? h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", "data-open": "#pick-" + ctx.def.slug }, "Change") : null]);
     var select = WGSM.qs('[data-v2-pick="' + ctx.def.slug + '"]');
     if (select) select.value = ctx.fileKey;
   }
@@ -282,6 +283,7 @@
     go.disabled = !!out.blocked;
     go.dataset.toast = "Queued: " + (out.jobName || def.label + " for " + ctx.name) + ". See Jobs.";
     WGSM.icons.hydrate(root);
+    WGSM.v2terms.wrap(root);
   }
 
   WGSM.render.blocks["v2-tool"] = function (el, opts) {

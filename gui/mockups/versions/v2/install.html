@@ -17,52 +17,11 @@
       <p class="v2-head__sub">WGS Extract runs analysis tools that are already on this computer; it checks for them but doesn’t install them. Each one is needed only by some tasks.</p>
     </div>
     <div class="v2-head__actions">
-      <button class="v2-btn" type="button" data-toast="Checked: 14 of 15 tools found">Check again</button>
+      <button class="v2-btn" type="button" data-toast="Checked the tools on this computer">Check again</button>
     </div>
   </header>
 
-  <div class="v2-row v2-row--wrap" data-annot-id="os">
-    <span class="v2-muted v2-small">Instructions for</span>
-    <div class="v2-seg" data-seg="os" role="group" aria-label="Operating system"><button type="button" value="mac" aria-pressed="true">macOS</button><button type="button" value="windows">Windows</button><button type="button" value="linux">Linux</button></div>
-  </div>
-
-  <section class="v2-section" data-annot-id="missing">
-    <h2>Missing</h2>
-    <div class="v2-sheet">
-      <div class="v2-sheet__pad v2-section" data-annot-id="java">
-        <div class="v2-row v2-row--wrap"><span class="v2-pip" data-state="attention"></span><strong class="v2-grow">Java 17 or later</strong><span class="v2-small v2-muted">Needed by <abbr class="v2-term" data-term="gatk">GATK HaplotypeCaller</abbr> and <abbr class="v2-term" data-term="pgx">Pharmacogenomics</abbr></span></div>
-        <ol class="v2-steps-list v2-small" data-when="os:mac">
-          <li>Install Homebrew from brew.sh if you don’t have it.</li>
-          <li>In Terminal, run <span class="v2-mono">brew install openjdk</span>.</li>
-          <li>Come back here and choose <strong>Check again</strong>.</li>
-        </ol>
-        <ol class="v2-steps-list v2-small" data-when="os:windows" hidden>
-          <li>In PowerShell, run <span class="v2-mono">winget install Microsoft.OpenJDK.21</span>.</li>
-          <li>Restart WGS Extract, then choose <strong>Check again</strong>.</li>
-        </ol>
-        <ol class="v2-steps-list v2-small" data-when="os:linux" hidden>
-          <li>Install your distribution’s OpenJDK, for example <span class="v2-mono">sudo apt install openjdk-21-jre</span>.</li>
-          <li>Choose <strong>Check again</strong>.</li>
-        </ol>
-      </div>
-    </div>
-  </section>
-
-  <section class="v2-section" data-annot-id="separate">
-    <h2>Installed separately</h2>
-    <div class="v2-sheet">
-      <div class="v2-item" data-annot-id="cyrius">
-        <span class="v2-item__title">Cyrius</span>
-        <span class="v2-item__desc"><abbr class="v2-term" data-term="cyp2d6">CYP2D6</abbr> typing. Its licence doesn’t allow WGS Extract to bundle it, so it comes from its authors. Install it only if you need CYP2D6. <code class="v2-cmd">· typing/cyp2d6</code></span>
-        <span class="v2-item__aside"><span class="v2-dim">Not installed</span></span>
-      </div>
-      <div class="v2-item">
-        <span class="v2-item__title">Docker</span>
-        <span class="v2-item__desc">Runs <abbr class="v2-term" data-term="deepvariant">DeepVariant</abbr> in a <abbr class="v2-term" data-term="docker">container</abbr></span>
-        <span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Running</span>
-      </div>
-    </div>
-  </section>
+  <div class="v2-stack" data-render="v2-install" data-annot-id="missing"></div>
 
   <section class="v2-section" data-annot-id="found">
     <h2>Found</h2>

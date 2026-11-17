@@ -171,6 +171,21 @@
     machine: MACHINE,
     files: FILES,
     unavailable: unavailable,
+    /* Optional tool sets missing here: [env, label] */
+    missingSets: function () {
+      return Object.keys(ENVS).filter(function (k) {
+        return P.missing.indexOf(ENVS[k][0]) >= 0 && !(LIMITS[platform] || {})[k];
+      }).map(function (k) {
+        return [ENVS[k][0], ENVS[k][1]];
+      });
+    },
+    /* What this platform can't run at all */
+    limits: function () {
+      var own = LIMITS[platform] || {};
+      return Object.keys(own).map(function (k) {
+        return own[k];
+      });
+    },
     /* The Pixi environment that provides a tool, for install hints */
     env: function (name) {
       return ENVS[name] ? ENVS[name][0] : null;

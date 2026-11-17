@@ -39,8 +39,8 @@
   ];
   /* A shell's own modules, loaded before it (shared/shells/<shell>/) */
   var SHELL_MODULES = {
-    v2: ["state", "machine", "glossary", "region", "tools", "tools-align", "tools-call", "tools-quality",
-      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog"],
+    v2: ["state", "machine", "glossary-data", "glossary", "region", "tools", "tools-align", "tools-call", "tools-quality",
+      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog", "install"],
   };
   if (shell && shell !== "none") {
     var at = SCRIPTS.indexOf("shared/chrome.js");
