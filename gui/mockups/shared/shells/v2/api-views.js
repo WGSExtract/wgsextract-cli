@@ -76,6 +76,10 @@
     var head = null;
     var jobs = doc.jobs.concat(extra ? [extra] : []);
     var active = [];
+    var cpu = [];
+    var limit = doc.settings && doc.settings.max_concurrent_jobs || 1;
+    for (var slot = 0; slot < limit; slot++) cpu.push({ at: now, id: null });
+    var runningCPU = 0;
     var queue = [];
     var out = {};
     function remaining(j) {
@@ -91,15 +95,18 @@
         if (j.status === "running") active.push({ id: j.id, left: remaining(j) });
         if (j.status === "queued") queue.push(j);
       } else if (j.status === "running") {
-        t = Math.max(t, mock.endAt(j));
-        head = j.id;
+        var index = Math.min(runningCPU++, limit - 1);
+        if (mock.endAt(j) >= cpu[index].at) cpu[index] = { at: mock.endAt(j), id: j.id };
       }
     });
     jobs.forEach(function (j) {
       if (j.status !== "queued" || j.kind !== "job" || j.plan.mode !== "cpu") return;
-      out[j.id] = { starts_at: t, behind: head };
-      t += j.plan.work - (j.skipWork || 0);
-      head = j.id;
+      cpu.sort(function (a, b) { return a.at - b.at; });
+      var first = cpu[0];
+      var at = Math.max(first.at, j.created || now);
+      out[j.id] = { starts_at: at, behind: first.id };
+      first.at = at + j.plan.work - (j.skipWork || 0);
+      first.id = j.id;
     });
     t = now;
     head = null;
@@ -159,7 +166,7 @@
     if (full) {
       var params = Object.assign({}, job.params);
       delete params._mock;
-      doc.provenance = { version: "mock", argv: command(job).split(" ").slice(1), params: params, tools: {}, started: U.iso(job.started), finished: U.iso(job.finished), elapsed_s: Math.round((job.finished - job.started) / 1000) };
+      doc.provenance = { version: "mock", argv: command(job).split(" ").slice(1), params: params, tools: {}, started: U.iso(job.started), finished: U.iso(job.finished), elapsed_s: job.started === null ? 0 : Math.round((job.finished - job.started) / 1000) };
     }
     return doc;
   }
@@ -199,10 +206,10 @@
       ui.eta_s = v.progress.eta_s;
       ui.finishes_at = U.iso(mock.endAt(job));
     }
-    if (job.finished !== null) ui.took_s = Math.round((job.finished - job.started) / 1000);
+    if (job.finished !== null) ui.took_s = job.started === null ? 0 : Math.round((job.finished - job.started) / 1000);
     if (job.status === "queued") {
       var s = schedule(mock, now)[job.id];
-      ui.waiting = s ? { reason: job.plan.mode === "net" ? "download_slots" : "one_at_a_time", behind: s.behind, starts_at: U.iso(s.starts_at), starts_in_s: Math.round((s.starts_at - now) / 1000) } : { reason: "starting" };
+      ui.waiting = s ? { reason: job.plan.mode === "net" ? "download_slots" : "one_at_a_time", limit: mock.doc().settings && mock.doc().settings.max_concurrent_jobs || 1, behind: s.behind, starts_at: U.iso(s.starts_at), starts_in_s: Math.round((s.starts_at - now) / 1000) } : { reason: "starting" };
       ui.est_s = Math.round((job.plan.mode === "cpu" ? job.plan.work : job.plan.work / ((mock.doc().net.bps || Infinity) / 1000)) / 1000);
     }
     if (job.status === "interrupted" || job.status === "cancelled" || job.status === "failed") {
@@ -226,7 +233,10 @@
       if (t <= until) lines.push(F.hms(t) + " " + text);
     }
     line(job.created, "Submitted " + job.op + (job.rerunOf ? " (rerun of " + job.rerunOf + ")" : ""));
-    if (job.started === null) return lines;
+    if (job.started === null) {
+      if (job.finished !== null) lines.push(F.hms(job.finished) + " " + (job.error ? job.error.message : job.status));
+      return lines;
+    }
     line(job.started, "Started: " + command(job));
     var p = job.plan;
     if (p.mode === "cpu") {

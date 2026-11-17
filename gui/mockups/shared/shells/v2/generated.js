@@ -50,7 +50,7 @@
   function removeFile(key) {
     return api.del("/v1/library/files/" + encodeURIComponent(key)).then(function (res) {
       if (res.status !== 200) {
-        WGSM.toast(res.body.error ? res.body.error.message : "Couldn’t remove it", "triangle-alert");
+        WGSM.v2edge.refused(res);
         return;
       }
       return api.syncGenerated().then(function () {
@@ -82,6 +82,9 @@
     });
     var g = mirror();
     var groups = {};
+    Object.keys(g.people).forEach(function (id) {
+      if (!S().person(id).removed && !WGSM.qs('[data-v2-group="' + id + '"]')) groups[id] = [];
+    });
     Object.keys(g.files).forEach(function (key) {
       var f = g.files[key];
       var target = f.person && WGSM.qs('[data-v2-group="' + f.person + '"] .v2-files');
@@ -93,7 +96,7 @@
       (groups[who] = groups[who] || []).push(key);
     });
     Object.keys(groups).sort(function (a, b) {
-      return !a ? 1 : !b ? -1 : ownerOf(g.files[groups[a][0]]).localeCompare(ownerOf(g.files[groups[b][0]]));
+      return !a ? 1 : !b ? -1 : S().person(a).name.localeCompare(S().person(b).name);
     }).forEach(function (who) {
       var name = who ? S().person(who).name : "Not assigned";
       root.appendChild(h("div.v2-group", { dataset: { v2GenGroup: who || "unassigned", annotId: "gen-" + (who || "unassigned") } },
@@ -102,9 +105,9 @@
           who ? h("a.v2-person__name", { href: personHref(who) }, S().first(name), h("small", "generated")) : h("span.v2-person__name", "Not assigned", h("small", "generated files")),
           h("div.v2-person__found"),
           h("div.v2-person__next", who ? h("a.v2-btn.v2-btn--sm", { href: personHref(who) }, "Open") : null)),
-        h("div.v2-files", groups[who].map(function (key) {
+        h("div.v2-files", groups[who].length ? groups[who].map(function (key) {
           return fileRow(key, g.files[key]);
-        }))));
+        }) : h("p.v2-sheet__pad.v2-small", "No files yet. Add files to get started."))));
     });
     WGSM.v2terms.wrap(root);
   }
@@ -243,8 +246,9 @@
           });
         } }, WGSM.icon("plus"), "Add generated files…"),
         h("button.v2-btn.v2-btn--quiet", { type: "button", dataset: { v2GenClear: "" }, hidden: true, onclick: function () {
-          api.del("/v1/mock/files").then(api.syncGenerated).then(function () {
-            WGSM.toast("Removed every generated file and made-up person");
+          api.del("/v1/mock/files").then(function (res) {
+            if (WGSM.v2edge.refused(res)) return;
+            return api.syncGenerated().then(function () { WGSM.toast("Removed every generated file and made-up person"); });
           });
         } }, "Remove them all")),
       h("div.v2-sheet", { dataset: { v2GenBody: "" } }));
@@ -290,9 +294,9 @@
               h("p.v2-head__sub", [known && known.generated ? "Made up for the mockup" : null, sex, keys.length + " file" + (keys.length === 1 ? "" : "s")].filter(Boolean).join(" · "))))),
         h("section.v2-section", { dataset: { annotId: "files" } },
           h("div.v2-section__head", h("h2", "Files")),
-          h("div.v2-sheet", h("div.v2-files", keys.map(function (k) {
+          h("div.v2-sheet", keys.length ? h("div.v2-files", keys.map(function (k) {
             return fileRow(k, g.files[k]);
-          }))),
+          })) : h("div.v2-empty", h("p", "No files yet."), h("a.v2-btn", { href: "add.html" }, "Add files"))),
           keys.some(function (k) {
             return (g.files[k].issues || []).length;
           }) ? h("ul.v2-small.v2-gen__issues", keys.reduce(function (all, k) {

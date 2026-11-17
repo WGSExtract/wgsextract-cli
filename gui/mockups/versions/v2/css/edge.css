@@ -1,0 +1,15 @@
+/* Only the mock pickers and inline recovery controls. */
+#v2-edge-dialog .dialog__body {
+  overflow-wrap: anywhere;
+}
+#v2-edge-dialog select,
+#v2-edge-dialog input {
+  max-width: 100%;
+}
+[data-edge-error] .v2-notice__actions {
+  flex-wrap: wrap;
+}
+[data-edge-folders] .v2-row {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}

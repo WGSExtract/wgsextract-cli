@@ -274,6 +274,9 @@
 
     /* MOCK-ONLY. Remove every generated file and made-up person */
     r.add("DELETE", "/v1/mock/files", "mock", function () {
+      if (mock.requireIdle) Object.keys(doc().added).forEach(function (id) {
+        mock.requireIdle(null, mock.ctx().files[id].path);
+      });
       var n = Object.keys(doc().added).length;
       doc().added = {};
       Object.keys(doc().people).forEach(function (id) {
@@ -289,9 +292,9 @@
       var id = req.params.id;
       if (!hasOwn(mock.ctx().files, id)) M.fail(404, "unknown_file", "No file " + JSON.stringify(id) + ".");
       if (!hasOwn(doc().added, id)) M.fail(409, "seed_file", "The demo’s own files stay; only added files can be removed.");
+      if (mock.requireIdle) mock.requireIdle(null, mock.ctx().files[id].path);
       var who = doc().added[id].person;
       delete doc().added[id];
-      /* A made-up person goes with their last file */
       var left = Object.keys(doc().added).some(function (k) {
         return doc().added[k].person === who;
       });

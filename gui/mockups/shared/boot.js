@@ -9,6 +9,7 @@
   var self = document.currentScript;
   var root = new URL("../", self.src).href;
   var shell = document.body ? document.body.dataset.shell : "";
+  var setup = document.body && document.body.dataset.pageId === "v2-setup";
   var SCRIPTS = [
     "icons/icons.js",
     "shared/core.js",
@@ -41,15 +42,15 @@
   var SHELL_MODULES = {
     v2: ["state", "machine-spec", "machine", "machine-editor", "glossary-data", "glossary", "learn", "region", "../../data/api-schema", "requests", "tools", "tools-align", "tools-call", "tools-quality",
       "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "tools-files", "tools-inspect", "tools-vcf", "tools-long", "catalog", "install",
-      "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-files", "api-server",
-      "api-clock", "api-bind", "api-jobs-cards", "api-jobs", "generated"],
+      "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-files", "api-edge", "api-server",
+      "api-clock", "api-bind", "api-jobs-cards", "api-jobs", "generated", "edge-actions", "edge-views"],
   };
-  if (shell && shell !== "none") {
+  if ((shell && shell !== "none") || setup) {
     var at = SCRIPTS.indexOf("shared/chrome.js");
-    var mine = (SHELL_MODULES[shell] || []).map(function (name) {
-      return "shared/shells/" + shell + "/" + name + ".js";
+    var mine = (SHELL_MODULES[setup ? "v2" : shell] || []).map(function (name) {
+      return "shared/shells/" + (setup ? "v2" : shell) + "/" + name + ".js";
     });
-    SCRIPTS.splice.apply(SCRIPTS, [at, 0].concat(mine, ["shared/shells/" + shell + ".js"]));
+    SCRIPTS.splice.apply(SCRIPTS, [at, 0].concat(mine, ["shared/shells/" + (setup ? "v2/setup" : shell) + ".js"]));
   }
   SCRIPTS.push("shared/start.js");
   window.WGSM_ROOT = root;

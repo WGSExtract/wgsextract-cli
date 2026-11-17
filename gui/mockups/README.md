@@ -136,6 +136,19 @@ The app’s own **Basic / Advanced** switch is at the bottom of the sidebar (or 
 Settings on a phone). Most buttons do something small: open a dialog, show a
 toast, switch a view. Choices you make are remembered across pages.
 
+In v2, file/folder choosers open the generated-file catalog or simulated volume
+picker; they never access real files. Mockup settings also has **Apply review
+scenario** for an empty library, no jobs, or full disks. Jobs offer logs and
+retry/resume after failure or cancellation, and unsafe removals link to the
+jobs that must be cancelled first. See [MOCK_API.md](MOCK_API.md) for routes
+and recovery behavior.
+
+Run the mock server's focused edge-case tests (no packages or server needed):
+
+```sh
+node --test gui/mockups/mock-server/edge.test.mjs
+```
+
 In annotate mode, click any element, or drag a box over an area, and write a
 note. Pick who you are once (theontho, Randy or another name); the browser
 remembers it. From the keyboard: Tab to an element and press Enter. Pins show

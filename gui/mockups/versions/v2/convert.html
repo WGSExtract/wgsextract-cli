@@ -29,9 +29,9 @@
   <form class="v2-section" id="to" data-annot-id="format">
     <h2>Convert to</h2>
     <div class="v2-sheet">
-      <label class="v2-choice"><input class="v2-check" type="radio" name="to" checked><span class="v2-choice__title">CRAM</span><span class="v2-choice__aside">about 34 GB<br>45 min</span><span class="v2-choice__desc">Same reads, about a third of the size. Needs its reference (hs37d5) to open.</span></label>
-      <label class="v2-choice"><input class="v2-check" type="radio" name="to"><span class="v2-choice__title">BAM</span><span class="v2-choice__aside">about 90 GB<br>60 min</span><span class="v2-choice__desc">Sort it, or rewrite it for a tool that is picky about BAMs.</span></label>
-      <label class="v2-choice"><input class="v2-check" type="radio" name="to"><span class="v2-choice__title">FASTQ</span><span class="v2-choice__aside">2 × 41 GB<br>70 min</span><span class="v2-choice__desc">Unaligned reads, for another aligner or a service that asks for FASTQ.</span></label>
+      <label class="v2-choice"><input class="v2-check" type="radio" name="to" value="bam/to-cram" checked><span class="v2-choice__title">CRAM</span><span class="v2-choice__aside">about 34 GB<br>45 min</span><span class="v2-choice__desc">Same reads, about a third of the size. Needs its reference (hs37d5) to open.</span></label>
+      <label class="v2-choice"><input class="v2-check" type="radio" name="to" value="bam/sort"><span class="v2-choice__title">BAM</span><span class="v2-choice__aside">about 90 GB<br>60 min</span><span class="v2-choice__desc">Sort it, or rewrite it for a tool that is picky about BAMs.</span></label>
+      <label class="v2-choice"><input class="v2-check" type="radio" name="to" value="bam/unalign"><span class="v2-choice__title">FASTQ</span><span class="v2-choice__aside">2 × 41 GB<br>70 min</span><span class="v2-choice__desc">Unaligned reads, for another aligner or a service that asks for FASTQ.</span></label>
     </div>
     <p class="v2-section__note">Need a <abbr class="v2-term" data-term="vcf">VCF</abbr>? That is <abbr class="v2-term" data-term="calling">variant calling</abbr>, a few hours: <a class="v2-link" href="tool-call-variants.html">Call variants</a></p>
   </form>
@@ -62,8 +62,8 @@
     <div class="v2-more__body v2-fields">
       <div class="v2-field"><span class="v2-field__label">Reference<small>The one the BAM was made with</small><code class="v2-cmd">ref</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Reference" style="max-width: 260px"><option>hs37d5 (installed)</option></select></div></div>
       <div class="v2-field"><span class="v2-field__label">CRAM version<small>3.0 opens in the most tools</small><code class="v2-cmd">cram_version</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="cramv" role="group" aria-label="CRAM version"><button type="button" value="2.1">2.1</button><button type="button" value="3.0" aria-pressed="true">3.0</button><button type="button" value="3.1">3.1</button></div></div></div>
-      <div class="v2-field"><span class="v2-field__label">Threads<small>All 12 cores by default</small><code class="v2-cmd">threads</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="12" aria-label="Threads" style="max-width: 90px"></div></div>
-      <div class="v2-field"><span class="v2-field__label">Save to<small>Beside the BAM, on Genomes (1.1 TB free)</small><code class="v2-cmd">outdir</code></span><div class="v2-field__control"><span class="v2-mono v2-small v2-grow">/Volumes/Genomes/Gordon/</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Mockup: opens the folder chooser">Change</button></div></div>
+      <div class="v2-field"><span class="v2-field__label">Threads<small>All 12 cores by default</small><code class="v2-cmd">threads</code></span><div class="v2-field__control"><input class="v2-input" type="number" min="1" value="12" aria-label="Threads" style="max-width: 90px"></div></div>
+      <div class="v2-field"><span class="v2-field__label">Save to<small>Choose a volume with enough space</small><code class="v2-cmd">outdir</code></span><div class="v2-field__control"><span class="v2-mono v2-small v2-grow" data-edge-output>/Volumes/Genomes/Gordon/</span><button class="v2-btn v2-btn--sm" type="button" data-edge="output">Change</button></div></div>
     </div>
   </details>
 
@@ -76,7 +76,7 @@
       <span>Starts after Gordon’s realign finishes (1 h 52 min). The BAM is kept.</span>
     </div>
     <div class="v2-actionbar__btns">
-      <a class="v2-btn v2-btn--primary v2-btn--lg" href="jobs.html" data-toast="Queued: convert Gordon’s BAM to CRAM">Convert</a>
+      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-edge="convert">Convert</button>
     </div>
   </div>
 </div>

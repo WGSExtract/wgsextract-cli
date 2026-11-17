@@ -31,14 +31,15 @@
       var temp = { system: 0, genomes: 0 };
       mock.doc().jobs.forEach(function (j) {
         if (j.status !== "running") return;
-        if (j.plan.mode === "net") temp[j.plan.outputs[0].disk] += mock.doneWork(j, t) / 1e9;
-        else temp[j.plan.tempDisk] += j.plan.tempGB;
+        var id = j.plan.mode === "net" ? j.plan.outputs[0].disk : j.plan.tempDisk;
+        temp[id] = (temp[id] || 0) + (j.plan.mode === "net" ? mock.doneWork(j, t) / 1e9 : j.plan.tempGB);
       });
       return m.disks.map(function (d) {
-        var free = d.base + (seed[d.id] || 0) - (used[d.id] || 0);
-        return { id: d.id, name: d.name, path: d.path, total_gb: d.total, free_gb: round(free), held_gb: round(temp[d.id] || 0), system: d.id === "system" };
+        var free = d.base + (seed[d.id] || 0) - (used[d.id] || 0) - ((mock.doc().diskFill || {})[d.id] || 0);
+        return { id: d.id, name: d.name, path: d.path, total_gb: d.total, free_gb: round(free, 3), held_gb: round(temp[d.id] || 0), system: d.id === "system" };
       });
     }
+    mock.disks = disks;
 
     /* PROPOSED — mock only. The computer: OS, CPU, memory, GPU */
     r.add("GET", "/v1/system", "proposed", function () {
@@ -107,6 +108,7 @@
       var id = req.params.id;
       if (!hasOwn(c.people, id)) M.fail(404, "unknown_person", "No person " + JSON.stringify(id) + ".");
       var b = req.body || {};
+      if (b.removed && mock.requireIdle) mock.requireIdle(id);
       if (b.name !== undefined && !String(b.name).trim()) M.fail(400, "usage", "A person needs a name.");
       var own = (mock.doc().people[id] = Object.assign({}, mock.doc().people[id]));
       ["name", "note", "removed"].forEach(function (k) {
@@ -122,6 +124,7 @@
      * stay on disk */
     r.add("DELETE", "/v1/library/people/{id}", "proposed", function (req) {
       if (!hasOwn(mock.ctx().people, req.params.id)) M.fail(404, "unknown_person", "No person " + JSON.stringify(req.params.id) + ".");
+      if (mock.requireIdle) mock.requireIdle(req.params.id);
       mock.doc().people[req.params.id] = Object.assign({}, mock.doc().people[req.params.id], { removed: true });
       mock.save();
       return { id: req.params.id, removed: true, files_kept: true };
@@ -189,7 +192,7 @@
       var doc = mock.doc();
       return { references: mock.config.references.map(function (ref) {
         var flag = ref.flag || "ref-" + ref.id;
-        var out = { id: ref.id, name: ref.name, build: ref.build || null, kind: ref.kind, gb: ref.gb, use: ref.use, installed: !!(ref.installed || flags[flag]), flag: flag };
+        var out = { id: ref.id, name: ref.name, build: ref.build || null, kind: ref.kind, gb: ref.gb, use: ref.use, installed: !!(mock.doc().flags[flag] !== false && (ref.installed || flags[flag])), flag: flag };
         if (ref.kind === "genome") out.indexes = { fasta: out.installed, bwa: !!ref.installed, "bwa-mem2": !!flags["mem2-" + ref.id] };
         var job = doc.jobs.filter(function (j) {
           return j.status === "running" && (j.plan.flags.indexOf(flag) >= 0 || j.plan.flags.indexOf("mem2-" + ref.id) >= 0);

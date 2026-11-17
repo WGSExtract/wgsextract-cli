@@ -49,6 +49,7 @@
     if (name === "running") return cards.running(job);
     if (name === "queued") return cards.queued(job, jobs);
     if (name === "needs-you") return cards.needs(job);
+    if (job.status === "cancelled") return cards.needs(job);
     return cards.done(job);
   }
 

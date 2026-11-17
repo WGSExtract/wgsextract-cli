@@ -42,7 +42,7 @@
 
   function act(promise, ok) {
     return promise.then(function (res) {
-      if (res.status >= 300) WGSM.toast(res.body.error ? res.body.error.message : "HTTP " + res.status, "circle-alert");
+      if (res.status >= 300 || !res.status) WGSM.v2edge.refused(res);
       else if (ok) WGSM.toast(ok);
       return api.refresh();
     });
@@ -157,7 +157,13 @@
         return x.id === w.behind;
       })[0];
       var size = j.ui.mode === "net" ? "A " + clock.gb(j.ui.outputs[0].gb) + " download" : "About " + clock.dur(j.ui.est_s * 1000);
-      why.textContent = size + (j.ui.mode === "net" ? ". Waiting for a download slot; starts after " : ". Waits because one analysis job runs at a time; starts after ") +
+      var position = (all || []).filter(function (x) {
+        return x.status === "queued" && x.ui.mode === j.ui.mode;
+      }).map(function (x) {
+        return x.id;
+      }).indexOf(j.id) + 1;
+      var reason = w.limit > 1 ? ". Waits for an analysis slot (" + w.limit + " at a time); starts after " : ". Waits because one analysis job runs at a time; starts after ";
+      why.textContent = "Queue position " + position + ". " + size + (j.ui.mode === "net" ? ". Waiting for a download slot; starts after " : reason) +
         (ahead ? "“" + ahead.ui.label + "”" : "the job before it") + (w.starts_in_s > 0 ? ", in about " + clock.dur(w.starts_in_s * 1000) : "") + ".";
     }
     update(job, jobs);
@@ -167,6 +173,7 @@
   /* Failed or interrupted, with the way out */
   function needs(job) {
     var interrupted = job.status === "interrupted";
+    var cancelled = job.status === "cancelled";
     var forWho = job.ui.person_name && !/ for /.test(job.ui.label) && !job.ui.label.match(new RegExp(first(job))) ? h("span.v2-dim.v2-small", { style: { fontWeight: 400 } }, " for " + first(job)) : null;
     var fixIndex = !interrupted && job.error && /no index/i.test(job.error.message);
     var text;
@@ -175,7 +182,7 @@
         ? "Resume continues from the last byte downloaded (" + clock.gb((job.ui.resume.from_bytes || 0) / 1e9) + " of " + clock.gb(job.progress.bytes_total / 1e9) + ")."
         : "Resume continues from the last finished step (" + job.ui.resume.from_step + ").");
     } else {
-      text = (job.error ? job.error.message : "It failed.") + (fixIndex ? " Creating one fixes it; nothing else was changed." : "");
+      text = (job.error ? job.error.message : cancelled ? "Cancelled before it finished." : "It failed.") + (fixIndex ? " Creating one fixes it; nothing else was changed." : "");
     }
     var button = fixIndex
       ? h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
@@ -185,10 +192,17 @@
       : h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
         act(api.post("/v1/jobs/" + job.id + "/rerun"), (interrupted ? "Resumed: " : "Running again: ") + job.ui.label);
       } }, interrupted ? "Resume" : "Run again");
+    var log = h("pre.v2-code");
+    var details = h("details.v2-more", h("summary", "View log"), h("div.v2-more__body", log));
+    details.addEventListener("toggle", function () {
+      if (details.open) api.get("/v1/jobs/" + job.id + "/log?tail=80").then(function (res) {
+        log.textContent = res.status === 200 ? res.body : "Could not load the log. Close and reopen to retry.";
+      });
+    });
     var el = h("div.v2-sheet__pad.v2-section", { dataset: { jobId: job.id, annotId: { "vcf/snp": "needs-snps", "ref/index": "needs-download" }[job.op] || "needs-" + job.id } },
       h("div.v2-row.v2-row--wrap", badge(job), h("strong.v2-grow", job.ui.label, forWho),
-        interrupted ? status("attention", "Interrupted at " + percent(job) + "%") : status("bad", "Failed after " + clock.dur(job.ui.took_s * 1000))),
-      h("p.v2-small.v2-muted", text), h("div.v2-row", button));
+        interrupted ? status("attention", "Interrupted at " + percent(job) + "%") : cancelled ? status("attention", "Cancelled") : status("bad", "Failed after " + clock.dur(job.ui.took_s * 1000))),
+      h("p.v2-small.v2-muted", text), details, h("div.v2-row", button));
     return { el: el, update: function () {} };
   }
 

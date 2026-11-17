@@ -34,12 +34,13 @@
     /* The machine, its files and the people as they are now */
     function ctx() {
       var machine = doc.machine ? M.machineFrom(config, doc.machine, doc.machineCustom) : M.machineFrom(config, opts.machineKey, opts.machineCustom);
+      if (doc.settings && doc.settings.workspace) machine.workspace = doc.settings.workspace;
       var people = {};
       Object.keys(config.people).concat(Object.keys(doc.people)).forEach(function (id) {
         people[id] = Object.assign({ name: id, note: "" }, config.people[id], doc.people[id]);
       });
       /* Seed files, then files added since (api-files.js) */
-      var files = doc.added ? { files: Object.assign({}, config.files, doc.added) } : config;
+      var files = { files: Object.assign({}, doc.emptyLibrary ? {} : config.files, doc.added) };
       return { machine: machine, files: M.resolveFiles(files, machine), people: people };
     }
 
@@ -156,7 +157,22 @@
       job.status = "succeeded";
       job.exit_code = 0;
       job.stopWork = job.plan.work;
-      if (job.plan.thenRerun) rerun(job.plan.thenRerun, t);
+      config.references.forEach(function (ref) {
+        var flag = ref.flag || "ref-" + ref.id;
+        if (doc.removedRefs && doc.removedRefs[ref.id] && job.plan.flags.indexOf(flag) >= 0) {
+          delete doc.flags[flag];
+          delete doc.removedRefs[ref.id];
+        }
+      });
+      if (job.plan.thenRerun) {
+        try {
+          rerun(job.plan.thenRerun, t);
+        } catch (err) {
+          if (err.code !== "insufficient_space") throw err;
+          find(job.plan.thenRerun).error = { kind: "failure", message: "The fix finished, but the job could not restart. " + err.message };
+          job.plan.thenRerun = null;
+        }
+      }
     }
 
     function stop(job, t, status, message) {
@@ -195,7 +211,8 @@
         doc.jobs.forEach(function (j) {
           if (j.status !== "queued") return;
           var net = j.plan.mode === "net";
-          if (j.kind === "job" && (net ? downloads().length >= MAX_DOWNLOADS : busy >= MAX_JOBS)) return;
+          var max = doc.settings && doc.settings.max_concurrent_jobs || MAX_JOBS;
+          if (j.kind === "job" && (net ? downloads().length >= MAX_DOWNLOADS : busy >= max)) return;
           var t = j.kind === "query" ? j.created : Math.max(j.created, net ? doc.netFreeAt : doc.freeAt);
           if (t <= now && t < startAt) {
             queued = j;
@@ -217,6 +234,7 @@
 
     function submit(op, params, now) {
       var job = make(op, params, { created: now });
+      if (mock.preflight) mock.preflight(job);
       doc.jobs.push(job);
       advance(now);
       save();
@@ -227,7 +245,11 @@
      * its last finished step; a download resumes from its .partial. */
     function rerun(id, t) {
       var src = find(id);
-      var job = make(src.op, src.params, { created: t });
+      if (!mock.isDone(src)) M.fail(409, "active_job", "Cancel this job before running it again.");
+      var params = clone(src.params);
+      if (params._mock) delete params._mock.fail;
+      var job = make(src.op, params, { created: t });
+      if (mock.preflight) mock.preflight(job);
       job.rerunOf = src.id;
       if (job.plan.mode === "cpu" && src.stopWork) {
         var sum = 0;
@@ -250,14 +272,14 @@
       var u = { system: 0, genomes: 0 };
       doc.jobs.forEach(function (j) {
         if (j.status === "succeeded" && !j.pre) j.plan.outputs.forEach(function (o) {
-          u[o.disk] += o.gb;
+          u[o.disk] = (u[o.disk] || 0) + o.gb;
         });
         if (j.status !== "running") return;
-        if (j.plan.mode === "net") u[j.plan.outputs[0].disk] += doneWork(j, t) / 1e9;
-        else u[j.plan.tempDisk] += j.plan.tempGB;
+        if (j.plan.mode === "net") u[j.plan.outputs[0].disk] = (u[j.plan.outputs[0].disk] || 0) + doneWork(j, t) / 1e9;
+        else u[j.plan.tempDisk] = (u[j.plan.tempDisk] || 0) + j.plan.tempGB;
       });
       Object.keys(doc.partials).forEach(function (k) {
-        u[doc.partials[k].disk] += doc.partials[k].bytes / 1e9;
+        u[doc.partials[k].disk] = (u[doc.partials[k].disk] || 0) + doc.partials[k].bytes / 1e9;
       });
       Object.keys(doc.added || {}).forEach(function (k) {
         var d = doc.added[k].disk;

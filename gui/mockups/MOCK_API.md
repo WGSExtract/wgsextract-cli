@@ -32,6 +32,8 @@ same two files against a stub and keeps its state in a file.
 | `api-routes.js` | Routes the real server has |
 | `api-proposed.js` | PROPOSED routes |
 | `api-admin.js` | MOCK-ONLY routes (clock, network, reset, flags, machine) |
+| `api-edge.js` | Shared preflight, safe removal, review scenarios, mock settings and approvals |
+| `edge-actions.js`, `edge-views.js` | Browser: working mock pickers, recovery actions and empty states |
 | `api-server.js` | Browser: `WGSM.v2api`, the transport and the mode |
 | `api-clock.js` | Browser: `WGSM.v2clock` and its settings control |
 | `api-bind.js` | Browser: `WGSM.v2bind`, markup hooks that follow a job |
@@ -272,10 +274,12 @@ download fields of `progress`.
 | `GET /v1/disks` | `{"disks": [{id, name, path, total_gb, free_gb, held_gb, system}]}`, live: outputs, temporary space, growing and kept partials |
 | `GET /v1/library` | `{profile, people: [{id, name, note, removed, files: [{id, name, path, tag, build, size_gb, disk, status: ready\|needs_fix\|being_made, job?, fraction?}]}], unassigned: […]}` |
 | `PATCH /v1/library/people/{id}` | `{name?, note?, removed?}` → the person |
+| `POST /v1/library/people` | `{name}` → `{id, name, files: []}`; add a person before adding their files |
 | `DELETE /v1/library/people/{id}` | Removes them from the library; files stay on disk |
 | `POST /v1/library/files/{id}/assign` | `{"person": "gordon"}` or `{"name": "New person"}` → the library |
 | `POST /v1/estimate` | `{op, params}` → `{label, mode, duration_s, download_bytes, memory_gb, ram_gb, fits_memory, steps, disk: [{disk, need_gb, temp_gb, free_gb, fits}], starts_at, starts_in_s, finishes_at}` |
 | `GET /v1/references` | `{"references": [{id, name, build, kind, gb, installed, flag, indexes?, downloading?, partial?}]}` |
+| `DELETE /v1/references/{id}` | Mark reference data as not installed; 409 `in_use` while an active job uses/downloads it |
 | `DELETE /v1/library/files/{id}` | Removes a generated file (below) from the library, and its made-up person with their last file; 409 `seed_file` for the demo's own files |
 
 ### Mock only
@@ -294,6 +298,51 @@ download fields of `progress`.
 | `GET /v1/mock/files` | `{files, people}`: generated files (shaped like `machine.js` FILES entries) and the made-up people they belong to |
 | `POST /v1/mock/files` | `{template, count (1–20), whose: "new" \| "unassigned" \| <person id>, name?}` → the files and people just made, as lists; `"new"` makes one made-up person per file, unless `name` is given |
 | `DELETE /v1/mock/files` | Removes every generated file and made-up person |
+| `GET`/`PATCH /v1/mock/settings` | Mock desktop settings: `workspace`, `allowed_paths`, `phone_access`, `max_concurrent_jobs` (1 or 2), `prevent_sleep`, `notifications`, `menu_bar`. PATCH updates only supplied keys; GET also includes the approval `requests` log |
+| `POST /v1/mock/approval` | `{action: "ask" \| "decline" \| "allow", resource?: "start_jobs" \| "clinvar"}` → `{requests}`. Records a phone permission request/decision; allowing ClinVar removal marks it uninstalled |
+| `POST /v1/mock/scenario` | `{name: "empty-jobs" \| "empty-library" \| "disk-full" \| "restore-space", disk?: <disk id>}`. Reproduce empty lanes/library or almost-full disks (all disks unless `disk` is supplied). Available in Mockup settings; Reset restores the full seed |
+
+### Recovery and desktop boundaries (mock only)
+
+Starting or rerunning a job checks live disk space, including accepted jobs'
+remaining outputs and queued temporary space. A rejection is 409
+`insufficient_space`, creates no job, and offers Settings or another volume.
+The retry uses `_mock.targetDisk` (a `/v1/disks` id); its outputs and temporary
+work move to that simulated volume. Resuming a download accounts for its
+already-held partial bytes. Queries do not reserve output space.
+
+Removing a person, a generated file, or all generated files returns 409
+`in_use` if queued/running jobs use them, including secondary merge inputs
+and native Windows path spelling. Reference removal through phone approval
+uses the same active-job guard as direct removal.
+The UI leaves the edit dialog and local library unchanged and links to Jobs
+to cancel work first. `PATCH {removed: true}` uses the same guard.
+
+Failed and cancelled jobs show their reason, log and **Run again**; interrupted
+ones offer **Resume**. Rerunning active work returns 409 `active_job`. A rerun
+clears the one-shot `_mock.fail` injection, preserving the original parameters
+and completed steps/partial. Queued cancellation reports zero run time.
+The queue shows position and the job it is waiting behind, using the configured
+one or two analysis slots. If an automatic retry after a fix lacks disk space,
+the original job stays actionable instead of breaking the job clock.
+
+Tool Start offers an explicit reference download when its requested FASTA or
+input CRAM's exact known reference is missing. It starts neither the analysis
+nor the download until the reviewer chooses Download.
+
+The onboarding, Add files, folder/workspace selectors, folder previews,
+diagnostics, example download, reference actions, guided conversion and
+DNA-test actions now use the same mock state/API. **Choose files/folder**
+opens the generated-file catalog instead of accessing the filesystem.
+Guided conversion honors its format, CRAM version and thread selection;
+DNA-test exports honor chip versions, quality filters and the reasons table.
+The Add preview assigns both seeded files to the selected people, validates a
+new person's name, and indexes the BAM only when **Fix when added** is checked.
+Folder previews show library paths; a problem report omits names and paths
+and provides a clipboard action with a selectable-text fallback.
+Dry run fetches estimates/steps without submitting jobs. Settings and phone
+approvals persist in the mock, not real OS settings: no actual files move,
+tools install, devices pair, or network downloads occur.
 
 #### Generated files
 
