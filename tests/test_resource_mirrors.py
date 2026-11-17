@@ -12,6 +12,7 @@ import pytest
 
 from scripts import check_remote_resources as checks
 from scripts import mirror_download_resources as publisher
+from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
 from wgsextract_cli.core import gnomad_af, resource_mirrors
@@ -314,16 +315,18 @@ def test_1046_snapshot_resolves_all_contigs_and_keeps_restricted_sources():
 
 
 @pytest.mark.parametrize("truncated", [False, True])
+@pytest.mark.parametrize("licence", ["Public data", "CC0-1.0", "CC-BY-4.0"])
 def test_1046_publisher_splits_records_and_keeps_attribution(
-    source, tmp_path, monkeypatch, truncated
+    source, tmp_path, monkeypatch, truncated, licence
 ):
+    monkeypatch.setattr(transfer.time, "sleep", lambda seconds: None)
     payload = b"redistributable source bytes"
     source.files.update(upstream=payload, licence=b"Public data source licence")
     entry = {
         "id": "public-data",
         "redistributable": True,
         "upstream_url": source.url_for("upstream"),
-        "licence": "Public data",
+        "licence": licence,
         "licence_url": source.url_for("licence"),
         "attribution": "Synthetic contributor",
         "reason": "Unrestricted",
@@ -345,18 +348,22 @@ def test_1046_publisher_splits_records_and_keeps_attribution(
                 "content": data.decode(errors="replace"),
             }
             return ""
+        if args[:2] == ("release", "download"):
+            directory = Path(args[args.index("--dir") + 1])
+            name = args[args.index("--pattern") + 1]
+            (directory / name).write_text(release[name]["content"])
+            return ""
         pytest.fail(f"Unexpected GitHub operation: {args[:2]}")
 
     monkeypatch.setattr(publisher, "gh", github)
     monkeypatch.setattr(publisher, "MAX_ASSET_BYTES", 10)
+    if licence == "Public data" and not truncated:
+        entry.update(upstream_mutable=True, sha256="0" * 64)
     if truncated:
         source.drop_paths.add("upstream")
-        with pytest.raises(ValueError, match="Incomplete upstream"):
-            publisher.publish(entry, "download-resources-test", tmp_path / "publish")
-        assert "public-data.record.json" not in release
-        assert not list((tmp_path / "publish").glob("*.part*"))
-        return
     record = publisher.publish(entry, "download-resources-test", tmp_path / "publish")
+    if truncated:
+        assert ("GET", "bytes=5-9") in source.requests
     assert record["sha256"] == hashlib.sha256(payload).hexdigest()
     assert record["size"] == len(payload) and record["retrieved_at"]
     parts = record["parts"]
@@ -366,9 +373,31 @@ def test_1046_publisher_splits_records_and_keeps_attribution(
     )
     assert all(p["size"] <= 10 for p in parts)
     assert "Synthetic contributor" in release["public-data.NOTICE.txt"]["content"]
-    assert release["public-data.LICENCE.txt"]["content"] == "Public data source licence"
+    if licence == "Public data":
+        assert (
+            release["public-data.LICENCE.txt"]["content"]
+            == "Public data source licence"
+        )
+    else:
+        assert "licence" not in source.paths
+        for suffix, key in (
+            ("LICENCE", "licence_snapshot_provenance"),
+            ("LEGALCODE", "legalcode_snapshot_provenance"),
+        ):
+            content = release[f"public-data.{suffix}.txt"]["content"].encode()
+            assert hashlib.sha256(content).hexdigest() == record[key]["sha256"]
+            assert record[key]["source_url"] and record[key]["retrieved_at"]
     assert not list((tmp_path / "publish").glob("*.part*"))
     assert json.loads(release["public-data.record.json"]["content"]) == record
+    before_assets = dict(release)
+    before_requests = list(source.paths)
+    source.statuses.update(upstream=403, licence=403)
+    assert (
+        publisher.publish(entry, "download-resources-test", tmp_path / "publish")
+        == record
+    )
+    assert release == before_assets
+    assert source.paths == before_requests
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({"resources": [entry]}))
     monkeypatch.setattr(publisher, "MANIFEST", manifest)

@@ -1,6 +1,12 @@
 import ast
 import json
+import os
 import re
+import shlex
+import shutil
+import subprocess
+import sys
+import textwrap
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import cast
@@ -10,6 +16,45 @@ import pytest
 from scripts import validate_github_actions as policy
 from scripts.check_remote_resources import live_test_targets
 from scripts.ci_changes import routes
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or shutil.which("bash") is None, reason="Ubuntu publisher shell"
+)
+def test_1046_failed_publisher_is_not_hidden_by_tee(tmp_path: Path) -> None:
+    root = WORKFLOWS.parents[1]
+    source = (WORKFLOWS / "mirror_download_resources.yml").read_text()
+    step = source.split("- name: Stream, hash and publish one resource\n", 1)[1].split(
+        "- name:", 1
+    )[0]
+    body = textwrap.dedent(step.split("run: |\n", 1)[1])
+    script = tmp_path / "publish-step.sh"
+    script.write_text(body)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    pixi = binary / "pixi"
+    pixi.write_text(f'#!/bin/sh\nshift 2\nexec {shlex.quote(sys.executable)} "$@"\n')
+    pixi.chmod(0o755)
+    (tmp_path / "scripts").symlink_to(root / "scripts", target_is_directory=True)
+    env = os.environ | {
+        "PATH": f"{binary}{os.pathsep}{os.environ['PATH']}",
+        "PYTHONPATH": str(root / "src"),
+        "RESOURCE": "spliceai-hg38",
+        "TAG": "download-resources-test",
+    }
+    # Match Actions: explicit bash adds pipefail; its default bash only adds -e.
+    flags = (
+        ["-o", "pipefail"] if re.search(r"^\s+shell:\s+bash\s*$", step, re.M) else []
+    )
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", *flags, str(script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "upstream-only" in (tmp_path / "out/mirror/publish.log").read_text()
 
 
 @pytest.mark.parametrize(

@@ -8,11 +8,15 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.request import Request, urlopen
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.mirror_resource_terms import save_terms, snapshot_record
+from scripts.mirror_resource_transfer import transfer_resource
 from wgsextract_cli.core.resource_mirrors import MANIFEST, MAX_ASSET_BYTES, resources
 
 REPO = "WGSExtract/wgsextract-cli"
@@ -72,35 +76,32 @@ def release_assets(tag: str) -> dict[str, dict[str, Any]]:
     return {asset["name"]: asset for asset in data["assets"]}
 
 
-def upload(path: Path, tag: str, existing: dict[str, dict[str, Any]]) -> None:
-    if asset := existing.get(path.name):
-        checksum = hashlib.sha256()
-        with path.open("rb") as source:
-            for chunk in iter(lambda: source.read(1 << 20), b""):
-                checksum.update(chunk)
-        digest = checksum.hexdigest()
-        if (
-            asset.get("digest") != f"sha256:{digest}"
-            or asset["size"] != path.stat().st_size
-        ):
-            raise ValueError(
-                f"{path.name} already exists with different bytes; use a new tag"
-            )
-        return
-    gh("release", "upload", tag, str(path))
-
-
-def save_terms(url: str, path: Path) -> None:
-    with urlopen(url, timeout=60) as response:
-        content = response.read(2_000_001)
-        expected = int(response.headers.get("Content-Length") or 0)
+def upload(
+    path: Path,
+    tag: str,
+    existing: dict[str, dict[str, Any]],
+    *,
+    expected_sha256: str | None = None,
+) -> None:
+    checksum = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1 << 20), b""):
+            checksum.update(chunk)
+    digest = checksum.hexdigest()
+    if expected_sha256 and digest != expected_sha256:
+        raise ValueError(f"Staged part checksum changed: {path.name}")
+    asset = existing.get(path.name)
+    if not asset:
+        gh("release", "upload", tag, str(path))
+        asset = release_assets(tag).get(path.name, {})
     if (
-        not content
-        or len(content) > 2_000_000
-        or (expected and len(content) != expected)
+        asset.get("digest") != f"sha256:{digest}"
+        or asset.get("size") != path.stat().st_size
     ):
-        raise ValueError(f"Incomplete or oversized source terms: {url}")
-    path.write_bytes(content)
+        raise ValueError(
+            f"{path.name} release checksum/size differs; never overwrite it, use a new tag"
+        )
+    existing[path.name] = asset
 
 
 def publish(entry: dict[str, Any], tag: str, out: Path) -> dict[str, Any]:
@@ -140,6 +141,9 @@ def publish(entry: dict[str, Any], tag: str, out: Path) -> dict[str, Any]:
     # Fail before transferring tens of GB if the retained terms are unavailable.
     licence = out / f"{entry['id']}.LICENCE.txt"
     save_terms(record["licence_snapshot_url"], licence)
+    record["licence_snapshot_provenance"] = snapshot_record(
+        record["licence_snapshot_url"]
+    )
     upload(licence, tag, existing)
     if entry["licence"] in {"CC-BY-4.0", "CC0-1.0"}:
         legal_url = (
@@ -149,56 +153,31 @@ def publish(entry: dict[str, Any], tag: str, out: Path) -> dict[str, Any]:
         )
         legal = out / f"{entry['id']}.LEGALCODE.txt"
         save_terms(legal_url, legal)
+        record["legalcode_snapshot_provenance"] = snapshot_record(legal_url)
         upload(legal, tag, existing)
-    whole = hashlib.sha256()
     total = 0
-    # Keep one <=1.9 GB part on disk, even for the 72 GB gnomAD contigs.
-    request = Request(
-        entry["upstream_url"], headers={"User-Agent": "wgsextract-cli-mirror"}
+
+    def publish_part(path: Path, digest: str, size: int) -> None:
+        nonlocal total
+        upload(path, tag, existing, expected_sha256=digest)
+        total += size
+        record["parts"].append(
+            {"url": f"{RELEASE_ROOT}/{tag}/{path.name}", "size": size, "sha256": digest}
+        )
+        print(f"{entry['id']}: published {total:,} bytes", flush=True)
+
+    record.update(
+        transfer_resource(
+            entry["upstream_url"],
+            out,
+            entry["id"],
+            MAX_ASSET_BYTES,
+            publish_part,
+            expected_sha256=None
+            if entry.get("upstream_mutable")
+            else entry.get("sha256"),
+        )
     )
-    with urlopen(request, timeout=120) as response:
-        expected = int(response.headers.get("Content-Length") or 0)
-        last_modified = response.headers.get("Last-Modified")
-        record["upstream_last_modified"] = last_modified
-        while True:
-            index = len(record["parts"])
-            path = out / f"{entry['id']}.part{index:04d}"
-            digest = hashlib.sha256()
-            size = 0
-            try:
-                with path.open("wb") as target:
-                    while size < MAX_ASSET_BYTES:
-                        chunk = response.read(min(1 << 20, MAX_ASSET_BYTES - size))
-                        if not chunk:
-                            break
-                        target.write(chunk)
-                        size += len(chunk)
-                        total += len(chunk)
-                        digest.update(chunk)
-                        whole.update(chunk)
-                if size == 0:
-                    break
-                if size < MAX_ASSET_BYTES and expected and total != expected:
-                    raise ValueError(
-                        f"Incomplete upstream response: {total} of {expected} bytes"
-                    )
-                upload(path, tag, existing)
-                record["parts"].append(
-                    {
-                        "url": f"{RELEASE_ROOT}/{tag}/{path.name}",
-                        "size": size,
-                        "sha256": digest.hexdigest(),
-                    }
-                )
-                print(f"{entry['id']}: published {total:,} bytes", flush=True)
-            finally:
-                path.unlink(missing_ok=True)
-        if total == 0 or (expected and total != expected):
-            raise ValueError(
-                f"Incomplete upstream response: {total} of {expected} bytes"
-            )
-    record["size"] = total
-    record["sha256"] = whole.hexdigest()
     validate_record(record, entry, tag)
 
     notice = out / f"{entry['id']}.NOTICE.txt"
