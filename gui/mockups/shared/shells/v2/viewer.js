@@ -166,7 +166,10 @@
   function reachable(urls) {
     return Promise.all(
       urls.map(function (url) {
-        return fetch(url, { headers: { Range: "bytes=0-0" } }).then(function (res) {
+        /* HEAD and uncached: a cached partial response can be stitched onto
+         * igv.js's later full request, which hosts like GitHub Pages
+         * gzip on the fly, and corrupt it */
+        return fetch(url, { method: "HEAD", cache: "no-store" }).then(function (res) {
           if (!res.ok) throw Object.assign(new Error(url.split("/").pop() + " wasn’t found (" + res.status + ")."), { missing: true });
         });
       }),
