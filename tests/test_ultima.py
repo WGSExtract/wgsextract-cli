@@ -13,6 +13,7 @@ from wgsextract_cli.api import VcfDeepvariantParams
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands._bam_ubam import read_group_from_name
 from wgsextract_cli.commands.align import AlignJob
+from wgsextract_cli.commands.alignment import backends
 from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core import native_support, paths, ultima
 from wgsextract_cli.core.utils import WGSExtractError
@@ -32,9 +33,9 @@ def test_flow_markduplicates_windows_argv_uses_native_local_paths(monkeypatch):
 
     commands = []
     monkeypatch.setattr(paths, "sys", Namespace(platform="win32"))
-    monkeypatch.setattr(align, "get_tool_path", lambda _: "gatk")
-    monkeypatch.setattr(align, "run_pipeline", lambda *_a, **_k: None)
-    for module in (align, alignment_output):
+    monkeypatch.setattr(backends, "get_tool_path", lambda _: "gatk")
+    monkeypatch.setattr(backends, "run_pipeline", lambda *_a, **_k: None)
+    for module in (backends, alignment_output):
         monkeypatch.setattr(module, "run_command", lambda cmd: commands.append(cmd))
     monkeypatch.setattr(
         alignment_output, "get_sam_index_cmd", lambda *_a, **_k: ["samtools", "index"]

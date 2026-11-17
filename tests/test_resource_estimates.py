@@ -16,6 +16,7 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
+from wgsextract_cli.commands.alignment import preparation
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
@@ -817,9 +818,10 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
     ref = tmp_path / "ref.fa"
     ref.write_text(">chr1\nA\n")
 
-    monkeypatch.setattr(
-        align, "get_tool_path", lambda name: "gatk" if name == "gatk" else None
-    )
+    for module in (align, preparation):
+        monkeypatch.setattr(
+            module, "get_tool_path", lambda name: "gatk" if name == "gatk" else None
+        )
 
     def reported(build):
         estimate = build()
@@ -835,20 +837,20 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
 
     if operation == "align":
         monkeypatch.setattr(
-            align,
+            preparation,
             "_prepare_alignment",
             lambda *_a, **_k: align._AlignSetup(
                 "1", "256M", str(tmp_path), str(ref), "sample", "r1.fq"
             ),
         )
         monkeypatch.setattr(
-            align,
+            preparation,
             "fastq_input_statistics",
             lambda *_: SimpleNamespace(reads=100, read_length=150),
         )
-        monkeypatch.setattr(align, "preflight_resources", reported)
+        monkeypatch.setattr(preparation, "preflight_resources", reported)
         monkeypatch.setattr(
-            align, "ensure_bwa_index", lambda *_: pytest.fail("indexing started")
+            preparation, "ensure_bwa_index", lambda *_: pytest.fail("indexing started")
         )
         with pytest.raises(Reported):
             align._bwa_setup(

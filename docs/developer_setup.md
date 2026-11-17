@@ -210,6 +210,15 @@ text, `runs.py` loads local run records and discovers sensitive names, and
 assembles reports and fits GitHub links; existing `core.issue_report` and
 `api.support` imports remain unchanged.
 
+### Alignment pipeline
+
+The `commands/align.py` command retains orchestration and existing job/helper
+imports. Its `alignment/` package separates shared jobs/reference primitives
+(`common.py`), native BWA/memory planning (`short_reads.py`), read/reference
+preflight (`preparation.py`), Parabricks dispatch (`gpu.py`) and Ultima,
+minimap2 and pbmm2 execution (`backends.py`). Existing read-source, read-group,
+selection and output helpers remain in the same package.
+
 ### DeepVariant pipeline
 
 The `commands/vcf/deepvariant.py` command keeps orchestration and its existing

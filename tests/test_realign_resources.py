@@ -47,6 +47,7 @@ from tests.test_realign import (
 )
 from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign
+from wgsextract_cli.commands.alignment import short_reads
 from wgsextract_cli.core.alignment.memory import MappingMemory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -211,10 +212,10 @@ def test_stream_overlap_without_ram_uses_files_without_changing_aligner(
         "can_map",
         lambda *_a, **kw: kw.get("additional_ram_bytes", 0) == 0,
     )
-    monkeypatch.setattr(realign.align_cmd, "get_tool_path", lambda *_a: "tool")
-    monkeypatch.setattr(realign.align_cmd, "available_memory", lambda: 8 * 1024**3)
+    monkeypatch.setattr(short_reads, "get_tool_path", lambda *_a: "tool")
+    monkeypatch.setattr(short_reads, "available_memory", lambda: 8 * 1024**3)
     monkeypatch.setattr(
-        realign.align_cmd,
+        short_reads,
         "estimate_mapping_memory",
         lambda *_a, **_kw: MappingMemory(8 * 1024**3 - 32 * 1024**2, 0, 0, 0, 0),
     )
@@ -273,7 +274,7 @@ def test_whole_genome_input_streams_when_its_collate_bucket_fits_ram(
     monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
     monkeypatch.setattr(realign, "calculate_bam_md5", lambda *_a: None)
     monkeypatch.setattr(realign, "resolve_reference", lambda *_a: None)
-    monkeypatch.setattr(realign.align_cmd, "available_memory", lambda: gib * 1024**3)
+    monkeypatch.setattr(short_reads, "available_memory", lambda: gib * 1024**3)
     monkeypatch.setattr(realign, "available_memory", lambda: gib * 1024**3)
     realign.run(_args(source, aligner="bwa", threads=8, memory="2G"))
     if gib == 64:
