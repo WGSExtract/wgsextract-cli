@@ -14,9 +14,17 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Reference data</h1>
-      <p class="v2-head__sub">The reference genomes your files were aligned to, and the extra data annotation tools compare against, such as ClinVar. WGS Extract needs the genome a file was aligned to before it can read a CRAM, call variants or make DNA-test files. 6.1 GB installed on Macintosh HD.</p>
+      <p class="v2-head__sub">The <abbr class="v2-term" data-term="reference">reference genomes</abbr> your files were aligned to, and the extra data <abbr class="v2-term" data-term="annotation">annotation</abbr> tools compare against, such as <abbr class="v2-term" data-term="clinvar">ClinVar</abbr>. WGS Extract needs the genome a file was aligned to before it can read a <abbr class="v2-term" data-term="cram">CRAM</abbr>, call variants or make DNA-test files. 6.1 GB installed on Macintosh HD.</p>
     </div>
   </header>
+  <details class="v2-more v2-learn" data-annot-id="learn-reference">
+    <summary>What’s a reference genome, and why are there several?</summary>
+    <div class="v2-more__body">
+      <p>A reference genome is a standard human DNA sequence that works like a map’s grid. A sequencer only produces short <abbr class="v2-term" data-term="reads">reads</abbr>; aligning places each one on the reference, and <abbr class="v2-term" data-term="variant">variants</abbr> are described as differences from it. It isn’t a “normal” person: it was assembled mostly from a few donors.</p>
+      <p>It has been improved over the years, and each version is a <abbr class="v2-term" data-term="build">build</abbr>: <abbr class="v2-term" data-term="grch37">GRCh37</abbr> (2009, also called hg19), <abbr class="v2-term" data-term="grch38">GRCh38</abbr> (2013, hg38) and <abbr class="v2-term" data-term="t2t">T2T-CHM13</abbr> (2022, the first complete one). Positions differ between builds, so a file works only with tools that expect its build. Within a build, versions such as hs38 and hs38d1 add different extra sequences, such as <abbr class="v2-term" data-term="decoy">decoys</abbr>, so a CRAM must be opened with exactly the one it was made with.</p>
+      <p>You don’t have to choose: WGS Extract reads which one each file needs and offers that download.</p>
+    </div>
+  </details>
 
   <section class="v2-section" data-annot-id="needed">
     <div class="v2-section__head"><h2>Reference genomes your files need</h2></div>
@@ -45,8 +53,8 @@
       <table class="v2-table" aria-label="Reference genomes you can install">
         <thead><tr><th>Name</th><th class="v2-hide-phone">Build</th><th class="v2-hide-phone">Good for</th><th class="v2-num">Download</th><th><span class="visually-hidden">Install</span></th></tr></thead>
         <tbody>
-          <tr><td class="v2-table__main">T2T-CHM13 v2.0<div class="v2-only-phone v2-dim v2-small">T2T · The complete genome, including all of Y; long reads</div></td><td class="v2-hide-phone">T2T</td><td class="v2-muted v2-hide-phone">The complete genome, including all of Y; long reads</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading T2T-CHM13 v2.0. See Jobs.">Install</button></td></tr>
-          <tr><td class="v2-table__main">hs38DH<div class="v2-only-phone v2-dim v2-small">GRCh38 · 1000 Genomes high-coverage files; ancient DNA</div></td><td class="v2-hide-phone">GRCh38</td><td class="v2-muted v2-hide-phone">1000 Genomes high-coverage files; ancient DNA</td><td class="v2-num">1.0 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38DH. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">T2T-CHM13 v2.0<div class="v2-only-phone v2-dim v2-small">T2T · The complete genome, including all of Y; <abbr class="v2-term" data-term="longreads">long reads</abbr></div></td><td class="v2-hide-phone">T2T</td><td class="v2-muted v2-hide-phone">The complete genome, including all of Y; <abbr class="v2-term" data-term="longreads">long reads</abbr></td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading T2T-CHM13 v2.0. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">hs38DH<div class="v2-only-phone v2-dim v2-small">GRCh38 · <abbr class="v2-term" data-term="kg1000">1000 Genomes</abbr> high-coverage files; ancient DNA</div></td><td class="v2-hide-phone">GRCh38</td><td class="v2-muted v2-hide-phone"><abbr class="v2-term" data-term="kg1000">1000 Genomes</abbr> high-coverage files; ancient DNA</td><td class="v2-num">1.0 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38DH. See Jobs.">Install</button></td></tr>
           <tr><td class="v2-table__main">hg38<div class="v2-only-phone v2-dim v2-small">GRCh38 · Files from YSEQ</div></td><td class="v2-hide-phone">GRCh38</td><td class="v2-muted v2-hide-phone">Files from YSEQ</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hg38. See Jobs.">Install</button></td></tr>
           <tr><td class="v2-table__main">hg19<div class="v2-only-phone v2-dim v2-small">GRCh37 · Early Dante files (2018)</div></td><td class="v2-hide-phone">GRCh37</td><td class="v2-muted v2-hide-phone">Early Dante files (2018)</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hg19. See Jobs.">Install</button></td></tr>
           <tr><td class="v2-table__main">hs37<div class="v2-only-phone v2-dim v2-small">GRCh37 · Older 1000 Genomes files without decoys</div></td><td class="v2-hide-phone">GRCh37</td><td class="v2-muted v2-hide-phone">Older 1000 Genomes files without decoys</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs37. See Jobs.">Install</button></td></tr>
@@ -65,12 +73,12 @@
         <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip" data-state="ok"></span>Installed</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#remove">Remove · frees 160 MB</button></span>
       </div>
       <div class="v2-item">
-        <span class="v2-item__title">gnomAD allele frequencies</span>
+        <span class="v2-item__title"><abbr class="v2-term" data-term="gnomad">gnomAD allele frequencies</abbr></span>
         <span class="v2-item__desc">How common each variant is · used by VEP and the variant table <code class="v2-cmd">· ref/gnomad</code></span>
         <span class="v2-item__aside"><span class="v2-dim">Not installed</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading gnomAD (26 GB). See Jobs.">Install · 26 GB</button></span>
       </div>
       <div class="v2-item">
-        <span class="v2-item__title">VEP cache for GRCh38</span>
+        <span class="v2-item__title"><abbr class="v2-term" data-term="vep">VEP cache for GRCh38</abbr></span>
         <span class="v2-item__desc">Gene and effect for each variant · used by Annotate with VEP <code class="v2-cmd">· vep/download</code></span>
         <span class="v2-item__aside"><span class="v2-dim">Not installed</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading the VEP cache (26 GB). See Jobs.">Install · 26 GB</button></span>
       </div>
@@ -85,7 +93,7 @@
         <table class="v2-table" aria-label="Installed reference details">
           <thead><tr><th>Reference</th><th>Checksum</th><th>Indexes</th><th class="v2-num">On disk</th></tr></thead>
           <tbody>
-            <tr><td class="v2-table__main">hs38</td><td>Verified Nov 2</td><td>FASTA index, dictionary, bwa <span class="v2-dim">· bwa-mem2 index made on first use</span></td><td class="v2-num">3.1 GB</td></tr>
+            <tr><td class="v2-table__main">hs38</td><td>Verified Nov 2</td><td><abbr class="v2-term" data-term="fasta">FASTA</abbr> <abbr class="v2-term" data-term="index">index</abbr>, dictionary, <abbr class="v2-term" data-term="bwa">bwa</abbr> <span class="v2-dim">· <abbr class="v2-term" data-term="bwamem2">bwa-mem2</abbr> index made on first use</span></td><td class="v2-num">3.1 GB</td></tr>
             <tr><td class="v2-table__main">hs37d5</td><td>Verified Oct 28</td><td>FASTA index, dictionary <span class="v2-dim">· aligner indexes interrupted</span></td><td class="v2-num">3.0 GB</td></tr>
           </tbody>
         </table>

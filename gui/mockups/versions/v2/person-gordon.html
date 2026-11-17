@@ -16,7 +16,7 @@
       <span class="v2-avatar v2-avatar--lg">GM</span>
       <div class="v2-head__text">
         <h1>Gordon McDonald</h1>
-        <p class="v2-head__sub">Father of Reginald · male · 1 genome file, 38× on GRCh37, and a GRCh38 copy being made</p>
+        <p class="v2-head__sub">Father of Reginald · male · 1 genome file, <abbr class="v2-term" data-term="depth">38×</abbr> on <abbr class="v2-term" data-term="grch37">GRCh37</abbr>, and a <abbr class="v2-term" data-term="grch38">GRCh38</abbr> copy being made</p>
       </div>
     </div>
     <div class="v2-head__actions">
@@ -40,12 +40,12 @@
         <div class="v2-sheet">
           <div class="v2-sheet__pad v2-cols--even v2-cols" style="gap: 24px">
             <div class="v2-line" data-line="y">
-              <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+              <span class="v2-line__kind">Paternal line <small><abbr class="v2-term" data-term="ydna">Y-DNA</abbr>, father to son</small></span>
               <span class="v2-line__result">J-ZS241</span>
               <span class="v2-muted v2-small">The same as Reginald’s, as a father and son should be. High confidence: 42 of 43 markers.</span>
             </div>
             <div class="v2-line" data-line="mt">
-              <span class="v2-line__kind">Maternal line <small>mtDNA, from his mother</small></span>
+              <span class="v2-line__kind">Maternal line <small><abbr class="v2-term" data-term="mtdna">mtDNA</abbr>, from his mother</small></span>
               <span class="v2-line__result">H1c</span>
               <span class="v2-muted v2-small">A branch of H, the most common maternal line in Europe. Gordon passes it to no one; only mothers pass on mtDNA. High confidence.</span>
             </div>
@@ -72,16 +72,23 @@
             <dl class="v2-kv">
               <div><dt>Mean depth</dt><dd>38.2× <small>good for every task</small></dd></div>
               <div><dt>Reads mapped</dt><dd>99.1% <small>1.05 billion reads</small></dd></div>
-              <div><dt>Reads</dt><dd>2 × 150 bp <small>Illumina, paired</small></dd></div>
+              <div><dt><abbr class="v2-term" data-term="reads">Reads</abbr></dt><dd>2 × 150 <abbr class="v2-term" data-term="bp">bp</abbr> <small><abbr class="v2-term" data-term="illumina">Illumina</abbr>, <abbr class="v2-term" data-term="paired">paired</abbr></small></dd></div>
               <div><dt>Reference</dt><dd>hs37d5 <small>GRCh37, installed</small></dd></div>
               <div><dt>Size</dt><dd>92.4 GB <small>on Genomes</small></dd></div>
             </dl>
           </div>
           <div class="v2-sheet__pad v2-section" data-annot-id="file-cram">
             <div class="v2-row v2-row--wrap"><span class="v2-tag">CRAM</span><span class="v2-file__name v2-grow">60820188479016.hs38.cram</span><span class="v2-status v2-small"><span class="v2-pip" data-state="busy"></span>Being made · 47%</span></div>
-            <p class="v2-small v2-muted">When it’s done, this GRCh38 copy becomes the file Gordon’s results come from. The BAM is then only needed by tools that want GRCh37; Convert can remove it to free 92 GB.</p>
+            <p class="v2-small v2-muted">When it’s done, this GRCh38 copy becomes the file Gordon’s results come from. The <abbr class="v2-term" data-term="bam">BAM</abbr> is then only needed by tools that want GRCh37; Convert can remove it to free 92 GB.</p>
           </div>
         </div>
+        <details class="v2-more v2-learn" data-annot-id="learn-realign">
+          <summary>Why make a GRCh38 copy?</summary>
+          <div class="v2-more__body">
+            <p>The <abbr class="v2-term" data-term="reference">reference genome</abbr> comes in versions, called <abbr class="v2-term" data-term="build">builds</abbr>. Gordon’s BAM is on GRCh37, from 2009; most labs, tools and databases now use GRCh38, from 2013. A gene sits at different positions in the two, so a file only works with tools that expect its build.</p>
+            <p><abbr class="v2-term" data-term="align">Realigning</abbr> places every read again on GRCh38. It takes a few hours, and the reads themselves don’t change.</p>
+          </div>
+        </details>
       </section>
 
       <section class="v2-section" data-annot-id="made">
@@ -90,9 +97,9 @@
           <table class="v2-table" aria-label="Results and files made from Gordon">
             <thead><tr><th>What</th><th>Result</th><th>When</th><th><span class="visually-hidden">Open</span></th></tr></thead>
             <tbody>
-              <tr><td class="v2-table__main">Y haplogroup</td><td><span class="v2-hap" data-line="y">J-ZS241</span> · 42 of 43 markers</td><td class="v2-dim">Nov 12</td><td class="v2-num"></td></tr>
+              <tr><td class="v2-table__main">Y <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr></td><td><span class="v2-hap" data-line="y">J-ZS241</span> · 42 of 43 markers</td><td class="v2-dim">Nov 12</td><td class="v2-num"></td></tr>
               <tr><td class="v2-table__main">mtDNA haplogroup</td><td><span class="v2-hap" data-line="mt">H1c</span> · quality 0.91</td><td class="v2-dim">Nov 12</td><td class="v2-num"></td></tr>
-              <tr><td class="v2-table__main">Relatedness</td><td>Reginald’s father, as expected</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="tool-relatedness.html">Open</a></td></tr>
+              <tr><td class="v2-table__main"><abbr class="v2-term" data-term="relatedness">Relatedness</abbr></td><td>Reginald’s father, as expected</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="tool-relatedness.html">Open</a></td></tr>
               <tr><td class="v2-table__main">Realign to hs38</td><td><span class="v2-status"><span class="v2-pip" data-state="busy"></span>Running · 47%</span></td><td class="v2-dim">Today 08:15</td><td class="v2-num"><a class="v2-link" href="jobs.html">Job</a></td></tr>
             </tbody>
           </table>

@@ -16,7 +16,7 @@
       <span class="v2-avatar v2-avatar--lg">HM</span>
       <div class="v2-head__text">
         <h1>Helen McDonald</h1>
-        <p class="v2-head__sub">Mother of Reginald · female · 1 file: a VCF of variants on GRCh38</p>
+        <p class="v2-head__sub">Mother of Reginald · female · 1 file: a <abbr class="v2-term" data-term="vcf">VCF</abbr> of <abbr class="v2-term" data-term="variant">variants</abbr> on <abbr class="v2-term" data-term="grch38">GRCh38</abbr></p>
       </div>
     </div>
     <div class="v2-head__actions">
@@ -31,12 +31,12 @@
         <div class="v2-sheet">
           <div class="v2-sheet__pad v2-cols--even v2-cols" style="gap: 24px">
             <div class="v2-line" data-line="mt">
-              <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+              <span class="v2-line__kind">Maternal line <small><abbr class="v2-term" data-term="mtdna">mtDNA</abbr>, mother to children</small></span>
               <span class="v2-line__result">K1a1b1a</span>
               <span class="v2-muted v2-small">The same as Reginald’s: she passed it to him. A branch of K found across Europe. High confidence.</span>
             </div>
             <div class="v2-line">
-              <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+              <span class="v2-line__kind">Paternal line <small><abbr class="v2-term" data-term="ydna">Y-DNA</abbr>, father to son</small></span>
               <span class="v2-muted v2-small">None. Helen is female, so has no Y chromosome. Her father’s or a brother’s genome would show her paternal line.</span>
             </div>
           </div>
@@ -60,8 +60,8 @@
             <div class="v2-row v2-row--wrap"><span class="v2-tag">VCF</span><span class="v2-file__name v2-grow">helen-mcdonald.deepvariant.vcf.gz</span><span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Ready · used for everything on this page</span></div>
             <code class="v2-cmd v2-dim v2-small">{{bundleWorkspace}}/genomes/helen-mcdonald/helen-mcdonald.deepvariant.vcf.gz</code>
             <dl class="v2-kv">
-              <div><dt>Variants</dt><dd>4.9 M <small>4.1 M SNPs, 0.8 M indels</small></dd></div>
-              <div><dt>Caller</dt><dd>DeepVariant 1.6 <small>from the sequencing lab</small></dd></div>
+              <div><dt>Variants</dt><dd>4.9 M <small>4.1 M <abbr class="v2-term" data-term="snp">SNPs</abbr>, 0.8 M <abbr class="v2-term" data-term="indel">indels</abbr></small></dd></div>
+              <div><dt><abbr class="v2-term" data-term="calling">Caller</abbr></dt><dd><abbr class="v2-term" data-term="deepvariant">DeepVariant</abbr> 1.6 <small>from the sequencing lab</small></dd></div>
               <div><dt>Reference</dt><dd>GRCh38 <small>hs38, installed</small></dd></div>
               <div><dt>Size</dt><dd>148 MB</dd></div>
             </dl>
@@ -71,9 +71,17 @@
           <i data-icon="info"></i>
           <div class="v2-notice__text">
             <strong>A VCF holds variants, not reads</strong>
-            <span>It’s enough for DNA-test files, lineage, ancestry and annotation. Converting, realigning, extracting and calling variants need Helen’s BAM or CRAM; add it if you have it.</span>
+            <span>It’s enough for DNA-test files, lineage, ancestry and annotation. Converting, realigning, extracting and calling variants need Helen’s <abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="cram">CRAM</abbr>; add it if you have it.</span>
           </div>
         </div>
+        <details class="v2-more v2-learn" data-annot-id="learn-vcf">
+          <summary>What’s a VCF, and when would you want one?</summary>
+          <div class="v2-more__body">
+            <p>A VCF lists the places where a genome differs from the <abbr class="v2-term" data-term="reference">reference genome</abbr>, 4 to 5 million for most people, with the <abbr class="v2-term" data-term="genotype">genotype</abbr> at each: the two letters Helen carries there. Labs often deliver one with the reads, and Call variants makes one from a BAM or CRAM.</p>
+            <p>It’s small, 148 MB here against tens of gigabytes for the reads, so it’s quick to share, search and <abbr class="v2-term" data-term="annotation">annotate</abbr>. It’s all you need for DNA-test files, lineage, ancestry, health-related variants and medicine–gene reports.</p>
+            <p>What it can’t do: it holds no <abbr class="v2-term" data-term="reads">reads</abbr>, so it can’t be realigned to another reference or called again with a better caller. And a plain VCF doesn’t say whether a position it leaves out matched the reference or wasn’t read at all. Keep the BAM or CRAM it came from if you can.</p>
+          </div>
+        </details>
       </section>
 
       <section class="v2-section" data-annot-id="made">
@@ -83,8 +91,8 @@
             <thead><tr><th>What</th><th>Result</th><th>When</th><th><span class="visually-hidden">Open</span></th></tr></thead>
             <tbody>
               <tr><td class="v2-table__main">DNA-test files</td><td>GEDmatch and MyHeritage · 99.1% of markers</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="result.html">Open</a></td></tr>
-              <tr><td class="v2-table__main">mtDNA haplogroup</td><td><span class="v2-hap" data-line="mt">K1a1b1a</span> · quality 0.93</td><td class="v2-dim">Nov 13</td><td class="v2-num"></td></tr>
-              <tr><td class="v2-table__main">Relatedness</td><td>Reginald’s mother, as expected</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="tool-relatedness.html">Open</a></td></tr>
+              <tr><td class="v2-table__main">mtDNA <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr></td><td><span class="v2-hap" data-line="mt">K1a1b1a</span> · quality 0.93</td><td class="v2-dim">Nov 13</td><td class="v2-num"></td></tr>
+              <tr><td class="v2-table__main"><abbr class="v2-term" data-term="relatedness">Relatedness</abbr></td><td>Reginald’s mother, as expected</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="tool-relatedness.html">Open</a></td></tr>
             </tbody>
           </table>
         </div>

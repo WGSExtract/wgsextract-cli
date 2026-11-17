@@ -30,7 +30,7 @@
     <h2>Missing</h2>
     <div class="v2-sheet">
       <div class="v2-sheet__pad v2-section" data-annot-id="java">
-        <div class="v2-row v2-row--wrap"><span class="v2-pip" data-state="attention"></span><strong class="v2-grow">Java 17 or later</strong><span class="v2-small v2-muted">Needed by GATK HaplotypeCaller and Pharmacogenomics</span></div>
+        <div class="v2-row v2-row--wrap"><span class="v2-pip" data-state="attention"></span><strong class="v2-grow">Java 17 or later</strong><span class="v2-small v2-muted">Needed by <abbr class="v2-term" data-term="gatk">GATK HaplotypeCaller</abbr> and <abbr class="v2-term" data-term="pgx">Pharmacogenomics</abbr></span></div>
         <ol class="v2-steps-list v2-small" data-when="os:mac">
           <li>Install Homebrew from brew.sh if you don’t have it.</li>
           <li>In Terminal, run <span class="v2-mono">brew install openjdk</span>.</li>
@@ -53,12 +53,12 @@
     <div class="v2-sheet">
       <div class="v2-item" data-annot-id="cyrius">
         <span class="v2-item__title">Cyrius</span>
-        <span class="v2-item__desc">CYP2D6 typing. Its licence doesn’t allow WGS Extract to bundle it, so it comes from its authors. Install it only if you need CYP2D6. <code class="v2-cmd">· typing/cyp2d6</code></span>
+        <span class="v2-item__desc"><abbr class="v2-term" data-term="cyp2d6">CYP2D6</abbr> typing. Its licence doesn’t allow WGS Extract to bundle it, so it comes from its authors. Install it only if you need CYP2D6. <code class="v2-cmd">· typing/cyp2d6</code></span>
         <span class="v2-item__aside"><span class="v2-dim">Not installed</span></span>
       </div>
       <div class="v2-item">
         <span class="v2-item__title">Docker</span>
-        <span class="v2-item__desc">Runs DeepVariant in a container</span>
+        <span class="v2-item__desc">Runs <abbr class="v2-term" data-term="deepvariant">DeepVariant</abbr> in a <abbr class="v2-term" data-term="docker">container</abbr></span>
         <span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Running</span>
       </div>
     </div>
@@ -70,14 +70,14 @@
       <table class="v2-table" aria-label="Tools found on this computer">
         <thead><tr><th>Tool</th><th>Version</th><th>Used for</th></tr></thead>
         <tbody>
-          <tr><td class="v2-table__main">samtools, bcftools, htslib</td><td>1.21</td><td class="v2-muted">Almost everything</td></tr>
-          <tr><td class="v2-table__main">bwa-mem2</td><td>2.2.1</td><td class="v2-muted">Align and realign</td></tr>
-          <tr><td class="v2-table__main">minimap2</td><td>2.28</td><td class="v2-muted">Long reads</td></tr>
-          <tr><td class="v2-table__main">Yleaf</td><td>3.2</td><td class="v2-muted">Y haplogroup</td></tr>
+          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="samtools">samtools</abbr>, <abbr class="v2-term" data-term="bcftools">bcftools</abbr>, htslib</td><td>1.21</td><td class="v2-muted">Almost everything</td></tr>
+          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="bwamem2">bwa-mem2</abbr></td><td>2.2.1</td><td class="v2-muted">Align and realign</td></tr>
+          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="minimap2">minimap2</abbr></td><td>2.28</td><td class="v2-muted"><abbr class="v2-term" data-term="longreads">Long reads</abbr></td></tr>
+          <tr><td class="v2-table__main">Yleaf</td><td>3.2</td><td class="v2-muted">Y <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr></td></tr>
           <tr><td class="v2-table__main">HaploGrep 3</td><td>3.2.2</td><td class="v2-muted">mtDNA haplogroup</td></tr>
-          <tr><td class="v2-table__main">somalier</td><td>0.2.19</td><td class="v2-muted">Relatedness</td></tr>
-          <tr><td class="v2-table__main">Delly</td><td>1.2.6</td><td class="v2-muted">Structural variants</td></tr>
-          <tr><td class="v2-table__main">T1K</td><td>1.0.5</td><td class="v2-muted">HLA typing</td></tr>
+          <tr><td class="v2-table__main">somalier</td><td>0.2.19</td><td class="v2-muted"><abbr class="v2-term" data-term="relatedness">Relatedness</abbr></td></tr>
+          <tr><td class="v2-table__main">Delly</td><td>1.2.6</td><td class="v2-muted"><abbr class="v2-term" data-term="sv">Structural variants</abbr></td></tr>
+          <tr><td class="v2-table__main">T1K</td><td>1.0.5</td><td class="v2-muted"><abbr class="v2-term" data-term="hla">HLA</abbr> typing</td></tr>
           <tr><td class="v2-table__main">and 6 more</td><td></td><td class="v2-muted">FastQC, MultiQC, VerifyBamID2, WhatsHap, ExpansionHunter, vep-rs</td></tr>
         </tbody>
       </table>

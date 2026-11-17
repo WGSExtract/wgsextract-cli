@@ -14,7 +14,7 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Add files</h1>
-      <p class="v2-head__sub">Genomes, raw reads, VCFs or a DNA-test kit. WGS Extract works out what each file is and whose it is likely to be.</p>
+      <p class="v2-head__sub">Genomes, <abbr class="v2-term" data-term="reads">raw reads</abbr>, <abbr class="v2-term" data-term="vcf">VCFs</abbr> or a <abbr class="v2-term" data-term="kit">DNA-test kit</abbr>. WGS Extract works out what each file is and whose it is likely to be.</p>
     </div>
   </header>
 
@@ -29,6 +29,18 @@
       <button class="v2-btn v2-btn--sm" type="button" data-toast="Mockup: opens the folder chooser">Choose a folder</button>
     </div>
   </div>
+  <details class="v2-more v2-learn" data-annot-id="learn-kinds">
+    <summary>Which files can I add?</summary>
+    <div class="v2-more__body">
+      <dl>
+        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>A whole genome as the lab delivers it: every read, placed on a reference genome. The most useful kind, since every other kind can be made from it.</dd>
+        <dt><abbr class="v2-term" data-term="fastq">FASTQ</abbr></dt><dd>Raw reads that haven’t been aligned yet, usually two files. They’re aligned first, which takes a few hours.</dd>
+        <dt>VCF</dt><dd>Only the places where the genome differs from the reference. Enough for DNA-test files, lineage, ancestry and annotation.</dd>
+        <dt>Raw data</dt><dd>The text file from 23andMe, AncestryDNA, MyHeritage and similar tests: about 600,000–700,000 markers.</dd>
+      </dl>
+      <p>Labs and testing companies offer these as downloads in your account. Keep the BAM or CRAM if you have it: a VCF or a raw-data file can be made from it, but not the other way round.</p>
+    </div>
+  </details>
 
   <section class="v2-section" id="found" data-annot-id="found">
     <div class="v2-section__head"><h2>Found 3 things in Downloads</h2><span class="v2-dim v2-small">Read in 1.2 s</span></div>
@@ -36,15 +48,15 @@
       <div class="v2-sheet__pad v2-section" data-annot-id="found-bam">
         <div class="v2-row v2-row--wrap"><span class="v2-tag">BAM</span><span class="v2-file__name v2-grow">NG1A2B3C4D.bam</span><span class="v2-dim v2-small">~/Downloads · 71.2 GB</span></div>
         <dl class="v2-kv">
-          <div><dt>Kind</dt><dd>Whole genome <small>Nebula, paired reads</small></dd></div>
-          <div><dt>Reference</dt><dd>GRCh38 <small>hs38d1</small></dd></div>
-          <div><dt>Depth</dt><dd>about 30×</dd></div>
+          <div><dt>Kind</dt><dd>Whole genome <small>Nebula, <abbr class="v2-term" data-term="paired">paired reads</abbr></small></dd></div>
+          <div><dt><abbr class="v2-term" data-term="reference">Reference</abbr></dt><dd><abbr class="v2-term" data-term="grch38">GRCh38</abbr> <small>hs38d1</small></dd></div>
+          <div><dt><abbr class="v2-term" data-term="depth">Depth</abbr></dt><dd>about 30×</dd></div>
           <div><dt>Sex</dt><dd>Female <small>from X and Y depth</small></dd></div>
         </dl>
         <div class="v2-row v2-row--wrap">
           <label class="v2-field__label" for="who-bam">Whose is it?</label>
           <select class="v2-select" id="who-bam" style="max-width: 220px"><option>New person…</option><option>Reginald</option><option>Gordon</option><option>Helen</option><option selected>Alex</option></select>
-          <span class="v2-small v2-muted">Matches Alex’s 23andMe kit: their genotypes agree.</span>
+          <span class="v2-small v2-muted">Matches Alex’s 23andMe kit: their <abbr class="v2-term" data-term="genotype">genotypes</abbr> agree.</span>
         </div>
         <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>No index (.bai), so it can’t be read by region yet.</span>
         <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>Its reference, hs38d1, isn’t installed; it’s needed to read the file.</span>
@@ -54,8 +66,8 @@
       <div class="v2-sheet__pad v2-section" data-annot-id="found-fastq">
         <div class="v2-row v2-row--wrap"><span class="v2-tag">FASTQ</span><span class="v2-file__name v2-grow">60820188474839_SA_L001_R1/R2_001.fastq.gz</span><span class="v2-dim v2-small">~/Downloads · 2 × 38.5 GB</span></div>
         <dl class="v2-kv">
-          <div><dt>Kind</dt><dd>Raw reads <small>Dante, paired, not aligned</small></dd></div>
-          <div><dt>Reads</dt><dd>2 × 150 bp <small>Illumina</small></dd></div>
+          <div><dt>Kind</dt><dd>Raw reads <small>Dante, paired, not <abbr class="v2-term" data-term="align">aligned</abbr></small></dd></div>
+          <div><dt>Reads</dt><dd>2 × 150 <abbr class="v2-term" data-term="bp">bp</abbr> <small><abbr class="v2-term" data-term="illumina">Illumina</abbr></small></dd></div>
           <div><dt>Depth</dt><dd>about 30×</dd></div>
         </dl>
         <div class="v2-row v2-row--wrap">
