@@ -14,51 +14,46 @@
   <header class="v2-head"><div class="v2-head__text">
     <p class="v2-small v2-muted">LESSON 06 OF 08 · ABOUT 4 MINUTES</p>
     <h1>Interpreting health findings</h1>
-    <p class="v2-head__sub">A personal report describes software findings. It is not a diagnosis or medical advice.</p>
+    <p class="v2-head__sub">How software cross-references variants with clinical and drug-gene databases, and why medical hits belong with a clinician.</p>
   </div></header>
   <aside class="v2-sheet v2-sheet__pad v2-section">
-    <strong>Pause before acting on a result</strong>
-    <p>Do not change treatment or screening based on this exploration. Bring concerning findings to a qualified clinician or genetic counsellor, who can assess your history and arrange clinical confirmation. A “nothing found” report does not rule out a genetic condition.</p>
+    <strong>Before acting on anything health-related</strong>
+    <p>WGS Extract runs research tools on personal files and cannot diagnose or rule out medical conditions. Never alter medication or screening from a screen here; bring concerning hits to a physician or genetic counsellor who can arrange accredited clinical testing.</p>
   </aside>
   <section class="v2-section" id="annotation">
-    <h2>Annotation adds context, not certainty</h2>
-    <p><abbr class="v2-term" data-term="annotation">Annotation</abbr> attaches gene names, predicted consequences, frequencies and published interpretations to a VCF. <abbr class="v2-term" data-term="vep">VEP</abbr>, the Ensembl Variant Effect Predictor, predicts consequences relative to gene transcripts.</p>
-    <p>A <abbr class="v2-term" data-term="missense">missense</abbr> change alters a predicted protein building block; it does not automatically damage the protein. Results depend on transcript, resource version and build. Annotation cannot fix a false genotype.</p>
+    <h2>How annotation labels a raw variant</h2>
+    <p><abbr class="v2-term" data-term="annotation">Annotation</abbr> tools like Ensembl’s Variant Effect Predictor (<abbr class="v2-term" data-term="vep">VEP</abbr>) map each VCF (Variant Call Format) DNA (deoxyribonucleic acid) change onto gene transcripts to predict RNA (ribonucleic acid) or protein effects alongside frequencies and clinical records. A <abbr class="v2-term" data-term="missense">missense</abbr> swap substitutes one amino acid in a protein; many are benign, and labels shift across alternate transcripts.</p>
   </section>
   <section class="v2-section" id="clinvar">
-    <h2>ClinVar labels need a condition and evidence</h2>
-    <p><abbr class="v2-term" data-term="clinvar">ClinVar</abbr> collects submitted clinical interpretations. Check the condition, review status, date and disagreements. “Pathogenic” means disease-causing in an appropriate context, not “this person is ill.”</p>
-    <p>Inheritance matters: one allele for a recessive condition often means carrier status, while risk for other conditions depends on age, penetrance and other factors. A <abbr class="v2-term" data-term="vus">VUS</abbr>, variant of uncertain significance, is not a positive diagnosis and should not alone direct care.</p>
-    <p><abbr class="v2-term" data-term="acmg">ACMG</abbr> means American College of Medical Genetics and Genomics. Its secondary-findings gene list defines a scope for clinical evaluation; it is not a list where every variant is harmful. The classification framework co-published with <abbr class="v2-term" data-term="amp">AMP</abbr>, the Association for Molecular Pathology, is a separate evidence process, not a simple score threshold.</p>
+    <h2>Reading ClinVar entries and review stars</h2>
+    <p><abbr class="v2-term" data-term="clinvar">ClinVar</abbr> (Clinical Variation database) gathers lab interpretations scored zero to four stars by reviewer consensus. Check the disorder, stars, dates and inheritance together: one recessive copy (<code>0/1</code>) ordinarily marks unaffected carrier status, and many dominant variants have incomplete penetrance.</p>
+    <p>Sparse or divided evidence earns a variant of uncertain significance (<abbr class="v2-term" data-term="vus">VUS</abbr>) label, which guidelines treat as unactionable alone. Reports also cite the American College of Medical Genetics and Genomics (<abbr class="v2-term" data-term="acmg">ACMG</abbr>) in two ways: the ACMG Secondary Findings list of actionable genes, and the joint ACMG and Association for Molecular Pathology (<abbr class="v2-term" data-term="amp">AMP</abbr>) evidence rules labs use to classify variants.</p>
   </section>
   <section class="v2-section" id="frequency">
-    <h2>Rare does not mean harmful</h2>
-    <p><abbr class="v2-term" data-term="gnomad">gnomAD</abbr>, the Genome Aggregation Database, reports variant observations across research cohorts. <abbr class="v2-term" data-term="af">Allele frequency</abbr> counts allele copies, not people.</p>
-    <p>A variant too common for a proposed rare disorder is evidence against that interpretation. But a variant absent from gnomAD is not automatically harmful: it may be rare, poorly covered or from a population under-represented in the dataset. Participants are not a uniformly healthy control group.</p>
+    <h2>Checking how common a variant is in gnomAD</h2>
+    <p>The Genome Aggregation Database (<abbr class="v2-term" data-term="gnomad">gnomAD</abbr>) reports <abbr class="v2-term" data-term="af">allele frequency (AF)</abbr> across hundreds of thousands of people, counting chromosome copies (AF 0.01 = 1% of measured copies). High frequency rules out a solo cause of a rare Mendelian disorder, whereas absence from gnomAD is ordinary for benign private variants or under-sampled ancestries.</p>
   </section>
   <section class="v2-section" id="scores">
-    <h2>Prediction scores help prioritize — not diagnose</h2>
+    <h2>Computational scores rank candidates</h2>
     <ul>
-      <li><abbr class="v2-term" data-term="cadd">CADD</abbr> ranks predicted deleteriousness; a scaled score of 20 is roughly a top-1% rank among possible substitutions, not a 99% disease probability.</li>
-      <li><abbr class="v2-term" data-term="revel">REVEL</abbr> combines models for missense variants. AlphaMissense is another missense predictor.</li>
-      <li><abbr class="v2-term" data-term="spliceai">SpliceAI</abbr> predicts changes to RNA splicing, the cutting and joining of a gene’s RNA.</li>
+      <li>Combined Annotation Dependent Depletion (<abbr class="v2-term" data-term="cadd">CADD</abbr>) ranks genome-wide changes: scaled 20 sits in the top 1% of substitutions, ranking candidates rather than stating disease odds.</li>
+      <li>Rare Exome Variant Ensemble Learner (<abbr class="v2-term" data-term="revel">REVEL</abbr>) scores missense changes from 0 to 1, alongside structure models like AlphaMissense.</li>
+      <li><abbr class="v2-term" data-term="spliceai">SpliceAI</abbr> (splice-site artificial intelligence) scores from 0 to 1 whether a variant alters RNA exon splicing.</li>
     </ul>
-    <p>Models can share training evidence, disagree and be wrong. Several high scores are not automatically several independent lines of clinical evidence.</p>
+    <p>Because predictors share conservation inputs, matching high scores often reflect one shared signal and routinely flag benign variants.</p>
   </section>
   <section class="v2-section" id="medicines">
-    <h2>Pharmacogenomics is not a prescription</h2>
-    <p><abbr class="v2-term" data-term="pgx">Pharmacogenomics</abbr> studies genetic effects on medicine response. <abbr class="v2-term" data-term="pharmcat">PharmCAT</abbr> translates supported genotypes into allele calls and published guideline annotations.</p>
-    <p>A <abbr class="v2-term" data-term="staralleles">star allele</abbr> is a named gene version such as CYP2C19*2. Missing defining sites cannot safely be assumed reference. Complex genes such as <abbr class="v2-term" data-term="cyp2d6">CYP2D6</abbr> and highly variable <abbr class="v2-term" data-term="hla">HLA</abbr> genes need specialist analysis.</p>
-    <p>Other medicines, kidney and liver function, age and diagnosis also affect prescribing. Review clinically validated findings with a clinician or pharmacist; never change a dose yourself from this report.</p>
+    <h2>Genes that influence how medicines work</h2>
+    <p><abbr class="v2-term" data-term="pgx">Pharmacogenomics (PGx)</abbr> studies genes affecting drug metabolism; the Pharmacogenomics Clinical Annotation Tool (<abbr class="v2-term" data-term="pharmcat">PharmCAT</abbr>) links genotypes to Clinical Pharmacogenetics Implementation Consortium (CPIC) guidance using named <abbr class="v2-term" data-term="staralleles">star alleles</abbr> like <code>CYP2C19*2</code>.</p>
+    <p>Unread sites in a variant-only file like Helen’s VCF leave star-allele blind spots, and complex genes such as <abbr class="v2-term" data-term="cyp2d6">CYP2D6</abbr> (cytochrome P450 2D6) or human leukocyte antigen (<abbr class="v2-term" data-term="hla">HLA</abbr>) loci require specialized callers and clinical typing. Review any PGx result with a physician or pharmacist alongside organ function and interacting drugs.</p>
   </section>
   <section class="v2-section" id="polygenic">
-    <h2>A percentile is not your chance of disease</h2>
-    <p>A <abbr class="v2-term" data-term="pgs">PGS</abbr>, polygenic score, sums many weighted alleles. A disease-oriented score is often called a <abbr class="v2-term" data-term="prs">PRS</abbr>, polygenic risk score.</p>
-    <p>“80th percentile” means higher than 80% of a specified comparison group, not an 80% disease risk. Scores need appropriate ancestry representation and calibration; environment and clinical factors still matter. They neither guarantee nor exclude a future outcome.</p>
+    <h2>Polygenic scores and population percentiles</h2>
+    <p>A <abbr class="v2-term" data-term="pgs">polygenic score (PGS)</abbr>, or <abbr class="v2-term" data-term="prs">polygenic risk score (PRS)</abbr> for disease, sums tiny weights across thousands of common alleles. Landing in the 80th percentile means scoring above 80% of a comparison group rather than having an 80% chance of illness; real risk depends on baseline prevalence, clinical factors and ancestry match.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
-    <p>Explore <a class="v2-link" href="tool-clinvar.html">ClinVar lookup</a> and <a class="v2-link" href="tool-report.html">Personal report</a>. Notice which analyses were actually run and which evidence is missing.</p>
+    <p>Open <a class="v2-link" href="tool-clinvar.html">ClinVar lookup</a> and <a class="v2-link" href="tool-report.html">Personal report</a> to see how review stars and unassessed regions are shown.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-annotation">Annotation</a><a class="v2-link" href="learn.html#term-vus">VUS</a><a class="v2-link" href="learn.html#term-gnomad">gnomAD</a><a class="v2-link" href="learn.html#term-acmg">ACMG</a><a class="v2-link" href="learn.html#term-pgs">PGS</a></div>
   </aside>

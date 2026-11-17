@@ -14,45 +14,44 @@
   <header class="v2-head"><div class="v2-head__text">
     <p class="v2-small v2-muted">LESSON 02 OF 08 · ABOUT 4 MINUTES</p>
     <h1>How sequencing works</h1>
-    <p class="v2-head__sub">Many overlapping observations become an estimate of your DNA sequence.</p>
+    <p class="v2-head__sub">Sequencers cannot read a whole chromosome in one piece, so labs read hundreds of millions of overlapping snippets instead.</p>
   </div></header>
   <section class="v2-section" id="sample">
-    <h2>From sample to digital letters</h2>
-    <p>A lab extracts DNA from a sample such as blood or saliva, prepares molecules for a sequencer, and records signals from them. Software called a basecaller turns those signals into estimated A, C, G and T letters with quality scores. The lab commonly delivers these as <abbr class="v2-term" data-term="fastq">FASTQ</abbr> files.</p>
-    <p>This differs from a <abbr class="v2-term" data-term="chip">microarray</abbr>, the physical chip used by many ancestry tests. An array tests selected known positions; sequencing reads stretches of DNA and can find differences the chip was not designed to test.</p>
+    <h2>Saliva or blood in, letter files out</h2>
+    <p>Labs extract DNA (deoxyribonucleic acid) from saliva or blood, break it into fragments and run those molecules past optical or electrical sensors. Basecalling software converts the raw signals into A, C, G and T strings plus quality scores in <abbr class="v2-term" data-term="fastq">FASTQ</abbr> (FASTA with Quality scores) files.</p>
+    <p>Consumer kits like Alex’s 23andMe file use a <abbr class="v2-term" data-term="chip">microarray</abbr> chip that probes ~640,000 fixed markers. Whole-genome sequencing reads continuous fragments across every chromosome, catching rare variants that chips never test.</p>
   </section>
   <section class="v2-section" id="reads">
-    <h2>A read is one observation of a fragment</h2>
-    <p>A <abbr class="v2-term" data-term="reads">read</abbr> is a string of estimated DNA letters. A short-read genome often has hundreds of millions of reads. They overlap different parts of the genome, like many snippets from a long book.</p>
-    <p><abbr class="v2-term" data-term="paired">Paired-end</abbr> sequencing reads both ends of a DNA fragment. “2 × 150 bp” means two linked 150-base reads, usually in R1 and R2 files. It does not mean the whole fragment between them was read.</p>
+    <h2>Reading both ends of each DNA fragment</h2>
+    <p>Each sequenced snippet is a <abbr class="v2-term" data-term="reads">read</abbr>; Reginald’s genome holds 876 million of them, stacked so random read errors wash out.</p>
+    <p>Most short-read runs are <abbr class="v2-term" data-term="paired">paired-end</abbr> (“2 × 150 bp”, base pairs): from a fragment several hundred bases long, the machine reads 150 bases from one end into R1 and 150 from the other into R2, using the known spacing between mates to guide alignment.</p>
   </section>
   <section class="v2-section" id="platforms">
-    <h2>Short and long reads answer different questions</h2>
+    <h2>Short reads and long reads</h2>
     <ul>
-      <li><abbr class="v2-term" data-term="illumina">Illumina</abbr> commonly produces accurate short reads, often 100–150 bases. Repeated DNA can make their placement ambiguous.</li>
-      <li><abbr class="v2-term" data-term="pacbio">PacBio HiFi</abbr> repeatedly reads circularized templates to produce accurate long reads, often around 10–25 kb.</li>
-      <li><abbr class="v2-term" data-term="ont">Oxford Nanopore (ONT)</abbr> measures electrical signals as molecules pass through pores. Reads can be tens of kb or longer; chemistry and basecalling models affect accuracy.</li>
+      <li><abbr class="v2-term" data-term="illumina">Illumina</abbr> produces accurate 100–150 bp short reads at low cost, though short pieces map ambiguously inside long repeats.</li>
+      <li><abbr class="v2-term" data-term="pacbio">PacBio HiFi</abbr> (Pacific Biosciences High-Fidelity) reads circularized fragments repeatedly to yield accurate 10–25 kilobase reads.</li>
+      <li><abbr class="v2-term" data-term="ont">Oxford Nanopore (ONT)</abbr> decodes electrical current shifts across tiny pores for reads tens of kilobases or longer, with accuracy tied to chemistry and basecaller version.</li>
     </ul>
-    <p><abbr class="v2-term" data-term="longreads">Long reads</abbr> can bridge repeats, larger changes and distant variants. Read <abbr class="v2-term" data-term="n50">N50</abbr> summarizes length by bases, not accuracy. Use aligner presets and caller models matching the technology.</p>
-    <p>Suitable long-read data can also preserve evidence of DNA <abbr class="v2-term" data-term="methylation">methylation</abbr>, chemical marks that do not change the base sequence. Ordinary Illumina whole-genome reads do not measure those marks.</p>
+    <p><abbr class="v2-term" data-term="longreads">Long reads</abbr> span repeats and structural rearrangements directly. Labs summarize piece size with read <abbr class="v2-term" data-term="n50">N50</abbr> (half of all sequenced bases sit in reads at least N50 long) and match callers to each platform’s error profile. When modification tags are kept, PacBio and Nanopore runs also retain native DNA <abbr class="v2-term" data-term="methylation">methylation</abbr> marks that standard Illumina amplification erases.</p>
   </section>
   <section class="v2-section" id="depth">
-    <h2>30× is an average, not a guarantee</h2>
-    <p><abbr class="v2-term" data-term="depth">Depth</abbr> counts reads covering a position. A mean of 30× means roughly 30 observations per base across the chosen region. Some positions may have none, others many more; duplicate or ambiguously mapped reads may not be usable.</p>
-    <p>“Coverage” can also mean the fraction of bases reaching a threshold, such as 95% at 10× or more. Check which definition a chart uses. One-copy regions commonly have less depth than two-copy autosomes.</p>
+    <h2>What 30× depth looks like up close</h2>
+    <p><abbr class="v2-term" data-term="depth">Depth</abbr> counts usable reads overlapping one base. A “30×” run averages 30 reads per site, while local depth waves from 25–40× in easy stretches down to zero in stubborn repeats after duplicates and multi-mapped reads are set aside.</p>
+    <p>“Coverage” can mean average depth (38.2× on Gordon’s file) or the share of bases clearing a bar like 10×. Copy count shows right in those numbers: Reginald’s paired autosomes average ~31× while his single X and Y sit near 14–16×.</p>
   </section>
   <section class="v2-section" id="quality">
-    <h2>Three quality questions — three different scores</h2>
+    <h2>Quality scores from single letters up to genotypes</h2>
     <ul>
-      <li><abbr class="v2-term" data-term="phred">Base quality</abbr>: is this letter correct? Q30 corresponds to a modeled 1-in-1,000 error probability.</li>
-      <li><abbr class="v2-term" data-term="mapq">MAPQ</abbr>, mapping quality: is the read placed in the right region?</li>
-      <li><abbr class="v2-term" data-term="gq">GQ</abbr>, genotype quality: how confident is a caller in the genotype inferred from the reads?</li>
+      <li><abbr class="v2-term" data-term="phred">Base quality</abbr> uses the logarithmic Phred scale per read letter: Q20 estimates a 1-in-100 error rate and Q30 estimates 1 in 1,000.</li>
+      <li>Mapping quality (<abbr class="v2-term" data-term="mapq">MAPQ</abbr>) scores confidence in where the whole read landed, dropping near zero inside duplicated sequence.</li>
+      <li>Genotype quality (<abbr class="v2-term" data-term="gq">GQ</abbr>) scores how strongly stacked reads favor the called genotype over the runner-up.</li>
     </ul>
-    <p>These are software estimates. High depth does not erase mapping bias or <abbr class="v2-term" data-term="contamination">contamination</abbr>. Unmapped reads may be low quality, missing human sequence or other organisms; they do not prove infection.</p>
+    <p>Systematic mapping bias or sample <abbr class="v2-term" data-term="contamination">contamination</abbr> from another person’s DNA can fool those math models. Roughly 1% of reads also stay unmapped, usually noisy tails, reference gaps or harmless mouth bacteria from saliva.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
-    <p>Explore <a class="v2-link" href="tool-read-quality.html">Read quality</a> for FASTQ or <a class="v2-link" href="tool-coverage.html">Coverage</a> for aligned reads. Compare mean depth with poorly covered regions.</p>
+    <p>Open <a class="v2-link" href="tool-read-quality.html">Read quality</a> on FASTQ inputs or <a class="v2-link" href="tool-coverage.html">Coverage</a> on aligned genomes to inspect low-depth pockets.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-reads">Read</a><a class="v2-link" href="learn.html#term-depth">Depth</a><a class="v2-link" href="learn.html#term-phred">Phred</a><a class="v2-link" href="learn.html#term-mapq">MAPQ</a></div>
   </aside>

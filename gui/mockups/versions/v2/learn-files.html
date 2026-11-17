@@ -14,7 +14,7 @@
   <header class="v2-head"><div class="v2-head__text">
     <p class="v2-small v2-muted">LESSON 03 OF 08 · ABOUT 4 MINUTES</p>
     <h1>Your file journey</h1>
-    <p class="v2-head__sub">Reads are evidence. Calls are inferences. Reports add interpretation. Keep the evidence if you can.</p>
+    <p class="v2-head__sub">How tens of gigabytes of raw reads step down into a compact variant table, and why keeping aligned reads lets you re-run callers later.</p>
   </div></header>
   <figure class="v2-section" data-annot-id="journey">
     <ol class="v2-file-flow" aria-label="File journey in processing order">
@@ -26,62 +26,54 @@
       <li><span aria-hidden="true">→</span> annotate</li>
       <li><strong>Reports</strong><small>Context + limits</small></li>
     </ol>
-    <figcaption class="v2-small v2-muted">Each arrow is a computation, not just a filename change. The reference build must match throughout.</figcaption>
+    <figcaption class="v2-small v2-muted">Each arrow is a compute step rather than a format rename, and every stage after FASTQ depends on one chosen reference genome.</figcaption>
   </figure>
   <section class="v2-section" id="fastq">
-    <h2>FASTQ: the original read sequences</h2>
-    <p><abbr class="v2-term" data-term="fastq">FASTQ</abbr> means FASTA with Quality scores. Each record contains a read name, sequence and quality score for each base. Short paired-end data usually arrives as two compressed files, R1 and R2, with corresponding records.</p>
-    <p>Compressed 30× short-read human data may take roughly 30–100 GB. Size depends on read length, quality encoding and compression. FASTQ has no reference coordinates.</p>
+    <h2>FASTQ: unplaced reads straight from the sequencer</h2>
+    <p><abbr class="v2-term" data-term="fastq">FASTQ</abbr> (FASTA with Quality scores) holds raw DNA (deoxyribonucleic acid) reads before chromosome positions are assigned, storing each read’s name, bases and per-base quality string. Paired-end runs arrive as compressed R1 and R2 files (~30–100 GB total at 30×, such as the unassigned 2 × 38.5 GB pair in the library).</p>
   </section>
   <section class="v2-section" id="alignment">
-    <h2>Align: place the reads on a reference</h2>
-    <p><abbr class="v2-term" data-term="align">Alignment</abbr> searches for likely placements of reads against a reference. bwa, bwa-mem2 and bwa-mem3 are short-read options; minimap2 is commonly used for long reads. A reference-specific aligner index speeds the search.</p>
-    <p>Whole-genome alignment may take hours and substantial working disk. Repeated regions can remain ambiguous even when the program finishes successfully.</p>
+    <h2>Alignment: placing every read on a reference map</h2>
+    <p><abbr class="v2-term" data-term="align">Alignment</abbr> maps reads onto a reference genome using Burrows-Wheeler Aligner tools (bwa, bwa-mem2 or bwa-mem3) for short reads or minimap2 for long reads. Realigning Gordon’s 38× genome onto GRCh38 (build 38) takes hours and heavy scratch space, and reads inside near-identical repeats still keep low mapping confidence.</p>
   </section>
   <section class="v2-section" id="bam">
-    <h2>BAM &amp; CRAM: reads with their placements</h2>
-    <p><abbr class="v2-term" data-term="bam">BAM</abbr> means Binary Alignment Map. It stores read sequences, quality scores, placements and other alignment fields. A 30× short-read human BAM is often around 60–100 GB.</p>
-    <p><abbr class="v2-term" data-term="cram">CRAM</abbr> means Compressed Reference-oriented Alignment Map. It compresses the same kind of records more tightly, often to tens of GB. In normal reference-based use it needs the exact reference sequence to decode the reads.</p>
-    <p>CRAM can preserve records losslessly, but some labs use quality-score reduction. Conversion cannot restore detail already discarded. Keep an original until a new copy is verified and backed up.</p>
+    <h2>BAM &amp; CRAM: aligned reads ready to inspect</h2>
+    <p><abbr class="v2-term" data-term="bam">BAM</abbr> (Binary Alignment Map) stores every read with its chromosome coordinate and qualities, taking 60–100 GB at 30–38× (71.2 GB for Alex; 92.4 GB for Gordon). <abbr class="v2-term" data-term="cram">CRAM</abbr> (Compressed Reference-oriented Alignment Map) shrinks the same alignments to 16.8 GB on Reginald’s 31× genome by storing differences against the reference, so decoding a CRAM later requires that exact reference file.</p>
+    <p>BAM-to-CRAM conversion is lossless unless quality binning is requested, though binned quality detail cannot be restored afterward. Verify and back up a new CRAM before deleting a source BAM.</p>
   </section>
   <section class="v2-section" id="calling">
-    <h2>Call: infer genotypes from evidence</h2>
-    <p><abbr class="v2-term" data-term="calling">Variant callers</abbr> infer which alleles are present. bcftools, GATK and DeepVariant use different methods. Choose a caller and model for your sequencing technology and the region’s ploidy.</p>
-    <p>A small-variant caller does not comprehensively test structural changes, repeat expansions or every complex gene. A finished VCF is not a guarantee of correct calls.</p>
+    <h2>Variant calling: inferring genotypes from stacked reads</h2>
+    <p><abbr class="v2-term" data-term="calling">Variant callers</abbr> (bcftools, Genome Analysis Toolkit / GATK, DeepVariant) weigh stacked reads to infer alleles, using models matched to your sequencing platform and the copy count of X, Y and mtDNA (mitochondrial DNA). Standard callers target single-base changes and short indels; structural changes and repeat expansions need specialized callers.</p>
   </section>
   <section class="v2-section" id="vcf">
-    <h2>VCF &amp; gVCF: calls, not reads</h2>
-    <p><abbr class="v2-term" data-term="vcf">VCF</abbr> means Variant Call Format. A typical compressed whole-genome small-variant VCF takes hundreds of MB. It records coordinates, alleles, genotypes and quality fields, but cannot recreate the reads.</p>
-    <p><abbr class="v2-term" data-term="gvcf">gVCF</abbr> means genomic VCF. It adds records or blocks for assessed non-variant regions and their evidence. This helps joint genotyping and reference-aware interpretation, but block quality and caller compatibility still matter.</p>
-    <p><strong>A site missing from an ordinary variant-only VCF is unknown, not automatically 0/0.</strong> It may be unsequenced, filtered or confidently reference. <a class="v2-link" href="learn-variants.html#missing">See a concrete example</a>.</p>
+    <h2>VCF &amp; gVCF: compact variant tables</h2>
+    <p><abbr class="v2-term" data-term="vcf">VCF</abbr> (Variant Call Format) drops the reads and stores coordinates, genotypes and quality scores: Helen’s 4.9 million DeepVariant calls fit in 148 MB, though without reads she cannot realign to newer builds. A genomic VCF (<abbr class="v2-term" data-term="gvcf">gVCF</abbr>) adds confidence blocks across non-variant stretches.</p>
+    <p><strong>Treat any position absent from a variant-only VCF as unknown rather than assuming reference (0/0).</strong> It may be reference, uncovered or filtered out. <a class="v2-link" href="learn-variants.html#missing">See Helen’s example in the next lesson</a>.</p>
   </section>
   <section class="v2-section" id="indexes">
-    <h2>Indexes are the table of contents</h2>
-    <p>An <abbr class="v2-term" data-term="index">index</abbr> lets software jump to a region without scanning an entire file. BAM commonly uses .bai or .csi, CRAM .crai, compressed VCF .tbi or .csi, and FASTA .fai.</p>
-    <p>Keep indexes alongside their files. Rebuild them after changing the data. An aligner’s large reference index is a different object, not a substitute for a BAM index.</p>
+    <h2>Sidecar index files let tools jump straight to a gene</h2>
+    <p>An <abbr class="v2-term" data-term="index">index</abbr> (<code>.bai</code>/<code>.csi</code> for BAM, <code>.crai</code> for CRAM, <code>.tbi</code>/<code>.csi</code> for compressed VCF, <code>.fai</code> for FASTA) maps coordinates to file offsets so tools jump straight to a gene. Keep it beside its data file (Alex’s BAM waits on a missing index) and rebuild it if the file changes; multi-gigabyte aligner indexes live separately under reference data.</p>
   </section>
   <section class="v2-section" id="reference">
-    <h2>What should I keep?</h2>
+    <h2>Which files are worth keeping long term</h2>
     <ul>
-      <li><strong>Original evidence:</strong> keep your lab’s FASTQ and/or read-preserving BAM/CRAM if feasible, plus backups. Ask what processing or quality reduction the lab applied.</li>
-      <li><strong>Exact reference:</strong> keep the <abbr class="v2-term" data-term="fasta">FASTA</abbr> identity and checksum, especially for CRAM. A human FASTA is about 3 GB uncompressed; aligner indexes can be much larger.</li>
-      <li><strong>Results and provenance:</strong> keep VCF/gVCF, indexes, tool versions, settings and the result manifest. Reports alone are hard to reanalyze.</li>
+      <li><strong>Read files:</strong> archive your BAM, CRAM or FASTQ if storage allows, since future callers and lineage updates go back to reads.</li>
+      <li><strong>Exact reference:</strong> record the <abbr class="v2-term" data-term="fasta">FASTA</abbr> (FAST-All) bundle name and checksum (~3 GB uncompressed) needed by any CRAM.</li>
+      <li><strong>Calls and provenance:</strong> keep your VCF/gVCF, index and run manifest recording tool versions.</li>
     </ul>
-    <p>These sizes are planning examples, not promises. Long-read runs, extra depth and temporary sort files change storage needs significantly.</p>
+    <p>Leave generous free SSD (solid-state drive) scratch space before sorting or realigning a 70–90 GB genome.</p>
   </section>
   <section class="v2-section" id="kits">
-    <h2>DNA-test exports are a smaller side route</h2>
-    <p>A <abbr class="v2-term" data-term="kit">DNA-test file</abbr> contains genotypes for a selected microarray marker list. WGS Extract can create a company-style table from usable sequencing calls. It does not turn a kit into whole-genome reads.</p>
-    <p>Missing markers stay uncertain, formats and site policies change, and a receiving service may reject a generated file. Uploading shares genetic data: <a class="v2-link" href="learn-privacy.html#sharing">review privacy first</a>.</p>
+    <h2>Consumer DNA-test exports as a side branch</h2>
+    <p>A <abbr class="v2-term" data-term="kit">DNA-test file</abbr> (~25 MB) tables ~600,000 chip markers. WGS Extract can export compatible 23andMe, AncestryDNA, MyHeritage or FamilyTreeDNA tables from sequencing (leaving uncovered sites blank), though no kit can regenerate whole-genome reads and third-party upload rules vary. <a class="v2-link" href="learn-privacy.html#sharing">Check privacy trade-offs before uploading</a>.</p>
   </section>
   <section class="v2-section" id="computing">
-    <h2>Programs need the right computer and dependencies</h2>
-    <p>The <abbr class="v2-term" data-term="cpu">CPU</abbr> runs general work; <abbr class="v2-term" data-term="ram">RAM</abbr> holds working data; disk holds files. A <abbr class="v2-term" data-term="gpu">GPU</abbr> accelerates only software built for it. NVIDIA CUDA and Apple Metal are different platforms.</p>
-    <p><abbr class="v2-term" data-term="docker">Docker</abbr> packages programs in containers. A <abbr class="v2-term" data-term="pixi">Pixi environment</abbr> groups software packages. WGS Extract checks prerequisites; missing software needs separate installation. Availability and timings depend on the machine, not just the input size.</p>
+    <h2>Hardware and software dependencies</h2>
+    <p>Heavy runs lean on <abbr class="v2-term" data-term="cpu">CPU</abbr> (central processing unit) threads, fast disk and 16–32+ GB of <abbr class="v2-term" data-term="ram">RAM</abbr> (random-access memory). A <abbr class="v2-term" data-term="gpu">GPU</abbr> (graphics processing unit) helps only supported callers, and NVIDIA CUDA (Compute Unified Device Architecture) builds differ from Apple Metal. Tools run via <abbr class="v2-term" data-term="docker">Docker</abbr> or a <abbr class="v2-term" data-term="pixi">Pixi environment</abbr>, and WGS Extract verifies they are installed before starting.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
-    <p>Explore <a class="v2-link" href="convert.html">Convert</a> for storage changes, or <a class="v2-link" href="tool-call-variants.html">Call variants</a> to see which evidence a caller needs. This mockup simulates runs; it does not process your genome.</p>
+    <p>Open <a class="v2-link" href="convert.html">Convert</a> to compare BAM and CRAM sizes or <a class="v2-link" href="tool-call-variants.html">Call variants</a> to inspect caller inputs on demo files.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-fastq">FASTQ</a><a class="v2-link" href="learn.html#term-bam">BAM</a><a class="v2-link" href="learn.html#term-cram">CRAM</a><a class="v2-link" href="learn.html#term-vcf">VCF</a><a class="v2-link" href="learn.html#term-index">Index</a></div>
   </aside>
