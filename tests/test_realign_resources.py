@@ -48,6 +48,10 @@ from tests.test_realign import (
 from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.alignment import short_reads
+from wgsextract_cli.commands.realignment import mapping as realign_mapping
+from wgsextract_cli.commands.realignment import preparation as realign_preparation
+from wgsextract_cli.commands.realignment import resources as realign_resources
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core.alignment.memory import MappingMemory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -152,7 +156,7 @@ def test_preflight_needs_room_for_the_extraction_only_when_extracting(
     fakes = _Fakes(monkeypatch)
     estimates = {"Name": (10, 4), "Coord": (3, 2)}  # (temp GB, final GB)
     monkeypatch.setattr(
-        realign,
+        realign_resources,
         "get_free_space_needed",
         lambda _size, sort_type, **_k: estimates[sort_type],
     )
@@ -183,7 +187,7 @@ def test_stream_preflight_drops_only_the_fastqs_between_collate_and_sort(
 ):
     estimates = {"Name": (10, 8), "Coord": (3, 2)}  # (temp GB, final GB)
     monkeypatch.setattr(
-        realign,
+        realign_resources,
         "get_free_space_needed",
         lambda _size, sort_type, **_k: estimates[sort_type],
     )
@@ -221,7 +225,7 @@ def test_stream_overlap_without_ram_uses_files_without_changing_aligner(
     )
     checked = []
     monkeypatch.setattr(
-        realign,
+        realign_steps,
         "check_mapping_memory",
         lambda *_a, **kw: checked.append(kw["additional_ram_bytes"]),
     )
@@ -246,10 +250,11 @@ def test_stream_reserves_the_estimated_collate_bucket_for_reporting_and_mapping(
     tmp_path, monkeypatch, source, caplog
 ):
     fakes = _Fakes(monkeypatch)
-    monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 1_000_000)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_a: 1_000_000)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_a: 1_000_000)
     estimates, disk = [], []
     for ram in (1024**4, 1):  # the bucket fits beside alignment, then doesn't
-        monkeypatch.setattr(realign, "available_memory", lambda ram=ram: ram)
+        monkeypatch.setattr(realign_steps, "available_memory", lambda ram=ram: ram)
         caplog.clear()
         with caplog.at_level(logging.INFO):
             realign.run(_args(source, aligner="bwa"))
@@ -271,11 +276,14 @@ def test_whole_genome_input_streams_when_its_collate_bucket_fits_ram(
 ):
     fakes = _Fakes(monkeypatch)
     sparse_truncate(source, 40 * 1024**3)
-    monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_a: 800_000_000)
     monkeypatch.setattr(realign, "calculate_bam_md5", lambda *_a: None)
+    monkeypatch.setattr(realign_preparation, "calculate_bam_md5", lambda *_a: None)
     monkeypatch.setattr(realign, "resolve_reference", lambda *_a: None)
+    monkeypatch.setattr(realign_preparation, "resolve_reference", lambda *_a: None)
     monkeypatch.setattr(short_reads, "available_memory", lambda: gib * 1024**3)
-    monkeypatch.setattr(realign, "available_memory", lambda: gib * 1024**3)
+    monkeypatch.setattr(realign_steps, "available_memory", lambda: gib * 1024**3)
     realign.run(_args(source, aligner="bwa", threads=8, memory="2G"))
     if gib == 64:
         assert fakes.streamed and not fakes.extracted
@@ -291,7 +299,8 @@ def test_ample_disk_space_is_not_reported_as_a_warning(
     the disk had room; only a shortfall is worth a warning."""
     ram(128 * GIB)
     _Fakes(monkeypatch)
-    monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_a: 800_000_000)
     with caplog.at_level(logging.INFO):
         realign.run(_args(source, aligner="bwa", no_preflight=False))
     disk = [r for r in caplog.records if _DISK.search(r.getMessage())]
@@ -303,7 +312,8 @@ def test_late_stream_memory_change_retries_file_extraction(
 ):
     caplog.set_level(logging.INFO)
     fakes = _Fakes(monkeypatch)
-    monkeypatch.setattr(realign, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_a: 800_000_000)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_a: 800_000_000)
 
     def unavailable(*_a, **_kw):
         raise realign.align_cmd.StreamingMemoryUnavailable("RAM changed")
@@ -333,10 +343,11 @@ def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
         assert not provided_fastqs
         return 800_000_000
 
-    monkeypatch.setattr(realign, "indexed_read_count", indexed_count)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", indexed_count)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", indexed_count)
     budgets = []
     monkeypatch.setattr(
-        realign,
+        realign_steps,
         "check_mapping_memory",
         lambda *_a, **kwargs: budgets.append(("memory", kwargs["reads"])),
     )
@@ -376,7 +387,8 @@ def test_ultima_realign_counts_index_once_and_passes_through_unknown_counts(
         calls.append("idxstats")
         return reads
 
-    monkeypatch.setattr(realign, "indexed_read_count", count)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", count)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", count)
 
     def align_ultima(args, *_a):
         calls.append(("align", args.read_count))

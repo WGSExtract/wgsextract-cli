@@ -219,6 +219,16 @@ preflight (`preparation.py`), Parabricks dispatch (`gpu.py`) and Ultima,
 minimap2 and pbmm2 execution (`backends.py`). Existing read-source, read-group,
 selection and output helpers remain in the same package.
 
+### Realignment pipeline
+
+The `commands/realign.py` command retains orchestration and existing job/helper
+imports. Its `realignment/` package separates job/input qualification and FASTQ
+discovery (`preparation.py`), memory/disk/time planning (`resources.py`), journaled
+alignment/index publication (`mapping.py`), single-pass/chunked long-read execution
+(`long_reads.py`) and extraction/streaming/resumption (`steps.py`). The resumable
+workflow bodies remain intact; helper dependencies flow through these layers
+without importing the realign facade.
+
 ### DeepVariant pipeline
 
 The `commands/vcf/deepvariant.py` command keeps orchestration and its existing

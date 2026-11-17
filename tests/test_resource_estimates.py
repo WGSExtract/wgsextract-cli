@@ -17,6 +17,11 @@ from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
 from wgsextract_cli.commands.alignment import common, preparation
+from wgsextract_cli.commands.realignment import long_reads as realign_long_reads
+from wgsextract_cli.commands.realignment import mapping as realign_mapping
+from wgsextract_cli.commands.realignment import preparation as realign_preparation
+from wgsextract_cli.commands.realignment import resources as realign_resources
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
@@ -862,11 +867,17 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
     else:
         monkeypatch.setattr(align, "streaming_mapping_fits", lambda *_a, **_kw: True)
         monkeypatch.setattr(realign, "resolve_reference", lambda *_: str(ref))
-        monkeypatch.setattr(realign, "indexed_read_count", lambda *_: 100)
-        monkeypatch.setattr(realign, "_input_cram_reference", lambda *_: [])
-        monkeypatch.setattr(realign, "preflight_resources", reported)
         monkeypatch.setattr(
-            realign,
+            realign_preparation, "resolve_reference", lambda *_: str(ref)
+        )
+        monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_: 100)
+        monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_: 100)
+        monkeypatch.setattr(realign, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_long_reads, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_steps, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_resources, "preflight_resources", reported)
+        monkeypatch.setattr(
+            realign_steps,
             "alignments_to_fastq",
             lambda *_a, **_k: pytest.fail("extraction started"),
         )
