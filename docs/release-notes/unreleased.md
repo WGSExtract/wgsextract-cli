@@ -173,6 +173,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `vcf gatk` reads CRAMs whose `.crai` htsjdk refuses, such as the 1000
+  Genomes CRAMs' (#1034): their unmapped-slice rows give the read length as a
+  span. GATK failed at once; it now gets a fresh index built in the run's temp
+  folder (seconds to minutes), and the CRAM and its index are left unchanged.
+  A GATK failure on CRAM input now names htsjdk's own error instead of blaming
+  CRAM 3.1, which it mentions only for CRAM 3.1 files.
 - `align` and `realign` no longer admit an over-budget `wgse-bwa` GPU plan
   just because the CPU estimate is also oversized. Native BWA GPU selection
   now respects physical RAM less OS headroom without penalizing large-RAM

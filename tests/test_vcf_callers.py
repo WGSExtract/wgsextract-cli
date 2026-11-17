@@ -1,9 +1,12 @@
 """`vcf freebayes` and `vcf gatk` (CPU HaplotypeCaller) on a tiny genome."""
 
 import ctypes
+import gzip
 import json
+import logging
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
@@ -128,6 +131,69 @@ def test_gatk_calls_the_snp_from_a_regional_cram(genome, tmp_path):
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
     ]
+
+
+def _1000_genomes_style_cram(genome: Namespace, folder: Path) -> Path:
+    """The sample's CRAM 3.0 with 50 unmapped reads after the mapped ones, and
+    a .crai whose unmapped-slice row has the read length (100) as its span, as
+    the 1000 Genomes CRAMs' indexes do; samtools writes 0 or 1 there."""
+    folder.mkdir()
+    sam = run_command(["samtools", "view", "-h", genome.bam],
+                      capture_output=True).stdout.splitlines()  # fmt: skip
+    sam += [
+        f"u{i}\t4\t*\t0\t0\t*\t*\t0\t0\t{'ACGT' * 25}\t{'I' * 100}" for i in range(50)
+    ]
+    (folder / "s.sam").write_text("\n".join(sam) + "\n")
+    cram = folder / "s.cram"
+    run_command(["samtools", "sort", "-O", "cram", "--reference", genome.ref,
+                 "--output-fmt-option", "version=3.0", "-o", str(cram),
+                 str(folder / "s.sam")])  # fmt: skip
+    run_command(["samtools", "index", str(cram)])
+    index = Path(f"{cram}.crai")
+    with gzip.open(index, "rt") as f:
+        rows = [line.split("\t") for line in f.read().splitlines()]
+    assert [row[0] for row in rows][-1] == "-1"
+    with gzip.open(index, "wt") as f:
+        f.writelines(
+            "\t".join(row[:2] + ["100"] + row[3:] if row[0] == "-1" else row) + "\n"
+            for row in rows
+        )
+    return cram
+
+
+@needs_tools("gatk", "samtools", "tabix")
+@pytest.mark.parametrize("linked", [False, True])
+def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(
+    genome, tmp_path, caplog, linked
+):
+    """#1034 (vcf gatk rejects 1000 Genomes CRAM indexes): htsjdk refused the
+    .crai ("unmapped slice with unexpected alignment start (0) or span"). GATK
+    now reads the whole CRAM through a fresh temporary index in --tmp-dir, and
+    the CRAM and its index are left as they were. htsjdk also finds the index
+    beside the file a link without one points to."""
+    require_runnable("gatk", "samtools", "tabix")
+    ref = _reference_copy(genome, tmp_path / "ref")
+    cram = _1000_genomes_style_cram(genome, tmp_path / "reads")
+    before = {p.name: p.read_bytes() for p in cram.parent.iterdir()}
+    reads = tmp_path / "link.cram" if linked else cram
+    if linked:
+        try:
+            reads.symlink_to(cram)
+        except OSError:
+            pytest.skip("can't make a symbolic link here")
+    scratch, outdir = tmp_path / "scratch", tmp_path / "out"
+    scratch.mkdir()
+    caplog.set_level(logging.INFO)
+    run_wgsextract(
+        "vcf", "gatk", "--input", reads.as_posix(), "--ref", ref,
+        "--outdir", outdir.as_posix(), "--tmp-dir", scratch.as_posix(),
+    )  # fmt: skip
+
+    assert [c[:5] for c in vcf_calls(outdir / "gatk.vcf.gz")] == genome.calls
+    assert "can't read the CRAM index" in caplog.text
+    assert "span 100" in caplog.text
+    assert {p.name: p.read_bytes() for p in cram.parent.iterdir()} == before
+    assert list(scratch.iterdir()) == []
 
 
 # --- GATK at its process boundary ----------------------------------------------
@@ -265,12 +331,13 @@ def test_gatk_intervals_dont_follow_a_link_in_the_outdir(
 
 
 @pytest.mark.parametrize("stage", ["gatk", "conversion"])
-def test_gatk_failure_on_a_cram_hints_at_cram_versions_and_cleans_up(
+def test_gatk_failure_on_a_cram_region_cleans_up_without_a_cram_hint(
     genome, gatk, tmp_path, capsys, stage
 ):
     """Whether GATK or the CRAM-to-BAM cut fails (a reference that doesn't match
     the CRAM fails its MD5 check part-way), the partial or temporary BAM, its
-    index, the intervals and GATK's temp dir are removed."""
+    index, the intervals and GATK's temp dir are removed. GATK read a BAM, so
+    no CRAM hint is given (#1034: it blamed CRAM 3.1 for any failure)."""
     gatk.set(fail="unexpected CRAM container")
     ref = _reference_copy(genome, tmp_path / "ref")
     if stage == "conversion":
@@ -283,10 +350,36 @@ def test_gatk_failure_on_a_cram_hints_at_cram_versions_and_cleans_up(
 
     assert result["status"] == "failed"
     assert "GATK failed" in result["error"]["message"]
-    assert "CRAM version 3.1" in log
+    assert "Hint:" not in log
     assert (gatk.runs() == []) == (stage == "conversion")
     assert list(outdir.iterdir()) == []
     assert list((tmp_path / "systemp").iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("version", "error", "hint"),
+    [
+        ("3.1", None, "can't read CRAM 3.1"),
+        ("3.0", "htsjdk.samtools.cram.CRAMException: Attempt to create a bai entry",
+         "couldn't read the CRAM: Attempt to create a bai entry"),
+    ],
+)  # fmt: skip
+def test_1034_gatk_cram_hint_names_htsjdks_error_not_cram_31(
+    genome, gatk, tmp_path, capsys, version, error, hint
+):
+    """#1034 (vcf gatk rejects 1000 Genomes CRAM indexes): the hint blamed CRAM
+    3.1 for a CRAM 3.0 that htsjdk refused; it names 3.1 only for a 3.1 file."""
+    gatk.set(reads_cram=version == "3.0", fail=error)
+    ref = _reference_copy(genome, tmp_path / "ref")
+    cram = str(tmp_path / "reads.cram")
+    run_command(["samtools", "view", "-C", "-T", ref,
+                 "--output-fmt-option", f"version={version}", "-o", cram, genome.bam])  # fmt: skip
+    run_command(["samtools", "index", cram])
+    result, log = _gatk(capsys, genome, cram, ref, tmp_path / "out", tmp_path / "s")
+
+    assert result["status"] == "failed"
+    assert hint in log
+    assert bool(re.search(r"CRAM (version )?3\.1", log)) == (version == "3.1")
 
 
 @pytest.mark.skipif(

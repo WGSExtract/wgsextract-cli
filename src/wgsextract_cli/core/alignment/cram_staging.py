@@ -7,7 +7,8 @@ decoder bug that fails on valid CRAM 3.1 blocks. Tools that ship or statically
 link such an htslib (DeepVariant's x86-64 images, Clair3's libclair3 before 2.0.5) get a
 CRAM 3.0 copy instead; the host samtools decodes the original correctly.
 Tools that take no reference (pbsv) get a BAM copy, so their htslib never
-looks the reference up by itself (#636).
+looks the reference up by itself (#636). htsjdk tools (GATK) get a fresh
+temporary index of a CRAM whose own .crai htsjdk refuses (#1034).
 """
 
 import gzip
@@ -18,6 +19,7 @@ from bisect import bisect_left
 from pathlib import Path
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.samtools_commands import (
@@ -41,6 +43,75 @@ def needs_cram30(alignment: str) -> bool:
     """Whether ``alignment`` is CRAM 3.1 or newer."""
     version = cram_version(alignment)
     return version is not None and version >= (3, 1)
+
+
+def _htsjdk_crai(alignment: str) -> Path | None:
+    """The .crai htsjdk opens for a CRAM: x.crai or x.cram.crai (before
+    x.cram.bai or .csi) beside it, else beside the file a link points to."""
+    for cram in (Path(alignment), Path(alignment).resolve()):
+        for index in (
+            *([cram.with_suffix(".crai")] if cram.suffix == ".cram" else []),
+            *(Path(f"{cram}{ext}") for ext in (".crai", ".bai", ".csi")),
+        ):
+            if index.is_file():
+                return index if index.suffix == ".crai" else None
+    return None
+
+
+def _htsjdk_crai_problem(index: PathInput) -> str | None:
+    """Why htsjdk (GATK, Picard) would refuse this .crai, or None.
+
+    htsjdk converts a .crai to a BAI as it opens the CRAM and refuses an
+    unmapped-slice row (reference -1) unless its start is 0 or -1 and its span
+    0 or 1. Older CRAM writers gave those rows the read length as their span,
+    as in the 1000 Genomes CRAMs' indexes (#1034); htslib reads them."""
+    try:
+        with open(index, "rb") as signature:
+            compressed = signature.read(2) == b"\x1f\x8b"
+        opener = gzip.open if compressed else open
+        with opener(index, "rt") as source:
+            for number, line in enumerate(source, 1):
+                fields = line.split()
+                if len(fields) != 6:
+                    return None
+                rid, start, span = map(int, fields[:3])
+                if rid == -1 and (start not in (0, -1) or span not in (0, 1)):
+                    return (
+                        f"row {number} is an unmapped slice with start {start} "
+                        f"and span {span}"
+                    )
+    except (OSError, EOFError, ValueError, zlib.error):
+        return None
+    return None
+
+
+def htsjdk_cram_index(
+    alignment: str, work: str, threads: str, *, tool: str
+) -> str | None:
+    """A fresh index in ``work`` for a CRAM whose own .crai htsjdk refuses
+    (see _htsjdk_crai_problem), to pass to ``tool`` explicitly; otherwise None.
+    The CRAM and its index are left as they are."""
+    if cram_version(alignment) is None:
+        return None
+    index = _htsjdk_crai(alignment)
+    problem = _htsjdk_crai_problem(index) if index else None
+    if index is None or problem is None:
+        return None
+    # A fresh .crai is about the size of the old one.
+    required = 2 * index.stat().st_size + 1024**2
+    if shutil.disk_usage(work).free < required:
+        raise WGSExtractError(
+            f"Insufficient free disk space for a temporary CRAM index at {work} "
+            f"(needs ~{required / 1024**2:.0f} MiB)."
+        )
+    logging.info(
+        "%s can't read the CRAM index %s (%s); indexing the CRAM again into a "
+        "temporary index for it. The CRAM and its index are not changed.",
+        tool, index, problem,
+    )  # fmt: skip
+    fresh = str(Path(work, "reads.cram.crai"))
+    run_command(["samtools", "index", "-@", threads, "-o", fresh, alignment])
+    return fresh
 
 
 def region_intervals(region: str, lengths: dict[str, int], tool: str) -> Intervals:
