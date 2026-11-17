@@ -45,10 +45,13 @@ def _hints(model: object) -> dict[str, object]:
     )
 
 
-def _typescript(
+def typescript_records(
     roots: Mapping[object, str], *, names: Mapping[object, str] | None = None
 ) -> str:
+    """Render a supported writer graph, rejecting ambiguous or invalid records."""
     models = dict(roots)
+    if len(set(models.values())) != len(models):
+        raise TypeError("Duplicate TypeScript record names.")
     visited: set[object] = set()
     names = names or {}
 
@@ -133,7 +136,7 @@ def _typescript(
 
 
 def typescript() -> str:
-    return _typescript(
+    return typescript_records(
         {
             model: name
             for name, model in vars(transport).items()
@@ -143,7 +146,7 @@ def typescript() -> str:
 
 
 def result_typescript() -> str:
-    return _typescript(
+    return typescript_records(
         {CommandResult: "ResultDocumentRecord"},
         names={
             FileRecord: "ResultFileRecord",
@@ -156,4 +159,4 @@ def result_typescript() -> str:
 
 
 def report_typescript() -> str:
-    return _typescript({ReportDocument: "ReportDocumentRecord"})
+    return typescript_records({ReportDocument: "ReportDocumentRecord"})

@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Annotated, TypedDict
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -12,13 +13,54 @@ from scripts.server_transport_typescript import (
     report_typescript,
     result_typescript,
     typescript,
+    typescript_records,
 )
 from tests.test_server import _serve
+from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_929_duplicate_writer_names_cannot_silently_merge_typescript_records(
+    nested: bool,
+) -> None:
+    class First(TypedDict):
+        value: str
+
+    class Second(TypedDict):
+        other: int
+
+    class Document(TypedDict):
+        first: First
+        second: Second
+
+    with pytest.raises(TypeError, match="Duplicate"):
+        if nested:
+            typescript_records(
+                {Document: "Document"}, names={First: "Repeated", Second: "Repeated"}
+            )
+        else:
+            typescript_records({First: "Repeated", Second: "Repeated"})
+
+
+def test_929_unsupported_writer_metadata_is_not_silently_discarded() -> None:
+    class Document(TypedDict):
+        value: Annotated[str, "unsupported-metadata"]
+
+    with pytest.raises(TypeError, match="Unsupported"):
+        typescript_records({Document: "Document"})
+
+
+def test_929_empty_writer_enum_does_not_emit_invalid_typescript() -> None:
+    class Document(TypedDict):
+        value: Annotated[str, Constraints(enum=())]
+
+    with pytest.raises(TypeError, match="at least one"):
+        typescript_records({Document: "Document"})
 
 
 def validate(value: object, name: str) -> None:
