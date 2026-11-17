@@ -438,33 +438,8 @@
       "inputs": {
         "fieldValues": {
           "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
-      },
-      "timeoutSeconds": 900
-    },
-    {
-      "id": "vcf-indel",
-      "kind": "action",
-      "pageID": "extract",
-      "sectionID": "variant-calling",
-      "actionID": "vcf-indel",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
-      },
-      "timeoutSeconds": 900
-    },
-    {
-      "id": "vcf-sv",
-      "kind": "action",
-      "pageID": "extract",
-      "sectionID": "variant-calling",
-      "actionID": "vcf-sv",
-      "inputs": {
-        "fieldValues": {
-          "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "vcf_call_types": ["snp", "indel"], "vcf_merge": ["--merge"] }
       },
       "expectedResult": { "status": "ok", "outputs": ["merged_variants"] },
       "timeoutSeconds": 1800
@@ -478,7 +453,8 @@
       "inputs": {
         "fieldValues": {
           "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
-        }
+        },
+        "checkedOptions": { "vcf_call_types": ["sv", "cnv"] }
       },
       "timeoutSeconds": 1800
     },

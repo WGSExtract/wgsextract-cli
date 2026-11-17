@@ -9,7 +9,6 @@ import { renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSettingFolderMoveStatus, renderWorkspaceLocationSection } from "./view/workspace-location.js";
-import { renderCollapsibleCard } from "./view/collapsible.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -132,7 +131,7 @@ export function renderPage(page: BundlePage) {
 /**
  * Advanced mode shows each titled section collapsed to its header row until it is expanded, except sections marked
  * `"collapsible": false` (the Inputs every other section needs) and `"collapsible": "open"` ones, which start open.
- * A collapsed section also hides the subsections that continue it.
+ * Explicitly collapsed sections also collapse in Basic. Collapsed sections hide their continuing subsections.
  */
 export function isSectionCollapsible(section: PageSection): boolean {
     return (state.uiMode === "advanced" || section.collapsed === true) && Boolean(section.title) && section.subsection !== true && section.collapsible !== false;

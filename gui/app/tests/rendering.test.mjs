@@ -817,7 +817,7 @@ test("rows-layout category and group headings show the tooltips their options gi
   assert.match(html, /<h4>23andMe<\/h4>/);
 });
 
-test("sections collapse only in Advanced, \"open\" ones starting open; toggles flip the default", async () => {
+test("unmarked sections collapse only in Advanced, \"open\" ones starting open; toggles flip the default", async () => {
   globalThis.localStorage = { getItem() { return null; }, setItem() {} };
   globalThis.window = { innerHeight: 900 };
   const { createInitialState, state } = await import("../dist/web/src/client/state.js");
@@ -842,4 +842,29 @@ test("sections collapse only in Advanced, \"open\" ones starting open; toggles f
   state.toggledSections.add("p/open");
   assert.equal(isSectionExpanded(page, plain), true);
   assert.equal(isSectionExpanded(page, open), false);
+});
+
+test("workspace split's collapsed settings sections reopen with the shared section toggle", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderSection } = await import("../dist/web/src/client/view.js");
+  const section = {
+    id: "dependency-checks", title: "Dependency Checks", collapsed: true,
+    controls: [{ id: "probe", kind: "text", label: "Probe setting" }],
+  };
+  const page = { id: "settings", title: "Settings", sections: [section] };
+  Object.assign(state, createInitialState(), { labels: {}, manifest: { id: "demo", pages: [page] } });
+
+  state.uiMode = "basic";
+  const closed = renderSection(section, page);
+  assert.match(closed, /aria-expanded="false"/);
+  assert.doesNotMatch(closed, /Probe setting/);
+  state.toggledSections.add("settings/dependency-checks");
+  for (const mode of ["basic", "advanced"]) {
+    state.uiMode = mode;
+    const opened = renderSection(section, page);
+    assert.match(opened, /aria-expanded="true"/);
+    assert.match(opened, /Probe setting/);
+  }
 });
