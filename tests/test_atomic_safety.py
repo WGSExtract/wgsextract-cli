@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 import platform
@@ -322,6 +323,37 @@ def test_1065_unreadable_legacy_guard_names_file_and_remedy(tmp_path):
         assert not lock.exists()
     finally:
         guard.chmod(0o600)
+
+
+@pytest.mark.parametrize("concurrent_creator", [False, True])
+def test_1065_shared_guard_in_sticky_directory_keeps_locking(
+    tmp_path, monkeypatch, concurrent_creator
+):
+    lock = tmp_path / "chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    if not concurrent_creator:
+        guard.touch()
+    real_open = os.open
+
+    def protected_open(path, flags, *args, **kwargs):
+        if Path(path) == guard:
+            if concurrent_creator and not guard.exists() and flags & os.O_CREAT:
+                created = real_open(guard, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666)
+                os.close(created)
+            # Linux protected_regular rejects O_CREAT on another user's guard,
+            # but O_EXCL still reports EEXIST. Simulate this OS boundary without
+            # requiring administrator privileges or a second local account.
+            if guard.exists() and flags & os.O_CREAT and not flags & os.O_EXCL:
+                raise PermissionError(errno.EACCES, "Permission denied", str(guard))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", protected_open)
+    with exclusive_lock(lock):
+        inode = guard.stat().st_ino
+        with pytest.raises(WGSExtractError, match="Timed out"):
+            with exclusive_lock(lock, timeout=0.01):
+                pytest.fail("the existing guard must still serialize callers")
+    assert guard.stat().st_ino == inode
 
 
 def test_concurrent_stale_lock_reclaimers_never_evict_a_new_owner(tmp_path):

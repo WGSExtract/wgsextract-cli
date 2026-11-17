@@ -38,8 +38,12 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
     # Keep this inode: deleting it would let concurrent reclaimers lock different files.
     guard = Path(f"{path}.guard")
     try:
-        # os.open applies the current umask, including shared-library group access.
-        fd = os.open(guard, os.O_CREAT | os.O_RDWR, 0o666)
+        try:
+            # The kernel applies the current umask; never replace the inode.
+            fd = os.open(guard, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666)
+        except FileExistsError:
+            # O_CREAT can deny another user's file in a sticky shared directory.
+            fd = os.open(guard, os.O_RDWR)
     except PermissionError as error:
         raise WGSExtractError(
             f"Cannot open lock guard {guard}: {error.strerror or error} "
