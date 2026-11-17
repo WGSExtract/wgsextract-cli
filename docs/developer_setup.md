@@ -214,6 +214,11 @@ assembles reports and fits GitHub links; existing `core.issue_report` and
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
 
+Large DeepVariant, native-aligner and server suites are divided into focused
+`test_<family>_<topic>.py` modules. Their original `test_<family>.py` modules
+keep shared helpers and function-scoped fixtures, so existing imports and fixture
+behavior remain stable. New integration modules must retain their CI tier.
+
 - **Assert observable behaviour.** That means:
   - output files and their content
   - exit codes 0/1/2/3
