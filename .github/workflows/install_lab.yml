@@ -17,6 +17,9 @@ run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_r
 on:
   workflow_call:
     inputs:
+      macos:
+        type: boolean
+        default: true
       app_run:
         type: string
         default: ""
@@ -251,6 +254,7 @@ jobs:
           retention-days: 14
 
   macos:
+    if: github.event_name != 'pull_request' || inputs.macos
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -283,7 +287,7 @@ jobs:
 
   macos-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' && (github.event_name != 'pull_request' || inputs.macos) }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:

@@ -22,6 +22,8 @@ CI_TESTS = (
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
+    "tests/test_ci_moves.py",
+    "tests/test_ci_nightly.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
 OS_WORKFLOWS = {

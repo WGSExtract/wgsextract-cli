@@ -20,7 +20,6 @@ permissions: {}
 jobs:
   request-review:
     if: >-
-      !github.event.pull_request.draft &&
       github.event.pull_request.user.type == 'User' &&
       !contains(fromJSON('["theontho"]'), github.event.pull_request.user.login) &&
       contains(fromJSON('["COLLABORATOR", "MEMBER"]'), github.event.pull_request.author_association)
