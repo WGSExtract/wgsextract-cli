@@ -1282,7 +1282,7 @@ class VcfClair3Params(_CallerParams):
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~4x the time on a CPU, ~6x on a GPU"
+        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
     )
 
 
