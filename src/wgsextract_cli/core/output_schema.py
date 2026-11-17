@@ -32,6 +32,7 @@ class Constraints:
     maximum: float | None = None
     pattern: str | None = None
     format: str | None = None
+    minLength: int | None = None
 
 
 @dataclass(frozen=True)

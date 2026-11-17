@@ -16,6 +16,11 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfClair3Params
+from wgsextract_cli.core.alignment.cram_staging import (
+    needs_cram30,
+    stage_cram30,
+    staging_bytes,
+)
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
@@ -25,7 +30,6 @@ from wgsextract_cli.core.containers import (
     require_image,
     run_container,
 )
-from wgsextract_cli.core.cram_staging import needs_cram30, stage_cram30, staging_bytes
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,

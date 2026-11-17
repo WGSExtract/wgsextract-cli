@@ -171,7 +171,6 @@ def _open_template(path: str) -> TextIO:
     return open(path)
 
 
-@functools.cache
 def _template_corrections() -> dict[tuple[str, str, str], str]:
     """{(template, ID, position): corrected position} from corrections.tsv."""
     corrections: dict[tuple[str, str, str], str] = {}
@@ -243,6 +242,25 @@ def _resolve_templates_for_format(
     raise WGSExtractError(f"Template body not found: {first_missing}")
 
 
+def template_resource_paths(
+    templates_dir: TemplateSearchInput, format_name: str
+) -> list[Path]:
+    """The actual selected vendor header, bodies and packaged corrections."""
+    fmt = get_template_format(format_name)
+    if fmt is None:
+        return []
+    try:
+        root, bodies = _resolve_templates_for_format(templates_dir, format_name, fmt)
+    except WGSExtractError:
+        # Freshness checks must not discard a CombinedKit when conversion fails.
+        return []
+    return [
+        Path(root, "head", format_name + fmt["suffix"]),
+        *(Path(body) for body in bodies),
+        _PACKAGED_TEMPLATES / "corrections.tsv",
+    ]
+
+
 def liftover_hg38_to_hg19(
     input_txt: str,
     output_txt: str,
@@ -255,6 +273,7 @@ def liftover_hg38_to_hg19(
     Performs liftover from hg38 to hg19 using pyliftover; returns the sites'
     outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
     left out, so vendor files report them as no-calls.
+    MT stays in rCRS coordinates, matching hg38 and GRCh37 chip templates.
     Ported from legacy program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
@@ -283,7 +302,9 @@ def liftover_hg38_to_hg19(
             records.append((snp_id, result))
             coordinates.append((_chrom_for_liftover(chrom), position))
 
-    projections, counts = project_coordinates(coordinates, chain_file, reflib_dir)
+    projections, counts = project_coordinates(
+        coordinates, chain_file, reflib_dir, preserve_rcrs=True
+    )
     if counts.lifted < len(coordinates):
         logging.warning(
             f"Liftover left out {len(coordinates) - counts.lifted:,} sites: "

@@ -315,6 +315,46 @@ over 100 times as likely to be wrong as a `high` one, while `high` kept over
 80% of the correct calls. Errors in `high` remain, as
 the limits above say: a `high` label is not a confirmation.
 
+## Opt-in BAQ in `vcf snp` and `vcf indel`
+
+By default, both commands keep BAQ (base alignment quality) **off**
+(`bcftools mpileup -B`), preserving existing calls and runtime. `--baq`
+enables bcftools' heuristic BAQ by omitting `-B`; it adjusts base qualities
+where read alignments may be wrong. It also applies to the optional
+`--reference-evidence gvcf` pass. Set `baq = true` in `config.toml` to
+persist the choice; `--no-baq` overrides it for one run. The effective
+`baq` boolean is recorded in the result manifest's provenance parameters.
+The typed API and server accept the same `baq` parameter.
+
+The [BAQ study (#982)](https://github.com/WGSExtract/wgsextract-cli/issues/982)
+on HG002 NovaSeq at nominal 35x, against GIAB v4.2.1 confident regions,
+found these unfiltered, genotype-aware F1 scores:
+
+| Region | SNP F1, off → on | Indel F1, off → on |
+| --- | --- | --- |
+| chr20 | 98.30% → 98.99% | 94.28% → 95.19% |
+| chr22 | 97.84% → 98.47% | 94.03% → 94.88% |
+
+BAQ took **29–35% longer** in the matched 35x regional runs. At ~10x
+(a downsample of the same sample/platform), difficult-region SNP recall
+fell from 93.62% to 92.63%, despite improved precision. These are regional,
+single-pass measurements, not whole-genome or independent-platform
+qualification. BAQ is therefore opt-in, not a universal accuracy upgrade
+or a replacement for quality filtering. The flat prior was held fixed.
+
+This option does **not** request full BAQ (`-D`) or redo BAQ (`-E`, which
+ignores existing BQ tags). Those modes were not qualified by this study.
+The opt-in requires bcftools **1.13 or newer**, which supports heuristic
+BAQ; an older or unidentifiable version fails before calling. The BAQ-off
+default keeps the existing dependency requirements.
+Ultima input rejects `--baq` (including `baq = true` from config), because
+its automatic `-X ultima` profile itself disables BAQ. Use `--no-baq` for
+Ultima; the other profile settings and its prior stay unchanged.
+`analyze comprehensive` records the effective config choice in its calling
+step keys, so changing `baq` reruns SNP and indel calling on resume.
+With BAQ off, the commands stay identical to those from before this option,
+so existing default-setting journals resume without redoing completed calls.
+
 ## The calling prior in `vcf snp` and `vcf indel`
 
 `vcf snp` and `vcf indel` run `bcftools call -m` with a flat prior (`-P 0`)

@@ -56,7 +56,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PHARMCAT_VERSION: 3.4.0

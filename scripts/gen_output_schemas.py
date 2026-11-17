@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
+from wgsextract_cli.core.result_schema import result_schema  # noqa: E402
 from wgsextract_cli.core.sample_document import (  # noqa: E402
     SAMPLE_SHAPES,
     SCHEMA_DESCRIPTION,
@@ -31,6 +32,9 @@ from wgsextract_cli.core.step_documents import (  # noqa: E402
 
 OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json"
 STEP_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json"
+RESULT_OUTPUT = (
+    ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json"
+)
 
 
 def documents() -> dict[Path, dict[str, object]]:
@@ -57,7 +61,7 @@ def documents() -> dict[Path, dict[str, object]]:
         "runningStep/completeStep definitions; unclassified historical records "
         "remain opaque objects and are not validated by the reader.",
     )
-    return {OUTPUT: sample, STEP_OUTPUT: steps}
+    return {OUTPUT: sample, STEP_OUTPUT: steps, RESULT_OUTPUT: result_schema()}
 
 
 def main() -> None:

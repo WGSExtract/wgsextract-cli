@@ -27,8 +27,8 @@ from wgsextract_cli.commands import align
 from wgsextract_cli.commands._extract_helpers import alignments_to_fastq
 from wgsextract_cli.commands.align import AlignJob
 from wgsextract_cli.core import runtime
+from wgsextract_cli.core.alignment.cram_staging import cram_version, needs_cram30
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.cram_staging import cram_version, needs_cram30
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

@@ -151,8 +151,11 @@ def _pipeline(
     call_args: list[str],
     indels: bool,
     bands: bool = False,
+    baq: bool = False,
 ) -> list[list[str]]:
-    mpileup = ["bcftools", "mpileup", *profile, "-B"]
+    mpileup = ["bcftools", "mpileup", *profile]
+    if not baq:
+        mpileup += ["-B"]
     if not indels:
         mpileup += ["-I"]
     if bands:
@@ -404,6 +407,7 @@ class _ContigCaller:
     profile: list[str]
     call_args: list[str]
     indels: bool
+    baq: bool = False
     bands: bool = False
     workers: int = 1
     cancelled: Event | None = None
@@ -433,6 +437,7 @@ class _ContigCaller:
             call_args=self.call_args,
             indels=self.indels,
             bands=self.bands,
+            baq=self.baq,
         )
         description = self.description + (f" ({label})" if label else "")
         env = {**os.environ, **self.environment} if self.environment else None
@@ -640,13 +645,20 @@ def call_small_variants(
     call_args: list[str],
     contigs: dict[str, int],
     indels: bool = False,
+    baq: bool = False,
     environment: Mapping[str, str] | None = None,
 ) -> None:
     """Call into ``output``: per-contig workers for ``contigs`` (from
     `calling_contigs`), or one bcftools stream when it is empty.
     ``environment`` is added to the calling bcftools processes' environment."""
     caller = _ContigCaller(
-        alignment, ref, profile, call_args, indels, environment=dict(environment or {})
+        alignment,
+        ref,
+        profile,
+        call_args,
+        indels,
+        baq=baq,
+        environment=dict(environment or {}),
     )
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)

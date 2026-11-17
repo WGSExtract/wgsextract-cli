@@ -1,0 +1,4 @@
+##wgsextract_microarray_target_version=3
+#CHROM	POS	ID
+chr1	1100	rs1
+chrM	73	rs4

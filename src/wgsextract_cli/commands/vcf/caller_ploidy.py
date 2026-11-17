@@ -188,7 +188,7 @@ def calling_ploidy(
     male, female = _policy(rows, selected, "M"), _policy(rows, selected, "F")
     if male == female:
         return female
-    sex = sample_sex(alignment, directory)
+    sex = sample_sex(alignment, directory, reference=reference)
     if sex is not None and sex not in {"Male", "Female"}:
         warn(
             "caller_sex_unknown",
@@ -331,7 +331,7 @@ def call_partitioned(
             "GATK --scatter does not support sex/PAR ploidy partitions."
         )
     if name == "gatk" and params.region is None:
-        from wgsextract_cli.core.cram_staging import cram_version
+        from wgsextract_cli.core.alignment.cram_staging import cram_version
 
         version = cram_version(str(params.input))
         if version is not None and version >= (3, 1):

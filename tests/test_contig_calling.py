@@ -233,6 +233,7 @@ def _female(sample: tuple[str, str], root: Path) -> tuple[str, str]:
 @pytest.mark.parametrize("kind", ["snp", "indel"])
 @pytest.mark.parametrize("sex", ["Male", "Female"])
 @pytest.mark.parametrize("fmt", ["bam", "cram"])
+@pytest.mark.parametrize("baq_flag", ["--no-baq", "--baq"])
 def test_parallel_calls_match_serial_body_and_headers(
     multicontig_sample: tuple[str, str],
     tmp_path: Path,
@@ -240,6 +241,7 @@ def test_parallel_calls_match_serial_body_and_headers(
     sex: str,
     kind: str,
     fmt: str,
+    baq_flag: str,
 ) -> None:
     caplog.set_level(logging.INFO)
     sample = multicontig_sample
@@ -252,8 +254,8 @@ def test_parallel_calls_match_serial_body_and_headers(
         run_command(["samtools", "index", cram])
         bam = cram
     run_wgsextract("sample", "set", "--input", bam, "--sex", sex)
-    serial = _call((bam, ref), tmp_path / "serial", kind, 1)
-    parallel = _call((bam, ref), tmp_path / "parallel", kind, 3, "--parallel")
+    serial = _call((bam, ref), tmp_path / "serial", kind, 1, baq_flag)
+    parallel = _call((bam, ref), tmp_path / "parallel", kind, 3, "--parallel", baq_flag)
     bodies = [
         run_command(["bcftools", "view", "-H", path], capture_output=True).stdout
         for path in (serial, parallel)

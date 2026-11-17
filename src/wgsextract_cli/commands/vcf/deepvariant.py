@@ -19,6 +19,14 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS, VcfDeepvariantParams
 from wgsextract_cli.core import native_deepvariant, ultima
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.alignment.cram_staging import (
+    cram_version,
+    indexed_slice_bytes,
+    needs_cram30,
+    region_intervals,
+    stage_cram30,
+    staging_bytes,
+)
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -28,14 +36,6 @@ from wgsextract_cli.core.containers import (
     image_record,
     require_image,
     run_container,
-)
-from wgsextract_cli.core.cram_staging import (
-    cram_version,
-    indexed_slice_bytes,
-    needs_cram30,
-    region_intervals,
-    stage_cram30,
-    staging_bytes,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
