@@ -20,7 +20,7 @@ def test_bootstrap_saves_reference_library_when_unconfigured(
     monkeypatch.setattr(config, "get_config_path", lambda: config_path)
     config.settings.clear()
     monkeypatch.setattr(
-        "wgsextract_cli.core.ref_library.processing.download_bootstrap", _bootstrap
+        "wgsextract_cli.core.reference_processing.download_bootstrap", _bootstrap
     )
 
     api.ref.bootstrap(api.RefBootstrapParams(ref=reflib))
@@ -40,7 +40,7 @@ def test_bootstrap_keeps_existing_reference_library(
     config.settings.clear()
     config.save_config({"reference_library": str(existing_reflib)})
     monkeypatch.setattr(
-        "wgsextract_cli.core.ref_library.processing.download_bootstrap", _bootstrap
+        "wgsextract_cli.core.reference_processing.download_bootstrap", _bootstrap
     )
 
     api.ref.bootstrap(api.RefBootstrapParams(ref=requested_reflib))
