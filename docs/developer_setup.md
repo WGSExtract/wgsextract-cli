@@ -221,6 +221,9 @@ behavior remain stable. New integration modules must retain their CI tier.
 Modules using the shared `out/fake_30x` fixtures also retain a direct
 `ensure_fake_data` import: the loadgroup scheduler uses it to keep shared-data
 generation on one worker, even when the fixture itself is imported.
+The standalone `test_server_shared_data.py` guard names its source inputs with
+explicit repository-relative paths, so affected-test selection runs it whenever
+those consumer modules change.
 
 - **Assert observable behaviour.** That means:
   - output files and their content
