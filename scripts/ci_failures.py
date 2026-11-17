@@ -328,8 +328,25 @@ class Observer(IssueReports):
             and run["event"] in {"push", "pull_request", "merge_group"}
         ):
             self.report_recoveries(run)
+        main = is_main_validation(run, self.gh.repository)
+        failures = None
+        if (
+            main
+            and run["status"] == "completed"
+            and run["conclusion"] in {"success", "failure"}
+        ):
+            # Pending coalesced pushes suppress retries, not the most recent
+            # conclusive main verdict. Delayed older verdicts must still lose.
+            completed = self.latest(run, "main")
+            if (
+                completed is not None
+                and completed["id"] == run["id"]
+                and completed["run_attempt"] == run["run_attempt"]
+            ):
+                failures = self.failures(run) if run["conclusion"] != "success" else []
+                self.red_main(run, failures)
         if superseded:
-            print("Superseded run; not rerunning or changing main status.")
+            print("Superseded run; not rerunning.")
             return 0
         assert latest is not None
         if (
@@ -338,10 +355,9 @@ class Observer(IssueReports):
         ):
             print("Attempt is no longer current.")
             return 0
-        failures = self.failures(run) if run["conclusion"] != "success" else []
-        if is_main_validation(run, self.gh.repository):
-            self.red_main(run, failures)
-        elif failures:
+        if failures is None:
+            failures = self.failures(run) if run["conclusion"] != "success" else []
+        if not main and failures:
             baselines: dict[str, list[Failure]] = {}
             for failure in failures:
                 if failure.classification != "test failure":

@@ -632,13 +632,13 @@ def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_over
 @pytest.mark.parametrize(
     ("prefix", "job_name", "workflow", "workflow_name"),
     [
-        ("macos", "test-macos / core-1", "macos_ci.yml", "CI macOS"),
+        ("macos", "test-macos / all", "macos_ci.yml", "CI macOS"),
         pytest.param(
             "smoke",
-            "smoke (ubuntu-latest, package)",
+            "smoke (ubuntu-latest)",
             "cli_smoke.yml",
             "CLI package and benchmark smoke",
-            id="761-parallel-smoke",
+            id="1038-combined-smoke",
         ),
     ],
 )
