@@ -224,6 +224,8 @@ generation on one worker, even when the fixture itself is imported.
 The standalone `test_server_shared_data.py` guard names its source inputs with
 explicit repository-relative paths, so affected-test selection runs it whenever
 those consumer modules change.
+Its companion `test_server_shared_data_routing.py` checks that selection and runs
+when the worker guard changes; both guards stay outside the CI-only test list.
 
 - **Assert observable behaviour.** That means:
   - output files and their content

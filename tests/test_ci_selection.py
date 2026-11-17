@@ -23,21 +23,6 @@ from scripts.ci_test_dependencies import ROOT
 @pytest.mark.parametrize(
     "path",
     [
-        "tests/test_server_jobs.py",
-        "tests/test_server_lifecycle.py",
-        "tests/test_server_mcp.py",
-    ],
-)
-def test_826_server_fixture_consumers_select_the_shared_data_scheduler_guard(
-    path: str,
-) -> None:
-    selected = select_tests([path])
-    assert selected == "all" or "tests/test_server_shared_data.py" in selected
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
         "src/wgsextract_cli/core/report_documents.py",
         "scripts/gen_report_schema.py",
         "scripts/schema_sources/wgsextract.report.1.json",
