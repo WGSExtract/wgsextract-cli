@@ -37,8 +37,17 @@
     "shared/annotate/panel.js",
     "shared/annotate/annotate.js",
   ];
+  /* A shell's own modules, loaded before it (shared/shells/<shell>/) */
+  var SHELL_MODULES = {
+    v2: ["state", "machine", "glossary", "region", "tools", "tools-align", "tools-call", "tools-quality",
+      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog"],
+  };
   if (shell && shell !== "none") {
-    SCRIPTS.splice(SCRIPTS.indexOf("shared/chrome.js"), 0, "shared/shells/" + shell + ".js");
+    var at = SCRIPTS.indexOf("shared/chrome.js");
+    var mine = (SHELL_MODULES[shell] || []).map(function (name) {
+      return "shared/shells/" + shell + "/" + name + ".js";
+    });
+    SCRIPTS.splice.apply(SCRIPTS, [at, 0].concat(mine, ["shared/shells/" + shell + ".js"]));
   }
   SCRIPTS.push("shared/start.js");
   window.WGSM_ROOT = root;
