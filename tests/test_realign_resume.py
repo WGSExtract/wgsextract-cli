@@ -40,6 +40,8 @@ from tests.test_realign import (
     source as source,
 )
 from wgsextract_cli.commands import realign
+from wgsextract_cli.commands.realignment import mapping as realign_mapping
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -72,7 +74,7 @@ def test_failed_realign_retains_selected_workspace_fastqs_for_recovery(
     scratch.mkdir()
     fakes = _Fakes(monkeypatch)
     monkeypatch.setattr(
-        realign, "collate_working_memory", lambda *_a, **_kw: 2 * 1024**4
+        realign_steps, "collate_working_memory", lambda *_a, **_kw: 2 * 1024**4
     )
     fakes.align_error = RuntimeError("alignment interrupted")
     with (
@@ -97,7 +99,8 @@ def test_force_step_index_reindexes_an_alignment_its_aligner_indexed(
     tmp_path, monkeypatch, source
 ):
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    monkeypatch.setattr(realign, "indexed_read_count", lambda *_args: 2)
+    monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_args: 2)
+    monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_args: 2)
     aligned = sam_to_bam(
         ["@SQ\tSN:chr1\tLN:100", "r\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII"],
         tmp_path / "a.bam",

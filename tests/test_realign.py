@@ -24,6 +24,9 @@ from wgsextract_cli.api.align import realign as realign_api
 from wgsextract_cli.commands import realign as realign
 from wgsextract_cli.commands.alignment import short_reads
 from wgsextract_cli.commands.realign import RealignJob as RealignJob
+from wgsextract_cli.commands.realignment import long_reads as realign_long_reads
+from wgsextract_cli.commands.realignment import preparation as realign_preparation
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core import parabricks as parabricks
 from wgsextract_cli.core.alignment.cram_staging import cram_version as cram_version
 from wgsextract_cli.core.alignment.memory import MappingMemory as MappingMemory
@@ -258,19 +261,26 @@ class _Fakes:
         self.aligned = []
         self.streamed = []
         self.align_error = None
-        monkeypatch.setattr(realign, "verify_dependencies", lambda _tools: None)
-        monkeypatch.setattr(realign, "log_dependency_info", lambda _tools: None)
-        monkeypatch.setattr(realign, "alignments_to_fastq", self.extract)
+        monkeypatch.setattr(
+            realign_long_reads, "verify_dependencies", lambda _tools: None
+        )
+        monkeypatch.setattr(realign_steps, "verify_dependencies", lambda _tools: None)
+        monkeypatch.setattr(realign_steps, "log_dependency_info", lambda _tools: None)
+        monkeypatch.setattr(realign_steps, "alignments_to_fastq", self.extract)
         monkeypatch.setattr(realign.align_cmd, "run", self.align)
         monkeypatch.setattr(realign.align_cmd, "align_bwa", self.stream)
         monkeypatch.setattr(
-            realign, "alignment_sample", lambda *_a, **_k: AlignmentSample(100, 400)
+            realign_steps,
+            "alignment_sample",
+            lambda *_a, **_k: AlignmentSample(100, 400),
         )
         monkeypatch.setattr(
-            realign, "unpaired_sample", lambda *_a, **_k: UnpairedSample(2, 0, None)
+            realign_preparation,
+            "unpaired_sample",
+            lambda *_a, **_k: UnpairedSample(2, 0, None),
         )
         monkeypatch.setattr(short_reads, "available_memory", lambda: 1024**4)
-        monkeypatch.setattr(realign, "available_memory", lambda: 1024**4)
+        monkeypatch.setattr(realign_steps, "available_memory", lambda: 1024**4)
 
     def extract(self, _input, r1, r2, **_kwargs):
         # Extraction writes staged copies; record the FASTQs they become.

@@ -36,6 +36,7 @@ from tests.test_realign import (
 )
 from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.alignment import common, preparation, short_reads
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core import parabricks
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -114,7 +115,7 @@ def test_failed_extraction_leaves_no_truncated_fastqs(
         Path(r1).write_text("@r\nAC")
         raise error
 
-    monkeypatch.setattr(realign, "alignments_to_fastq", truncated)
+    monkeypatch.setattr(realign_steps, "alignments_to_fastq", truncated)
     with pytest.raises(type(error)):
         realign.run(_args(source, keep_fastq=True))
     assert list(tmp_path.glob("*.fastq.gz")) == []
