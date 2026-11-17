@@ -75,6 +75,29 @@ def test_23andme_writes_the_header_then_the_template_markers_in_order(tmp_path):
     )
 
 
+def test_issue_1043_correction_edits_take_effect_in_the_same_api_process(
+    tmp_path, monkeypatch
+):
+    from wgsextract_cli.core import microarray_utils
+
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    corrections = assets / "corrections.tsv"
+    corrections.write_text("23andMe_V3\trs1\t1\t1000\t1000\n")
+    # Filesystem boundary: use an isolated package-resource directory.
+    monkeypatch.setattr(microarray_utils, "_PACKAGED_TEMPLATES", assets)
+    root = _templates(tmp_path / "lib", "23andMe_V3.txt", "# kit\n", "rs1\t1\t1000\n")
+    source = _kit(
+        tmp_path / "kit.txt", [("rs1", "1", "1000", "AA"), ("rs2", "1", "2000", "CC")]
+    )
+    out = tmp_path / "out.txt"
+    convert_to_vendor_format("23andMe_V3", source, str(out), str(root))
+    assert out.read_text().splitlines()[-1] == "rs1\t1\t1000\tAA"
+    corrections.write_text("23andMe_V3\trs1\t1\t1000\t2000\n")
+    convert_to_vendor_format("23andMe_V3", source, str(out), str(root))
+    assert out.read_text().splitlines()[-1] == "rs1\t1\t2000\tCC"
+
+
 def test_ancestry_splits_alleles_into_columns_and_writes_no_calls_as_zero(tmp_path):
     out = _convert(
         tmp_path,

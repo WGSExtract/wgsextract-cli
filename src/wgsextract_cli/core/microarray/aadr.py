@@ -16,9 +16,8 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.aadr_resources import require_aadr_2m
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.microarray_targets import (
-    HG19_TO_HG38_CHAIN,
     _write_target,
-    download_chain,
+    hg19_to_hg38_chain,
 )
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -81,13 +80,14 @@ def _chrom_name(chrom: str) -> str:
     return {"23": "X", "24": "Y", "90": "MT", "M": "MT"}.get(chrom, chrom)
 
 
-def aadr_lifter(
+def aadr_chain(
     build: str | None,
     outdir: str,
     reflib_dir: str | None = None,
     *,
     allow_download: bool = True,
-) -> LiftOver | None:
+) -> str | None:
+    """Resolve the same installed or fallback chain for calling and reuse."""
     build = canonical_build(build or "")
     if build == "hg19":
         return None
@@ -96,16 +96,24 @@ def aadr_lifter(
     if reflib_dir:
         installed = Path(reflib_dir, "hg19ToHg38.over.chain.gz")
         if installed.is_file():
-            return LiftOver(str(installed))
+            return str(installed)
     if not allow_download:
         raise WGSExtractError(
             "AADR 2M on GRCh38 requires an installed hg19ToHg38.over.chain.gz "
             "in the reference library; use 'wgsextract ref download' explicitly."
         )
-    chain = Path(outdir, "hg19ToHg38.over.chain.gz")
-    if not chain.is_file() and not download_chain(HG19_TO_HG38_CHAIN, str(chain)):
-        raise WGSExtractError("Could not download the GRCh37-to-GRCh38 AADR chain.")
-    return LiftOver(str(chain))
+    return hg19_to_hg38_chain(outdir)
+
+
+def aadr_lifter(
+    build: str | None,
+    outdir: str,
+    reflib_dir: str | None = None,
+    *,
+    allow_download: bool = True,
+) -> LiftOver | None:
+    chain = aadr_chain(build, outdir, reflib_dir, allow_download=allow_download)
+    return LiftOver(chain) if chain else None
 
 
 def _marker_coordinate(

@@ -3,7 +3,9 @@
 Each output unit (the combined kit, each vendor kit, each AADR panel) gets a
 ``<output>.inputs.json`` sidecar beside it, recording the run's inputs (input
 and reference identity, every option that changes the genotypes, the CLI
-version) and the files the unit wrote. A later run reuses a unit only when
+version), effective sample sex, content identities for small scientific
+resources, and the files the unit wrote. Vendor units also identify the
+selected template header and bodies. A later run reuses a unit only when
 its sidecar's inputs equal the new run's and every recorded file is still
 there with the recorded size and mtime; anything else (no sidecar, a corrupt
 one, a changed input or option, a touched output) regenerates the unit and
@@ -21,9 +23,11 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli import __version__
+from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
+from wgsextract_cli.core.microarray.resource_identity import resource_identity
 from wgsextract_cli.core.microarray_utils import GenotypeTally
 from wgsextract_cli.core.results import FileRecord, current_result
 
@@ -58,19 +62,25 @@ def run_inputs(
     liftover_chain: str | None,
     sample: str | None,
     aadr_panels: Iterable[str] = (),
+    aadr_chain: str | None = None,
 ) -> dict[str, Any]:
     """The inputs shared by every unit; options are resolved through
     config.toml, so changing a ``microarray_*`` setting counts too. The AADR
     panels count because their sites join the CombinedKit, which can change
     which vendor positions the hg38-to-hg19 liftover rejects as collisions."""
+    sex = sample_workspace.known("sex", input_path)
     return {
         "cli_version": __version__,
         "input": file_identity(input_path),
         "reference": file_identity(ref_fasta),
         "build": build,
-        "ref_vcf_tab": file_identity(ref_vcf_tab),
-        "ploidy_file": file_identity(ploidy_file),
-        "liftover_chain": file_identity(liftover_chain),
+        "ref_vcf_tab": resource_identity(ref_vcf_tab),
+        "ploidy_file": resource_identity(ploidy_file),
+        "liftover_chain": resource_identity(liftover_chain),
+        "sample_sex": current_result().metrics.get(
+            "effective_sex", sex.value if sex else None
+        ),
+        "aadr_chain": resource_identity(aadr_chain),
         "region": params.region,
         "sample": sample,
         "quality": asdict(quality_policy(params)),

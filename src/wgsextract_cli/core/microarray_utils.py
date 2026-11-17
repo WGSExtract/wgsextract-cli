@@ -171,7 +171,6 @@ def _open_template(path: str) -> TextIO:
     return open(path)
 
 
-@functools.cache
 def _template_corrections() -> dict[tuple[str, str, str], str]:
     """{(template, ID, position): corrected position} from corrections.tsv."""
     corrections: dict[tuple[str, str, str], str] = {}
@@ -241,6 +240,25 @@ def _resolve_templates_for_format(
             first_missing = missing[0]
 
     raise WGSExtractError(f"Template body not found: {first_missing}")
+
+
+def template_resource_paths(
+    templates_dir: TemplateSearchInput, format_name: str
+) -> list[Path]:
+    """The actual selected vendor header, bodies and packaged corrections."""
+    fmt = get_template_format(format_name)
+    if fmt is None:
+        return []
+    try:
+        root, bodies = _resolve_templates_for_format(templates_dir, format_name, fmt)
+    except WGSExtractError:
+        # Freshness checks must not discard a CombinedKit when conversion fails.
+        return []
+    return [
+        Path(root, "head", format_name + fmt["suffix"]),
+        *(Path(body) for body in bodies),
+        _PACKAGED_TEMPLATES / "corrections.tsv",
+    ]
 
 
 def liftover_hg38_to_hg19(
