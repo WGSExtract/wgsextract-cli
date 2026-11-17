@@ -14,7 +14,7 @@ from wgsextract_cli.core.read_counts import (
     fasta_read_length,
     fastq_statistics,
 )
-from wgsextract_cli.core.reference_assets import header_sequences, is_fasta_path
+from wgsextract_cli.core.ref_library.assets import header_sequences, is_fasta_path
 from wgsextract_cli.core.sequencing import (
     input_platform,
     pacbio_platform,

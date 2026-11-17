@@ -27,7 +27,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_vep_run,
     preflight_resources,

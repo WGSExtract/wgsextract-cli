@@ -16,7 +16,7 @@ from wgsextract_cli.core.output_checks import (
     warn_if_nothing_annotated,
 )
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import (
     UsageError,

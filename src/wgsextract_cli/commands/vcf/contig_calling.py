@@ -50,8 +50,8 @@ from wgsextract_cli.core.execution_context import (
     context_thread,
 )
 from wgsextract_cli.core.progress import ContigProgress
-from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline

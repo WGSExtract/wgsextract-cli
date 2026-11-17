@@ -17,7 +17,7 @@ from pathlib import Path, PureWindowsPath
 from wgsextract_cli.core import mini_genome
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.file_lock import exclusive_lock, held
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
     annotation_vcf_names,
     reference_dict_path,

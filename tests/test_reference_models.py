@@ -5,7 +5,7 @@ import pytest
 
 from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.constants import REFERENCE_MODELS
-from wgsextract_cli.core.reference_models import identify_reference
+from wgsextract_cli.core.ref_library.models import identify_reference
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 
 HG19 = {"1": 249250621, "X": 155270560, "Y": 59373566, "MT": 16569}

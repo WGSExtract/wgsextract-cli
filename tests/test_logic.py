@@ -1001,7 +1001,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def test_reference_library_resolves_support_assets_from_input_build_hint(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         os.makedirs(os.path.join(self.test_dir, "genomes"))
         nested_ref = os.path.join(
@@ -1028,7 +1028,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.ref_vcf_tab, targets)
 
     def test_reference_library_resolves_input_manifest_reference_fasta(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         genome_dir = os.path.join(self.test_dir, "genome")
         os.makedirs(genome_dir)
@@ -1049,7 +1049,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         )
 
     def test_reference_library_resolves_generic_reference_fasta(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         fasta = os.path.join(self.test_dir, "my.grch38.reference.fasta")
         Path(fasta).touch()
@@ -1059,7 +1059,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.build, "hg38")
 
     def test_reference_library_manifest_fallback_for_relative_input(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         input_dir = os.path.join(self.test_dir, "input")
         os.makedirs(input_dir)
@@ -1087,7 +1087,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.build, "hg38")
 
     def test_reference_library_detects_hs_build_aliases_from_reference_path(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         hs38_ref = os.path.join(self.test_dir, "GCA_hs38d1_analysis_set.fa")
         hs37_ref = os.path.join(self.test_dir, "hs37d5.fa")
@@ -1098,7 +1098,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(ReferenceLibrary(hs37_ref, None).build, "hg19")
 
     def test_reference_resolver_resolves_support_assets_from_input_build_hint(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         nested_ref = os.path.join(
             self.test_dir, "microarray", "raw_file_templates", "body", "head", "ref"

@@ -12,7 +12,7 @@ from urllib.parse import quote
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
-from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG

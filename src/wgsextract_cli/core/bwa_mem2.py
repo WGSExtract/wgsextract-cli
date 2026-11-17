@@ -23,11 +23,11 @@ from wgsextract_cli.core.alignment.memory import (
     reference_bases,
 )
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.ref_library.assets import sequence_dictionary
 from wgsextract_cli.core.ref_library.downloads import (
     download_file,
     verify_download_sha256,
 )
-from wgsextract_cli.core.reference_assets import sequence_dictionary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 INDEX_SUFFIXES = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")

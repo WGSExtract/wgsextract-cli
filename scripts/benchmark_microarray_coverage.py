@@ -39,7 +39,7 @@ from wgsextract_cli.core.genotype_qc import (
     target_depths,
 )
 from wgsextract_cli.core.microarray.templates import get_template_format, is_autosome
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 
 DEFAULT_DEPTHS = "30,20,15,10,8,6,5,4,3,2,1"
 GROUPS = ("autosomes", "X", "Y", "MT")

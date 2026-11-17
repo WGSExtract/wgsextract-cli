@@ -51,7 +51,7 @@ def genome_bytes(final_name: str, reflib_dir: str) -> int:
     """Bytes on disk of a library genome, its partial download and indexes."""
     if not reflib_dir:
         return 0
-    from wgsextract_cli.core.reference_assets import reference_genomes_dir
+    from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 
     base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
     return sum(

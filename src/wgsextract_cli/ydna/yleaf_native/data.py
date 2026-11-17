@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 UCSC_README = "UCSC-liftOver-README.txt"

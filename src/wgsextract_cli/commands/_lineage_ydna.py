@@ -23,8 +23,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genotype_qc import CHR_Y, warn_low_depth
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import (
     MissingDependencyError,

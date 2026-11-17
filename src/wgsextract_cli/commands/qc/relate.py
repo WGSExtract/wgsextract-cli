@@ -37,11 +37,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import (
-    input_stem,
-    resolve_reference_library,
-)
-from wgsextract_cli.core.reference_resolver import (
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.resolver import (
     ReferenceLibrary,
     header_contig_lengths,
     library_roots,

@@ -5,14 +5,14 @@ from os import PathLike, fspath
 
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput
-
-from .builds import build_from_chr1_length, build_from_path
-from .reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     header_sequences,
     read_fai_lengths,
     sequence_dictionary,
 )
-from .reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
+
+from .builds import build_from_chr1_length, build_from_path
 from .utils import run_command
 
 

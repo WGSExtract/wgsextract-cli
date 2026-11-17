@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from wgsextract_cli import api
-from wgsextract_cli.core import config, reference_processing
+from wgsextract_cli.core import config
+from wgsextract_cli.core.ref_library import processing as reference_processing
 
 
 def _bootstrap(path: str) -> bool:

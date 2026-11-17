@@ -30,7 +30,7 @@ from wgsextract_cli.core.microarray.templates import (
     vendor_chrom,
     vendor_output_profile,
 )
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import (
     match_chromosome_name,

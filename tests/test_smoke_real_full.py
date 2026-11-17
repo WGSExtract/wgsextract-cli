@@ -23,7 +23,7 @@ from wgsextract_cli.core.alignment_metadata import get_vcf_build
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.config import settings, typed_settings
 from wgsextract_cli.core.microarray.templates import _resolve_templates_roots
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.variant_files import calculate_bam_md5, vcf_index_chromosomes
 
 

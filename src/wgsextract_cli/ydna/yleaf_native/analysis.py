@@ -19,7 +19,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import vcf_index_chromosomes

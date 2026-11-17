@@ -25,7 +25,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
-from wgsextract_cli.core.reference_assets import read_fai_lengths, reference_dict_path
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths, reference_dict_path
 from wgsextract_cli.core.region_selection import is_region_file, region_items
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,

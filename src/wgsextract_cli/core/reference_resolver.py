@@ -1,566 +1,74 @@
-import functools
-import logging
-import os
-import subprocess
-from collections.abc import Iterator
-from pathlib import Path
-from typing import NamedTuple
+"""Public imports for the ref_library.resolver implementation."""
 
-from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.builds import (
-    HG37_BUILD_ALIASES,
-    HG38_BUILD_ALIASES,
-    build_from_chr1_length,
-    build_from_path,
-    canonical_build,
-    is_hg37_build,
-    is_hg38_build,
-)
-from wgsextract_cli.core.constants import REF_GENOME_FILENAMES
-from wgsextract_cli.core.paths import PathInput, expand_path
+import functools as functools
+import logging as logging
+import os as os
+import subprocess as subprocess
+from collections.abc import Iterator as Iterator
+from pathlib import Path as Path
+from typing import NamedTuple as NamedTuple
+
+from wgsextract_cli.core import sample_workspace as sample_workspace
+from wgsextract_cli.core.builds import HG37_BUILD_ALIASES as HG37_BUILD_ALIASES
+from wgsextract_cli.core.builds import HG38_BUILD_ALIASES as HG38_BUILD_ALIASES
+from wgsextract_cli.core.builds import build_from_chr1_length as build_from_chr1_length
+from wgsextract_cli.core.builds import build_from_path as build_from_path
+from wgsextract_cli.core.builds import canonical_build as canonical_build
+from wgsextract_cli.core.builds import is_hg37_build as is_hg37_build
+from wgsextract_cli.core.builds import is_hg38_build as is_hg38_build
+from wgsextract_cli.core.constants import REF_GENOME_FILENAMES as REF_GENOME_FILENAMES
+from wgsextract_cli.core.paths import PathInput as PathInput
+from wgsextract_cli.core.paths import expand_path as expand_path
+from wgsextract_cli.core.reference_assets import build_hint as build_hint
+from wgsextract_cli.core.reference_assets import fasta_build as fasta_build
 from wgsextract_cli.core.reference_assets import (
-    build_hint,
-    fasta_build,
-    find_fasta_by_signature,
-    find_reference_fasta,
-    find_reference_target_tab,
-    is_fasta_path,
-    library_of_genomes_dir,
-    read_fai_lengths,
-    reference_dict_path,
-    reference_genomes_dir,
-    resolve_input_reference_fasta,
-    resolve_input_target_tab,
+    find_fasta_by_signature as find_fasta_by_signature,
 )
-from wgsextract_cli.core.reference_models import identify_reference, sequence_lengths
-
-from .alignment_metadata import (
-    get_bam_header,
-    get_vcf_build,
+from wgsextract_cli.core.reference_assets import (
+    find_reference_fasta as find_reference_fasta,
 )
+from wgsextract_cli.core.reference_assets import (
+    find_reference_target_tab as find_reference_target_tab,
+)
+from wgsextract_cli.core.reference_assets import is_fasta_path as is_fasta_path
+from wgsextract_cli.core.reference_assets import (
+    library_of_genomes_dir as library_of_genomes_dir,
+)
+from wgsextract_cli.core.reference_assets import read_fai_lengths as read_fai_lengths
+from wgsextract_cli.core.reference_assets import (
+    reference_dict_path as reference_dict_path,
+)
+from wgsextract_cli.core.reference_assets import (
+    reference_genomes_dir as reference_genomes_dir,
+)
+from wgsextract_cli.core.reference_assets import (
+    resolve_input_reference_fasta as resolve_input_reference_fasta,
+)
+from wgsextract_cli.core.reference_assets import (
+    resolve_input_target_tab as resolve_input_target_tab,
+)
+from wgsextract_cli.core.reference_models import (
+    identify_reference as identify_reference,
+)
+from wgsextract_cli.core.reference_models import sequence_lengths as sequence_lengths
 
-_UNKNOWN_SIGNATURE = "0" * 32
-
-
-@functools.cache
-def _warn_missing_configured_library(path: str) -> None:
-    """Once per run: a configured library that isn't there finds no data."""
-    from wgsextract_cli.core.config import get_config_path
-
-    logging.warning(
-        f"reference_library in {get_config_path()} is {path}, which doesn't "
-        "exist. Point it at your reference library, or pass --ref."
-    )
-
-
-class LibraryRoots(NamedTuple):
-    """Where a ``--ref`` points: the library root, an explicit FASTA, and the
-    FASTA's own folder when it is kept outside any library."""
-
-    root: str | None
-    fasta: str | None = None
-    beside_fasta: str | None = None
-
-    def resource_root(self, *relpaths: str) -> str | None:
-        """The first of ``beside_fasta`` and ``root`` holding one of
-        ``relpaths``, else ``root``, where missing resources are downloaded or
-        built."""
-        roots = [d for d in (self.beside_fasta, self.root) if d]
-        return next(
-            (r for r in roots if any(Path(r, p).exists() for p in relpaths)),
-            self.root,
-        )
-
-
-def library_roots(root_path: PathInput | None) -> LibraryRoots:
-    """The library folders ``root_path`` (a library, or a FASTA) names, else
-    the configured reference_library's, without searching the library."""
-    from wgsextract_cli.core.config import settings
-
-    root = expand_path(root_path) if root_path is not None else None
-    if not root:
-        configured = settings.get("reference_library")
-        root = expand_path(configured) if configured else None
-    if not root or not (Path(root).is_file() and is_fasta_path(root)):
-        return LibraryRoots(root)
-    fasta_dir = Path(root).parent
-    # A FASTA in a library's genomes folder belongs to that library, whose root
-    # holds the ploidy files, liftover chains and annotation data.
-    owner = library_of_genomes_dir(fasta_dir)
-    if owner:
-        return LibraryRoots(owner, root)
-    # A FASTA kept outside any library chooses only the sequence.
-    configured = settings.get("reference_library")
-    if isinstance(configured, str) and configured:
-        library = expand_path(configured)
-        if Path(library).is_dir() and library != str(fasta_dir):
-            return LibraryRoots(library, root, str(fasta_dir))
-    return LibraryRoots(str(fasta_dir), root)
-
-
-class ReferenceLibrary:
-    """Helper to manage and resolve reference genome paths."""
-
-    # The folder of an explicit FASTA kept outside any library: its resources
-    # are searched before the configured library's (#429).
-    beside_fasta: str | None = None
-
-    def __init__(
-        self,
-        root_path: PathInput | None,
-        md5_sig: str | None = None,
-        skip_full_search: bool = False,
-        input_path: PathInput | None = None,
-    ) -> None:
-        from wgsextract_cli.core.config import settings
-
-        root_path = expand_path(root_path) if root_path is not None else None
-        input_path = expand_path(input_path) if input_path is not None else None
-        if not root_path:
-            configured = settings.get("reference_library")
-            if (
-                isinstance(configured, str)
-                and not Path(expand_path(configured)).is_dir()
-            ):
-                _warn_missing_configured_library(expand_path(configured))
-        library = library_roots(root_path)
-        self.root: str | None = library.root
-        self.md5: str | None = md5_sig
-        self.input_path: str | None = input_path
-        if isinstance(self.input_path, str):
-            self.input_path = expand_path(self.input_path)
-        self.fasta: str | None = None
-        self.dict_file: str | None = None
-        self.fai: str | None = None
-        self.liftover_chain: str | None = None
-        self.ref_vcf_tab: str | None = None
-        self.clinvar_vcf: str | None = None
-        self.revel_file: str | None = None
-        self.phylop_file: str | None = None
-        self.cadd_file: str | None = None
-        self.cadd_indel_file: str | None = None
-        self.gerp_file: str | None = None
-        self.gnomad_vcf: str | None = None
-        self.spliceai_vcf: str | None = None
-        self.alphamissense_vcf: str | None = None
-        self.pharmgkb_vcf: str | None = None
-        self.ploidy_file: str | None = None
-        self.vep_cache: str | None = None
-        self.build: str | None = None
-
-        if not self.root:
-            return
-
-        self.fasta = library.fasta
-        self.beside_fasta = library.beside_fasta
-
-        explicit_fasta = bool(self.fasta)
-        signature_match = False
-        if not self.fasta:
-            self.fasta = self._fasta_matching_signature()
-            signature_match = bool(self.fasta)
-        if not self.fasta:
-            self.fasta = self._default_fasta(root_path)
-
-        header_target = input_path or (
-            root_path if root_path and Path(root_path).is_file() else None
-        )
-        self.build = self._detect_build(header_target, root_path)
-        if not signature_match:
-            self._reresolve_fasta_for_build(explicit_fasta)
-
-        # Ploidy files and the VEP cache depend on the build, not on a FASTA.
-        self._resolve_build_support_files()
-        self._resolve_vep_cache(settings.get("vep_cache_directory"))
-
-        if not self.fasta:
-            # Annotating a VCF needs only the build and the library's data files.
-            if not skip_full_search:
-                self._resolve_annotation_files()
-            return
-
-        self.fai = self.fasta + ".fai" if Path(self.fasta + ".fai").exists() else None
-        dict_file = reference_dict_path(self.fasta)
-        self.dict_file = dict_file if Path(dict_file).exists() else None
-
-        if skip_full_search:
-            return
-
-        self._resolve_ref_vcf_tab()
-        self._resolve_annotation_files()
-
-    # --- FASTA resolution -------------------------------------------------
-
-    def _genome_dirs(self) -> list[str]:
-        assert self.root is not None
-        return [self.root, reference_genomes_dir(self.root)]
-
-    def _fasta_matching_signature(self) -> str | None:
-        """Pick the FASTA whose sequence dictionary matches the input's: from the
-        library, else beside the input (a dataset that ships its reference)."""
-        if not self.md5 or self.md5 == _UNKNOWN_SIGNATURE:
-            return None
-        search_dirs = self._genome_dirs()
-        if self.input_path:
-            search_dirs.append(str(Path(self.input_path).parent))
-        fasta = find_fasta_by_signature(search_dirs, self.md5)
-        if fasta:
-            logging.debug(f"ReferenceLibrary: {fasta} matches signature {self.md5}")
-        return fasta
-
-    def _default_fasta(self, root_path: str | None) -> str | None:
-        for search_dir in self._genome_dirs():
-            if not Path(search_dir).is_dir():
-                continue
-            for file_name in REF_GENOME_FILENAMES.values():
-                potential = str(Path(search_dir, file_name))
-                if Path(potential).exists():
-                    return potential
-        assert self.root is not None
-        return (
-            find_reference_fasta(self.root, self.input_path, root_path)
-            or resolve_input_reference_fasta(self.input_path)
-            or None
-        )
-
-    def _reresolve_fasta_for_build(self, explicit: bool) -> None:
-        """Swap a guessed FASTA for one of the detected build when they disagree.
-
-        A FASTA the user named is kept (with a warning); a guessed one with no
-        replacement is dropped, so commands ask for --ref instead of calling
-        variants against the wrong build."""
-        target = canonical_build(self.build)
-        guessed = self.fasta
-        if not guessed or not target:
-            return
-        # The FASTA's own chr1 length, else its name (human_g1k_v37 names no build).
-        path_build = canonical_build(
-            build_from_chr1_length(read_fai_lengths(guessed))
-        ) or build_from_path(Path(guessed).name)
-        if not path_build or path_build == target:
-            return
-
-        if explicit:
-            logging.warning(
-                f"{self.fasta} looks like {path_build}, but the input is {self.build}; "
-                "using it as given."
-            )
-            return
-        logging.debug(
-            f"Build mismatch detected (Build={self.build}, Path={self.fasta}). Re-resolving FASTA..."
-        )
-        for search_dir in self._genome_dirs():
-            if not Path(search_dir).is_dir():
-                continue
-            for key, file_name in REF_GENOME_FILENAMES.items():
-                if build_from_path(f"{key} {file_name}") != target:
-                    continue
-                potential = str(Path(search_dir, file_name))
-                if Path(potential).exists():
-                    self.fasta = potential
-                    return
-        logging.warning(
-            f"The input is {self.build}, but the reference library has no {self.build} "
-            f"genome (it has {Path(guessed).name}); pass --ref <FASTA>."
-        )
-        self.fasta = None
-
-    # --- Build detection --------------------------------------------------
-
-    def _detect_build(
-        self, header_target: str | None, root_path: str | None
-    ) -> str | None:
-        build = self._build_from_signature()
-        method = "header contig MD5 signature"
-        sample = header_target if header_target == self.input_path else None
-        if not build and sample:
-            fact = sample_workspace.known("build", sample)
-            if fact is not None:
-                return str(fact.value)
-        if not build and header_target:
-            if header_target.lower().endswith((".vcf", ".vcf.gz", ".bcf")):
-                build = get_vcf_build(header_target)
-                method = "VCF header contigs"
-                if build:
-                    logging.debug(
-                        f"ReferenceLibrary: Identified build as {build} from VCF header"
-                    )
-            if not build:
-                build = self._build_from_header(header_target)
-                method = "alignment header contigs"
-        if sample and canonical_build(build):
-            sample_workspace.record(
-                "build",
-                sample,
-                canonical_build(build),
-                method=method,
-                confidence="high",
-            )
-        if not build and self.fasta:
-            build = fasta_build(self.fasta)
-        assert self.root is not None
-        return (
-            build
-            or build_hint(self.resource_roots[0], self.input_path, root_path)
-            or None
-        )
-
-    def _build_from_signature(self) -> str | None:
-        if not self.md5:
-            return None
-        from wgsextract_cli.core.constants import REFERENCE_MODELS
-
-        model = REFERENCE_MODELS.get(self.md5)
-        if not model:
-            return None
-        build = canonical_build(model[0]) or model[0]
-        logging.debug(f"ReferenceLibrary: Identified build as {build} from MD5")
-        return build
-
-    @staticmethod
-    def _build_from_header(header_target: str) -> str | None:
-        try:
-            header = get_bam_header(header_target)
-        except (
-            OSError,
-            subprocess.SubprocessError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-        ) as e:
-            logging.debug(f"ReferenceLibrary: Error reading header: {e}")
-            return None
-        if not header:
-            logging.debug(f"ReferenceLibrary: No header retrieved from {header_target}")
-            return None
-
-        model = identify_reference(header)
-        build = canonical_build(model.name) if model else None
-        logging.debug(
-            f"ReferenceLibrary: Identified build as {build} from the header"
-            + (f" ({model.evidence})" if model else "")
-        )
-        return build
-
-    # --- Companion resources ----------------------------------------------
-
-    def _resolve_build_support_files(self) -> None:
-        if not self.build:
-            return
-        self.ploidy_file = self._first_existing_file(
-            self._resource_dirs("", "ref", "microarray"),
-            [f"ploidy_{self.build}.txt", "ploidy.txt"],
-        )
-
-    def _resolve_vep_cache(self, configured_vep_cache: object) -> None:
-        if (
-            isinstance(configured_vep_cache, str)
-            and configured_vep_cache
-            and Path(configured_vep_cache).is_dir()
-        ):
-            self.vep_cache = configured_vep_cache
-            return
-        # `vep download` writes into the library, so only its cache is used.
-        assert self.root is not None
-        for search_dir in [self.root, str(Path(self.root, "vep"))]:
-            if Path(search_dir).is_dir() and any(
-                f.endswith(("_GRCh38", "_GRCh37")) for f in os.listdir(search_dir)
-            ):
-                self.vep_cache = search_dir
-                return
-            vep_sub = str(Path(search_dir, "vep"))
-            if Path(vep_sub).is_dir():
-                self.vep_cache = vep_sub
-                return
-
-    def _resolve_ref_vcf_tab(self) -> None:
-        """Microarray target: All_SNPs_<build>_ref.tab.gz, else a generic SNP VCF.
-
-        Never the bootstrap's snps_<build>.vcf.gz: it holds only Y-chromosome SNPs,
-        so every kit made from it was empty. Without a genome-wide target,
-        microarray builds one from the chip templates.
-        """
-        subdirs = ["microarray", "", "ref"]
-        tab_names: list[str] = []
-        if self.build:
-            build = self.build.lower()
-            alt_build = {"hg38": "grch38", "hg19": "grch37"}.get(build)
-            spellings = [build, build.upper()]
-            if alt_build:
-                spellings += [alt_build, alt_build.upper(), f"GRCh{build[-2:]}"]
-            tab_names = list(
-                dict.fromkeys(f"All_SNPs_{name}_ref.tab.gz" for name in spellings)
-            )
-            subdirs += [
-                str(Path("microarray", self.build)),
-                self.build,
-                str(Path("ref", self.build)),
-            ]
-            if alt_build:
-                subdirs += [alt_build, str(Path("ref", alt_build))]
-        generic_names = ["All_SNPs.vcf.gz", "common_all.vcf.gz"]
-        walk_subdirs = ["microarray", "ref", str(Path("genomes", "microarray"))]
-
-        def search(root: str) -> Iterator[str | None]:
-            dirs = [str(Path(root, d)) for d in subdirs]
-            walk = [str(Path(root, d)) for d in walk_subdirs]
-            yield self._first_existing_file(dirs, tab_names)
-            yield self._walk_for_file(walk, tab_names)
-            if root == self.resource_roots[0]:
-                yield resolve_input_target_tab(self.input_path)
-            yield self._first_existing_file(dirs, generic_names)
-            yield find_reference_target_tab(root, self.build or "")
-            yield self._walk_for_file(walk, generic_names)
-
-        # Every candidate in the FASTA's folder comes before the library's.
-        self.ref_vcf_tab = next(
-            (found for root in self.resource_roots for found in search(root) if found),
-            resolve_input_target_tab(self.input_path) or None,
-        )
-
-    def _resolve_annotation_files(self) -> None:
-        from wgsextract_cli.core.config import settings
-
-        dirs = self._resource_dirs("", "ref")
-        vcf_exts = [".vcf.gz", ".vcf.bgz"]
-        tsv_exts = [".tsv.gz", ".vcf.gz"]
-        self.clinvar_vcf = self._resolve_annotation_file(
-            settings.get("clinvar_vcf_path"), "clinvar", [".vcf.gz"], dirs
-        )
-        self.revel_file = self._resolve_annotation_file(
-            settings.get("revel_tsv_path"), "revel", tsv_exts, dirs
-        )
-        self.phylop_file = self._resolve_annotation_file(
-            settings.get("phylop_tsv_path"), "phylop", [".bw", *tsv_exts], dirs
-        )
-        self.cadd_file = self._resolve_annotation_file(
-            settings.get("cadd_tsv_path"), "cadd", [".tsv.gz"], dirs
-        )
-        self.cadd_indel_file = self._resolve_annotation_file(
-            settings.get("cadd_indel_tsv_path"), "cadd_indel", [".tsv.gz"], dirs
-        )
-        self.gerp_file = self._resolve_annotation_file(
-            settings.get("gerp_bigwig_path"), "gerp", [".bw", ".bigWig"], dirs
-        )
-        # The v4.1 allele-frequency table (`ref gnomad --release 4.1`) wins over
-        # the v2.1.1 exome VCF when both are installed.
-        self.gnomad_vcf = self._resolve_annotation_file(
-            settings.get("gnomad_vcf_path"),
-            "gnomad",
-            [".tsv.gz", ".vcf.bgz", ".vcf.gz"],
-            dirs,
-        )
-        self.spliceai_vcf = self._resolve_annotation_file(
-            settings.get("spliceai_vcf_path"), "spliceai", vcf_exts, dirs
-        )
-        self.alphamissense_vcf = self._resolve_annotation_file(
-            settings.get("alphamissense_vcf_path"),
-            "alphamissense",
-            [".tsv.gz", *vcf_exts],
-            dirs,
-        )
-
-        configured_pharmgkb = settings.get("pharmgkb_vcf_path")
-        if (
-            isinstance(configured_pharmgkb, str)
-            and configured_pharmgkb
-            and Path(configured_pharmgkb).exists()
-        ):
-            self.pharmgkb_vcf = configured_pharmgkb
-        elif self.build:
-            pharmgkb_exts = [".vcf.gz", ".vcf.bgz", ".tsv.gz"]
-            self.pharmgkb_vcf = self._resolve_annotation_file(
-                None, "pharmgkb", pharmgkb_exts, dirs
-            ) or self._first_existing_file(
-                dirs, [f"pharmgkb{ext}" for ext in pharmgkb_exts]
-            )
-
-        if self.build and is_hg38_build(self.build):
-            self.liftover_chain = self._first_existing_file(
-                self._resource_dirs("", "ref", "microarray"),
-                ["hg38ToHg19.over.chain.gz"],
-            )
-
-    @property
-    def resource_roots(self) -> list[str]:
-        """Folders searched for library resources, in order."""
-        return [d for d in (self.beside_fasta, self.root) if d]
-
-    def resource_root(self, *relpaths: str) -> str | None:
-        """The first resource root holding one of relpaths, else the library
-        root, where missing resources are downloaded or built."""
-        return next(
-            (
-                root
-                for root in self.resource_roots
-                if any(Path(root, p).exists() for p in relpaths)
-            ),
-            self.root,
-        )
-
-    def _resource_dirs(self, *subdirs: str) -> list[str]:
-        """Each resource root's subdirectories, root by root."""
-        return [str(Path(root, d)) for root in self.resource_roots for d in subdirs]
-
-    def searched_description(self) -> str:
-        """The resource roots, for errors about a missing library file."""
-        return ", ".join(self.resource_roots) or "no reference library configured"
-
-    @staticmethod
-    def _first_existing_file(search_dirs: list[str], names: list[str]) -> str | None:
-        for search_dir in search_dirs:
-            if not Path(search_dir).is_dir():
-                continue
-            for name in names:
-                potential = str(Path(search_dir, name))
-                if Path(potential).exists():
-                    return potential
-        return None
-
-    @staticmethod
-    def _walk_for_file(search_roots: list[str], names: list[str]) -> str | None:
-        for search_root in search_roots:
-            if not Path(search_root).is_dir():
-                continue
-            for current_dir, _, files in os.walk(search_root):
-                for name in names:
-                    if name in files:
-                        return str(Path(current_dir, name))
-        return None
-
-    def _resolve_annotation_file(
-        self,
-        configured_path: object,
-        prefix: str,
-        extensions: list[str],
-        search_dirs: list[str],
-    ) -> str | None:
-        """Resolve an annotation file across directories and build aliases."""
-        if (
-            isinstance(configured_path, str)
-            and configured_path
-            and Path(configured_path).exists()
-        ):
-            return configured_path
-
-        if not self.build:
-            return None
-
-        aliases = [self.build]
-        if is_hg38_build(self.build):
-            aliases.extend([*sorted(HG38_BUILD_ALIASES), "GRCh38"])
-        elif is_hg37_build(self.build):
-            aliases.extend([*sorted(HG37_BUILD_ALIASES), "GRCh37"])
-        names = [f"{prefix}_{alias}{ext}" for alias in aliases for ext in extensions]
-        names.extend(f"{prefix}{ext}" for ext in extensions)
-
-        for search_dir in search_dirs:
-            found = self._first_existing_file([search_dir], names)
-            if found:
-                return found
-        return None
-
-
-def header_contig_lengths(header: str) -> dict[str, int]:
-    """Contig lengths from BAM @SQ lines, else from VCF ##contig lines."""
-    return sequence_lengths(header)
+from .alignment_metadata import get_bam_header as get_bam_header
+from .alignment_metadata import get_vcf_build as get_vcf_build
+from .ref_library.resolver import (
+    _UNKNOWN_SIGNATURE as _UNKNOWN_SIGNATURE,
+)
+from .ref_library.resolver import (
+    LibraryRoots as LibraryRoots,
+)
+from .ref_library.resolver import (
+    ReferenceLibrary as ReferenceLibrary,
+)
+from .ref_library.resolver import (
+    _warn_missing_configured_library as _warn_missing_configured_library,
+)
+from .ref_library.resolver import (
+    header_contig_lengths as header_contig_lengths,
+)
+from .ref_library.resolver import (
+    library_roots as library_roots,
+)

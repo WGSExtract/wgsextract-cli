@@ -25,7 +25,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,

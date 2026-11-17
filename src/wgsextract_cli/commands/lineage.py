@@ -23,6 +23,7 @@ from wgsextract_cli.core.haplogrep_trees import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.mitochondrial import (
     CHM13_CHRM,
     CHM13_CHRM_MD5,
@@ -30,9 +31,8 @@ from wgsextract_cli.core.ref_library.mitochondrial import (
     mito_origin,
     ref_agreement,
 )
-from wgsextract_cli.core.reference_assets import resolve_reference_library
-from wgsextract_cli.core.reference_models import MITO_BY_LENGTH, sequence_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.models import MITO_BY_LENGTH, sequence_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import (
     Scalar,
     current_result,

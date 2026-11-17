@@ -31,7 +31,7 @@ from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.progress import ContigProgress
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy

@@ -5,12 +5,12 @@ from pathlib import Path
 
 from wgsextract_cli.core import config
 from wgsextract_cli.core.config import dataset_library, settings
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     library_of_genomes_dir,
     reference_genomes_dir,
     reference_library_of,
 )
-from wgsextract_cli.core.reference_resolver import library_roots
+from wgsextract_cli.core.ref_library.resolver import library_roots
 
 
 def test_without_the_setting_genomes_stay_inside_the_library(tmp_path):

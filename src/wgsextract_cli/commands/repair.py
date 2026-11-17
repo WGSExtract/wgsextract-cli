@@ -16,8 +16,8 @@ from wgsextract_cli.cli.registration.repair import register as register
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import input_stem
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
 from wgsextract_cli.core.utils import (
     UsageError,

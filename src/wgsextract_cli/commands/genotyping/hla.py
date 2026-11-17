@@ -25,7 +25,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingHlaParams
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.read_scope import may_follow
-from wgsextract_cli.core.reference_resolver import library_roots
+from wgsextract_cli.core.ref_library.resolver import library_roots
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 

@@ -10,7 +10,7 @@ from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import calculate_bam_md5, ensure_vcf_prepared

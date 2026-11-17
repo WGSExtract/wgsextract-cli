@@ -4,7 +4,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.bgzf import is_bgzf
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     header_sequences,
     read_fai_lengths,
     sequence_dictionary,
@@ -55,7 +55,7 @@ def validate_calling_reference(
             problems.append(f"{name}: input length {length}, reference {lengths[name]}")
     # Do not scan an entire human FASTA just to compute checksums. Existing
     # dictionaries let us catch same-length replacements without that cost.
-    from wgsextract_cli.core.reference_assets import reference_dict_path
+    from wgsextract_cli.core.ref_library.assets import reference_dict_path
 
     dictionary = Path(reference_dict_path(fasta))
     if dictionary.is_file():

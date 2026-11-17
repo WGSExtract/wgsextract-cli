@@ -101,11 +101,13 @@ from wgsextract_cli.core.pixi_tools import pixi_install_command as pixi_install_
 from wgsextract_cli.core.read_counts import (
     fastq_input_statistics as fastq_input_statistics,
 )
-from wgsextract_cli.core.reference_assets import is_fasta_path as is_fasta_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import is_fasta_path as is_fasta_path
+from wgsextract_cli.core.ref_library.assets import (
     reference_genomes_dir as reference_genomes_dir,
 )
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary as ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import (
+    ReferenceLibrary as ReferenceLibrary,
+)
 from wgsextract_cli.core.remote_input import is_url as is_url
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources as estimate_resources,

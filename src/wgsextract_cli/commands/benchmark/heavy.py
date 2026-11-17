@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 
 from .bam_helpers import (
     _assert_bam_unindexed,

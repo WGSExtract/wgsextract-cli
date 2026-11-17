@@ -30,14 +30,7 @@ from wgsextract_cli.core.download_progress import format_bytes, redact_urls
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.ref_library.catalog import (
-    get_available_genomes,
-    get_genome_status,
-)
-from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.ref_library.ncount import write_n_count_files
-from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     fasta_prefix,
     n_count_paths,
     read_fai_lengths,
@@ -46,7 +39,14 @@ from wgsextract_cli.core.reference_assets import (
     sequence_signature,
     verify_sequence_signature,
 )
-from wgsextract_cli.core.reference_processing import has_ref_ns
+from wgsextract_cli.core.ref_library.catalog import (
+    get_available_genomes,
+    get_genome_status,
+)
+from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.ncount import write_n_count_files
+from wgsextract_cli.core.ref_library.processing import has_ref_ns
+from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
 from wgsextract_cli.core.results import (
     current_result,
     file_snapshot,

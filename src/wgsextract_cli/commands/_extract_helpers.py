@@ -12,8 +12,8 @@ from typing import IO, Literal, NamedTuple
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput, absolute_path
-from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.region_selection import is_region_file
 from wgsextract_cli.core.run_log import is_run_log_path
 from wgsextract_cli.core.samtools_commands import parse_memory
@@ -203,7 +203,7 @@ def region_or_gene(
         gene_map_build,
         resolve_gene_map_reflib,
     )
-    from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+    from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
     detected = ReferenceLibrary(
         resolved_ref, skip_full_search=True, input_path=fspath(input_path)

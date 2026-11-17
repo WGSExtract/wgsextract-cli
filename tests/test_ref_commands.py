@@ -58,7 +58,7 @@ from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.gene_map import GENE_MAP_URLS
 from wgsextract_cli.core.ref_library import remote_sizes
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     reference_dict_path,
     sequence_signature,

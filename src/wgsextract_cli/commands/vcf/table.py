@@ -20,7 +20,7 @@ from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import (
     current_result,
     human_output,
