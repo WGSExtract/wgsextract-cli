@@ -46,14 +46,14 @@
   function sortPerThread(c, capped) {
     var m = c.v.memory;
     var gb = m === "2G" ? 2 : m === "768M" ? 0.75 : m === "512M" ? 0.5 : m === "256M" ? 0.25 : 1;
-    return capped && m === "auto" ? 0.25 : gb;
+    return capped && !m ? 0.25 : gb;
   }
 
   /* Which aligner runs, how, and what it costs, on this computer */
   function plan(c) {
     var M = c.M;
     var mac = M.os === "macos";
-    var native = M.native && c.v.native !== "off";
+    var native = M.native && c.v.native_aligners !== "off";
     var index = c.flag("mem2-" + c.v.ref);
     var threads = c.v.threads || M.cores;
     var sortThreads = c.v.threads && c.v.threads !== M.cores ? threads : M.bigCores;
@@ -104,9 +104,9 @@
     }
     var onGpu = native && (mac || M.nvidia);
     var bwa = onGpu
-      ? cost("wgse-bwa on " + gpu, mac ? 0.28 : 0.19, 6.75 + (c.v.dense ? 0.8 : 0), false)
-      : cost(native ? "wgse-bwa on the CPU" : "bwa on the CPU", 0.7, 6 + (native && c.v.dense ? 0.8 : 0), false);
-    if (native && c.v.dense) bwa.rate *= 0.923;
+      ? cost("wgse-bwa on " + gpu, mac ? 0.28 : 0.19, 6.75 + (c.v.dense_suffix_array ? 0.8 : 0), false)
+      : cost(native ? "wgse-bwa on the CPU" : "bwa on the CPU", 0.7, 6 + (native && c.v.dense_suffix_array ? 0.8 : 0), false);
+    if (native && c.v.dense_suffix_array) bwa.rate *= 0.923;
     bwa.records = "bwa’s exact";
     bwa.dense = native;
     return bwa;
@@ -120,23 +120,23 @@
   /* Output size: CRAM ~0.29 GB per x of depth, BAM ~2.5x that */
   function outputGB(c, file) {
     var cram = file.depth * 0.29;
-    return c.v.format === "BAM" && c.v.profile === "default" ? cram * 2.5 : cram;
+    return c.v.format === "BAM" && c.v.output_profile === "default" ? cram * 2.5 : cram;
   }
 
   var ALIGNER_FIELDS = [
-    f.select("ref", "Target reference", "The build to move to", "ref", REFS.map(function (r) {
+    f.select("ref", "Target reference", "The build to move to; sent as the library’s FASTA", REFS.map(function (r) {
       return [r[0], r[1]];
     }), "hs38"),
-    f.seg("format", "Output", function (c) {
-      return c.v.profile !== "default" ? "Set by the output profile below" : "CRAM is about a third of the size";
-    }, "format", [["BAM", "BAM"], ["CRAM", "CRAM"]], "CRAM"),
-    f.select("aligner", "Aligner", function (c) {
+    f.param("format", "Output", function (c) {
+      return c.v.output_profile !== "default" ? "Set by the output profile below" : "CRAM is about a third of the size";
+    }, { def: "CRAM", send: true }),
+    f.param("aligner", "Aligner", function (c) {
       var p = plan(c);
       if (p.blocked) return p.blocked;
       if (p.needsIndex) return "Needs bwa-mem2’s index";
       return "Runs " + p.aligner + (p.standIn ? ", standing in for " + p.standIn : "") + "; writes " + p.records + " records";
-    }, "aligner", [["auto", "Auto"], ["bwa", "bwa"], ["bwa-mem2", "bwa-mem2"], ["bwa-mem3", "bwa-mem3"], ["minimap2", "minimap2"]], "auto"),
-    f.toggle("fast", "Faster preset", "bwa-mem3’s speed preset: about twice as fast, but alignments differ from BWA’s", "fast", false, {
+    }, { as: "select", labels: { auto: "Auto" } }),
+    f.param("fast", "Faster preset", "bwa-mem3’s speed preset: about twice as fast, but alignments differ from BWA’s", {
       when: function (c) {
         return !longRead(c);
       },
@@ -147,32 +147,35 @@
   ];
 
   var ALIGNER_MORE = [
-    f.select("platform", "Sequencer", "Read from the file: Illumina", "platform",
-      [["illumina", "Illumina"], ["dnbseq", "DNBSEQ (MGI, BGI)"], ["ultima", "Ultima"], ["hifi", "PacBio HiFi"], ["clr", "PacBio CLR"], ["ont", "Oxford Nanopore"]], "illumina", { width: 240 }),
-    f.seg("profile", "Output profile", function (c) {
-      return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.profile];
-    }, "output_profile", [["default", "Default"], ["archive", "Archive"], ["calling", "For calling"]], "default"),
-    f.seg("native", "WGS Extract’s aligners", function (c) {
+    f.param("platform", "Sequencer", "Empty: read from the reads’ names and read groups (Illumina here)", {
+      unset: "From the reads",
+      labels: { illumina: "Illumina", dnbseq: "DNBSEQ (MGI, BGI)", ultima: "Ultima", pacbio: "PacBio", hifi: "PacBio HiFi", clr: "PacBio CLR", ont: "Oxford Nanopore", nanopore: "Nanopore" },
+    }),
+    f.param("output_profile", "Output profile", function (c) {
+      return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.output_profile];
+    }, { def: "default", labels: { default: "Default", archive: "Archive", calling: "For calling" } }),
+    f.param("native_aligners", "WGS Extract’s aligners", function (c) {
       return c.M.os === "macos" ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
-    }, "native_aligners", [["auto", "Use them"], ["off", "Off"]], "auto", {
+    }, {
+      def: "auto", labels: { auto: "Use them", off: "Off" },
       when: function (c) {
         return c.M.native;
       },
     }),
-    f.toggle("dense", "Dense suffix array", function (c) {
+    f.param("dense_suffix_array", "Dense suffix array", function (c) {
       var p = plan(c);
       return p.dense ? "About 8% faster with wgse-bwa; holds 0.8 GB more in memory. Build it once with ref dense-sa" : "Only wgse-bwa reads it; " + (p.aligner || "this aligner") + " runs here, so it would be unused";
-    }, "dense_suffix_array", false, {
+    }, {
       when: function (c) {
         return c.M.native;
       },
     }),
-    f.toggle("preferGpu", "Use the GPU even when tight", "If no GPU plan fits in memory, use it anyway rather than the slower CPU; may swap heavily", "prefer_native_gpu", false, {
+    f.param("prefer_native_gpu", "Use the GPU even when tight", "If no GPU plan fits in memory, use it anyway rather than the slower CPU; may swap heavily", {
       when: function (c) {
         return c.M.native && (c.M.metal || c.M.nvidia);
       },
     }),
-    f.toggle("gpu", "NVIDIA Parabricks", "BWA-MEM, sorting and duplicate marking on the GPU, in Docker", "gpu", false, {
+    f.param("gpu", "NVIDIA Parabricks", "BWA-MEM, sorting and duplicate marking on the GPU, in Docker", {
       disabled: function (c) {
         if (c.M.parabricks) return null;
         if (c.M.nvidia && c.M.os === "windows") return "Parabricks needs Linux; this GPU is used on Linux only";
@@ -184,10 +187,6 @@
     f.sortMemory(function (c) {
       var p = plan(c);
       return p.aligner && p.aligner.indexOf("bwa-mem2") >= 0 ? "Capped at 256 MB with bwa-mem2, to leave room for its index" : "Auto: a quarter of the RAM, at least 1 GB per thread";
-    }),
-    f.text("chunk", "Chunk size", "Long reads: input per chunk, so a stopped run resumes and temporary files stay small", "chunk_size", "4G", {
-      width: 100,
-      when: longRead,
     }),
   ];
 
@@ -221,29 +220,12 @@
     return notes;
   }
 
-  function alignerCommand(c, base, p) {
-    var line = [base];
-    if (c.v.aligner !== "auto") line.push("--aligner " + c.v.aligner);
-    if (c.v.fast && !longRead(c)) line.push("--fast");
-    if (c.v.platform !== "illumina") line.push("--platform " + c.v.platform);
-    if (c.v.profile !== "default") line.push("--output-profile " + c.v.profile);
-    else line.push("--format " + c.v.format);
-    if (c.v.native === "off" && c.M.native) line.push("--native-aligners off");
-    if (c.v.gpu && c.M.parabricks) line.push("--gpu");
-    if (c.v.dense) line.push("--dense-suffix-array");
-    if (c.v.preferGpu) line.push("--prefer-native-gpu");
-    if (c.v.threads && c.v.threads !== c.M.cores) line.push("--threads " + c.v.threads);
-    if (c.v.memory !== "auto") line.push("--memory " + c.v.memory);
-    if (longRead(c) && c.v.chunk && c.v.chunk !== "4G") line.push("--chunk-size " + c.v.chunk);
-    return line;
-  }
-
   function alignerChecks(p) {
     return p.aligner ? [["Aligner", p.aligner + (p.standIn ? " (in " + p.standIn + "’s place)" : "") + ", writing " + p.records + " records", "ok", "Found"]] : [];
   }
 
   T.define({
-    slug: "realign", label: "Realign", op: "realign", group: "Align and call", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
+    slug: "realign", label: "Realign", ops: ["realign"], group: "Align and call", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
     desc: "Aligns a genome again to another reference, so it can be used with tools and sites that expect that build. The original file is kept.",
     learn: "Use it when a genome was delivered on an older build, usually GRCh37, and you want the tools, databases and DNA-test sites that expect GRCh38, or T2T for the hardest regions. Your DNA doesn’t change: the same reads are placed again on the new reference.\n\n" +
       "Every read is aligned again, so it takes hours, and you get a second BAM or CRAM beside the first. Once the new file is checked, Convert can remove the old one. Align FASTQ is the same job for reads that were never aligned; a VCF can’t be realigned, because it holds no reads.",
@@ -251,25 +233,24 @@
     fields: ALIGNER_FIELDS,
     moreTitle: "Aligner, resources and steps",
     more: ALIGNER_MORE.concat([
-      f.toggle("keep", "Keep the extracted reads", function (c) {
+      f.param("keep_fastq", "Keep the extracted reads", function (c) {
         return "About " + c.m.gb(c.file.gb * 0.83) + " of FASTQ more; otherwise reads stream straight to the aligner";
-      }, "keep_fastq", false),
-      f.seg("tmp", "Temporary files on", "Sorting spills here", "tmp_dir", [["out", "Beside the output"], ["system", "System disk"]], "out"),
-      f.toggle("force", "Start over", "Ignore steps an earlier run finished", "force", false),
+      }),
+      f.param("chunk_size", "Chunk size", "Long reads: input per chunk, so a stopped run resumes and temporary files stay small", { width: 100, when: longRead }),
+      f.param("restart", "Start over", "Ignore steps an earlier run finished"),
     ]),
+    requests: function (c, base) {
+      return [base("realign", { ref: c.m.fasta(c.v.ref) })];
+    },
     run: function (c) {
       var p = plan(c);
       var out = { notes: alignerNotes(c, p), checks: alignerChecks(p) };
       var file = c.file;
-      var outName = file.stem + "_aligned." + (c.v.format === "BAM" && c.v.profile === "default" ? "bam" : "cram");
+      var outName = file.stem + "_aligned." + (c.v.format === "BAM" && c.v.output_profile === "default" ? "bam" : "cram");
       var outDisk = c.m.diskName(file);
       var size = outputGB(c, file);
-      var tmpDisk = c.v.tmp === "out" ? outDisk : c.M.systemDisk;
-      out.disk = [];
-      var spill = size * 1.2;
-      var onOut = size + (c.v.keep ? file.gb * 0.83 : 0) + (tmpDisk === outDisk ? spill : 0);
-      out.disk.push([outDisk, onOut]);
-      if (tmpDisk !== outDisk) out.disk.push([tmpDisk, spill]);
+      /* the output, the sort's spills beside it, and kept reads */
+      out.disk = [[outDisk, size + size * 1.2 + (c.v.keep_fastq ? file.gb * 0.83 : 0)]];
       var running = c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled") && !c.flag("realign-done");
       if (running) {
         out.notes.unshift({ tone: "info", icon: "realign", id: "running", title: "Already running: 47%, 1 h 52 min left",
@@ -286,12 +267,6 @@
       out.hours = p.aligner ? hoursFor(c, p, file) : null;
       out.timeText = p.timeText;
       out.memGB = p.mem;
-      var cmd = alignerCommand(c, "wgsextract realign --input " + c.m.path(file), p);
-      cmd.splice(1, 0, "--ref " + c.v.ref + " --outdir " + c.m.outdir(file));
-      if (c.v.keep) cmd.push("--keep-fastq");
-      if (c.v.tmp !== "out") cmd.push("--tmp-dir " + c.m.native(c.M.os === "windows" ? "C:/Temp" : "/tmp"));
-      if (c.v.force) cmd.push("--force");
-      out.command = cmd;
       out.makes = "Makes " + outName + " in " + c.name + "’s folder; the original stays.";
       out.jobName = "Realign " + c.name + " to " + c.v.ref;
       return out;
@@ -299,14 +274,18 @@
   });
 
   T.define({
-    slug: "align", label: "Align FASTQ", op: "align", group: "Align and call", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
+    slug: "align", label: "Align FASTQ", ops: ["align"], group: "Align and call", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
     desc: "Places raw reads from a sequencer on a reference genome, making the BAM or CRAM that every other tool reads. The FASTQ files are kept.",
     learn: "Use it when a lab sent only FASTQ files, or when you’d rather start from the raw reads on a reference of your choice. Nothing else can read FASTQ, so this step comes first.\n\n" +
       "It’s the longest job here: hours for a whole genome, less with bwa-mem3 or WGS Extract’s GPU builds. bwa, bwa-mem2 and bwa-mem3 are for short reads and give the same kind of result; minimap2 is for long reads. If you already have a BAM or CRAM, use Realign instead.",
     accepts: ["fastq"], file: "fastq", button: "Start aligning", dryRun: false,
-    fields: ALIGNER_FIELDS.concat([f.text("sample", "Sample name", "Written into the file; sites and tools show it", "sample", "60820188474839")]),
+    fields: ALIGNER_FIELDS.concat([f.param("sample", "Sample name", "Written into the read group; sites and tools show it", { def: "60820188474839" })]),
     moreTitle: "Aligner and resources",
     more: ALIGNER_MORE,
+    requests: function (c, base) {
+      var M = c.m;
+      return [base("align", { r1: M.realPath(M.path(c.file, c.file.r1)), r2: M.realPath(M.path(c.file, c.file.r2)), ref: M.fasta(c.v.ref), outdir: M.realPath(c.M.genomesPath + "/") })];
+    },
     run: function (c) {
       var p = plan(c);
       var out = { notes: alignerNotes(c, p), checks: alignerChecks(p) };
@@ -324,11 +303,7 @@
         !refInstalled(c, c.v.ref) ? "Download " + refLabel(c.v.ref) + " first." : null,
         p.needsIndex ? "Download bwa-mem2’s index first." : null,
       ].filter(Boolean)[0] || null;
-      var cmd = alignerCommand(c, "wgsextract align --r1 " + c.m.path(c.file, c.file.r1), p);
-      cmd.splice(1, 0, "--r2 " + c.m.path(c.file, c.file.r2), "--ref " + c.v.ref + " --outdir " + c.m.native(c.M.genomesPath + "/"));
-      if (c.v.sample) cmd.push("--sample " + c.v.sample);
-      out.command = cmd;
-      out.makes = "Makes " + (c.v.sample || "the sample") + "." + (c.v.format === "BAM" && c.v.profile === "default" ? "bam" : "cram") + " on " + c.M.genomesDisk + ".";
+      out.makes = "Makes " + c.file.stem + "_aligned." + (c.v.format === "BAM" && c.v.output_profile === "default" ? "bam" : "cram") + " on " + c.M.genomesDisk + ".";
       out.jobName = "Align " + c.name + "’s reads";
       return out;
     },

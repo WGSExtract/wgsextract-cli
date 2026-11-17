@@ -76,7 +76,7 @@ server rejects or ignores unknown fields), or the real server grows them.
 
 ```js
 WGSM.v2api.get("/v1/jobs?detail=1").then(({ status, body }) => …);
-WGSM.v2api.post("/v1/ops/realign", { input, ref: "hs38", outdir, _mock: {…} });
+WGSM.v2api.post("/v1/ops/realign", { input, ref: "/Users/you/wgs-extract/reference/genomes/hs38.fa.gz", outdir, _mock: {…} });
 WGSM.v2api.del("/v1/jobs/" + id);         // cancel
 WGSM.v2api.patch("/v1/library/people/helen", { note: "mum" });
 WGSM.v2api.on(({ mode, now }) => …);       // about once a second; returns unsubscribe
@@ -141,7 +141,7 @@ Any `POST /v1/ops/{op}` (and `POST /v1/estimate`'s `params`) may carry a
 mock-only `_mock` object, for the UI's own estimate engine. All optional:
 
 ```jsonc
-{"input": "/Volumes/Genomes/Gordon/60820188479016.bam", "ref": "hs38", "outdir": "/Volumes/Genomes/Gordon/",
+{"input": "/Volumes/Genomes/Gordon/60820188479016.bam", "ref": "/Users/you/wgs-extract/reference/genomes/hs38.fa.gz", "outdir": "/Volumes/Genomes/Gordon/",
  "_mock": {
    "label": "Realign Gordon to hs38", "person": "gordon",
    "hours": 3.55,                      // CPU jobs: simulated duration
@@ -159,15 +159,35 @@ mock-only `_mock` object, for the UI's own estimate engine. All optional:
 
 Without it, each operation has defaults (`api-ops.js`): label, steps, time
 scaled by the input file's size, outputs beside the input, temporary space.
-Download operations: `ref/library`, `ref/index` (`download: true`, the
-default), `ref/imputation`, `vep/download`, `ref/clinvar`, `ref/gnomad`,
-`ref/gnomad-sv`, `ref/test-genome`, `ref/download`.
+Download operations: `ref/library`, `ref/index`, `ref/imputation`,
+`vep/download`, `ref/clinvar`, `ref/gnomad`, `ref/gnomad-sv`, `ref/revel`,
+`ref/cadd`, `ref/alphamissense`, `ref/spliceai`, `ref/test-genome`.
 
-**Flags** the UI uses come from finished jobs: `ref/library {ref}` →
-`ref-<ref>`; `ref/index {ref, aligner: "bwa-mem2"}` → `mem2-<ref>`;
+**Flags** the UI uses come from finished jobs: `ref/library {install}` →
+`ref-<code>`; `ref/index {ref: <FASTA>, aligner: "bwa-mem2"}` → `mem2-<code>`;
 `ref/imputation` → `panel-1kg`; `vep/download` → `vep-cache`;
 `bam/index` of a file that needs it → that file's flag (`alex-fixed`);
 cancelling a realign → `realign-cancelled`. `POST /v1/mock/flags` overrides.
+
+## Requests are checked as the real server checks them
+
+`POST /v1/ops/{op}` takes the operation's `Params` as JSON, exactly as
+`wgsextract serve` does (`src/wgsextract_cli/server/operations.py`), and
+`api-validate.js` refuses what the real server refuses, with the same
+messages: an unknown operation (404 `unknown_op`), a missing required
+parameter, an unknown one, a wrong type, a value outside an enum, or a path
+that isn't absolute or is a URL (400 `usage`). The schema it checks against
+is `shared/data/api-schema.js`, generated from the server's OpenAPI document,
+so the mock knows every real operation (`GET /v1/ops`); `api-ops.js` only
+adds how long each runs. `_mock` is the one key the real server wouldn't
+accept: the mockups' hint, which the real server never sees.
+
+Downloads and fixes the pages offer are real operations too: `ref/index`
+(bwa-mem2's index), `ref/library` (`install` a reference genome),
+`ref/imputation`, `vep/download`, `ref/gnomad`, `ref/revel`, `ref/cadd`,
+`ref/alphamissense`, `ref/spliceai` and `bam/index`. Polygenic scores and
+the personal report fetch their own public files (a scoring file, a gene
+list) as part of the run, as the CLI does.
 
 ## Routes
 

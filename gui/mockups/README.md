@@ -56,9 +56,15 @@ v2 behaves like the app with a pretend computer behind it; every change is
 kept in this browser until you reset it.
 
 - **Tool pages** (`tools.html`, `tool-*.html`) are drawn from one definition
-  per tool in `shared/shells/v2/tools-*.js`. Changing an option, the file or
-  the computer recomputes the command, the time, memory and disk, and the
-  checks before it starts. Rates come from `docs/hardware.md` and
+  per tool in `shared/shells/v2/tools-*.js`, and they speak the server's API.
+  Each field is a parameter of the operation's `Params`; its control, choices
+  and default come from `shared/data/api-schema.js`, which
+  `python3 gui/mockups/build_api_schema.py` generates from the server's
+  OpenAPI document and the CLI snapshot (a test fails when it's stale; rerun
+  it after the API changes). A run is one or more `POST /v1/ops/{op}`
+  requests, and the command line beside it is derived from those requests.
+  Changing an option, the file or the computer recomputes the requests, the
+  time, memory and disk, and the checks before it starts. Rates come from `docs/hardware.md` and
   `docs/resource_estimates.md` and are noted where they are used; without a
   measured rate a page says what the CLI's help says ("minutes on a 30x
   genome"). The tool pages themselves are thin shells; only their

@@ -58,7 +58,7 @@
     });
 
     r.add("GET", "/v1/ops", "real", function () {
-      return { ops: Object.keys(M.ops.table).map(M.ops.describe) };
+      return { ops: M.ops.names().map(M.ops.describe) };
     });
 
     r.add("GET", "/v1/ops/{op*}", "real", function (req) {
@@ -72,7 +72,7 @@
     r.add("POST", "/v1/ops/{op*}", "real", function (req) {
       var body = req.body === undefined || req.body === null ? {} : req.body;
       if (typeof body !== "object" || Array.isArray(body)) M.fail(400, "bad_json", "The body must be a JSON object of parameters.");
-      if (!M.ops.describe(req.params.op)) M.fail(404, "unknown_op", "No operation " + JSON.stringify(req.params.op) + ".");
+      M.validate(req.params.op, body);
       var job = mock.submit(req.params.op, body, now());
       return { status: mock.isDone(job) ? 200 : 202, body: view(job, req.query) };
     });

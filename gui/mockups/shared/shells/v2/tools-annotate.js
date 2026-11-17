@@ -10,45 +10,36 @@
   var f = T.f;
   var VCF = ["vcf"];
 
-  function vcfIn(c, op, extra) {
-    return ["wgsextract " + op + " --vcf-input " + c.m.path(c.file)].concat(extra || []);
-  }
-
   function download(flag, label, size, extra) {
     return Object.assign({ tone: "warn", icon: "download", id: flag, title: label + " isn’t installed",
       text: "Public reference data; nothing about this genome is sent. It downloads only when you ask.",
       action: { label: "Download" + (size ? " " + size : ""), set: flag, toast: "Downloading " + label + ". See Jobs." } }, extra);
   }
 
+  /* LOW,HIGH thresholds: arrays of numbers in the API */
   var CONFIDENCE = [
-    f.text("confDepth", "Confidence: read depth", "Below LOW a call is low confidence, below HIGH moderate", "confidence_depth", "10,20", { mono: true, width: 110 }),
-    f.text("confGq", "Confidence: genotype quality", "The same, by genotype quality", "confidence_gq", "20,30", { mono: true, width: 110 }),
+    f.param("confidence_depth", "Confidence: read depth", "LOW,HIGH: below LOW a call is low confidence, below HIGH moderate. Empty: 10,20", { width: 110 }),
+    f.param("confidence_gq", "Confidence: genotype quality", "The same, by genotype quality. Empty: 20,30", { width: 110 }),
   ];
 
-  function confidence(c, line) {
-    if (c.v.confDepth && c.v.confDepth !== "10,20") line.push("--confidence-depth " + c.v.confDepth);
-    if (c.v.confGq && c.v.confGq !== "20,30") line.push("--confidence-gq " + c.v.confGq);
-    return line;
-  }
-
   T.define({
-    slug: "vep", label: "VEP", op: "vep/run", group: "Annotate", keywords: "variant effect predictor consequence gene transcript ensembl vep-rs",
+    slug: "vep", label: "VEP", ops: ["vep/run"], group: "Annotate", keywords: "variant effect predictor consequence gene transcript ensembl vep-rs",
     desc: "The Variant Effect Predictor: for each variant, which gene and transcript it falls in and what it may do to the protein.",
     learn: "Use it after calling variants, when you want to know what each one touches: which gene, and whether it changes a protein’s building blocks (missense), cuts the protein short, or sits between genes, as most do.\n\n" +
       "VEP says what a change does, not whether it matters. ClinVar adds what labs have reported about known variants, and Frequencies and scores adds how common a change is and how harmful models predict it to be. The variant table puts them side by side for searching.\n\n" +
       "It needs a large cache of gene data for your build, downloaded once.",
     accepts: VCF, file: "helen", button: "Annotate with VEP",
     fields: [
-      f.seg("engine", "Engine", function (c) {
+      f.param("engine", "Engine", function (c) {
         return c.v.engine === "ensembl" ? "Ensembl’s own VEP, the reference implementation: hours, and its own 26 GB cache" : "vep-rs: a fast Rust VEP, the default on every platform";
-      }, "engine", [["vep-rs", "vep-rs"], ["ensembl", "Ensembl VEP"]], "vep-rs"),
-      f.seg("preset", "What to add", function (c) {
+      }, { def: "vep-rs", labels: { "vep-rs": "vep-rs", ensembl: "Ensembl VEP" } }),
+      f.param("preset", "What to add", function (c) {
         return c.v.preset === "fast" ? "Consequences, genes, MANE transcripts, SIFT and PolyPhen; no population frequencies or HGVS names" : "Everything VEP knows, including population frequencies and HGVS names";
-      }, "preset", [["everything", "Everything"], ["fast", "Fast"]], "everything"),
-      f.seg("format", "Output", "", "format", [["vcf", "VCF"], ["tab", "Table"], ["json", "JSON"]], "vcf"),
+      }, { labels: { everything: "Everything", fast: "Fast" } }),
+      f.param("format", "Output", "", { labels: { vcf: "VCF", tab: "Table", json: "JSON" } }),
     ],
     more: [
-      f.select("assembly", "Assembly", "Read from the VCF", "assembly", [["auto", "From the VCF"], ["GRCh37", "GRCh37"], ["GRCh38", "GRCh38"], ["T2T-CHM13v2.0", "T2T-CHM13 v2.0"]], "auto", { width: 220 }),
+      f.param("vep_assembly", "Assembly", "Empty: read from the VCF", { as: "select", unset: "From the VCF", labels: { "T2T-CHM13v2.0": "T2T-CHM13 v2.0" } }),
       f.region(),
     ],
     run: function (c) {
@@ -56,12 +47,9 @@
       var cacheFlag = ensembl ? "vepcache-ensembl" : "vepcache-vep-rs";
       var minutes = ensembl ? 214 : 8.8;
       if (c.v.preset === "fast") minutes /= 2;
-      var threads = c.v.threads || c.M.cores;
-      var hours = (minutes / 60) * 6 / threads * WGSM.v2region.share(c.v.region);
+      var hours = (minutes / 60) * 6 / c.M.cores * WGSM.v2region.share(c.v.region);
       var out = {
         hours: hours, memGB: ensembl ? 1.4 : 7.5, disk: [[c.M.systemDisk, 0.6]], notes: [],
-        command: ["wgsextract vep run --input " + c.m.path(c.file), "--engine " + c.v.engine + " --preset " + c.v.preset + " --format " + c.v.format]
-          .concat(c.v.assembly !== "auto" ? ["--assembly " + c.v.assembly] : [], c.v.region ? ["--region " + c.v.region] : []),
         makes: "Makes " + c.file.stem + ".vep." + (c.v.format === "tab" ? "tsv" : c.v.format === "json" ? "json" : "vcf.gz") + " in " + c.name + "’s folder.",
       };
       if (ensembl && c.m.unavailable("vep-ensembl")) out.blocked = c.m.unavailable("vep-ensembl") + ".";
@@ -75,34 +63,35 @@
   });
 
   T.define({
-    slug: "clinvar", label: "ClinVar", op: "vcf/clinvar", group: "Annotate", keywords: "pathogenic benign clinical significance health",
+    slug: "clinvar", label: "ClinVar", ops: ["vcf/clinvar"], group: "Annotate", keywords: "pathogenic benign clinical significance health",
     desc: "Marks variants that ClinVar lists with a reported effect on health, from benign to pathogenic, with the conditions submitters named, and how confident each call is.",
     learn: "Use it out of curiosity about known variants, or to look up a gene you’ve heard about. It only knows variants someone has submitted: a new or very rare change won’t be listed, and VEP or the scores are the way to learn about those.\n\n" +
       "Expect a few “pathogenic” entries. Most people carry some, usually for recessive conditions they don’t have, and some listings are old, disputed or based on little evidence; the review stars show how well supported each one is.\n\n" +
       "This isn’t a diagnosis or a clinical test. If something worries you, talk to a doctor or genetic counsellor, who can confirm it with a clinical test.",
     accepts: VCF, file: "helen", button: "Annotate with ClinVar",
-    fields: [f.select("release", "ClinVar release", "Installed with Reference data", "clinvar_file", [["installed", "2026-11-02, installed"]], "installed", { width: 240 })],
+    fields: [f.param("clinvar_file", "ClinVar file", "Empty: the release installed with Reference data (2026-11-02)", { width: 300 })],
     more: CONFIDENCE,
     run: function (c) {
       return {
         hours: null, timeText: "minutes",
         notes: [{ tone: "info", icon: "info", id: "caveat", title: "Not a diagnosis",
           text: "ClinVar records what labs have reported. Many entries conflict or are out of date, and most people carry a few variants marked pathogenic without being affected. Talk to a genetic counsellor about anything that worries you." }],
-        command: confidence(c, vcfIn(c, "vcf clinvar")), makes: "Makes " + c.file.stem + ".clinvar.vcf.gz and adds a summary to " + c.name + "’s page.",
+        makes: "Makes " + c.file.stem + ".clinvar.vcf.gz and adds a summary to " + c.name + "’s page.",
       };
     },
   });
 
+  /* [value, label, size, about, operation, flag of its data, filter field] */
   var SCORES = [
-    ["gnomad", "gnomAD frequencies", "≈ 26 GB", "How common each variant is in 800,000 people", "vcf gnomad", "--max-af"],
-    ["revel", "REVEL", "≈ 0.6 GB", "How likely a missense change is to matter", "vcf revel", "--min-score"],
-    ["alphamissense", "AlphaMissense", "", "DeepMind’s predicted effect of missense changes", "vcf alphamissense", "--min-score"],
-    ["cadd", "CADD", "≈ 85 GB", "How harmful any change may be, as a PHRED score", "vcf cadd", "--min-score"],
-    ["spliceai", "SpliceAI", "", "Whether a change may disturb splicing", "vcf spliceai", null],
+    ["gnomad", "gnomAD frequencies", "≈ 26 GB", "How common each variant is in 800,000 people", "vcf/gnomad", "data-gnomad", "max_af"],
+    ["revel", "REVEL", "≈ 0.6 GB", "How likely a missense change is to matter", "vcf/revel", "data-revel", "min_score"],
+    ["alphamissense", "AlphaMissense", "", "DeepMind’s predicted effect of missense changes", "vcf/alphamissense", "data-alphamissense", "min_score"],
+    ["cadd", "CADD", "≈ 85 GB", "How harmful any change may be, as a PHRED score", "vcf/cadd", "data-cadd", "min_score"],
+    ["spliceai", "SpliceAI", "", "Whether a change may disturb splicing", "vcf/spliceai", "data-spliceai", null],
   ];
 
   T.define({
-    slug: "scores", label: "Frequencies and scores", op: "vcf/gnomad · vcf/revel · vcf/alphamissense · vcf/cadd · vcf/spliceai", group: "Annotate",
+    slug: "scores", label: "Frequencies and scores", ops: ["vcf/gnomad", "vcf/revel", "vcf/alphamissense", "vcf/cadd", "vcf/spliceai"], group: "Annotate",
     keywords: "gnomad revel cadd alphamissense spliceai allele frequency pathogenicity",
     desc: "Adds what large databases and prediction models say about each variant: how common it is, and how likely it is to change a protein or its splicing. Rare plus likely harmful is what clinicians look at first.",
     learn: "Use it when looking through rare variants, to pick out the few worth a closer look. gnomAD says how common each change is; REVEL and AlphaMissense rate changes to a protein’s building blocks, CADD rates any change, and SpliceAI looks at how a gene is cut and joined.\n\n" +
@@ -112,22 +101,23 @@
       return { value: s[0], label: s[1], aside: s[2], desc: s[3], on: i < 2 };
     }) },
     fields: [
-      f.text("maxAf", "Keep only rarer than", "gnomAD: a frequency such as 0.01 (1%); empty keeps all", "max_af", "", { mono: true, width: 100 }),
-      f.text("minScore", "Keep only scores above", "REVEL or AlphaMissense 0.5, CADD 20; empty keeps all", "min_score", "", { mono: true, width: 100 }),
+      f.param("max_af", "Keep only rarer than", "gnomAD: a frequency such as 0.01 (1%); empty keeps all", { width: 100 }),
+      f.param("min_score", "Keep only scores above", "REVEL or AlphaMissense 0.5, CADD 20; empty keeps all", { width: 100 }),
     ],
     more: CONFIDENCE,
+    requests: function (c, base) {
+      return SCORES.filter(function (s) {
+        return c.v.scores.indexOf(s[0]) >= 0;
+      }).map(function (s) {
+        return base(s[4]);
+      });
+    },
     run: function (c) {
       var picks = c.v.scores;
-      var out = { count: picks.length + (picks.length === 1 ? " source" : " sources"), hours: null, timeText: "minutes", notes: [], command: [] };
+      var out = { count: picks.length + (picks.length === 1 ? " source" : " sources"), hours: null, timeText: "minutes", notes: [] };
       SCORES.forEach(function (s) {
-        if (picks.indexOf(s[0]) < 0) return;
-        if (!c.flag("data-" + s[0])) out.notes.push(download("data-" + s[0], s[1], s[2].replace("≈ ", "")));
-        var line = vcfIn(c, s[4]);
-        if (s[0] === "gnomad" && c.v.maxAf) line.push("--max-af " + c.v.maxAf);
-        else if (s[5] === "--min-score" && c.v.minScore) line.push("--min-score " + c.v.minScore);
-        out.command.push(confidence(c, line).join(" \\\n  "));
+        if (picks.indexOf(s[0]) >= 0 && !c.flag(s[5])) out.notes.push(download(s[5], s[1], s[2].replace("≈ ", "")));
       });
-      out.command = [out.command.join("\n")];
       if (!picks.length) out.blocked = "Choose at least one.";
       else if (out.notes.length) out.blocked = "Download the data first.";
       out.makes = "Adds columns to " + c.name + "’s VCF; the original stays.";
@@ -136,63 +126,55 @@
   });
 
   T.define({
-    slug: "variant-table", label: "Variant table", op: "vcf/table", group: "Annotate", keywords: "spreadsheet sqlite tsv parquet search",
+    slug: "variant-table", label: "Variant table", ops: ["vcf/table"], group: "Annotate", keywords: "spreadsheet sqlite tsv parquet search",
     desc: "Turns a VCF into a table you can open in a spreadsheet or search by gene, one row per variant, with the annotations already added.",
     learn: "Use it to browse your own variants: filter by gene, find an rsID someone mentioned, or sort by how common a change is. A VCF is hard to read by eye; a table isn’t.\n\n" +
       "It adds no new knowledge of its own. Run VEP, ClinVar or Frequencies and scores first, and their columns come along. A whole genome gives millions of rows, more than Excel can open, so for the full table use the searchable database or Parquet.",
     accepts: VCF, file: "helen", button: "Make the table",
     fields: [
-      f.seg("format", "Format", "Parquet is smaller and faster for large tables", "format", [["tsv", "TSV"], ["parquet", "Parquet"]], "tsv"),
-      f.toggle("sqlite", "Searchable database", "Also a SQLite file, for searching by gene or position here and on the phone", "no_sqlite", true),
+      f.param("table_format", "Format", "Parquet is smaller and faster for large tables", { labels: { tsv: "TSV", parquet: "Parquet" } }),
+      f.param("no_sqlite", "Only the table", "Skip the SQLite file that searching by gene or position here and on the phone uses"),
       f.region(),
     ],
     more: [
-      f.toggle("allAlleles", "Alleles not carried", "Also list alleles at the site the person doesn’t have", "all_alleles", false),
-      f.select("pharmcat", "Medicine results", "Add PharmCAT’s results to rows in those genes", "pharmcat_json", [["none", "None yet"]], "none", { width: 200 }),
+      f.param("all_alleles", "Alleles not carried", "Also list alleles at the site the person doesn’t have"),
+      f.param("pharmcat_json", "Medicine results", "PharmCAT’s phenotype.json, to add its results to rows in those genes"),
     ],
     run: function (c) {
-      var line = vcfIn(c, "vcf table");
-      if (c.v.format !== "tsv") line.push("--format " + c.v.format);
-      if (!c.v.sqlite) line.push("--no-sqlite");
-      if (c.v.region) line.push("--region " + c.v.region);
-      if (c.v.allAlleles) line.push("--all-alleles");
-      return { hours: null, timeText: "minutes", disk: [[c.M.systemDisk, 0.4 * WGSM.v2region.share(c.v.region)]], command: line,
-        makes: "Makes " + c.file.stem + "_variants." + c.v.format + (c.v.sqlite ? " and .sqlite" : "") + " in " + c.name + "’s folder." };
+      return { hours: null, timeText: "minutes", disk: [[c.M.systemDisk, 0.4 * WGSM.v2region.share(c.v.region)]],
+        makes: "Makes " + c.file.stem + "_variants." + c.v.table_format + (c.v.no_sqlite ? "" : " and .sqlite") + " in " + c.name + "’s folder." };
     },
   });
 
   T.define({
-    slug: "pharmacogenomics", label: "Pharmacogenomics", op: "vcf/pharmcat", group: "Annotate", keywords: "pharmcat medicines drugs cpic cyp2c19",
+    slug: "pharmacogenomics", label: "Pharmacogenomics", ops: ["vcf/pharmcat"], group: "Annotate", keywords: "pharmcat medicines drugs cpic cyp2c19",
     desc: "PharmCAT reads the genes that affect how some medicines work, such as CYP2C19 and SLCO1B1, and reports each gene’s type with the published dosing guidance.",
     learn: "Use it if you’re curious how your genes may affect some medicines, for example CYP2C19 and the blood thinner clopidogrel, or SLCO1B1 and statins. PharmCAT names each gene’s star alleles and the published guideline that applies to them.\n\n" +
       "A home genome can miss variants, and some genes, such as CYP2D6, are hard to read from short reads (Gene typing tries). This isn’t a clinical test: never start, stop or change a medicine because of it. Bring it to your doctor or pharmacist, who can order a clinical test if it matters.",
     accepts: VCF, file: "helen", button: "Run PharmCAT", requires: ["pharmcat"],
     fields: [
-      f.toggle("absent", "Missing positions match the reference", "For a whole-genome VCF that lists only differences (not a gVCF): a position it doesn’t mention matches the reference", "absent_to_ref", true),
-      f.select("outside", "Genes typed elsewhere", "CYP2D6 and HLA results from typing, which PharmCAT can’t read from a VCF", "outside_call", [["none", "None"], ["cyp2d6", "CYP2D6 from typing (needs reads)"]], "none", { width: 280 }),
+      f.param("absent_to_ref", "Missing positions match the reference", "For a whole-genome VCF that lists only differences (not a gVCF): a position it doesn’t mention matches the reference", { def: true }),
+      f.param("outside_call", "Genes typed elsewhere", "Outside-call files (gene and diplotype), such as CYP2D6 from Gene typing; comma-separated", { width: 300 }),
     ],
     more: CONFIDENCE,
-    run: function (c) {
-      var line = vcfIn(c, "vcf pharmcat");
-      if (c.v.absent) line.push("--absent-to-ref");
-      if (c.v.outside !== "none") line.push("--outside-call cyp2d6.tsv");
+    run: function () {
       return {
         hours: null, timeText: "minutes",
         notes: [{ tone: "info", icon: "info", id: "caveat", title: "Not medical advice", text: "Don’t change a medicine because of this report. Take it to a doctor or pharmacist." }],
-        command: confidence(c, line), makes: "A report per gene in " + c.name + "’s folder.",
+        makes: "A report per gene in the person’s folder.",
       };
     },
   });
 
   var TYPING = [
-    ["hla", "HLA", "HLA-A, -B, -C, -DRB1, -DQB1 and others, for transplant matching and research", "t1k", "typing hla"],
-    ["cyp2d6", "CYP2D6", "Star alleles for about a quarter of common medicines", "cyrius", "typing cyp2d6"],
-    ["smn", "SMN1 and SMN2", "Copy numbers, for spinal muscular atrophy carrier status", "smn", "typing smn"],
-    ["str", "Repeat expansions", "Repeats such as HTT and FMR1", "expansionhunter", "typing str"],
+    ["hla", "HLA", "HLA-A, -B, -C, -DRB1, -DQB1 and others, for transplant matching and research", "t1k", "typing/hla"],
+    ["cyp2d6", "CYP2D6", "Star alleles for about a quarter of common medicines", "cyrius", "typing/cyp2d6"],
+    ["smn", "SMN1 and SMN2", "Copy numbers, for spinal muscular atrophy carrier status", "smn", "typing/smn"],
+    ["str", "Repeat expansions", "Repeats such as HTT and FMR1", "expansionhunter", "typing/str"],
   ];
 
   T.define({
-    slug: "typing", label: "Gene typing", op: "typing/hla · typing/cyp2d6 · typing/smn · typing/str", group: "Annotate",
+    slug: "typing", label: "Gene typing", ops: ["typing/hla", "typing/cyp2d6", "typing/smn", "typing/str"], group: "Annotate",
     keywords: "hla cyp2d6 smn str expansionhunter t1k cyrius repeat",
     desc: "Reads genes too variable for ordinary variant calling: the HLA genes of the immune system, CYP2D6 for medicines, SMN1 and SMN2, and repeat expansions.",
     learn: "Use it for genes that ordinary variant calling reads poorly, because they vary enormously, come in near-identical copies, or are long repeats. Each gets its own specialised tool: T1K for HLA, Cyrius for CYP2D6, and ExpansionHunter for repeats.\n\n" +
@@ -202,39 +184,40 @@
       return { value: t[0], label: t[1], desc: t[2], on: i === 0 };
     }) },
     fields: [
-      f.select("caller", "Repeat caller", "Auto: LongTR for long reads, ExpansionHunter for others", "caller", [["auto", "Auto: ExpansionHunter"], ["expansionhunter", "ExpansionHunter"], ["longtr", "LongTR"], ["strkit", "STRkit"]], "auto", {
-        width: 240,
+      f.param("caller", "Repeat caller", "Empty: LongTR for long reads, ExpansionHunter for others", {
+        as: "select", unset: "Auto", width: 240, labels: { expansionhunter: "ExpansionHunter", longtr: "LongTR", strkit: "STRkit" },
         when: function (c) {
           return c.v.genes.indexOf("str") >= 0;
         },
       }),
-      f.seg("sex", "Sex for repeats", function (c) {
-        return "Read from the genome: " + c.file.sex;
-      }, "sex", [["auto", "From the genome"], ["male", "Male"], ["female", "Female"]], "auto", {
+      f.param("sex", "Sex for repeats", function (c) {
+        return "Empty: read from the genome (" + c.file.sex + ")";
+      }, {
+        unset: "From the genome", labels: { male: "Male", female: "Female" },
         when: function (c) {
           return c.v.genes.indexOf("str") >= 0;
         },
       }),
     ],
+    requests: function (c, base) {
+      return TYPING.filter(function (t) {
+        return c.v.genes.indexOf(t[0]) >= 0;
+      }).map(function (t) {
+        return base(t[4]);
+      });
+    },
     run: function (c) {
-      var out = { count: c.v.genes.length + (c.v.genes.length === 1 ? " gene set" : " gene sets"), hours: null, timeText: "minutes per gene set", notes: [], command: [] };
-      var lines = [];
+      var out = { count: c.v.genes.length + (c.v.genes.length === 1 ? " gene set" : " gene sets"), hours: null, timeText: "minutes per gene set", notes: [] };
       TYPING.forEach(function (t) {
         if (c.v.genes.indexOf(t[0]) < 0) return;
         var why = c.no(t[3]);
-        if (why) {
-          var missing = /isn’t installed$/.test(why);
-          out.notes.push({ tone: "warn", icon: missing ? "wrench" : "triangle-alert", id: "no-" + t[0], title: t[1] + ": " + why,
-            text: t[0] === "cyrius" || t[3] === "cyrius" ? "Cyrius comes from its authors under a licence that doesn’t allow WGS Extract to bundle it; install it only if you need CYP2D6." : missing ? "An optional tool set: pixi install --locked -e " + c.m.env(t[3]) + "." : "",
-            action: missing ? { label: "How to install", href: "install.html" } : null });
-          out.blocked = "Untick what this computer can’t run, or install it.";
-        }
-        var line = "wgsextract " + t[4] + " --input " + c.m.path(c.file);
-        if (t[0] === "str" && c.v.caller !== "auto") line += " --caller " + c.v.caller;
-        if (t[0] === "str" && c.v.sex !== "auto") line += " --sex " + c.v.sex;
-        lines.push(line);
+        if (!why) return;
+        var missing = /isn’t installed$/.test(why);
+        out.notes.push({ tone: "warn", icon: missing ? "wrench" : "triangle-alert", id: "no-" + t[0], title: t[1] + ": " + why,
+          text: t[3] === "cyrius" ? "Cyrius comes from its authors under a licence that doesn’t allow WGS Extract to bundle it; install it only if you need CYP2D6." : missing ? "An optional tool set: pixi install --locked -e " + c.m.env(t[3]) + "." : "",
+          action: missing ? { label: "How to install", href: "install.html" } : null });
+        out.blocked = "Untick what this computer can’t run, or install it.";
       });
-      out.command = [lines.join("\n")];
       if (!c.v.genes.length) out.blocked = "Choose at least one.";
       out.makes = "Results appear on " + c.name + "’s page.";
       return out;

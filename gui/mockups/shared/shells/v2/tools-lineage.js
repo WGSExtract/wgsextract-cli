@@ -4,97 +4,86 @@
   var WGSM = window.WGSM;
   var T = WGSM.v2tools;
   var f = T.f;
+  var BUILDS = { unset: "From the file", labels: { hg19: "GRCh37 (hg19)", hg38: "GRCh38 (hg38)", t2t: "T2T" } };
 
-  function done(c, what, result, detail) {
+  function done(c, result, detail) {
     return { tone: "ok", icon: "check", id: "done", title: "Found earlier: " + result, text: detail + " Running again is useful with other settings.",
       action: { label: "See the result", href: c.fileKey === "alex" || c.fileKey === "alexkit" ? "ancestry-alex.html" : "ancestry.html" } };
   }
 
+  function build(c) {
+    return "Empty: read from the file (" + c.file.build + ")";
+  }
+
   T.define({
-    slug: "y-haplogroup", label: "Y haplogroup", op: "lineage/y-haplogroup", group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
+    slug: "y-haplogroup", label: "Y haplogroup", ops: ["lineage/y-haplogroup"], group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
     desc: "Places the paternal line on the Y-DNA tree from the SNPs on the Y chromosome.",
     learn: "Use it to learn your direct paternal line, the one that usually follows the surname: which branch of the human Y tree you belong to, and how far down it you can be placed. A whole genome reads far more Y SNPs than a DNA-test kit, so the branch is usually much more specific.\n\n" +
       "It applies only to males. Compare your haplogroup with surname and haplogroup projects; Y-STR markers then tell apart close relatives within a branch, and the Y chromosome extract lets YFull or FamilyTreeDNA place you on their latest trees.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Find the haplogroup",
     fields: [
-      f.select("tree", "Tree", "YFull’s is the most detailed", "tree", [["yfull", "YFull (pinned release)"], ["yfull_v10", "YFull 10.01"], ["ftdna", "FamilyTreeDNA"], ["isogg", "ISOGG"]], "yfull", { width: 240 }),
-      f.toggle("ancient", "Ancient DNA", "Marker tables for damaged, low-coverage samples", "ancient", false),
+      f.select("tree", "Tree", "YFull’s is the most detailed", [["", "YFull (pinned release)"], ["yfull_v10", "YFull 10.01"], ["ftdna", "FamilyTreeDNA"], ["isogg", "ISOGG"]], "", { width: 240 }),
+      f.param("ancient", "Ancient DNA", "Marker tables for damaged, low-coverage samples"),
     ],
     moreTitle: "Thresholds",
     more: [
-      f.select("build", "Build", function (c) {
-        return "Read from the file: " + c.file.build;
-      }, "build", [["auto", "From the file"], ["hg19", "GRCh37"], ["hg38", "GRCh38"], ["t2t", "T2T"]], "auto", { width: 200 }),
-      f.number("minReads", "Minimum reads", "At a marker", "min_reads", 10, { width: 80 }),
-      f.number("baseQuality", "Minimum base quality", "", "base_quality", 20, { width: 80 }),
-      f.number("majority", "Agreement (%)", "Reads that must agree at a marker", "base_majority", 90, { width: 80 }),
+      f.param("build", "Build", build, Object.assign({ width: 200, as: "select" }, BUILDS)),
+      f.param("min_reads", "Minimum reads", "At a marker", { width: 80 }),
+      f.param("base_quality", "Minimum base quality", "", { width: 80 }),
+      f.param("base_majority", "Agreement (%)", "Reads that must agree at a marker", { width: 80 }),
     ],
     run: function (c) {
-      var line = ["wgsextract lineage y-haplogroup --input " + c.m.path(c.file)];
-      if (c.v.tree !== "yfull") line.push("--tree " + c.v.tree);
-      if (c.v.ancient) line.push("--ancient");
-      if (c.v.build !== "auto") line.push("--build " + c.v.build);
-      [["minReads", "--min-reads", 10], ["baseQuality", "--base-quality", 20], ["majority", "--base-majority", 90]].forEach(function (k) {
-        if (c.v[k[0]] !== k[2]) line.push(k[1] + " " + c.v[k[0]]);
-      });
       var noY = WGSM.v2extract.noY(c);
       return {
-        hours: null, timeText: "minutes", command: line, makes: "Replaces the result on " + c.name + "’s page.",
+        hours: null, timeText: "minutes", makes: "Replaces the result on " + c.name + "’s page.",
         notes: noY ? [{ tone: "info", icon: "user", id: "no-y", title: "No Y chromosome", text: noY }]
-          : c.fileKey === "reginald" ? [done(c, "y", "J-ZS241", "41 of 43 defining markers matched, today.")] : [],
+          : c.fileKey === "reginald" ? [done(c, "J-ZS241", "41 of 43 defining markers matched, today.")] : [],
         blocked: noY ? "No Y chromosome in this genome." : null,
       };
     },
   });
 
   T.define({
-    slug: "mt-haplogroup", label: "mtDNA haplogroup", op: "lineage/mt-haplogroup", group: "Lineage", keywords: "haplogrep phylotree mitotree maternal",
+    slug: "mt-haplogroup", label: "mtDNA haplogroup", ops: ["lineage/mt-haplogroup"], group: "Lineage", keywords: "haplogrep phylotree mitotree maternal",
     desc: "Places the maternal line on the mtDNA tree with HaploGrep 3.",
     learn: "Use it to learn your direct maternal line: your mother’s, her mother’s and so on back. Everyone has one, men included, though only women pass it on.\n\n" +
       "A whole genome reads the entire mitochondrial sequence, so the branch is usually precise; a DNA-test kit reads only some positions. The quality score says how well the sample fits its branch, and haplocheck flags a mix of two mtDNA types, from contamination or heteroplasmy. To compare in detail with others, the Mitochondrial DNA extract makes a FASTA.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Find the haplogroup",
     fields: [
-      f.select("tree", "Tree", function (c) {
+      f.param("tree", "Tree", function (c) {
         return c.v.tree === "mitotree-rcrs" ? "FamilyTreeDNA’s Mitotree: non-commercial use only" : "PhyloTree 17; the Forensic Update by default";
-      }, "tree", [["phylotree-fu-rcrs", "PhyloTree 17 Forensic Update"], ["phylotree-rcrs", "PhyloTree 17"], ["mitotree-rcrs", "FamilyTreeDNA Mitotree"]], "phylotree-fu-rcrs", { width: 280 }),
-      f.toggle("contamination", "Check for contamination", function (c) {
+      }, { as: "select", width: 280, unset: "PhyloTree 17 Forensic Update (default)", labels: { "phylotree-fu-rcrs": "PhyloTree 17 Forensic Update", "phylotree-rcrs": "PhyloTree 17", "mitotree-rcrs": "FamilyTreeDNA Mitotree" } }),
+      f.param("contamination", "Check for contamination", function (c) {
         return c.file.kind === "vcf" ? "With haplocheck; a VCF needs heteroplasmy levels (FORMAT/AF)" : "With haplocheck: a mix of two mtDNA types" + (c.M.os === "windows" ? "; text report only on Windows" : "");
-      }, "contamination", true),
+      }, { def: true }),
     ],
     run: function (c) {
-      var line = ["wgsextract lineage mt-haplogroup --input " + c.m.path(c.file)];
-      if (c.v.tree !== "phylotree-fu-rcrs") line.push("--tree " + c.v.tree);
-      if (c.v.contamination) line.push("--contamination");
       return {
-        hours: null, timeText: "minutes", command: line, makes: "Replaces the result on " + c.name + "’s page.",
-        notes: c.fileKey === "reginald" ? [done(c, "mt", "K1a1b1a", "Quality 0.94 of 1, today.")] : [],
+        hours: null, timeText: "minutes", makes: "Replaces the result on " + c.name + "’s page.",
+        notes: c.fileKey === "reginald" ? [done(c, "K1a1b1a", "Quality 0.94 of 1, today.")] : [],
       };
     },
   });
 
   T.define({
-    slug: "y-str", label: "Y-STR markers", op: "lineage/y-str", group: "Lineage", keywords: "ftdna yseq y-111 surname",
+    slug: "y-str", label: "Y-STR markers", ops: ["lineage/y-str"], group: "Lineage", keywords: "ftdna yseq y-111 surname",
     desc: "Counts repeats at Y-STR markers, the numbers FamilyTreeDNA and YSEQ compare between men who share a surname.",
     learn: "Use it if you’re in, or want to join, a surname project: members compare counts at 37, 67 or 111 markers to see who shares a recent paternal ancestor. The counts change quickly, so they separate men only a few generations apart, which the Y haplogroup can’t.\n\n" +
       "Short reads can’t measure some long repeats, so a few markers may be left blank, and labs count some markers differently: check before comparing with a lab’s Y-STR test. Males only.",
     accepts: ["reads"], file: "reginald", button: "Count the markers",
-    fields: [f.select("panel", "Panel", "Y-111 includes the smaller FamilyTreeDNA panels", "panel",
-      [["Y-111", "Y-111 (FamilyTreeDNA)"], ["Y-67", "Y-67"], ["Y-37", "Y-37"], ["Y-25", "Y-25"], ["Y-12", "Y-12"], ["PPY23", "PowerPlex Y23"], ["YfilerPlus", "Yfiler Plus"], ["all", "Every marker"]], "Y-111", { width: 240 })],
+    fields: [f.param("panel", "Panel", "Y-111 includes the smaller FamilyTreeDNA panels", {
+      as: "select", width: 240, labels: { "Y-111": "Y-111 (FamilyTreeDNA)", PPY23: "PowerPlex Y23", YfilerPlus: "Yfiler Plus", all: "Every marker" },
+    })],
     moreTitle: "Thresholds",
     more: [
-      f.number("minReads", "Spanning reads", "Reads that must cross the whole repeat", "min_reads", 2, { width: 80 }),
-      f.number("fraction", "Agreement", "Share of those reads that must agree", "min_fraction", 0.6, { width: 80 }),
-      f.number("mapq", "Mapping quality", "For single-copy markers", "min_mapq", 20, { width: 80 }),
+      f.param("min_reads", "Spanning reads", "Reads that must cross the whole repeat", { width: 80 }),
+      f.param("min_fraction", "Agreement", "Share of those reads that must agree", { width: 80 }),
+      f.param("min_mapq", "Mapping quality", "For single-copy markers", { width: 80 }),
     ],
     run: function (c) {
-      var line = ["wgsextract lineage y-str --input " + c.m.path(c.file)];
-      if (c.v.panel !== "Y-111") line.push("--panel " + c.v.panel);
-      [["minReads", "--min-reads", 2], ["fraction", "--min-fraction", 0.6], ["mapq", "--min-mapq", 20]].forEach(function (k) {
-        if (c.v[k[0]] !== k[2]) line.push(k[1] + " " + c.v[k[0]]);
-      });
       var noY = WGSM.v2extract.noY(c);
       return {
-        hours: null, timeText: "minutes", command: line, makes: "The markers appear on " + c.name + "’s ancestry page, ready to compare.",
+        hours: null, timeText: "minutes", makes: "The markers appear on " + c.name + "’s ancestry page, ready to compare.",
         notes: noY ? [{ tone: "info", icon: "user", id: "no-y", title: "No Y chromosome", text: noY }] : [],
         blocked: noY ? "No Y chromosome in this genome." : null,
       };
@@ -102,22 +91,17 @@
   });
 
   T.define({
-    slug: "ancestry-proportions", label: "Ancestry proportions", op: "qc/ancestry", group: "Lineage", keywords: "admixture k7 k12 hgdp populations",
+    slug: "ancestry-proportions", label: "Ancestry proportions", ops: ["qc/ancestry"], group: "Lineage", keywords: "admixture k7 k12 hgdp populations",
     desc: "Compares the genome with 80 reference populations and gives the share of each component, at continental and regional level, with 95% intervals.",
     learn: "Use it for a broad picture of where your ancestors’ populations lived, worked out on your own computer rather than by a testing company. Each component is a pattern shared by groups of reference people, named after where they were sampled.\n\n" +
       "It’s a model, not an ethnicity or a family tree: results shift with the reference panel and the number of components, and one grandparent’s ancestry can be hard to see. The intervals show how sure each share is. For single lines of descent, see the haplogroups; for relatives, use DNA-test files on matching sites.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Work it out",
-    fields: [f.number("bootstrap", "Repeats for the intervals", "More repeats give steadier 95% intervals; 0 skips them", "bootstrap", 100, { width: 90 })],
-    more: [f.select("build", "Build", function (c) {
-      return "Read from the file: " + c.file.build;
-    }, "build", [["auto", "From the file"], ["hg19", "GRCh37"], ["hg38", "GRCh38"], ["t2t", "T2T"]], "auto", { width: 200 })],
+    fields: [f.param("bootstrap", "Repeats for the intervals", "More repeats give steadier 95% intervals; 0 skips them", { width: 90 })],
+    more: [f.param("build", "Build", build, Object.assign({ width: 200, as: "select" }, BUILDS))],
     run: function (c) {
-      var line = ["wgsextract qc ancestry --input " + c.m.path(c.file)];
-      if (c.v.bootstrap !== 100) line.push("--bootstrap " + c.v.bootstrap);
-      if (c.v.build !== "auto") line.push("--build " + c.v.build);
       return {
-        hours: null, timeText: "minutes", command: line, makes: "The result appears on " + c.name + "’s page.",
-        notes: c.fileKey === "reginald" ? [done(c, "anc", "European 52%, Middle Eastern 38%", "And 3 smaller components, today.")] : [],
+        hours: null, timeText: "minutes", makes: "The result appears on " + c.name + "’s page.",
+        notes: c.fileKey === "reginald" ? [done(c, "European 52%, Middle Eastern 38%", "And 3 smaller components, today.")] : [],
       };
     },
   });

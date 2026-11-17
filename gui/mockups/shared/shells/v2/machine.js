@@ -131,6 +131,16 @@
       dir: "@downloads", disk: "system", depth: 30, gb: 93, size: 77, platform: "illumina" },
   };
 
+  /* Real paths for API requests: the workspace and ~ resolved, as the
+   * server needs absolute paths (shown in the GUI as {{bundleWorkspace}}) */
+  var HOME = P.os === "windows" ? "C:/Users/you" : P.os === "macos" ? "/Users/you" : "/home/you";
+  var WORKSPACE = HOME + "/wgs-extract";
+
+  function realPath(p) {
+    var text = String(p).replace(/^\{\{bundleWorkspace\}\}/, WORKSPACE).replace(/^~(?=[\/\\])/, HOME);
+    return native(text);
+  }
+
   function native(p) {
     return MACHINE.os === "windows" ? p.replace(/\//g, "\\") : p;
   }
@@ -203,6 +213,11 @@
     },
     path: function (file, name) {
       return native(dir(file) + "/" + (name || file.r1 || file.name));
+    },
+    realPath: realPath,
+    /* A reference genome's FASTA in the library (a Params "ref") */
+    fasta: function (code) {
+      return realPath("{{bundleWorkspace}}/reference/genomes/" + code + ".fa.gz");
     },
     outdir: function (file) {
       return native(dir(file) + "/");

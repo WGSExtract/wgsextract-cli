@@ -1,16 +1,20 @@
 /* The v2 tool pages: one engine renders every tool from its definition (the
- * tools-*.js files), and recomputes the command, the estimates and the
- * checks whenever an option or the input file changes.
+ * tools-*.js files), and recomputes the request, the command, the estimates
+ * and the checks whenever an option or the input file changes.
  *
- * A definition: { slug, label, op, group, desc, accepts: ["reads"|"vcf"|
- * "fastq"|"kit"], file, requires: [tools this computer must have], learn
- * (plain-language "what is this for", paragraphs split by blank lines), fields,
- * more, moreTitle, checklist, extra(ctx), run(ctx) }.
+ * A definition: { slug, label, ops: [API operations], group, desc, accepts:
+ * ["reads"|"vcf"|"fastq"|"kit"], file, requires: [tools this computer must
+ * have], learn (plain-language "what is this for", paragraphs split by blank
+ * lines), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
+ * run(ctx) }. Field keys are the operations' Params names (requests.js checks
+ * them against the API schema); a field the API doesn't take says ui: true.
+ * requests(ctx, base) returns [{op, params}] when a run isn't one request
+ * of the first operation; base(op, extra) builds one from the fields.
  * run(ctx) returns { hours, memGB, disk: [[where, GB]], checks, notes,
- * warnings, command: [lines], makes, blocked, button, timeText }; timeText
- * stands in for hours when no rate is documented. ctx has v (option
- * values by key), file, name (whose file), M (the machine), m (machine.js
- * helpers), flag() and no(tool), why this computer can't run a tool. */
+ * warnings, makes, blocked, button, timeText, jobName }; timeText stands in
+ * for hours when no rate is documented. ctx has v (option values by key),
+ * file, name (whose file), M (the machine), m (machine.js helpers), flag()
+ * and no(tool), why this computer can't run a tool. */
 (function () {
   "use strict";
   var WGSM = window.WGSM;
@@ -18,38 +22,43 @@
   var defs = {};
   var order = [];
 
-  /* Field constructors: f.select(key, label, small, flag, options, default) … */
+  /* Field constructors. key is the Params name the field sets; the page
+   * shows it beside the label when "parameter names" are on. */
   var f = {
-    select: function (key, label, small, flag, options, def, extra) {
-      return Object.assign({ type: "select", key: key, label: label, small: small, flag: flag, options: options, def: def }, extra);
+    /* Control, options and default from the API schema */
+    param: function (key, label, small, extra) {
+      return Object.assign({ type: "param", key: key, label: label, small: small }, extra);
     },
-    seg: function (key, label, small, flag, options, def, extra) {
-      return Object.assign({ type: "seg", key: key, label: label, small: small, flag: flag, options: options, def: def }, extra);
+    select: function (key, label, small, options, def, extra) {
+      return Object.assign({ type: "select", key: key, label: label, small: small, options: options, def: def }, extra);
     },
-    toggle: function (key, label, small, flag, def, extra) {
-      return Object.assign({ type: "switch", key: key, label: label, small: small, flag: flag, def: !!def }, extra);
+    seg: function (key, label, small, options, def, extra) {
+      return Object.assign({ type: "seg", key: key, label: label, small: small, options: options, def: def }, extra);
     },
-    number: function (key, label, small, flag, def, extra) {
-      return Object.assign({ type: "number", key: key, label: label, small: small, flag: flag, def: def }, extra);
+    toggle: function (key, label, small, def, extra) {
+      return Object.assign({ type: "switch", key: key, label: label, small: small, def: !!def }, extra);
     },
-    text: function (key, label, small, flag, placeholder, extra) {
-      return Object.assign({ type: "text", key: key, label: label, small: small, flag: flag, placeholder: placeholder, def: "" }, extra);
+    number: function (key, label, small, def, extra) {
+      return Object.assign({ type: "number", key: key, label: label, small: small, def: def }, extra);
     },
-    show: function (label, small, flag, value) {
-      return { type: "show", key: "_" + label, label: label, small: small, flag: flag, value: value };
+    text: function (key, label, small, placeholder, extra) {
+      return Object.assign({ type: "text", key: key, label: label, small: small, placeholder: placeholder, def: "" }, extra);
+    },
+    show: function (label, small, value) {
+      return { type: "show", key: "_" + label, label: label, small: small, value: value, ui: true };
     },
     region: function (small) {
-      return { type: "region", key: "region", label: "Region", small: small || "", flag: "region", def: "" };
+      return { type: "region", key: "region", label: "Region", small: small || "", def: "" };
     },
-    /* Empty means every core (the CLI's auto); estimates use c.v.threads || cores */
+    /* Empty means every core (the API's null); estimates use c.v.threads || cores */
     threads: function () {
       return f.number("threads", "CPU threads", function (c) {
         return "Empty: all " + c.M.cores + " cores";
-      }, "threads", "", { width: 90, placeholder: "auto" });
+      }, "", { width: 90, placeholder: "auto" });
     },
     sortMemory: function (small) {
-      return f.select("memory", "Sort memory per thread", small || "Auto: a quarter of the RAM, at least 1 GB per thread", "memory",
-        [["auto", "Auto (1 GB)"], ["2G", "2 GB"], ["768M", "768 MB"], ["512M", "512 MB"], ["256M", "256 MB"]], "auto", { width: 200 });
+      return f.select("memory", "Sort memory per thread", small || "Auto: a quarter of the RAM, at least 1 GB per thread",
+        [["", "Auto (1 GB)"], ["2G", "2 GB"], ["768M", "768 MB"], ["512M", "512 MB"], ["256M", "256 MB"]], "", { width: 200 });
     },
   };
 
@@ -64,6 +73,8 @@
   }
 
   function define(def) {
+    def.op = def.ops.join(" · ");
+    WGSM.v2requests.resolve(def);
     defs[def.slug] = def;
     order.push(def.slug);
   }
@@ -82,7 +93,7 @@
       return on ? on.value : field.def;
     }
     if (field.type === "switch") return el.checked;
-    if (field.type === "number") return Number(el.value) || 0;
+    if (field.type === "number") return el.value === "" ? "" : Number(el.value);
     return el.value;
   }
 
@@ -140,7 +151,7 @@
 
   function fieldRow(field, ctx) {
     return h("div.v2-field", { dataset: { v2Field: field.key } },
-      h("span.v2-field__label", field.label, h("small", { dataset: { v2Small: field.key } }), field.flag ? h("code.v2-cmd", field.flag) : null),
+      h("span.v2-field__label", field.label, h("small", { dataset: { v2Small: field.key } }), field.ui ? null : h("code.v2-cmd", field.key)),
       h("div.v2-field__control", control(field, ctx)));
   }
 
@@ -276,7 +287,7 @@
     WGSM.qs("[data-v2-checks]", root).replaceChildren.apply(WGSM.qs("[data-v2-checks]", root), rows.map(check));
     WGSM.qs("[data-v2-checks]", root).hidden = !rows.length;
     WGSM.qs("[data-v2-warnings]", root).replaceChildren.apply(WGSM.qs("[data-v2-warnings]", root), (out.warnings || []).map(notice));
-    WGSM.qs("[data-v2-command]", root).textContent = (out.command || []).join(" \\\n  ");
+    WGSM.qs("[data-v2-command]", root).textContent = WGSM.v2requests.command(WGSM.v2requests.build(ctx));
     var bar = WGSM.qs("[data-v2-bar]");
     WGSM.qs("strong", bar).textContent = summary(out, ctx);
     WGSM.qs("span", bar).textContent = [out.makes, out.blocked].filter(Boolean).join(" ");
@@ -327,59 +338,10 @@
         h("button.v2-btn.v2-btn--primary.v2-btn--lg", { type: "button", dataset: { v2Go: "" } }, def.button || "Start"))));
   };
 
-  /* A download or fix becomes a job on the (mock) server; its flag is set
-   * when the job succeeds. [op, params, GB] by flag */
-  function downloadJob(flag, label) {
-    var M = WGSM.v2machine;
-    var gb = Number((/([\d.]+) GB/.exec(label || "") || [])[1]) || 1;
-    var rest = flag.replace(/^[^-]+-/, "");
-    if (/^mem2-/.test(flag)) return ["ref/index", { ref: rest, aligner: "bwa-mem2", download: true }, gb, "Download bwa-mem2’s index for " + rest];
-    if (/^ref-/.test(flag)) return ["ref/library", { ref: rest }, gb, "Download reference " + rest];
-    if (flag === "panel-1kg") return ["ref/imputation", {}, gb, "Download the 1000 Genomes panel"];
-    if (/^vepcache-/.test(flag)) return ["vep/download", { engine: rest }, gb, "Download the VEP cache (" + rest + ")"];
-    if (/^pgs-/.test(flag)) return ["ref/pgs", { trait: rest }, 0.05, "Download the " + rest + " scoring file"];
-    if (flag === "alex-fixed") return ["bam/index", { input: M.path(M.files.alex) }, 0.9, "Fix Alex’s BAM: download hs38d1 and index it"];
-    if (/^data-/.test(flag)) return ["ref/" + rest, {}, gb, "Download " + rest];
-    return ["ref/library", { name: flag }, gb, "Download " + flag];
-  }
-
-  /* Say so when the server refuses a job (the button's toast said "Queued") */
-  function checked(promise) {
-    return promise.then(function (res) {
-      if (res.status >= 300) WGSM.toast("The server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
-      return res;
-    });
-  }
-
-  function startDownload(flag, label) {
-    var job = downloadJob(flag, label);
-    return checked(WGSM.v2api.post("/v1/ops/" + job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: [flag] } })));
-  }
-
-  /* hours for the mock server's clock, from the estimate or its words */
-  function runHours(out) {
-    if (typeof out.hours === "number") return out.hours;
-    var t = out.timeText || "";
-    return /seconds/.test(t) ? 0.01 : /tens of minutes/.test(t) ? 0.5 : /minute/.test(t) ? 0.15 : 3;
-  }
-
   function startJob(root) {
     var def = defs[root.dataset.tool];
     var ctx = context(def, root);
-    var out = def.run(ctx) || {};
-    var params = { input: ctx.m.path(ctx.file), outdir: ctx.m.outdir(ctx.file) };
-    Object.keys(ctx.v).forEach(function (k) {
-      var value = ctx.v[k];
-      if (value !== "" && value !== false && value !== null && !(Array.isArray(value) && !value.length)) params[k] = value;
-    });
-    var disk = (out.disk || [])[0];
-    return checked(WGSM.v2api.post("/v1/ops/" + def.op.split(" · ")[0], Object.assign(params, { _mock: {
-      label: out.jobName || def.label + " for " + ctx.name,
-      person: ctx.file.person,
-      hours: runHours(out),
-      memGB: out.memGB,
-      outputs: disk ? [{ path: ctx.m.outdir(ctx.file) + ctx.file.stem + "." + def.slug, gb: disk[1], disk: disk[0] }] : [],
-    } })));
+    return WGSM.v2requests.start(ctx, def.run(ctx) || {});
   }
 
   function refresh() {
@@ -393,12 +355,15 @@
     order: order,
     pageOf: pageOf,
     refresh: refresh,
-    startDownload: startDownload,
+    /* The API requests a tool page would send now */
+    requests: function (root) {
+      return WGSM.v2requests.build(context(defs[root.dataset.tool], root));
+    },
     /* Wire live updates; called after saved options are restored */
     start: function () {
       document.addEventListener("click", function (event) {
         var dl = event.target.closest("[data-v2-download]");
-        if (dl && !document.body.classList.contains("an-mode")) startDownload(dl.dataset.v2Download, dl.dataset.v2Label || dl.textContent);
+        if (dl && !document.body.classList.contains("an-mode")) WGSM.v2requests.download(dl.dataset.v2Download, dl.dataset.v2Label || dl.textContent);
       });
       if (!WGSM.qs("[data-tool]")) return;
       refresh();

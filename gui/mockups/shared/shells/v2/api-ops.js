@@ -41,7 +41,6 @@
     "ref/gnomad": ["net", "Download gnomAD", 34, "Install gnomAD frequencies"],
     "ref/gnomad-sv": ["net", "Download gnomAD-SV", 1.7, "Install gnomAD structural variants"],
     "ref/test-genome": ["net", "Download an example genome", 9.6, "Install an example genome"],
-    "ref/download": ["net", "Download a file", 1, "Download one file by URL"],
     "vcf/freebayes": ["job", "FreeBayes", 300, "Call variants with FreeBayes"],
     "vcf/clair3": ["job", "Clair3", 165, "Call long-read variants with Clair3"],
     "vcf/sv": ["job", "Structural variants", 80, "Find structural variants"],
@@ -76,12 +75,25 @@
     "ref/cadd": ["net", "Download CADD", 85, "Install CADD scores"],
     "ref/alphamissense": ["net", "Download AlphaMissense", 0.6, "Install AlphaMissense scores"],
     "ref/spliceai": ["net", "Download SpliceAI", 1, "Install SpliceAI scores"],
-    "ref/pgs": ["net", "Download a scoring file", 0.05, "Download a PGS Catalog scoring file"],
-    "ref/acmg": ["net", "Download the ACMG gene list", 0.001, "Download the ACMG secondary-findings gene list"],
   };
 
   function has(table, key) {
     return Object.prototype.hasOwnProperty.call(table, key);
+  }
+
+  /* Every operation of the real API (shared/data/api-schema.js); OPS adds
+   * how long a run takes. One without an entry is a 10-minute job. */
+  /* A reference's catalog code: ref/library's install, or the name of a
+   * FASTA path as other operations send it (…/genomes/hs38.fa.gz) */
+  function refName(p) {
+    var ref = p.install || p.ref || p.code;
+    return ref ? String(ref).replace(/^.*[\\/]/, "").replace(/\.(fa|fasta|fna)(\.gz)?$/, "") : null;
+  }
+
+  function known(op) {
+    var schema = root.WGSMSchema && root.WGSMSchema.ops;
+    if (has(OPS, op)) return OPS[op];
+    return schema && has(schema, op) ? ["job", op, 10, schema[op].summary] : null;
   }
 
   /* Steps: [name, weight] (CPU: share of the time; downloads: GB) */
@@ -100,7 +112,7 @@
   var REF_GB = { hs38: 0.9, hs37d5: 0.9, T2Tv20: 0.9, hs38d1: 1.0, hs38DH: 1.0, hg38: 0.9, hg19: 0.9, hs37: 0.9 };
 
   function describe(op) {
-    var o = has(OPS, op) ? OPS[op] : null;
+    var o = known(op);
     return o && { op: op, kind: o[0] === "query" ? "query" : "job", destructive: false, summary: o[3] };
   }
 
@@ -136,13 +148,13 @@
   function outputsFor(op, p, file, machine) {
     var stem = file ? file.stem : base(p.input || "output").replace(/\..*$/, "");
     var dir = p.outdir ? String(p.outdir).replace(/[\\/]$/, "") : file ? dirOf(file.path) : machine.workspace + "/output";
-    var ref = p.ref || "hs38";
     var size = file ? file.size || 1 : 1;
+    var ext = String(p.format || (p.output_profile && p.output_profile !== "default" ? "CRAM" : "BAM")).toLowerCase();
     switch (op) {
       case "realign":
-        return [{ path: dir + "/" + stem + "." + ref + ".cram", gb: Math.round(size * 0.37), kind: "cram", role: "output", library: true }];
+        return [{ path: dir + "/" + stem + "_aligned." + ext, gb: Math.round(size * (ext === "cram" ? 0.37 : 0.9)), kind: ext, role: "output", library: true }];
       case "align":
-        return [{ path: dir + "/" + stem + "." + ref + ".cram", gb: Math.round(size * 0.44), kind: "cram", role: "output", library: true }];
+        return [{ path: dir + "/" + stem.replace(/_R?1(_001)?$/, "") + "_aligned." + ext, gb: Math.round(size * (ext === "cram" ? 0.44 : 1.1)), kind: ext, role: "output", library: true }];
       case "bam/to-cram":
         return [{ path: dir + "/" + stem + ".cram", gb: Math.round(size * 0.38), kind: "cram", role: "output", library: true }];
       case "bam/index":
@@ -164,7 +176,7 @@
   }
 
   function netOutputs(op, p, machine) {
-    var ref = p.ref || p.code || "hs38";
+    var ref = refName(p) || "hs38";
     var gb = OPS[op][2];
     var path;
     if (op === "ref/library") {
@@ -181,7 +193,7 @@
   }
 
   function flagsFor(op, p, file) {
-    var ref = p.ref || p.code;
+    var ref = refName(p);
     if (op === "ref/library" && ref) return ["ref-" + ref];
     if (op === "ref/index" && ref && (p.aligner || "bwa-mem2") === "bwa-mem2") return ["mem2-" + ref];
     if (op === "ref/imputation") return ["panel-1kg"];
@@ -192,8 +204,8 @@
   }
 
   function labelFor(op, p, who) {
-    var title = OPS[op][1];
-    var ref = p.ref || p.code;
+    var title = known(op)[1];
+    var ref = refName(p);
     if (op === "realign") return "Realign " + who + " to " + (ref || "hs38");
     if (op === "align") return "Align " + who + "’s reads to " + (ref || "hs38");
     if (op === "ref/library") return "Download reference " + (ref || "");
@@ -214,7 +226,7 @@
   /* The job's plan, from defaults and the request's "_mock" hint.
    * work: CPU jobs in simulated ms, downloads in bytes. */
   M.plan = function (op, params, config, machine) {
-    var o = has(OPS, op) ? OPS[op] : null;
+    var o = known(op);
     if (!o) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + ".");
     var p = params || {};
     var hint = p._mock || {};
@@ -267,5 +279,11 @@
     };
   };
 
-  M.ops = { table: OPS, describe: describe, fileFor: fileFor, first: first };
+  M.ops = {
+    names: function () {
+      var schema = root.WGSMSchema && root.WGSMSchema.ops;
+      return schema ? Object.keys(schema).sort() : Object.keys(OPS);
+    },
+    describe: describe, fileFor: fileFor, first: first,
+  };
 })(typeof globalThis !== "undefined" ? globalThis : this);
