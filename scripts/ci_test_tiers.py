@@ -11,6 +11,9 @@ from pathlib import Path
 INTEGRATION_MODULES = frozenset(
     {
         "test_realign.py",
+        "test_realign_resources.py",
+        "test_realign_resume.py",
+        "test_realign_streaming.py",
         "test_analyze_workflows.py",
         "test_benchmark.py",
         "test_benchmark_modules.py",
