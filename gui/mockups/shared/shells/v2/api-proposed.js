@@ -150,13 +150,13 @@
       var c = mock.ctx();
       var plan = M.plan(b.op, b.params || {}, c, c.machine);
       var bps = mock.doc().net.bps;
-      var ms = plan.mode === "cpu" ? plan.work : bps ? plan.work / (bps / 1000) : 0;
+      var sharing = Math.min(mock.maxDownloads, 1 + mock.doc().jobs.filter(function (j) {
+        return j.status === "running" && j.plan.mode === "net";
+      }).length);
+      var ms = plan.mode === "cpu" ? plan.work : bps ? plan.work * sharing / (bps / 1000) : 0;
       var t = now();
-      var startAt = t;
-      mock.doc().jobs.forEach(function (j) {
-        if (j.kind === "job" && j.status === "running") startAt = Math.max(startAt, mock.endAt(j));
-        if (j.kind === "job" && j.status === "queued") startAt += j.plan.mode === "cpu" ? j.plan.work : bps ? j.plan.work / (bps / 1000) : 0;
-      });
+      var forecast = M.schedule(mock, t, { id: "estimate", kind: M.ops.describe(b.op).kind, status: "queued", plan: plan });
+      var startAt = forecast.estimate ? forecast.estimate.starts_at : t;
       var free = {};
       disks().forEach(function (d) {
         free[d.id] = d;

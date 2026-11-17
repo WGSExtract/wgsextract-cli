@@ -14,7 +14,7 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Jobs</h1>
-      <p class="v2-head__sub">One job runs at a time; the rest wait their turn. Jobs keep running when you close this window.</p>
+      <p class="v2-head__sub">One analysis job runs at a time. Downloads run alongside: up to 3 at once, sharing the connection. Both keep running when you close this window.</p>
     </div>
   </header>
 
@@ -26,6 +26,12 @@
   <section class="v2-section" data-annot-id="queued">
     <h2>Queued</h2>
     <div data-render="v2-jobs" data-section="queued"></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="downloads">
+    <h2>Downloads</h2>
+    <p class="v2-small v2-muted">Downloads run beside analysis jobs. Up to 3 run at once and share the connection.</p>
+    <div data-render="v2-jobs" data-section="downloads"></div>
   </section>
 
   <section class="v2-section" data-annot-id="needs-you">
