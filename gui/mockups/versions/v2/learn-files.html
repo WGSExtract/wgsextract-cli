@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Your file journey · Learn · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-learn-files" data-shell="v2" data-nav="learn" data-title="Your file journey" data-parent="Learn|learn.html">
+<article class="v2-page v2-lesson" data-annot-id="page">
+  <header class="v2-head"><div class="v2-head__text">
+    <p class="v2-small v2-muted">LESSON 03 OF 08 · ABOUT 4 MINUTES</p>
+    <h1>Your file journey</h1>
+    <p class="v2-head__sub">Reads are evidence. Calls are inferences. Reports add interpretation. Keep the evidence if you can.</p>
+  </div></header>
+  <figure class="v2-section" data-annot-id="journey">
+    <ol class="v2-file-flow" aria-label="File journey in processing order">
+      <li><strong>FASTQ</strong><small>Reads + base quality</small></li>
+      <li><span aria-hidden="true">→</span> align</li>
+      <li><strong>BAM / CRAM</strong><small>Reads + placements</small></li>
+      <li><span aria-hidden="true">→</span> call</li>
+      <li><strong>VCF / gVCF</strong><small>Genotypes + evidence</small></li>
+      <li><span aria-hidden="true">→</span> annotate</li>
+      <li><strong>Reports</strong><small>Context + limits</small></li>
+    </ol>
+    <figcaption class="v2-small v2-muted">Each arrow is a computation, not just a filename change. The reference build must match throughout.</figcaption>
+  </figure>
+  <section class="v2-section" id="fastq">
+    <h2>FASTQ: the original read sequences</h2>
+    <p><abbr class="v2-term" data-term="fastq">FASTQ</abbr> means FASTA with Quality scores. Each record contains a read name, sequence and quality score for each base. Short paired-end data usually arrives as two compressed files, R1 and R2, with corresponding records.</p>
+    <p>Compressed 30× short-read human data may take roughly 30–100 GB. Size depends on read length, quality encoding and compression. FASTQ has no reference coordinates.</p>
+  </section>
+  <section class="v2-section" id="alignment">
+    <h2>Align: place the reads on a reference</h2>
+    <p><abbr class="v2-term" data-term="align">Alignment</abbr> searches for likely placements of reads against a reference. bwa, bwa-mem2 and bwa-mem3 are short-read options; minimap2 is commonly used for long reads. A reference-specific aligner index speeds the search.</p>
+    <p>Whole-genome alignment may take hours and substantial working disk. Repeated regions can remain ambiguous even when the program finishes successfully.</p>
+  </section>
+  <section class="v2-section" id="bam">
+    <h2>BAM &amp; CRAM: reads with their placements</h2>
+    <p><abbr class="v2-term" data-term="bam">BAM</abbr> means Binary Alignment Map. It stores read sequences, quality scores, placements and other alignment fields. A 30× short-read human BAM is often around 60–100 GB.</p>
+    <p><abbr class="v2-term" data-term="cram">CRAM</abbr> means Compressed Reference-oriented Alignment Map. It compresses the same kind of records more tightly, often to tens of GB. In normal reference-based use it needs the exact reference sequence to decode the reads.</p>
+    <p>CRAM can preserve records losslessly, but some labs use quality-score reduction. Conversion cannot restore detail already discarded. Keep an original until a new copy is verified and backed up.</p>
+  </section>
+  <section class="v2-section" id="calling">
+    <h2>Call: infer genotypes from evidence</h2>
+    <p><abbr class="v2-term" data-term="calling">Variant callers</abbr> infer which alleles are present. bcftools, GATK and DeepVariant use different methods. Choose a caller and model for your sequencing technology and the region’s ploidy.</p>
+    <p>A small-variant caller does not comprehensively test structural changes, repeat expansions or every complex gene. A finished VCF is not a guarantee of correct calls.</p>
+  </section>
+  <section class="v2-section" id="vcf">
+    <h2>VCF &amp; gVCF: calls, not reads</h2>
+    <p><abbr class="v2-term" data-term="vcf">VCF</abbr> means Variant Call Format. A typical compressed whole-genome small-variant VCF takes hundreds of MB. It records coordinates, alleles, genotypes and quality fields, but cannot recreate the reads.</p>
+    <p><abbr class="v2-term" data-term="gvcf">gVCF</abbr> means genomic VCF. It adds records or blocks for assessed non-variant regions and their evidence. This helps joint genotyping and reference-aware interpretation, but block quality and caller compatibility still matter.</p>
+    <p><strong>A site missing from an ordinary variant-only VCF is unknown, not automatically 0/0.</strong> It may be unsequenced, filtered or confidently reference. <a class="v2-link" href="learn-variants.html#missing">See a concrete example</a>.</p>
+  </section>
+  <section class="v2-section" id="indexes">
+    <h2>Indexes are the table of contents</h2>
+    <p>An <abbr class="v2-term" data-term="index">index</abbr> lets software jump to a region without scanning an entire file. BAM commonly uses .bai or .csi, CRAM .crai, compressed VCF .tbi or .csi, and FASTA .fai.</p>
+    <p>Keep indexes alongside their files. Rebuild them after changing the data. An aligner’s large reference index is a different object, not a substitute for a BAM index.</p>
+  </section>
+  <section class="v2-section" id="reference">
+    <h2>What should I keep?</h2>
+    <ul>
+      <li><strong>Original evidence:</strong> keep your lab’s FASTQ and/or read-preserving BAM/CRAM if feasible, plus backups. Ask what processing or quality reduction the lab applied.</li>
+      <li><strong>Exact reference:</strong> keep the <abbr class="v2-term" data-term="fasta">FASTA</abbr> identity and checksum, especially for CRAM. A human FASTA is about 3 GB uncompressed; aligner indexes can be much larger.</li>
+      <li><strong>Results and provenance:</strong> keep VCF/gVCF, indexes, tool versions, settings and the result manifest. Reports alone are hard to reanalyze.</li>
+    </ul>
+    <p>These sizes are planning examples, not promises. Long-read runs, extra depth and temporary sort files change storage needs significantly.</p>
+  </section>
+  <section class="v2-section" id="kits">
+    <h2>DNA-test exports are a smaller side route</h2>
+    <p>A <abbr class="v2-term" data-term="kit">DNA-test file</abbr> contains genotypes for a selected microarray marker list. WGS Extract can create a company-style table from usable sequencing calls. It does not turn a kit into whole-genome reads.</p>
+    <p>Missing markers stay uncertain, formats and site policies change, and a receiving service may reject a generated file. Uploading shares genetic data: <a class="v2-link" href="learn-privacy.html#sharing">review privacy first</a>.</p>
+  </section>
+  <section class="v2-section" id="computing">
+    <h2>Programs need the right computer and dependencies</h2>
+    <p>The <abbr class="v2-term" data-term="cpu">CPU</abbr> runs general work; <abbr class="v2-term" data-term="ram">RAM</abbr> holds working data; disk holds files. A <abbr class="v2-term" data-term="gpu">GPU</abbr> accelerates only software built for it. NVIDIA CUDA and Apple Metal are different platforms.</p>
+    <p><abbr class="v2-term" data-term="docker">Docker</abbr> packages programs in containers. A <abbr class="v2-term" data-term="pixi">Pixi environment</abbr> groups software packages. WGS Extract checks prerequisites; missing software needs separate installation. Availability and timings depend on the machine, not just the input size.</p>
+  </section>
+  <aside class="v2-sheet v2-sheet__pad v2-section">
+    <h2>Try it</h2>
+    <p>Explore <a class="v2-link" href="convert.html">Convert</a> for storage changes, or <a class="v2-link" href="tool-call-variants.html">Call variants</a> to see which evidence a caller needs. This mockup simulates runs; it does not process your genome.</p>
+    <h2>Key terms</h2>
+    <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-fastq">FASTQ</a><a class="v2-link" href="learn.html#term-bam">BAM</a><a class="v2-link" href="learn.html#term-cram">CRAM</a><a class="v2-link" href="learn.html#term-vcf">VCF</a><a class="v2-link" href="learn.html#term-index">Index</a></div>
+  </aside>
+  <nav class="v2-lesson__nav" aria-label="Lesson navigation">
+    <a class="v2-link" href="learn-sequencing.html" rel="prev">← How sequencing works</a>
+    <a class="v2-link" href="learn-variants.html" rel="next">Next: Variants &amp; confidence →</a>
+  </nav>
+</article>
+</body>
+</html>

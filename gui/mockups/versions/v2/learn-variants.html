@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Variants &amp; confidence · Learn · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-learn-variants" data-shell="v2" data-nav="learn" data-title="Variants &amp; confidence" data-parent="Learn|learn.html">
+<article class="v2-page v2-lesson" data-annot-id="page">
+  <header class="v2-head"><div class="v2-head__text">
+    <p class="v2-small v2-muted">LESSON 04 OF 08 · ABOUT 4 MINUTES</p>
+    <h1>Variants &amp; confidence</h1>
+    <p class="v2-head__sub">First ask whether a call is well supported. Then ask what it means.</p>
+  </div></header>
+  <section class="v2-section" id="types">
+    <h2>Changes come in different shapes</h2>
+    <ul>
+      <li><abbr class="v2-term" data-term="snv">SNV</abbr>, single-nucleotide variant: one base is substituted. A <abbr class="v2-term" data-term="snp">SNP</abbr> is a single-nucleotide polymorphism, a variable base in a population; people often use the terms loosely.</li>
+      <li><abbr class="v2-term" data-term="indel">Indel</abbr>, insertion or deletion: a few bases added or removed, usually under about 50 bases.</li>
+      <li><abbr class="v2-term" data-term="sv">SV</abbr>, structural variant: a larger deletion, duplication, reversal or rearrangement, conventionally around 50 bases or more.</li>
+      <li><abbr class="v2-term" data-term="cnv">CNV</abbr>, copy-number variant: a segment has more or fewer copies than expected.</li>
+      <li><abbr class="v2-term" data-term="str">STR</abbr>, short tandem repeat: a repeated motif whose count can vary. Very long repeats may require specialist testing.</li>
+    </ul>
+    <p>One caller does not detect all of these reliably. An <abbr class="v2-term" data-term="rsid">rsID</abbr> is a database identifier, not a medical verdict; many variants have no rsID.</p>
+  </section>
+  <section class="v2-section" id="genotype">
+    <h2>Read a genotype without guessing</h2>
+    <p>A <abbr class="v2-term" data-term="genotype">genotype</abbr> describes the alleles called at a site. In a VCF, 0 means the reference allele, 1 the first alternative allele, 2 the second alternative if listed. For a two-copy site with reference A and alternative G:</p>
+    <ul>
+      <li><code>0/0</code> = A/A, two reference alleles.</li>
+      <li><code>0/1</code> = A/G, one of each: heterozygous.</li>
+      <li><code>1/1</code> = G/G, two alternative alleles: homozygous.</li>
+      <li><code>./.</code> = no complete genotype call, not A/A.</li>
+    </ul>
+    <p><abbr class="v2-term" data-term="zygosity">Zygosity</abbr> describes whether copies match. <abbr class="v2-term" data-term="ploidy">Ploidy</abbr> is how many copies exist in that region. A one-copy region may have a genotype such as <code>1</code>, not <code>1/1</code>. X/Y shared regions need different handling from their non-shared parts.</p>
+  </section>
+  <section class="v2-section" id="missing">
+    <h2>“Not in my VCF” does not mean “matches reference”</h2>
+    <p>Suppose a marker at position 100 is absent from a variant-only VCF. Perhaps the reads confidently showed A/A. Or perhaps there were no usable reads, or a call was removed by filtering. The absence alone cannot distinguish these.</p>
+    <p>A <abbr class="v2-term" data-term="gvcf">gVCF</abbr> or suitable read-based reference evidence can help, within the regions and quality limits actually assessed. Filling every absent marker with reference would turn gaps into invented certainty.</p>
+  </section>
+  <section class="v2-section" id="confidence">
+    <h2>Confidence in the call is not confidence about disease</h2>
+    <p>Read depth, base and mapping quality, genotype quality, allele balance and difficult-region flags help judge sequencing evidence. A caller’s <code>PASS</code> only means its configured filters were passed.</p>
+    <p>High-quality calls can be harmless; a medically important database label can sit on a sequencing artifact. <abbr class="v2-term" data-term="clinvar">ClinVar</abbr> review status describes submitted interpretation evidence, not the quality of your reads.</p>
+    <p>Inspect unexpected findings in a genome browser and seek clinical confirmation before health decisions. A plausible <abbr class="v2-term" data-term="denovo">de novo</abbr> call in a child can still be an error or reflect a low-level parental variant.</p>
+  </section>
+  <section class="v2-section" id="phasing">
+    <h2>Measured, phased and imputed are different</h2>
+    <p><abbr class="v2-term" data-term="phasing">Phasing</abbr> groups alleles onto chromosome copies. Two changes in one gene on the same copy differ from changes on opposite copies. The symbol <code>|</code> means phased within a phase set, but does not itself tell you which parent supplied each allele.</p>
+    <p><abbr class="v2-term" data-term="imputation">Imputation</abbr> estimates unmeasured alleles from population patterns. Useful for some research, it is not replacement sequencing. Rare variants and poorly represented ancestries can be especially uncertain; do not treat imputed health findings as direct observations.</p>
+  </section>
+  <aside class="v2-sheet v2-sheet__pad v2-section">
+    <h2>Try it</h2>
+    <p>Open <a class="v2-link" href="tool-vcf-quality.html">VCF quality</a>, then <a class="v2-link" href="tool-variant-table.html">Variant table</a>. Notice the difference between quality filters and biological annotations.</p>
+    <h2>Key terms</h2>
+    <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-genotype">Genotype</a><a class="v2-link" href="learn.html#term-ploidy">Ploidy</a><a class="v2-link" href="learn.html#term-gq">GQ</a><a class="v2-link" href="learn.html#term-sv">SV</a><a class="v2-link" href="learn.html#term-imputation">Imputation</a></div>
+  </aside>
+  <nav class="v2-lesson__nav" aria-label="Lesson navigation">
+    <a class="v2-link" href="learn-files.html" rel="prev">← Your file journey</a>
+    <a class="v2-link" href="learn-reference.html" rel="next">Next: Reference genomes →</a>
+  </nav>
+</article>
+</body>
+</html>

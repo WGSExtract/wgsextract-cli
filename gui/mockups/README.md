@@ -83,6 +83,14 @@ kept in this browser until you reset it.
   `--region` gets the same control: the whole genome, chromosomes or part of
   one, a gene, or the exact text. Chromosome names follow the file's build
   (`chr1` on GRCh38, `1` on GRCh37).
+- **Learn** (`learn.html`, `learn-*.html`): eight ordered introductory lessons
+  and a searchable A–Z glossary. Definitions and acronym expansions come from
+  `shared/shells/v2/glossary-data.js`; each stable key has a `#term-<key>`
+  glossary anchor. Set an entry's `learn` to a lesson section; external `link`
+  references are secondary. Tool definitions can add `lesson: {href, label}`
+  to connect their “What is this for?” explainer to a lesson. Register new
+  lesson pages in both lists in `shared/versions.js` so the index, version
+  switch and Compare can find them.
 
 ## Review and leave notes
 

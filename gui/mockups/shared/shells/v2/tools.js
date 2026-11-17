@@ -5,7 +5,7 @@
  * A definition: { slug, label, ops: [API operations], group, desc, accepts:
  * ["reads"|"vcf"|"fastq"|"kit"], file, requires: [tools this computer must
  * have], learn (plain-language "what is this for", paragraphs split by blank
- * lines), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
+ * lines), lesson (optional {href, label}), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
  * run(ctx) }. Field keys are the operations' Params names (requests.js checks
  * them against the API schema); a field the API doesn't take says ui: true.
  * requests(ctx, base) returns [{op, params}] when a run isn't one request
@@ -311,7 +311,8 @@
         def.learn ? h("details.v2-more", { dataset: { annotId: "learn" } }, h("summary", "What is this for?"),
           h("div.v2-more__body.v2-section", def.learn.split("\n\n").map(function (para) {
             return h("p.v2-small", para);
-          }))) : null,
+          }), def.lesson ? h("p.v2-small", "Learn the basics: ",
+            h("a.v2-link", { href: WGSM.keepParams(def.lesson.href) }, def.lesson.label)) : null)) : null,
         input ? input.row : null),
       h("div.v2-stack", { dataset: { v2Notes: "" } }),
       def.checklist ? checklist(def.checklist, ctx) : null,

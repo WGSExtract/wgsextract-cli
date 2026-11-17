@@ -32,6 +32,7 @@
     { id: "references", label: "Reference data", icon: "reference", href: V + "references.html" },
   ];
   var FOOT = [
+    { id: "learn", label: "Learn", icon: "reference", href: V + "learn.html" },
     { id: "phone", label: "Phone access", icon: "remote", href: V + "phone.html" },
     { id: "settings", label: "Settings", icon: "settings", href: V + "settings.html" },
   ];
@@ -39,7 +40,7 @@
     { id: "home", label: "Library", icon: "library-big", href: V + "home.html", also: ["add", "p-reginald", "p-gordon", "p-helen", "p-alex"] },
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
     { id: "tools", label: "Tools", icon: "sliders-horizontal", href: V + "tools.html" },
-    { id: "settings", label: "More", icon: "menu", href: V + "settings.html", also: ["references", "phone", "states"] },
+    { id: "settings", label: "More", icon: "menu", href: V + "settings.html", also: ["references", "phone", "states", "learn"] },
   ];
 
   function href(path) {
@@ -186,6 +187,7 @@
         ["Jobs", "", "jobs", "Go to", V + "jobs.html"],
         ["Reference data", "ref/library", "reference", "Go to", V + "references.html"],
         ["Install tools", "deps/check", "wrench", "Go to", V + "install.html"],
+        ["Learn: genomics basics & glossary", "DNA, files, variants, health, ancestry", "reference", "Go to", V + "learn.html"],
         ["Settings", "", "settings", "Go to", V + "settings.html"],
       ].map(function (o) {
         return { label: o[0], sub: o[1], icon: o[2], group: o[3], href: o[4] };

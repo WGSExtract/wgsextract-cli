@@ -126,7 +126,8 @@
       h("strong.v2-termpop__term", { id: "v2-termpop-term" }),
       h("p.v2-termpop__short"),
       h("p.v2-termpop__more"),
-      h("a.v2-termpop__link", { target: "_blank", rel: "noopener noreferrer" }, "Learn more")
+      h("a.v2-termpop__link", "Learn more"),
+      h("a.v2-termpop__reference", { target: "_blank", rel: "noopener noreferrer" }, "External reference ↗")
     );
     pop.addEventListener("pointerenter", function () {
       clearTimeout(timer);
@@ -134,8 +135,14 @@
     pop.addEventListener("pointerleave", function (event) {
       if (event.pointerType === "mouse" && !pinned) later(hide, HOVER_OUT);
     });
+    pop.addEventListener("click", function (event) {
+      if (event.target.closest("a")) hide();
+    });
     pop.addEventListener("keydown", function (event) {
       if (event.key !== "Tab" || !current) return;
+      var links = WGSM.qsa("a:not([hidden])", pop);
+      var at = links.indexOf(document.activeElement);
+      if ((!event.shiftKey && at < links.length - 1) || (event.shiftKey && at > 0)) return;
       event.preventDefault();
       var back = current;
       if (event.shiftKey) {
@@ -161,16 +168,19 @@
     if (current && current !== term) release(current);
     current = term;
     pinned = !!pin;
-    WGSM.qs(".v2-termpop__term", el).textContent = entry.term;
+    WGSM.qs(".v2-termpop__term", el).textContent = entry.term + (entry.full ? " · " + entry.full : "");
     WGSM.qs(".v2-termpop__short", el).textContent = entry.short;
     var more = WGSM.qs(".v2-termpop__more", el);
     more.textContent = entry.more || "";
     more.hidden = !entry.more;
     var link = WGSM.qs(".v2-termpop__link", el);
-    link.hidden = !entry.link;
-    if (entry.link) link.href = entry.link;
-    else link.removeAttribute("href");
-    link.setAttribute("aria-label", "Learn more about " + entry.term + " (opens in a new tab)");
+    link.href = WGSM.keepParams(entry.learn || "learn.html#term-" + term.dataset.term);
+    link.setAttribute("aria-label", "Learn more about " + entry.term);
+    var reference = WGSM.qs(".v2-termpop__reference", el);
+    reference.hidden = !entry.link;
+    if (entry.link) reference.href = entry.link;
+    else reference.removeAttribute("href");
+    reference.setAttribute("aria-label", "External reference for " + entry.term + " (opens in a new tab)");
     /* A preview is a tooltip; once opened it is a dialog you can Tab into */
     if (pinned) {
       el.setAttribute("role", "dialog");
@@ -323,8 +333,8 @@
       var inside = pop.contains(document.activeElement);
       event.stopPropagation();
       event.preventDefault();
-      hide();
       if (inside) back.focus();
+      hide();
     }, true);
     document.addEventListener("pointerdown", function (event) {
       if (!current || current.contains(event.target) || (pop && pop.contains(event.target))) return;
