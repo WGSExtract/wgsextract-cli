@@ -8,6 +8,10 @@ original source (NCBI, EBI, UCSC, AWS) is listed after it as an `-Alt` row,
 and the install falls back to it automatically. The original servers have
 been slow and unreliable, so the copies come first (#701).
 
+For annotation resources, gene maps and benchmark downloads, see
+[download mirrors and source rights](resource-mirrors.md). Their separate
+audit deliberately excludes restricted or unclear third-party data.
+
 ## Listing the library
 
 `wgsextract ref library --list` shows every catalog row (one per source) with

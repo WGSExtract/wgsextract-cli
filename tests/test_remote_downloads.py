@@ -1,4 +1,4 @@
-"""Every file the CLI downloads is still published (run weekly: pytest -m remote).
+"""Every file the CLI downloads is still published (run nightly: pytest -m remote).
 
 Asks each server for one byte, so a moved or deleted file shows up here before a
 user's download fails. The URLs come from the CLI's own tables.
@@ -24,6 +24,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     PET_GENOMES,
     get_available_genomes,
 )
+from wgsextract_cli.core.resource_mirrors import resources
 
 pytestmark = pytest.mark.remote
 
@@ -60,13 +61,23 @@ def _download_urls() -> list[str]:
         for name in (indel_name, ar.CADD_SNV_FILE):
             data = f"{ar.CADD_BASE_URL}/{remote_dir}/{name}"
             urls += [data + s for s in ("", ".tbi", ".md5", ".tbi.md5")]
-    urls += [gnomad_af.GNOMAD_V4_URL.format(contig=c) for c in ("chr1", "chrY")]
+    urls += [
+        gnomad_af.GNOMAD_V4_URL.format(contig=c) for c in gnomad_af.GNOMAD_V4_CONTIGS
+    ]
     urls += [pharmgkb.CLINICAL_URL, pharmgkb.VARIANTS_URL]
     urls += [BOOTSTRAP_URL, DEFAULT_REAL_DATASET_URL]
     urls += [meta["download"] for meta in gene_lists.MANIFEST["lists"].values()]
     urls += [
         f.url for spec in REAL_BENCHMARK_DATASETS.values() for f in spec.remote_files
     ]
+    # Nightly audits every original host, including restricted genomes and
+    # fallback sources. The PR workflow compares resolved base/head sets.
+    for genomes in (get_available_genomes(), [*FALLBACK_GENOMES, *PET_GENOMES]):
+        urls += [genome["url"].strip() for genome in genomes]
+    for entry in resources().values():
+        urls.append(entry["upstream_url"])
+        if entry["redistributable"]:
+            urls += [part["url"] for part in entry["parts"]]
     return list(dict.fromkeys(urls + _catalog_urls()))
 
 

@@ -1,0 +1,78 @@
+# Download mirrors and source rights
+
+Explicit downloads prefer byte-identical GitHub release copies when
+`src/wgsextract_cli/assets/resource_mirrors.json` contains published SHA-256
+pins. Merely inspecting resources does not contact GitHub. Each downloaded
+part and the assembled file are verified before installation. An unavailable
+or corrupt mirror produces `MIRROR_FALLBACK` and tries the original URL.
+The upstream copy must match the published snapshot too: changing an upstream
+`latest` file cannot silently change a pinned resource. Cancellation never
+starts a fallback download.
+
+## Redistribution audit (2026-11-17)
+
+The JSON inventory records each individual URL, attribution, source grant,
+version, audit-time size (HTTP HEAD, not a content pin), and the reason for its
+distribution mode. This audit does not resolve the separate source-rights work
+in [#864 (licence and provenance review)](https://github.com/WGSExtract/wgsextract-cli/issues/864).
+Public access alone is not permission to redistribute.
+
+| Resource | Decision | Size before splitting | Grant / evidence |
+| --- | --- | --- | --- |
+| ClinVar GRCh37/38 | Mirror a dated snapshot | ~202 MB each | [NCBI molecular data](https://www.ncbi.nlm.nih.gov/home/about/policies/): no restrictions on use or distribution; acknowledge NCBI ClinVar. |
+| REVEL (ANNOVAR hg19/hg38) | Upstream only | ~415 MB each | [REVEL downloads](https://sites.google.com/site/revelgenomics/downloads): non-commercial/source-specific terms; no clear unrestricted grant for these ANNOVAR copies. |
+| phyloP 100-way hg19/hg38 | Mirror | ~9.6–9.9 GB each | Directory [hg19 README](https://hgdownload.soe.ucsc.edu/goldenPath/hg19/phyloP100way/README.txt) and [hg38 README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phyloP100way/README.txt) permit public use; [UCSC download terms](https://hgdownload.soe.ucsc.edu/downloads.html#terms) allow any purpose except directory exceptions. Retain UCSC / Pollard / Siepel attribution and the assembly-credits caveat. |
+| gnomAD 2.1.1 complete exome VCFs | Upstream only pending component review | ~63 / 92 GB | [gnomAD terms](https://gnomad.broadinstitute.org/terms) grant CC0 for primary data but warn of third-party annotation restrictions. These full VEP-annotated VCFs are not cleared as a whole; this is not a restriction on primary AF facts. |
+| gnomAD v4.1 joint sites, all 24 contigs | Mirror | ~900 GB total; up to ~72 GB/contig | [gnomAD terms](https://gnomad.broadinstitute.org/terms), [source text](https://raw.githubusercontent.com/broadinstitute/gnomad-browser/main/browser/about/policies/terms.md): CC0 primary data, acknowledge gnomAD v4.1 and do not reidentify participants. The joint-sites header contains population counts/frequencies, not CSQ / SpliceAI / REVEL / CADD predictions. No separately restricted prediction annotations are copied. |
+| SpliceAI MANE v1.4 and index | Upstream only | Large VCF plus index | [Illumina licence](https://github.com/Illumina/SpliceAI/blob/master/LICENSE): CC BY-NC scores/models, PolyForm Strict code. An openly accessible Ensembl URL does not remove these terms. hg19 remains manual. |
+| AlphaMissense hg19/hg38 predictions | Mirror, with attribution | ~600 MB each | The [explicit predictions licence at audited commit](https://github.com/google-deepmind/alphamissense/blob/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md#alphamissense-predictions-license) is **CC BY 4.0**, not non-commercial and not the code's Apache licence. Copyright 2023 DeepMind Technologies Limited; Cheng et al., Science 2023, doi:10.1126/science.adg7492. Copies are unmodified; predictions are not validated for clinical use. |
+| GERP GRCh38, Ensembl 114 / 91 mammals | Mirror | ~9.6 GB | [Ensembl data disclaimer](https://raw.githubusercontent.com/Ensembl/ensembl-webcode/release/116/htdocs/info/about/legal/disclaimer.html): project-generated data available without restriction; retain Ensembl Compara attribution. This does not redistribute the GERP program. |
+| GERP hg19 `All_hg19_RS.bw` | Upstream only | ~7.6 GB | [Third-party UCSC track](https://genome.ucsc.edu/cgi-bin/hgTrackUi?db=hg19&g=All_hg19_RS): an unrestricted grant for this Stanford/Cooper score file was not independently established. |
+| RefSeq gene maps hg19/hg38 | Mirror snapshots | ~8 MB each | [UCSC database README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt), [NCBI molecular-data terms](https://www.ncbi.nlm.nih.gov/home/about/policies/). RefGene annotations are not the licensed UCSC software or liftOver chains. |
+| CADD v1.7 SNVs, indels, indexes, MD5 files | Upstream only | SNVs ~85 GB/build | [CADD downloads](https://cadd.gs.washington.edu/download): non-commercial applications; commercial use requires a licence. Do not copy even the ancillary files into the new release. |
+| PharmGKB / ClinPGx clinical annotations and variants | Upstream only | ZIP snapshots | [ClinPGx policy](https://www.clinpgx.org/page/dataUsagePolicy): CC BY-SA 4.0 **plus research/no-sale restrictions**, not an unrestricted CC grant. Preserve existing download provenance handling. |
+| ACMG SF 3.2 / 3.3 gene lists | No new copying; existing release only | Small TSVs | [Lee et al. source](https://pmc.ncbi.nlm.nih.gov/articles/PMC12318660/); underlying Elsevier/table-expression review remains in #864 (licence and provenance review). Existing GitHub URLs and explicit pins are unchanged, not re-cleared by this audit. |
+| Reference bootstrap | No new copying; existing release only | ~170 MB | Already on GitHub. Mixed component rights (vendor lists, chains, presets) remain under #864 (licence and provenance review); do not duplicate based on the repository code licence. |
+| Mini benchmark archive | Existing release and SHA-256 only | See inventory | Already on GitHub `v0.1.0`, explicitly pinned. No second archive or expanded source-rights claim. |
+| 1000 Genomes real-1x / NYGC real-30x benchmark references, alignments and indexes | Mirror | Small indexes through multi-GB CRAM/reference assets | [1000 Genomes reuse](https://www.internationalgenome.org/1000-genomes-summary/#g1k_data_reuse), [IGSR disclaimer](https://www.internationalgenome.org/IGSR_disclaimer/), [NCBI molecular-data terms](https://www.ncbi.nlm.nih.gov/home/about/policies/). Published, openly consented HG00096 data; acknowledge 1000 Genomes / IGSR and NYGC ERP114329 / ERR3240114; no participant reidentification. |
+| Reference-genome catalog (including upstream alternatives) | Existing mirrors unchanged | See reference catalog | Audited separately in [reference-genomes.md](reference-genomes.md) and #701 (reference-genome mirrors). Restricted/unclear genomes remain upstream only. |
+
+`UPSTREAM_ONLY` failures identify the resource, original URL and rights reason.
+Retry the upstream download or supply a licensed local copy. WGS Extract does
+not bypass authentication, accept terms on the user's behalf, or install
+download dependencies automatically.
+
+## Publishing and activating a snapshot
+
+Like the reference-genome publisher, **Mirror download resources** is a manual
+GitHub Actions workflow. Large payloads are streamed on CI, not a developer's
+laptop. Every asset is at most **1,900,000,000 bytes** (below GitHub's 2 GiB
+limit). Splitting is binary concatenation, not recompression or a scientific
+transformation. One part at a time is staged, uploaded, then deleted; no
+per-contig 72 GB scratch copy is needed.
+
+1. After the publishing workflow reaches the default branch, dispatch it with
+   release tag `download-resources-1`. Start with `gene-map-hg19,gene-map-hg38`
+   to smoke-test publication, then the remaining approved IDs. Empty selection
+   selects every approved resource. Non-redistributable entries cannot publish.
+2. The release keeps per-resource JSON records (upstream URL, version,
+   retrieval date, complete-file SHA-256/size, ordered part SHA-256/sizes),
+   attribution notices and source-licence snapshots. Data/records are never
+   overwritten. A failed transfer can rerun against the same snapshot; if an
+   upstream file changes, choose a **new release tag**, not `--clobber`.
+3. Download the release's `*.record.json` assets into `out/mirror-records/`.
+   Run `pixi run python scripts/mirror_download_resources.py activate
+   --records out/mirror-records --tag download-resources-1`, inspect the pins,
+   and submit the updated JSON catalog in a follow-up PR. Until then these
+   unpublished entries deliberately retain upstream behavior.
+4. Run the mirror behavior and remote-resource checks before activating pins.
+   Keep the issue open until the approved assets have been published and their
+   pins activated. Do not claim that merging the publisher alone mirrors data.
+
+Nightly URL checks cover **all upstream URLs**, including restricted resources
+and catalog alternatives, plus every published mirror part. GitHub's published
+asset SHA-256 and size are compared with local pins without downloading ~1 TB
+each night. Complete byte checks run during publication and every on-demand
+mirror download. PR URL probes compare resolved inventories at base and head
+and visit only added/changed URLs; an unrelated upstream outage cannot block a
+PR. See [CI routing](ci_routing.md).

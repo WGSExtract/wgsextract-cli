@@ -9,6 +9,18 @@ and ownership/review path lists. The remote-resource/real-chip concordance
 workflow covers both remaining flat `core/microarray_*.py` modules and the
 `core/microarray/**` package; Markdown exclusions still apply.
 
+Remote-resource URL probes compare the resolved inventories at the PR's base
+and head (including composed URLs and version changes), checking only added
+URLs or changed mirror SHA-256/size pins. Code-only changes probe no unrelated
+upstream hosts. Real-chip concordance retains its repository-hosted PR fixtures.
+Nightly runs check all upstream URLs (including restricted resources and
+reference-genome alternatives), every mirror URL, and GitHub's published asset
+SHA-256/size against the checked-in manifest. They also run the live format,
+SpliceAI-score and gene-list checks. Byte-level verification runs at publication
+and on every mirror download, not by downloading ~1 TB each night.
+See [download mirrors and source rights](resource-mirrors.md) for the audit,
+restricted-resource policy and manual publication/activation procedure.
+
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
 it can request a draft review on `opened`, but never checks out or executes PR

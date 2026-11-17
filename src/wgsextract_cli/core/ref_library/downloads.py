@@ -129,6 +129,60 @@ def download_file(
     expected_sha256: str | None = None,
     resolve_release_digest: bool = True,
     use_cache: bool = True,
+    use_mirrors: bool = True,
+) -> bool:
+    """Prefer audited, pinned mirrors; retain the original source as fallback."""
+    from wgsextract_cli.core.resource_mirrors import (
+        download_mirror,
+        mirror_for,
+        resources,
+    )
+
+    require_http_url(url, "download URL")
+    if expected_sha256 is not None and not re.fullmatch(
+        r"[a-fA-F0-9]{64}", expected_sha256
+    ):
+        raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
+    if use_mirrors and (entry := mirror_for(url)):
+        if download_mirror(
+            entry, dest, progress_callback, cancel_event, expected_sha256, use_cache
+        ):
+            return True
+        if cancel_event and cancel_event.is_set():
+            return False
+        # A mutable upstream alias must not silently replace a pinned snapshot.
+        if expected_sha256 is None:
+            expected_sha256 = entry["sha256"]
+    ok = _download_file(
+        url,
+        dest,
+        progress_callback,
+        cancel_event,
+        expected_sha256=expected_sha256,
+        resolve_release_digest=resolve_release_digest,
+        use_cache=use_cache,
+    )
+    if not ok and (entry := resources().get(url)) and not entry["redistributable"]:
+        logging.error(
+            "UPSTREAM_ONLY: %s could not be downloaded from %s. %s "
+            "No redistribution mirror is permitted; retry upstream or supply "
+            "a licensed local copy.",
+            entry["id"],
+            url,
+            entry["reason"],
+        )
+    return ok
+
+
+def _download_file(
+    url: str,
+    dest: str,
+    progress_callback: ProgressCallback | None = None,
+    cancel_event: CancelEvent | None = None,
+    *,
+    expected_sha256: str | None = None,
+    resolve_release_digest: bool = True,
+    use_cache: bool = True,
 ) -> bool:
     """Resume .partial files; replace dest only after verification.
 
