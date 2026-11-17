@@ -99,26 +99,3 @@ export interface VariantPage {
     next_cursor: string | null;
     disclaimer?: string;
 }
-
-export interface ResultFileRecord {
-    path: string;
-    kind: string;
-    role: string;
-    exists: boolean;
-    size_bytes: number | null;
-    mtime: string | null;
-    fingerprint: string | null;
-    index: string | null;
-    metrics: Record<string, string | number | boolean | null>;
-}
-
-export interface ResultWarningRecord {
-    code: string;
-    message: string;
-    details: Record<string, string | number | boolean | null>;
-}
-
-export interface ResultErrorRecord {
-    kind: "failure" | "usage" | "missing_dependency" | "cancelled";
-    message: string;
-}

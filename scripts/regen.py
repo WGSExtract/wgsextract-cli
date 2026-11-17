@@ -21,6 +21,8 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
     "gui/app/shared/generated/server-transport.ts",
+    "gui/app/shared/generated/result-records.ts",
+    "gui/app/shared/generated/report-records.ts",
 )
 
 

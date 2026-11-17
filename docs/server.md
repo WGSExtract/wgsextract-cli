@@ -157,6 +157,10 @@ an allowed folder.
 Manifest and report readers check the document identifier and the object
 containers they use, not the complete writer schema. Returned field values remain
 opaque rather than being coerced or cast to canonical writer models.
+Canonical result/report writer records are generated separately for clients in
+`gui/app/shared/generated/result-records.ts` and `report-records.ts`; those
+complete contracts must not be substituted for compact or unvalidated loaded
+documents in server responses.
 Manifest lookups preserve unknown fields and their values, except that
 `provenance` is omitted unless `full=1`. Report responses project a header with
 the report file's `path` plus `generated`, `sample` and `disclaimer`; other

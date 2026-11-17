@@ -11,6 +11,10 @@ The bundled schema is generated from the actual writer dataclasses in
 `scripts/gen_output_schemas.py` (or `just regen`) to update it; `--check` detects
 drift. Defaulted and nullable fields remain required because the writer emits
 them. This generation does not add runtime validation or change tolerant readers.
+The same dataclass graph generates the complete TypeScript writer contract in
+`gui/app/shared/generated/result-records.ts` through `scripts/gen_server_contracts.py`.
+The GUI's normalized presentation types derive shared fields from it, but its
+parser still treats external/compact documents as unvalidated input.
 
 - **Manifest file.** A command that writes outputs also writes
   `<output>.manifest.json` next to them, atomically. The name is the first

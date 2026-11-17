@@ -22,7 +22,8 @@ test("929 writer-generated record types require emitted defaults without narrowi
   const file = path.join(directory, "contract.mts");
   const modulePath = (name) => path.relative(directory, path.resolve(import.meta.dirname, "../shared", name)).replaceAll("\\", "/");
   const source = `
-import type { ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "${modulePath("generated/server-transport.js")}";
+import type { ResultDocumentRecord, ResultErrorRecord, ResultFileRecord, ResultProvenanceRecord, ResultReferenceRecord, ResultWarningRecord } from "${modulePath("generated/result-records.js")}";
+import type { ReportDocumentRecord, ReportFindingDocument, ReportPgxDocument } from "${modulePath("generated/report-records.js")}";
 import type { ResultError, ResultFile } from "${modulePath("result-document.js")}";
 type OptionalKeys<T> = { [Key in keyof T]-?: {} extends Pick<T, Key> ? Key : never }[keyof T];
 type RequireNone<T extends never> = T;
@@ -30,6 +31,19 @@ type RequireNone<T extends never> = T;
 type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
 type ErrorFieldsRequired = RequireNone<OptionalKeys<ResultErrorRecord>>;
+type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
+type ProvenanceFieldsRequired = RequireNone<OptionalKeys<ResultProvenanceRecord>>;
+type ReferenceFieldsRequired = RequireNone<OptionalKeys<ResultReferenceRecord>>;
+type ReportFieldsRequired = RequireNone<OptionalKeys<ReportDocumentRecord>>;
+type ReportSampleFieldsRequired = RequireNone<OptionalKeys<ReportDocumentRecord["sample"]>>;
+type RequiredKeys<T> = Exclude<keyof T, OptionalKeys<T>>;
+type LegacySectionsStayOptional = RequireNone<Extract<"ancestry" | "carrier_screening" | "acmg_research", RequiredKeys<ReportDocumentRecord["sections"]>>>;
+// @ts-expect-error The emitted report has a versioned literal schema identity.
+const wrongSchema: ReportDocumentRecord["schema"] = "wgsextract.result/1";
+// @ts-expect-error Enum metadata constrains the actual finding writer.
+const wrongConfidence: ReportFindingDocument["confidence"] = "future_confidence";
+// @ts-expect-error PGx enum metadata must not become an unconstrained string.
+const wrongPgx: ReportPgxDocument["status"] = "future_status";
 const wire: ResultFileRecord = {
   path: "out.bam", role: "output", kind: "bam", exists: false,
   size_bytes: null, mtime: null, fingerprint: null, index: null,

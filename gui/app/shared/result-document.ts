@@ -1,10 +1,10 @@
 import type { ActionSpec, BundleManifest, CommandSpec, LooseRecord } from "./types.js";
-import type { ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "./generated/server-transport.js";
+import type { ResultDocumentRecord, ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "./generated/result-records.js";
 
 /** Result document formats the app can read (docs/result-documents.md). */
-export const resultDocumentFormats = ["wgsextract.result/1"] as const;
+export const resultDocumentFormats = ["wgsextract.result/1"] as const satisfies readonly ResultDocumentRecord["schema"][];
 
-export type ResultDocumentFormat = (typeof resultDocumentFormats)[number];
+export type ResultDocumentFormat = ResultDocumentRecord["schema"];
 
 /**
  * A manifest's `resultDocument`: actions running one of `executables` write a result document,
@@ -21,8 +21,8 @@ export interface ResultDocumentSpec {
 /** Stands in `arguments` for a file the app makes for each run and reads the document from. */
 export const resultDocumentPathPlaceholder = "{{resultDocumentPath}}";
 
-export type ResultScalar = ResultFileRecord["metrics"][string];
-export type ResultScalars = ResultFileRecord["metrics"];
+export type ResultScalar = ResultDocumentRecord["metrics"][string];
+export type ResultScalars = ResultDocumentRecord["metrics"];
 
 export interface ResultFile extends Pick<ResultFileRecord, "path" | "role" | "kind" | "exists" | "metrics"> {
     sizeBytes: ResultFileRecord["size_bytes"];
@@ -40,17 +40,15 @@ export interface ResultError {
 }
 
 /** The parts of a result document the app shows and checks. */
-export interface ResultDocument {
+export interface ResultDocument extends Pick<ResultDocumentRecord, "command" | "metrics"> {
     format: ResultDocumentFormat;
-    command: string;
     status: string;
-    exitCode: number | null;
+    exitCode: ResultDocumentRecord["exit_code"] | null;
     error: ResultError | null;
     outputs: ResultFile[];
-    metrics: ResultScalars;
     warnings: ResultWarning[];
     /** Where the command saved the same document, if it did. */
-    manifestPath: string | null;
+    manifestPath: ResultDocumentRecord["manifest"];
     /** The document as the command printed it. */
     raw: LooseRecord;
 }

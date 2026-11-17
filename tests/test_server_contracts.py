@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from scripts.server_transport_typescript import typescript
+from scripts.server_transport_typescript import (
+    report_typescript,
+    result_typescript,
+    typescript,
+)
 from tests.test_server import _serve
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job
@@ -29,9 +33,14 @@ def validate(value: object, name: str) -> None:
 
 
 def test_929_checked_in_openapi_and_response_schemas_do_not_drift() -> None:
-    assert (ROOT / "gui/app/shared/generated/server-transport.ts").read_text(
-        encoding="utf-8"
-    ) == typescript()
+    for name, generate in (
+        ("server-transport", typescript),
+        ("result-records", result_typescript),
+        ("report-records", report_typescript),
+    ):
+        assert (ROOT / f"gui/app/shared/generated/{name}.ts").read_text(
+            encoding="utf-8"
+        ) == generate()
     subprocess.run(
         [sys.executable, "scripts/gen_server_contracts.py", "--check"],
         cwd=ROOT,

@@ -25,12 +25,15 @@ A command can describe its run as a JSON result document: the files it wrote, wa
 
 **`format`** is the only format the app reads today: [`wgsextract.result/1`](../../docs/result-manifest.md), the document every `wgsextract` command writes with `--json` or `--result-file PATH`.
 
-The raw file, warning and error record types are generated from the Python
-writer dataclasses by `scripts/gen_server_contracts.py` into
-`app/shared/generated/server-transport.ts`. The normalized UI types and tolerant
-parser in `app/shared/result-document.ts` remain handwritten: they accept omitted
-compact fields and unknown future error kinds, rather than asserting that loaded
-JSON is a validated writer record.
+The complete canonical result and report records are generated from their Python
+writer dataclasses/TypedDicts by `scripts/gen_server_contracts.py` into
+`app/shared/generated/result-records.ts` and `report-records.ts`. HTTP/job
+envelopes remain in `server-transport.ts`. The result adapter derives shared field
+types from the canonical records, while its normalized UI shape and tolerant
+parser remain handwritten: they accept omitted compact fields and unknown future
+statuses/error kinds, rather than asserting that loaded JSON is a validated
+writer record. Nullable/defaulted dataclass fields are required in the canonical
+record; optional historical report fields remain optional.
 
 ## Running a covered action
 
