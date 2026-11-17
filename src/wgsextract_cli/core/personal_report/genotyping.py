@@ -10,6 +10,7 @@ from wgsextract_cli.core import (
 from wgsextract_cli.core.report_documents import (
     ReportPgxAlternativeDocument,
     ReportPgxDocument,
+    ReportSectionDocument,
     ReportWarningDocument,
 )
 
@@ -30,7 +31,7 @@ from .rendering import (
 )
 
 
-def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
+def _pharmacogenomics(ctx: _Context) -> ReportSectionDocument:
     pharmcat = ctx.latest(_command_or_role("vcf pharmcat", "pharmcat_phenotypes"))
     cyrius = ctx.latest(_command("typing cyp2d6"))
     hla = ctx.latest(_command("typing hla"))
@@ -59,18 +60,19 @@ def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
-    gene_statuses: dict[str, str] = {}
+    gene_statuses: dict[str | None, str] = {}
     priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
     for finding in section["findings"]:
-        status = (finding.get("pgx") or {}).get(
-            "status",
-            "no_call" if "no_call" in finding["confidence_reasons"] else "resolved",
+        fallback = (
+            "no_call" if "no_call" in finding["confidence_reasons"] else "resolved"
         )
+        pgx = finding.get("pgx")
+        status = pgx.get("status", fallback) if pgx else fallback
         previous = gene_statuses.get(finding["gene"], "no_call")
         gene_statuses[finding["gene"]] = min(
             (previous, status), key=priority.__getitem__
         )
-    statuses: dict[str, set[str]] = {}
+    statuses: dict[str, set[str | None]] = {}
     for gene, status in gene_statuses.items():
         statuses.setdefault(status, set()).add(gene)
     section["summary"] = "; ".join(
@@ -80,7 +82,9 @@ def _pharmacogenomics(ctx: _Context) -> dict[str, Any]:
     return section
 
 
-def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+def _pharmcat_findings(
+    section: ReportSectionDocument, source: Source, ctx: _Context
+) -> None:
     from wgsextract_cli.commands.vcf.pharmcat import summarize
 
     phenotypes = source.output("pharmcat_phenotypes")
@@ -147,7 +151,9 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
         section["findings"].append(finding)
 
 
-def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+def _cyrius_finding(
+    section: ReportSectionDocument, source: Source, ctx: _Context
+) -> None:
     metrics = source.metrics
     genotype = metrics.get("cyp2d6_genotype")
     status = metrics.get("cyp2d6_filter")
@@ -216,7 +222,7 @@ def _cyrius_finding(section: dict[str, Any], source: Source, ctx: _Context) -> N
     )
 
 
-def _carrier_screening(ctx: _Context) -> dict[str, Any]:
+def _carrier_screening(ctx: _Context) -> ReportSectionDocument:
     smn = ctx.latest(_command("typing smn"))
     section = _section("carrier_screening", [smn], ctx)
     if smn is not None and smn.status == "ok":
@@ -233,7 +239,7 @@ def _carrier_screening(ctx: _Context) -> dict[str, Any]:
     return section
 
 
-def _smn_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+def _smn_finding(section: ReportSectionDocument, source: Source, ctx: _Context) -> None:
     from wgsextract_cli.commands.genotyping.smn import (
         MAX_COVERAGE_MAD,
         MIN_DEPTH,
@@ -314,7 +320,9 @@ def _smn_finding(section: dict[str, Any], source: Source, ctx: _Context) -> None
     )
 
 
-def _hla_findings(section: dict[str, Any], source: Source, ctx: _Context) -> None:
+def _hla_findings(
+    section: ReportSectionDocument, source: Source, ctx: _Context
+) -> None:
     """The HLA-A and HLA-B diplotypes ``typing hla`` called (those PharmCAT
     takes), labelled by T1K's allele qualities."""
     from wgsextract_cli.commands.genotyping.hla import (

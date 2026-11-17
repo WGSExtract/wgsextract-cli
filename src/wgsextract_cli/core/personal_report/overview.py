@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import csv
-from typing import Any
 
 from wgsextract_cli.core import (
     contamination,
     read_scope,
 )
 from wgsextract_cli.core.report_documents import (
+    ReportAncestryComponentDocument,
+    ReportAncestryDocument,
+    ReportAncestryFields,
     ReportFactDocument,
     ReportMetricDocument,
+    ReportMicroarrayDocument,
+    ReportMicroarrayFields,
+    ReportMicroarrayFileDocument,
+    ReportOverviewDocument,
+    ReportSectionDocument,
     ReportWarningDocument,
 )
 
@@ -54,7 +61,7 @@ _QC_METRICS = (
 _MICROARRAY_ROLES = ("combined_kit", "vendor_kit", "aadr")
 
 
-def _overview(ctx: _Context) -> dict[str, Any]:
+def _overview(ctx: _Context) -> ReportOverviewDocument:
     info = ctx.latest(_command("info"))
     run = ctx.latest(_command("qc contamination"))
     run = run if run is not None and run.status == "ok" else None
@@ -64,7 +71,9 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     )
     trio = ctx.latest(_command("vcf trio"))
     trio = trio if trio is not None and trio.status == "ok" else None
-    section = _section("overview", [info, run, trio, repeat_run], ctx)
+    section = ReportOverviewDocument(
+        **_section("overview", [info, run, trio, repeat_run], ctx), facts=[], qc=[]
+    )
     facts: list[ReportFactDocument] = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
@@ -159,7 +168,7 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     return section
 
 
-def _lineage(ctx: _Context) -> dict[str, Any]:
+def _lineage(ctx: _Context) -> ReportSectionDocument:
     y = ctx.latest(_command("lineage y-haplogroup"))
     mt = ctx.latest(_command("lineage mt-haplogroup"))
     section = _section("lineage", [y, mt], ctx)
@@ -224,11 +233,14 @@ ANCESTRY_NOTE = (
 )
 
 
-def _ancestry(ctx: _Context) -> dict[str, Any]:
+def _ancestry(ctx: _Context) -> ReportAncestryDocument:
     source = ctx.latest(_command("qc ancestry"))
-    section = _section("ancestry", [source], ctx)
-    section["note"] = ANCESTRY_NOTE
-    section["components"] = []
+    section: ReportAncestryDocument = {
+        **_section("ancestry", [source], ctx),
+        **ReportAncestryFields(),
+        "note": ANCESTRY_NOTE,
+        "components": [],
+    }
     if source is None or source.status != "ok":
         _missing(
             section,
@@ -245,15 +257,15 @@ def _ancestry(ctx: _Context) -> dict[str, Any]:
     for row in rows:
         try:
             section["components"].append(
-                {
-                    "k": int(row["k"]),
-                    "name": row["component"],
-                    "region": row["region"],
-                    "proportion": float(row["proportion"]),
-                    "lower": float(row["lower_95"]),
-                    "upper": float(row["upper_95"]),
-                    "reference_populations": row["reference_populations"],
-                }
+                ReportAncestryComponentDocument(
+                    k=int(row["k"]),
+                    name=row["component"],
+                    region=row["region"],
+                    proportion=float(row["proportion"]),
+                    lower=float(row["lower_95"]),
+                    upper=float(row["upper_95"]),
+                    reference_populations=row["reference_populations"],
+                )
             )
         except (KeyError, ValueError):
             continue
@@ -271,10 +283,13 @@ def _ancestry(ctx: _Context) -> dict[str, Any]:
     return section
 
 
-def _microarray(ctx: _Context) -> dict[str, Any]:
+def _microarray(ctx: _Context) -> ReportMicroarrayDocument:
     source = ctx.latest(_command("microarray"))
-    section = _section("microarray", [source], ctx)
-    section["files"] = []
+    section: ReportMicroarrayDocument = {
+        **_section("microarray", [source], ctx),
+        **ReportMicroarrayFields(),
+        "files": [],
+    }
     if source is None or source.status != "ok":
         _missing(
             section,
@@ -288,16 +303,16 @@ def _microarray(ctx: _Context) -> dict[str, Any]:
         path = source.locate(str(record["path"]))
         metrics = record.get("metrics") or {}
         section["files"].append(
-            {
-                "file": ctx.rel(path),
-                "role": record.get("role"),
-                "format": metrics.get("format")
+            ReportMicroarrayFileDocument(
+                file=ctx.rel(path),
+                role=record["role"],
+                format=metrics.get("format")
                 or ("CombinedKit" if record.get("role") == "combined_kit" else None),
-                "exists": read_scope.may_follow(path) and path.exists(),
-                "sites": metrics.get("sites"),
-                "called": metrics.get("called"),
-                "no_call_rate": metrics.get("no_call_rate"),
-            }
+                exists=read_scope.may_follow(path) and path.exists(),
+                sites=metrics.get("sites"),
+                called=metrics.get("called"),
+                no_call_rate=metrics.get("no_call_rate"),
+            )
         )
     section["metrics"] = {
         k: source.metrics[k]

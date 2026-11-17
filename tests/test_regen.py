@@ -57,7 +57,6 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_config_docs.py",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
-        "scripts/schema_sources/wgsextract.report.1.json",
         "scripts/gen_server_contracts.py",
         "scripts/server_transport_typescript.py",
         "tests/cli_snapshot.py",

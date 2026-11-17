@@ -302,10 +302,9 @@ newest-attempt, warning, missing-command, external-link, finding, evidence,
 variant, pharmacogenomics, fact and QC components come from the writer-used
 types in `core/report_documents.py` and `core/clinical_evidence.py`; their
 HTML and Markdown renderers use the same types.
-The remaining section/root rules are still handwritten in
-`scripts/schema_sources/wgsextract.report.1.json`, separate from the generated
-artifact, while those writer models are migrated. This does not add runtime
-validation or change how old reports render.
+The sample, section map, section-specific records and root also come from
+writer-used Python types: no handwritten structural schema template remains.
+This does not add runtime validation or change how old reports render.
 
 ```json
 {

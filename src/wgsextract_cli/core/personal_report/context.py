@@ -24,6 +24,7 @@ from wgsextract_cli.core.report_documents import (
     ReportFindingSection,
     ReportLinkDocument,
     ReportMissingDocument,
+    ReportSectionDocument,
     ReportSourceDocument,
     ReportVariantDocument,
     ReportWarningDocument,
@@ -423,18 +424,18 @@ def _finding(
 
 def _section(
     name: str, sources: Sequence[Source | None], ctx: _Context
-) -> dict[str, Any]:
+) -> ReportSectionDocument:
     used = [s for s in sources if s is not None]
     failed = [s for s in used if s.status != "ok"]
-    section: dict[str, Any] = {
-        "title": SECTIONS[name],
-        "status": "ok" if len(failed) < len(used) else "failed" if used else "not_run",
-        "summary": "",
-        "findings": [],
-        "missing": [],
-        "warnings": [w for s in used for w in s.warnings()],
-        "sources": [],
-    }
+    section = ReportSectionDocument(
+        title=SECTIONS[name],
+        status="ok" if len(failed) < len(used) else "failed" if used else "not_run",
+        summary="",
+        findings=[],
+        missing=[],
+        warnings=[w for s in used for w in s.warnings()],
+        sources=[],
+    )
     for s in used:
         newer = ctx.superseded.get(_key(s.manifest))
         section["sources"].append(
@@ -476,7 +477,7 @@ def _section(
     return section
 
 
-def _missing(section: dict[str, Any], what: str, command: str) -> None:
+def _missing(section: ReportSectionDocument, what: str, command: str) -> None:
     section["missing"].append(ReportMissingDocument(what=what, command=command))
 
 
