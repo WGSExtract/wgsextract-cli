@@ -150,14 +150,15 @@ blocks carry GQ, in Clair3's bins of 5, and MIN_DP; reads below mapping
 quality 5 (Clair3's default) are left out. Its pileup step is much slower
 with it, so a run that asks for it warns (`clair3_gvcf_cost`) and its
 preflight scales the time it reports: about 2.4x on the CPU and 4.3x on the
-GPU. With the gVCF the CPU path was faster than `--gpu`, so a `--gpu` run's
-warning says so; it still calls on the GPU. Clair3 skips contigs the index places no reads on, and with none left
+GPU. In that 5 Mb measurement the CPU path was faster than `--gpu` with the
+gVCF, which a `--gpu` run's warning reports; larger runs weren't measured, and
+it still calls on the GPU. Clair3 skips contigs the index places no reads on, and with none left
 writes no gVCF; their bases read as `uncovered`. A missing gVCF when a
 called contig has reads fails the run. Without a `--region` it calls chr1-22, X and Y, so the
 gVCF's `Region` lists those and other contigs read as `not_assessed`.
 
 Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: on the CPU 75 s
-for the VCF and 189 s with the gVCF (2.4x); with `--gpu` on an RTX 3090
+for the VCF and 179 s with the gVCF (2.4x); with `--gpu` on an RTX 3090
 106 s and 452 s (4.3x). The gVCF was 1.6 MB. The calls and filters were identical. Of 7,055
 truth variants, 2 sit on bases the gVCF calls callable reference.
 

@@ -1574,7 +1574,7 @@ CLAIR3_GPU_MARGIN = 1.45
 CLAIR3_ASSUMED_DEPTH = 30.0
 CLAIR3_CPU_BYTES_PER_BASE = 2.0
 # --reference-evidence gvcf (#863), HG002 ONT R10.4.1 chr20:10-15 Mb on 4
-# threads and an RTX 3090: the gVCF pileup took the CPU from 75 s to 189 s
+# threads and an RTX 3090: the gVCF pileup took the CPU from 75 s to 179 s
 # (2.4x) and --gpu from 106 s to 452 s (4.3x), so with the gVCF the CPU was
 # faster. Its gVCF was 1.6 MB (0.32 bytes per base). The partitions' parts,
 # their gathered copy and the published gVCF can coexist: three copies.

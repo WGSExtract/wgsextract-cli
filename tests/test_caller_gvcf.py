@@ -175,13 +175,13 @@ def test_partitioned_gvcf_is_cut_at_the_par_edge_and_records_excluded_bases_863(
 
 
 @pytest.mark.parametrize(("gpu", "factor"), [(False, 2.4), (True, 4.3)])
-def test_clair3_gvcf_cost_is_measured_and_points_gpu_runs_at_the_cpu_863(
+def test_clair3_gvcf_cost_is_measured_and_reported_to_gpu_runs_863(
     sample, request, gpu, factor
 ):
     """Issue #863: on HG002 ONT chr20:10-15 Mb the gVCF made Clair3 2.4x
-    slower on the CPU and 4.3x with --gpu, so the CPU was faster. Preflight
-    scales its time by that, and a --gpu run is told the CPU was faster but
-    still calls on the GPU."""
+    slower on the CPU and 4.3x with --gpu. Preflight scales its time by that,
+    and a --gpu run is told the CPU was faster there but still calls on the
+    GPU."""
     # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     host = request.getfixturevalue("clair3_gpu") if gpu else None

@@ -779,9 +779,9 @@ def run_clair3(params: VcfClair3Params) -> None:
             "Clair3 writes its gVCF from a slower pileup: expect about "
             f"{factor:g}x the calling time (--reference-evidence none skips it)."
             + (
-                " With the gVCF the CPU was faster than --gpu where we measured "
-                "it (HG002 ONT chr20:10-15 Mb, 4 threads, RTX 3090: 189 s "
-                "against 452 s); leave out --gpu to call on the CPU."
+                " In one 5 Mb measurement (HG002 ONT chr20:10-15 Mb, 4 threads, "
+                "RTX 3090) the CPU was faster with the gVCF (179 s against "
+                "452 s); larger runs were not measured."
                 if gpu
                 else ""
             ),
