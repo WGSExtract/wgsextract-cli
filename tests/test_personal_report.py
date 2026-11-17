@@ -1642,7 +1642,7 @@ def test_report_from_an_alignment_needs_no_samtools(sample, monkeypatch):
         raise AssertionError("report checked the alignment with samtools")
 
     monkeypatch.setattr(
-        "wgsextract_cli.core.alignment_input.validate_alignment_input", no_samtools
+        "wgsextract_cli.core.alignment.input.validate_alignment_input", no_samtools
     )
     cram = sample / "HG002.cram"
     code, out = _cli("report", "-i", str(cram), "--outdir", str(sample / "out"))

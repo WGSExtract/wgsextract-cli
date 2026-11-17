@@ -41,6 +41,7 @@ from wgsextract_cli.core.alignment.memory import (
     least_mapping_memory,
     reference_bases,
 )
+from wgsextract_cli.core.alignment.profiles import validate_output_profile
 from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.chunked_alignment import (
@@ -55,7 +56,6 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.native_aligners import AlignerCommand, native_gpu_preference
-from wgsextract_cli.core.output_profiles import validate_output_profile
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import (
     alignment_sample,
