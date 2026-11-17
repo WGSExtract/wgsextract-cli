@@ -214,6 +214,19 @@ assembles reports and fits GitHub links; existing `core.issue_report` and
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
 
+Large DeepVariant, native-aligner and server suites are divided into focused
+`test_<family>_<topic>.py` modules. Their original `test_<family>.py` modules
+keep shared helpers and function-scoped fixtures, so existing imports and fixture
+behavior remain stable. New integration modules must retain their CI tier.
+Modules using the shared `out/fake_30x` fixtures also retain a direct
+`ensure_fake_data` import: the loadgroup scheduler uses it to keep shared-data
+generation on one worker, even when the fixture itself is imported.
+The standalone `test_server_shared_data.py` guard names its source inputs with
+explicit repository-relative paths, so affected-test selection runs it whenever
+those consumer modules change.
+Its companion `test_server_shared_data_routing.py` checks that selection and runs
+when the worker guard changes; both guards stay outside the CI-only test list.
+
 - **Assert observable behaviour.** That means:
   - output files and their content
   - exit codes 0/1/2/3

@@ -18,7 +18,16 @@ INTEGRATION_MODULES = frozenset(
         "test_contig_calling.py",
         "test_microarray_reuse.py",
         "test_native_aligners.py",
+        "test_native_aligners_gpu_memory.py",
+        "test_native_aligners_linux.py",
+        "test_native_aligners_mem3.py",
+        "test_native_aligners_minimap2.py",
         "test_deepvariant.py",
+        "test_deepvariant_execution.py",
+        "test_deepvariant_gpu.py",
+        "test_deepvariant_gvcf.py",
+        "test_deepvariant_native.py",
+        "test_deepvariant_staging.py",
     }
 )
 
