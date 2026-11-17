@@ -1,6 +1,5 @@
 """Shared, bounded platform detection for reads and alignments."""
 
-import gzip
 import os
 import re
 import subprocess
@@ -11,7 +10,7 @@ from pathlib import Path
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.fastq_platform import fastq_platform
+from wgsextract_cli.core.fastq_platform import FastqSampleLimit, fastq_platform
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.results import current_result, warn
@@ -198,6 +197,8 @@ def input_platform(
                 strict,
             )[0]
         )
+    if not Path(reads).is_file():
+        return override
     # With an override, an undecodable probe only skips the check of it
     fact = sample_workspace.known("platform", reads)
     strict = strict and (fact is None or fact.source != "override")
@@ -223,26 +224,39 @@ def input_platform(
     if isinstance(evidence, dict):
         evidence["effective_platform"] = selected
     if strict and selected is None:
-        if statistics is None and _is_fastq(str(reads)) and Path(reads).is_file():
-            path = Path(reads)
-            stat = path.stat()
-            statistics = fastq_platform(
-                str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
-            ).statistics
+        if statistics is None and not _is_alignment(str(reads)):
+            try:
+                path = Path(reads)
+                stat = path.stat()
+                statistics = fastq_platform(
+                    str(path.resolve()),
+                    stat.st_size,
+                    stat.st_mtime_ns,
+                    stat.st_ctime_ns,
+                ).statistics
+            except (OSError, EOFError, ValueError, zlib.error):
+                pass  # Full FASTQ validation reports damaged input.
         if statistics and statistics["median_length"] > 300:
             raise UsageError(
                 "Ambiguous long-read FASTQ platform "
                 f"(median {statistics['median_length']:g} bp). "
                 "Pass --platform ont, --platform hifi or --platform clr; "
-                "refusing to choose short-read defaults."
+                "use --platform illumina for known short-read data. "
+                "Refusing to choose short-read defaults silently."
             )
     return selected
 
 
-def _is_fastq(path: str) -> bool:
-    return path.lower().endswith(
-        (".fq", ".fastq", ".fq.gz", ".fastq.gz", ".fq.bgz", ".fastq.bgz")
-    )
+def _is_alignment(path: str) -> bool:
+    return path.lower().endswith((".bam", ".cram", ".sam"))
+
+
+def record_platform_choice(reads: PathInput | None, platform: str) -> None:
+    """Keep the final alignment policy separate from the observed platform."""
+    detections = current_result().provenance.params.get("platform_detection")
+    evidence = detections.get(str(reads)) if isinstance(detections, dict) else None
+    if isinstance(evidence, dict):
+        evidence["effective_platform"] = platform
 
 
 def _platform_provenance(
@@ -282,7 +296,7 @@ def _detect_platform(
         strict,
     )
     statistics = None
-    if _is_fastq(path.name):
+    if not _is_alignment(str(path)):
         try:
             sample = fastq_platform(
                 str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
@@ -350,25 +364,20 @@ def _input_platform(
                 ) from error
             return None, None
         return platform_from_metadata(qname=qname), _READ_NAME
-    if _is_fastq(path):
-        opener = gzip.open if path.lower().endswith((".gz", ".bgz")) else open
-        try:
-            with opener(path, "rt") as handle:
-                line = handle.readline(1024 * 1024)
-        except (OSError, EOFError, UnicodeDecodeError):
-            return None, None
-        if line.startswith("@") and (fields := line[1:].split()):
-            if platform := platform_from_metadata(qname=fields[0]):
-                return platform, _READ_NAME
+    if Path(path).is_file():
         try:
             sample = fastq_platform(path, size, mtime, ctime)
-        except (OSError, EOFError, ValueError, zlib.error):
+        except FastqSampleLimit:
             if strict:
                 raise UsageError(
-                    "Unable to sample FASTQ platform; pass --platform ont, "
-                    "--platform hifi or --platform clr for long reads "
-                    "(--platform illumina for short reads)."
+                    "No complete FASTQ record fits the bounded platform sample. "
+                    "Pass --platform ont, --platform hifi or --platform clr "
+                    "(--platform illumina for known short reads)."
                 ) from None
             return None, None
+        except (OSError, EOFError, ValueError, zlib.error):
+            return None, None
+        if platform := platform_from_metadata(sequencer=sample.sequencer):
+            return platform, _READ_NAME
         return sample.platform, sample.method
     return None, None

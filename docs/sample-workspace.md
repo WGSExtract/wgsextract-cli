@@ -74,6 +74,10 @@ at = "2026-11-04T22:31:02+00:00"
   confidence), not an override choice. Its evidence is retained when you
   choose `--platform`; an ambiguous long-read sample still requires that
   explicit choice on subsequent runs.
+  FASTQ platform facts also include an `evidence_fingerprint` of the bounded
+  sampled prefix, checked in addition to the generic file fingerprint. Edits
+  anywhere in that prefix invalidate the detection, including same-size edits
+  outside the generic fingerprint's three windows.
 - `fingerprint`: the file's [content fingerprint](result-manifest.md) when its
   facts were detected. If the file is replaced or changed (for example by
   `realign` into the same name), its facts no longer match and are detected

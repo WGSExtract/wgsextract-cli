@@ -8,7 +8,9 @@ detection.
 For FASTQs with inconclusive names (including SRA-renamed reads), detection
 samples at most 4096 reads, 4 MiB compressed and 16 MiB decoded, including
 gzip/BGZF files. A median length of 300 bp or less keeps the previous short-read
-defaults. Longer reads use ONT header tags (`runid=`, `ch=`, `start_time=`,
+defaults. FASTQ and compression are recognized by content, not filename; wrapped
+sequence and quality lines are supported. Named pipes are left untouched until
+alignment stages them. Longer reads use ONT header tags (`runid=`, `ch=`, `start_time=`,
 `basecall_model_version_id=`), or PacBio consensus tags (`rq=` of at least
 0.99; otherwise `np=` of at least 2). Conflicting tags are not resolved by
 guessing. Without tags, a HiFi-like quality profile (mean Q30 or higher,
@@ -18,12 +20,17 @@ not instrument identification: low-quality ONT and PacBio CLR can overlap.
 Ambiguous long reads are refused: pass `--platform ont`, `--platform hifi`
 or `--platform clr`. Both paired FASTQs are checked; conflicting evidence is
 refused. Explicit `--platform` still wins.
+For known short-read data just above the cutoff (for example 301 bp Illumina),
+choose `--platform illumina` explicitly.
 
 The sample workspace's platform fact records the method, confidence and sampled
 statistics (median and N50 length, mean/max Q, length spread and sample size).
 The result manifest includes the same evidence under
 `provenance.params.platform_detection`. Samples are cached per file revision;
 replacing a FASTQ invalidates its evidence. BAM/CRAM detection is unchanged.
+FASTQ facts also hash the entire bounded input prefix used for detection, so
+same-size edits outside the usual first/middle/last-MiB fingerprint windows
+invalidate the cached evidence.
 An override is recorded separately as `effective_platform`; it never erases
 the detected method or statistics, including inconclusive (`Unknown`) samples.
 

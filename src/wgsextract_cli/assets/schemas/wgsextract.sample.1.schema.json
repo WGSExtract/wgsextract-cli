@@ -133,6 +133,9 @@
             "type": "number"
           }
         },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -183,6 +186,9 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
         },
         "method": {
           "type": "string",
@@ -238,6 +244,9 @@
             "type": "number"
           }
         },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -285,6 +294,9 @@
             "type": "number"
           }
         },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -331,6 +343,9 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
         },
         "method": {
           "type": "string",
@@ -385,6 +400,9 @@
             "type": "number"
           }
         },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -432,6 +450,9 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
         },
         "method": {
           "type": "string",
@@ -481,6 +502,9 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
         },
         "method": {
           "type": "string",
@@ -534,6 +558,9 @@
             "type": "number"
           }
         },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -584,6 +611,9 @@
           "additionalProperties": {
             "type": "number"
           }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
         },
         "method": {
           "type": "string",

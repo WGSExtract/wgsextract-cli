@@ -21,6 +21,7 @@ Fraction = Annotated[float, Constraints(minimum=0, maximum=1)]
 
 class FactStatistics(TypedDict, total=False):
     statistics: dict[str, float]
+    evidence_fingerprint: str
 
 
 class FactMetadata(FactStatistics):

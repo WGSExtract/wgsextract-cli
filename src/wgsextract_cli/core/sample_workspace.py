@@ -145,7 +145,7 @@ FACTS: dict[str, FactSpec] = {
             "platform",
             "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
             PLATFORMS,
-            2,
+            3,
         ),
         FactSpec("build", "Reference build the file is aligned to."),
         FactSpec(
@@ -199,6 +199,7 @@ class Fact:
     by: str | None = None
     at: str | None = None
     statistics: dict[str, float] | None = None
+    evidence_fingerprint: str | None = None
 
     def describe(self) -> str:
         if self.source == "override":
@@ -235,6 +236,8 @@ class Fact:
             result["at"] = self.at
         if self.statistics is not None:
             result["statistics"] = self.statistics
+        if self.evidence_fingerprint is not None:
+            result["evidence_fingerprint"] = self.evidence_fingerprint
         return result
 
 
@@ -456,6 +459,15 @@ class SampleWorkspace:
         current = file_fingerprint(file)
         if current is None or entry.get("fingerprint") != current:
             return None
+        if name == "platform" and fact.get("statistics") is not None:
+            from wgsextract_cli.core.fastq_platform import fastq_evidence_fingerprint
+
+            try:
+                evidence = fastq_evidence_fingerprint(str(absolute_path(file)))
+            except OSError:
+                return None
+            if fact.get("evidence_fingerprint") != evidence:
+                return None
         return _detected_fact(name, key, _text(entry["fingerprint"]), fact)
 
     def detected_facts(self, name: str) -> list[Fact]:
@@ -628,6 +640,17 @@ class SampleWorkspace:
         }
         if statistics is not None:
             new["statistics"] = statistics
+            if name == "platform":
+                from wgsextract_cli.core.fastq_platform import (
+                    fastq_evidence_fingerprint,
+                )
+
+                try:
+                    new["evidence_fingerprint"] = fastq_evidence_fingerprint(
+                        str(absolute_path(file))
+                    )
+                except OSError:
+                    return False
 
         def mutate(doc: WorkspaceState) -> bool:
             return doc.record(name, key, fingerprint, new)
@@ -813,6 +836,7 @@ def _detected_fact(
         by=_text(fact.get("by")),
         at=_text(fact.get("at")),
         statistics=_statistics(fact.get("statistics")),
+        evidence_fingerprint=_text(fact.get("evidence_fingerprint")),
     )
 
 

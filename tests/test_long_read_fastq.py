@@ -2,15 +2,19 @@
 
 import gzip
 import json
+import os
 import random
+import subprocess
+import sys
 
 import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta, write_read_pairs
 from wgsextract_cli.commands.alignment.reads import resolve_platform
 from wgsextract_cli.core import sample_workspace, sequencing
+from wgsextract_cli.core.fastq_validation import validate_fastq
 from wgsextract_cli.core.results import CommandResult, collecting
-from wgsextract_cli.core.utils import UsageError, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.main import main
 
 
@@ -110,6 +114,110 @@ def test_1070_workspace_override_retains_detected_stats_in_manifest(tmp_path):
         assert evidence["effective_platform"] == "ont"
         assert evidence["statistics"]["median_length"] == 1500
         assert evidence["method"] == "FASTQ PacBio header tags"
+
+
+@pytest.mark.parametrize("length", [150, 1500])
+def test_1070_wrapped_fastq_keeps_supported_platform_detection(tmp_path, length):
+    path = tmp_path / "wrapped.fq"
+    sequence = "\n".join(["A" * 50] * (length // 50))
+    quality = "\n".join(["5" * 50] * (length // 50))
+    path.write_text(f"@renamed runid=abc\n{sequence}\n+\n{quality}\n")
+    assert validate_fastq(str(path)).read_length == length
+    assert resolve_platform(None, str(path)) == ("ont" if length > 300 else "illumina")
+
+
+@pytest.mark.parametrize(
+    ("name", "compressed"),
+    [
+        ("reads.data", False),
+        ("reads", False),
+        ("reads.fq", True),
+        ("reads.fq.gz", False),
+    ],
+)
+def test_1070_fastq_content_and_gzip_magic_not_suffix_choose_platform(
+    tmp_path, name, compressed
+):
+    path = _fastq(tmp_path / "original.fq", [f"r{i} runid=abc" for i in range(3)])
+    data = path.read_bytes()
+    reads = tmp_path / name
+    reads.write_bytes(gzip.compress(data) if compressed else data)
+    assert resolve_platform(None, str(reads)) == "ont"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires POSIX named pipes")
+def test_1070_platform_probes_leave_both_named_pipe_inputs_untouched(tmp_path):
+    pipe = tmp_path / "reads.fq"
+    os.mkfifo(pipe)
+    first = _fastq(tmp_path / "first.fq", ["r0", "r1", "r2"], lengths=(100,) * 3)
+    script = (
+        "import sys; from wgsextract_cli.commands.alignment.reads import resolve_platform;"
+        "p, r = sys.argv[1:];"
+        "assert resolve_platform('ont', p) == 'ont';"
+        "assert resolve_platform(None, p) == 'illumina';"
+        "assert resolve_platform(None, r, r2=p) == 'illumina'"
+    )
+    subprocess.run(
+        [sys.executable, "-c", script, str(pipe), str(first)],
+        check=True,
+        timeout=10,
+        capture_output=True,
+    )
+
+
+def test_1070_sample_prefix_edits_invalidate_workspace_platform_evidence(tmp_path):
+    path = tmp_path / "large.fq"
+    record = b"@renamed\n" + b"A" * 1000 + b"\n+\n" + b"5" * 1000 + b"\n"
+    with path.open("wb") as stream:
+        stream.write(record * 900)
+        offset = stream.tell() + len(b"@renamed ")
+        stream.write(
+            b"@renamed runid=abc\n" + b"A" * 1000 + b"\n+\n" + b"5" * 1000 + b"\n"
+        )
+        stream.write(record * 21600)
+    workspace = sample_workspace.SampleWorkspace(tmp_path)
+    workspace.set_overrides({})
+    assert resolve_platform(None, str(path)) == "ont"
+    previous = workspace.detected("platform", path)
+    for tag in (b"np=000012", b"np=000013"):
+        with path.open("r+b") as stream:
+            stream.seek(offset)
+            stream.write(tag)
+        assert resolve_platform(None, str(path)) == "pacbio"
+        current = workspace.detected("platform", path)
+        assert current is not None
+        assert current.fingerprint == previous.fingerprint
+        assert current.evidence_fingerprint != previous.evidence_fingerprint
+        previous = current
+
+
+@pytest.mark.parametrize("name", ["renamed", "E100000001L1C001R001000001"])
+def test_1070_manifest_effective_platform_is_final_short_read_policy(tmp_path, name):
+    path = _fastq(tmp_path / "reads.fq", [name] * 3, lengths=(150,) * 3)
+    result = CommandResult("align")
+    with collecting(result):
+        assert resolve_platform(None, str(path)) == "illumina"
+    evidence = result.provenance.params["platform_detection"][str(path)]
+    assert evidence["effective_platform"] == "illumina"
+    assert evidence["platform"] == (None if name == "renamed" else "dnbseq")
+
+
+@pytest.mark.parametrize("data", [b"@bad\nAC\n+\nI\n", b"\x1f\x8b\x08broken"])
+def test_1070_damaged_sample_defers_to_fastq_validation_without_raw_errors(
+    tmp_path, data
+):
+    path = tmp_path / "damaged.fq"
+    path.write_bytes(data)
+    assert resolve_platform(None, str(path)) == "illumina"
+    with pytest.raises(WGSExtractError):
+        validate_fastq(str(path))
+
+
+def test_1070_renamed_301bp_reads_suggest_explicit_illumina_override(tmp_path):
+    path = _fastq(tmp_path / "reads.fq", ["r0", "r1", "r2"], lengths=(301,) * 3)
+    with pytest.raises(UsageError, match="--platform illumina"):
+        resolve_platform(None, str(path))
+    assert resolve_platform("illumina", str(path)) == "illumina"
 
 
 @pytest.mark.parametrize("length", [150, 300])

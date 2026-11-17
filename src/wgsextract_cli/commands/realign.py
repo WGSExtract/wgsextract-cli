@@ -95,7 +95,11 @@ from wgsextract_cli.core.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
+from wgsextract_cli.core.sequencing import (
+    input_platform,
+    pacbio_platform,
+    record_platform_choice,
+)
 from wgsextract_cli.core.steps import (
     Decision,
     Step,
@@ -487,6 +491,8 @@ def run(params: RealignParams) -> None:
     job.platform = detected or align_cmd.resolve_platform(
         job.platform, job.r1 or job.input, input_ref, job.r2
     )
+    if detected:
+        record_platform_choice(job.input, detected)
     if is_url(job.input) and not (align_cmd.is_long_read(job) and not job.r1):
         raise UsageError(
             "realign streams an http(s) --input for ONT and PacBio reads only. "

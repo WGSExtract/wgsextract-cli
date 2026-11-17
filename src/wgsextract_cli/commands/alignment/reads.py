@@ -15,7 +15,11 @@ from wgsextract_cli.core.read_counts import (
     fastq_statistics,
 )
 from wgsextract_cli.core.reference_assets import header_sequences, is_fasta_path
-from wgsextract_cli.core.sequencing import input_platform, pacbio_platform
+from wgsextract_cli.core.sequencing import (
+    input_platform,
+    pacbio_platform,
+    record_platform_choice,
+)
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_files import verify_paths_exist
 
@@ -41,6 +45,18 @@ def resolve_platform(
     reads: str | None,
     input_ref: str | None = None,
     r2: str | None = None,
+) -> str:
+    resolved = _resolve_platform(platform, reads, input_ref, r2)
+    for path in (reads, r2):
+        record_platform_choice(path, resolved)
+    return resolved
+
+
+def _resolve_platform(
+    platform: str | None,
+    reads: str | None,
+    input_ref: str | None,
+    r2: str | None,
 ) -> str:
     """Use long-read defaults for ONT and PacBio FASTQ evidence."""
     if platform:
@@ -97,6 +113,7 @@ def _alignment_file_platform(job: AlignJob) -> str | None:
         reads,
         platform,
     )
+    record_platform_choice(reads, platform)
     return platform
 
 
