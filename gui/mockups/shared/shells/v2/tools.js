@@ -5,7 +5,8 @@
  * A definition: { slug, label, ops: [API operations], group, desc, accepts:
  * ["reads"|"vcf"|"fastq"|"kit"], file, requires: [tools this computer must
  * have], needsY (only for genomes with a Y chromosome), learn (plain-language "what is this for", paragraphs split by blank
- * lines), lesson (optional {href, label}), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
+ * lines), lesson (optional {href, label}), example (optional {href, label}: a
+ * genome viewer spot showing what the result looks like in reads), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
  * run(ctx) }. noInput hides the library-file picker for explicit path inputs;
  * allowUnready lets inspection and repair run on files needing attention.
  * Field keys are the operations' Params names (requests.js checks
@@ -371,7 +372,9 @@
           h("div.v2-more__body.v2-section", def.learn.split("\n\n").map(function (para) {
             return h("p.v2-small", para);
           }), def.lesson ? h("p.v2-small", "Learn the basics: ",
-            h("a.v2-link", { href: WGSM.keepParams(def.lesson.href) }, def.lesson.label)) : null)) : null,
+            h("a.v2-link", { href: WGSM.keepParams(def.lesson.href) }, def.lesson.label)) : null,
+          def.example ? h("p.v2-small", "See it in reads: ",
+            h("a.v2-link", { href: WGSM.keepParams(def.example.href) }, def.example.label)) : null)) : null,
         input ? input.row : null),
       h("div.v2-stack", { dataset: { v2Notes: "" } }),
       def.checklist ? checklist(def.checklist, ctx) : null,

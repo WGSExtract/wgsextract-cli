@@ -357,7 +357,7 @@
       more: "Modification-aware Nanopore and PacBio basecallers record per-read 5mC probabilities inside BAM MM and ML tags.", learn: "learn-sequencing.html#platforms" },
     igv: { term: "IGV", full: "Integrative Genomics Viewer", aliases: ["genome browser", "Integrative Genomics Viewer"],
       short: "Interactive genome browser for viewing stacked BAM/CRAM reads, base qualities and VCF calls over a gene.",
-      more: "Checking an unexpected variant in IGV quickly spots strand bias, soft-clipped repeat artifacts or low-MAPQ pileups.", learn: "learn-variants.html#confidence" },
+      more: "Checking an unexpected variant in IGV quickly spots strand bias, soft-clipped repeat artifacts or low-MAPQ pileups. WGS Extract’s Genome viewer runs igv.js, the web version, on your own files.", learn: "learn-variants.html#confidence" },
     gpu: { term: "GPU", full: "Graphics processing unit", aliases: ["GPUs"],
       short: "Parallel processor holding thousands of compute cores suited to neural-network basecalling and DeepVariant.",
       more: "Acceleration depends on matching hardware and API support, as NVIDIA CUDA containers and Apple Metal builds target separate chips.", learn: "learn-files.html#computing" },

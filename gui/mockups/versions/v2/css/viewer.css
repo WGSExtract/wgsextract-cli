@@ -1,0 +1,212 @@
+/* Genome viewer page (viewer.html): spots on the left, igv.js on the right.
+ * igv.js draws on its own white canvas, so its frame stays light in the
+ * dark theme too, like a printed figure. */
+.v2-page--wide {
+  --v2-page-w: 1320px;
+}
+
+.v2-viewer {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.v2-viewer__spots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: sticky;
+  top: 12px;
+}
+
+.v2-viewer__group {
+  margin: 14px 0 4px;
+  padding: 0 10px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.v2-viewer__group:first-child {
+  margin-top: 0;
+}
+
+.v2-viewer__spots button {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  background: none;
+  color: var(--c-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.v2-viewer__spots button strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.v2-viewer__spots button span {
+  color: var(--c-text-3);
+  font-size: 12.5px;
+}
+
+.v2-viewer__spots button:hover {
+  background: var(--c-surface-2);
+}
+
+.v2-viewer__spots button[aria-current="true"] {
+  border-left-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.v2-viewer__spots button[aria-current="true"] strong {
+  color: var(--c-primary-soft-text);
+}
+
+.v2-viewer__main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.v2-viewer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+}
+
+.v2-viewer__who {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.v2-viewer__search {
+  display: flex;
+  gap: 6px;
+  flex: 0 1 340px;
+}
+
+.v2-viewer__search .v2-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.v2-viewer__msg {
+  margin: 0;
+  color: var(--c-warn);
+  font-size: 14px;
+}
+
+.v2-viewer__igv {
+  min-height: 420px;
+  padding: 4px 0;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #14182a;
+  overflow: hidden;
+}
+
+.v2-viewer__loading {
+  margin: 0;
+  padding: 40px 16px;
+  color: #5f6475;
+  text-align: center;
+}
+
+/* igv.js's own navbar: quieter, and in the page's font */
+.v2-viewer__igv .igv-navbar {
+  font-family: inherit;
+}
+
+.v2-viewer__note {
+  padding: 16px 20px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface);
+}
+
+.v2-viewer__note h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.v2-viewer__note p {
+  margin: 0 0 8px;
+  max-width: 72ch;
+  line-height: 1.55;
+}
+
+.v2-viewer__note p:last-child {
+  margin-bottom: 0;
+}
+
+.v2-viewer__who .v2-row {
+  gap: 8px;
+  cursor: pointer;
+}
+
+.v2-viewer__demo {
+  margin: 0;
+  max-width: 90ch;
+  color: var(--c-text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Phone and narrow windows: spots become a row of chips */
+@media (max-width: 860px) {
+  .v2-viewer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-viewer__spots {
+    position: static;
+    flex-direction: row;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .v2-viewer__group {
+    display: none;
+  }
+
+  .v2-viewer__spots button {
+    flex: none;
+    padding: 6px 12px;
+    border: 1px solid var(--c-border);
+    border-radius: 999px;
+  }
+
+  .v2-viewer__spots button span {
+    display: none;
+  }
+
+  .v2-viewer__spots button[aria-current="true"] {
+    border-color: var(--c-primary);
+  }
+
+  .v2-viewer__search {
+    flex-basis: 100%;
+  }
+
+  .v2-viewer__igv {
+    min-height: 360px;
+  }
+}

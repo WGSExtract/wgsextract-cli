@@ -22,9 +22,10 @@
   T.define({
     slug: "region", label: "Region or gene", ops: ["extract/custom"], group: "Extract", keywords: "gene brca bam subset",
     lesson: { href: "learn-files.html#bam", label: "Reads, regions & file formats" },
+    example: { href: "viewer.html?spot=apoe", label: "Reginald’s reads over APOE" },
     desc: "Copies the reads for one gene or stretch of a chromosome into a small BAM, to share with a doctor or researcher or to look at in a genome browser.",
     learn: "Use it when someone asks for the evidence behind one finding: a doctor, a research study, or a forum helper looking at a gene. A few megabytes travel more easily than a whole genome, and reveal far less about you.\n\n" +
-      "You can open the small BAM in a genome browser such as IGV to see the reads yourself. It holds only that region, so tools that need the whole genome, such as ancestry, won’t work on it. Mitochondrial DNA and Y chromosome have extracts of their own, made for lineage sites.",
+      "The Genome viewer already shows the reads of any file in your library; the small BAM is for someone else to open in IGV on their computer. It holds only that region, so tools that need the whole genome, such as ancestry, won’t work on it. Mitochondrial DNA and Y chromosome have extracts of their own, made for lineage sites.",
     accepts: READS, file: "reginald", button: "Extract",
     fields: [f.region("Pick a gene, chromosomes or a stretch of one")],
     run: function (c) {

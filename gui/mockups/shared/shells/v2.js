@@ -29,6 +29,7 @@
   var PLACES = [
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
     { id: "tools", label: "All tools", icon: "sliders-horizontal", href: V + "tools.html" },
+    { id: "viewer", label: "Genome viewer", icon: "eye", href: V + "viewer.html" },
     { id: "references", label: "Reference data", icon: "reference", href: V + "references.html" },
   ];
   var FOOT = [
@@ -39,7 +40,7 @@
   var TABS = [
     { id: "home", label: "Library", icon: "library-big", href: V + "home.html", also: ["add", "p-reginald", "p-gordon", "p-helen", "p-alex"] },
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
-    { id: "tools", label: "Tools", icon: "sliders-horizontal", href: V + "tools.html" },
+    { id: "tools", label: "Tools", icon: "sliders-horizontal", href: V + "tools.html", also: ["viewer"] },
     { id: "settings", label: "More", icon: "menu", href: V + "settings.html", also: ["references", "phone", "states", "learn"] },
   ];
 
@@ -191,6 +192,7 @@
         ["Ancestry & lineage", "lineage, qc/ancestry", "haplotree", "Do", V + "ancestry.html"],
         ["Convert or save space", "bam/to-cram", "convert", "Do", V + "convert.html"],
         ["Add files", "info", "plus", "Do", V + "add.html"],
+        ["Genome viewer", "reads and calls at a gene or position", "eye", "Go to", V + "viewer.html"],
         ["Jobs", "", "jobs", "Go to", V + "jobs.html"],
         ["Reference data", "ref/library", "reference", "Go to", V + "references.html"],
         ["Install tools", "deps/check", "wrench", "Go to", V + "install.html"],
@@ -225,6 +227,7 @@
     WGSM.v2generated.start();
     WGSM.v2edge.start();
     WGSM.v2edgeViews.start();
+    WGSM.v2viewer.start();
     WGSM.v2terms.start();
     WGSM.qs("[data-v2-mock-slot]").appendChild(WGSM.v2clock.control());
     /* The Jobs count: running, queued, and what needs you */

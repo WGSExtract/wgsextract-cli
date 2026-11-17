@@ -18,6 +18,7 @@
   T.define({
     slug: "y-haplogroup", label: "Y haplogroup", needsY: true, ops: ["lineage/y-haplogroup"], group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
     lesson: { href: "learn-ancestry.html#lineage", label: "Haplogroups & direct lineages" },
+    example: { href: "viewer.html?spot=y", label: "the Y marker M304, shared by Gordon and Reginald" },
     desc: "Places the paternal line on the Y-DNA tree from the SNPs on the Y chromosome.",
     learn: "Traces your direct father-to-son line, which often follows a surname, and shows how far down the human Y tree your SNPs place you. Because whole-genome sequencing covers far more Y SNPs than a DNA-test kit, the branch is usually much more specific.\n\n" +
       "Only genomes with a Y chromosome can be typed here. Compare your branch with surname and haplogroup projects, run Y-STR markers to separate close relatives within a branch, or use the Y chromosome extract so YFull or FamilyTreeDNA can place you on their latest trees.",
@@ -47,6 +48,7 @@
   T.define({
     slug: "mt-haplogroup", label: "mtDNA haplogroup", ops: ["lineage/mt-haplogroup"], group: "Lineage", keywords: "haplogrep phylotree mitotree maternal",
     lesson: { href: "learn-ancestry.html#lineage", label: "Haplogroups & direct lineages" },
+    example: { href: "viewer.html?spot=mt", label: "the mtDNA letters that set K apart from H" },
     desc: "HaploGrep 3 assigns your maternal line on the mtDNA tree from the mitochondrial sequence.",
     learn: "Mitochondrial DNA follows your direct maternal line through your mother, her mother and so on back; everyone carries it, men included, though only women pass it on.\n\n" +
       "A whole genome reads the entire mitochondrial sequence, so the branch is usually precise; a DNA-test kit reads only some positions. The quality score says how well the sample fits its branch, and haplocheck flags a mix of two mtDNA types, from contamination or heteroplasmy. To compare in detail with others, the Mitochondrial DNA extract makes a FASTA.",

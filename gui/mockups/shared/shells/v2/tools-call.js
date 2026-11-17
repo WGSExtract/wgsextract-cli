@@ -26,6 +26,7 @@
   T.define({
     slug: "call-variants", label: "Call SNPs and indels", ops: ["vcf/snp", "vcf/indel"], group: "Call variants", keywords: "bcftools vcf",
     lesson: { href: "learn-variants.html", label: "Variants & confidence" },
+    example: { href: "viewer.html?spot=smalldel", label: "a 4-letter deletion Helen passed to Reginald" },
     desc: "bcftools scans the reads against the reference for single-letter changes (SNPs) and small insertions and deletions (indels), writing them to a VCF. It is the quickest caller here and suits most uses, though DeepVariant is more accurate.",
     learn: "Start here when you have a BAM or CRAM and want a VCF for annotation, health-related lookups or a small file to share. It handles a 30× genome well, though if your lab already sent a VCF you may not need to call variants again.\n\n" +
       "DeepVariant makes fewer mistakes, especially with indels, but takes far longer; GATK matches what many labs run; FreeBayes is a second opinion. Ask for a gVCF too if you’ll combine family members’ genomes later.",
@@ -218,6 +219,7 @@
   T.define({
     slug: "structural-variants", label: "Structural variants", ops: ["vcf/sv"], group: "Call variants", keywords: "delly sniffles pbsv large deletions",
     lesson: { href: "learn-variants.html#types", label: "Different types of variants" },
+    example: { href: "viewer.html?spot=bigdel", label: "a deletion’s split reads and depth drop" },
     desc: "Finds large changes that SNP calling misses: deletions, duplications, inversions and moved pieces of DNA, from about 50 letters to millions.",
     learn: "A genome carries thousands of structural variants, and together they change more DNA letters than all its SNPs. Delly finds them in short reads from read pairs that sit oddly and reads split across a break; Sniffles and pbsv use long reads, which catch far more.\n\n" +
       "Most are common and harmless, so add population frequencies (gnomAD-SV) before looking for rare ones. Short-read calls include false positives and miss many insertions, so check the reads before trusting any single call. Copy-number changes gives a depth-based view of the larger deletions and duplications.",
@@ -246,6 +248,7 @@
   T.define({
     slug: "cnv", label: "Copy-number changes", ops: ["vcf/cnv"], group: "Call variants", keywords: "cnv delly copy number",
     lesson: { href: "learn-variants.html#types", label: "Copy number & larger changes" },
+    example: { href: "viewer.html?spot=bigdel", label: "a 1.2 kb deletion Gordon passed to Reginald" },
     desc: "Delly measures read depth across the genome to spot stretches with extra or missing copies.",
     learn: "Larger deletions and duplications, usually thousands of letters or more, show up where read depth drops to about half or rises above the usual two copies. Even coverage matters, so a 30× whole genome suits it.\n\n" +
       "It complements Structural variants: depth is good at large copy changes, while read pairs and split reads find exact break points and inversions, which don’t change depth. Most CNVs appear in healthy people too, so check population frequency before reading much into one.",
@@ -288,6 +291,7 @@
   T.define({
     slug: "trio", label: "Family trio", ops: ["vcf/trio"], group: "Call variants", keywords: "de novo recessive compound heterozygous parents",
     lesson: { href: "learn-variants.html#confidence", label: "Inheritance & call confidence" },
+    example: { href: "viewer.html?spot=denovo", label: "a new variant only Reginald has" },
     desc: "Compares a child with both parents to find variants new in the child (de novo) or inherited from both sides (recessive and compound heterozygous).",
     learn: "With genomes for a child and both biological parents, comparing all three traces which variants each parent passed on, and spots changes that are new in the child. The result keeps only the child’s variants that fit the inheritance pattern you pick.\n\n" +
       "Everyone has around 50 to 100 new mutations, almost all harmless, and many candidates turn out to be sequencing errors. Variants inherited from both sides in one gene matter mainly for rare recessive conditions. These results are for research and cannot diagnose a condition; a genetic counsellor can explain what a finding means.",

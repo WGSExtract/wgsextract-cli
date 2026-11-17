@@ -73,6 +73,13 @@ kept in this browser until you reset it.
   measured rate a page says what the CLI's help says ("minutes on a 30x
   genome"). The tool pages themselves are thin shells; only their
   `data-page-id` (for notes) and `data-tool` differ.
+- **Genome viewer** (`viewer.html`) runs igv.js 3.8.10 (vendored in
+  `shared/vendor/igv/`, MIT) on about 1.4 MB of simulated reads and calls in
+  `shared/data/igv/`: short windows of real GRCh38 around the genes and
+  markers the other pages mention, with planted variants for the family.
+  `python3 gui/mockups/build_igv_demo.py --ref path/to/hs38.fa.gz` rebuilds
+  them byte for byte. The page makes no requests off its own origin, and it
+  needs a server (not `file://`) to load the data.
   The catalog also covers file conversion and repair, sample overrides,
   checksum manifests, batch preparation, specialist VCF annotations,
   chromosome sets, Nanopore basecalling and adaptive-sampling panels, and
@@ -508,6 +515,8 @@ gui/mockups/
     core.js theme.js icons.js ui.js palette.js chrome.js start.js
     version.js          “local”; the Pages build stamps the commit here
     data/               illustrative genomes, jobs, catalogs
+      igv/              the genome viewer's demo CRAM, BAM, VCF and FASTA
+    vendor/igv/         igv.js, its licence and version
     render/             data-driven blocks (tables, jobs, charts, shell)
     shells/             each direction’s navigation; shells/v2/ holds v2's
                         state, machine profiles, region picker and tool engine

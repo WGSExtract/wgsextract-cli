@@ -47,6 +47,7 @@
     <h2>Checking the reads behind a call</h2>
     <p>A <code>PASS</code> flag only means routine caller thresholds were met. Before trusting a surprising call, check its depth, mapping quality, genotype quality (GQ) and allele balance: genuine autosomal <code>0/1</code> calls usually split reads near 50/50, not 2 out of 35.</p>
     <p>Reads from repetitive DNA can misalign onto coordinates carrying serious <abbr class="v2-term" data-term="clinvar">ClinVar</abbr> (Clinical Variation database) entries, because ClinVar stars rate the published literature on a variant, not whether your reads landed in the right place. Similarly, an apparent <abbr class="v2-term" data-term="denovo">de novo</abbr> variant in Reginald that neither Gordon nor Helen shows is most often a missed parent call or repeat artifact, with rare parental mosaicism as another possibility. Research files are not clinical diagnoses, so confirm any medically concerning call with a clinician or genetic counsellor.</p>
+    <p>The <a class="v2-link" href="viewer.html">Genome viewer</a> lays the reads out under the reference so you can check these by eye. Try <a class="v2-link" href="viewer.html?spot=artifact">a change seen only on one strand</a>, <a class="v2-link" href="viewer.html?spot=smn">reads that could map to two places</a> and <a class="v2-link" href="viewer.html?spot=denovo">a real new variant</a> to see how they differ.</p>
   </section>
   <section class="v2-section" id="phasing">
     <h2>Phasing and imputation</h2>
