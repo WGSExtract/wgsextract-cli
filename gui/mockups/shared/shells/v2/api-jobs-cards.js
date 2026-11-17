@@ -135,9 +135,9 @@
       } else {
         parts.push("Step " + (at + 1) + " of " + j.ui.steps.length + ". Started " + clock.format(ms(j.started)) + ", done about " + clock.format(ms(j.ui.finishes_at)) + ".");
       }
-      var tail = lib ? " When it’s done, " + first(j) + " gets a new file, " : "";
+      var tail = lib ? " Creates " : "";
       note.replaceChildren(parts.join(" ") + tail, lib ? h("span.v2-mono", lib.path.split(/[\\/]/).pop()) : "",
-        lib ? (input && input !== "CRAM" ? ", and the old " + input + " stays." : ".") : "");
+        lib ? " for " + first(j) + (input && input !== "CRAM" ? "; original " + input + " kept." : ".") : "");
       loadLog();
     }
     update(job);
@@ -162,9 +162,9 @@
       }).map(function (x) {
         return x.id;
       }).indexOf(j.id) + 1;
-      var reason = w.limit > 1 ? ". Waits for an analysis slot (" + w.limit + " at a time); starts after " : ". Waits because one analysis job runs at a time; starts after ";
+      var reason = w.limit > 1 ? ". Waiting for an analysis slot (" + w.limit + " at a time); starts after " : ". Waiting because one analysis job runs at a time; starts after ";
       why.textContent = "Queue position " + position + ". " + size + (j.ui.mode === "net" ? ". Waiting for a download slot; starts after " : reason) +
-        (ahead ? "“" + ahead.ui.label + "”" : "the job before it") + (w.starts_in_s > 0 ? ", in about " + clock.dur(w.starts_in_s * 1000) : "") + ".";
+        (ahead ? "“" + ahead.ui.label + "”" : "the previous job") + (w.starts_in_s > 0 ? ", in about " + clock.dur(w.starts_in_s * 1000) : "") + ".";
     }
     update(job, jobs);
     return { el: el, update: update };
@@ -182,7 +182,7 @@
         ? "Resume continues from the last byte downloaded (" + clock.gb((job.ui.resume.from_bytes || 0) / 1e9) + " of " + clock.gb(job.progress.bytes_total / 1e9) + ")."
         : "Resume continues from the last finished step (" + job.ui.resume.from_step + ").");
     } else {
-      text = (job.error ? job.error.message : cancelled ? "Cancelled before it finished." : "It failed.") + (fixIndex ? " Creating one fixes it; nothing else was changed." : "");
+      text = (job.error ? job.error.message : cancelled ? "Cancelled before finishing." : "Job failed.") + (fixIndex ? " Build an index to retry; existing files are unchanged." : "");
     }
     var button = fixIndex
       ? h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {

@@ -67,10 +67,10 @@
       }
       var cores = num(r.cores, 1, 256, 8);
       var bigCores = num(r.bigCores, 1, cores, cores);
-      if (Number(r.bigCores) > cores) errors.push("Performance cores can’t be more than cores");
+      if (Number(r.bigCores) > cores) errors.push("Performance cores can’t exceed total cores");
       var gpu = r.gpu === "metal" || r.gpu === "nvidia" ? r.gpu : null;
       if (gpu === "metal" && !(os === "macos" && arch === "arm64")) {
-        errors.push("Metal needs Apple silicon");
+        errors.push("Metal requires macOS on Apple silicon");
         gpu = null;
       }
       if (gpu === "nvidia" && os === "macos") {
@@ -98,9 +98,9 @@
         var free = num(a[1], 0, 1e6, 100);
         var path = kind === "system" ? systemPath(os) : text(a[2], fallbackPath, 120).replace(/\\/g, "/");
         var total = num(kind === "system" ? a[2] : a[3], 1, 1e6, niceTotal(free));
-        if (free > total) errors.push(name + ": free space is more than the disk’s size");
-        if (kind !== "system" && !absolute(os, path)) errors.push(name + ": “" + path + "” isn’t a full path on " + { macos: "macOS", linux: "Linux", windows: "Windows" }[os]);
-        if (names[name.toLowerCase()]) errors.push("Two volumes are called " + name);
+        if (free > total) errors.push(name + ": free space can’t exceed total disk size");
+        if (kind !== "system" && !absolute(os, path)) errors.push(name + ": “" + path + "” must be an absolute path on " + { macos: "macOS", linux: "Linux", windows: "Windows" }[os]);
+        if (names[name.toLowerCase()]) errors.push("Duplicate volume name “" + name + "”");
         names[name.toLowerCase()] = true;
         return kind === "system" ? [name, free, total] : [name, free, path, total];
       }
@@ -111,7 +111,7 @@
       p.volumes = (Array.isArray(r.volumes) ? r.volumes : []).slice(0, MAX_VOLUMES).map(function (v, i) {
         return volume(v, "Volume " + (i + 1), os === "windows" ? "E:/" : "/mnt/volume" + (i + 1), "extra");
       });
-      if ((r.volumes || []).length > MAX_VOLUMES) errors.push("At most " + MAX_VOLUMES + " more volumes");
+      if ((r.volumes || []).length > MAX_VOLUMES) errors.push("At most " + MAX_VOLUMES + " extra volumes");
       p.spec = [p.cpu, p.cores + " cores", p.ramGB + " GB", gpuText(p)].filter(Boolean).join(" · ");
       return { profile: p, errors: errors };
     },

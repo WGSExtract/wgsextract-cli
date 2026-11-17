@@ -54,7 +54,7 @@
         return;
       }
       return api.syncGenerated().then(function () {
-        WGSM.toast("Removed from the library; the file stays where it is");
+        WGSM.toast("Removed from the library; the file stays on disk");
       });
     });
   }
@@ -136,7 +136,7 @@
       go.disabled = !n;
       go.textContent = n ? "Add " + n + " file" + (n === 1 ? "" : "s") : "Add files";
       name.hidden = whose.value !== "named";
-      note.textContent = whose.value === "new" ? "Each file gets its own made-up person." : whose.value === "named" ? "All of them belong to one new person." : "";
+      note.textContent = whose.value === "new" ? "Each file creates a new sample person." : whose.value === "named" ? "All selected files will belong to this person." : "";
     }
 
     function load() {
@@ -169,7 +169,7 @@
     var dialog = h("dialog.dialog.v2-gen", { id: "v2-generate", "aria-labelledby": "v2-generate-title", dataset: { v2NoTerms: "" } },
       h("div.dialog__header", h("h2.dialog__title", { id: "v2-generate-title" }, "Add generated files")),
       h("div.dialog__body",
-        h("p.v2-small.v2-muted", "Mockup only: made-up files from the catalog in Mockup settings, added to the library as if they were in Downloads or on the genomes drive. They take disk space and tools can use them."),
+        h("p.v2-small.v2-muted", "Mockup only: adds simulated files from the Mockup settings catalog to Downloads or the genomes volume. They count toward disk space and work in every tool."),
         list,
         h("div.v2-field", h("span.v2-field__label", "Whose are they?"), h("div.v2-field__control.v2-row.v2-row--wrap", whose, name)),
         note),
@@ -183,7 +183,7 @@
       if (whose.value === "named") {
         if (!name.value.trim()) {
           name.focus();
-          WGSM.toast("Give the new person a name", "triangle-alert");
+          WGSM.toast("Enter a name for the new person", "triangle-alert");
           return;
         }
         body.name = name.value.trim();
@@ -238,7 +238,7 @@
     document.body.appendChild(d.el);
     host.replaceChildren(
       h("div.v2-section__head", h("h2", "Generated files"), h("span.v2-tag", "Mockup")),
-      h("p.v2-small.v2-muted", "Try tools on more people and kinds of file: long reads, exomes, low-pass genomes, Big Y, raw reads. Edit what can be made in Mockup settings."),
+      h("p.v2-small.v2-muted", "Test tools with extra people and file types, including long reads, exomes, low-pass genomes, Big Y and raw FASTQ pairs. Edit the templates in Mockup settings."),
       h("div.v2-row.v2-row--wrap",
         h("button.v2-btn", { type: "button", onclick: function () {
           d.load().then(function () {
@@ -248,7 +248,7 @@
         h("button.v2-btn.v2-btn--quiet", { type: "button", dataset: { v2GenClear: "" }, hidden: true, onclick: function () {
           api.del("/v1/mock/files").then(function (res) {
             if (WGSM.v2edge.refused(res)) return;
-            return api.syncGenerated().then(function () { WGSM.toast("Removed every generated file and made-up person"); });
+            return api.syncGenerated().then(function () { WGSM.toast("Removed all generated files and sample people"); });
           });
         } }, "Remove them all")),
       h("div.v2-sheet", { dataset: { v2GenBody: "" } }));
@@ -270,7 +270,7 @@
       var known = g.people[id];
       host.replaceChildren();
       if (!known && !keys.length) {
-        host.appendChild(h("div.v2-empty", h("h2", "Nobody here"), h("p.v2-muted", "This made-up person was removed, or the demo was reset."), h("a.v2-btn", { href: "add.html" }, "Add generated files")));
+        host.appendChild(h("div.v2-empty", h("h2", "Nobody here"), h("p.v2-muted", "This sample person was removed, or the simulation was reset."), h("a.v2-btn", { href: "add.html" }, "Add generated files")));
         return;
       }
       var p = S().person(id);
@@ -422,7 +422,7 @@
       h("details.v2-mock__more",
         h("summary", "What Add files › Add generated files can make ", count),
         h("div.v2-mock__details",
-          h("p.v2-small.v2-muted", "File name patterns can use {first}, {last}, {First}, {Last}, {digits}, {code}, {date} and {depth}. Saved in the mock: this browser, or the shared server."),
+          h("p.v2-small.v2-muted", "File name patterns accept {first}, {last}, {First}, {Last}, {digits}, {code}, {date} and {depth}. Changes save to this browser or the shared mock server."),
           problems,
           h("div.v2-mock__scroll", h("table.v2-mock__volumes.v2-gen-cat__table",
             h("thead", h("tr", ["Name", "Format", "Build", "Ref", "Depth", "Size GB", "Source", "Platform", "Sex", "Index", "File name", ""].map(function (t) {
@@ -463,7 +463,7 @@
             });
           }
           var err = res.body.error || {};
-          WGSM.qs(".v2-notice__text", problems).replaceChildren(h("strong", "Fix the catalog first"), h("span", (err.details || [err.message]).join(" ")));
+          WGSM.qs(".v2-notice__text", problems).replaceChildren(h("strong", "Fix these catalog settings: "), h("span", (err.details || [err.message]).join(" ")));
           problems.hidden = false;
           WGSM.qs("details", el).open = true;
           problems.scrollIntoView({ block: "nearest" });
@@ -491,7 +491,7 @@
        * the file picker lists */
       if (WGSM.qs("[data-v2-input]")) {
         WGSM.on("v2-generated", function () {
-          WGSM.toast("The library changed; reload to pick from its new files", "info");
+          WGSM.toast("Library updated in another tab; reload to see new files", "info");
         });
       }
     },

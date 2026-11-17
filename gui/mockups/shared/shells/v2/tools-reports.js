@@ -8,9 +8,9 @@
   T.define({
     slug: "report", label: "Personal report", ops: ["report"], group: "Reports", keywords: "summary findings acmg secondary",
     lesson: { href: "learn-health.html", label: "Interpreting findings without overclaiming" },
-    desc: "One readable report from the results already made for this person: lineage, ancestry, quality, medicines and reported health variants. It runs no analysis itself, so it takes seconds.",
-    learn: "Use it when you want the highlights in one place, to read or share, instead of opening each result: lineage, ancestry, quality checks, medicine–gene results and reported variants that earlier tools found.\n\n" +
-      "It only includes what has been run, so run more tools first for a fuller report. It’s written for personal interest: its health sections are research results, not a diagnosis, and anything important should be confirmed by a clinical test.",
+    desc: "Assembles one readable summary in seconds from the lineage, ancestry, quality, medicine and health-variant results already saved for this person, without running new analyses.",
+    learn: "Puts the highlights from earlier runs into one place to read or share instead of opening each output file on its own.\n\n" +
+      "Sections appear only for tools that have already run, so run more checks first if you want a fuller summary. Health sections are compiled for personal interest and research; confirm anything medically important with a clinical test.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Make the report",
     fields: [
       f.select("gene_list", "Health genes", "The ClinVar section looks only at these genes, where a finding is medically actionable",
@@ -34,9 +34,9 @@
   T.define({
     slug: "pgs", label: "Polygenic scores", ops: ["score/pgs"], group: "Reports", keywords: "prs pgs catalog trait risk",
     lesson: { href: "learn-health.html#polygenic", label: "Scores, percentiles & risk" },
-    desc: "Adds up many small effects across the genome into one score for a trait, and places it among a reference population. A score shifts odds a little; it predicts nothing for one person on its own.",
-    learn: "Use it out of curiosity about a trait such as height, or to try published scores from the PGS Catalog. The result is a percentile among a reference population, “higher than 70% of people”, not a chance of anything happening to you.\n\n" +
-      "Scores work best for people whose ancestry matches the studies behind them, mostly of European ancestry so far, and lifestyle, environment and family history often matter more. Research use only: don’t change treatment or screening because of a score. Only the score’s ID and build are sent to the PGS Catalog, never your genotypes.",
+    desc: "Sums many small effects across the genome into a trait score and ranks it in a reference population; a score nudges statistical odds slightly without predicting an individual outcome.",
+    learn: "Explore polygenic traits such as height or test published models from the PGS Catalog. Results are given as a percentile in a reference population, such as “higher than 70% of people”, which describes relative rank and does not mean a 70% chance of an outcome.\n\n" +
+      "Accuracy drops when your ancestry differs from the studies behind a score, which remain mostly European so far, and lifestyle, environment and family history often outweigh it. Treat scores as research only without changing medical treatment or screening. Fetching a scoring file sends only the score’s ID and build to the PGS Catalog; your genotypes stay on this computer.",
     accepts: ["vcf"], file: "helen", button: "Score",
     fields: [
       f.select("trait", "Trait", "A curated score from the PGS Catalog, or one by its ID", [["height", "Height"], ["cad", "Coronary artery disease"], ["t2d", "Type 2 diabetes"], ["ldl-cholesterol", "LDL cholesterol"], ["triglycerides", "Triglycerides"], ["stroke", "Stroke"], ["breast-cancer", "Breast cancer"], ["prostate-cancer", "Prostate cancer"], ["lung-cancer", "Lung cancer"], ["thyroid-cancer", "Thyroid cancer"], ["bmi", "Body mass index (academic research use only)"], ["", "A PGS Catalog ID…"]], "height", { width: 260 }),
@@ -66,9 +66,9 @@
   T.define({
     slug: "methylation", label: "Methylation", ops: ["methylation/pileup"], group: "Reports", keywords: "5mc 5hmc cpg modkit epigenetics nanopore",
     lesson: { href: "learn-sequencing.html#platforms", label: "What different technologies can measure" },
-    desc: "Reads which cytosines carry methyl marks, which switch genes on and off, from Nanopore or PacBio reads that recorded them.",
-    learn: "Use it if you sequenced with Nanopore or PacBio and the reads kept their modification tags: the same reads then show where cytosines are methylated, mostly at CpG sites, without a separate test. Ordinary Illumina genomes don’t record it.\n\n" +
-      "Methylation differs between tissues and changes with age and environment, so a saliva or blood sample shows that tissue at that time. It’s research: patterns are interesting to explore, but they aren’t health results.",
+    desc: "Tabulates cytosine methyl marks (chemical tags involved in switching genes on and off) from Nanopore or PacBio reads that recorded them.",
+    learn: "Nanopore and PacBio runs that retain modification tags show where cytosines are methylated, mostly at CpG sites, without a separate assay. Standard short-read Illumina genomes don’t record these marks.\n\n" +
+      "Methylation differs between tissues and changes with age and environment, so a saliva or blood sample reflects that tissue at collection time. These pileups are intended for research exploration and do not give clinical health results.",
     accepts: ["reads"], file: "reginald", button: "Read methylation", requires: ["modkit"],
     fields: [
       f.param("context", "Sites", function (c) {

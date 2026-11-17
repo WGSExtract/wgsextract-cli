@@ -40,8 +40,8 @@
   T.define({
     slug: "mtdna", label: "Mitochondrial DNA", ops: ["extract/mito-fasta", "extract/mito-vcf", "extract/mt-bam"], group: "Extract", keywords: "mtdna fasta yfull mitochondria",
     lesson: { href: "learn-ancestry.html#lineage", label: "Mitochondrial & Y lineages" },
-    desc: "The mitochondrial genome on its own, inherited from the mother. Sites such as YFull MTree and FamilyTreeDNA’s mtDNA tools accept the FASTA.",
-    learn: "Use it to send your maternal line to sites that analyse it in detail, or to keep its 16,569 letters on their own. The FASTA is the full sequence; the VCF lists only its differences from the reference mtDNA.\n\n" +
+    desc: "Extracts the maternally inherited mitochondrial genome on its own; sites such as YFull MTree and FamilyTreeDNA’s mtDNA tools accept the FASTA.",
+    learn: "Lineage services analyse the 16,569-letter maternal sequence in detail, and you can also save a standalone copy for your own records. The FASTA holds the full sequence, while the VCF lists only differences from the reference mtDNA.\n\n" +
       "A whole genome reads mtDNA very deeply, because every cell holds many copies, so the sequence is usually complete. Uploading shares that sequence with the site. For the haplogroup alone, mtDNA haplogroup works it out here, with nothing uploaded.",
     accepts: READS, file: "reginald", button: "Extract",
     checklist: { key: "formats", title: "Which files?", items: [
@@ -64,7 +64,7 @@
     slug: "y-chromosome", label: "Y chromosome", needsY: true, ops: ["extract/ydna-bam", "extract/ydna-vcf"], group: "Extract", keywords: "ydna yfull big y",
     lesson: { href: "learn-ancestry.html#lineage", label: "What a paternal lineage tells you" },
     desc: "The Y chromosome on its own, passed from father to son. YFull and FamilyTreeDNA’s Big Y tools read the BAM; the VCF lists named Y SNPs.",
-    learn: "Use it to send your paternal line to YFull or FamilyTreeDNA for detailed placement and matching with other men, without sharing the rest of the genome. It applies only to males; a woman’s paternal line needs her father’s or a brother’s genome.\n\n" +
+    learn: "Uploading a Y-only extract lets YFull or FamilyTreeDNA place your paternal line on the tree and match you with other men, without sharing the rest of the genome. Only males carry a Y chromosome; a woman’s paternal line needs her father’s or a brother’s genome.\n\n" +
       "The BAM keeps the reads, so those sites can find new SNPs themselves; the VCF is smaller and lists known ones. For the haplogroup alone, Y haplogroup works it out here, with nothing uploaded.",
     accepts: READS, file: "reginald", button: "Extract",
     checklist: { key: "formats", title: "Which files?", items: [
@@ -100,15 +100,15 @@
   T.define({
     slug: "unmapped", label: "Unmapped reads", ops: ["extract/unmapped"], group: "Extract", keywords: "microbiome bacteria virus kraken",
     lesson: { href: "learn-sequencing.html#quality", label: "Unmapped reads & quality limits" },
-    desc: "The reads that didn’t match the reference: bacteria and viruses in the sample, contamination, or human DNA missing from the reference.",
-    learn: "Use it out of curiosity about what else was in the sample, mostly microbes from saliva, or to look for human sequence your reference lacks. Most genomes have a small share of such reads.\n\n" +
+    desc: "Pulls out the reads that didn’t align to the reference: bacteria and viruses in the sample, contamination, or human DNA missing from that build.",
+    learn: "Saliva samples carry DNA from mouth microbes alongside your own, and older reference builds also omit stretches of human sequence, leaving a small share of unmapped reads in most genomes.\n\n" +
       "WGS Extract only extracts them: identifying what they are needs another tool, such as Kraken, which is what the FASTQ option is for. Realigning to a more complete reference, such as T2T, places some of them. Nothing here is a medical test for infection.",
     accepts: READS, file: "reginald", button: "Extract",
     fields: [f.param("fastq", "Also as FASTQ", "For tools that classify reads, such as Kraken")],
     run: function (c) {
       return {
         hours: null, timeText: "minutes", disk: [[c.m.diskName(c.file), c.v.fastq ? 2.4 : 1.1]],
-        makes: "Makes " + c.file.stem + ".unmapped.bam in " + c.name + "’s folder.",
+        makes: "Makes " + c.file.stem + "_unmapped.bam in " + c.name + "’s folder.",
       };
     },
   });
@@ -129,8 +129,8 @@
     slug: "microarray", label: "DNA-test files", ops: ["microarray"], group: "Extract",
     keywords: "microarray chip raw data kit gedmatch myheritage ftdna 23andme ancestry living dna nucleus aadr wgs to microarray",
     lesson: { href: "learn-files.html#kits", label: "DNA-test (microarray) files" },
-    desc: "Turns a whole genome or a VCF into the raw-data files that DNA-testing companies give their customers, so relative-matching sites accept it.",
-    learn: "Use it to find relatives in the databases of GEDmatch, MyHeritage, FamilyTreeDNA and Living DNA, which accept uploads of microarray (\u201cchip\u201d) raw data. A chip reads about 600,000\u2013700,000 chosen positions; your genome has nearly all of them, so WGS Extract reads those positions and writes them in each company's layout.\n\n" +
+    desc: "Creates the raw-data files that consumer DNA-testing companies give their customers, so relative-matching sites accept uploads from a whole genome or VCF.",
+    learn: "GEDmatch, MyHeritage, FamilyTreeDNA and Living DNA let you search for relatives by uploading microarray (\u201cchip\u201d) raw data. A chip tests about 600,000\u2013700,000 fixed positions; WGS Extract checks those positions in your genome and writes them in each company's layout.\n\n" +
       "Positions your genome couldn't read confidently are left blank, as a chip would. A BAM or CRAM is best: every position is checked. A VCF lists only differences from the reference, so positions it doesn't list are unknown unless you say they're reference. Uploading shares your genotypes with that company; read its privacy terms first. Make DNA-test files on a person's page walks through the same choices.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Make the files",
     checklist: { key: "kits", title: "Which files?", items: KITS.map(function (k) {
@@ -187,7 +187,7 @@
     slug: "read-subset", label: "Random read subset", ops: ["extract/bam-subset"], group: "Extract",
     lesson: { href: "learn-sequencing.html#depth", label: "Read depth & missing calls" },
     desc: "Keep a random fraction of the reads in a smaller BAM, optionally within one region.",
-    learn: "Use it to try a pipeline on less data, or study what lower depth does to your results. This is downsampling, not compression: discarded reads are missing from the new file.\n\nKeep the original genome for real analysis. A random slice can lose rare evidence and is not guaranteed to preserve every chromosome’s depth.",
+    learn: "Subsampling lets you test a pipeline on less data or see how lower depth affects your results. Unselected reads are dropped altogether instead of compressed, so they are missing from the new file.\n\nKeep the original genome for real analysis, since a random slice can lose rare evidence and may leave uneven depth across chromosomes.",
     accepts: READS, file: "reginald", button: "Make subset",
     fields: [f.number("fraction", "Fraction to keep", "0.1 keeps about 10%; greater than 0 and at most 1", 0.1, { send: true, max: 1 }), f.region()],
     more: [f.threads(), f.sortMemory()],
@@ -203,7 +203,7 @@
     slug: "chromosome-set", label: "Chromosome sets", ops: ["extract/region", "extract/y-mt-extract"], group: "Extract",
     lesson: { href: "learn-ancestry.html#lineage", label: "Y & mitochondrial inheritance" },
     desc: "Extract mtDNA, Y, both together, or chromosomes 1–22 plus X, as reads, variants or sequence.",
-    learn: "Use it for a standard chromosome group instead of typing regions. BAM keeps the read evidence; VCF calls variants; FASTA applies those calls to the matching reference.\n\nThe combined Y + mtDNA BAM can be made directly without calling variants. A female sample usually has no meaningful Y evidence. Extracting only part of a genome does not make it anonymous.",
+    learn: "Extracts a standard group of chromosomes in one step without typing region names by hand. BAM keeps the read evidence; VCF calls variants; FASTA applies those calls to the matching reference.\n\nThe combined Y + mtDNA BAM can be made directly without calling variants. A female sample usually has no meaningful Y evidence. Extracting only part of a genome does not make it anonymous.",
     accepts: READS, file: "reginald", button: "Extract",
     fields: [
       f.param("target", "Chromosomes", "", { labels: { mt: "Mitochondrial", y: "Y", ymt: "Y + mitochondrial", autox: "1–22 + X" } }),

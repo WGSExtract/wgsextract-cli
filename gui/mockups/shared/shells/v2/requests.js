@@ -183,7 +183,7 @@
     if (extra) {
       return Promise.all(requests.map(function (req) {
         return WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, extra, { _mock: mock(req) })).then(function (res) {
-          if (res.status >= 300) WGSM.toast("The server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
+          if (res.status >= 300) WGSM.toast("Request rejected: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
           return res;
         });
       }));

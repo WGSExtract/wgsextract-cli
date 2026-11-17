@@ -100,7 +100,7 @@
     if (fraction >= 0.995) return "the whole genome";
     if (fraction >= 0.01) return Math.round(fraction * 100) + "% of the genome";
     if (fraction >= 0.0001) return (fraction * 100).toFixed(2) + "% of the genome";
-    return "a tiny part of the genome";
+    return "a small slice of the genome";
   }
 
   function geneFor(value, build) {
@@ -247,8 +247,8 @@
     var gene = geneFor(value, b);
     sum.dataset.state = p.error ? "bad" : "";
     sum.textContent = p.error
-      ? p.error + "; the run would stop. Chromosomes are " + name("1", b) + "–" + name("22", b) + ", " + name("X", b) + ", " + name("Y", b) + " and " + name("M", b) + "."
-      : !value ? "Every chromosome." : (gene ? gene + ": " + GENES[gene][3] + ". " : "") + value.replace(/(\d{4,})/g, function (n) {
+      ? p.error + "; preflight will stop the run. Valid chromosomes are " + name("1", b) + "–" + name("22", b) + ", " + name("X", b) + ", " + name("Y", b) + " and " + name("M", b) + "."
+      : !value ? "Whole genome (every chromosome)." : (gene ? gene + ": " + GENES[gene][3] + ". " : "") + value.replace(/(\d{4,})/g, function (n) {
         return commas(n);
       }) + " · " + percent(share(value)) + (gene ? ", positions on " + b : "");
   }

@@ -238,8 +238,8 @@
     if (out.memGB) {
       var budget = M.ramGB - 2;
       var state = out.memGB <= budget ? "ok" : out.memGB <= M.ramGB * 1.5 ? "attention" : "bad";
-      var desc = "Needs about " + Math.round(out.memGB) + " GB; this Mac has " + M.ramGB + " GB";
-      if (state === "attention") desc += ". It will run, swapping and slower; fewer threads or less sort memory fit";
+      var desc = "Needs about " + Math.round(out.memGB) + " GB; this computer has " + M.ramGB + " GB";
+      if (state === "attention") desc += ". It can still run using disk swap at lower speed; fewer threads or less sort memory helps it fit";
       rows.push(["Memory", desc, state]);
     }
     (out.disk || []).forEach(function (d) {
@@ -318,7 +318,7 @@
       out.blocked = why + ".";
       var missing = /isn’t installed$/.test(why);
       (out.notes = out.notes || []).unshift({ tone: "warn", icon: missing ? "wrench" : "triangle-alert", id: "unavailable", title: missing ? why : "Not on this computer",
-        text: missing ? "It’s an optional tool set. WGS Extract checks for tools but doesn’t install them: pixi install --locked -e " + ctx.m.env(tool) + "." : why + ". Run it on a computer that has it; this app can connect to one.",
+        text: missing ? "Optional tool set; install it with pixi install --locked -e " + ctx.m.env(tool) + " (WGS Extract checks for tools without installing them)." : why + ". Connect this app to a computer that has it to run this tool.",
         action: missing ? { label: "How to install", href: "install.html" } : null });
     });
     if (!def.noInput && !def.allowUnready && !ctx.m.ready(ctx.file) && !out.blocked) {
@@ -394,7 +394,7 @@
     page.appendChild(h("div.v2-actionbar", { dataset: { annotId: "action" } },
       h("div.v2-actionbar__sum", { dataset: { v2Bar: "" } }, h("strong"), h("span")),
       h("div.v2-actionbar__btns",
-        def.dryRun ? h("button.v2-btn.v2-btn--lg", { type: "button", dataset: { v2Dry: "" }, title: "Lists the steps that would run or be skipped, and why; nothing is written" }, "Dry run") : null,
+        def.dryRun ? h("button.v2-btn.v2-btn--lg", { type: "button", dataset: { v2Dry: "" }, title: "Shows which steps would run or be skipped and why, without writing any files" }, "Dry run") : null,
         h("button.v2-btn.v2-btn--primary.v2-btn--lg", { type: "button", dataset: { v2Go: "" } }, def.button || "Start"))));
   };
 
@@ -442,7 +442,7 @@
           return s.action === "run";
         }).length;
         return h("section.v2-stack",
-          h("p.v2-muted", job.ui.label.replace(/^Dry run: /, "") + ": " + (runs ? runs + " of " + d.steps.length + " steps would run." : "nothing to do; every step is already done.") + " Nothing was written."),
+          h("p.v2-muted", job.ui.label.replace(/^Dry run: /, "") + ": " + (runs ? runs + " of " + d.steps.length + " steps would run" : "every step is already complete") + "; no files were written."),
           h("ol.v2-dry__steps", d.steps.map(function (s) {
             return h("li.v2-dry__step", { dataset: { action: s.action } },
               h("span.v2-status.v2-small", h("span.v2-pip", { dataset: { state: s.action === "run" ? "busy" : "ok" } }), h("strong", s.action === "run" ? "Runs" : "Skipped")),

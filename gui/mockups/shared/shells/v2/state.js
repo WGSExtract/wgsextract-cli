@@ -247,7 +247,7 @@
     var name = WGSM.qs('[data-v2-field="name"]', dialog).value.trim();
     var note = WGSM.qs('[data-v2-field="note"]', dialog).value.trim();
     if (!name) {
-      WGSM.toast("A person needs a name", "circle-alert");
+      WGSM.toast("Enter a name for this person", "circle-alert");
       return false;
     }
     doc.people[id] = Object.assign({}, doc.people[id], { name: name, note: note });
@@ -262,7 +262,7 @@
     var pick = WGSM.qs("select", dialog).value;
     var name = WGSM.qs("input", dialog).value.trim();
     if (pick === "new" && !name) {
-      WGSM.toast("Type the new person’s name", "circle-alert");
+      WGSM.toast("Enter a name for the new person", "circle-alert");
       return false;
     }
     doc.assign = pick === "new" ? { name: name } : { id: pick };

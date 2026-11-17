@@ -162,10 +162,25 @@
 }
 
 .v2-termpop__reference {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
   margin-top: 6px;
   color: var(--c-text-2);
   font-size: 12px;
+}
+
+.v2-glossary__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+
+.v2-glossary__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .v2-glossary__letters {

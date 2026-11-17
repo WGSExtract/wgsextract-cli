@@ -31,7 +31,7 @@
       });
       if (jobs.length) M.fail(409, "in_use", "Used by " + jobs.map(function (j) {
         return "“" + j.plan.label + "”";
-      }).join(", ") + ". Cancel these jobs in Jobs before removing it. Files have not been touched.");
+      }).join(", ") + ". Cancel " + (jobs.length === 1 ? "that job" : "those jobs") + " in Jobs before removing it; existing files are untouched.");
     };
 
     function removeReference(id) {
@@ -55,7 +55,7 @@
 
     r.add("POST", "/v1/library/people", "proposed", function (req) {
       var name = String((req.body || {}).name || "").trim();
-      if (!name) M.fail(400, "usage", "A person needs a name.");
+      if (!name) M.fail(400, "usage", "Enter a name for this person.");
       var base = name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "person";
       var id = base;
       for (var n = 2; Object.prototype.hasOwnProperty.call(mock.ctx().people, id); n++) id = base + "-" + n;
@@ -87,8 +87,8 @@
       }
       mock.disks().forEach(function (d) {
         if ((need[d.id] || 0) > d.free_gb) M.fail(409, "insufficient_space",
-          "Not enough space on " + d.name + ": needs " + M.fmt.gb(need[d.id]) + " including queued work; " + M.fmt.gb(Math.max(0, d.free_gb)) +
-          " free. Nothing was started. Free space or choose another volume.");
+          "Not enough space on " + d.name + ": needs " + M.fmt.gb(need[d.id]) + " including queued work, with " + M.fmt.gb(Math.max(0, d.free_gb)) +
+          " free. Free up disk space or choose another volume.");
       });
     };
 
@@ -100,7 +100,7 @@
         return typeof p !== "string" || !p.trim();
       }))) M.fail(400, "usage", "allowed_paths must be a list of folder paths.");
       var s = settings();
-      if (b.max_concurrent_jobs !== undefined && [1, 2].indexOf(b.max_concurrent_jobs) < 0) M.fail(400, "usage", "Choose one or two analysis jobs.");
+      if (b.max_concurrent_jobs !== undefined && [1, 2].indexOf(b.max_concurrent_jobs) < 0) M.fail(400, "usage", "Allow one or two concurrent analysis jobs.");
       if (b.max_concurrent_jobs !== undefined && b.max_concurrent_jobs !== s.max_concurrent_jobs) mock.doc().freeAt = Math.max(mock.doc().freeAt, mock.clock.now());
       ["workspace", "allowed_paths", "phone_access", "max_concurrent_jobs", "prevent_sleep", "notifications", "menu_bar"].forEach(function (key) {
         if (b[key] !== undefined) s[key] = b[key];

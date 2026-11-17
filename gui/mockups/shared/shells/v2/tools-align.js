@@ -170,7 +170,7 @@
         return c.M.native;
       },
     }),
-    f.param("prefer_native_gpu", "Use the GPU even when tight", "If no GPU plan fits in memory, use it anyway rather than the slower CPU; may swap heavily", {
+    f.param("prefer_native_gpu", "Use the GPU even when tight", "Stay on the GPU even when the job exceeds memory instead of falling back to the slower CPU; may swap heavily", {
       when: function (c) {
         return c.M.native && (c.M.metal || c.M.nvidia);
       },
@@ -195,7 +195,7 @@
     if (p.blocked) notes.push({ tone: "warn", icon: "triangle-alert", id: "aligner", title: "Not on this computer", text: p.blocked + " Choose Auto, bwa or bwa-mem2." });
     if (p.needsIndex) {
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",
-        text: "bwa-mem2 and bwa-mem3 read it. WGS Extract never builds it automatically: building needs about 90 GB of memory, so the published one is downloaded.",
+        text: "bwa-mem2 and bwa-mem3 read this index. Building it locally needs about 90 GB of memory, so WGS Extract downloads the published copy instead of building one automatically.",
         action: { label: "Download 17 GB", set: "mem2-" + c.v.ref, toast: "Downloading bwa-mem2’s index for " + c.v.ref + " (17 GB). See Jobs." } });
     } else if (!c.flag("mem2-" + c.v.ref) && !longRead(c) && c.v.aligner === "auto" && !c.v.gpu) {
       var faster = Object.assign({}, c, { flag: function (name) {
@@ -227,9 +227,9 @@
   T.define({
     slug: "realign", label: "Realign", ops: ["realign"], group: "Align", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
     lesson: { href: "learn-reference.html#liftover", label: "Reference genomes & changing builds" },
-    desc: "Aligns a genome again to another reference, so it can be used with tools and sites that expect that build. The original file is kept.",
-    learn: "Use it when a genome was delivered on an older build, usually GRCh37, and you want the tools, databases and DNA-test sites that expect GRCh38, or T2T for the hardest regions. Your DNA doesn’t change: the same reads are placed again on the new reference.\n\n" +
-      "Every read is aligned again, so it takes hours, and you get a second BAM or CRAM beside the first. Once the new file is checked, Convert can remove the old one. Align FASTQ is the same job for reads that were never aligned; a VCF can’t be realigned, because it holds no reads.",
+    desc: "Remaps an aligned genome onto another reference build for tools and sites that expect it, while keeping the original file.",
+    learn: "Genomes delivered on an older build such as GRCh37 often need GRCh38 for current tools, databases and DNA-test sites, or T2T for the hardest regions. Realigning leaves your DNA sequence unchanged and maps the same reads onto the new reference.\n\n" +
+      "Every read is aligned again, so it takes hours, and you get a second BAM or CRAM beside the first. Once you’ve checked the new file, you can delete the old one yourself. Align FASTQ is the same job for reads that were never aligned; a VCF can’t be realigned, because it holds no reads.",
     accepts: ["reads"], file: "gordon", button: "Start realign", dryRun: true,
     fields: ALIGNER_FIELDS,
     moreTitle: "Aligner, resources and steps",
@@ -271,8 +271,8 @@
   T.define({
     slug: "align", label: "Align FASTQ", ops: ["align"], group: "Align", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
     lesson: { href: "learn-files.html#alignment", label: "From reads to aligned files" },
-    desc: "Places raw reads from a sequencer on a reference genome, making the BAM or CRAM that every other tool reads. The FASTQ files are kept.",
-    learn: "Use it when a lab sent only FASTQ files, or when you’d rather start from the raw reads on a reference of your choice. Nothing else can read FASTQ, so this step comes first.\n\n" +
+    desc: "Maps raw reads from a sequencer onto a reference genome to make the BAM or CRAM that downstream tools read, keeping the FASTQ files.",
+    learn: "Start here when a lab sends only FASTQ files, or when you want to align from the raw reads onto a reference of your choice. Almost every other tool needs aligned reads, so this step usually comes first.\n\n" +
       "It’s the longest job here: hours for a whole genome, less with bwa-mem3 or WGS Extract’s GPU builds. bwa, bwa-mem2 and bwa-mem3 are for short reads and give the same kind of result; minimap2 is for long reads. If you already have a BAM or CRAM, use Realign instead.",
     accepts: ["fastq"], file: "fastq", button: "Start aligning", dryRun: false,
     fields: ALIGNER_FIELDS.concat([f.param("sample", "Sample name", "Written into the read group; sites and tools show it", { def: "60820188474839" })]),

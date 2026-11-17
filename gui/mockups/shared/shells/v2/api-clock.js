@@ -72,13 +72,13 @@
       var everyone = api.mode() === "shared";
       if (everyone && !window.confirm("Clear the shared mock state for everyone using " + api.baseUrl() + "?")) return;
       clock.reset().then(function () {
-        WGSM.toast(everyone ? "Cleared the shared mock state" : "The simulation starts again");
+        WGSM.toast(everyone ? "Cleared the shared mock state" : "Simulation reset");
       });
     } });
 
     function connect(m, address) {
       if (m === "shared" && !/^https?:\/\/./.test(address || "")) {
-        WGSM.toast("Type the server’s address, like http://127.0.0.1:8767", "circle-alert");
+        WGSM.toast("Enter a server URL, such as http://127.0.0.1:8767", "circle-alert");
         return;
       }
       api.setMode(m, address).then(function (r) {

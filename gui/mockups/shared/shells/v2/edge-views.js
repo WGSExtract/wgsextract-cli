@@ -69,7 +69,7 @@
       var empty = W.qs("[data-edge-empty]");
       if (!empty) {
         empty = h("div.v2-empty", { dataset: { edgeEmpty: "" } }, h("h2", "Add your first genome"),
-          h("p.v2-small", "No people or files in the library. Your original files stay on disk."),
+          h("p.v2-small", "Add BAM, CRAM, FASTQ, VCF or DNA-test files. WGS Extract reads them in place without copying or uploading them."),
           h("a.v2-btn.v2-btn--primary", { href: "add.html" }, "Add files"));
         section.before(empty);
       }

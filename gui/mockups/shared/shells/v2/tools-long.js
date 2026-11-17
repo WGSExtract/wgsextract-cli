@@ -9,8 +9,8 @@
   T.define({
     slug: "basecall", label: "Basecall Nanopore signal", ops: ["basecall"], group: "Long reads", noInput: true,
     keywords: "ont dorado pod5 ubam methylation", lesson: LESSON,
-    desc: "Turn raw Nanopore POD5 signal into an unaligned BAM with Dorado, optionally retaining base-modification calls.",
-    learn: "Use it when you have the original signal, or want to re-basecall with a newer or more accurate model. A FASTQ or an aligned BAM cannot replace POD5 signal.\n\nDorado must already be installed. Fast, high accuracy (hac) and super accuracy (sup) trade speed for accuracy. The unaligned BAM keeps MM/ML modification tags and can go straight into Align. A local model folder avoids fetching a model; named models and modification models may need a public download, which needs your opt-in below.",
+    desc: "Dorado converts raw Nanopore POD5 signal into an unaligned BAM and can call base modifications in the same pass.",
+    learn: "Starting from raw POD5 signal lets you basecall a new Nanopore run or re-basecall an older one with a newer or more accurate model; FASTQ and aligned BAM files cannot stand in for POD5 signal.\n\nRequires a local Dorado installation, where fast, high accuracy (hac) and super accuracy (sup) trade speed for accuracy. Output is an unaligned BAM that keeps MM/ML modification tags and feeds straight into Align. A local model folder stays offline, while named models and modification models may need a public download via the opt-in below.",
     accepts: ["reads"], file: "reginald", button: "Basecall",
     fields: [
       f.param("input", "POD5 file or folder", "Example path: replace with your signal on this computer", { def: "{{bundleWorkspace}}/nanopore/run.pod5", send: true, width: 420 }),
@@ -51,7 +51,7 @@
     slug: "panel-bed", label: "Gene-panel BED", ops: ["panel/bed"], group: "Long reads", noInput: true,
     keywords: "adaptive sampling minknow targets padding", lesson: LESSON,
     desc: "Turn gene names or a preset into padded, merged BED intervals for Nanopore adaptive sampling or targeted analysis.",
-    learn: "Use it to tell a sequencer or another tool which regions matter. It uses bundled gene annotations, not your sample’s reads, and sends nothing to the network.\n\nPadding includes sequence around each gene. Overlapping targets are merged. A panel covering too much of the genome enriches poorly; inspect the reported target fraction before using it in MinKNOW.",
+    learn: "Builds a target BED offline from bundled gene annotations so a sequencer or downstream tool knows which regions to focus on, without reading your sample’s files or sending anything to the network.\n\nEach gene gets flanking padding on both sides before overlapping intervals are merged. Because adaptive sampling enriches poorly when a panel covers too much of the genome, inspect the reported target fraction before using it in MinKNOW.",
     accepts: ["reads"], file: "reginald", button: "Make BED",
     fields: [
       f.param("genes", "Gene symbols", "Comma-separated, for example CYP2D6,HLA-A"),
@@ -72,7 +72,7 @@
     slug: "pet-align", label: "Dog or cat genome", ops: ["pet-align"], group: "Align", noInput: true,
     keywords: "pet canine feline fastq", lesson: { href: "learn-reference.html#builds", label: "Why the right reference matters" },
     desc: "Align a dog’s or cat’s FASTQ reads to its species’ reference, then call variants.",
-    learn: "Use it only for dog or cat reads, never a person’s genome. Supply the matching species reference FASTA or a library containing it. Human references and human health annotations do not apply.\n\nThe output is an indexed alignment plus a VCF. This basic calling workflow is not a veterinary diagnosis.",
+    learn: "Built specifically for dog or cat FASTQ files, never a human genome: supply the matching species reference FASTA or a library containing it, since human references and human health annotations do not apply.\n\nProduces an indexed alignment alongside a VCF of variant calls for personal or research use, separate from clinical veterinary testing.",
     accepts: ["fastq"], file: "fastq", button: "Align & call",
     fields: [
       f.param("species", "Species", "", { labels: { dog: "Dog", cat: "Cat" } }),

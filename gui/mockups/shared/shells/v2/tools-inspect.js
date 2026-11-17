@@ -11,7 +11,7 @@
     slug: "file-info", label: "File info & reference", ops: ["info", "bam/identify"], group: "Quality", keywords: "identify integrity header md5",
     lesson: QUALITY,
     desc: "Inspect an alignment’s reference build, integrity and sequencing metrics, or identify its reference from sequence names and lengths.",
-    learn: "Use it when a file arrives from a lab and you want to know what it contains before running other tools. A reference mismatch can make later results wrong.\n\nReference identification compares the header’s sequence names and lengths; its MD5 signature is not a checksum of the file contents. Detailed info does more work than a quick header check.",
+    learn: "When a BAM or CRAM arrives from a lab, checking its header and basic metrics first confirms what it contains before other tools run; a reference mismatch skews later results.\n\nIdentify reference hashes only the header’s sequence names and lengths to match a genome build, without checksumming the read data itself. Turn on Detailed metrics for a deeper scan beyond the header.",
     accepts: ["reads"], file: "reginald", button: "Inspect", allowUnready: true,
     fields: [
       O.action("inspection", [["info", "File info"], ["bam/identify", "Identify reference"]], "info"),
@@ -28,8 +28,8 @@
   T.define({
     slug: "coverage-sample", label: "Quick coverage estimate", ops: ["info/coverage-sample"], group: "Quality", keywords: "breadth depth sample windows",
     lesson: { href: "learn-sequencing.html#depth", label: "Depth & breadth of coverage" },
-    desc: "Estimate coverage from about 1,000 windows instead of scanning the whole genome.",
-    learn: "Use it for a quick first look at how much of each chromosome was read. Sampling is faster but can miss local gaps. Coverage per chromosome scans the file for exact values.\n\nA high average does not guarantee every medically interesting gene is well covered.",
+    desc: "Samples about 1,000 windows across the alignment to estimate coverage instead of scanning the whole genome.",
+    learn: "Gives a fast first look at how much of each chromosome was read, though window sampling can miss local gaps; run Coverage per chromosome when you need exact values.\n\nA high average does not guarantee every medically interesting gene is well covered.",
     accepts: ["reads"], file: "reginald", button: "Estimate coverage",
     fields: [f.region(), f.param("table_format", "Also a table", "Empty: no extra table", { as: "select", unset: "No table" })],
     run: function () { return { timeText: "minutes", makes: "Makes an estimated coverage report, labelled as sampled." }; },
@@ -39,7 +39,7 @@
     slug: "chip-info", label: "Identify a DNA-test chip", ops: ["info/chip"], group: "Quality", keywords: "microarray vendor revision raw data",
     lesson: { href: "learn-files.html#kits", label: "DNA-test files & chip revisions" },
     desc: "Identify the company, chip and revision behind a consumer DNA-test raw-data file.",
-    learn: "Use it when you have an old download but do not know which chip version produced it. Different revisions test different markers. Listing the known revisions needs no sample and changes no files.",
+    learn: "Consumer testing companies have changed microarrays several times, and each revision tests a different marker set; inspecting an older raw-data download tells you which chip version produced it. You can also list the built-in chip catalog on its own without opening a sample file.",
     accepts: ["kit"], file: "alexkit", button: "Identify",
     fields: [f.param("list_revisions", "List known revisions instead", "Show the chip catalog without inspecting this file")],
     requests: function (c, base) {
@@ -52,7 +52,7 @@
     slug: "comprehensive", label: "Whole-sample analysis", ops: ["analyze/comprehensive"], group: "Reports", keywords: "comprehensive pipeline significant haplogroups",
     lesson: { href: "learn-health.html#annotation", label: "Context, not a diagnosis" },
     desc: "Run the sample’s info, maternal and paternal haplogroups, variant calling, annotation and significant-variant filtering as one resumable analysis.",
-    learn: "Use it for an end-to-end first pass. Supply existing VCF paths to analyse those instead of calling SNPs and indels from the reads. Only installed tools and data can be used; check Reference data and Install first.\n\nSignificant means worth reviewing under the workflow’s filters, not a diagnosis. Missing steps and warnings matter. Restart reruns the workflow; without it completed steps can be reused.",
+    learn: "Chains the main single-sample steps into one resumable first pass, either calling SNPs and indels from the reads or analysing existing VCF paths you supply. Only installed tools and data can be used; check Reference data and Install first.\n\nHere “significant” only flags variants that pass the workflow’s review filters and never establishes a diagnosis. Check the output for skipped steps or warnings that leave gaps in what was checked; completed steps are reused automatically unless you turn on Restart.",
     accepts: ["reads"], file: "reginald", button: "Analyse sample",
     fields: [
       f.param("vcf_inputs", "Existing VCFs", "Optional comma-separated file paths; otherwise call SNPs and indels", { width: 420 }),
@@ -69,7 +69,7 @@
     slug: "batch-file", label: "Prepare a sample batch", ops: ["analyze/batch-gen"], group: "Reports", noInput: true,
     lesson: { href: "learn-files.html#bam", label: "Recognising read and variant files" },
     desc: "Scan a folder for BAMs, CRAMs and VCFs and write a CSV listing the samples for a comprehensive analysis.",
-    learn: "Use it to prepare several samples for a batch run. It groups files by name: sample1.bam and sample1_sv.vcf.gz belong to sample1. Review the CSV before using it, especially when filenames are ambiguous.\n\nThis only writes the batch list. It does not launch analyses or generate an executable script.",
+    learn: "Groups sequencing and variant files in a folder by filename stem to prepare a multi-sample table: for example, sample1.bam and sample1_sv.vcf.gz belong to sample1. Review the CSV before using it, especially when filenames are ambiguous.\n\nWriting the CSV neither launches analyses nor generates an executable script.",
     accepts: ["reads"], file: "reginald", button: "Make batch list",
     fields: [
       f.param("directory", "Folder to scan", "Includes subfolders, on the connected computer", { def: "{{bundleWorkspace}}/genomes", send: true, width: 420 }),
@@ -85,7 +85,7 @@
     slug: "multiqc", label: "Combined quality report", ops: ["qc/multiqc", "qc/multiqc-metrics"], group: "Quality", noInput: true,
     keywords: "multiqc fastqc manifests metrics", lesson: QUALITY,
     desc: "Gather quality results from a folder into one MultiQC report, or export WGS Extract metrics for MultiQC.",
-    learn: "Use it after running quality checks on several files. MultiQC combines existing FastQC reports, bcftools stats and WGS Extract result manifests; it does not rerun those checks.\n\nExport metrics needs no MultiQC installation. It writes custom-content JSON files that MultiQC can read elsewhere.",
+    learn: "Once quality checks have run on several files, MultiQC compiles existing FastQC reports, bcftools stats and WGS Extract result manifests into one HTML summary without rerunning those checks.\n\nChoosing Export metrics only writes custom-content JSON files that MultiQC can read elsewhere, so MultiQC need not be installed here.",
     accepts: ["reads"], file: "reginald", button: "Build report",
     fields: [
       O.action("quality_output", [["qc/multiqc", "MultiQC HTML report"], ["qc/multiqc-metrics", "Export metrics only"]], "qc/multiqc"),

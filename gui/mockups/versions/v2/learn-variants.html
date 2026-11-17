@@ -18,13 +18,13 @@
   <section class="v2-section" id="types">
     <h2>From single-letter swaps to large rearrangements</h2>
     <ul>
-      <li>Single-nucleotide variants (<abbr class="v2-term" data-term="snv">SNVs</abbr>) swap one DNA (deoxyribonucleic acid) base for another (4.1 million in Helen’s Variant Call Format / VCF file); common population SNVs are called single-nucleotide polymorphisms (<abbr class="v2-term" data-term="snp">SNPs</abbr>).</li>
+      <li>Single-nucleotide variants (<abbr class="v2-term" data-term="snv">SNVs</abbr>) swap one DNA (deoxyribonucleic acid) base for another (4.1 million in Helen’s VCF); common population SNVs are called single-nucleotide polymorphisms (<abbr class="v2-term" data-term="snp">SNPs</abbr>).</li>
       <li>Insertions and deletions (<abbr class="v2-term" data-term="indel">indels</abbr>) add or remove short stretches under ~50 bases (~800,000 in Helen’s file).</li>
       <li>Structural variants (<abbr class="v2-term" data-term="sv">SVs</abbr>) rearrange 50+ bases via deletions, duplications, inversions or translocations.</li>
       <li>Copy-number variants (<abbr class="v2-term" data-term="cnv">CNVs</abbr>) delete or duplicate whole segments, altering copy count.</li>
       <li>Short tandem repeats (<abbr class="v2-term" data-term="str">STRs</abbr>) repeat motifs like <code>CAG</code>; long expansions outgrow short reads and need specialist callers or lab assays.</li>
     </ul>
-    <p>Catalogued sites carry a Reference SNP cluster identifier (<abbr class="v2-term" data-term="rsid">rsID</abbr>) like <code>rs429358</code> from dbSNP (Single Nucleotide Polymorphism Database), a database tag carried by millions of benign variants while rare personal changes often have none.</p>
+    <p>Catalogued sites have a Reference SNP cluster identifier (<abbr class="v2-term" data-term="rsid">rsID</abbr>) such as <code>rs429358</code> from dbSNP (Single Nucleotide Polymorphism Database). An rsID only means the position has been catalogued: millions of harmless common variants have one, and rare personal changes often do not.</p>
   </section>
   <section class="v2-section" id="genotype">
     <h2>Reading 0/0, 0/1 and 1/1 genotypes</h2>
@@ -35,23 +35,23 @@
       <li><code>1/1</code> = G/G, homozygous alternate.</li>
       <li><code>./.</code> = uncalled due to missing or weak reads.</li>
     </ul>
-    <p><abbr class="v2-term" data-term="zygosity">Zygosity</abbr> states whether two copies match or differ; <abbr class="v2-term" data-term="ploidy">ploidy</abbr> counts chromosome copies at that locus. Outside the shared X/Y pseudoautosomal tips, Reginald has one X and one Y, so calls there are haploid (<code>1</code> rather than <code>1/1</code>).</p>
+    <p><abbr class="v2-term" data-term="zygosity">Zygosity</abbr> states whether two copies match or differ; <abbr class="v2-term" data-term="ploidy">ploidy</abbr> counts chromosome copies at that locus. Outside the shared X/Y pseudoautosomal tips, Reginald has one X and one Y, so calls there are haploid (written <code>1</code>, not <code>1/1</code>).</p>
     <figure class="v2-diagram" data-render="v2-diagram" data-diagram="genotypes" data-annot-id="diagram-genotypes"></figure>
   </section>
   <section class="v2-section" id="missing">
     <h2>Why an unlisted site in a plain VCF stays unknown</h2>
-    <p>If position 100 is absent from Helen’s variant-only VCF, she might be <code>0/0</code>, or depth there dropped to zero, or a noisy call failed filtering. Without her BAM (Binary Alignment Map), CRAM (Compressed Reference-oriented Alignment Map) or a reference-block <abbr class="v2-term" data-term="gvcf">gVCF</abbr> (Genomic VCF), nothing in her 148 MB file tells a clean reference call apart from a blind spot.</p>
+    <p>If position 100 is absent from Helen’s variant-only VCF, she might match the reference (<code>0/0</code>), have zero read coverage at that base or have had a noisy call filtered out. Without her BAM (Binary Alignment Map), CRAM (Compressed Reference-oriented Alignment Map) or a reference-block <abbr class="v2-term" data-term="gvcf">gVCF</abbr> (Genomic VCF), nothing in her 148 MB file tells a clean reference call apart from a blind spot.</p>
     <figure class="v2-diagram" data-render="v2-diagram" data-diagram="missing-not-reference" data-annot-id="diagram-missing-not-reference"></figure>
   </section>
   <section class="v2-section" id="confidence">
-    <h2>Checking read support before trusting a headline label</h2>
-    <p>Check depth, mapping quality, genotype quality (GQ) and allele balance (true autosomal <code>0/1</code> calls usually split reads near 50/50 rather than 2 of 35); <code>PASS</code> only means routine caller thresholds were met.</p>
-    <p>Misaligned repeat reads can land on coordinates carrying serious <abbr class="v2-term" data-term="clinvar">ClinVar</abbr> (Clinical Variation database) labels, since ClinVar stars grade published literature rather than your read pileup. Likewise, an apparent <abbr class="v2-term" data-term="denovo">de novo</abbr> call in Reginald absent from Gordon and Helen is usually a missed parent call or repeat artifact (or rare parental mosaicism), so inspect the reads and confirm clinically before acting.</p>
+    <h2>Checking the reads behind a call</h2>
+    <p>A <code>PASS</code> flag only means routine caller thresholds were met. Before trusting a surprising call, check its depth, mapping quality, genotype quality (GQ) and allele balance: genuine autosomal <code>0/1</code> calls usually split reads near 50/50, not 2 out of 35.</p>
+    <p>Reads from repetitive DNA can misalign onto coordinates carrying serious <abbr class="v2-term" data-term="clinvar">ClinVar</abbr> (Clinical Variation database) entries, because ClinVar stars rate the published literature on a variant, not whether your reads landed in the right place. Similarly, an apparent <abbr class="v2-term" data-term="denovo">de novo</abbr> variant in Reginald that neither Gordon nor Helen shows is most often a missed parent call or repeat artifact, with rare parental mosaicism as another possibility. Research files are not clinical diagnoses, so confirm any medically concerning call with a clinician or genetic counsellor.</p>
   </section>
   <section class="v2-section" id="phasing">
-    <h2>Phased chromosome copies versus imputed guesses</h2>
+    <h2>Phasing and imputation</h2>
     <p><abbr class="v2-term" data-term="phasing">Phasing</abbr> links variants onto individual parental chromosomes, writing <code>0|1</code> inside phase blocks built from long reads or trio comparisons across Gordon, Helen and Reginald.</p>
-    <p><abbr class="v2-term" data-term="imputation">Imputation</abbr> infers untyped common markers on microarrays or low-pass runs from population panels; it misses rare variants and should never replace direct sequencing for medical questions.</p>
+    <p><abbr class="v2-term" data-term="imputation">Imputation</abbr> estimates untyped common markers on microarrays or low-pass runs from population reference panels. Because those genotypes are inferred statistically from shared haplotypes, imputation misses rare personal variants and can guess wrong at individual sites.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>

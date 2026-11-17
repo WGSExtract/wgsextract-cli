@@ -25,7 +25,10 @@
         h("h3", h("a.v2-link", { href: "#term-" + key }, entry.term),
           entry.full ? " · " + entry.full : ""),
         h("p", entry.short), h("p", entry.more),
-        h("a.v2-link.v2-small", { href: WGSM.keepParams(entry.learn) }, "Read the lesson →"));
+        h("p.v2-glossary__links.v2-small",
+          h("a.v2-link", { href: WGSM.keepParams(entry.learn) }, "Read the lesson", WGSM.icon("chevron-right", "icon--sm")),
+          entry.link ? h("a.v2-link", { href: entry.link, target: "_blank", rel: "noopener noreferrer" },
+            WGSM.v2terms.source(entry.link), WGSM.icon("external-link", "icon--sm")) : null));
       list.appendChild(row);
       return { node: row, search: [entry.term, entry.full || "", entry.short, entry.more].concat(entry.aliases || []).join(" ").toLowerCase() };
     });
@@ -37,7 +40,7 @@
         if (!row.node.hidden) n++;
       });
       letters.hidden = !!query;
-      count.textContent = n + " of " + keys.length + " terms" + (n ? "" : " — try a different word");
+      count.textContent = n + " of " + keys.length + " terms" + (n ? "" : " · try another search term");
     }
     function revealAnchor() {
       var target = document.getElementById(location.hash.slice(1));

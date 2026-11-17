@@ -14,15 +14,15 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Reference data</h1>
-      <p class="v2-head__sub">The <abbr class="v2-term" data-term="reference">reference genomes</abbr> your files were aligned to, and the extra data <abbr class="v2-term" data-term="annotation">annotation</abbr> tools compare against, such as <abbr class="v2-term" data-term="clinvar">ClinVar</abbr>. WGS Extract needs the genome a file was aligned to before it can read a <abbr class="v2-term" data-term="cram">CRAM</abbr>, call variants or make DNA-test files. 6.1 GB installed on Macintosh HD.</p>
+      <p class="v2-head__sub">The <abbr class="v2-term" data-term="reference">reference genomes</abbr> your files were aligned to, plus <abbr class="v2-term" data-term="annotation">annotation</abbr> databases such as <abbr class="v2-term" data-term="clinvar">ClinVar</abbr>. WGS Extract needs the genome a file was aligned to before it can read a <abbr class="v2-term" data-term="cram">CRAM</abbr>, call variants or make DNA-test files. 6.1 GB installed on Macintosh HD.</p>
     </div>
   </header>
   <details class="v2-more v2-learn" data-annot-id="learn-reference">
     <summary>What’s a reference genome, and why are there several?</summary>
     <div class="v2-more__body">
       <p>A reference genome is a named set of DNA sequences used as a coordinate map. Sequencers produce <abbr class="v2-term" data-term="reads">reads</abbr>; alignment places them against that map, and <abbr class="v2-term" data-term="variant">variants</abbr> describe differences from it. A reference is not an ideal or “normal” person.</p>
-      <p>Different <abbr class="v2-term" data-term="build">builds</abbr> have different coordinates: <abbr class="v2-term" data-term="grch37">GRCh37</abbr> (2009), <abbr class="v2-term" data-term="grch38">GRCh38</abbr> (2013) and <abbr class="v2-term" data-term="t2t">T2T-CHM13</abbr>, which fills many previously unresolved regions. CHM13 itself has no Y; some bundles add a separate complete Y. Bundles can also include different <abbr class="v2-term" data-term="decoy">decoys</abbr> and alternative sequences.</p>
-      <p>A CRAM needs its exact reference sequence, not merely the same build label. Check the file metadata and ask the lab if the bundle is ambiguous.</p>
+      <p>Different <abbr class="v2-term" data-term="build">builds</abbr> number positions differently: <abbr class="v2-term" data-term="grch37">GRCh37</abbr> (2009), <abbr class="v2-term" data-term="grch38">GRCh38</abbr> (2013) and <abbr class="v2-term" data-term="t2t">T2T-CHM13</abbr>, which fills gaps left in earlier builds. CHM13 itself has no Y chromosome, though some bundles add a separate complete Y. Bundles within the same build can also include different <abbr class="v2-term" data-term="decoy">decoys</abbr> and alternate sequences.</p>
+      <p>Opening a CRAM requires the exact reference bundle it was made with; another bundle from the same build won’t work. Check the file’s header, or ask the lab if it isn’t clear which bundle was used.</p>
       <p>Learn the basics: <a class="v2-link" href="learn-reference.html">Reference genomes, coordinates and liftover</a>.</p>
     </div>
   </details>

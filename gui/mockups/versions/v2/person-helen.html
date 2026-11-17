@@ -77,9 +77,9 @@
         <details class="v2-more v2-learn" data-annot-id="learn-vcf">
           <summary>What’s a VCF, and when would you want one?</summary>
           <div class="v2-more__body">
-            <p>VCF means Variant Call Format: a table of coordinates, reference and alternative alleles, and the <abbr class="v2-term" data-term="genotype">genotypes</abbr> inferred at those sites. A small-variant whole-genome VCF often contains millions of records relative to its <abbr class="v2-term" data-term="reference">reference genome</abbr>. Call variants makes one from BAM or CRAM read evidence.</p>
-            <p>It’s small, 148 MB here against tens of gigabytes for the reads, so it’s easier to search and <abbr class="v2-term" data-term="annotation">annotate</abbr>. Some ancestry, export and medicine–gene tasks can use it, but suitability depends on which sites and reference evidence it contains. It is not a comprehensive medical test.</p>
-            <p>What it can’t do: it holds no <abbr class="v2-term" data-term="reads">reads</abbr>, so it can’t be realigned to another reference or called again with a better caller. And a plain VCF doesn’t say whether a position it leaves out matched the reference or wasn’t read at all. Keep the BAM or CRAM it came from if you can.</p>
+            <p>VCF stands for Variant Call Format: a table of positions where DNA differs from the <abbr class="v2-term" data-term="reference">reference genome</abbr>, listing the reference sequence, the variant sequence and the called <abbr class="v2-term" data-term="genotype">genotypes</abbr>. A whole-genome small-variant VCF usually has millions of rows; Call variants builds one from a BAM or CRAM.</p>
+            <p>At 148 MB instead of tens of gigabytes for the reads, a VCF is much faster to search and <abbr class="v2-term" data-term="annotation">annotate</abbr>. Many ancestry, export and drug-response tools can run on it, depending on which sites and reference calls the file includes, though it does not replace a clinical genetic test.</p>
+            <p>Because a VCF holds no <abbr class="v2-term" data-term="reads">reads</abbr>, it can’t be realigned to another reference or called again with a newer caller. A plain VCF also doesn’t say whether a position it leaves out matched the reference or wasn’t read at all, so keep the BAM or CRAM it came from if you can.</p>
             <p>Learn the basics: <a class="v2-link" href="learn-variants.html#missing">Why missing from a VCF is not a reference call</a>.</p>
           </div>
         </details>

@@ -37,7 +37,7 @@
   }
 
   define("genome-scale", 570, "From a cell to DNA letters",
-    "A typical cell contains a nucleus and mitochondria. A typical XY nucleus has 22 pairs of autosomes plus X and Y, shown as 23 pairs of rods. XX is another common complement; other complements exist. Mitochondria contain their own circular DNA. A chromosome contains a long DNA double helix, whose paired bases are A with T and C with G. One set of nuclear chromosomes contains roughly 3.1 billion base pairs; a typical cell has two sets.",
+    "A typical cell holds a nucleus and mitochondria. An XY nucleus has 22 pairs of autosomes plus X and Y, drawn as 23 pairs of rods; XX is also common, and other chromosome sets exist. Mitochondria carry their own circular DNA. Each chromosome is a long DNA double helix with A paired to T and C paired to G. One nuclear chromosome set has roughly 3.1 billion base pairs, and most cells carry two sets.",
     "The 3.1 billion figure describes roughly one set of nuclear chromosomes. Mitochondria carry a separate, much smaller circular genome.",
     function (s) {
       text(s, 18, 27, "Inside a typical human cell", "dg-heading");
@@ -74,7 +74,7 @@
     });
 
   define("inheritance-lines", 430, "Three ways DNA reaches Reginald",
-    "Gordon McDonald, Reginald's father, passes a Y chromosome to Reginald along the direct paternal line, shown in cyan. Helen McDonald, Reginald's mother, passes mitochondrial DNA to Reginald along the direct maternal line, shown in magenta. Mothers usually pass mitochondrial DNA to all children; fathers usually pass their Y to sons. Below, two autosomal chromosome copies show that Reginald inherits one copy from each parent. Each parent's transmitted copy is itself a mixture of that parent's ancestors. The two direct lineages do not represent all ancestry.",
+    "Gordon McDonald, Reginald’s father, passes a Y chromosome along the direct paternal line (cyan), while Helen McDonald, Reginald’s mother, passes mitochondrial DNA along the direct maternal line (magenta). Mothers usually pass mitochondrial DNA to all children, and fathers usually pass their Y chromosome to sons. Below, two autosomal copies show Reginald receiving one copy from each parent; each copy mixes segments from earlier ancestors, so the two direct lines trace only a small fraction of his ancestry.",
     "Reginald inherits autosomes from both parents, Y from Gordon, and mtDNA from Helen. A Y or mtDNA haplogroup follows just one ancestral line.",
     function (s) {
       text(s, 18, 27, "The McDonald family", "dg-heading");
@@ -102,7 +102,7 @@
     });
 
   define("read-pileup", 510, "Depth varies from position to position",
-    "Eight short reads are aligned beneath a twelve-base reference. At the highlighted sixth position the reference is A: four reads have A and four have G, evidence consistent with an A/G heterozygous genotype, not proof on its own. A second highlight marks the final T and A columns: only one read reaches these positions, illustrating low depth nearby. Separate arrows connect the highlighted columns to the genotype and depth labels. Eight reads are shown for clarity, not 30. A reported 30 times mean depth is an average over a region, not a minimum at every base.",
+    "Eight short reads align beneath a twelve-base reference sequence. At the shaded sixth base, the reference has A while four reads show A and four show G, which supports a heterozygous A/G call alongside base and mapping quality. Shading also marks the final T and A bases, where only a single read covers the sequence. Arrows link both shaded columns to their depth and genotype notes. The diagram shows eight reads for clarity; even a 30× average across a genome still leaves thin spots.",
     "Half the reads here support G where the reference has A. Real calls also depend on base quality, mapping quality and other evidence.",
     function (s, wideLayout) {
       var first = wideLayout ? 64 : 28;
@@ -136,8 +136,8 @@
     });
 
   define("short-vs-long-reads", 405, "Long reads can bridge repeats",
-    "A paired-end DNA fragment is read from each end, producing a 150-base R1 and 150-base R2 separated by an unsequenced middle. Below, two identical repeat blocks lie between unique DNA regions. A short read wholly inside a repeat matches both blocks and cannot by itself choose a location. A long read spans both repeats and the unique flanks, helping place the repeated sequence. Sizes are not to scale. HiFi reads are often 10 to 25 kilobases; Nanopore reads can be tens of kilobases or longer.",
-    "Paired-end reads leave an unsequenced middle. Long reads can reach unique sequence on both sides of a repeat, making placement easier.",
+    "Paired-end sequencing reads 150 bases from each end of a DNA fragment (R1 and R2) and leaves the middle unread. Below, two identical repeat blocks sit between unique flanking DNA. A short read inside a repeat matches both copies equally, whereas a long read reaches into the unique DNA on both sides so the aligner can place it. Lengths are schematic: PacBio HiFi reads are typically 10–25 kb, and Oxford Nanopore reads can run for tens of kilobases or more.",
+    "Paired-end reads leave the middle of each fragment unread. Long reads reach unique DNA on both sides of a repeat so it can be placed unambiguously.",
     function (s) {
       text(s, 18, 27, "Paired-end: two ends of one fragment", "dg-heading");
       line(s, 25, 70, 335, 70, "dg-dashed");
@@ -163,11 +163,11 @@
     });
 
   define("reference-builds", 440, "The same sequence can have a new address",
-    "Two reference tracks show the same illustrative gene at position 1000 in GRCh37 and 1200 in GRCh38. Added or corrected sequence can move coordinates; these numbers are invented examples, not real gene coordinates or a universal offset. A second pair of tracks shows a gap in an older assembly and resolved sequence across that region in T2T-CHM13. A variant file and its annotation resource must agree on the reference assembly. CHM13 itself has no Y chromosome.",
-    "Coordinates belong to a particular reference build. These example positions are illustrative; real coordinate translation depends on the sequence.",
+    "Two reference tracks show the same example gene at position 1000 in GRCh37 and 1200 in GRCh38; added or corrected sequence shifts positions, and these numbers are invented examples, not a fixed offset. Below, a second pair of tracks shows a gap in an older assembly that T2T-CHM13 fills with resolved sequence. Variant calls and annotation files must use the same reference build, and CHM13 itself carries no Y chromosome.",
+    "Every coordinate belongs to a specific reference build. Moving positions between builds requires mapping the surrounding sequence, because offsets vary along each chromosome.",
     function (s) {
       text(s, 18, 27, "Same gene, different map address", "dg-heading");
-      text(s, 18, 54, "Illustrative coordinates — not a real gene", "dg-muted");
+      text(s, 18, 54, "Example positions, not a real gene", "dg-muted");
       ["GRCh37", "GRCh38"].forEach(function (build, i) {
         var y = 89 + i * 90;
         text(s, 18, y, build, "dg-heading");
@@ -186,12 +186,12 @@
       text(s, 18, 352, "T2T-CHM13");
       line(s, 124, 347, 342, 347, "dg-helix");
       rect(s, 190, 339, 80, 16, "dg-series-c");
-      lines(s, 18, 394, ["Match the build of calls and annotations.", "CHM13 itself has no Y chromosome."], "dg-muted");
+      lines(s, 18, 394, ["Match the build of calls and annotations.", "v2.0 adds a Y from another donor."], "dg-muted");
     });
 
   define("file-journey", 620, "From reads to an interpreted report",
-    "A workflow begins with compressed FASTQ, roughly 30 to 100 GB for 30 times short-read human data, holding sequences and base qualities without placements. Alignment produces BAM, often 60 to 100 GB, or CRAM, often tens of GB, preserving read records and adding placements; reference-based CRAM needs the exact reference to decode. Calling produces a compressed small-variant VCF, often hundreds of MB, containing inferred genotypes and quality but not the original reads. Annotation adds context to produce a report, which cannot replace the underlying evidence. Sizes are planning examples, not guarantees.",
-    "Original reads preserve the evidence for reanalysis. Keep them if you can, and allow for storage needs to vary.",
+    "Compressed FASTQ files (~30–100 GB for a 30× short-read human genome) store read sequences and base qualities before alignment. Alignment writes a BAM (~60–100 GB) or CRAM (tens of GB) that keeps the reads and adds reference positions; decoding a CRAM later requires the exact reference it was built against. Variant calling writes a compressed VCF (hundreds of MB) of called genotypes and quality scores without the underlying reads, and annotation summarises selected findings in a report. File sizes vary with depth and compression.",
+    "Original reads hold the full evidence if you reanalyse later; keep them when storage allows.",
     function (s) {
       text(s, 18, 27, "30× short-read human genome", "dg-heading");
       var steps = [
@@ -224,7 +224,7 @@
         });
         text(s, x, 180, ["A / A", "A / G", "G / G"][i], "dg-center");
       });
-      lines(s, 18, 211, ["0/1: heterozygous — one of each allele.", "./. means no complete call, not A/A."], "dg-muted");
+      lines(s, 18, 211, ["0/1: heterozygous (one of each allele).", "./. means no complete call, not A/A."], "dg-muted");
       text(s, 18, 275, "Three small sequence changes", "dg-heading");
       text(s, 152, 306, "Reference", "dg-center dg-muted");
       text(s, 285, 306, "Changed", "dg-center dg-muted");
@@ -262,7 +262,7 @@
     "Classification describes a variant in a clinical context. A qualified clinician can assess the evidence alongside your history before decisions about care.",
     function (s) {
       text(s, 18, 27, "ACMG / AMP classification", "dg-heading");
-      text(s, 18, 51, "Evidence categories — not a risk score", "dg-muted");
+      text(s, 18, 51, "Evidence categories, not a risk score", "dg-muted");
       var labels = ["Benign", "Likely benign", "VUS · uncertain significance", "Likely pathogenic", "Pathogenic"];
       labels.forEach(function (label, i) {
         var y = 72 + i * 53;
@@ -275,7 +275,7 @@
     });
 
   define("what-leaves", 490, "Local analysis and explicit network choices",
-    "A computer contains genome files, local analysis and results. A boundary separates it from a public-data provider. When the user explicitly chooses a download, an outbound request names public reference data and inbound data returns to the computer; the provider sees normal connection details such as an IP address. That request does not need the person's variant positions or genotypes. A separate dashed box explains that sending genome-derived data to an online service requires a distinct explicit opt-in that identifies the data and recipient. A phone controlling another server does not move computation onto the phone.",
+    "Genome files, processing and results stay on your computer or chosen server behind a network boundary. When you start a reference download, the computer requests public files and the provider sees standard connection details such as your IP address, never your genotypes or variant positions. A dashed box notes that sending any sample-derived data to an external service requires a separate opt-in naming what is sent and where. Controlling a server from a phone leaves the files and computation on that server.",
     "Public-data downloads tell a provider which reference you requested. Sharing genome-derived information is a separate, explicit choice.",
     function (s) {
       text(s, 18, 27, "Your computer / chosen server", "dg-heading");
@@ -405,7 +405,7 @@
       }
     });
     lines(s, 18, 283, ["Illustrative coordinates.", "Real mappings vary with the sequence."], "dg-muted");
-    lines(s, 386, 283, ["Match the build of calls and annotations.", "CHM13 itself has no Y chromosome."], "dg-muted");
+    lines(s, 386, 283, ["Match the build of calls and annotations.", "v2.0 adds a Y from another donor."], "dg-muted");
   });
 
   wide("evidence-ladder", 290, function (s) {

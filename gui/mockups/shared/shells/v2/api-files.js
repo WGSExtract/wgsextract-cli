@@ -62,7 +62,7 @@
       var label = String(t.label || "").trim();
       var at = "Template " + (i + 1) + (label ? " (" + label + ")" : "") + ": ";
       var id = String(t.id || label).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      if (!label) errors.push(at + "give it a name.");
+      if (!label) errors.push(at + "enter a name.");
       if (!id) id = "template-" + (i + 1);
       while (seen[id]) id += "-2";
       seen[id] = true;
@@ -77,14 +77,14 @@
         if (!(depth > 0)) errors.push(at + "reads need a depth above 0.");
       }
       var size = num(t.size_gb);
-      if (!(size > 0 && size <= 5000)) errors.push(at + "size must be more than 0 and at most 5000 GB.");
+      if (!(size > 0 && size <= 5000)) errors.push(at + "size must be above 0 and at most 5000 GB.");
       var platform = String(t.platform || "").toLowerCase();
       if (PLATFORMS.indexOf(platform) < 0) errors.push(at + "platform must be illumina, ont, pacbio, mgi or empty.");
       var sex = String(t.sex || "any");
       if (SEXES.indexOf(sex) < 0) errors.push(at + "sex must be any, male or female.");
       var name = String(t.name || "").trim();
-      if (!name) errors.push(at + "give a file name pattern, such as {first}-{last}.bam.");
-      else if (/[\\]|\.\.|^\//.test(name)) errors.push(at + "the file name can’t contain a folder.");
+      if (!name) errors.push(at + "enter a file name pattern, such as {first}-{last}.bam.");
+      else if (/[\\]|\.\.|^\//.test(name)) errors.push(at + "file name can’t include a folder path.");
       return {
         id: id, label: label, format: format, source: String(t.source || "").trim(), build: build,
         ref: String(t.ref || (build ? BUILDS[build] : "")).trim(), depth: depth || 0, size_gb: size, platform: platform, sex: sex,
@@ -120,9 +120,9 @@
 
   function issues(t) {
     var out = [];
-    if (FORMATS[t.format] === "reads" && !t.index) out.push({ code: "no_index", text: "No index (." + (t.format === "CRAM" ? "crai" : "bai") + "), so it can’t be read by region yet." });
-    if (t.format === "FASTQ") out.push({ code: "not_aligned", text: "Raw reads: align them before other tools can use them." });
-    if (t.ref === "hg38" || t.ref === "hs38d1") out.push({ code: "reference", text: "Made against " + t.ref + "; it may need downloading first." });
+    if (FORMATS[t.format] === "reads" && !t.index) out.push({ code: "no_index", text: "Missing " + (t.format === "CRAM" ? "CRAI" : "BAI") + " index, so tools can’t jump to a region yet." });
+    if (t.format === "FASTQ") out.push({ code: "not_aligned", text: "Unaligned reads; run Align before using analysis tools." });
+    if (t.ref === "hg38" || t.ref === "hs38d1") out.push({ code: "reference", text: "Aligned to " + t.ref + "; download that reference before running tools." });
     return out;
   }
 

@@ -82,6 +82,14 @@
     return nodes;
   }
 
+  /* Name the site an external reference opens, so a reader knows where it goes */
+  var SOURCES = { "h600.org": "Read more on the H600 wiki", "samtools.github.io": "Format specification", "www.ncbi.nlm.nih.gov": "NCBI reference" };
+  api.source = function (url) {
+    if (!url) return "";
+    var host = new URL(url).hostname.replace(/^wiki\.(?=h600\.org$)/, "");
+    return SOURCES[host] || "External reference";
+  };
+
   api.wrap = function (scope) {
     if (!scope || !Object.keys(api.terms).length) return;
     var m = getMatcher();
@@ -127,7 +135,8 @@
       h("p.v2-termpop__short"),
       h("p.v2-termpop__more"),
       h("a.v2-termpop__link", "Learn more"),
-      h("a.v2-termpop__reference", { target: "_blank", rel: "noopener noreferrer" }, "External reference ↗")
+      h("a.v2-termpop__reference", { target: "_blank", rel: "noopener noreferrer" },
+        h("span.v2-termpop__source"), WGSM.icon("external-link", "icon--sm"))
     );
     pop.addEventListener("pointerenter", function () {
       clearTimeout(timer);
@@ -180,7 +189,9 @@
     reference.hidden = !entry.link;
     if (entry.link) reference.href = entry.link;
     else reference.removeAttribute("href");
-    reference.setAttribute("aria-label", "External reference for " + entry.term + " (opens in a new tab)");
+    var source = api.source(entry.link);
+    WGSM.qs(".v2-termpop__source", el).textContent = source;
+    reference.setAttribute("aria-label", source + ": " + entry.term + " (opens in a new tab)");
     /* A preview is a tooltip; once opened it is a dialog you can Tab into */
     if (pinned) {
       el.setAttribute("role", "dialog");

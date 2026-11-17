@@ -109,7 +109,7 @@
       if (!hasOwn(c.people, id)) M.fail(404, "unknown_person", "No person " + JSON.stringify(id) + ".");
       var b = req.body || {};
       if (b.removed && mock.requireIdle) mock.requireIdle(id);
-      if (b.name !== undefined && !String(b.name).trim()) M.fail(400, "usage", "A person needs a name.");
+      if (b.name !== undefined && !String(b.name).trim()) M.fail(400, "usage", "Enter a name for this person.");
       var own = (mock.doc().people[id] = Object.assign({}, mock.doc().people[id]));
       ["name", "note", "removed"].forEach(function (k) {
         if (b[k] !== undefined) own[k] = k === "removed" ? !!b[k] : String(b[k]).trim();
@@ -141,7 +141,7 @@
         id = String(b.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "person";
         if (!hasOwn(c.people, id)) mock.doc().people[id] = { name: String(b.name).trim(), note: "", added: true };
       }
-      if (!id || !hasOwn(mock.ctx().people, id)) M.fail(400, "usage", "Give an existing person id or a new name.");
+      if (!id || !hasOwn(mock.ctx().people, id)) M.fail(400, "usage", "Provide an existing person ID or a name for a new person.");
       mock.doc().assign[req.params.id] = id;
       mock.save();
       return library();

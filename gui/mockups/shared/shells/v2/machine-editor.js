@@ -75,7 +75,7 @@
         var p = presets[key];
         return card(key, p.label, OS_NAME[p.os], p.spec);
       }).concat([card("custom", "Custom", draft && choice === "custom" ? OS_NAME[draft.os] : "",
-        choice === "custom" ? "Your own settings, below" : saved ? saved.spec : "Change anything below")]));
+        choice === "custom" ? "Custom settings below" : saved ? saved.spec : "Change anything below")]));
     }
 
     function pickPreset(key) {
@@ -93,7 +93,7 @@
         WGSM.qsa('input[name="v2-machine"]', cards).forEach(function (r) {
           r.checked = r.value === "custom";
         });
-        WGSM.qs('input[value="custom"]', cards).closest("label").querySelector(".v2-choice__desc").textContent = "Your own settings, below";
+        WGSM.qs('input[value="custom"]', cards).closest("label").querySelector(".v2-choice__desc").textContent = "Custom settings below";
       }
       check();
     }
@@ -101,7 +101,7 @@
     function check() {
       var result = SPEC.normalize(draft);
       problems.hidden = !result.errors.length || choice !== "custom";
-      WGSM.qs(".v2-notice__text", problems).replaceChildren(h("strong", "Fix before using this computer"), h("span", result.errors.join(". ") + "."));
+      WGSM.qs(".v2-notice__text", problems).replaceChildren(h("strong", "Fix these settings first: "), h("span", result.errors.join(". ") + "."));
       summary.textContent = result.profile.spec + " · " + OS_NAME[result.profile.os] + " " + result.profile.arch;
       return result;
     }
@@ -183,7 +183,7 @@
             edited();
             renderDetails();
           })),
-          field("Processor", d.os === "macos" ? "ARM64 is Apple silicon; x86-64 an Intel Mac" : d.os === "windows" ? "WGS Extract runs on Windows x86-64" : null,
+          field("Processor", d.os === "macos" ? "ARM64 is Apple silicon; x86-64 is Intel" : d.os === "windows" ? "WGS Extract runs on Windows x86-64" : null,
             h("div.v2-row.v2-row--wrap", seg("Processor type", archOptions, d.arch, function (x) {
               d.arch = x;
               if (d.os === "macos") d.gpu = x === "arm64" ? "metal" : null;
@@ -199,10 +199,10 @@
             input(d.bigCores, function (x) {
               d.bigCores = x;
             }, { type: "number", min: 1, max: 256, label: "Performance cores", width: 90 }), h("span.v2-small.v2-muted", "performance"))),
-          field("Memory", "RAM; decides which aligners fit", h("div.v2-row", input(d.ramGB, function (x) {
+          field("Memory", "Available RAM determines which aligners can run", h("div.v2-row", input(d.ramGB, function (x) {
             d.ramGB = x;
           }, { type: "number", min: 2, max: 4096, label: "Memory GB", width: 110 }), h("span.v2-small.v2-muted", "GB"))),
-          field("GPU", d.os === "macos" ? (d.arch === "arm64" ? "Apple silicon’s GPU, through Metal" : "Intel Macs get no GPU acceleration") : "NVIDIA GPUs run CUDA builds; 16 GB or more on Linux allows Parabricks",
+          field("GPU", d.os === "macos" ? (d.arch === "arm64" ? "Apple silicon’s GPU, through Metal" : "No GPU acceleration on Intel Macs") : "NVIDIA GPUs run CUDA builds; 16 GB or more on Linux allows Parabricks",
             h("div.v2-row.v2-row--wrap", seg("GPU", gpuOptions, d.gpu || "none", function (x) {
               d.gpu = x === "none" ? null : x;
               if (x === "nvidia" && !d.gpuGB) d.gpuGB = 12;
@@ -212,7 +212,7 @@
               d.gpuGB = x;
             }, { type: "number", min: 1, max: 192, label: "GPU memory GB", width: 90 }), h("span.v2-small.v2-muted", "GB of GPU memory")) : null))),
         h("h3.v2-mock__h", "Volumes"),
-        h("p.v2-small.v2-muted", "Free space feeds the disk checks, estimates and the mock server’s disks. The genomes volume holds Gordon’s files."),
+        h("p.v2-small.v2-muted", "Free space drives preflight checks, estimates and simulated volumes. Gordon’s files live on the Genomes volume."),
         h("div.v2-mock__scroll", h("table.v2-mock__volumes",
           h("thead", h("tr", h("th", "Name"), h("th", "Mounted at"), h("th", "Free GB"), h("th", "Size GB"), h("th", h("span.visually-hidden", "Role")))),
           h("tbody", [volumeRow(d.system, "system"), volumeRow(d.genomes, "genomes")].concat(d.volumes.map(function (v, i) {
@@ -225,7 +225,7 @@
           renderDetails();
         } }, WGSM.icon("plus", "icon--sm"), "Add a volume")) : null,
         h("h3.v2-mock__h", "Installed tool sets"),
-        h("p.v2-small.v2-muted", "Optional Pixi environments. Unchecked ones show as “not installed” on tool pages and Install tools."),
+        h("p.v2-small.v2-muted", "Optional Pixi environments; unchecked sets appear as not installed on tool pages and Install tools."),
         installed,
         summary,
         problems);
@@ -258,7 +258,7 @@
       mm.choose(choice, custom ? custom.profile : null);
       if (WGSM.v2api.mode() !== "shared") return Promise.resolve(true);
       return WGSM.v2api.post("/v1/mock/machine", { profile: choice, custom: custom ? custom.profile : undefined }).then(function (res) {
-        if (res.status !== 200) WGSM.toast("The shared server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
+        if (res.status !== 200) WGSM.toast("Shared server rejected the profile: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
         return true;
       });
     }

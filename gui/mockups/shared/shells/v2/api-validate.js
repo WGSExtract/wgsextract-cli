@@ -19,7 +19,7 @@
 
   function checkOne(name, f, value) {
     if (value === null) {
-      if (!f.nullable) fail(JSON.stringify(name) + " must be set (it can't be null).");
+      if (!f.nullable) fail(JSON.stringify(name) + " cannot be null.");
       return;
     }
     if (f.type === "array") {
@@ -42,7 +42,7 @@
   }
 
   function checkPath(name, text) {
-    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) fail(JSON.stringify(name) + ": URLs are for the command line only.");
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) fail(JSON.stringify(name) + ": URLs are supported only on the command line.");
     var expanded = text.replace(/^~(?=[\\/]|$)/, "/home");
     if (!isAbsolute(expanded)) fail(JSON.stringify(name) + " must be an absolute path, not " + JSON.stringify(text) + ".");
   }
@@ -51,7 +51,7 @@
   M.validate = function (op, body) {
     var schema = root.WGSMSchema && root.WGSMSchema.ops[op];
     if (!schema) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + "; see /v1/ops.");
-    if (!body || typeof body !== "object" || Array.isArray(body)) fail("The parameters must be a JSON object.");
+    if (!body || typeof body !== "object" || Array.isArray(body)) fail("Request body must be a JSON object.");
     var missing = schema.required.filter(function (name) {
       return !Object.prototype.hasOwnProperty.call(body, name);
     });
@@ -59,7 +59,7 @@
     Object.keys(body).forEach(function (name) {
       if (name === "_mock") return;
       if (!Object.prototype.hasOwnProperty.call(schema.fields, name)) {
-        fail("Unknown parameter " + JSON.stringify(name) + "; " + op + " takes: " + Object.keys(schema.fields).join(", ") + ".");
+        fail("Unknown parameter " + JSON.stringify(name) + "; allowed for " + op + ": " + Object.keys(schema.fields).join(", ") + ".");
       }
       checkOne(name, schema.fields[name], body[name]);
     });

@@ -27,7 +27,7 @@
     slug: "convert-format", label: "Convert format", ops: ["bam/to-cram", "bam/to-bam", "bam/to-ubam", "bam/unalign"], group: "Files",
     keywords: "conversion cram bam ubam unaligned fastq", lesson: LESSON,
     desc: "Keep the same reads in another format: smaller CRAM, widely read BAM, or unaligned reads for a fresh alignment.",
-    learn: "Use CRAM to save disk space; decoding it needs the exact reference. BAM is larger but more widely accepted. Neither conversion makes the sequence more accurate.\n\nA uBAM drops alignments but keeps read tags for pipelines such as GATK. Paired FASTQs keep sequences and quality scores, but not all BAM tags. Every choice keeps the original file.",
+    learn: "CRAM shrinks the file to save disk space, though opening it later requires the exact reference used to encode it; BAM takes more room and opens in more tools. Converting changes how the reads are stored without improving sequence accuracy.\n\nA uBAM drops alignments but keeps read tags for pipelines such as GATK. Paired FASTQs keep sequences and quality scores, but not all BAM tags. Every choice keeps the original file.",
     accepts: ["reads"], file: "gordon", button: "Convert",
     fields: [
       action("conversion", [["bam/to-cram", "CRAM · smaller"], ["bam/to-bam", "BAM"], ["bam/to-ubam", "Unaligned BAM (uBAM)"], ["bam/unalign", "Paired FASTQ"]], "bam/to-cram"),
@@ -50,7 +50,7 @@
   T.define({
     slug: "sort-index", label: "Sort & index", ops: ["bam/sort", "bam/unsort", "bam/index", "bam/unindex"], group: "Files", lesson: LESSON,
     desc: "Put reads in chromosome order, build an index for quick region lookups, or undo those housekeeping steps.",
-    learn: "Use coordinate sorting before tools that jump to a gene or chromosome. Sorting writes a new sorted file and its index. Index alone adds a lookup file beside an already sorted BAM or CRAM.\n\nMark unsorted writes a copy whose header says unsorted; it does not shuffle the reads. Remove index deletes only the lookup files, not the reads. They can be rebuilt.",
+    learn: "Tools that jump straight to a gene or chromosome expect coordinate-sorted reads. Sorting writes a new sorted file with its index, while Build index in place adds just the lookup file beside an already sorted BAM or CRAM.\n\nCopy marked unsorted writes a new file whose header says unsorted without shuffling the reads. Remove index files deletes the lookup files while leaving the reads in place, and you can rebuild the index later.",
     accepts: ["reads"], file: "gordon", allowUnready: true,
     fields: [
       action("housekeeping", [["bam/sort", "Coordinate-sort & index"], ["bam/index", "Build index in place"], ["bam/unsort", "Copy marked unsorted"], ["bam/unindex", "Remove index files"]], "bam/sort"),
@@ -73,7 +73,7 @@
   T.define({
     slug: "merge-reads", label: "Merge read files", ops: ["bam/merge"], group: "Files", lesson: LESSON,
     desc: "Join lanes or sequencing runs from one person into one indexed BAM or CRAM.",
-    learn: "Use it when a lab split one sample across lanes or flow cells. All inputs must be coordinate-sorted and aligned to the same reference. Combining unrelated people is not a way to make a deeper genome.\n\nRead groups can preserve which run each read came from. This writes a new merged file and leaves the inputs alone.",
+    learn: "Labs sometimes deliver one sample split across several lanes or flow cells. Every input must already be coordinate-sorted on the same reference, and all of them must belong to the same person; merging unrelated genomes will not produce a valid deeper sample.\n\nRead groups can preserve which run each read came from. This writes a new merged file and leaves the inputs alone.",
     accepts: ["reads"], file: "gordon", button: "Merge", noInput: true,
     fields: [
       f.param("inputs", "Input paths", "Replace these example lanes: comma-separated paths, at least two files of the same sample", {
@@ -99,7 +99,7 @@
     slug: "repair-ftdna", label: "Repair FamilyTreeDNA files", ops: ["repair/ftdna-bam", "repair/ftdna-vcf"], group: "Files", keywords: "ftdna gatk filter",
     lesson: LESSON,
     desc: "Fix formatting quirks in FamilyTreeDNA files so standard tools can read them.",
-    learn: "Use it when GATK rejects spaces in read names, or a VCF reader rejects invalid characters in FILTER labels. This changes those names or labels, not the DNA sequence or genotypes.\n\nA BAM or CRAM becomes a repaired BAM; a VCF becomes a plain repaired VCF. The original file stays.",
+    learn: "Some FamilyTreeDNA exports put spaces in read names that GATK rejects, or characters in VCF FILTER labels that strict readers refuse. Repairing rewrites only those names or labels, leaving the DNA sequence and genotypes untouched.\n\nA BAM or CRAM becomes a repaired BAM; a VCF becomes a plain repaired VCF. The original file stays.",
     accepts: ["reads", "vcf"], file: "gordon", button: "Repair a copy", allowUnready: true,
     fields: [f.param("output", "Output file", "Empty: use the repaired name beside the input")],
     requests: function (c, base) { return [base(c.file.kind === "vcf" ? "repair/ftdna-vcf" : "repair/ftdna-bam")]; },
@@ -113,7 +113,7 @@
     slug: "sample-facts", label: "Sample facts", ops: ["sample/show", "sample/set", "sample/unset"], group: "Files", keywords: "overrides sex platform workspace",
     lesson: { href: "learn-sequencing.html#quality", label: "What sequencing files can tell you" },
     desc: "View or correct the sex and sequencing platform recorded for a sample. This does not rename the person or change their reads.",
-    learn: "Use overrides only when you know a detected fact is wrong. Commands use these values instead of detection, which can affect ploidy and caller choices. Chromosomal sex here is a computational input, not gender.\n\nShow lists the workspace’s overrides, file facts and indexed results. Remove clears selected overrides so detection takes over again.",
+    learn: "Set an override only when you know auto-detection got a value wrong, since commands trust overrides when picking callers and X/Y ploidy. Sex here records chromosomal sex for those calculations and does not describe gender.\n\nShow lists the workspace’s overrides, file facts and indexed results. Remove clears selected overrides so detection takes over again.",
     accepts: FILES, file: "reginald", allowUnready: true,
     fields: [
       action("facts_action", [["sample/show", "Show facts"], ["sample/set", "Set overrides"], ["sample/unset", "Remove overrides"]], "sample/show"),
@@ -145,13 +145,13 @@
     slug: "sign-verify", label: "Checksums & signatures", ops: ["sign/create", "sign/verify"], group: "Files", keywords: "sha256 sign verify integrity",
     lesson: { href: "learn-privacy.html#sharing", label: "Sharing files safely" },
     desc: "Make a checksum manifest before sharing files, or verify that received files have not changed.",
-    learn: "Checksums detect damaged or changed files. An OpenSSH signature can also link the manifest to a trusted signing key. Without a trusted public key, an intact signature is not proof of who sent it.\n\nCreating uses the connected server’s configured signing key, if any; private keys are never sent through this form. Without a configured key it makes checksums only. Verifying with no signature checks only the file hashes.",
+    learn: "Checksums detect damaged or changed files. An OpenSSH signature can also link the manifest to a trusted signing key, though confirming who sent the manifest requires checking that signature against a trusted public key.\n\nCreating uses the connected server’s configured signing key, if any; private keys are never sent through this form. Without a configured key it makes checksums only. Verifying with no signature checks only the file hashes.",
     accepts: FILES, file: "reginald", allowUnready: true,
     fields: [
       action("sign_action", [["sign/create", "Create checksums"], ["sign/verify", "Verify manifest"]], "sign/create"),
       f.param("manifest", "Manifest path", "SHA256SUMS on this computer", { def: "{{bundleWorkspace}}/SHA256SUMS", send: true,
         when: function (c) { return c.v.sign_action === "sign/verify"; } }),
-      f.param("public_key", "Trusted public key", "Optional: verify who signed it, not just that the signature is intact", {
+      f.param("public_key", "Trusted public key", "Optional: confirm who signed the manifest using their public key", {
         when: function (c) { return c.v.sign_action === "sign/verify"; } }),
     ],
     more: [f.threads()],

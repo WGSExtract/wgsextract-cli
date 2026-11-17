@@ -380,7 +380,7 @@
       memGB: hint.memGB || (op === "realign" || op === "align" ? 18 : 4),
       flags: hint.flags || flagsFor(op, p, file),
       cancelFlags: hint.cancelFlags || (op === "realign" ? ["realign-cancelled"] : []),
-      fail: hint.fail ? Object.assign({ at: 0.1, message: "The mock was asked to fail this job." }, hint.fail === true ? {} : hint.fail) : null,
+      fail: hint.fail ? Object.assign({ at: 0.1, message: "Simulated failure requested for this job." }, hint.fail === true ? {} : hint.fail) : null,
       thenRerun: hint.thenRerun || null,
       url: net ? p.url || "https://mock.wgsextract.invalid/" + op + "/" + base(outputs[0].path) : null,
       inputs: file ? [{ path: file.path, kind: (file.tag || "").toLowerCase(), role: "input" }] : [],
@@ -418,14 +418,14 @@
         return { name: s.name, action: "skip", why: params.skip_calling ? "Skip variant calling is on" : "Uses the VCFs you supplied instead" };
       }
       if (params.restart) return { name: s.name, action: "run", why: "Start over is on, so earlier results aren’t reused" };
-      if (force) return { name: s.name, action: "run", why: "Asked to rerun this step" };
-      if (done) return { name: s.name, action: "skip", why: "Done by an earlier run (job " + done.id + "); its output is still there" };
-      if (stopped && sum <= stopped.stopWork) return { name: s.name, action: "skip", why: "Done by the run that was " + stopped.status + " (job " + stopped.id + "); its result is kept" };
-      return { name: s.name, action: "run", why: stopped ? "The " + stopped.status + " run (job " + stopped.id + ") hadn’t finished it" : "No earlier result to reuse" };
+      if (force) return { name: s.name, action: "run", why: "Selected to rerun" };
+      if (done) return { name: s.name, action: "skip", why: "Completed in job " + done.id + "; output file is still present" };
+      if (stopped && sum <= stopped.stopWork) return { name: s.name, action: "skip", why: "Completed before job " + stopped.id + " was " + stopped.status + "; its output is kept" };
+      return { name: s.name, action: "run", why: stopped ? "Not finished when job " + stopped.id + " was " + stopped.status : "No earlier result to reuse" };
     });
     var notes = [];
-    if (active) notes.push("A run like this is already " + active.status + " (" + active.id + "); starting another would wait for it and redo its work.");
-    if (plan.memGB > machine.ramGB) notes.push("Needs about " + Math.round(plan.memGB) + " GB of memory; this computer has " + machine.ramGB + " GB, so preflight would stop it.");
+    if (active) notes.push("Matching job " + active.id + " is already " + active.status + "; starting another will wait in the queue and repeat its work.");
+    if (plan.memGB > machine.ramGB) notes.push("Needs about " + Math.round(plan.memGB) + " GB of RAM, and this computer has " + machine.ramGB + " GB; preflight will block the run.");
     else notes.push("Memory: needs about " + Math.round(plan.memGB) + " GB of " + machine.ramGB + " GB.");
     if (plan.tempGB) notes.push("Temporary space: about " + Math.round(plan.tempGB) + " GB, removed when it finishes.");
     plan.outputs.forEach(function (o) {

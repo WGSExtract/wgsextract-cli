@@ -21,7 +21,7 @@
 
   function refused(res, retry) {
     if (res.status > 0 && res.status < 300) return false;
-    var err = res.body && res.body.error || { message: "The server could not be reached. Nothing was started." };
+    var err = res.body && res.body.error || { message: "Could not reach the server. Check that it is running and try again." };
     var old = W.qs("[data-edge-error]");
     if (old) old.remove();
     var box = h("div.v2-notice", { role: "alert", dataset: { tone: "bad", edgeError: err.code || "unreachable" } },
@@ -58,7 +58,7 @@
       var select = h("select.v2-select", { "aria-label": "Volume" }, disks.map(function (d) {
         return h("option", { value: d.id }, d.name + " · " + W.v2clock.gb(Math.max(0, d.free_gb)) + " free");
       }));
-      var d = dialog(title, [h("p.v2-small.v2-muted", "Simulated folders only. No files on this computer are moved."), select],
+      var d = dialog(title, [h("p.v2-small.v2-muted", "Mockup only: updates simulated paths without moving real files on your computer."), select],
         h("button.v2-btn.v2-btn--primary", { type: "button", dataset: { edgeChoose: "" }, onclick: function () {
           var disk = disks.filter(function (x) { return x.id === select.value; })[0];
           W.ui.close(d);
@@ -80,7 +80,7 @@
           if (!files.some(function (f) { return f.path === out.path; })) files.push({ name: out.path.split(/[\\/]/).pop(), path: out.path });
         });
       });
-      dialog("Folder preview", [h("p.v2-small.v2-muted", "A mock file browser; real files are not opened."),
+      dialog("Folder preview", [h("p.v2-small.v2-muted", "Simulated folder contents; real files on your computer are untouched."),
         h("div.v2-sheet", files.length ? files.map(function (f) {
           return h("div.v2-sheet__pad", h("strong.v2-small", f.name), h("p.v2-small.v2-muted", f.path));
         }) : h("p.v2-sheet__pad", "No files in this folder."))]);
@@ -207,8 +207,8 @@
     check: function () {
       send("deps/check", {}).then(function (res) {
         if (res.status >= 300 || !res.status) return;
-        dialog("Tool check", [h("p.v2-small", "Checked the simulated computer. WGS Extract validates tools; it does not install them."),
-          h("ul.v2-plain-list", W.v2machine.missingSets().map(function (s) { return h("li", s[1] + " — not installed"); })),
+        dialog("Tool check", [h("p.v2-small", "Checked the simulated computer. WGS Extract checks which tools are present and does not install them automatically."),
+          h("ul.v2-plain-list", W.v2machine.missingSets().map(function (s) { return h("li", s[1] + " · not installed"); })),
           h("a.v2-link", { href: "install.html" }, "Installation instructions")]);
       });
     },
@@ -216,7 +216,7 @@
       api.get("/v1/system").then(function (res) {
         if (refused(res)) return;
         var text = JSON.stringify({ version: "mock", os: res.body.os, arch: res.body.arch, cores: res.body.cores, ram_gb: res.body.ram_gb }, null, 2);
-        dialog("Problem report", [h("p.v2-small", "No names, genome data or file paths."), h("pre.v2-code", text)],
+        dialog("Problem report", [h("p.v2-small", "Contains system specs only. No names, genome data or file paths are included."), h("pre.v2-code", text)],
           h("button.v2-btn", { type: "button", onclick: function () {
             if (!navigator.clipboard) { W.toast("Select the report text to copy it"); return; }
             navigator.clipboard.writeText(text).then(function () { W.toast("Report copied"); }, function () { W.toast("Clipboard unavailable. Select the report text to copy it."); });
@@ -246,7 +246,7 @@
       if (refused(res)) return;
       var disk = res.body.disks.filter(function (d) { return d.id === "genomes"; })[0];
       W.pref("v2-convert-output", disk.path);
-      W.qs('[data-annot-id="state-disk"] .v2-notice__text').textContent = "Output volume selected: " + disk.name + ". Open Convert to use it; no job has been started.";
+      W.qs('[data-annot-id="state-disk"] .v2-notice__text').textContent = "Output volume set to " + disk.name + ". Open Convert when you are ready to start the job.";
     }); },
     ask: function () { approval("ask"); },
     decline: function () { approval("decline"); },
@@ -257,7 +257,7 @@
     api.post("/v1/mock/approval", { action: action, resource: action === "ask" ? "start_jobs" : "clinvar" }).then(function (res) {
       if (refused(res)) return;
       var box = W.qs('[data-annot-id="' + (action === "ask" ? "state-readonly" : "state-confirm") + '"]');
-      W.qs(".v2-notice__text", box).textContent = action === "ask" ? "Request recorded on the computer. Open Phone access to review it." : action === "allow" ? "Approved once. ClinVar removed." : "Declined. ClinVar was kept.";
+      W.qs(".v2-notice__text", box).textContent = action === "ask" ? "Request recorded on the computer. Open Phone access to review it." : action === "allow" ? "Approved once. ClinVar removed." : "Declined; ClinVar stays installed.";
       W.qs(".v2-notice__actions", box).hidden = true;
       api.refresh();
     });
@@ -303,7 +303,7 @@
     Promise.all(reqs.map(function (req) { return api.post("/v1/estimate", req); })).then(function (results) {
       var bad = results.filter(function (r) { return r.status !== 200; })[0];
       if (bad) { refused(bad); return; }
-      dialog("Dry run — nothing started", results.map(function (res) {
+      dialog("Dry run · no jobs started", results.map(function (res) {
         return h("section.v2-section", h("strong", res.body.label),
           h("ol.v2-plain-list", res.body.steps.map(function (s) { return h("li", s.name); })));
       }));
@@ -358,8 +358,8 @@
       })[0];
       if (!missing) return true;
       var d = dialog("Missing reference genome", [
-        h("p", "This tool needs " + missing.name + ". Nothing was started."),
-        h("p.v2-small.v2-muted", "Download public reference data through Jobs. No genome data is sent anywhere.")],
+        h("p", "This tool requires " + missing.name + " before it can run."),
+        h("p.v2-small.v2-muted", "Downloading fetches the public reference file in Jobs; your sample files are not sent anywhere.")],
         h("button.v2-btn.v2-btn--primary", { type: "button", onclick: function () {
           send("ref/library", { install: missing.id }).then(function (res) {
             if (res.status > 0 && res.status < 300) W.ui.close(d);

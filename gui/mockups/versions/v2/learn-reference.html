@@ -17,37 +17,39 @@
   </div></header>
   <section class="v2-section" id="reference">
     <h2>A shared coordinate grid for human DNA</h2>
-    <p>A <abbr class="v2-term" data-term="reference">reference genome</abbr> stores standard chromosome sequences in a FASTA (FAST-All) file so labs and databases share one DNA (deoxyribonucleic acid) coordinate grid. Built from a mosaic of volunteer donors, it leaves stretches where personal insertions or hyper-variable immune regions have trouble mapping cleanly.</p>
+    <p>A <abbr class="v2-term" data-term="reference">reference genome</abbr> stores standard chromosome sequences in a FASTA (FAST-All) file so labs and databases share one DNA (deoxyribonucleic acid) coordinate grid. Because it is stitched together from a small group of volunteer donors, reads from personal insertions or hyper-variable immune regions may have nowhere clean to map.</p>
   </section>
   <section class="v2-section" id="builds">
     <h2>Major human assemblies: GRCh37, GRCh38 and T2T-CHM13</h2>
     <ul>
-      <li><abbr class="v2-term" data-term="grch37">GRCh37</abbr> (Genome Reference Consortium human build 37, 2009) underpins consumer kits like Alex’s 23andMe file and older alignments like Gordon’s BAM (Binary Alignment Map). University of California, Santa Cruz (UCSC) <code>hg19</code> shares its autosomal coordinates while differing on <code>chr</code> prefixes and early mitochondrial sequence.</li>
-      <li><abbr class="v2-term" data-term="grch38">GRCh38</abbr> (build 38, 2013) closed hundreds of gaps, standardized mitochondria and backs current clinical tools; Reginald’s CRAM (Compressed Reference-oriented Alignment Map) and Helen’s VCF (Variant Call Format) both use GRCh38.</li>
+      <li><abbr class="v2-term" data-term="grch37">GRCh37</abbr> (Genome Reference Consortium human build 37, 2009) is used by consumer kits like Alex’s 23andMe file and older alignments like Gordon’s BAM (Binary Alignment Map). The University of California, Santa Cruz (UCSC) <code>hg19</code> build uses the same autosomal coordinates, but adds <code>chr</code> prefixes and uses a different mitochondrial sequence.</li>
+      <li><abbr class="v2-term" data-term="grch38">GRCh38</abbr> (build 38, 2013) closed hundreds of gaps, added alternate versions of variable regions and backs current clinical tools; Reginald’s CRAM (Compressed Reference-oriented Alignment Map) and Helen’s VCF (Variant Call Format) both use GRCh38.</li>
       <li><abbr class="v2-term" data-term="t2t">T2T-CHM13</abbr> (Telomere-to-Telomere CHM13, 2022) finished centromeres and long repeats end to end; because CHM13 carried two X chromosomes, complete bundles add donor HG002’s Y chromosome.</li>
     </ul>
-    <p>Pick the assembly your callers and databases expect, and record its exact bundle name. Renaming <code>1</code> to <code>chr1</code> never converts coordinates between builds.</p>
+    <p>Choose the assembly that matches the callers and databases you plan to use. Renaming chromosome <code>1</code> to <code>chr1</code> only changes contig names; it never converts coordinates between builds.</p>
   </section>
   <section class="v2-section" id="coordinates">
-    <h2>Shifted addresses and zero-based versus one-based counting</h2>
+    <h2>Coordinate shifts and 0-based vs 1-based files</h2>
     <p>Closing gaps between GRCh37 and GRCh38 shifted millions of downstream coordinates, so comparing Gordon’s GRCh37 file directly against Reginald’s GRCh38 file by position number lands on different DNA.</p>
     <p>Formats also count differently inside one build: VCF starts at 1, whereas Browser Extensible Data (<abbr class="v2-term" data-term="bed">BED</abbr>) starts at 0 and stops before the end number (BED <code>0 100</code> equals VCF bases 1–100).</p>
     <figure class="v2-diagram" data-render="v2-diagram" data-diagram="reference-builds" data-annot-id="diagram-reference-builds"></figure>
   </section>
   <section class="v2-section" id="liftover">
     <h2>Coordinate liftover versus realigning the reads</h2>
-    <p><abbr class="v2-term" data-term="liftover">Liftover</abbr> remaps VCF or marker coordinates in minutes via a directional <abbr class="v2-term" data-term="chain">chain file</abbr>, though sites in rebuilt patches fail or flip strands. Realigning original reads (the job running on Gordon’s BAM) takes hours and places reads onto new sequence and decoys cleanly.</p>
+    <p><abbr class="v2-term" data-term="liftover">Liftover</abbr> translates VCF or chip coordinates between builds in minutes using a directional <abbr class="v2-term" data-term="chain">chain file</abbr>, but sites in reworked patches can fail to map or flip strands. Realigning the original reads (the job running on Gordon’s BAM) takes hours and places reads onto new sequence and decoys directly.</p>
   </section>
   <section class="v2-section" id="cram">
-    <h2>Why CRAM insists on the exact reference bundle</h2>
+    <h2>Why CRAM needs the exact reference bundle</h2>
     <p><abbr class="v2-term" data-term="cram">CRAM</abbr> omits bases matching the reference and checks an MD5 (Message-Digest Algorithm 5) checksum per chromosome before decoding, halting immediately if handed the wrong FASTA.</p>
-    <p>“GRCh38” covers distinct bundles such as <abbr class="v2-term" data-term="hs38">hs38</abbr>, <code>hs38d1</code> (needed by Alex’s BAM) and <code>hs38DH</code>, just as GRCh37 pipelines use <abbr class="v2-term" data-term="hs37d5">hs37d5</abbr> (Gordon’s BAM), each adding extra <abbr class="v2-term" data-term="decoy">decoy</abbr> contigs to catch stray reads. Archive the exact bundle name or checksum and check the file header when a filename is vague.</p>
+    <p>Several distinct bundles share the “GRCh38” name, including <abbr class="v2-term" data-term="hs38">hs38</abbr>, <code>hs38d1</code> (needed by Alex’s BAM) and <code>hs38DH</code>, just as GRCh37 pipelines use <abbr class="v2-term" data-term="hs37d5">hs37d5</abbr> (Gordon’s BAM). Each bundle adds its own <abbr class="v2-term" data-term="decoy">decoy</abbr> contigs to catch stray reads. Record the exact bundle name or checksum with any CRAM, and check the file header when a filename is vague.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
     <p>Browse <a class="v2-link" href="references.html">Reference data</a> to compare <code>hs37d5</code>, <code>hs38</code> and <code>hs38d1</code>, or open <a class="v2-link" href="tool-align.html">Align reads</a>.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-build">Build</a><a class="v2-link" href="learn.html#term-t2t">T2T</a><a class="v2-link" href="learn.html#term-liftover">Liftover</a><a class="v2-link" href="learn.html#term-chain">Chain file</a></div>
+    <h2>Further reading</h2>
+    <p>The H600 wiki’s <a class="v2-link" href="https://h600.org/wiki/Genome+Build" target="_blank" rel="noopener noreferrer">Genome Build</a> page lists which build each testing company has used over the years.</p>
   </aside>
   <nav class="v2-lesson__nav" aria-label="Lesson navigation">
     <a class="v2-link" href="learn-variants.html" rel="prev"><i data-icon="chevron-left" class="icon--sm"></i>Variants &amp; confidence</a>

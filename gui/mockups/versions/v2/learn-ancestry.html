@@ -13,32 +13,34 @@
 <article class="v2-page v2-lesson" data-annot-id="page">
   <header class="v2-head"><div class="v2-head__text">
     <h1>Ancestry &amp; relatives</h1>
-    <p class="v2-head__sub">Haplogroups follow two single edges of your family tree, while autosomal models and kinship compare shuffled DNA across hundreds of ancestors.</p>
+    <p class="v2-head__sub">Haplogroups trace two single lines of your family tree; autosomal models and kinship compare DNA shuffled across hundreds of ancestors.</p>
   </div></header>
   <section class="v2-section" id="lineage">
-    <h2>Y-DNA and mtDNA follow two unbroken lines</h2>
-    <p>A <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr> names a migration-tree branch defined by shared mutations. Y-chromosome DNA (<abbr class="v2-term" data-term="ydna">Y-DNA</abbr>) passes father to son, so Reginald carries Gordon’s <code>J-ZS241</code>. Mitochondrial DNA (<abbr class="v2-term" data-term="mtdna">mtDNA</abbr>) passes from mother to child through the egg: Reginald shares Helen’s <code>K1a1b1a</code>, while Gordon’s <code>H1c</code> stops with Gordon and Helen would need a male paternal relative’s file to read her paternal line.</p>
-    <p>Ten generations back you have 1,024 ancestor slots; Y-DNA and mtDNA trace just two of them. Surname projects also compare faster-mutating Y-chromosome short tandem repeats (<abbr class="v2-term" data-term="ystr">Y-STRs</abbr>), though short reads size long repeats less cleanly than dedicated panels, and cells can carry a benign mtDNA mixture called <abbr class="v2-term" data-term="heteroplasmy">heteroplasmy</abbr>.</p>
+    <h2>Y-DNA and mtDNA haplogroups</h2>
+    <p>A <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr> names a migration-tree branch defined by shared mutations. Y-chromosome DNA (<abbr class="v2-term" data-term="ydna">Y-DNA</abbr>) passes from father to son, so Reginald carries Gordon’s <code>J-ZS241</code>; Helen has no Y chromosome and would need a file from a male relative on her father’s side to read that line. Mitochondrial DNA (<abbr class="v2-term" data-term="mtdna">mtDNA</abbr>) passes from mother to child through the egg, so Reginald carries Helen’s <code>K1a1b1a</code> and Gordon’s <code>H1c</code> stops with Gordon.</p>
+    <p>Ten generations back you have 1,024 ancestor slots, and Y-DNA and mtDNA trace just two of them. Surname projects also compare faster-mutating Y-chromosome short tandem repeats (<abbr class="v2-term" data-term="ystr">Y-STRs</abbr>), where short reads size long repeats less cleanly than dedicated panels. In mitochondria, cells can also carry a benign mixture of mtDNA sequences called <abbr class="v2-term" data-term="heteroplasmy">heteroplasmy</abbr>.</p>
     <figure class="v2-diagram" data-render="v2-diagram" data-diagram="inheritance-lines" data-annot-id="diagram-inheritance-lines"></figure>
   </section>
   <section class="v2-section" id="autosomal">
-    <h2>How autosomal ancestry percentages are modeled</h2>
+    <h2>Autosomal ancestry percentages</h2>
     <p><abbr class="v2-term" data-term="admixture">Ancestry proportions</abbr> compare shuffled markers across chromosomes 1–22 against <abbr class="v2-term" data-term="refpop">reference populations</abbr> from cohorts like the Human Genome Diversity Project (<abbr class="v2-term" data-term="hgdp">HGDP</abbr>) and <abbr class="v2-term" data-term="kg1000">1000 Genomes</abbr> (2,504–3,202 donors).</p>
     <p>Reginald’s 52% European / 38% Middle Eastern result shows which blend of modern reference samples best fits his markers; neighboring groups grade into each other and changing the reference panel shifts the numbers.</p>
   </section>
   <section class="v2-section" id="relatives">
     <h2>Checking family ties across files on your disk</h2>
-    <p><abbr class="v2-term" data-term="relatedness">Relatedness</abbr> and kinship tools measure shared DNA between files in your library, confirming Gordon and Reginald share ~50% across every autosome or catching sample swaps, while 25%-sharing ties (grandparent, aunt/uncle, half-sibling) need family context to separate. Local checks compare only loaded files; uploading an export to an outside matching database is a separate choice that can uncover unexpected relatives.</p>
+    <p><abbr class="v2-term" data-term="relatedness">Relatedness</abbr> and kinship tools measure shared DNA between files in your library, confirming that Gordon and Reginald share ~50% across every autosome or catching an accidental sample swap. Relationships that share ~25% on average (grandparent, aunt or uncle, half-sibling) still need family context to separate. Local checks compare only loaded files; uploading an export to an outside matching database is a separate choice that can uncover unexpected relatives.</p>
   </section>
   <section class="v2-section" id="limits">
-    <h2>What uncertainty bars capture and what they miss</h2>
-    <p>A <abbr class="v2-term" data-term="interval">95% interval</abbr> shows block-resampling wobble inside one model without capturing ancestral groups missing from the reference panel altogether. Pair estimates with family records; statistical similarity never defines culture or belonging.</p>
+    <h2>Confidence ranges and reference gaps</h2>
+    <p>A <abbr class="v2-term" data-term="interval">95% interval</abbr> measures how much a percentage shifts when chromosome blocks are resampled inside one model. It cannot flag ancestral groups missing from the reference panel altogether. Because these percentages measure marker similarity to modern donor cohorts, family records remain essential for tracing specific places and communities.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
     <p>Open <a class="v2-link" href="ancestry.html">Ancestry &amp; lineage</a> on Reginald’s genome, then compare family files in <a class="v2-link" href="tool-relatedness.html">Relatedness</a>.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-haplogroup">Haplogroup</a><a class="v2-link" href="learn.html#term-ydna">Y-DNA</a><a class="v2-link" href="learn.html#term-mtdna">mtDNA</a><a class="v2-link" href="learn.html#term-relatedness">Kinship</a></div>
+    <h2>Further reading</h2>
+    <p>The <a class="v2-link" href="https://h600.org/wiki/HomePage" target="_blank" rel="noopener noreferrer">H600 wiki</a> covers genetic genealogy in depth, including how to <a class="v2-link" href="https://wiki.h600.org/STR+Extraction+from+BAM+files" target="_blank" rel="noopener noreferrer">pull Y-STR values from a BAM file</a>.</p>
   </aside>
   <nav class="v2-lesson__nav" aria-label="Lesson navigation">
     <a class="v2-link" href="learn-health.html" rel="prev"><i data-icon="chevron-left" class="icon--sm"></i>Interpreting health findings</a>
