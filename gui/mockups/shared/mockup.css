@@ -299,3 +299,88 @@ body.mk-ready {
   color: #1b1b1b;
   font-weight: 600;
 }
+
+/* Version switch (v1 / v2 / …) and the side-by-side comparison page */
+a.mk-seg__btn {
+  text-decoration: none;
+}
+
+.mk-seg__btn[aria-current="page"] {
+  background: #f2c94c;
+  color: #1b1b1b;
+  font-weight: 700;
+}
+
+.mk-seg__btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mk-embed .mk-bar,
+.mk-embed .mk-preview {
+  display: none;
+}
+
+.mk-select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid #3a4252;
+  border-radius: 6px;
+  background: #0e1118;
+  color: #e8ecf3;
+  font: inherit;
+  font-size: 12px;
+}
+
+.mk-compare {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 1px;
+  min-height: 0;
+  overflow-x: auto;
+  background: #000;
+}
+
+.mk-compare__pane {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--pane-min, 320px);
+  background: #171b24;
+}
+
+.mk-compare[data-size="phone"] {
+  justify-content: center;
+  gap: 24px;
+  background: #05070c;
+}
+
+.mk-compare[data-size="phone"] .mk-compare__pane {
+  flex: 0 0 390px;
+}
+
+.mk-compare__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 6px 10px;
+  color: #aab3c5;
+  font-size: 12px;
+}
+
+.mk-compare__label strong {
+  color: #e8ecf3;
+}
+
+.mk-compare__label a {
+  margin-left: auto;
+  color: #8cc1ff;
+}
+
+.mk-compare iframe {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}

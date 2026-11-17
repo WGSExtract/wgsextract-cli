@@ -265,3 +265,38 @@
     font-size: var(--fs-3xl);
   }
 }
+
+/* Versions through time on the index (data-render="versions") */
+.version-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.version {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.version__id {
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-bold);
+  line-height: 1;
+}
+
+.version__screens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+
+.version__new {
+  color: var(--c-success);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+}

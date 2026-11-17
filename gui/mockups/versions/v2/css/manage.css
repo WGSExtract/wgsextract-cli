@@ -1,0 +1,219 @@
+/* Styles used only by the managing screens (tools, references, settings,
+ * phone, setup, states). Shared components live in the other files; add
+ * here only what those do not cover. */
+
+/* A plain row in a sheet: what it is (title, one line of detail) on the
+ * left, its state or quiet actions on the right. Hairlines come from the
+ * sheet. On a phone the aside drops below the text. */
+.v2-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 16px;
+  padding: 12px 16px;
+}
+
+.v2-item__title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-weight: 600;
+}
+
+.v2-item__desc {
+  grid-column: 1;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-item__aside {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+
+/* The tools page: a narrow catalog of links beside the selected tool */
+.v2-cols--catalog {
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.v2-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v2-catalog h2 {
+  margin: 14px 0 4px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.v2-catalog a {
+  padding: 5px 10px;
+  border-radius: var(--v2-r);
+  color: var(--c-text-2);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.v2-catalog a:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.v2-catalog a[aria-current="page"] {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+/* Numbered blocks on the one-screen first run */
+.v2-numbered {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 6px 14px;
+  padding: 18px 20px;
+}
+
+.v2-numbered > :not(.v2-numbered__n) {
+  grid-column: 2;
+}
+
+.v2-numbered__n {
+  display: grid;
+  place-items: center;
+  grid-row: 1 / span 4;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 50%;
+  color: var(--c-text-2);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Placeholder lines while something loads */
+.v2-skel {
+  display: block;
+  width: var(--w, 100%);
+  height: var(--h, 12px);
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--c-surface-3) 30%, var(--c-surface-2) 50%, var(--c-surface-3) 70%) 0 0 / 300% 100%;
+  animation: v2-skel 1.4s ease-in-out infinite;
+}
+
+@keyframes v2-skel {
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-skel {
+    animation: none;
+  }
+}
+
+/* Short plain lists (what a phone can and can't do) */
+.v2-plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+@container app (max-width: 860px) {
+  .v2-cols--catalog {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container app (max-width: 720px) {
+  .v2-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-item__aside {
+    grid-row: auto;
+    grid-column: 1;
+    justify-content: flex-start;
+    margin-top: 6px;
+  }
+}
+
+/* A larger section title for the selected tool beside the catalog */
+.v2-section h2.v2-h2--lg {
+  font-size: 20px;
+}
+
+/* A remove action that should not shout: red words, no border */
+.v2-btn--quiet.v2-btn--danger {
+  border-color: transparent;
+}
+
+/* Pairing: the code beside its numbered steps; steps drop below on a phone */
+.v2-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px 28px;
+}
+
+.v2-pair > ol {
+  flex: 1 1 240px;
+}
+
+/* A short list of entries (allowed folders) inside a settings row */
+.v2-field__list {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.v2-pair strong.v2-mono {
+  font-size: 18px;
+  letter-spacing: 0.06em;
+}
+
+.v2-item__title .v2-status {
+  font-weight: 400;
+}
+
+/* The first-run page has no app shell, so it sets the phone gutter itself */
+@container app (max-width: 720px) {
+  .v2-bare {
+    --v2-pad: 16px;
+    --v2-h: 44px;
+  }
+
+  .v2-bare .v2-numbered {
+    padding: 16px;
+  }
+}
+
+/* States review page: a caption saying where an example appears, then the example */
+.v2-examples {
+  gap: 22px;
+}
+
+.v2-example {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A detail line under a table row's name (shown on phones in place of columns) */
+.v2-table__main > div {
+  font-weight: 400;
+}

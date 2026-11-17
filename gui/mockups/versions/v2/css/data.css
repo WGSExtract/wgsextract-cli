@@ -1,0 +1,321 @@
+/* Progress and charts. Values arrive as custom properties (--v, --w, --lo,
+ * --hi) so markup stays data-only. Text beside a mark is always ink; the
+ * mark carries the colour. */
+
+/* Progress: the two helix strands, cyan to magenta */
+.v2-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track, var(--c-surface-3));
+  overflow: hidden;
+}
+
+.v2-bar > span {
+  display: block;
+  width: var(--v, 0%);
+  height: 100%;
+  border-radius: 3px;
+  background: var(--v2-helix);
+}
+
+.v2-bar[data-state="stopped"] > span {
+  background: var(--c-text-3);
+}
+
+.v2-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+/* Steps of a job, weighted by how long each takes (--w) */
+.v2-steps {
+  display: flex;
+  gap: 3px;
+}
+
+.v2-step {
+  display: flex;
+  flex: var(--w, 1) 1 0;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--c-text-3);
+  font-size: 12px;
+}
+
+.v2-step > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-step[data-state="done"] .v2-bar > span {
+  background: var(--c-text-2);
+}
+
+.v2-step[data-state="running"] {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+/* Proportions: stacked bar with 2px surface gaps and an always-present legend */
+.v2-stacked {
+  display: flex;
+  gap: 2px;
+  height: var(--h, 18px);
+}
+
+.v2-stacked > span {
+  flex: var(--w) 1 0;
+  min-width: 3px;
+  background: var(--s);
+}
+
+.v2-stacked > span:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.v2-stacked > span:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.v2-s1 { --s: var(--v2-s1); }
+.v2-s2 { --s: var(--v2-s2); }
+.v2-s3 { --s: var(--v2-s3); }
+.v2-s4 { --s: var(--v2-s4); }
+.v2-s5 { --s: var(--v2-s5); }
+.v2-s6 { --s: var(--v2-s6); }
+.v2-s7 { --s: var(--v2-s7); }
+
+.v2-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.v2-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.v2-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--s);
+}
+
+/* Share with its 95% interval, on a common 0–100% scale */
+.v2-ci {
+  position: relative;
+  height: 14px;
+  min-width: 120px;
+  border-left: 1px solid var(--c-border-strong);
+}
+
+.v2-ci__bar {
+  position: absolute;
+  inset: 2px auto 2px 0;
+  width: var(--v);
+  border-radius: 0 4px 4px 0;
+  background: var(--s);
+}
+
+.v2-ci__range {
+  position: absolute;
+  top: 50%;
+  left: var(--lo);
+  width: calc(var(--hi) - var(--lo));
+  height: 1.5px;
+  background: var(--c-text);
+}
+
+.v2-ci__range::before,
+.v2-ci__range::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 1.5px;
+  height: 8px;
+  background: var(--c-text);
+}
+
+.v2-ci__range::after {
+  right: 0;
+}
+
+/* Coverage per chromosome: one series, so one ink; the note names X and Y */
+.v2-cov {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: var(--h, 96px);
+}
+
+.v2-cov > span {
+  position: relative;
+  flex: 1;
+  height: var(--v);
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--c-text-2);
+}
+
+.v2-cov > span[data-sex] {
+  background: var(--c-text-disabled);
+}
+
+.v2-cov > span:hover {
+  background: var(--c-text);
+}
+
+.v2-cov-axis {
+  display: flex;
+  gap: 2px;
+  color: var(--c-text-3);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-cov-axis > span {
+  flex: 1;
+  text-align: center;
+}
+
+/* A lineage: the path from the root of the tree to the result */
+.v2-line {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.v2-line__result {
+  color: var(--line);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.v2-line {
+  --line: var(--c-text-2);
+  --strand: var(--c-border-strong);
+}
+
+.v2-line[data-line="y"] {
+  --line: var(--v2-y);
+  --strand: var(--v2-cyan);
+}
+
+.v2-line[data-line="mt"] {
+  --line: var(--v2-mt);
+  --strand: var(--v2-magenta);
+}
+
+.v2-line__kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+}
+
+.v2-line__kind small {
+  color: var(--c-text-3);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.v2-line__kind::before {
+  content: "";
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--strand);
+}
+
+.v2-path {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.v2-path li {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0 3px 18px;
+  color: var(--c-text-2);
+}
+
+.v2-path li::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1.5px;
+  background: color-mix(in srgb, var(--strand) 55%, var(--c-surface));
+}
+
+.v2-path li::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--strand);
+}
+
+.v2-path li:last-child {
+  color: var(--c-text);
+  font-weight: 650;
+}
+
+.v2-path li:last-child::before {
+  bottom: auto;
+  height: 12px;
+}
+
+.v2-path code {
+  color: var(--c-text);
+}
+
+.v2-spin {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--c-border-strong);
+  border-top-color: var(--v2-cyan);
+  border-radius: 50%;
+  animation: v2-spin 0.9s linear infinite;
+}
+
+@keyframes v2-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-spin {
+    animation: none;
+  }
+}

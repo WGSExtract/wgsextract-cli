@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ancestry and lineage · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-ancestry" data-shell="v2" data-nav="p-hg002" data-title="Ancestry and lineage for HG002" data-parent="HG002|person.html">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Ancestry and lineage for HG002</h1>
+      <p class="v2-head__sub">HG002’s direct paternal and maternal lines, and how the genome compares with reference populations. Worked out today from <span class="v2-mono">HG002.GRCh38.30x.cram</span>.</p>
+    </div>
+  </header>
+
+  <section class="v2-section" data-annot-id="lineage">
+    <h2>Lineage</h2>
+    <div class="v2-sheet">
+      <div class="v2-sheet__pad v2-cols v2-cols--even" style="gap: 32px">
+        <div class="v2-line" data-line="y" data-annot-id="paternal">
+          <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+          <span class="v2-line__result">J-ZS241</span>
+          <span class="v2-muted v2-small">In the J1 branch, common in the Middle East and the Caucasus and among Ashkenazi Jews.</span>
+          <span class="v2-small"><strong>High confidence:</strong> 41 of 43 defining markers match.</span>
+          <ol class="v2-path" aria-label="Path from the root of the Y tree">
+            <li><code>A0-T</code><span>root</span></li>
+            <li><span>14 branches</span></li>
+            <li><code>J-M304</code><span>J · about 43,000 years</span></li>
+            <li><code>J-M267</code><span>J1</span></li>
+            <li><code>J-P58</code><span>J1a2a</span></li>
+            <li><span>3 branches</span></li>
+            <li><code>J-ZS241</code><span>41 of 43 markers</span></li>
+          </ol>
+        </div>
+        <div class="v2-line" data-line="mt" data-annot-id="maternal">
+          <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+          <span class="v2-line__result">K1a1b1a</span>
+          <span class="v2-muted v2-small">A branch of K found across Europe and common among Ashkenazi Jews.</span>
+          <span class="v2-small"><strong>High confidence:</strong> quality 0.94 of 1.</span>
+          <ol class="v2-path" aria-label="Path from the root of the mtDNA tree">
+            <li><code>L3</code><span>out of Africa</span></li>
+            <li><span>N, then R, then U</span></li>
+            <li><code>U8b</code><span></span></li>
+            <li><code>K</code><span>about 22,000 years</span></li>
+            <li><code>K1a1b1</code><span></span></li>
+            <li><code>K1a1b1a</code><span>quality 0.94</span></li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="ancestry">
+    <div class="v2-section__head v2-row--wrap">
+      <h2>Ancestry proportions</h2>
+      <div class="v2-seg" data-seg="anc" role="group" aria-label="Level of detail"><button type="button" value="continental" aria-pressed="true">Continental</button><button type="button" value="regional">Regional</button></div>
+    </div>
+    <div class="v2-sheet">
+      <div class="v2-sheet__pad v2-section">
+        <div class="v2-stacked" role="img" aria-label="European 52%, Middle Eastern 38%, Central and South Asian 6%, Sub-Saharan African 3%, East Asian 1%">
+          <span class="v2-s1" style="--w: 52" title="European 52%"></span><span class="v2-s2" style="--w: 38" title="Middle Eastern 38%"></span><span class="v2-s3" style="--w: 6" title="Central &amp; South Asian 6%"></span><span class="v2-s4" style="--w: 3" title="Sub-Saharan African 3%"></span><span class="v2-s5" style="--w: 1" title="East Asian 1%"></span>
+        </div>
+        <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of reference populations. Each component is named after the groups that carry it most, but many people carry several: reference Europeans, for example, carry about a quarter “Middle Eastern” on average, from shared ancient ancestry.</p>
+      </div>
+      <div class="v2-scroll" data-when="anc:continental">
+        <table class="v2-table v2-table--wide" aria-label="Ancestry components, continental">
+          <thead><tr><th>Component</th><th class="v2-num">Share</th><th>95% interval</th><th>Carried most by</th></tr></thead>
+          <tbody>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s1"></span>European</span></td><td class="v2-num">52%</td><td><div class="v2-row"><div class="v2-ci v2-s1 v2-grow" style="--v: 52%; --lo: 48%; --hi: 56%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">48–56%</span></div></td><td class="v2-muted">Tuscan, Iberian, British, Finnish</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s2"></span>Middle Eastern</span></td><td class="v2-num">38%</td><td><div class="v2-row"><div class="v2-ci v2-s2 v2-grow" style="--v: 38%; --lo: 34%; --hi: 42%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">34–42%</span></div></td><td class="v2-muted">Druze, Palestinian, Bedouin</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s3"></span>Central &amp; South Asian</span></td><td class="v2-num">6%</td><td><div class="v2-row"><div class="v2-ci v2-s3 v2-grow" style="--v: 6%; --lo: 4%; --hi: 8%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">4–8%</span></div></td><td class="v2-muted">Balochi, Brahui, Makrani</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s4"></span>Sub-Saharan African</span></td><td class="v2-num">3%</td><td><div class="v2-row"><div class="v2-ci v2-s4 v2-grow" style="--v: 3%; --lo: 2%; --hi: 5%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">2–5%</span></div></td><td class="v2-muted">Yoruba, Mandenka</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s5"></span>East Asian</span></td><td class="v2-num">1%</td><td><div class="v2-row"><div class="v2-ci v2-s5 v2-grow" style="--v: 1%; --lo: 0%; --hi: 2%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">0–2%</span></div></td><td class="v2-muted">Han, Japanese</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="v2-scroll" data-when="anc:regional" hidden>
+        <table class="v2-table" aria-label="Ancestry components, regional">
+          <thead><tr><th>Region</th><th class="v2-num">Share</th><th>Part of</th></tr></thead>
+          <tbody>
+            <tr><td class="v2-table__main">Southern European</td><td class="v2-num">27%</td><td class="v2-muted">European</td></tr>
+            <tr><td class="v2-table__main">Northern European</td><td class="v2-num">14%</td><td class="v2-muted">European</td></tr>
+            <tr><td class="v2-table__main">Eastern European</td><td class="v2-num">11%</td><td class="v2-muted">European</td></tr>
+            <tr><td class="v2-table__main">Middle Eastern &amp; Mediterranean</td><td class="v2-num">22%</td><td class="v2-muted">Middle Eastern</td></tr>
+            <tr><td class="v2-table__main">Caucasus &amp; Anatolia</td><td class="v2-num">16%</td><td class="v2-muted">Middle Eastern</td></tr>
+            <tr><td class="v2-table__main">South Asian</td><td class="v2-num">6%</td><td class="v2-muted">Central &amp; South Asian</td></tr>
+            <tr><td class="v2-table__main">West African</td><td class="v2-num">3%</td><td class="v2-muted">Sub-Saharan African</td></tr>
+            <tr><td class="v2-table__main">Northeast Asian</td><td class="v2-num">1%</td><td class="v2-muted">East Asian</td></tr>
+          </tbody>
+        </table>
+        <p class="v2-sheet__label">The other 4 of the 12 regions were 0%. Intervals are wider at this level; the chart above stays continental.</p>
+      </div>
+    </div>
+    <p class="v2-section__note" data-annot-id="ancestry-facts">187,417 sites, 96% found in this genome · compared with 3,129 people from 80 reference populations (HGDP and 1000 Genomes) · Indigenous American and Oceanian were 0%.</p>
+    <code class="v2-cmd v2-dim v2-small">qc/ancestry · ADAMIXTURE K=7 and K=12 · lineage/y-haplogroup on the YFull tree (pinned), QC 0.98 · lineage/mt-haplogroup with PhyloTree 17 and HaploGrep 3</code>
+  </section>
+
+  <section class="v2-section" data-annot-id="more">
+    <h2>More you can run for HG002</h2>
+    <div class="v2-sheet" style="max-width: 640px">
+      <a class="v2-do" href="jobs.html"><i data-icon="y-lineage"></i><span class="v2-do__title">Y-STR markers</span><span class="v2-do__cost">Queued<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">111 markers for surname projects. Already queued: starts after HG003’s realign, about 4 min.</span></a>
+      <a class="v2-do" href="tools.html"><i data-icon="relate"></i><span class="v2-do__title">Compare with family</span><span class="v2-do__cost">5 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">HG003 and HG004 are in the library: confirms who is related to whom, and how.</span></a>
+    </div>
+  </section>
+</div>
+</body>
+</html>

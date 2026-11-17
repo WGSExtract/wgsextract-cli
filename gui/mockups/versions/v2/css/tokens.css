@@ -1,0 +1,103 @@
+/* v2 tokens. Ink on warm paper with a navy sidebar; the two strands of the
+ * logo's helix carry meaning: cyan for the paternal line (Y), magenta for
+ * the maternal line (mtDNA), and the two together for work in progress.
+ * Status colours are reserved for status, and the chart series (validated
+ * categorical order, light and dark steps) for ancestry components. */
+:root,
+[data-theme="light"] {
+  --c-bg: #f6f5f1;
+  --c-surface: #ffffff;
+  --c-surface-2: #efede7;
+  --c-surface-3: #e4e1d9;
+  --c-border: #dcd9d0;
+  --c-border-strong: #b5b1a4;
+  --c-text: #14182a;
+  --c-text-2: #434859;
+  --c-text-3: #5f6475;
+  --c-text-disabled: #8f93a0;
+  --c-primary: #1f4fc4;
+  --c-primary-hover: #173f9f;
+  --c-primary-soft: #e6ecfa;
+  --c-primary-soft-text: #173f9f;
+  --c-focus: #1f4fc4;
+  --c-success: #17703f;
+  --c-success-soft: #e3f2e9;
+  --c-warn: #875000;
+  --c-warn-soft: #fbefd6;
+  --c-warn-border: #e6c27a;
+  --c-danger: #b3261e;
+  --c-danger-soft: #fbe6e4;
+  --c-info: #0a6a82;
+  --c-info-soft: #e0f1f6;
+
+  --v2-side: #111a2e;
+  --v2-side-text: #c5cde0;
+  --v2-side-dim: #8f9ab4;
+  --v2-side-strong: #ffffff;
+  --v2-side-hover: rgb(255 255 255 / 0.07);
+  --v2-side-on: rgb(255 255 255 / 0.12);
+  --v2-side-line: rgb(255 255 255 / 0.1);
+  --v2-act: #14182a;
+  --v2-act-hover: #2b3152;
+  --v2-on-act: #ffffff;
+  --v2-y: #0a6a82;
+  --v2-mt: #9a27a6;
+  --v2-cyan: #2ec5e6;
+  --v2-magenta: #c13bd4;
+  --v2-helix: linear-gradient(90deg, var(--v2-cyan), var(--v2-magenta));
+
+  --v2-s1: #2a78d6;
+  --v2-s2: #eb6834;
+  --v2-s3: #1baf7a;
+  --v2-s4: #eda100;
+  --v2-s5: #e87ba4;
+  --v2-s6: #008300;
+  --v2-s7: #6250d6;
+
+  --v2-r: 8px;
+  --v2-r-lg: 12px;
+  --v2-h: 34px;
+  --v2-pad: 32px;
+}
+
+[data-theme="dark"] {
+  --c-bg: #0b1020;
+  --c-surface: #121a30;
+  --c-surface-2: #19233f;
+  --c-surface-3: #212d4d;
+  --c-border: #27324f;
+  --c-border-strong: #3d4a6c;
+  --c-text: #e8ecf6;
+  --c-text-2: #b7c0d5;
+  --c-text-3: #93a0bb;
+  --c-text-disabled: #64708a;
+  --c-primary: #7fb2ff;
+  --c-primary-hover: #a5c9ff;
+  --c-primary-soft: rgb(127 178 255 / 0.14);
+  --c-primary-soft-text: #a5c9ff;
+  --c-focus: #7fb2ff;
+  --c-success: #57d394;
+  --c-success-soft: rgb(87 211 148 / 0.13);
+  --c-warn: #f2b84f;
+  --c-warn-soft: rgb(242 184 79 / 0.12);
+  --c-warn-border: rgb(242 184 79 / 0.4);
+  --c-danger: #ff8a80;
+  --c-danger-soft: rgb(255 138 128 / 0.13);
+  --c-info: #56d4ee;
+  --c-info-soft: rgb(86 212 238 / 0.12);
+
+  --v2-side: #080c18;
+  --v2-act: #2ec5e6;
+  --v2-act-hover: #6ad8f1;
+  --v2-on-act: #06121f;
+  --v2-y: #56d4ee;
+  --v2-mt: #e792f0;
+
+  --v2-s1: #3987e5;
+  --v2-s2: #d95926;
+  --v2-s3: #199e70;
+  --v2-s4: #c98500;
+  --v2-s5: #d55181;
+  --v2-s6: #0ca30c;
+  --v2-s7: #9085e9;
+}

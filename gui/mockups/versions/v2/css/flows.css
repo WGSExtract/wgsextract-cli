@@ -1,0 +1,29 @@
+/* Styles used only by the task and result screens (person-alex, add,
+ * result, ancestry, convert, jobs). Shared components live in the other
+ * files; add here only what those do not cover. */
+
+/* An action that exists but can't run yet (its cost slot says why) */
+.v2-do[aria-disabled="true"] {
+  cursor: default;
+}
+
+.v2-do[aria-disabled="true"]:hover {
+  background: none;
+}
+
+.v2-do[aria-disabled="true"] > .icon,
+.v2-do[aria-disabled="true"] .v2-do__title {
+  color: var(--c-text-3);
+}
+
+/* Drop zone text: takes the row, and wraps the buttons below it when narrow */
+.v2-drop__text {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+/* A table with several columns that scrolls sideways inside its sheet on a
+ * phone rather than squeezing its rows into tall, wrapped cells */
+.v2-table--wide {
+  min-width: 640px;
+}

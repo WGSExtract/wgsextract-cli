@@ -34,6 +34,22 @@ standard library, no other installs.
 You can also open `index.html` straight from disk. Everything works except
 saving notes to the repo: they stay in that browser (see below).
 
+## Versions
+
+The design is kept as versions through time: **v1** is Direction C of the
+first exploration (`directions/c/`), **v2** is the redesign in `versions/v2/`
+(what changed and why: [DESIGN.md §11](DESIGN.md#11-version-2-people-first)).
+On any screen, the **v1 / v2** switch in the top bar opens the same screen in
+the other version; **Compare** (`compare.html`) shows two versions side by
+side, at desktop or phone width, light or dark, and its URL can be shared.
+The index lists every version with its screens.
+
+To add v3: copy the pages you change into `versions/v3/` with their own
+stylesheet and shell (`shared/shells/v3.js`), add an entry to `list` in
+`shared/versions.js` naming each screen's file, and it appears in the switch,
+in Compare and on the index. Screens share a key across versions (`home`,
+`person`, `dna-test`, …), so a version may drop a screen or add a new one.
+
 ## Review and leave notes
 
 Every page has a dark bar on top that is not part of the design:
@@ -401,7 +417,11 @@ gui/mockups/
     a/                  Guided: home, microarray wizard
     b/                  Console: dashboard, microarray batch form
     c/                  Genome hub (recommended): every screen
+  versions/
+    v2/                 People first: every screen, v2.css + css/*.css
+  compare.html          one screen in two versions, side by side
   shared/
+    versions.js         the versions and which file is each screen
     boot.js             loads the runtime below in order
     core.js theme.js icons.js ui.js palette.js chrome.js start.js
     version.js          “local”; the Pages build stamps the commit here

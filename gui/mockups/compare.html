@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compare versions · WGS Extract mockups</title>
+<link rel="stylesheet" href="design-system/wgse.css">
+<link rel="stylesheet" href="shared/mockup.css">
+<script src="shared/versions.js"></script>
+<script src="shared/compare.js" defer></script>
+</head>
+<body class="mk-ready">
+<div class="mk-bar" role="region" aria-label="Compare versions">
+  <a class="mk-btn" href="index.html">← Mockups</a>
+  <span class="mk-title"><strong>Compare versions</strong><span class="mk-sub">The same screen in two versions of the design</span></span>
+  <label class="visually-hidden" for="cmp-screen">Screen</label>
+  <select class="mk-select" id="cmp-screen"></select>
+  <label class="visually-hidden" for="cmp-a">Left version</label>
+  <select class="mk-select" id="cmp-a"></select>
+  <span aria-hidden="true">→</span>
+  <label class="visually-hidden" for="cmp-b">Right version</label>
+  <select class="mk-select" id="cmp-b"></select>
+  <div class="mk-seg" role="group" aria-label="Size" id="cmp-size">
+    <button class="mk-seg__btn" type="button" value="desktop">Desktop</button>
+    <button class="mk-seg__btn" type="button" value="phone">Phone</button>
+  </div>
+  <div class="mk-seg" role="group" aria-label="Theme" id="cmp-theme">
+    <button class="mk-seg__btn" type="button" value="light">Light</button>
+    <button class="mk-seg__btn" type="button" value="dark">Dark</button>
+  </div>
+</div>
+<div class="mk-compare" id="cmp-panes"></div>
+</body>
+</html>

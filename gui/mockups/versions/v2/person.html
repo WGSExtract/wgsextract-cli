@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HG002 · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-person" data-shell="v2" data-nav="p-hg002" data-title="HG002" data-parent="Library|home.html">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__who">
+      <span class="v2-avatar v2-avatar--lg">H2</span>
+      <div class="v2-head__text">
+        <h1>HG002</h1>
+        <p class="v2-head__sub">Son of HG003 and HG004 · male · 1 genome file, 31× on GRCh38</p>
+      </div>
+    </div>
+    <div class="v2-head__actions">
+      <button class="v2-btn v2-btn--quiet" type="button" data-open="#person-menu" aria-label="Rename, notes, remove"><i data-icon="ellipsis"></i></button>
+    </div>
+  </header>
+
+  <div class="v2-cols">
+    <div class="v2-stack">
+      <section class="v2-section" data-annot-id="lineage">
+        <div class="v2-section__head"><h2>Lineage</h2><a class="v2-link v2-small" href="ancestry.html">Paths and details</a></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-cols--even v2-cols" style="gap: 24px">
+            <div class="v2-line" data-line="y">
+              <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+              <span class="v2-line__result">J-ZS241</span>
+              <span class="v2-muted v2-small">In the J1 branch, common in the Middle East and the Caucasus and among Ashkenazi Jews. High confidence.</span>
+            </div>
+            <div class="v2-line" data-line="mt">
+              <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+              <span class="v2-line__result">K1a1b1a</span>
+              <span class="v2-muted v2-small">A branch of K found across Europe and common among Ashkenazi Jews. High confidence.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="ancestry">
+        <div class="v2-section__head"><h2>Ancestry proportions</h2><a class="v2-link v2-small" href="ancestry.html">Intervals and regions</a></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-section">
+            <div class="v2-stacked" role="img" aria-label="European 52%, Middle Eastern 38%, Central and South Asian 6%, Sub-Saharan African 3%, East Asian 1%">
+              <span class="v2-s1" style="--w: 52" title="European 52%"></span><span class="v2-s2" style="--w: 38" title="Middle Eastern 38%"></span><span class="v2-s3" style="--w: 6" title="Central &amp; South Asian 6%"></span><span class="v2-s4" style="--w: 3" title="Sub-Saharan African 3%"></span><span class="v2-s5" style="--w: 1" title="East Asian 1%"></span>
+            </div>
+            <ul class="v2-legend">
+              <li><span class="v2-swatch v2-s1"></span>European <strong>52%</strong></li>
+              <li><span class="v2-swatch v2-s2"></span>Middle Eastern <strong>38%</strong></li>
+              <li><span class="v2-swatch v2-s3"></span>Central &amp; South Asian <strong>6%</strong></li>
+              <li><span class="v2-swatch v2-s4"></span>Sub-Saharan African <strong>3%</strong></li>
+              <li><span class="v2-swatch v2-s5"></span>East Asian <strong>1%</strong></li>
+            </ul>
+            <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of reference populations, each named after the groups that carry it most; most people carry several.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="files">
+        <div class="v2-section__head"><h2>Files</h2><a class="v2-link v2-small" href="add.html">Add a file for HG002</a></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-section">
+            <div class="v2-row v2-row--wrap"><span class="v2-tag">CRAM</span><span class="v2-file__name v2-grow">HG002.GRCh38.30x.cram</span><span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Ready · used for everything on this page</span></div>
+            <code class="v2-cmd v2-dim v2-small">{{bundleWorkspace}}/genomes/HG002/HG002.GRCh38.30x.cram</code>
+            <dl class="v2-kv">
+              <div><dt>Mean depth</dt><dd>31.4× <small>good for every task</small></dd></div>
+              <div><dt>Reads mapped</dt><dd>99.3% <small>876 M reads</small></dd></div>
+              <div><dt>Reads</dt><dd>2 × 150 bp <small>Illumina, paired</small></dd></div>
+              <div><dt>Reference</dt><dd>hs38 <small>GRCh38, installed</small></dd></div>
+              <div><dt>Size</dt><dd>16.8 GB</dd></div>
+            </dl>
+            <div data-annot-id="coverage">
+              <div class="v2-cov" role="img" aria-label="Mean depth per chromosome: about 31× on chromosomes 1 to 22, about 15× on X and Y, as expected for a male">
+                <span style="--v: 89%" title="chr1 · 31.9×"></span><span style="--v: 90%" title="chr2 · 32.4×"></span><span style="--v: 89%" title="chr3 · 32.1×"></span><span style="--v: 87%" title="chr4 · 31.2×"></span><span style="--v: 88%" title="chr5 · 31.8×"></span><span style="--v: 88%" title="chr6 · 31.7×"></span><span style="--v: 86%" title="chr7 · 31.0×"></span><span style="--v: 88%" title="chr8 · 31.6×"></span><span style="--v: 83%" title="chr9 · 29.8×"></span><span style="--v: 86%" title="chr10 · 31.1×"></span><span style="--v: 87%" title="chr11 · 31.4×"></span><span style="--v: 88%" title="chr12 · 31.5×"></span><span style="--v: 86%" title="chr13 · 30.9×"></span><span style="--v: 84%" title="chr14 · 30.2×"></span><span style="--v: 83%" title="chr15 · 29.7×"></span><span style="--v: 79%" title="chr16 · 28.4×"></span><span style="--v: 81%" title="chr17 · 29.1×"></span><span style="--v: 87%" title="chr18 · 31.3×"></span><span style="--v: 73%" title="chr19 · 26.2×"></span><span style="--v: 84%" title="chr20 · 30.4×"></span><span style="--v: 81%" title="chr21 · 29.0×"></span><span style="--v: 75%" title="chr22 · 27.1×"></span><span data-sex style="--v: 43%" title="chrX · 15.6×"></span><span data-sex style="--v: 39%" title="chrY · 13.9×"></span>
+              </div>
+              <div class="v2-cov-axis" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span><span>X</span><span>Y</span></div>
+              <p class="v2-small v2-dim" style="margin-top: 6px">Depth per chromosome. X and Y at half depth is expected for a male.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="made">
+        <div class="v2-section__head"><h2>Made from this genome</h2><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Opening HG002’s folder"><i data-icon="folder-open"></i>Open folder</button></div>
+        <div class="v2-sheet v2-scroll">
+          <table class="v2-table" aria-label="Results and files made from HG002">
+            <thead><tr><th>What</th><th>Result</th><th>When</th><th><span class="visually-hidden">Open</span></th></tr></thead>
+            <tbody>
+              <tr><td class="v2-table__main">Y haplogroup</td><td><span class="v2-hap" data-line="y">J-ZS241</span> · 41 of 43 markers</td><td class="v2-dim">Today 06:11</td><td class="v2-num"><a class="v2-link" href="ancestry.html">Open</a></td></tr>
+              <tr><td class="v2-table__main">mtDNA haplogroup</td><td><span class="v2-hap" data-line="mt">K1a1b1a</span> · quality 0.94</td><td class="v2-dim">Today 06:09</td><td class="v2-num"><a class="v2-link" href="ancestry.html">Open</a></td></tr>
+              <tr><td class="v2-table__main">Ancestry proportions</td><td>5 components · 187,417 sites</td><td class="v2-dim">Today 06:14</td><td class="v2-num"><a class="v2-link" href="ancestry.html">Open</a></td></tr>
+              <tr><td class="v2-table__main">Y-STR markers</td><td><span class="v2-status"><span class="v2-pip"></span>Queued · starts after HG003’s realign</span></td><td class="v2-dim">—</td><td class="v2-num"><a class="v2-link" href="jobs.html">Job</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <aside class="v2-section" data-annot-id="do">
+      <h2>Do with this genome</h2>
+      <div class="v2-sheet">
+        <a class="v2-do" href="dna-test.html"><i data-icon="chip"></i><span class="v2-do__title">Make DNA-test files</span><span class="v2-do__cost">12 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">For GEDmatch, MyHeritage, FamilyTreeDNA…</span></a>
+        <a class="v2-do" href="convert.html"><i data-icon="convert"></i><span class="v2-do__title">Convert</span><span class="v2-do__cost">45 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">To BAM or FASTQ for another service</span></a>
+        <a class="v2-do" href="tools.html"><i data-icon="variant"></i><span class="v2-do__title">Call variants</span><span class="v2-do__cost">about 3 h<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">Make a VCF of where this genome differs</span></a>
+        <a class="v2-do" href="tools.html"><i data-icon="realign"></i><span class="v2-do__title">Realign to another reference</span><span class="v2-do__cost">about 3 h<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">T2T, GRCh37 and others</span></a>
+        <a class="v2-do" href="tools.html"><i data-icon="sliders-horizontal"></i><span class="v2-do__title">All tools</span><span class="v2-do__cost"><i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">Quality checks, annotation, extracts</span></a>
+      </div>
+      <p class="v2-section__note">Times are estimates for this Mac and this file.</p>
+    </aside>
+  </div>
+</div>
+
+<dialog class="dialog" id="person-menu" aria-labelledby="pm-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pm-title">HG002</h2></div>
+  <div class="dialog__body">
+    <label class="v2-field__label">Name<input class="v2-input" type="text" value="HG002"></label>
+    <label class="v2-field__label">Note<input class="v2-input" type="text" value="son"></label>
+    <p class="v2-small v2-muted">Removing a person takes them out of the library. Their genome files are never deleted; you choose whether to also remove the results WGS Extract made (38 MB).</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn v2-btn--primary" type="button" data-close>Done</button></div>
+</dialog>
+</body>
+</html>

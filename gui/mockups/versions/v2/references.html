@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reference genomes · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-references" data-shell="v2" data-nav="references" data-title="Reference genomes">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Reference genomes</h1>
+      <p class="v2-head__sub">The human genome each file was aligned to. WGS Extract needs the same one to read a CRAM, call variants or make DNA-test files. 6.1 GB installed on Macintosh HD.</p>
+    </div>
+  </header>
+
+  <section class="v2-section" data-annot-id="needed">
+    <div class="v2-section__head"><h2>What your files need</h2></div>
+    <div class="v2-sheet">
+      <div class="v2-item" data-annot-id="ref-hs38">
+        <span class="v2-item__title">hs38 <span class="v2-dim v2-small">GRCh38</span></span>
+        <span class="v2-item__desc">Used by HG002 and HG004 · 3.1 GB</span>
+        <span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Installed</span>
+      </div>
+      <div class="v2-item" data-annot-id="ref-hs37d5">
+        <span class="v2-item__title">hs37d5 <span class="v2-dim v2-small">GRCh37</span></span>
+        <span class="v2-item__desc">Used by HG003 · 3.0 GB. Downloading its aligner indexes stopped at 62% when the computer slept.</span>
+        <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip" data-state="attention"></span>Interrupted</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Resuming from the last finished step. See Jobs.">Resume</button></span>
+      </div>
+      <div class="v2-item" data-annot-id="ref-hs38d1">
+        <span class="v2-item__title">hs38d1 <span class="v2-dim v2-small">GRCh38 + decoys</span></span>
+        <span class="v2-item__desc">Needed by Alex’s Nebula BAM, which can’t be used until it’s here · 3.2 GB on disk</span>
+        <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip"></span>Not installed</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38d1. See Jobs.">Download 0.9 GB</button></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="others">
+    <div class="v2-section__head"><h2>Others you can install</h2></div>
+    <div class="v2-sheet v2-scroll">
+      <table class="v2-table" aria-label="Reference genomes you can install">
+        <thead><tr><th>Name</th><th class="v2-hide-phone">Build</th><th class="v2-hide-phone">Good for</th><th class="v2-num">Download</th><th><span class="visually-hidden">Install</span></th></tr></thead>
+        <tbody>
+          <tr><td class="v2-table__main">T2T-CHM13 v2.0<div class="v2-only-phone v2-dim v2-small">T2T · The complete genome, including all of Y; long reads</div></td><td class="v2-hide-phone">T2T</td><td class="v2-muted v2-hide-phone">The complete genome, including all of Y; long reads</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading T2T-CHM13 v2.0. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">hs38DH<div class="v2-only-phone v2-dim v2-small">GRCh38 · 1000 Genomes high-coverage files; ancient DNA</div></td><td class="v2-hide-phone">GRCh38</td><td class="v2-muted v2-hide-phone">1000 Genomes high-coverage files; ancient DNA</td><td class="v2-num">1.0 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38DH. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">hg38<div class="v2-only-phone v2-dim v2-small">GRCh38 · Files from YSEQ</div></td><td class="v2-hide-phone">GRCh38</td><td class="v2-muted v2-hide-phone">Files from YSEQ</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hg38. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">hg19<div class="v2-only-phone v2-dim v2-small">GRCh37 · Early Dante files (2018)</div></td><td class="v2-hide-phone">GRCh37</td><td class="v2-muted v2-hide-phone">Early Dante files (2018)</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hg19. See Jobs.">Install</button></td></tr>
+          <tr><td class="v2-table__main">hs37<div class="v2-only-phone v2-dim v2-small">GRCh37 · Older 1000 Genomes files without decoys</div></td><td class="v2-hide-phone">GRCh37</td><td class="v2-muted v2-hide-phone">Older 1000 Genomes files without decoys</td><td class="v2-num">0.9 GB</td><td class="v2-num"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs37. See Jobs.">Install</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="v2-section__note">Each takes about 3 GB on disk once unpacked and indexed. Downloads come from the fastest mirror and are checked against a known checksum.</p>
+  </section>
+
+  <section class="v2-section" data-annot-id="annotation">
+    <div class="v2-section__head"><h2>Extra data for annotation</h2></div>
+    <div class="v2-sheet">
+      <div class="v2-item">
+        <span class="v2-item__title">ClinVar</span>
+        <span class="v2-item__desc">What is known about a variant’s effect on health · used by Annotate with ClinVar <code class="v2-cmd">· ref/clinvar</code></span>
+        <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip" data-state="ok"></span>Installed</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#remove">Remove · frees 160 MB</button></span>
+      </div>
+      <div class="v2-item">
+        <span class="v2-item__title">gnomAD allele frequencies</span>
+        <span class="v2-item__desc">How common each variant is · used by VEP and the variant table <code class="v2-cmd">· ref/gnomad</code></span>
+        <span class="v2-item__aside"><span class="v2-dim">Not installed</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading gnomAD (26 GB). See Jobs.">Install · 26 GB</button></span>
+      </div>
+      <div class="v2-item">
+        <span class="v2-item__title">VEP cache for GRCh38</span>
+        <span class="v2-item__desc">Gene and effect for each variant · used by Annotate with VEP <code class="v2-cmd">· vep/download</code></span>
+        <span class="v2-item__aside"><span class="v2-dim">Not installed</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading the VEP cache (26 GB). See Jobs.">Install · 26 GB</button></span>
+      </div>
+    </div>
+    <p class="v2-section__note">Only annotation tools need these. Lineage, ancestry and DNA-test files don’t.</p>
+  </section>
+
+  <details class="v2-more" data-annot-id="more">
+    <summary>Checks and indexes</summary>
+    <div class="v2-more__body v2-section">
+      <div class="v2-sheet v2-scroll">
+        <table class="v2-table" aria-label="Installed reference details">
+          <thead><tr><th>Reference</th><th>Checksum</th><th>Indexes</th><th class="v2-num">On disk</th></tr></thead>
+          <tbody>
+            <tr><td class="v2-table__main">hs38</td><td>Verified Nov 2</td><td>FASTA index, dictionary, bwa <span class="v2-dim">· bwa-mem2 index made on first use</span></td><td class="v2-num">3.1 GB</td></tr>
+            <tr><td class="v2-table__main">hs37d5</td><td>Verified Oct 28</td><td>FASTA index, dictionary <span class="v2-dim">· aligner indexes interrupted</span></td><td class="v2-num">3.0 GB</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="v2-row v2-row--wrap">
+        <button class="v2-btn v2-btn--sm" type="button" data-toast="Checking 2 reference genomes, about 4 minutes">Verify installed genomes</button>
+        <code class="v2-cmd v2-dim v2-small">ref/library · ref/index · ref/verify · {{bundleWorkspace}}/reference</code>
+      </div>
+    </div>
+  </details>
+</div>
+
+<dialog class="dialog" id="remove" role="alertdialog" aria-labelledby="remove-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="remove-title">Remove ClinVar?</h2></div>
+  <div class="dialog__body">
+    <p>This frees 160 MB. Files you already annotated keep their ClinVar columns, and you can install it again at any time.</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Keep it</button><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="ClinVar removed. 160 MB freed.">Remove</button></div>
+</dialog>
+</body>
+</html>

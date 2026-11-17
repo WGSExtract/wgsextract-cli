@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Add files · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-add" data-shell="v2" data-nav="add" data-title="Add files" data-parent="Library|home.html">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Add files</h1>
+      <p class="v2-head__sub">Genomes, raw reads, VCFs or a DNA-test kit. WGS Extract works out what each file is and whose it is likely to be.</p>
+    </div>
+  </header>
+
+  <div class="v2-drop" data-dropzone="#found" data-annot-id="drop">
+    <i data-icon="upload"></i>
+    <div class="v2-drop__text">
+      <strong>Drop files or a folder here</strong>
+      <p class="v2-small v2-muted">Files are read where they are, nothing is copied or uploaded. Only the header is read now, so big files are fine.</p>
+    </div>
+    <div class="v2-row v2-row--wrap">
+      <button class="v2-btn v2-btn--sm" type="button" data-toast="Mockup: opens the file chooser">Choose files</button>
+      <button class="v2-btn v2-btn--sm" type="button" data-toast="Mockup: opens the folder chooser">Choose a folder</button>
+    </div>
+  </div>
+
+  <section class="v2-section" id="found" data-annot-id="found">
+    <div class="v2-section__head"><h2>Found 3 things in Downloads</h2><span class="v2-dim v2-small">Read in 1.2 s</span></div>
+    <div class="v2-sheet">
+      <div class="v2-sheet__pad v2-section" data-annot-id="found-bam">
+        <div class="v2-row v2-row--wrap"><span class="v2-tag">BAM</span><span class="v2-file__name v2-grow">NG1A2B3C4D.bam</span><span class="v2-dim v2-small">~/Downloads · 71.2 GB</span></div>
+        <dl class="v2-kv">
+          <div><dt>Kind</dt><dd>Whole genome <small>Nebula, paired reads</small></dd></div>
+          <div><dt>Reference</dt><dd>GRCh38 <small>hs38d1</small></dd></div>
+          <div><dt>Depth</dt><dd>about 30×</dd></div>
+          <div><dt>Sex</dt><dd>Female <small>from X and Y depth</small></dd></div>
+        </dl>
+        <div class="v2-row v2-row--wrap">
+          <label class="v2-field__label" for="who-bam">Whose is it?</label>
+          <select class="v2-select" id="who-bam" style="max-width: 220px"><option>New person…</option><option>HG002</option><option>HG003</option><option>HG004</option><option selected>Alex</option></select>
+          <span class="v2-small v2-muted">Matches Alex’s 23andMe kit: their genotypes agree.</span>
+        </div>
+        <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>No index (.bai), so it can’t be read by region yet.</span>
+        <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>Its reference, hs38d1, isn’t installed; it’s needed to read the file.</span>
+        <label class="v2-row"><input class="v2-check" type="checkbox" checked><span>Fix when added: download 0.9 GB and index, 9 min</span></label>
+      </div>
+
+      <div class="v2-sheet__pad v2-section" data-annot-id="found-fastq">
+        <div class="v2-row v2-row--wrap"><span class="v2-tag">FASTQ</span><span class="v2-file__name v2-grow">60820188474839_SA_L001_R1/R2_001.fastq.gz</span><span class="v2-dim v2-small">~/Downloads · 2 × 38.5 GB</span></div>
+        <dl class="v2-kv">
+          <div><dt>Kind</dt><dd>Raw reads <small>Dante, paired, not aligned</small></dd></div>
+          <div><dt>Reads</dt><dd>2 × 150 bp <small>Illumina</small></dd></div>
+          <div><dt>Depth</dt><dd>about 30×</dd></div>
+        </dl>
+        <div class="v2-row v2-row--wrap">
+          <label class="v2-field__label" for="who-fq">Whose is it?</label>
+          <select class="v2-select" id="who-fq" style="max-width: 220px"><option selected>New person…</option><option>HG002</option><option>HG003</option><option>HG004</option><option>Alex</option></select>
+          <input class="v2-input" type="text" placeholder="Name, for example Dana" aria-label="Name of the new person" style="max-width: 220px">
+        </div>
+        <p class="v2-small v2-muted">Raw reads must be aligned before anything else can use them, about 5 h on this Mac. You’ll be offered that after adding; it doesn’t start on its own.</p>
+      </div>
+
+      <div class="v2-sheet__pad" data-annot-id="found-pdf">
+        <div class="v2-row v2-row--wrap"><span class="v2-tag">PDF</span><span class="v2-file__name v2-grow">notes.pdf</span><span class="v2-status v2-small"><span class="v2-pip"></span>Not a genome file, skipped</span></div>
+      </div>
+    </div>
+    <p class="v2-section__note v2-cmd">Server: info and bam/identify per file, then sample/set; the fix runs ref/library and bam/index.</p>
+  </section>
+
+  <div class="v2-actionbar" data-annot-id="action">
+    <div class="v2-actionbar__sum">
+      <strong>Add 2 files for Alex and a new person</strong>
+      <span>Then fix Alex’s BAM (0.9 GB, 9 min). The files stay in Downloads.</span>
+    </div>
+    <div class="v2-actionbar__btns">
+      <a class="v2-btn v2-btn--quiet" href="home.html">Cancel</a>
+      <a class="v2-btn v2-btn--primary v2-btn--lg" href="person-alex.html" data-toast="Added 2 files. Fixing Alex’s BAM; see Jobs.">Add 2 files</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>

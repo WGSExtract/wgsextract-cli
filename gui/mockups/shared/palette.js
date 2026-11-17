@@ -10,6 +10,8 @@
   var active = 0;
 
   function entries() {
+    /* A shell may supply its own entries (links into its own pages) */
+    if (WGSM.shell && WGSM.shell.palette) return WGSM.shell.palette();
     var genomes = WGSM.data.genomes.map(function (g) {
       return { label: g.name, sub: g.file, icon: "file-" + (g.type === "raw" ? "raw" : g.type), group: "Genomes", href: "directions/c/file.html?g=" + g.id };
     });

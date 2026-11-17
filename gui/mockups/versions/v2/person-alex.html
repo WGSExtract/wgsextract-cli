@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Alex · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-person-alex" data-shell="v2" data-nav="p-alex" data-title="Alex" data-parent="Library|home.html">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__who">
+      <span class="v2-avatar v2-avatar--lg">A</span>
+      <div class="v2-head__text">
+        <h1>Alex</h1>
+        <p class="v2-head__sub">Female · 2 files: a 30× genome from Nebula and a 23andMe kit</p>
+      </div>
+    </div>
+    <div class="v2-head__actions">
+      <button class="v2-btn v2-btn--quiet" type="button" data-open="#person-menu" aria-label="Rename, notes, remove"><i data-icon="ellipsis"></i></button>
+    </div>
+  </header>
+
+  <div class="v2-notice" data-tone="warn" role="status" data-annot-id="fix">
+    <i data-icon="wrench"></i>
+    <div class="v2-notice__text">
+      <strong>The Nebula genome can’t be used yet</strong>
+      <span>The BAM has no index, and its reference (hs38d1) isn’t installed. The fix downloads hs38d1 to your reference library and builds the index beside the BAM; the BAM itself isn’t changed.</span>
+    </div>
+    <div class="v2-notice__actions">
+      <button class="v2-btn v2-btn--primary v2-btn--sm" type="button" data-toast="Downloading hs38d1 and indexing Alex’s BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
+    </div>
+  </div>
+
+  <div class="v2-cols">
+    <div class="v2-stack">
+      <section class="v2-section" data-annot-id="lineage">
+        <div class="v2-section__head"><h2>Lineage</h2><span class="v2-dim v2-small">From the 23andMe kit</span></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-cols--even v2-cols" style="gap: 24px">
+            <div class="v2-line" data-line="mt">
+              <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+              <span class="v2-line__result">U5b2a1a</span>
+              <span class="v2-muted v2-small">A branch of U5, one of the oldest maternal lines in Europe, found today mostly in the north and east. Fair confidence: the kit reads few mtDNA markers; the genome will confirm it.</span>
+            </div>
+            <div class="v2-line">
+              <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+              <span class="v2-muted v2-small">None. Alex is female, so has no Y chromosome. A father’s or brother’s genome would show it.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="ancestry">
+        <div class="v2-section__head"><h2>Ancestry proportions</h2><span class="v2-dim v2-small">From the 23andMe kit</span></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-section">
+            <div class="v2-stacked" role="img" aria-label="Middle Eastern 81%, Central and South Asian 14%, Sub-Saharan African 4%, East Asian 1%">
+              <span class="v2-s2" style="--w: 81" title="Middle Eastern 81%"></span><span class="v2-s3" style="--w: 14" title="Central &amp; South Asian 14%"></span><span class="v2-s4" style="--w: 4" title="Sub-Saharan African 4%"></span><span class="v2-s5" style="--w: 1" title="East Asian 1%"></span>
+            </div>
+            <ul class="v2-legend">
+              <li><span class="v2-swatch v2-s2"></span>Middle Eastern <strong>81%</strong></li>
+              <li><span class="v2-swatch v2-s3"></span>Central &amp; South Asian <strong>14%</strong></li>
+              <li><span class="v2-swatch v2-s4"></span>Sub-Saharan African <strong>4%</strong></li>
+              <li><span class="v2-swatch v2-s5"></span>East Asian <strong>1%</strong></li>
+            </ul>
+            <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of reference populations, each named after the groups that carry it most; most people carry several.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="files">
+        <div class="v2-section__head"><h2>Files</h2><a class="v2-link v2-small" href="add.html">Add a file for Alex</a></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-section" data-annot-id="file-kit">
+            <div class="v2-row"><span class="v2-tag">KIT</span><span class="v2-file__name">genome_Alex_v5_Full_20241103.txt</span></div>
+            <span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Ready · the results above come from this file</span>
+            <dl class="v2-kv">
+              <div><dt>Kind</dt><dd>23andMe v5 <small>raw data, about 640,000 markers</small></dd></div>
+              <div><dt>Reference</dt><dd>GRCh37</dd></div>
+              <div><dt>Size</dt><dd>24.6 MB</dd></div>
+            </dl>
+          </div>
+          <div class="v2-sheet__pad v2-section" data-annot-id="file-bam">
+            <div class="v2-row"><span class="v2-tag">BAM</span><span class="v2-file__name">NG1A2B3C4D.bam</span></div>
+            <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>Can’t be used yet · needs its index and reference</span>
+            <code class="v2-cmd v2-dim v2-small">~/Downloads/NG1A2B3C4D.bam</code>
+            <dl class="v2-kv">
+              <div><dt>Kind</dt><dd>Whole genome <small>Nebula, 30×</small></dd></div>
+              <div><dt>Reference</dt><dd>hs38d1 <small>GRCh38, not installed</small></dd></div>
+              <div><dt>Size</dt><dd>71.2 GB <small>in Downloads</small></dd></div>
+            </dl>
+            <p class="v2-small v2-muted">Once fixed, this genome replaces the kit as the source for Alex’s results: it reads millions of markers where the kit has 640,000. Lineage and ancestry are worked out again, about 6 minutes.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="v2-section" data-annot-id="do">
+      <h2>Do with this genome</h2>
+      <div class="v2-sheet">
+        <a class="v2-do" href="ancestry.html"><i data-icon="admixture"></i><span class="v2-do__title">Ancestry and lineage</span><span class="v2-do__cost">Done<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">From the kit; redone from the genome after the fix</span></a>
+        <a class="v2-do" href="tools.html"><i data-icon="relate"></i><span class="v2-do__title">Compare with family</span><span class="v2-do__cost">5 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">See how Alex is related to HG002, HG003, HG004</span></a>
+        <div class="v2-sheet__label">After the fix</div>
+        <div class="v2-do" aria-disabled="true"><i data-icon="chip"></i><span class="v2-do__title">Make DNA-test files</span><span class="v2-do__cost">after the fix</span><span class="v2-do__desc">For GEDmatch, MyHeritage, FamilyTreeDNA…</span></div>
+        <div class="v2-do" aria-disabled="true"><i data-icon="variant"></i><span class="v2-do__title">Call variants</span><span class="v2-do__cost">after the fix</span><span class="v2-do__desc">Make a VCF of where this genome differs</span></div>
+        <div class="v2-do" aria-disabled="true"><i data-icon="convert"></i><span class="v2-do__title">Convert</span><span class="v2-do__cost">after the fix</span><span class="v2-do__desc">To CRAM, about a third of the size</span></div>
+      </div>
+      <p class="v2-section__note">Times are estimates for this Mac and these files.</p>
+    </aside>
+  </div>
+</div>
+
+<dialog class="dialog" id="person-menu" aria-labelledby="pm-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pm-title">Alex</h2></div>
+  <div class="dialog__body">
+    <label class="v2-field__label">Name<input class="v2-input" type="text" value="Alex"></label>
+    <label class="v2-field__label">Note<input class="v2-input" type="text" placeholder="For example cousin"></label>
+    <p class="v2-small v2-muted">Removing a person takes them out of the library. Their genome files are never deleted; you choose whether to also remove the results WGS Extract made (6 MB).</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn" type="button" data-close>Done</button></div>
+</dialog>
+</body>
+</html>

@@ -10,7 +10,8 @@ Contents: [what's wrong today](#1-what-the-current-ui-gets-wrong) ·
 [directions](#5-three-directions) · [screens → server API](#6-screens-and-the-server-api) ·
 [remote access](#7-remote-access-security-sketch) ·
 [accessibility and localisation](#8-accessibility-and-localisation) ·
-[open questions](#9-open-questions) · [implementation plan](#10-implementation-plan)
+[open questions](#9-open-questions) · [implementation plan](#10-implementation-plan) ·
+[version 2](#11-version-2-people-first)
 
 ## 1. What the current UI gets wrong
 
@@ -258,3 +259,41 @@ can replace it.
    (gap 7); test on iOS Safari and Android Chrome.
 6. **Retire the wrapper.** Remove the page JSON, data-source scripts and
    bundle runtime glue the server replaces; keep `strings/` for translations.
+
+## 11. Version 2: People first
+
+Sections 1–10 describe the first exploration; its Direction C is **v1**. **v2**
+(`versions/v2/`) is a redesign from a review of v1. The research, personas,
+API mapping and remote-access sketch above still hold. Compare any screen with
+the v1 / v2 switch in the review bar, or side by side in `compare.html`.
+
+What the review found, and what v2 does about it:
+
+| v1 | v2 |
+| --- | --- |
+| The sidebar's task pages (DNA-test files, Ancestry, Convert) each start with their own genome picker, so the file is still chosen again per page. | The sidebar lists the **people**. Every task starts from a person and is named for them ("DNA-test files for HG002"); only All tools has a picker. |
+| A library of files: one person's BAM and 23andMe kit are unrelated rows, and a realign adds a third. | **People with their files underneath.** Results and tasks use the person's best file; a file with no owner asks "whose is this?". |
+| Ancestry & lineage is a task on desktop and "Results" on the phone. | Results **belong to the person**: a summary on their page and one detail page. Desktop and phone use the same words. |
+| Home stacks a fix-it card, four stat tiles, the table, suggestions and jobs; the running job shows four times. | Home is the library. One attention line, the next action on each person's row, the running job on its row and once in the sidebar. |
+| A global Basic / Advanced switch. | No mode. Rare options sit in **More options** on the page; parameter names and commands are one setting (Settings → Display). All tools is always reachable. |
+| Convert offers VCF beside CRAM. | Convert is BAM / CRAM / FASTQ; a VCF is **Call variants**, with its own estimate. Converting asks what happens to the original, since space is only saved if it goes. |
+| Destination cards carry four badges; the start button is below seven cards on a phone. | A checklist; only the two formats that can't be uploaded are marked. A **sticky action bar** holds the count, time, disk and the one button. |
+| Nothing shows a finished job. | A **result page**: the files, where they are, what to do next on each site, how it went. |
+| Add files stops at the drop zone. | Add shows what each file was identified as, whose it is, and what it needs. |
+| "Active" jobs include interrupted ones; meters for CPU and memory. | Running, Queued, **Needs you**, Done. Every waiting job says why. |
+| The ancestry bar appears without its caveat. | "Not an ethnicity" sits next to every ancestry bar. |
+| Cards, pills and tinted icon tiles everywhere; file types, chart series and status share hues. | Flat sheets with hairline rows on warm paper, a navy sidebar, an ink primary button. Colour is reserved: status; the helix gradient for progress; cyan for the paternal line and magenta for the maternal line (the logo's two strands); a validated categorical palette for ancestry components. File types are word tags. |
+
+Server needs v2 adds to the gaps in §6:
+
+1. *People:* the library index groups files by person (name, note, files,
+   which file results come from), and files can be assigned or moved.
+2. *Same-person check on add:* compare a new file's genotypes with those
+   already in the library, to suggest whose it is. Local only.
+3. *Verify, then remove the original* after a conversion, with the removal
+   confirmed by the user.
+
+Open questions for v2: is "person" right when one person has samples from
+several labs that should stay distinct; should a person's page pick the best
+file automatically or let the user pin one; is a phone tab bar of Library ·
+Jobs · Tools · More enough without a Results tab.

@@ -1,0 +1,621 @@
+/* Page furniture: headings, sections, the library sheet, tables, the action
+ * list and the sticky action bar. Surfaces are flat; a border means "this is
+ * one object", and only the action bar and dialogs cast a shadow. */
+.v2-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+
+.v2-head__text {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.v2-head h1 {
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.v2-head__sub {
+  max-width: 64ch;
+  color: var(--c-text-2);
+}
+
+.v2-head__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.v2-head__who {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.v2-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.v2-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.v2-section h2,
+.v2-h2 {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+}
+
+.v2-section__note {
+  color: var(--c-text-3);
+  font-size: 13px;
+}
+
+.v2-muted {
+  color: var(--c-text-2);
+}
+
+.v2-dim {
+  color: var(--c-text-3);
+}
+
+.v2-small {
+  font-size: 13px;
+}
+
+.v2-mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.v2-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.v2-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+  gap: 32px;
+}
+
+.v2-cols--even {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.v2-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  min-width: 0;
+}
+
+.v2-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.v2-row--wrap {
+  flex-wrap: wrap;
+}
+
+.v2-grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A sheet is one bordered surface holding rows separated by hairlines */
+.v2-sheet {
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r-lg);
+  background: var(--c-surface);
+  overflow: hidden;
+}
+
+.v2-sheet__pad {
+  padding: 16px;
+}
+
+.v2-sheet > * + * {
+  border-top: 1px solid var(--c-border);
+}
+
+/* Library: a person, then their files indented under them */
+.v2-person {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) minmax(0, 250px) auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 12px 16px;
+}
+
+.v2-person__name {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  color: var(--c-text);
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+a.v2-person__name:hover {
+  color: var(--c-primary);
+}
+
+.v2-person__name small {
+  color: var(--c-text-3);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.v2-person__found {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 13px;
+}
+
+.v2-person__next {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 190px;
+}
+
+.v2-files {
+  border-top: 1px solid var(--c-border);
+  background: color-mix(in srgb, var(--c-surface-2) 45%, var(--c-surface));
+}
+
+.v2-group > .v2-files {
+  border-top-style: dashed;
+}
+
+.v2-file {
+  display: grid;
+  grid-template-columns: 32px 52px minmax(0, 1.4fr) minmax(0, 1fr) 60px 84px minmax(0, 1.1fr);
+  align-items: center;
+  gap: 4px 14px;
+  min-height: 36px;
+  padding: 4px 16px;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-file + .v2-file {
+  border-top: 1px solid var(--c-border);
+}
+
+.v2-file__name {
+  overflow: hidden;
+  color: var(--c-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-file--head {
+  min-height: 28px;
+  color: var(--c-text-3);
+  font-size: 12px;
+}
+
+/* Lineage results use the helix strands: Y cyan, mtDNA magenta */
+.v2-hap {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.v2-hap[data-line="y"] {
+  color: var(--v2-y);
+}
+
+.v2-hap[data-line="mt"] {
+  color: var(--v2-mt);
+}
+
+.v2-hap__label {
+  color: var(--c-text-3);
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+/* Tables */
+.v2-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.v2-table th {
+  padding: 8px 12px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.v2-table td {
+  padding: 9px 12px;
+  border-top: 1px solid var(--c-border);
+  vertical-align: middle;
+}
+
+.v2-table th:first-child,
+.v2-table td:first-child {
+  padding-left: 16px;
+}
+
+.v2-table th:last-child,
+.v2-table td:last-child {
+  padding-right: 16px;
+}
+
+.v2-table .v2-num {
+  text-align: right;
+}
+
+.v2-table__main {
+  color: var(--c-text);
+  font-weight: 550;
+}
+
+.v2-scroll {
+  overflow-x: auto;
+}
+
+/* Things you can do: icon, what it is, what it costs, and where it goes */
+.v2-do {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 11px 14px;
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.v2-do:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.v2-do > .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--c-text-2);
+}
+
+.v2-do__title {
+  font-weight: 600;
+}
+
+.v2-do__desc {
+  grid-column: 2;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-do__cost {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Choices in a task: a whole row is the target */
+.v2-choice {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+}
+
+.v2-choice:hover {
+  background: color-mix(in srgb, var(--c-surface-2) 50%, var(--c-surface));
+}
+
+.v2-choice:has(input:checked) {
+  background: color-mix(in srgb, var(--v2-cyan) 9%, var(--c-surface));
+}
+
+.v2-choice__title {
+  font-weight: 600;
+}
+
+.v2-choice__desc {
+  grid-column: 2;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-choice__aside {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  color: var(--c-text-3);
+  font-size: 12px;
+  text-align: right;
+}
+
+.v2-sheet__label {
+  padding: 8px 16px;
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+/* Sticky action bar: what will happen, what it costs, and the one button.
+ * Sticks to the bottom of the scrolling column, above the phone tab bar. */
+.v2-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin: auto calc(-1 * var(--v2-pad)) 0;
+  padding: 12px var(--v2-pad);
+  border-top: 1px solid var(--c-border);
+  background: var(--c-surface);
+  box-shadow: 0 -6px 20px rgb(17 26 46 / 0.07);
+}
+
+.v2-page:has(> .v2-actionbar)::after {
+  display: none;
+}
+
+.v2-actionbar__sum {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.v2-actionbar__sum strong {
+  font-size: 15px;
+}
+
+.v2-actionbar__sum span {
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-actionbar__btns {
+  display: flex;
+  gap: 8px;
+}
+
+/* Facts as label/value pairs */
+.v2-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 14px 24px;
+  margin: 0;
+}
+
+.v2-kv dt {
+  color: var(--c-text-3);
+  font-size: 12px;
+}
+
+.v2-kv dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-kv dd small {
+  display: block;
+  color: var(--c-text-2);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* In-page tabs (role="tablist", wired by ui.js) */
+.v2-tablist {
+  display: flex;
+  gap: 20px;
+  border-bottom: 1px solid var(--c-border);
+  overflow-x: auto;
+}
+
+.v2-tablist [role="tab"] {
+  padding: 8px 0 9px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--c-text-2);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.v2-tablist [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--c-text);
+  color: var(--c-text);
+  font-weight: 650;
+}
+
+/* Commands and logs */
+.v2-code {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--v2-r);
+  background: var(--v2-side);
+  color: #d5dcec;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.v2-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 20px;
+  color: var(--c-text-2);
+  text-align: center;
+}
+
+.v2-empty h2,
+.v2-empty h3 {
+  color: var(--c-text);
+  font-size: 17px;
+}
+
+.v2-drop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 18px 20px;
+  border: 1.5px dashed var(--c-border-strong);
+  border-radius: var(--v2-r-lg);
+  background: var(--c-surface);
+}
+
+.v2-drop[data-state="over"] {
+  border-color: var(--v2-cyan);
+  background: color-mix(in srgb, var(--v2-cyan) 8%, var(--c-surface));
+}
+
+.v2-steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+}
+
+@container app (max-width: 1000px) {
+  .v2-cols {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 24px;
+  }
+}
+
+@container app (max-width: 860px) {
+  .v2-cols,
+  .v2-cols--even {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-person {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .v2-person__found {
+    grid-row: 2;
+    grid-column: 2 / -1;
+  }
+
+  .v2-file {
+    grid-template-columns: 32px 52px minmax(0, 1fr) auto;
+  }
+
+  .v2-file > :nth-child(4),
+  .v2-file > :nth-child(5) {
+    display: none;
+  }
+
+  .v2-file > :nth-child(7) {
+    grid-column: 3 / -1;
+  }
+
+  .v2-file--head {
+    display: none;
+  }
+}
+
+@container app (max-width: 720px) {
+  .v2-head h1 {
+    font-size: 24px;
+  }
+
+  .v2-person {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .v2-person__next {
+    grid-column: 2;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .v2-file {
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    padding: 8px 16px;
+  }
+
+  .v2-file > :first-child {
+    display: none;
+  }
+
+  .v2-file > :nth-child(7) {
+    grid-column: 1 / -1;
+  }
+
+  .v2-actionbar__btns {
+    flex: 1 1 100%;
+  }
+
+  .v2-actionbar__btns .v2-btn {
+    flex: 1;
+  }
+
+  .v2-choice,
+  .v2-do {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+}
+
+/* Pages without the app shell (first-run setup) */
+.v2-bare {
+  min-height: 100%;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 14px;
+}
+
+.v2-bare .v2-cmd {
+  display: none !important;
+}

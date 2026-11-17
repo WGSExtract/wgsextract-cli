@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Welcome · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-setup" data-shell="none" data-title="Welcome">
+<div class="v2-bare">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__who">
+      <img src="../../icons/logos/logo-a-helix-bracket.svg" alt="" width="44" height="44">
+      <div class="v2-head__text">
+        <h1>Welcome to WGS Extract</h1>
+        <p class="v2-head__sub">Three things to know before you start. Nothing here needs a decision now.</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="v2-sheet" data-annot-id="setup">
+    <section class="v2-numbered" data-annot-id="workspace">
+      <span class="v2-numbered__n">1</span>
+      <h2 class="v2-h2">Where to keep results and reference genomes</h2>
+      <div class="v2-row v2-row--wrap"><span class="v2-grow"><span class="v2-mono">~/wgs-extract</span><br><span class="v2-dim v2-small">412 GB free on Macintosh HD</span></span><button class="v2-btn v2-btn--sm" type="button" data-toast="Choose another folder">Change…</button></div>
+      <p class="v2-small v2-muted">It can grow to 20–100 GB. Your genome files stay wherever they are; nothing is copied.</p>
+    </section>
+
+    <section class="v2-numbered" data-annot-id="tools">
+      <span class="v2-numbered__n">2</span>
+      <h2 class="v2-h2">Analysis tools</h2>
+      <p class="v2-small v2-muted">A check, not an installer. WGS Extract uses the tools already on this computer.</p>
+      <div class="v2-notice" data-tone="info" role="status">
+        <div class="v2-notice__text">
+          <strong>14 of 15 found</strong>
+          <span>bwa-mem2 is missing. It’s only needed to align or realign; everything else works without it.</span>
+        </div>
+        <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="#">How to install</a><button class="v2-btn v2-btn--sm" type="button" data-toast="Checked: 14 of 15 tools found">Check again</button></div>
+      </div>
+    </section>
+
+    <section class="v2-numbered" data-annot-id="references">
+      <span class="v2-numbered__n">3</span>
+      <h2 class="v2-h2">Reference genomes</h2>
+      <p class="v2-small v2-muted">Nothing to choose now. When you add a genome, WGS Extract works out which reference it needs and offers the download.</p>
+    </section>
+  </div>
+
+  <div class="v2-row v2-row--wrap" data-annot-id="start">
+    <a class="v2-btn v2-btn--primary v2-btn--lg" href="add.html"><i data-icon="plus"></i>Add your first genome</a>
+    <button class="v2-btn v2-btn--quiet" type="button" data-toast="Downloading the small example (120 MB)">Try a small example (120 MB)</button>
+  </div>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Settings · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-settings" data-shell="v2" data-nav="settings" data-title="Settings">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Settings</h1>
+      <p class="v2-head__sub">Saved in one settings file in the workspace, which the command line reads too. <code class="v2-cmd">{{bundleWorkspace}}/config.toml</code></p>
+    </div>
+  </header>
+
+  <nav class="v2-sheet v2-only-phone" aria-label="More" data-annot-id="more-links">
+    <a class="v2-do" href="references.html"><i data-icon="reference"></i><span class="v2-do__title">Reference genomes</span><span class="v2-do__cost"><i data-icon="chevron-right" class="icon--sm"></i></span></a>
+    <a class="v2-do" href="phone.html"><i data-icon="remote"></i><span class="v2-do__title">Phone access</span><span class="v2-do__cost">On · 2 devices<i data-icon="chevron-right" class="icon--sm"></i></span></a>
+  </nav>
+
+  <section class="v2-section" data-annot-id="folders">
+    <h2>Folders</h2>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-fields">
+      <div class="v2-field"><span class="v2-field__label">Workspace<small>Results, reference genomes and logs</small><code class="v2-cmd">bundleWorkspace</code></span><div class="v2-field__control"><span class="v2-grow"><span class="v2-mono">~/wgs-extract</span><br><span class="v2-dim v2-small">412 GB free on Macintosh HD</span></span><button class="v2-btn v2-btn--sm" type="button" data-toast="Choose a new place; everything moves together">Move…</button></div></div>
+      <div class="v2-field"><span class="v2-field__label">Folders WGS Extract may read<small>Your genome files stay where they are</small><code class="v2-cmd">server_allowed_paths</code></span>
+        <div class="v2-field__control v2-field__list">
+          <div class="v2-row"><span class="v2-mono v2-grow">/Volumes/Genomes</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="WGS Extract can no longer open files in /Volumes/Genomes">Remove</button></div>
+          <div class="v2-row"><span class="v2-mono v2-grow">~/Downloads</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="WGS Extract can no longer open files in ~/Downloads">Remove</button></div>
+          <div class="v2-row"><button class="v2-btn v2-btn--sm" type="button" data-toast="Choose a folder to allow"><i data-icon="folder-plus"></i>Add a folder…</button></div>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="jobs">
+    <h2>Jobs</h2>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-fields">
+      <div class="v2-field"><span class="v2-field__label">Run one job at a time<small>Recommended. Aligning and calling each use the whole computer; two at once take longer than one after the other.</small><code class="v2-cmd">max_concurrent_jobs</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Run one job at a time"></label></div></div>
+      <div class="v2-field"><span class="v2-field__label">Keep this computer awake while jobs run<small>A sleeping computer pauses the job</small><code class="v2-cmd">prevent_sleep</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Keep this computer awake while jobs run"></label></div></div>
+      <div class="v2-field"><span class="v2-field__label">Tell me when a job finishes or needs me</span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Tell me when a job finishes or needs me"></label></div></div>
+      <div class="v2-field"><span class="v2-field__label">Keep running in the menu bar when the window is closed<small>Jobs carry on; quit from the menu bar to stop them</small></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Keep running in the menu bar when the window is closed"></label></div></div>
+    </div></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="display">
+    <h2>Display</h2>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-fields">
+      <div class="v2-field"><span class="v2-field__label">Theme</span><div class="v2-field__control"><div class="v2-seg" data-seg="theme" role="group" aria-label="Theme"><button type="button" value="system">System</button><button type="button" value="light">Light</button><button type="button" value="dark">Dark</button></div></div></div>
+      <div class="v2-field"><span class="v2-field__label">Show parameter names and commands<small>Shows the command-line option under each setting and the command each task runs, for use in scripts.</small></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" data-v2-commands aria-label="Show parameter names and commands"></label></div></div>
+    </div></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="privacy">
+    <h2>Privacy</h2>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-section">
+      <p><strong>Your genome files never leave this computer.</strong> WGS Extract goes online only for downloads you start:</p>
+      <ul class="v2-plain-list v2-muted">
+        <li>reference genomes and the extra data for annotation</li>
+        <li>example genomes, when you ask to try one</li>
+        <li>new versions of WGS Extract, when you choose to update</li>
+      </ul>
+      <p class="v2-small v2-muted">Nothing about your files is sent with these requests. Phone access stays on your local network; see <a class="v2-link" href="phone.html">Phone access</a>.</p>
+    </div></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="diagnostics">
+    <h2>Diagnostics</h2>
+    <div class="v2-sheet">
+      <div class="v2-item">
+        <span class="v2-item__title">14 of 15 tools found</span>
+        <span class="v2-item__desc">samtools, bcftools and htslib 1.21, bwa-mem2, minimap2, Yleaf, HaploGrep and 8 more <code class="v2-cmd">· deps/check</code></span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Checked: 14 of 15 tools found">Check again</button></span>
+      </div>
+      <div class="v2-item" data-annot-id="missing-tool">
+        <span class="v2-item__title v2-row"><span class="v2-pip" data-state="attention"></span>Java is missing</span>
+        <span class="v2-item__desc">Only GATK HaplotypeCaller and pharmacogenomics need it; everything else works. Install it with your package manager, for example <span class="v2-mono">brew install openjdk</span>. WGS Extract doesn’t install tools itself.</span>
+        <span class="v2-item__aside"><a class="v2-link" href="#">How to install</a></span>
+      </div>
+      <div class="v2-item">
+        <span class="v2-item__title">Problem report</span>
+        <span class="v2-item__desc">Versions, settings and recent logs, with paths shortened. No genome data.</span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm" type="button" data-toast="Report copied to the clipboard">Copy report</button></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="about">
+    <h2>About</h2>
+    <p class="v2-small v2-muted">WGS Extract 0.9.0 · command line 0.9.0 · server API v1</p>
+  </section>
+
+  <p class="v2-small v2-dim" data-annot-id="states-link"><a class="v2-dim" href="states.html">Empty, loading and error states, for review</a></p>
+</div>
+</body>
+</html>

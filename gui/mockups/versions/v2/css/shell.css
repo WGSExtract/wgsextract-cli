@@ -1,0 +1,399 @@
+/* App shell: navy sidebar listing the people, a slim top bar, one scrolling
+ * column of content, and a bottom tab bar on phones. Breakpoints are
+ * container queries on the mockup viewport (.vp, container "app"). */
+.v2-app {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-areas: "side top" "side main";
+  height: 100%;
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-size: 14px;
+}
+
+.v2-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  overflow-y: auto;
+  background: var(--v2-side);
+  color: var(--v2-side-text);
+}
+
+.v2-side :focus-visible {
+  outline-color: var(--v2-cyan);
+}
+
+.v2-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 14px;
+  color: var(--v2-side-strong);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.v2-brand:hover {
+  color: var(--v2-side-strong);
+}
+
+.v2-side__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 4px;
+  color: var(--v2-side-dim);
+  font-size: 12px;
+}
+
+.v2-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--v2-side-text);
+  text-decoration: none;
+}
+
+.v2-nav:hover {
+  background: var(--v2-side-hover);
+  color: var(--v2-side-strong);
+}
+
+.v2-nav[aria-current="page"] {
+  background: var(--v2-side-on);
+  color: var(--v2-side-strong);
+  font-weight: 600;
+}
+
+.v2-nav .icon {
+  width: 18px;
+  height: 18px;
+  opacity: 0.85;
+}
+
+.v2-nav__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v2-nav__sub {
+  color: var(--v2-side-dim);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.v2-nav__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--v2-side-on);
+  color: var(--v2-side-strong);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
+.v2-side__spacer {
+  flex: 1;
+  min-height: 12px;
+}
+
+/* The one place a running job shows outside its own row and the Jobs page */
+.v2-sidejob {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 6px;
+  padding: 10px;
+  border: 1px solid var(--v2-side-line);
+  border-radius: 9px;
+  color: var(--v2-side-text);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.v2-sidejob:hover {
+  background: var(--v2-side-hover);
+  color: var(--v2-side-text);
+}
+
+.v2-sidejob strong {
+  color: var(--v2-side-strong);
+  font-size: 13px;
+}
+
+.v2-sidejob .v2-bar {
+  --track: rgb(255 255 255 / 0.14);
+}
+
+/* Avatars: initials, the same everywhere a person appears */
+.v2-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--c-surface-3);
+  color: var(--c-text);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.v2-side .v2-avatar {
+  background: rgb(255 255 255 / 0.16);
+  color: var(--v2-side-strong);
+}
+
+.v2-avatar--lg {
+  width: 44px;
+  height: 44px;
+  font-size: 16px;
+}
+
+.v2-avatar--md {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+.v2-pip {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pip, var(--c-text-3));
+}
+
+.v2-pip[data-state="ok"] {
+  --pip: var(--c-success);
+}
+
+.v2-pip[data-state="attention"] {
+  --pip: #e0a11b;
+}
+
+.v2-pip[data-state="bad"] {
+  --pip: var(--c-danger);
+}
+
+.v2-pip[data-state="busy"] {
+  --pip: var(--v2-cyan);
+  animation: v2-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes v2-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-pip[data-state="busy"] {
+    animation: none;
+  }
+}
+
+/* Top bar */
+.v2-top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--v2-pad);
+  border-bottom: 1px solid var(--c-border);
+  background: var(--c-bg);
+}
+
+.v2-top__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -6px;
+  padding: 4px 8px 4px 4px;
+  border-radius: 6px;
+  color: var(--c-text-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.v2-top__back:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.v2-top__grow {
+  flex: 1;
+}
+
+.v2-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  width: min(280px, 40vw);
+  padding: 0 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 7px;
+  background: var(--c-surface);
+  color: var(--c-text-3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.v2-search span {
+  flex: 1;
+  text-align: left;
+}
+
+.v2-where {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--c-text-3);
+  font-size: 12px;
+}
+
+.v2-main {
+  grid-area: main;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.v2-tabs {
+  display: none;
+}
+
+/* One layout rule for every page: a single column, the same width */
+.v2-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 1080px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 28px var(--v2-pad) 0;
+}
+
+.v2-page::after {
+  content: "";
+  flex: none;
+  height: 20px;
+}
+
+.v2-page--narrow {
+  max-width: 760px;
+}
+
+.v2-only-phone {
+  display: none !important;
+}
+
+/* Parameter names and commands are a setting, not a mode: off by default */
+.v2-app:not([data-commands="on"]) .v2-cmd {
+  display: none !important;
+}
+
+@container app (max-width: 1000px) {
+  .v2-app {
+    --v2-pad: 20px;
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+}
+
+@container app (max-width: 720px) {
+  .v2-app {
+    --v2-pad: 16px;
+    --v2-h: 44px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 52px minmax(0, 1fr) auto;
+    grid-template-areas: "top" "main" "tabs";
+    font-size: 16px;
+  }
+
+  .v2-side,
+  .v2-hide-phone {
+    display: none !important;
+  }
+
+  .v2-only-phone {
+    display: revert !important;
+  }
+
+  .v2-search {
+    width: 44px;
+    height: 44px;
+    justify-content: center;
+    border: 0;
+    background: none;
+    color: var(--c-text);
+  }
+
+  .v2-tabs {
+    grid-area: tabs;
+    display: flex;
+    border-top: 1px solid var(--c-border);
+    background: var(--c-surface);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .v2-tab {
+    position: relative;
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 0 6px;
+    color: var(--c-text-3);
+    font-size: 11px;
+    text-decoration: none;
+  }
+
+  .v2-tab[aria-current="page"] {
+    color: var(--c-text);
+    font-weight: 650;
+  }
+
+  .v2-tab[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    width: 32px;
+    height: 2px;
+    background: var(--v2-helix);
+  }
+
+  .v2-tab__count {
+    position: absolute;
+    top: 4px;
+    left: calc(50% + 6px);
+    min-width: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--v2-act);
+    color: var(--v2-on-act);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
+
+  .v2-page {
+    gap: 22px;
+    padding-top: 18px;
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DNA-test files · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-dna-test" data-shell="v2" data-nav="p-hg002" data-title="DNA-test files for HG002" data-parent="HG002|person.html">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>DNA-test files for HG002</h1>
+      <p class="v2-head__sub">Turns the genome into the raw-data files that DNA-testing sites accept, so you can find relatives in their databases. Choose where you’ll upload.</p>
+    </div>
+  </header>
+
+  <section class="v2-section" data-annot-id="source">
+    <div class="v2-row v2-row--wrap v2-small">
+      <span class="v2-muted">Made from</span><span class="v2-tag">CRAM</span><span class="v2-file__name">HG002.GRCh38.30x.cram</span>
+      <span class="v2-muted">· 31× depth, so about 99.6% of markers can be read</span>
+    </div>
+  </section>
+
+  <form class="v2-section" id="sites" data-annot-id="destinations">
+    <h2>Where will you upload?</h2>
+    <div class="v2-sheet">
+      <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">GEDmatch</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">One combined file that works with every GEDmatch tool</span></label>
+      <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">MyHeritage</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">Matches and ethnicity estimate after upload</span></label>
+      <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">FamilyTreeDNA</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">Family Finder autosomal transfer</span></label>
+      <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">Living DNA</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">Regional breakdown, strongest for Britain and Ireland</span></label>
+      <div class="v2-sheet__label">These companies don’t take uploads. Make their format only for another tool that reads it.</div>
+      <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">23andMe format</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">For tools that read a 23andMe raw-data file</span></label>
+      <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">AncestryDNA format</span><span class="v2-choice__aside">1 file</span><span class="v2-choice__desc">For tools that read an AncestryDNA raw-data file</span></label>
+    </div>
+    <p class="v2-section__note">Each file holds the markers on that company’s chip, read from this genome. WGS Extract picks the chip version each site expects.</p>
+  </form>
+
+  <details class="v2-more" data-annot-id="options">
+    <summary>More options</summary>
+    <div class="v2-more__body v2-fields">
+      <div class="v2-field"><span class="v2-field__label">Chip version<small>Per site; the default is the one each site accepts today</small><code class="v2-cmd">formats</code></span><div class="v2-field__control"><select class="v2-select" aria-label="MyHeritage chip version" style="max-width: 260px"><option>MyHeritage: v2 (GSA), recommended</option><option>MyHeritage: GSA 2025</option><option>MyHeritage: v1</option></select></div></div>
+      <div class="v2-field"><span class="v2-field__label">A/T and C/G markers<small>Their strand can’t be checked</small><code class="v2-cmd">strand_ambiguous</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="strand" role="group" aria-label="Strand-ambiguous markers"><button type="button" value="keep" aria-pressed="true">Keep</button><button type="button" value="no-call">Leave blank</button></div></div></div>
+      <div class="v2-field"><span class="v2-field__label">Minimum quality<small>Leave blank below this; 0 is off</small><code class="v2-cmd">min_gq · min_dp</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="0" aria-label="Minimum genotype quality" style="max-width: 90px"><input class="v2-input" type="number" value="0" aria-label="Minimum depth" style="max-width: 90px"></div></div>
+      <div class="v2-field"><span class="v2-field__label">Explain blanks<small>A table saying why each blank marker was left blank</small><code class="v2-cmd">call_reasons</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Explain blanks"></label></div></div>
+    </div>
+  </details>
+
+  <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract microarray --input HG002.GRCh38.30x.cram \
+  --formats all,myheritage_v2 --outdir HG002/microarray/</pre>
+
+  <div class="v2-actionbar" data-annot-id="action">
+    <div class="v2-actionbar__sum">
+      <strong><span data-v2-count="#sites">2</span> <span data-v2-plural="file|files">files</span> · about 12 minutes</strong>
+      <span>Everything needed is installed. 40 MB, saved in HG002’s folder. Starts after HG003’s realign (1 h 52 min).</span>
+    </div>
+    <div class="v2-actionbar__btns">
+      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-v2-need="#sites" data-toast="Queued: DNA-test files for HG002. See Jobs.">Make the files</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

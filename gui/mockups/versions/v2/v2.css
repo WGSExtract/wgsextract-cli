@@ -1,0 +1,10 @@
+/* Version 2 ("People first"). Link after design-system/wgse.css, whose
+ * dialog, toast and palette styles the shared review tooling uses; every
+ * page component of this version is defined here with a v2- prefix. */
+@import url("css/tokens.css");
+@import url("css/shell.css");
+@import url("css/controls.css");
+@import url("css/content.css");
+@import url("css/data.css");
+@import url("css/flows.css");
+@import url("css/manage.css");

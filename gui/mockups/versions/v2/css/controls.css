@@ -1,0 +1,392 @@
+/* Buttons, form controls, tags, status lines and notices. */
+.v2-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  height: var(--v2-h);
+  padding: 0 14px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+  font-weight: 550;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.v2-btn:hover {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.v2-btn .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* One primary action per view */
+.v2-btn--primary {
+  border-color: var(--v2-act);
+  background: var(--v2-act);
+  color: var(--v2-on-act);
+}
+
+.v2-btn--primary:hover {
+  border-color: var(--v2-act-hover);
+  background: var(--v2-act-hover);
+  color: var(--v2-on-act);
+}
+
+.v2-btn--quiet {
+  border-color: transparent;
+  background: none;
+  color: var(--c-text-2);
+}
+
+.v2-btn--danger {
+  border-color: color-mix(in srgb, var(--c-danger) 50%, var(--c-border));
+  color: var(--c-danger);
+}
+
+.v2-btn--quiet.v2-btn--danger {
+  border-color: transparent;
+}
+
+.v2-btn--lg {
+  height: 44px;
+  padding: 0 22px;
+  font-size: 15px;
+}
+
+.v2-btn--sm {
+  height: calc(var(--v2-h) - 6px);
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.v2-btn[disabled],
+.v2-btn[aria-disabled="true"] {
+  border-color: var(--c-border);
+  background: var(--c-surface-2);
+  color: var(--c-text-disabled);
+  cursor: default;
+}
+
+.v2-link {
+  color: var(--c-primary);
+  text-underline-offset: 2px;
+}
+
+/* Small outlined label for kinds of thing (file types, builds). File types
+ * are words, not colours, so colour stays free for status and charts. */
+.v2-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  justify-self: start;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 5px;
+  color: var(--c-text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.v2-tag--plain {
+  border-color: transparent;
+  background: var(--c-surface-2);
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+.v2-tag[data-tone="warn"] {
+  border-color: var(--c-warn-border);
+  background: var(--c-warn-soft);
+  color: var(--c-warn);
+}
+
+.v2-tag[data-tone="ok"] {
+  border-color: transparent;
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+
+.v2-tag[data-tone="bad"] {
+  border-color: transparent;
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+/* Status: a dot and words, never colour alone */
+.v2-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--c-text-2);
+}
+
+/* Notice: one line that says what is wrong and carries the fix */
+.v2-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--c-border);
+  border-left: 3px solid var(--tone, var(--c-text-3));
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+}
+
+.v2-notice > .icon {
+  color: var(--tone, var(--c-text-3));
+}
+
+.v2-notice[data-tone="warn"] {
+  --tone: #c98a12;
+}
+
+.v2-notice[data-tone="bad"] {
+  --tone: var(--c-danger);
+}
+
+.v2-notice[data-tone="ok"] {
+  --tone: var(--c-success);
+}
+
+.v2-notice[data-tone="info"] {
+  --tone: var(--c-info);
+}
+
+.v2-notice__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.v2-notice__text strong {
+  display: block;
+}
+
+.v2-notice__text span {
+  color: var(--c-text-2);
+  font-size: 0.93em;
+}
+
+.v2-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Form controls */
+.v2-input,
+.v2-select {
+  width: 100%;
+  height: var(--v2-h);
+  padding: 0 10px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+}
+
+.v2-input--mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+.v2-check {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--v2-act);
+}
+
+.v2-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.v2-switch input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--c-border-strong);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+
+.v2-switch input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--dur-fast);
+}
+
+.v2-switch input:checked {
+  background: var(--v2-act);
+}
+
+.v2-switch input:checked::after {
+  background: var(--v2-on-act);
+  transform: translateX(16px);
+}
+
+/* Exclusive choice among a few short options (uses data-seg from ui.js) */
+.v2-seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--v2-r);
+  background: var(--c-surface-3);
+}
+
+.v2-seg button {
+  height: calc(var(--v2-h) - 6px);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.v2-seg button[aria-pressed="true"] {
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+
+/* Labelled setting rows: label (and its parameter name) left, control right */
+.v2-fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.v2-field {
+  display: grid;
+  grid-template-columns: minmax(160px, 260px) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px 20px;
+  padding: 10px 0;
+  border-top: 1px solid var(--c-border);
+}
+
+.v2-field:first-child {
+  border-top: 0;
+}
+
+.v2-field__label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 550;
+}
+
+.v2-field__label small {
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.v2-field__label code {
+  color: var(--c-text-3);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.v2-field__control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Disclosure for options most people never change */
+.v2-more {
+  border-top: 1px solid var(--c-border);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.v2-more > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  color: var(--c-text-2);
+  font-weight: 550;
+  cursor: pointer;
+  list-style: none;
+}
+
+.v2-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.v2-more > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--dur-fast);
+}
+
+.v2-more[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.v2-more__body {
+  padding: 0 0 12px;
+}
+
+@container app (max-width: 720px) {
+  .v2-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-notice {
+    flex-wrap: wrap;
+  }
+
+  .v2-notice__actions {
+    width: 100%;
+  }
+
+  .v2-notice__actions .v2-btn {
+    flex: 1;
+  }
+
+  .v2-check {
+    width: 22px;
+    height: 22px;
+  }
+}

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Empty, loading and error states · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-states" data-shell="v2" data-nav="states" data-title="Empty, loading and error states" data-parent="Settings|settings.html">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Empty, loading and error states</h1>
+      <p class="v2-head__sub">For review. Each problem says what happened and why it matters, and offers one fix that says what it costs. Problems sit where they happen, not in a pop-up.</p>
+    </div>
+  </header>
+
+  <section class="v2-section" data-annot-id="state-empty">
+    <p class="v2-small v2-dim">Library, before anything is added</p>
+    <div class="v2-sheet">
+      <div class="v2-empty">
+        <h2>Add your first genome</h2>
+        <p class="v2-small">A BAM, CRAM, FASTQ or VCF file, or raw data from 23andMe, AncestryDNA and similar. Files stay where they are.</p>
+        <div class="v2-row v2-row--wrap"><a class="v2-btn v2-btn--primary" href="add.html"><i data-icon="plus"></i>Add files</a><button class="v2-btn" type="button" data-toast="Downloading the small example (120 MB)">Try an example</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="state-loading">
+    <p class="v2-small v2-dim">Adding a file, while WGS Extract reads it</p>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-section">
+      <div class="v2-row v2-small v2-muted"><span class="v2-spin" aria-hidden="true"></span>Reading the header of HG003.hs37d5.38x.bam…</div>
+      <span class="v2-skel" style="--w: 60%"></span>
+      <span class="v2-skel" style="--w: 40%; --h: 10px"></span>
+      <span class="v2-skel" style="--w: 52%; --h: 10px"></span>
+    </div></div>
+  </section>
+
+  <section class="v2-section v2-examples" data-annot-id="state-problems">
+    <h2>Problems</h2>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">Adding a file from a folder that isn’t allowed</p>
+      <div class="v2-notice" data-tone="bad" role="alert" data-annot-id="state-path">
+        <i data-icon="lock"></i>
+        <div class="v2-notice__text"><strong>WGS Extract isn’t allowed to open ~/Desktop</strong><span>It only reads folders you’ve allowed, so it can’t open genome.cram there. <code class="v2-cmd">path_not_allowed</code></span></div>
+        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-toast="~/Desktop added to the allowed folders">Allow ~/Desktop</button></div>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">Starting a realign when the workspace disk is nearly full</p>
+      <div class="v2-notice" data-tone="bad" role="alert" data-annot-id="state-disk">
+        <i data-icon="hard-drive"></i>
+        <div class="v2-notice__text"><strong>Not enough space to realign</strong><span>Needs about 94 GB on Macintosh HD and 21 GB is free. Nothing was started.</span></div>
+        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-toast="The new file will be saved on Genomes">Save to Genomes instead · 1.1 TB free</button></div>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">Opening a CRAM</p>
+      <div class="v2-notice" data-tone="warn" role="status" data-annot-id="state-reference">
+        <i data-icon="reference"></i>
+        <div class="v2-notice__text"><strong>This CRAM needs the hs38d1 reference</strong><span>A CRAM only stores differences from its reference, so it can’t be read until hs38d1 is installed.</span></div>
+        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38d1. See Jobs.">Download hs38d1 · 0.9 GB</button></div>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">Any task, when an analysis tool is missing</p>
+      <div class="v2-notice" data-tone="info" role="status" data-annot-id="state-tools">
+        <i data-icon="terminal"></i>
+        <div class="v2-notice__text"><strong>A tool this task needs isn’t installed</strong><span>GATK HaplotypeCaller needs Java. Other tasks still work.</span></div>
+        <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="settings.html">See what’s missing</a></div>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">On a paired phone, when the computer sleeps or leaves the network</p>
+      <div class="v2-notice" data-tone="warn" role="status" data-annot-id="state-offline">
+        <i data-icon="wifi"></i>
+        <div class="v2-notice__text"><strong>Lost the connection to mac-studio</strong><span>Jobs keep running there. Reconnecting… Progress shown is from 09:58.</span></div>
+        <span class="v2-spin" aria-hidden="true"></span>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">On a view-only phone, in place of Start buttons</p>
+      <div class="v2-notice" data-tone="info" role="status" data-annot-id="state-readonly">
+        <i data-icon="eye"></i>
+        <div class="v2-notice__text"><strong>This phone can view, not start jobs</strong><span>Starting jobs from this device has to be allowed on the computer.</span></div>
+        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-toast="Asked on mac-studio">Ask on the computer</button></div>
+      </div>
+    </div>
+
+    <div class="v2-example">
+      <p class="v2-small v2-dim">On the computer, when a paired phone asks to delete something</p>
+      <div class="v2-notice" data-tone="warn" role="alert" data-annot-id="state-confirm">
+        <i data-icon="shield-check"></i>
+        <div class="v2-notice__text"><strong>Mac’s iPhone wants to remove ClinVar</strong><span>Deleting from a phone needs approval here. Removing it frees 160 MB.</span></div>
+        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Declined">Decline</button><button class="v2-btn v2-btn--sm" type="button" data-toast="ClinVar removed">Allow once</button></div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Phone access · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-phone" data-shell="v2" data-nav="phone" data-title="Phone access">
+<div class="v2-page v2-page--narrow" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Phone access</h1>
+      <p class="v2-head__sub">Check on jobs and start them from a phone or tablet on the same network, while this computer does the work.</p>
+    </div>
+    <div class="v2-head__actions" data-annot-id="switch">
+      <label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Phone access"><span><strong>On</strong> <span class="v2-dim v2-small">· this Wi-Fi only</span></span></label>
+    </div>
+  </header>
+
+  <section class="v2-section" data-annot-id="pairing">
+    <div class="v2-section__head"><h2>Pair a phone</h2><span class="v2-small v2-dim">Code expires in 4:12</span></div>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-pair">
+      <div data-render="qr" data-size="168px" data-label="QR code to pair a phone (illustrative)"></div>
+      <ol class="v2-steps-list">
+        <li>Open the camera on your phone and point it at the code.</li>
+        <li>Check that the phone shows the same number: <strong class="v2-mono">481 207</strong></li>
+        <li>Approve the phone here when asked. It gets its own key, which you can remove at any time.</li>
+      </ol>
+    </div></div>
+    <p class="v2-section__note">No camera? Open <span class="v2-mono">mac-studio.local:41890</span> on the phone and type the number.</p>
+  </section>
+
+  <section class="v2-section" data-annot-id="devices">
+    <h2>Paired devices</h2>
+    <div class="v2-sheet" role="list" aria-label="Paired devices">
+      <div class="v2-item" role="listitem" data-annot-id="device-iphone">
+        <span class="v2-item__title">Mac’s iPhone <span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Connected now</span></span>
+        <span class="v2-item__desc">Can view, start and cancel jobs · paired Nov 3</span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-toast="Removed. Mac’s iPhone can no longer connect.">Remove</button></span>
+      </div>
+      <div class="v2-item" role="listitem" data-annot-id="device-ipad">
+        <span class="v2-item__title">Living-room iPad <span class="v2-status v2-small"><span class="v2-pip"></span>9 days ago</span></span>
+        <span class="v2-item__desc">View only · paired Oct 12</span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-toast="Removed. The iPad can no longer connect.">Remove</button></span>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="permissions">
+    <h2>What a paired phone can and can’t do</h2>
+    <div class="v2-sheet"><div class="v2-sheet__pad v2-cols v2-cols--even">
+      <div class="v2-section">
+        <h3 class="v2-h2">Can</h3>
+        <ul class="v2-plain-list">
+          <li>See people, results and jobs</li>
+          <li>Start and cancel jobs, if you allow it for that device</li>
+        </ul>
+      </div>
+      <div class="v2-section">
+        <h3 class="v2-h2">Can’t</h3>
+        <ul class="v2-plain-list">
+          <li>Delete anything without approval on this computer</li>
+          <li>Change settings or folders</li>
+          <li>Download or upload genome files</li>
+        </ul>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="v2-section" data-annot-id="private">
+    <div class="v2-section__head"><h2>How it stays private</h2><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#access-log"><i data-icon="scroll-text"></i>Access log</button></div>
+    <ul class="v2-plain-list v2-muted">
+      <li>Encrypted. The code carries this computer’s fingerprint, so the phone knows it’s talking to this Mac.</li>
+      <li>Your local network only. Nothing goes through the internet.</li>
+      <li>One key per device. Remove a device and its key stops working.</li>
+      <li>Turns itself off after 7 days with no paired device connecting.</li>
+    </ul>
+  </section>
+</div>
+
+<dialog class="dialog" id="access-log" aria-labelledby="access-log-title" data-annot-id="access-log">
+  <div class="dialog__header"><h2 class="dialog__title" id="access-log-title">Access log</h2></div>
+  <div class="dialog__body">
+    <table class="v2-table" aria-label="Recent access">
+      <tbody>
+        <tr><td class="v2-num">09:58</td><td>Mac’s iPhone</td><td>Looked at Jobs</td></tr>
+        <tr><td class="v2-num">09:41</td><td>Mac’s iPhone</td><td>Queued DNA-test files for HG002</td></tr>
+        <tr><td class="v2-num">Yesterday</td><td>Mac’s iPhone</td><td>Asked to remove ClinVar; declined here</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Close</button></div>
+</dialog>
+</body>
+</html>
