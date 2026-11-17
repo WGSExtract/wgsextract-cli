@@ -40,7 +40,7 @@
   <section class="v2-section" data-annot-id="jobs">
     <h2>Jobs</h2>
     <div class="v2-sheet"><div class="v2-sheet__pad v2-fields">
-      <div class="v2-field"><span class="v2-field__label">Run one job at a time<small>Recommended. Aligning and calling each use the whole computer; two at once take longer than one after the other.</small><code class="v2-cmd">max_concurrent_jobs</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Run one job at a time"></label></div></div>
+      <div class="v2-field"><span class="v2-field__label">Run one job at a time<small>Recommended. <abbr class="v2-term" data-term="align">Aligning</abbr> and <abbr class="v2-term" data-term="calling">calling</abbr> each use the whole computer; two at once take longer than one after the other.</small><code class="v2-cmd">max_concurrent_jobs</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Run one job at a time"></label></div></div>
       <div class="v2-field"><span class="v2-field__label">Keep this computer awake while jobs run<small>A sleeping computer pauses the job</small><code class="v2-cmd">prevent_sleep</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Keep this computer awake while jobs run"></label></div></div>
       <div class="v2-field"><span class="v2-field__label">Tell me when a job finishes or needs me</span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Tell me when a job finishes or needs me"></label></div></div>
       <div class="v2-field"><span class="v2-field__label">Keep running in the menu bar when the window is closed<small>Jobs carry on; quit from the menu bar to stop them</small></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" checked aria-label="Keep running in the menu bar when the window is closed"></label></div></div>
@@ -60,7 +60,7 @@
     <div class="v2-sheet"><div class="v2-sheet__pad v2-section">
       <p><strong>Your genome files never leave this computer.</strong> WGS Extract goes online only for downloads you start:</p>
       <ul class="v2-plain-list v2-muted">
-        <li>reference genomes and the extra data for annotation</li>
+        <li><abbr class="v2-term" data-term="reference">reference genomes</abbr> and the extra data for <abbr class="v2-term" data-term="annotation">annotation</abbr></li>
         <li>example genomes, when you ask to try one</li>
         <li>new versions of WGS Extract, when you choose to update</li>
       </ul>
@@ -73,12 +73,12 @@
     <div class="v2-sheet">
       <div class="v2-item">
         <span class="v2-item__title">14 of 15 tools found</span>
-        <span class="v2-item__desc">samtools, bcftools and htslib 1.21, bwa-mem2, minimap2, Yleaf, HaploGrep and 8 more <code class="v2-cmd">· deps/check</code></span>
+        <span class="v2-item__desc"><abbr class="v2-term" data-term="samtools">samtools</abbr>, <abbr class="v2-term" data-term="bcftools">bcftools</abbr> and htslib 1.21, <abbr class="v2-term" data-term="bwamem2">bwa-mem2</abbr>, <abbr class="v2-term" data-term="minimap2">minimap2</abbr>, Yleaf, HaploGrep and 8 more <code class="v2-cmd">· deps/check</code></span>
         <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Checked: 14 of 15 tools found">Check again</button></span>
       </div>
       <div class="v2-item" data-annot-id="missing-tool">
         <span class="v2-item__title v2-row"><span class="v2-pip" data-state="attention"></span>Java is missing</span>
-        <span class="v2-item__desc">Only GATK HaplotypeCaller and pharmacogenomics need it; everything else works. Install it with your package manager, for example <span class="v2-mono">brew install openjdk</span>. WGS Extract doesn’t install tools itself.</span>
+        <span class="v2-item__desc">Only <abbr class="v2-term" data-term="gatk">GATK HaplotypeCaller</abbr> and <abbr class="v2-term" data-term="pgx">pharmacogenomics</abbr> need it; everything else works. Install it with your package manager, for example <span class="v2-mono">brew install openjdk</span>. WGS Extract doesn’t install tools itself.</span>
         <span class="v2-item__aside"><a class="v2-link" href="install.html">How to install</a></span>
       </div>
       <div class="v2-item">

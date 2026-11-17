@@ -14,14 +14,14 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Convert Gordon’s BAM</h1>
-      <p class="v2-head__sub">Makes a new file with the same reads in another format. The original stays as it is unless you choose otherwise below.</p>
+      <p class="v2-head__sub">Makes a new file with the same <abbr class="v2-term" data-term="reads">reads</abbr> in another format. The original stays as it is unless you choose otherwise below.</p>
     </div>
   </header>
 
   <section class="v2-section" data-annot-id="source">
     <div class="v2-row v2-row--wrap v2-small">
       <span class="v2-muted">From</span><span class="v2-tag">BAM</span><span class="v2-file__name">60820188479016.bam</span>
-      <span class="v2-muted">· GRCh37 (hs37d5) · 92.4 GB on Genomes</span>
+      <span class="v2-muted">· <abbr class="v2-term" data-term="grch37">GRCh37</abbr> (hs37d5) · 92.4 GB on Genomes</span>
     </div>
   </section>
 
@@ -32,8 +32,20 @@
       <label class="v2-choice"><input class="v2-check" type="radio" name="to"><span class="v2-choice__title">BAM</span><span class="v2-choice__aside">about 90 GB<br>60 min</span><span class="v2-choice__desc">Sort it, or rewrite it for a tool that is picky about BAMs.</span></label>
       <label class="v2-choice"><input class="v2-check" type="radio" name="to"><span class="v2-choice__title">FASTQ</span><span class="v2-choice__aside">2 × 41 GB<br>70 min</span><span class="v2-choice__desc">Unaligned reads, for another aligner or a service that asks for FASTQ.</span></label>
     </div>
-    <p class="v2-section__note">Need a VCF? That is variant calling, a few hours: <a class="v2-link" href="tool-call-variants.html">Call variants</a></p>
+    <p class="v2-section__note">Need a <abbr class="v2-term" data-term="vcf">VCF</abbr>? That is <abbr class="v2-term" data-term="calling">variant calling</abbr>, a few hours: <a class="v2-link" href="tool-call-variants.html">Call variants</a></p>
   </form>
+  <details class="v2-more v2-learn" data-annot-id="learn-convert">
+    <summary>What changes when you convert?</summary>
+    <div class="v2-more__body">
+      <p>The reads stay the same; only the way they’re stored changes.</p>
+      <dl>
+        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> to <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>Stores each read as its differences from the <abbr class="v2-term" data-term="reference">reference genome</abbr>, in about a third of the space. Nothing is lost, but the CRAM opens only with that same reference, here hs37d5, so keep it installed.</dd>
+        <dt>BAM to BAM</dt><dd>About the same size. Sorts the reads, or rewrites a file a tool won’t accept.</dd>
+        <dt>To <abbr class="v2-term" data-term="fastq">FASTQ</abbr></dt><dd>Takes the reads back to their unaligned form, as two files. They must be aligned again before most tasks can use them; make them for a service or aligner that asks for FASTQ.</dd>
+      </dl>
+      <p>Converting doesn’t change the <abbr class="v2-term" data-term="build">genome build</abbr>. To move from GRCh37 to GRCh38, realign instead.</p>
+    </div>
+  </details>
 
   <form class="v2-section" data-annot-id="original">
     <h2>The original BAM afterwards</h2>

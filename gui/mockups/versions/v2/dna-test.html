@@ -14,16 +14,24 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>DNA-test files for Reginald</h1>
-      <p class="v2-head__sub">Turns the genome into the raw-data files that DNA-testing sites accept, so you can find relatives in their databases. Choose where you’ll upload.</p>
+      <p class="v2-head__sub">Turns the genome into the <abbr class="v2-term" data-term="kit">raw-data files</abbr> that DNA-testing sites accept, so you can find relatives in their databases. Choose where you’ll upload.</p>
     </div>
   </header>
 
   <section class="v2-section" data-annot-id="source">
     <div class="v2-row v2-row--wrap v2-small">
       <span class="v2-muted">Made from</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span>
-      <span class="v2-muted">· 31× depth, so about 99.6% of markers can be read</span>
+      <span class="v2-muted">· <abbr class="v2-term" data-term="depth">31× depth</abbr>, so about 99.6% of <abbr class="v2-term" data-term="marker">markers</abbr> can be read</span>
     </div>
   </section>
+  <details class="v2-more v2-learn" data-annot-id="learn-dna-test">
+    <summary>What are DNA-test files for?</summary>
+    <div class="v2-more__body">
+      <p>Testing companies such as 23andMe, AncestryDNA and MyHeritage don’t read your whole genome. Their <abbr class="v2-term" data-term="chip">chip</abbr> reads about 600,000–700,000 chosen markers, and you can download the result as a raw-data file. Matching sites compare these files to find relatives who share stretches of DNA with you.</p>
+      <p>A whole genome holds nearly all of those markers, so WGS Extract can write the file each site expects, without a new test. Each site has its own database, so uploading to several finds different relatives.</p>
+      <p>Uploading shares the person’s <abbr class="v2-term" data-term="genotype">genotypes</abbr> with that company: read its privacy terms first.</p>
+    </div>
+  </details>
 
   <form class="v2-section" id="sites" data-annot-id="destinations">
     <h2>Where will you upload?</h2>
@@ -43,8 +51,8 @@
     <summary>More options</summary>
     <div class="v2-more__body v2-fields">
       <div class="v2-field"><span class="v2-field__label">Chip version<small>Per site; the default is the one each site accepts today</small><code class="v2-cmd">formats</code></span><div class="v2-field__control"><select class="v2-select" aria-label="MyHeritage chip version" style="max-width: 260px"><option>MyHeritage: v2 (GSA), recommended</option><option>MyHeritage: GSA 2025</option><option>MyHeritage: v1</option></select></div></div>
-      <div class="v2-field"><span class="v2-field__label">A/T and C/G markers<small>Their strand can’t be checked</small><code class="v2-cmd">strand_ambiguous</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="strand" role="group" aria-label="Strand-ambiguous markers"><button type="button" value="keep" aria-pressed="true">Keep</button><button type="button" value="no-call">Leave blank</button></div></div></div>
-      <div class="v2-field"><span class="v2-field__label">Minimum quality<small>Leave blank below this; 0 is off</small><code class="v2-cmd">min_gq · min_dp</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="0" aria-label="Minimum genotype quality" style="max-width: 90px"><input class="v2-input" type="number" value="0" aria-label="Minimum depth" style="max-width: 90px"></div></div>
+      <div class="v2-field"><span class="v2-field__label">A/T and C/G markers<small>Their <abbr class="v2-term" data-term="strand">strand</abbr> can’t be checked</small><code class="v2-cmd">strand_ambiguous</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="strand" role="group" aria-label="Strand-ambiguous markers"><button type="button" value="keep" aria-pressed="true">Keep</button><button type="button" value="no-call">Leave blank</button></div></div></div>
+      <div class="v2-field"><span class="v2-field__label"><abbr class="v2-term" data-term="gq">Minimum quality</abbr><small>Leave blank below this; 0 is off</small><code class="v2-cmd">min_gq · min_dp</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="0" aria-label="Minimum genotype quality" style="max-width: 90px"><input class="v2-input" type="number" value="0" aria-label="Minimum depth" style="max-width: 90px"></div></div>
       <div class="v2-field"><span class="v2-field__label">Explain blanks<small>A table saying why each blank marker was left blank</small><code class="v2-cmd">call_reasons</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Explain blanks"></label></div></div>
     </div>
   </details>

@@ -1,1 +1,147 @@
-/* Glossary terms and their explanation popover (shells/v2/glossary.js) */
+/* Glossary terms and their explanation popover (shells/v2/glossary.js).
+ * A term reads as ordinary text with a dotted underline; the popover is a
+ * flat sheet like a dialog's, inside the app viewport. */
+.v2-term {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--c-text-3);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  cursor: help;
+  border-radius: 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.v2-term:hover,
+.v2-term[aria-expanded="true"] {
+  text-decoration-color: var(--c-primary);
+  text-decoration-style: solid;
+}
+
+.v2-term[aria-expanded="true"] {
+  background: var(--c-primary-soft);
+}
+
+.v2-term:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 1px;
+}
+
+.v2-termpop {
+  position: absolute;
+  z-index: 45;
+  box-sizing: border-box;
+  width: max-content;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+  color: var(--c-text);
+  box-shadow: var(--shadow-2);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  animation: v2-termpop-in var(--dur-fast) var(--ease-out);
+}
+
+.v2-termpop[hidden] {
+  display: none;
+}
+
+.v2-termpop__term {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.v2-termpop p {
+  margin: 0;
+}
+
+.v2-termpop__short {
+  color: var(--c-text);
+}
+
+.v2-termpop__more {
+  margin-top: 6px !important;
+  padding-top: 6px;
+  border-top: 1px solid var(--c-border);
+  color: var(--c-text-2);
+}
+
+.v2-termpop__link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--c-primary);
+  font-weight: 550;
+}
+
+.v2-termpop__link[hidden] {
+  display: none;
+}
+
+@keyframes v2-termpop-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-termpop {
+    animation: none;
+  }
+}
+
+/* Short "what is this?" explainers on the pages (details.v2-more.v2-learn) */
+.v2-learn {
+  border-bottom: 0;
+}
+
+.v2-learn > summary {
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.v2-learn .v2-more__body {
+  display: grid;
+  max-width: 72ch;
+  gap: 8px;
+  color: var(--c-text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.v2-learn .v2-more__body p {
+  margin: 0;
+}
+
+.v2-learn dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.v2-learn dt {
+  color: var(--c-text);
+  font-weight: 600;
+}
+
+.v2-learn dd {
+  margin: 0;
+}
+
+@container app (max-width: 520px) {
+  .v2-learn dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .v2-learn dd {
+    margin-bottom: 6px;
+  }
+}

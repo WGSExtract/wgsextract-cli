@@ -23,10 +23,10 @@
     <div class="v2-sheet">
       <div class="v2-sheet__pad v2-cols v2-cols--even" style="gap: 32px">
         <div class="v2-line" data-line="y" data-annot-id="paternal">
-          <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+          <span class="v2-line__kind">Paternal line <small><abbr class="v2-term" data-term="ydna">Y-DNA</abbr>, father to son</small></span>
           <span class="v2-line__result">J-ZS241</span>
           <span class="v2-muted v2-small">In the J1 branch, common in the Middle East and the Caucasus and among Ashkenazi Jews.</span>
-          <span class="v2-small"><strong>High confidence:</strong> 41 of 43 defining markers match.</span>
+          <span class="v2-small"><strong>High confidence:</strong> 41 of 43 defining <abbr class="v2-term" data-term="marker">markers</abbr> match.</span>
           <ol class="v2-path" aria-label="Path from the root of the Y tree">
             <li><code>A0-T</code><span>root</span></li>
             <li><span>14 branches</span></li>
@@ -38,7 +38,7 @@
           </ol>
         </div>
         <div class="v2-line" data-line="mt" data-annot-id="maternal">
-          <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+          <span class="v2-line__kind">Maternal line <small><abbr class="v2-term" data-term="mtdna">mtDNA</abbr>, mother to children</small></span>
           <span class="v2-line__result">K1a1b1a</span>
           <span class="v2-muted v2-small">A branch of K found across Europe and common among Ashkenazi Jews.</span>
           <span class="v2-small"><strong>High confidence:</strong> quality 0.94 of 1.</span>
@@ -53,6 +53,14 @@
         </div>
       </div>
     </div>
+    <details class="v2-more v2-learn" data-annot-id="learn-haplogroup">
+      <summary>What’s a haplogroup?</summary>
+      <div class="v2-more__body">
+        <p>A <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr> is a branch of the human family tree for one line of descent, defined by mutations passed down unchanged. The paternal line follows the Y chromosome from father to son; the maternal line follows mtDNA from a mother to all her children.</p>
+        <p>The name gets longer as the branch gets younger: J is about 43,000 years old, and J-ZS241 is a far more recent branch of it. The path shows the branches from the root of the tree.</p>
+        <p>Each line follows just one ancestor in every generation, so it says nothing about the rest of your ancestry. Genealogists use haplogroups to confirm a relationship on a direct line and to find projects of people on the same branch; <abbr class="v2-term" data-term="ystr">Y-STR</abbr> markers then tell close paternal relatives apart.</p>
+      </div>
+    </details>
   </section>
 
   <section class="v2-section" data-annot-id="ancestry">
@@ -65,11 +73,11 @@
         <div class="v2-stacked" role="img" aria-label="European 52%, Middle Eastern 38%, Central and South Asian 6%, Sub-Saharan African 3%, East Asian 1%">
           <span class="v2-s1" style="--w: 52" title="European 52%"></span><span class="v2-s2" style="--w: 38" title="Middle Eastern 38%"></span><span class="v2-s3" style="--w: 6" title="Central &amp; South Asian 6%"></span><span class="v2-s4" style="--w: 3" title="Sub-Saharan African 3%"></span><span class="v2-s5" style="--w: 1" title="East Asian 1%"></span>
         </div>
-        <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of reference populations. Each component is named after the groups that carry it most, but many people carry several: reference Europeans, for example, carry about a quarter “Middle Eastern” on average, from shared ancient ancestry.</p>
+        <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of <abbr class="v2-term" data-term="refpop">reference populations</abbr>. Each component is named after the groups that carry it most, but many people carry several: reference Europeans, for example, carry about a quarter “Middle Eastern” on average, from shared ancient ancestry.</p>
       </div>
       <div class="v2-scroll" data-when="anc:continental">
         <table class="v2-table v2-table--wide" aria-label="Ancestry components, continental">
-          <thead><tr><th>Component</th><th class="v2-num">Share</th><th>95% interval</th><th>Carried most by</th></tr></thead>
+          <thead><tr><th>Component</th><th class="v2-num">Share</th><th><abbr class="v2-term" data-term="interval">95% interval</abbr></th><th>Carried most by</th></tr></thead>
           <tbody>
             <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s1"></span>European</span></td><td class="v2-num">52%</td><td><div class="v2-row"><div class="v2-ci v2-s1 v2-grow" style="--v: 52%; --lo: 48%; --hi: 56%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">48–56%</span></div></td><td class="v2-muted">Tuscan, Iberian, British, Finnish</td></tr>
             <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s2"></span>Middle Eastern</span></td><td class="v2-num">38%</td><td><div class="v2-row"><div class="v2-ci v2-s2 v2-grow" style="--v: 38%; --lo: 34%; --hi: 42%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">34–42%</span></div></td><td class="v2-muted">Druze, Palestinian, Bedouin</td></tr>
@@ -96,7 +104,7 @@
         <p class="v2-sheet__label">The other 4 of the 12 regions were 0%. Intervals are wider at this level; the chart above stays continental.</p>
       </div>
     </div>
-    <p class="v2-section__note" data-annot-id="ancestry-facts">187,417 sites, 96% found in this genome · compared with 3,129 people from 80 reference populations (HGDP and 1000 Genomes) · Indigenous American and Oceanian were 0%.</p>
+    <p class="v2-section__note" data-annot-id="ancestry-facts">187,417 sites, 96% found in this genome · compared with 3,129 people from 80 reference populations (<abbr class="v2-term" data-term="hgdp">HGDP</abbr> and <abbr class="v2-term" data-term="kg1000">1000 Genomes</abbr>) · Indigenous American and Oceanian were 0%.</p>
     <code class="v2-cmd v2-dim v2-small">qc/ancestry · ADAMIXTURE K=7 and K=12 · lineage/y-haplogroup on the YFull tree (pinned), QC 0.98 · lineage/mt-haplogroup with PhyloTree 17 and HaploGrep 3</code>
   </section>
 
