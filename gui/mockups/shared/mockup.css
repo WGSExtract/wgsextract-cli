@@ -7,6 +7,13 @@ body {
   height: 100%;
 }
 
+/* The body stays hidden until the scripts have built the page; a dark base
+ * (the mockup bar's colour) keeps page-to-page navigation from flashing
+ * white in the meantime, in either theme. */
+html {
+  background: #171b24;
+}
+
 body {
   display: flex;
   flex-direction: column;

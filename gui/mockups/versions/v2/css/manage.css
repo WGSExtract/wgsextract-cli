@@ -43,10 +43,28 @@
   grid-template-columns: 220px minmax(0, 1fr);
 }
 
+/* The list is longer than a screen, so it keeps its own scroll beside the
+ * tool and stays in view; catalog.js sets --v2-catalog-h to the visible
+ * height of the column above the action bar. */
 .v2-catalog {
+  position: sticky;
+  top: 16px;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  max-height: var(--v2-catalog-h, none);
+  padding: 0 6px 12px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.v2-catalog > .v2-input {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  box-shadow: 0 0 0 4px var(--c-bg);
 }
 
 .v2-catalog__toggle {
@@ -76,9 +94,14 @@
 }
 
 .v2-catalog a[aria-current="page"] {
-  background: var(--c-surface-3);
-  color: var(--c-text);
+  background: var(--c-primary-soft);
+  box-shadow: inset 3px 0 0 var(--c-primary);
+  color: var(--c-primary-soft-text);
   font-weight: 600;
+}
+
+.v2-catalog h2[data-current] {
+  color: var(--c-primary-soft-text);
 }
 
 /* Numbered blocks on the one-screen first run */
@@ -141,6 +164,18 @@
 @container app (max-width: 860px) {
   .v2-cols--catalog {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-catalog {
+    position: static;
+    max-height: none;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .v2-catalog > .v2-input {
+    position: static;
+    box-shadow: none;
   }
 
   .v2-catalog:not([data-open]) > :not(.v2-catalog__toggle) {
