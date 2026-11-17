@@ -211,6 +211,30 @@ Downloads and fixes the pages offer are real operations too: `ref/index`
 the personal report fetch their own public files (a scoring file, a gene
 list) as part of the run, as the CLI does.
 
+### Dry runs
+
+An operation whose schema has `dry_run` (`realign`, `vcf/deepvariant`,
+`analyze/comprehensive`, `example-genome/download`, `ref/acmg-data`) gets
+a Dry run button on its tool page. The request is the same as Start's, plus
+`dry_run: true`. The mock answers it as a query, so it finishes at once and
+never waits behind a heavy job. Its view's `ui.dry_run` is
+`{ steps: [{ name, action: "run" | "skip", why }], notes: [...] }`:
+
+- A step is skipped when an earlier succeeded run of the same operation and
+  input did it, or when a cancelled or failed run got past it.
+- A step reruns when `restart` is set or the step is named in `force_steps`.
+- `skip_calling` or `vcf_inputs` skip comprehensive analysis's calling steps.
+
+The notes cover memory against this computer's, temporary space, the
+outputs that would be written, and a same run that is already queued or
+running. The job log lists the same decisions. The real server's dry runs
+come from the step journal (`analyze.steps.json`), so the reasons will be
+worded differently.
+
+Tool pages also watch `/v1/jobs`. When a job with the same operation, input
+and reference is queued or running, Start is disabled and a notice links to
+Jobs.
+
 ## Routes
 
 Kinds: **real** — in docs/server.md, same shapes; **proposed** — the UI

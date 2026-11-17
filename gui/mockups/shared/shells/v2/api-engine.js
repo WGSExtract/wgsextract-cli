@@ -109,6 +109,10 @@
         if (k !== "mock") job[k] = fields[k];
       });
       if (job.started !== null) job.segAt = job.started;
+      if (p.dry_run) {
+        job.kind = "query";
+        job.plan = M.dryRun(job.plan, op, p, doc.jobs, c.machine);
+      }
       if (job.status === "succeeded") job.exit_code = 0;
       if (job.status === "failed") job.exit_code = 1;
       if (job.status === "interrupted" || job.status === "cancelled") keepPartial(job);

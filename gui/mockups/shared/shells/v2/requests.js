@@ -169,8 +169,14 @@
     return /seconds/.test(t) ? 0.01 : /tens of minutes/.test(t) ? 0.5 : /minute/.test(t) ? 0.15 : 3;
   }
 
-  function start(ctx, out) {
-    var requests = build(ctx);
+  /* extra: params for every request whose op takes them (a dry run sends
+   * only the requests that can be dry-run) */
+  function start(ctx, out, extra) {
+    var requests = build(ctx).filter(function (req) {
+      return !extra || Object.keys(extra).every(function (k) {
+        return Object.prototype.hasOwnProperty.call(schema(req.op).fields, k);
+      });
+    });
     var label = out.jobName || ctx.def.label + (ctx.def.noInput ? "" : " for " + ctx.name);
     return Promise.all(requests.map(function (req) {
       var mock = {
@@ -179,7 +185,7 @@
         hours: runHours(out) / requests.length,
         memGB: out.memGB,
       };
-      return checked(WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, { _mock: mock })));
+      return checked(WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, extra, { _mock: mock })));
     }));
   }
 

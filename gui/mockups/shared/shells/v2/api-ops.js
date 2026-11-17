@@ -142,6 +142,10 @@
     microarray: [["Call chip positions", 9], ["Write files", 2]],
     "bam/to-cram": [["Convert", 50], ["Verify", 5]],
     "bam/index": [["Index", 1]],
+    /* analyze.py's journal steps: info, both haplogroups, snp and indel
+     * calling, then annotate and discovery per VCF */
+    "analyze/comprehensive": [["Sample facts", 6], ["Maternal haplogroup", 3], ["Paternal haplogroup", 3],
+      ["Call SNPs", 40], ["Call indels", 44], ["Annotate", 18], ["Find significant variants", 6]],
   };
 
   var READS_PER_GB = 876231560 / 118;
@@ -260,7 +264,7 @@
       return output(petStem + "." + petKind, size * (petKind === "cram" ? 0.4 : 1), petKind)
         .concat(output(petStem + ".vcf.gz", 0.15, "vcf"));
     }
-    if (op === "analyze/comprehensive") return p.dry_run ? [] : output("significant_SNP_" + stem + ".vcf.gz", 0.01, "vcf");
+    if (op === "analyze/comprehensive") return output("significant_SNP_" + stem + ".vcf.gz", 0.01, "vcf");
     if (op === "vcf/to-fasta") return output(stem + "_consensus.fa.gz", p.region ? 0.001 : 0.9, "fasta");
     var names = { filter: "filtered", annotate: "annotated", "chain-annotate": "chain_annotated", acmg: "acmg_annotated",
       gerp: "gerp_annotated", phylop: "phylop_annotated", pharmgkb: "pharmgkb_annotated", "sv-freq": "sv_freq_annotated" };
@@ -376,6 +380,56 @@
       inputs: file ? [{ path: file.path, kind: (file.tag || "").toLowerCase(), role: "input" }] : [],
       metrics: hint.metrics || {},
     };
+  };
+
+  /* A dry_run request: the real job's plan, with each step marked run or
+   * skip and why (earlier runs of the same op and input, restart,
+   * force_steps), as the CLI logs it. Nothing is written, so it runs as a
+   * quick query that finishes at once. */
+  M.dryRun = function (plan, op, params, jobs, machine) {
+    var input = params.input || params.vcf_input || params.r1 || "";
+    var same = jobs.filter(function (j) {
+      var q = j.params;
+      return j.op === op && !q.dry_run && (q.input || q.vcf_input || q.r1 || "") === input;
+    });
+    var forced = params.force_steps || [];
+    var done = same.filter(function (j) {
+      return j.status === "succeeded";
+    }).pop();
+    var stopped = same.filter(function (j) {
+      return ["failed", "cancelled", "interrupted"].indexOf(j.status) >= 0 && j.stopWork;
+    }).pop();
+    var active = same.filter(function (j) {
+      return j.status === "running" || j.status === "queued";
+    })[0];
+    var sum = 0;
+    var steps = plan.steps.map(function (s) {
+      sum += s.work;
+      var force = forced.some(function (f) {
+        return s.name.toLowerCase().indexOf(String(f).toLowerCase()) >= 0;
+      });
+      if (/^Call /.test(s.name) && (params.skip_calling || (params.vcf_inputs && params.vcf_inputs.length))) {
+        return { name: s.name, action: "skip", why: params.skip_calling ? "Skip variant calling is on" : "Uses the VCFs you supplied instead" };
+      }
+      if (params.restart) return { name: s.name, action: "run", why: "Start over is on, so earlier results aren’t reused" };
+      if (force) return { name: s.name, action: "run", why: "Asked to rerun this step" };
+      if (done) return { name: s.name, action: "skip", why: "Done by an earlier run (job " + done.id + "); its output is still there" };
+      if (stopped && sum <= stopped.stopWork) return { name: s.name, action: "skip", why: "Done by the run that was " + stopped.status + " (job " + stopped.id + "); its result is kept" };
+      return { name: s.name, action: "run", why: stopped ? "The " + stopped.status + " run (job " + stopped.id + ") hadn’t finished it" : "No earlier result to reuse" };
+    });
+    var notes = [];
+    if (active) notes.push("A run like this is already " + active.status + " (" + active.id + "); starting another would wait for it and redo its work.");
+    if (plan.memGB > machine.ramGB) notes.push("Needs about " + Math.round(plan.memGB) + " GB of memory; this computer has " + machine.ramGB + " GB, so preflight would stop it.");
+    else notes.push("Memory: needs about " + Math.round(plan.memGB) + " GB of " + machine.ramGB + " GB.");
+    if (plan.tempGB) notes.push("Temporary space: about " + Math.round(plan.tempGB) + " GB, removed when it finishes.");
+    plan.outputs.forEach(function (o) {
+      notes.push("Would write " + o.path + (o.gb ? " (about " + o.gb + " GB)" : "") + ".");
+    });
+    return Object.assign({}, plan, {
+      label: "Dry run: " + plan.label, mode: "cpu", work: 0, steps: [{ name: "Plan", w: 1, work: 0 }],
+      outputs: [], tempGB: 0, memGB: 0.2, flags: [], cancelFlags: [], fail: null, thenRerun: null, url: null,
+      dryRun: { steps: steps, notes: notes },
+    });
   };
 
   M.ops = {

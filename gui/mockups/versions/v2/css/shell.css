@@ -370,6 +370,7 @@
 }
 
 .v2-main {
+  container: main / inline-size;
   grid-area: main;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -384,7 +385,8 @@
   display: flex;
   flex-direction: column;
   gap: 28px;
-  max-width: 1080px;
+  --v2-page-w: 1080px;
+  max-width: var(--v2-page-w);
   min-height: 100%;
   margin: 0 auto;
   padding: 28px var(--v2-pad) 0;
@@ -397,7 +399,7 @@
 }
 
 .v2-page--narrow {
-  max-width: 760px;
+  --v2-page-w: 760px;
 }
 
 .v2-only-phone {

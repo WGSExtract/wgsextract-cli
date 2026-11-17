@@ -373,6 +373,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Full-width pickers on a phone; the desktop caps are inline styles */
+  .v2-field__control > .v2-select,
+  .v2-field__control > .v2-input[type="text"] {
+    max-width: none !important;
+  }
+
   .v2-notice {
     flex-wrap: wrap;
   }

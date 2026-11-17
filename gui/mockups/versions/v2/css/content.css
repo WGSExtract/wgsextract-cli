@@ -37,6 +37,7 @@
 
 .v2-head__who {
   display: flex;
+  flex: 1 1 240px;
   align-items: center;
   gap: 14px;
   min-width: 0;
@@ -108,6 +109,11 @@
   flex-direction: column;
   gap: 28px;
   min-width: 0;
+}
+
+/* Empty slots for notices and warnings shouldn't add a gap */
+.v2-stack:empty {
+  display: none;
 }
 
 .v2-row {
@@ -385,8 +391,11 @@ a.v2-person__name:hover {
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 20px;
-  margin: auto calc(-1 * var(--v2-pad)) 0;
-  padding: 12px var(--v2-pad);
+  /* Spans the whole scrolling column (container "main"), not just the
+   * page, so it meets the sidebar and the window edge */
+  --v2-bar-out: calc(var(--v2-pad) + (100cqw - min(var(--v2-page-w), 100cqw)) / 2);
+  margin: auto calc(-1 * var(--v2-bar-out)) 0;
+  padding: 12px var(--v2-bar-out);
   border-top: 1px solid var(--c-border);
   background: var(--c-surface);
   box-shadow: 0 -6px 20px rgb(17 26 46 / 0.07);
@@ -416,6 +425,44 @@ a.v2-person__name:hover {
 .v2-actionbar__btns {
   display: flex;
   gap: 8px;
+}
+
+/* Dry run: each step, run or skipped and why */
+.dialog.v2-dry {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.v2-dry__steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r);
+  list-style: none;
+}
+
+.v2-dry__step {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 14px;
+}
+
+.v2-dry__step + .v2-dry__step {
+  border-top: 1px solid var(--c-border);
+}
+
+.v2-dry__step > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.v2-dry__notes {
+  margin: 0;
+  padding-left: 18px;
 }
 
 /* Facts as label/value pairs */

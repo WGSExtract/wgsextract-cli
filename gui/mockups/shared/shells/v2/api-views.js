@@ -195,6 +195,7 @@
       resumed_bytes: job.resumed || 0,
       note: job.note,
     };
+    if (job.plan.dryRun) ui.dry_run = job.plan.dryRun;
     if (job.status === "running") {
       ui.eta_s = v.progress.eta_s;
       ui.finishes_at = U.iso(mock.endAt(job));
@@ -237,6 +238,14 @@
       if (job.resumed) line(job.started, "Resuming from byte " + num(job.resumed) + " (the .partial is bound to this URL)");
     }
     if (job.note) line(job.started, job.note);
+    if (p.dryRun) {
+      p.dryRun.steps.forEach(function (s) {
+        line(job.started, "Dry run: step " + s.name + " would " + s.action + " (" + s.why + ")");
+      });
+      p.dryRun.notes.forEach(function (n) {
+        line(job.started, "Dry run: " + n);
+      });
+    }
     var cum = 0;
     var done = mock.doneWork(job, now);
     p.steps.forEach(function (s) {

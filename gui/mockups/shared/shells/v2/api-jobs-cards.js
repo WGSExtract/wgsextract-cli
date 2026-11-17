@@ -148,7 +148,7 @@
     var why = h("p.v2-small.v2-muted");
     var el = h("div.v2-sheet__pad.v2-row.v2-row--wrap", { dataset: { jobId: job.id } }, badge(job),
       h("div.v2-grow", h("strong", job.ui.label), why),
-      h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", onclick: function () {
+      h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
         act(api.del("/v1/jobs/" + job.id), "Removed from the queue: " + job.ui.label);
       } }, job.ui.mode === "net" ? "Remove" : "Cancel"));
     function update(j, all) {

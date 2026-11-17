@@ -77,6 +77,13 @@
   function define(def) {
     def.op = def.ops.join(" · ");
     WGSM.v2requests.resolve(def);
+    /* Dry run wherever the operation takes dry_run, unless the page says not */
+    if (def.dryRun === undefined) {
+      def.dryRun = def.ops.some(function (op) {
+        var s = WGSM.v2requests.schema(op);
+        return !!(s && s.fields.dry_run);
+      });
+    }
     defs[def.slug] = def;
     order.push(def.slug);
   }
@@ -242,6 +249,41 @@
     return rows;
   }
 
+  /* Active jobs (not dry runs), for "already running" on the tool that
+   * would start the same one again */
+  var active = [];
+  function trackJobs() {
+    return WGSM.v2api.get("/v1/jobs?detail=1&full=1").then(function (res) {
+      if (res.status !== 200) return;
+      var next = res.body.jobs.filter(function (j) {
+        return j.kind === "job" && (j.status === "running" || j.status === "queued") && !(j.params && j.params.dry_run);
+      });
+      var key = JSON.stringify(next.map(function (j) {
+        return [j.id, j.status, Math.floor(((j.progress && j.progress.fraction) || 0) * 100)];
+      }));
+      if (key === trackJobs.key) return;
+      trackJobs.key = key;
+      active = next;
+      refresh();
+    });
+  }
+
+  function stem(path) {
+    return String(path || "").split(/[\\/]/).pop().replace(/\.(fa|fasta|fna)(\.gz)?$/, "");
+  }
+
+  function sameJob(ctx) {
+    if (ctx.def.noInput) return null;
+    var reqs = WGSM.v2requests.build(ctx);
+    return active.filter(function (j) {
+      return reqs.some(function (r) {
+        var a = r.params;
+        var b = j.params || {};
+        return r.op === j.op && (a.input || a.vcf_input || a.r1) === (b.input || b.vcf_input || b.r1) && (!a.ref || !b.ref || stem(a.ref) === stem(b.ref));
+      });
+    })[0] || null;
+  }
+
   function summary(out, ctx) {
     var parts = [];
     if (out.count) parts.push(out.count);
@@ -251,7 +293,8 @@
     (out.disk || []).forEach(function (d) {
       parts.push(ctx.m.gb(d[1]) + " on " + d[0]);
     });
-    return parts.join(" · ");
+    var text = parts.join(" · ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   function update(root) {
@@ -259,6 +302,15 @@
     WGSM.v2region.refresh(root, context(def, root).file.build || "GRCh38");
     var ctx = context(def, root);
     var out = def.run(ctx) || {};
+    var same = sameJob(ctx);
+    if (same) {
+      var queued = same.status === "queued";
+      out.blocked = queued ? "Already queued." : "Already running.";
+      (out.notes = out.notes || []).unshift({ tone: "info", icon: queued ? "clock" : "loader", id: "running",
+        title: (queued ? "Already queued: " : "Already running: ") + WGSM.v2bind.text(same).replace(/^Queued · /, ""),
+        text: same.ui.label + (queued ? " was queued" : " started") + " at " + WGSM.v2clock.format(Date.parse(same.started || same.created)) + " with these settings. Cancel it in Jobs to change them.",
+        action: { label: "See Jobs", href: "jobs.html" } });
+    }
     if (ctx.v.region && WGSM.v2region.parse(ctx.v.region).error) out.blocked = "Fix the region.";
     (def.requires || []).forEach(function (tool) {
       var why = ctx.no(tool);
@@ -342,7 +394,7 @@
     page.appendChild(h("div.v2-actionbar", { dataset: { annotId: "action" } },
       h("div.v2-actionbar__sum", { dataset: { v2Bar: "" } }, h("strong"), h("span")),
       h("div.v2-actionbar__btns",
-        def.dryRun ? h("button.v2-btn", { type: "button", dataset: { toast: "Dry run: lists the steps that would run or be skipped, and why; nothing is written" } }, "Dry run") : null,
+        def.dryRun ? h("button.v2-btn.v2-btn--lg", { type: "button", dataset: { v2Dry: "" }, title: "Lists the steps that would run or be skipped, and why; nothing is written" }, "Dry run") : null,
         h("button.v2-btn.v2-btn--primary.v2-btn--lg", { type: "button", dataset: { v2Go: "" } }, def.button || "Start"))));
   };
 
@@ -350,6 +402,60 @@
     var def = defs[root.dataset.tool];
     var ctx = context(def, root);
     return WGSM.v2requests.start(ctx, def.run(ctx) || {});
+  }
+
+  /* Dry run: the same requests with dry_run, answered at once with each
+   * step's run/skip decision; shown in a dialog that can start the job */
+  var dryDialog = null;
+  function dryRun(root, btn) {
+    var def = defs[root.dataset.tool];
+    var ctx = context(def, root);
+    btn.disabled = true;
+    return WGSM.v2requests.start(ctx, def.run(ctx) || {}, { dry_run: true }).then(function (results) {
+      btn.disabled = false;
+      var jobs = results.filter(function (r) {
+        return r.status < 300 && r.body.ui && r.body.ui.dry_run;
+      }).map(function (r) {
+        return r.body;
+      });
+      if (!jobs.length) return;
+      if (!dryDialog) {
+        dryDialog = h("dialog.dialog.v2-dry", { id: "v2-dry", "aria-labelledby": "v2-dry-title" },
+          h("div.dialog__header", h("h2.dialog__title", { id: "v2-dry-title" }, "Dry run")),
+          h("div.dialog__body.v2-stack"),
+          h("div.dialog__footer",
+            h("button.v2-btn", { type: "button", "data-close": "" }, "Close"),
+            h("button.v2-btn.v2-btn--primary", { type: "button", dataset: { v2DryGo: "" } })));
+        document.body.appendChild(dryDialog);
+      }
+      var go = WGSM.qs("[data-v2-go]");
+      var start = WGSM.qs("[data-v2-dry-go]", dryDialog);
+      start.textContent = go.textContent;
+      start.disabled = go.disabled;
+      start.onclick = function () {
+        WGSM.ui.close(dryDialog);
+        go.click();
+      };
+      WGSM.qs(".dialog__body", dryDialog).replaceChildren.apply(WGSM.qs(".dialog__body", dryDialog), jobs.map(function (job) {
+        var d = job.ui.dry_run;
+        var runs = d.steps.filter(function (s) {
+          return s.action === "run";
+        }).length;
+        return h("section.v2-stack",
+          h("p.v2-muted", job.ui.label.replace(/^Dry run: /, "") + ": " + (runs ? runs + " of " + d.steps.length + " steps would run." : "nothing to do; every step is already done.") + " Nothing was written."),
+          h("ol.v2-dry__steps", d.steps.map(function (s) {
+            return h("li.v2-dry__step", { dataset: { action: s.action } },
+              h("span.v2-status.v2-small", h("span.v2-pip", { dataset: { state: s.action === "run" ? "busy" : "ok" } }), h("strong", s.action === "run" ? "Runs" : "Skipped")),
+              h("span", h("strong", s.name), h("span.v2-muted.v2-small", s.why)));
+          })),
+          h("ul.v2-dry__notes.v2-small.v2-muted", d.notes.map(function (n) {
+            return h("li", n);
+          })));
+      }));
+      WGSM.ui.open(dryDialog);
+    }, function () {
+      btn.disabled = false;
+    });
   }
 
   function refresh() {
@@ -375,6 +481,8 @@
       });
       if (!WGSM.qs("[data-tool]")) return;
       refresh();
+      WGSM.v2api.on(trackJobs);
+      trackJobs();
       ["change", "input"].forEach(function (type) {
         document.addEventListener(type, function (event) {
           if (event.target.closest("[data-tool]")) refresh();
@@ -383,6 +491,8 @@
       document.addEventListener("click", function (event) {
         var go = event.target.closest("[data-v2-go]");
         if (go && !go.disabled) startJob(WGSM.qs("[data-tool]"));
+        var dry = event.target.closest("[data-v2-dry]");
+        if (dry && !dry.disabled && !document.body.classList.contains("an-mode")) dryRun(WGSM.qs("[data-tool]"), dry);
         var use = event.target.closest("[data-v2-use-pick]");
         if (use) {
           WGSM.v2state.pick(WGSM.qs('[data-v2-pick="' + use.dataset.v2UsePick + '"]').value);

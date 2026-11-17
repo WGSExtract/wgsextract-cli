@@ -252,18 +252,12 @@
       var size = outputGB(c, file);
       /* the output, the sort's spills beside it, and kept reads */
       out.disk = [[outDisk, size + size * 1.2 + (c.v.keep_fastq ? file.gb * 0.83 : 0)]];
-      var running = c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled") && !c.flag("realign-done");
-      if (running) {
-        out.notes.unshift({ tone: "info", icon: "realign", id: "running", title: "Already running: 47%, 1 h 52 min left",
-          text: "Gordon’s realign to hs38 started at 08:15 with these settings.", action: { label: "See Jobs", href: "jobs.html" } });
-      }
       /* The most fundamental reason first */
       out.blocked = [
         p.blocked,
         c.v.ref === file.ref ? "This file is already on " + refLabel(c.v.ref) + "." : null,
         !refInstalled(c, c.v.ref) ? "Download " + refLabel(c.v.ref) + " first." : null,
         p.needsIndex ? "Download bwa-mem2’s index first." : null,
-        running ? "Already running." : null,
       ].filter(Boolean)[0] || null;
       out.hours = p.aligner ? hoursFor(c, p, file) : null;
       out.timeText = p.timeText;

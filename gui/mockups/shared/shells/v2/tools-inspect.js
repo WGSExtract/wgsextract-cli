@@ -57,12 +57,11 @@
     fields: [
       f.param("vcf_inputs", "Existing VCFs", "Optional comma-separated file paths; otherwise call SNPs and indels", { width: 420 }),
       f.param("skip_calling", "Skip variant calling", "Use supplied VCFs, or analyse only the alignment"),
-      f.param("dry_run", "Preview steps only", "Plan without writing analysis outputs"),
     ],
     more: [f.param("restart", "Restart completed steps", "Recompute instead of reusing saved results"), f.threads()],
     run: function (c) {
-      return { timeText: c.v.dry_run ? "seconds" : "hours on a whole genome", memGB: c.v.dry_run ? 1 : 8,
-        makes: c.v.dry_run ? "Shows the planned steps only." : "Writes haplogroups, annotations and significant-variant VCFs to the sample’s folder." };
+      return { timeText: "hours on a whole genome", memGB: 8,
+        makes: "Writes haplogroups, annotations and significant-variant VCFs to the sample’s folder." };
     },
   });
 
