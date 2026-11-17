@@ -41,14 +41,14 @@
     "The 3.1 billion figure describes roughly one set of nuclear chromosomes. Mitochondria carry a separate, much smaller circular genome.",
     function (s) {
       text(s, 18, 27, "Inside a typical human cell", "dg-heading");
-      node(s, "ellipse", { cx: 93, cy: 100, rx: 74, ry: 53, class: "dg-panel" });
-      node(s, "ellipse", { cx: 83, cy: 97, rx: 34, ry: 29, class: "dg-emphasis" });
-      text(s, 83, 102, "Nucleus", "dg-center");
-      node(s, "ellipse", { cx: 140, cy: 120, rx: 12, ry: 7, class: "dg-organelle" });
-      line(s, 151, 120, 185, 120);
-      lines(s, 193, 91, ["Mitochondrion", "has circular", "mtDNA"]);
-      node(s, "ellipse", { cx: 272, cy: 145, rx: 16, ry: 8, class: "dg-ring" });
-      down(s, 83, 155, 181);
+      node(s, "ellipse", { cx: 98, cy: 103, rx: 80, ry: 56, class: "dg-panel" });
+      node(s, "ellipse", { cx: 72, cy: 96, rx: 35, ry: 29, class: "dg-emphasis" });
+      text(s, 72, 101, "Nucleus", "dg-center");
+      node(s, "ellipse", { cx: 139, cy: 118, rx: 25, ry: 15, class: "dg-organelle" });
+      node(s, "ellipse", { cx: 139, cy: 118, rx: 9, ry: 6, class: "dg-ring" });
+      line(s, 164, 112, 190, 94);
+      lines(s, 198, 83, ["Mitochondrion", "with circular", "mtDNA inside"]);
+      path(s, "M72 126 L72 174 L8 174 L8 237 L20 237 M15 233 L20 237 L15 241");
       text(s, 18, 207, "23 chromosome pairs · XY example", "dg-heading");
       for (var i = 0; i < 23; i++) {
         var x = 25 + (i % 12) * 28;
@@ -101,13 +101,13 @@
       lines(s, 18, 402, ["Each copy mixes earlier ancestors.", "The coloured blocks are illustrative."], "dg-muted");
     });
 
-  define("read-pileup", 390, "Depth varies from position to position",
-    "Six short reads are aligned beneath a twelve-base reference. At the highlighted sixth position the reference is A: three reads have A and three have G, evidence consistent with an A/G heterozygous genotype, not proof on its own. Only one read reaches the last two positions, illustrating lower coverage nearby. Six reads are shown for clarity, not 30. A reported 30 times mean depth is an average over a region, not a minimum at every base.",
+  define("read-pileup", 470, "Depth varies from position to position",
+    "Eight short reads are aligned beneath a twelve-base reference. At the highlighted sixth position the reference is A: four reads have A and four have G, evidence consistent with an A/G heterozygous genotype, not proof on its own. Only one read reaches the last two positions, illustrating lower coverage nearby. Eight reads are shown for clarity, not 30. A reported 30 times mean depth is an average over a region, not a minimum at every base.",
     "Half the reads here support G where the reference has A. Real calls also depend on base quality, mapping quality and other evidence.",
     function (s) {
       text(s, 18, 27, "A small window into aligned reads", "dg-heading");
-      text(s, 18, 52, "6 reads shown, not a 30× average", "dg-muted");
-      rect(s, 146, 75, 24, 226, "dg-highlight");
+      text(s, 18, 52, "8 reads shown · an illustrative window", "dg-muted");
+      rect(s, 146, 75, 24, 278, "dg-highlight");
       text(s, 18, 74, "Reference", "dg-muted");
       var reference = "ACTGCAATCGTA";
       function bases(y, start, end, alternate) {
@@ -118,16 +118,17 @@
       }
       bases(101, 0, 12, false);
       text(s, 18, 131, "Reads", "dg-muted");
-      [[0, 10], [1, 12], [0, 8], [2, 9], [1, 10], [3, 8]].forEach(function (range, i) {
+      [[0, 10], [1, 12], [0, 8], [2, 9], [1, 10], [3, 8], [2, 10], [0, 9]].forEach(function (range, i) {
         rect(s, 17 + range[0] * 26, 142 + i * 26, (range[1] - range[0]) * 26 - 3, 23, "dg-read");
         bases(159 + i * 26, range[0], range[1], i % 2 === 0);
       });
-      line(s, 158, 304, 158, 319);
+      down(s, 158, 358, 374);
       line(s, 328, 179, 340, 179);
-      line(s, 340, 179, 340, 335);
-      text(s, 158, 340, "3 A + 3 G", "dg-center dg-heading");
-      text(s, 340, 357, "Right edge: just 1 read", "dg-end dg-muted");
-      text(s, 18, 380, "30× mean depth can still contain gaps.", "dg-muted");
+      line(s, 340, 179, 340, 355);
+      line(s, 328, 355, 340, 355);
+      lines(s, 180, 395, ["About half the reads say G", "→ evidence for heterozygous A/G"], "dg-center dg-heading");
+      text(s, 18, 440, "Right edge: just 1 read", "dg-muted");
+      text(s, 18, 461, "30× mean depth can still contain gaps.", "dg-muted");
     });
 
   define("short-vs-long-reads", 405, "Long reads can bridge repeats",
@@ -159,7 +160,7 @@
 
   define("reference-builds", 440, "The same sequence can have a new address",
     "Two reference tracks show the same illustrative gene at position 1000 in GRCh37 and 1200 in GRCh38. Added or corrected sequence can move coordinates; these numbers are invented examples, not real gene coordinates or a universal offset. A second pair of tracks shows a gap in an older assembly and resolved sequence across that region in T2T-CHM13. A variant file and its annotation resource must agree on the reference assembly. CHM13 itself has no Y chromosome.",
-    "Coordinates belong to a particular reference build. These example positions are illustrative: converting real variants is not a fixed offset.",
+    "Coordinates belong to a particular reference build. These example positions are illustrative; real coordinate translation depends on the sequence.",
     function (s) {
       text(s, 18, 27, "Same gene, different map address", "dg-heading");
       text(s, 18, 54, "Illustrative coordinates — not a real gene", "dg-muted");
@@ -185,8 +186,8 @@
     });
 
   define("file-journey", 620, "From reads to an interpreted report",
-    "A vertical workflow begins with compressed FASTQ, roughly 30 to 100 GB for 30 times short-read human data, holding sequences and base qualities without placements. Alignment produces BAM, often 60 to 100 GB, or CRAM, often tens of GB, preserving read records and adding placements; reference-based CRAM needs the exact reference to decode. Calling produces a compressed small-variant VCF, often hundreds of MB, containing inferred genotypes and quality but not the original reads. Annotation adds context to produce a report, which cannot replace the underlying evidence. Sizes are planning examples, not guarantees.",
-    "Keep the original read evidence if you can. A smaller VCF or report cannot reconstruct the reads, and storage needs vary.",
+    "A workflow begins with compressed FASTQ, roughly 30 to 100 GB for 30 times short-read human data, holding sequences and base qualities without placements. Alignment produces BAM, often 60 to 100 GB, or CRAM, often tens of GB, preserving read records and adding placements; reference-based CRAM needs the exact reference to decode. Calling produces a compressed small-variant VCF, often hundreds of MB, containing inferred genotypes and quality but not the original reads. Annotation adds context to produce a report, which cannot replace the underlying evidence. Sizes are planning examples, not guarantees.",
+    "Original reads preserve the evidence for reanalysis. Keep them if you can, and allow for storage needs to vary.",
     function (s) {
       text(s, 18, 27, "30× short-read human genome", "dg-heading");
       var steps = [
@@ -205,7 +206,7 @@
 
   define("genotypes", 480, "Two chromosome copies, one position",
     "At a two-copy site with reference A and first alternate G, the two illustrated chromosome copies carry A and A for genotype 0/0, A and G for 0/1, or G and G for 1/1. A slash does not identify which parent supplied an allele. A missing genotype, dot slash dot, is not A/A. Below, sequence examples compare reference ACT with an SNV AGT, an insertion ACGT, and a deletion AT; dashes show alignment gaps for teaching, not literal VCF allele notation.",
-    "In a VCF genotype, 0 means REF and 1 means the first ALT, not good and bad. The sequence examples below are alignments, not VCF record syntax.",
+    "In a VCF genotype, 0 means REF and 1 means the first ALT. The sequence alignments show how each small change compares with the reference.",
     function (s) {
       text(s, 18, 27, "Two copies · REF = A · ALT = G", "dg-heading");
       [["0/0", "A", "A"], ["0/1", "A", "G"], ["1/1", "G", "G"]].forEach(function (gt, i) {
@@ -235,7 +236,7 @@
 
   define("missing-not-reference", 410, "A missing VCF row is not a reference call",
     "A simplified variant-only VCF has rows at positions 99 and 101, but no row at position 100. Three possible explanations follow: no usable reads, a call removed by filtering, or evidence that really supported the reference A/A. The missing row alone cannot choose among these possibilities. Position 100 is therefore unknown from this file, not automatically genotype 0/0; assessed gVCF blocks or suitable reads can provide additional evidence.",
-    "A variant-only VCF does not explain why a position is absent. Check suitable read evidence or assessed gVCF blocks before calling it reference.",
+    "An absent VCF row has several possible explanations. Check suitable read evidence or assessed gVCF blocks before calling it reference.",
     function (s) {
       text(s, 18, 27, "A variant-only VCF", "dg-heading");
       rect(s, 18, 48, 324, 136);
@@ -254,24 +255,24 @@
 
   define("evidence-ladder", 460, "Five clinical variant classifications",
     "Five equal-size boxes list the ACMG/AMP classification terms: benign, likely benign, variant of uncertain significance, likely pathogenic and pathogenic. Benign and likely benign support a non-disease-causing interpretation; a VUS has insufficient or conflicting evidence; likely pathogenic and pathogenic support a disease-causing interpretation in the relevant condition and inheritance context. These are categories, not a numerical score or a patient's chance of disease. Clinical confirmation and a clinician's assessment are needed before health decisions.",
-    "Classification concerns a variant in a clinical context, not a diagnosis of the person. A VUS should not by itself guide care.",
+    "Classification describes a variant in a clinical context. A qualified clinician can assess the evidence alongside your history before decisions about care.",
     function (s) {
       text(s, 18, 27, "ACMG / AMP classification", "dg-heading");
       text(s, 18, 51, "Evidence categories — not a risk score", "dg-muted");
       var labels = ["Benign", "Likely benign", "VUS · uncertain significance", "Likely pathogenic", "Pathogenic"];
       labels.forEach(function (label, i) {
         var y = 72 + i * 53;
-        rect(s, 18, y, 324, 42, i === 2 ? "dg-uncertain" : "dg-panel");
+        rect(s, 18, y, 324, 42, "dg-ramp dg-ramp-" + i + (i === 2 ? " dg-vus" : ""));
         text(s, 32, y + 27, label, "dg-heading");
       });
       lines(s, 18, 365, ["Condition and inheritance matter.", "Pathogenic does not mean you are ill."], "dg-muted");
-      rect(s, 18, 402, 324, 45, "dg-emphasis");
-      text(s, 180, 430, "Confirm clinically before acting", "dg-center dg-heading");
+      line(s, 18, 403, 342, 403);
+      text(s, 18, 432, "Confirm clinically before acting", "dg-heading");
     });
 
   define("what-leaves", 490, "Local analysis and explicit network choices",
     "A computer contains genome files, local analysis and results. A boundary separates it from a public-data provider. When the user explicitly chooses a download, an outbound request names public reference data and inbound data returns to the computer; the provider sees normal connection details such as an IP address. That request does not need the person's variant positions or genotypes. A separate dashed box explains that sending genome-derived data to an online service requires a distinct explicit opt-in that identifies the data and recipient. A phone controlling another server does not move computation onto the phone.",
-    "Downloading public data contacts its provider, but need not reveal your variants. Sending sample-derived information is a separate, explicit choice.",
+    "Public-data downloads tell a provider which reference you requested. Sharing genome-derived information is a separate, explicit choice.",
     function (s) {
       text(s, 18, 27, "Your computer / chosen server", "dg-heading");
       rect(s, 18, 47, 324, 112);
@@ -283,16 +284,136 @@
       line(s, 18, 191, 342, 191, "dg-dashed");
       text(s, 180, 183, "Network boundary", "dg-center dg-muted");
       text(s, 180, 214, "Only if you choose a download", "dg-center dg-muted");
-      down(s, 40, 229, 267, "Request public data");
+      down(s, 40, 229, 267);
       line(s, 320, 267, 320, 229);
       path(s, "M316 234 L320 229 L324 234");
-      text(s, 299, 262, "Download", "dg-end");
+      text(s, 52, 253, "Request public data", "dg-muted");
+      text(s, 308, 253, "Data back", "dg-end dg-muted");
       rect(s, 18, 284, 324, 70);
       text(s, 180, 309, "Public reference provider", "dg-center dg-heading");
       text(s, 180, 332, "Sees connection details, such as IP", "dg-center dg-muted");
       rect(s, 18, 378, 324, 94, "dg-uncertain");
       lines(s, 32, 402, ["Sharing variants or genome files?", "Separate opt-in required.", "Check what is sent and to whom.", "No silent sample-data upload."]);
     });
+
+  function across(s, x1, x2, y, cls) {
+    var tail = x2 + (x1 < x2 ? -6 : 6);
+    line(s, x1, y, x2, y, cls);
+    path(s, "M" + tail + " " + (y - 4) + " L" + x2 + " " + y + " L" + tail + " " + (y + 4), cls);
+  }
+  function wide(name, height, draw) {
+    diagrams[name].wide = { height: height, draw: draw };
+  }
+
+  wide("file-journey", 340, function (s) {
+    text(s, 18, 30, "30× short-read human genome", "dg-heading");
+    var stages = [
+      { title: "FASTQ", size: ["~30–100 GB", "compressed"], detail: ["Read sequences", "+ base qualities", "No placements"] },
+      { title: "BAM / CRAM", size: ["BAM ~60–100 GB", "CRAM tens of GB"], detail: ["Reads + qualities", "+ placements", "CRAM needs the", "exact reference"] },
+      { title: "VCF", size: ["Hundreds of MB", "compressed"], detail: ["Called genotypes", "+ quality", "Reads stay in", "your input files"] },
+      { title: "Report", size: ["Selected findings", "+ interpretation"], detail: ["Context and limits", "Keep inputs and", "tool settings for", "later reanalysis"] },
+    ];
+    stages.forEach(function (stage, i) {
+      var x = 18 + i * 178;
+      rect(s, x, 76, 150, 43, "dg-emphasis");
+      text(s, x + 75, 103, stage.title, "dg-center dg-heading");
+      lines(s, x, 147, stage.size);
+      line(s, x, 184, x + 150, 184);
+      lines(s, x, 212, stage.detail, "dg-muted");
+      if (i < 3) {
+        across(s, x + 154, x + 174, 98);
+        text(s, x + 164, 64, ["Align", "Call", "Annotate"][i], "dg-center dg-muted");
+      }
+    });
+    text(s, 18, 311, "Keep read evidence: some pipelines reduce quality detail.", "dg-muted");
+    text(s, 18, 332, "Use the same reference build throughout.", "dg-muted");
+  });
+
+  wide("what-leaves", 370, function (s) {
+    text(s, 18, 30, "Your computer / chosen server", "dg-heading");
+    text(s, 592, 30, "Public-data provider", "dg-center dg-heading");
+    rect(s, 18, 64, 220, 159);
+    lines(s, 36, 98, ["Genome files", "Local processing", "Results"]);
+    text(s, 36, 191, "Stay here by default", "dg-heading");
+    rect(s, 482, 64, 220, 159);
+    lines(s, 500, 98, ["Public references", "and databases"]);
+    lines(s, 500, 172, ["Sees your IP and", "connection details"], "dg-muted");
+    text(s, 360, 58, "Network", "dg-center dg-muted");
+    text(s, 360, 104, "Request public data", "dg-center");
+    across(s, 252, 468, 122);
+    across(s, 468, 252, 178);
+    text(s, 360, 207, "Reference data back", "dg-center");
+    text(s, 360, 257, "Only when you choose a download", "dg-center dg-muted");
+    rect(s, 18, 286, 684, 68, "dg-uncertain");
+    lines(s, 36, 312, ["Sharing your variants or files takes a separate opt-in.", "Check what is sent and to whom before you agree."]);
+  });
+
+  wide("inheritance-lines", 352, function (s) {
+    text(s, 18, 30, "The McDonald family", "dg-heading");
+    [["Gordon", "Father"], ["Reginald", "Their son"], ["Helen", "Mother"]].forEach(function (person, i) {
+      var x = 18 + i * 257;
+      rect(s, x, 57, 170, 66);
+      lines(s, x + 85, 84, person, "dg-center dg-heading");
+    });
+    across(s, 199, 264, 103, "dg-paternal-line");
+    across(s, 521, 456, 103, "dg-maternal-line");
+    text(s, 232, 82, "Y", "dg-center dg-paternal");
+    text(s, 489, 82, "mtDNA", "dg-center dg-maternal");
+    text(s, 18, 151, "Y: father to son.  mtDNA: mother to all children.", "dg-muted");
+    text(s, 18, 191, "Autosomes from both parents", "dg-heading");
+    text(s, 18, 224, "From Gordon");
+    text(s, 360, 224, "Reginald’s two copies", "dg-center");
+    text(s, 702, 260, "From Helen", "dg-end");
+    for (var i = 0; i < 5; i++) {
+      var father = i % 2 ? "dg-series-b" : "dg-series-a";
+      var mother = i % 2 ? "dg-series-c" : "dg-series-d";
+      rect(s, 18 + i * 24, 238, 22, 18, father);
+      rect(s, 291 + i * 28, 238, 26, 18, father);
+      rect(s, 584 + i * 24, 274, 22, 18, mother);
+      rect(s, 291 + i * 28, 274, 26, 18, mother);
+    }
+    across(s, 148, 278, 247);
+    across(s, 573, 444, 283);
+    text(s, 18, 332, "Each transmitted copy mixes earlier ancestors; the coloured blocks are illustrative.", "dg-muted");
+  });
+
+  wide("reference-builds", 330, function (s) {
+    text(s, 18, 30, "One gene, two map addresses", "dg-heading");
+    text(s, 386, 30, "T2T fills a gap", "dg-heading");
+    ["GRCh37", "GRCh38"].forEach(function (build, i) {
+      var y = 73 + i * 101;
+      var x = 119 + i * 49;
+      text(s, 18, y, build, "dg-heading");
+      line(s, 18, y + 32, x, y + 32);
+      line(s, x + 72, y + 32, 338, y + 32);
+      rect(s, x, y + 19, 72, 26, "dg-gene");
+      text(s, x + 36, y + 38, "Gene", "dg-center");
+      text(s, x + 36, y + 61, i ? "position 1,200" : "position 1,000", "dg-center");
+      text(s, 386, y, i ? "T2T-CHM13" : "Older assembly", "dg-heading");
+      line(s, 386, y + 32, 468, y + 32, "dg-helix");
+      line(s, 554, y + 32, 702, y + 32, "dg-helix");
+      if (i) rect(s, 468, y + 24, 86, 16, "dg-series-c");
+      else {
+        line(s, 468, y + 32, 554, y + 32, "dg-dashed");
+        text(s, 511, y + 61, "gap", "dg-center dg-muted");
+      }
+    });
+    lines(s, 18, 283, ["Illustrative coordinates.", "Real mappings vary with the sequence."], "dg-muted");
+    lines(s, 386, 283, ["Match the build of calls and annotations.", "CHM13 itself has no Y chromosome."], "dg-muted");
+  });
+
+  wide("evidence-ladder", 290, function (s) {
+    text(s, 18, 30, "ACMG / AMP classification", "dg-heading");
+    var labels = [["Benign"], ["Likely", "benign"], ["VUS", "Uncertain", "significance"], ["Likely", "pathogenic"], ["Pathogenic"]];
+    labels.forEach(function (label, i) {
+      var x = 18 + i * 139;
+      rect(s, x, 65, 128, 110, "dg-ramp dg-ramp-" + i + (i === 2 ? " dg-vus" : ""));
+      lines(s, x + 64, label.length === 1 ? 126 : 108, label, "dg-center");
+    });
+    text(s, 18, 211, "Condition and inheritance matter; these categories describe evidence.", "dg-muted");
+    line(s, 18, 237, 702, 237);
+    text(s, 18, 268, "Confirm clinically before acting", "dg-heading");
+  });
 
   WGSM.render.blocks["v2-diagram"] = function (el, opts) {
     var diagram = diagrams[opts.diagram];
@@ -303,12 +424,16 @@
     }
     el.classList.add("v2-diagram");
     el.dataset.v2NoTerms = "";
-    var id = "v2-diagram-" + (++serial);
-    var svg = node(el, "svg", { viewBox: "0 0 360 " + diagram.height, width: "360", height: diagram.height,
-      role: "img", "aria-labelledby": id + "-title", "aria-describedby": id + "-desc", focusable: "false" });
-    node(svg, "title", { id: id + "-title" }, diagram.title);
-    node(svg, "desc", { id: id + "-desc" }, diagram.description);
-    diagram.draw(svg);
+    function draw(variant, width, cls) {
+      var id = "v2-diagram-" + (++serial);
+      var svg = node(el, "svg", { viewBox: "0 0 " + width + " " + variant.height, width: width, height: variant.height,
+        class: cls, role: "img", "aria-labelledby": id + "-title", "aria-describedby": id + "-desc", focusable: "false" });
+      node(svg, "title", { id: id + "-title" }, diagram.title);
+      node(svg, "desc", { id: id + "-desc" }, diagram.description);
+      variant.draw(svg);
+    }
+    draw(diagram, 360, diagram.wide ? "dg-narrow" : "");
+    if (diagram.wide) draw(diagram.wide, 720, "dg-wide");
     var caption = document.createElement("figcaption");
     caption.textContent = diagram.caption;
     el.appendChild(caption);

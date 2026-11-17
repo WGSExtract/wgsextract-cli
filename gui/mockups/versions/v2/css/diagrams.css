@@ -1,5 +1,5 @@
-/* A narrow drawing is shared by desktop and phone: labels never shrink
- * from a wide desktop canvas. Status colours are not used as categories. */
+/* Wide sequences fit the 860px lesson column; phones get stacked drawings.
+ * The clinical scale uses a categorical warm hue, never status colours. */
 .v2-diagram {
   margin: 24px 0;
   padding: 12px;
@@ -33,6 +33,8 @@
 }
 
 .v2-diagram[data-diagram="file-journey"] svg { max-width: 420px; }
+.v2-diagram svg.dg-wide { display: none; max-width: none; font-size: 16px; }
+.v2-diagram .dg-wide .dg-heading { font-size: 18px; }
 
 .v2-diagram .dg-heading { font-size: 15px; font-weight: 650; }
 .v2-diagram .dg-small { font-size: 13px; }
@@ -57,6 +59,13 @@
 .v2-diagram .dg-ring { fill: none; stroke: var(--c-text-2); stroke-width: 3; }
 .v2-diagram .dg-paternal { fill: var(--v2-y); }
 .v2-diagram .dg-maternal { fill: var(--v2-mt); }
+.v2-diagram .dg-ramp { stroke: var(--c-border-strong); }
+.v2-diagram .dg-ramp-0 { fill: var(--c-surface-2); }
+.v2-diagram .dg-ramp-1 { fill: color-mix(in srgb, var(--c-surface-2), var(--v2-s2) 6%); }
+.v2-diagram .dg-ramp-2 { fill: color-mix(in srgb, var(--c-surface-2), var(--v2-s2) 12%); }
+.v2-diagram .dg-ramp-3 { fill: color-mix(in srgb, var(--c-surface-2), var(--v2-s2) 20%); }
+.v2-diagram .dg-ramp-4 { fill: color-mix(in srgb, var(--c-surface-2), var(--v2-s2) 30%); }
+.v2-diagram .dg-vus { stroke: var(--c-text-2); stroke-width: 2; stroke-dasharray: 4 3; }
 
 .v2-diagram .dg-line,
 .v2-diagram .dg-dashed,
@@ -81,4 +90,9 @@
 
 @container main (max-width: 560px) {
   .v2-diagram { padding: 6px; }
+}
+
+@container main (min-width: 641px) {
+  .v2-diagram svg.dg-wide { display: block; }
+  .v2-diagram svg.dg-narrow { display: none; }
 }
