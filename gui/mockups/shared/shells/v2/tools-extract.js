@@ -113,5 +113,75 @@
     },
   });
 
+  /* --formats items: [value, label, aside, desc, on] */
+  var KITS = [
+    ["all", "GEDmatch (combined)", "1 file", "Every marker any company's chip reads, in one file that GEDmatch takes", true],
+    ["myheritage_v2", "MyHeritage", "1 file", "Their current chip (v2, Illumina GSA); matches and ethnicity after upload", true],
+    ["ftdna_v3", "FamilyTreeDNA", "1 file", "Family Finder transfer (v3 chip)"],
+    ["ldna_v2", "Living DNA", "1 file", "Regional breakdown, strongest for Britain and Ireland"],
+    ["23andme_v5", "23andMe format", "1 file", "For tools that read a 23andMe file; 23andMe itself takes no uploads"],
+    ["ancestry_v2", "AncestryDNA format", "1 file", "For tools that read an AncestryDNA file; Ancestry takes no uploads"],
+    ["nucleus", "Nucleus format", "1 file", "Nucleus's 2025 array export"],
+    ["aadr_1240k", "AADR 1240K (research)", "PLINK and EIGENSTRAT", "Ancient-DNA researchers' marker set, GRCh37; for admixture tools"],
+  ];
+
+  T.define({
+    slug: "microarray", label: "DNA-test files", ops: ["microarray"], group: "Extract",
+    keywords: "microarray chip raw data kit gedmatch myheritage ftdna 23andme ancestry living dna nucleus aadr wgs to microarray",
+    lesson: { href: "learn-files.html#kits", label: "DNA-test (microarray) files" },
+    desc: "Turns a whole genome or a VCF into the raw-data files that DNA-testing companies give their customers, so relative-matching sites accept it.",
+    learn: "Use it to find relatives in the databases of GEDmatch, MyHeritage, FamilyTreeDNA and Living DNA, which accept uploads of microarray (\u201cchip\u201d) raw data. A chip reads about 600,000\u2013700,000 chosen positions; your genome has nearly all of them, so WGS Extract reads those positions and writes them in each company's layout.\n\n" +
+      "Positions your genome couldn't read confidently are left blank, as a chip would. A BAM or CRAM is best: every position is checked. A VCF lists only differences from the reference, so positions it doesn't list are unknown unless you say they're reference. Uploading shares your genotypes with that company; read its privacy terms first. Make DNA-test files on a person's page walks through the same choices.",
+    accepts: ["reads", "vcf"], file: "reginald", button: "Make the files",
+    checklist: { key: "kits", title: "Which files?", items: KITS.map(function (k) {
+      return { value: k[0], label: k[1], aside: k[2], desc: k[3], on: !!k[4] };
+    }) },
+    fields: [
+      f.param("strand_ambiguous", "A/T and C/G markers", "Their strand can't be checked", { labels: { keep: "Keep", "no-call": "Leave blank" } }),
+      f.param("min_gq", "Minimum quality (GQ)", "Blank below this; empty uses the setting (20), 0 is off", { width: 90 }),
+      f.param("min_dp", "Minimum depth", "Blank below this many reads; empty uses the setting (10)", { width: 90 }),
+      f.param("call_reasons", "Explain blanks", "Also write a table of why each blank marker is blank"),
+    ],
+    moreTitle: "More options",
+    more: [
+      f.param("assume_hom_ref", "Unlisted means reference", "VCF only: treat positions the VCF doesn't list as reference. Unsafe unless the VCF lists every site; needs minimum quality and depth of 0", {
+        disabled: function (c) {
+          return c.file.kind === "vcf" ? null : "Only for a VCF";
+        },
+      }),
+      f.param("exclude_filtered", "Skip filtered calls", "VCF records that failed a FILTER become blanks"),
+      f.param("resolve_rsids", "Update marker names", "Use current dbSNP rsIDs; retired or ambiguous names become blanks"),
+      f.param("quirks", "Strand as the company wrote it", "Corrected: forward strand. Vendor: copy a chip revision's own reverse-strand calls", { labels: { corrected: "Corrected", vendor: "Vendor" } }),
+      f.param("table_format", "Also a genotype table", "rsID, chromosome, position and genotype, for your own analysis", { as: "select", unset: "No", labels: { tsv: "TSV", parquet: "Parquet" } }),
+      f.param("aadr_sex", "AADR sex label", "Written into the AADR metadata only", { labels: { U: "Unknown", M: "Male", F: "Female" },
+        when: function (c) {
+          return c.v.kits.indexOf("aadr_1240k") >= 0;
+        } }),
+      f.threads(),
+    ],
+    requests: function (c, base) {
+      return [base("microarray", { formats: c.v.kits.join(",") })];
+    },
+    run: function (c) {
+      var n = c.v.kits.length;
+      var vcf = c.file.kind === "vcf";
+      var notes = [];
+      if (vcf && !c.v.assume_hom_ref) notes.push({ tone: "info", icon: "info", id: "vcf-gaps", title: "Expect more blanks from a VCF",
+        text: "A VCF lists only where " + c.name + " differs from the reference, so about two thirds of chip positions will be blank. A BAM or CRAM fills them in." });
+      if (!vcf && c.file.depth && c.file.depth < 15) notes.push({ tone: "warn", icon: "triangle-alert", id: "low-depth", title: "Low depth: " + c.file.depth + "\u00d7",
+        text: "Below 15\u00d7 many positions can't be read confidently and stay blank; matching sites may find fewer relatives." });
+      if (c.v.kits.indexOf("aadr_1240k") >= 0) notes.push({ tone: "info", icon: "download", id: "aadr", title: "AADR uses its own marker list",
+        text: "The first run fetches the AADR v66 marker list (ref aadr) into Reference data. Outputs are on GRCh37, whatever this file's build." });
+      return {
+        count: n + (n === 1 ? " file" : " files"),
+        hours: vcf ? null : 0.2 * ((c.file.depth || 30) / 30), timeText: "minutes",
+        disk: [[c.m.diskName(c.file), 0.02 * Math.max(n, 1)]],
+        blocked: n ? null : "Choose at least one.",
+        notes: notes,
+        makes: "Saved in " + c.name + "\u2019s folder, under microarray/.",
+      };
+    },
+  });
+
   WGSM.v2extract = { noY: noY };
 })();

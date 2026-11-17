@@ -49,6 +49,7 @@
           return c.M.appleSilicon;
         },
       }),
+      f.param("baq", "Base alignment quality (BAQ)", "Recomputes base quality near indels to cut false SNPs there; slower, and may miss a few calls at low depth. Empty: the setting, else off"),
       f.param("qc_min_depth", "Warn below depth", "Warns when the mean depth is lower; 0 turns it off. Empty: 15 (3 on Y and mtDNA)", { width: 90 }),
       f.threads(),
     ],
@@ -60,6 +61,7 @@
       var hours = kinds.reduce(function (sum, k) {
         return sum + perGb[k] * c.file.gb * regionShare(c) / threads;
       }, 0);
+      if (c.v.baq) hours *= 1.3;
       if (c.v.reference_evidence === "gvcf" && kinds.length) hours += (perGb.snp + perGb.indel) * c.file.gb * regionShare(c) / threads;
       return {
         count: kinds.length + (kinds.length === 1 ? " VCF" : " VCFs"),
