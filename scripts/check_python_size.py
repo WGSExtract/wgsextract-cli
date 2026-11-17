@@ -7,12 +7,27 @@ import json
 import os
 import sys
 from pathlib import Path, PurePosixPath
-from typing import NamedTuple
+from typing import NamedTuple, NoReturn
 
 ROOT = Path(__file__).resolve().parents[1]
 LIMIT = 800
 DIRECTORIES = ("src", "tests", "scripts")
-IGNORED = {".git", ".pixi", "__pycache__", "node_modules"}
+IGNORED = {
+    ".git",
+    ".pixi",
+    "__pycache__",
+    "node_modules",
+    ".env",
+    ".env.local",
+    ".venv",
+    ".tox",
+    ".nox",
+    "env",
+    "venv",
+    "ENV",
+    "env.bak",
+    "venv.bak",
+}
 BASELINE = "scripts/python_size_baseline.json"
 
 
@@ -23,10 +38,23 @@ class Finding(NamedTuple):
     limit: int
 
 
+def walk_error(error: OSError) -> NoReturn:
+    raise error
+
+
 def python_sizes(root: Path) -> dict[str, int]:
     sizes = {}
     for folder in DIRECTORIES:
-        for directory, children, names in os.walk(root / folder, followlinks=False):
+        top = root / folder
+        try:
+            top.stat()
+        except FileNotFoundError:
+            continue
+        if top.is_symlink():
+            continue
+        for directory, children, names in os.walk(
+            top, followlinks=False, onerror=walk_error
+        ):
             children[:] = [
                 name
                 for name in children
@@ -133,7 +161,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for issue in issues:
         if issue.code == "python_size_stale_baseline":
-            detail = "remove/lower the obsolete exemption with --refresh"
+            detail = (
+                "remove only this obsolete entry; global --refresh also "
+                "lowers/removes unrelated ceilings"
+            )
         else:
             detail = "split the module; --refresh cannot raise its ceiling"
         print(

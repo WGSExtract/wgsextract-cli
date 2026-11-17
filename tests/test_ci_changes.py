@@ -212,8 +212,13 @@ def test_757_every_test_referenced_input_selects_pytest() -> None:
             continue
         readers = readers - {
             "tests/test_ci_changes.py",
+            "tests/test_ci_landing.py",
+            "tests/test_ci_required.py",
             "tests/test_ci_selection.py",
             "tests/test_github_actions_policy.py",
+            "tests/test_workflow_readiness.py",
+            "tests/test_workflow_paths.py",
+            "tests/test_python_size.py",
         }
         readers = frozenset(
             reader for reader in readers if Path(reader).name.startswith("test_")
@@ -379,7 +384,6 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
                 "tests/test_github_actions_policy.py",
                 "tests/test_workflow_readiness.py",
                 "tests/test_workflow_paths.py",
-                "tests/test_python_size.py",
             ],
         ),
         (

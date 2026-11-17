@@ -255,7 +255,8 @@ After shortening, splitting or deleting an outlier, run
 baseline. Refresh only lowers/removes existing ceilings: it cannot grandfather
 a new megafile or increase a budget, and refuses to write while a new/growing
 module violates its ceiling. Removed files require their obsolete entries to be
-removed (`python_size_stale_baseline`); refresh also removes exemptions for files
+removed (`python_size_stale_baseline`); remove only that entry if other budgets
+still reserve in-flight work. Global refresh also removes exemptions for files
 reduced to 800 lines or less.
 Wait for reserved pre-policy versions to land before globally refreshing their
 budgets; individual ceilings may be edited downward in the meantime.

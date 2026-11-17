@@ -1,12 +1,14 @@
 """User-visible size-ratchet failures, maintenance and scan boundaries."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from scripts import check_python_size as size_guard
 from scripts.ci_changes import routes
 from scripts.ci_select_tests import ci_test_targets
 from scripts.ci_test_dependencies import docs_test_targets
@@ -64,7 +66,9 @@ def test_826_refresh_lowers_budgets_and_removes_finished_or_deleted_outliers(tmp
     )
     module(tmp_path, "src/reduced.py", 850)
     module(tmp_path, "tests/split.py", 500)
-    assert check(tmp_path).returncode == 1
+    stale = check(tmp_path)
+    assert stale.returncode == 1
+    assert "unrelated ceilings" in stale.stdout
     result = check(tmp_path, "--refresh")
     assert result.returncode == 0, result.stdout
     assert json.loads(file.read_text())["files"] == {"src/reduced.py": 850}
@@ -88,6 +92,19 @@ def test_826_size_scan_excludes_gui_and_scratch_and_counts_last_lines(tmp_path, 
     module(tmp_path, "gui/tool.py", 1500)
     module(tmp_path, "out/capture.py", 1500)
     module(tmp_path, "scratch/experiment.py", 1500)
+    for folder in (
+        ".env",
+        ".env.local",
+        ".venv",
+        ".tox",
+        ".nox",
+        "env",
+        "venv",
+        "ENV",
+        "env.bak",
+        "venv.bak",
+    ):
+        module(tmp_path, f"scripts/{folder}/lib/third_party.py", 1500)
     file = module(tmp_path, "src/portable.py", 0)
     file.write_bytes((b"pass" + ending) * 799 + b"pass")
     assert check(tmp_path).returncode == 0
@@ -150,3 +167,41 @@ def test_826_split_policy_readers_remain_in_the_documentation_lane():
         "tests/test_workflow_readiness.py",
         "tests/test_workflow_paths.py",
     } <= selected
+
+
+@pytest.mark.parametrize("refresh", [False, True])
+@pytest.mark.parametrize("baselined", [False, True])
+def test_826_unreadable_subtrees_fail_without_rewriting_budgets(
+    tmp_path, monkeypatch, capsys, refresh, baselined
+):
+    name = "src/private/large.py"
+    file = baseline(tmp_path, {name: 900} if baselined else {})
+    original = file.read_bytes()
+    module(tmp_path, name, 901)
+    blocked = tmp_path / "src/private"
+    real_scandir = os.scandir
+
+    def unreadable(path):
+        if not isinstance(path, int) and Path(path) == blocked:
+            raise PermissionError(f"unreadable_subtree: {blocked}")
+        return real_scandir(path)
+
+    with monkeypatch.context() as boundary:
+        boundary.setattr(os, "scandir", unreadable)
+        flags = ["--root", str(tmp_path), *(["--refresh"] if refresh else [])]
+        assert size_guard.main(flags) == 2
+        assert "unreadable_subtree" in capsys.readouterr().err
+    assert file.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "gui/app/web/packagers/tauri/src/main.rs",
+        "gui/app/web/src/client/view.ts",
+        "gui/app/shared/config.ts",
+    ],
+)
+def test_826_policy_fixture_paths_do_not_start_gui_only_docs_jobs(path):
+    assert not routes([path])["docs"]
+    assert docs_test_targets([path]) == []

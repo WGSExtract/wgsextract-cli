@@ -149,7 +149,12 @@ def docs_test_targets(
                 and module
                 not in {
                     "tests/test_ci_changes.py",
+                    "tests/test_ci_landing.py",
+                    "tests/test_ci_required.py",
                     "tests/test_github_actions_policy.py",
+                    "tests/test_workflow_readiness.py",
+                    "tests/test_workflow_paths.py",
+                    "tests/test_python_size.py",
                     "tests/test_api.py",
                 }
             )

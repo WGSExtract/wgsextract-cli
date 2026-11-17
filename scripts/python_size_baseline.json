@@ -5,9 +5,9 @@
     "scripts/build_site.py": 922,
     "scripts/installlab/lab.py": 1365,
     "src/wgsextract_cli/api/ref.py": 1207,
-    "src/wgsextract_cli/api/vcf.py": 1657,
+    "src/wgsextract_cli/api/vcf.py": 1659,
     "src/wgsextract_cli/cli/help.py": 928,
-    "src/wgsextract_cli/cli/parser.py": 811,
+    "src/wgsextract_cli/cli/parser.py": 812,
     "src/wgsextract_cli/commands/info/runner.py": 1161,
     "src/wgsextract_cli/commands/microarray.py": 976,
     "src/wgsextract_cli/commands/qc/relate.py": 873,
@@ -33,12 +33,12 @@
     "tests/test_logic.py": 1120,
     "tests/test_microarray_simulation.py": 993,
     "tests/test_pgs.py": 1160,
-    "tests/test_pharmcat.py": 857,
+    "tests/test_pharmcat.py": 882,
     "tests/test_ref_commands.py": 1250,
     "tests/test_resource_estimates.py": 986,
     "tests/test_result_manifest.py": 1029,
     "tests/test_smoke_real_full.py": 830,
     "tests/test_vcf_annotations.py": 977,
-    "tests/test_vcf_commands.py": 1351
+    "tests/test_vcf_commands.py": 1362
   }
 }
