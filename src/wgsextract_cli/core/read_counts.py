@@ -169,7 +169,9 @@ def alignment_read_length(
     return alignment_sample(path, cram_opt=cram_opt).read_length
 
 
-def _decoded_prefix(path: PathInput) -> tuple[bytes, int, bool, int]:
+def _decoded_prefix(
+    path: PathInput, *, decoded_limit: int = _DECODED_SAMPLE_BYTES
+) -> tuple[bytes, int, bool, int]:
     """(decoded prefix, bytes it consumed, whether it is the whole file, file
     size) of a plain, gzip or concatenated gzip/BGZF file. Measure bytes
     actually consumed by the inflater, not its read-ahead, which otherwise
@@ -182,7 +184,7 @@ def _decoded_prefix(path: PathInput) -> tuple[bytes, int, bool, int]:
         compressed = source.read(2) == b"\x1f\x8b"
         source.seek(0)
         if not compressed:
-            data = source.read(_DECODED_SAMPLE_BYTES)
+            data = source.read(decoded_limit)
             consumed = len(data)
             exact = consumed == size
         else:
@@ -191,7 +193,7 @@ def _decoded_prefix(path: PathInput) -> tuple[bytes, int, bool, int]:
             pending = b""
             consumed = 0
             exact = False
-            while len(decoded) < _DECODED_SAMPLE_BYTES:
+            while len(decoded) < decoded_limit:
                 if not pending:
                     remaining = _COMPRESSED_SAMPLE_BYTES - source.tell()
                     if remaining <= 0:
@@ -200,7 +202,7 @@ def _decoded_prefix(path: PathInput) -> tuple[bytes, int, bool, int]:
                     if not pending:
                         raise EOFError("incomplete gzip member")
                 decoded.extend(
-                    inflater.decompress(pending, _DECODED_SAMPLE_BYTES - len(decoded))
+                    inflater.decompress(pending, decoded_limit - len(decoded))
                 )
                 tail = inflater.unused_data or inflater.unconsumed_tail
                 consumed += len(pending) - len(tail)

@@ -4,7 +4,7 @@ import hashlib
 import os
 import re
 from functools import lru_cache
-from statistics import median
+from statistics import median, quantiles
 from typing import NamedTuple
 
 from wgsextract_cli.core.constants import SEQUENCERS
@@ -14,12 +14,13 @@ from wgsextract_cli.core.read_counts import (
     _decoded_prefix,
 )
 
+LONG_READ_MIN_MEDIAN = 1000
+
 
 class FastqPlatform(NamedTuple):
     platform: str | None
     method: str
     statistics: dict[str, float]
-    sequencer: str | None = None
 
 
 class FastqSampleLimit(ValueError):
@@ -43,6 +44,24 @@ def _evidence_fingerprint(path: str, size: int, mtime: int, ctime: int) -> str:
 
 
 @lru_cache(maxsize=128)
+def fastq_sequencer(path: str, size: int, mtime: int, ctime: int) -> str | None:
+    """Recognize the first name without parsing any sequence/quality records."""
+    data, _consumed, _exact, _size = _decoded_prefix(path, decoded_limit=1024)
+    lines = data.splitlines()
+    if lines and lines[0].startswith(b"@") and (fields := lines[0][1:].split()):
+        qname = fields[0].decode("utf-8", errors="replace")
+        return next(
+            (
+                name
+                for name, pattern in SEQUENCERS.items()
+                if name != "Unknown" and re.search(pattern, qname)
+            ),
+            None,
+        )
+    return None
+
+
+@lru_cache(maxsize=128)
 def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatform:
     """Sample at most 4096 records, 4 MiB compressed / 16 MiB decoded.
 
@@ -53,23 +72,14 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
     lines = data.splitlines()
     if not exact and not data.endswith(b"\n"):
         lines.pop()
-    sequencer = None
-    if lines and lines[0].startswith(b"@") and (fields := lines[0][1:].split()):
-        qname = fields[0].decode("utf-8", errors="replace")
-        sequencer = next(
-            (
-                name
-                for name, pattern in SEQUENCERS.items()
-                if name != "Unknown" and re.search(pattern, qname)
-            ),
-            None,
-        )
     lengths: list[int] = []
     qualities: list[float] = []
     high_quality = bases = ont = pacbio = pacbio_hifi = 0
     max_q = 0
     index = 0
-    while index < len(lines) and len(lengths) < 4096:
+    scanned = 0
+    while index < len(lines) and scanned < 4096:
+        scanned += 1
         name = lines[index]
         index += 1
         length = 0
@@ -81,6 +91,10 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
                 break
             raise ValueError("incomplete FASTQ sequence")
         index += 1
+        if not length:
+            if index < len(lines) and not lines[index]:
+                index += 1
+            continue
         quality = bytearray()
         while index < len(lines) and len(quality) < length:
             quality.extend(lines[index])
@@ -89,7 +103,6 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
             break
         if (
             not name.startswith(b"@")
-            or not length
             or length != len(quality)
             or min(quality) < 33
             or max(quality) > 126
@@ -118,6 +131,11 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
             raise FastqSampleLimit("no complete record within the FASTQ sample budget")
         raise ValueError("no complete FASTQ sample")
     ordered = sorted(lengths, reverse=True)
+    deciles = (
+        quantiles(lengths, n=10, method="inclusive")
+        if len(lengths) > 1
+        else [float(lengths[0])] * 9
+    )
     cumulative = 0
     n50 = ordered[0]
     for length in ordered:
@@ -133,14 +151,15 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
         "mean_q": sum(q * length for q, length in zip(qualities, lengths, strict=True))
         / bases,
         "max_q": float(max_q),
-        "length_spread": max(lengths) / min(lengths),
+        "length_spread": deciles[8] / deciles[0],
     }
-    if stats["median_length"] <= 300:
-        return FastqPlatform(None, "FASTQ short-read length sample", stats, sequencer)
+    # Keep 301–600 bp short-read technologies away from long-read inference.
+    if stats["median_length"] < LONG_READ_MIN_MEDIAN:
+        return FastqPlatform(None, "FASTQ short-read length sample", stats)
     if ont and not pacbio:
-        return FastqPlatform("ont", "FASTQ ONT header tags", stats, sequencer)
+        return FastqPlatform("ont", "FASTQ ONT header tags", stats)
     if pacbio and not ont and pacbio_hifi == pacbio:
-        return FastqPlatform("pacbio", "FASTQ PacBio header tags", stats, sequencer)
+        return FastqPlatform("pacbio", "FASTQ PacBio header tags", stats)
     # HiFi's capped high qualities are useful evidence after names/tags were
     # stripped. Low-quality broad-length data could be ONT *or* CLR: don't guess.
     if (
@@ -149,9 +168,6 @@ def fastq_platform(path: str, size: int, mtime: int, ctime: int) -> FastqPlatfor
         and stats["mean_q"] >= 30
         and stats["max_q"] > 50
         and high_quality / bases >= 0.9
-        and stats["length_spread"] <= 3
     ):
-        return FastqPlatform(
-            "pacbio", "FASTQ HiFi quality and length profile", stats, sequencer
-        )
-    return FastqPlatform(None, "ambiguous long-read FASTQ sample", stats, sequencer)
+        return FastqPlatform("pacbio", "FASTQ HiFi quality and length profile", stats)
+    return FastqPlatform(None, "ambiguous long-read FASTQ sample", stats)

@@ -145,7 +145,7 @@ FACTS: dict[str, FactSpec] = {
             "platform",
             "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
             PLATFORMS,
-            3,
+            4,
         ),
         FactSpec("build", "Reference build the file is aligned to."),
         FactSpec(

@@ -68,7 +68,7 @@ at = "2026-11-04T22:31:02+00:00"
   has its value, the method that found it, a confidence (`high`, `medium`,
   `low`), the detector's version, the command and the time. Platform facts
   inferred from FASTQ samples also carry a `statistics` table: sampled read
-  and byte counts, median/N50 length, mean/max Q and length spread. These
+  and byte counts, median/N50 length, mean/max Q and p90/p10 length spread. These
   statistics contain no read names, sequences or header tag values.
   An inconclusive FASTQ sample is recorded as detected `Unknown` (low
   confidence), not an override choice. Its evidence is retained when you

@@ -7,24 +7,26 @@ detection.
 
 For FASTQs with inconclusive names (including SRA-renamed reads), detection
 samples at most 4096 reads, 4 MiB compressed and 16 MiB decoded, including
-gzip/BGZF files. A median length of 300 bp or less keeps the previous short-read
-defaults. FASTQ and compression are recognized by content, not filename; wrapped
+gzip/BGZF files. A median length below 1 kb keeps the previous short-read
+defaults, including renamed 301 bp Illumina and 400/600 bp Ion Torrent reads.
+FASTQ and compression are recognized by content, not filename; wrapped
 sequence and quality lines are supported. Named pipes are left untouched until
 alignment stages them. Longer reads use ONT header tags (`runid=`, `ch=`, `start_time=`,
 `basecall_model_version_id=`), or PacBio consensus tags (`rq=` of at least
 0.99; otherwise `np=` of at least 2). Conflicting tags are not resolved by
 guessing. Without tags, a HiFi-like quality profile (mean Q30 or higher,
-at least 90% of bases Q30+, some qualities above ONT's Q50 cap) and length
-spread of at most 3:1 selects PacBio HiFi. These are conservative heuristics,
+at least 90% of bases Q30+, some qualities above ONT's Q50 cap) selects PacBio
+HiFi. A short-read tail does not disqualify an otherwise high-quality HiFi
+sample. These are conservative heuristics,
 not instrument identification: low-quality ONT and PacBio CLR can overlap.
 Ambiguous long reads are refused: pass `--platform ont`, `--platform hifi`
 or `--platform clr`. Both paired FASTQs are checked; conflicting evidence is
 refused. Explicit `--platform` still wins.
-For known short-read data just above the cutoff (for example 301 bp Illumina),
+For known short-read data above the conservative 1 kb cutoff,
 choose `--platform illumina` explicitly.
 
 The sample workspace's platform fact records the method, confidence and sampled
-statistics (median and N50 length, mean/max Q, length spread and sample size).
+statistics (median and N50 length, mean/max Q, p90/p10 length spread and sample size).
 The result manifest includes the same evidence under
 `provenance.params.platform_detection`. Samples are cached per file revision;
 replacing a FASTQ invalidates its evidence. BAM/CRAM detection is unchanged.
@@ -33,6 +35,11 @@ same-size edits outside the usual first/middle/last-MiB fingerprint windows
 invalidate the cached evidence.
 An override is recorded separately as `effective_platform`; it never erases
 the detected method or statistics, including inconclusive (`Unknown`) samples.
+Native read-name evidence is independent of parsing the sequence/quality sample,
+so empty or malformed sample records cannot erase a recognized ONT UUID.
+Conclusive names do not require a length/quality sample.
+Zero-length records are excluded from sampled statistics; full FASTQ validation
+still reports invalid input before mapping.
 
 A BAM/CRAM whose read groups name several platforms (ONT and Illumina reads
 merged, say) is reported by `info` (the `Platforms` line, `platforms` in the

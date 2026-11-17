@@ -63,9 +63,12 @@ def test_1070_long_fastq_platform_is_shared_and_recorded(
     assert resolve_platform(None, str(path)) == expected
     fact = workspace.detected("platform", path)
     assert fact is not None and method in fact.method
-    assert fact.statistics["median_length"] == 1500
-    assert fact.statistics["n50_length"] == 1500
-    assert fact.statistics["mean_q"] == ord(quality) - 33
+    if "read name" in method:
+        assert fact.statistics is None
+    else:
+        assert fact.statistics["median_length"] == 1500
+        assert fact.statistics["n50_length"] == 1500
+        assert fact.statistics["mean_q"] == ord(quality) - 33
     assert resolve_platform("clr", str(path)) == "clr"
 
 
@@ -213,14 +216,79 @@ def test_1070_damaged_sample_defers_to_fastq_validation_without_raw_errors(
         validate_fastq(str(path))
 
 
-def test_1070_renamed_301bp_reads_suggest_explicit_illumina_override(tmp_path):
-    path = _fastq(tmp_path / "reads.fq", ["r0", "r1", "r2"], lengths=(301,) * 3)
-    with pytest.raises(UsageError, match="--platform illumina"):
-        resolve_platform(None, str(path))
-    assert resolve_platform("illumina", str(path)) == "illumina"
+@pytest.mark.parametrize("length", [301, 400, 600, 999])
+def test_1070_renamed_longer_short_reads_are_not_refused(tmp_path, length):
+    path = _fastq(
+        tmp_path / "reads.fq",
+        ["SRR123.1", "SRR123.2", "SRR123.3"],
+        lengths=(length,) * 3,
+    )
+    assert sequencing.input_platform(path) is None
+    assert resolve_platform(None, str(path)) == "illumina"
 
 
-@pytest.mark.parametrize("length", [150, 300])
+@pytest.mark.parametrize("compressed", [False, True])
+@pytest.mark.parametrize("bad_record", ["@empty\n\n+\n\n", "@bad\nAC\n+\nI\n"])
+def test_1070_native_ont_name_survives_empty_or_malformed_sample_record(
+    tmp_path, compressed, bad_record
+):
+    path = tmp_path / ("ont.fq.gz" if compressed else "ont.fq")
+    opener = gzip.open if compressed else open
+    uuid = "a18d071b-8bb9-42fe-b929-1f24cfe1d052"
+    with opener(path, "wt") as stream:
+        stream.write(f"@{uuid}\n{'A' * 1500}\n+\n{'I' * 1500}\n")
+        stream.write(bad_record)
+        stream.write(f"@renamed\n{'A' * 2000}\n+\n{'I' * 2000}\n")
+    workspace = sample_workspace.SampleWorkspace(tmp_path)
+    workspace.set_overrides({})
+    assert sequencing.input_platform(path) == "ont"
+    assert resolve_platform(None, str(path)) == "ont"
+    fact = workspace.detected("platform", path)
+    assert fact.method == "first read name pattern"
+    assert fact.statistics is None
+
+
+def test_1070_renamed_ont_sample_skips_zero_length_records(tmp_path):
+    path = _fastq(tmp_path / "ont.fq", [f"r{i} runid=abc" for i in range(3)])
+    with path.open("a") as stream:
+        stream.write("@empty\n\n+\n\n")
+    workspace = sample_workspace.SampleWorkspace(tmp_path)
+    workspace.set_overrides({})
+    assert resolve_platform(None, str(path)) == "ont"
+    fact = workspace.detected("platform", path)
+    assert fact.statistics["sampled_reads"] == 3
+    assert fact.statistics["median_length"] == 1500
+
+
+@pytest.mark.parametrize(
+    ("quality", "expected"), [("~", "pacbio"), ("I" * 18 + "5" + "S", None)]
+)
+def test_1070_realistic_hifi_tail_and_capped_high_quality_ont_stay_distinct(
+    tmp_path, quality, expected
+):
+    path = tmp_path / "renamed.fq"
+    rng = random.Random(1070)
+    lengths = [int(rng.lognormvariate(9.74, 0.55)) for _ in range(400)]
+    with path.open("w") as stream:
+        for number, length in enumerate(lengths):
+            scores = (quality * (length // len(quality) + 1))[:length]
+            stream.write(f"@SRR123.{number}\n{'A' * length}\n+\n{scores}\n")
+    workspace = sample_workspace.SampleWorkspace(tmp_path)
+    workspace.set_overrides({})
+    assert sequencing.input_platform(path) == expected
+    fact = workspace.detected("platform", path)
+    assert fact.statistics["median_length"] > 10_000
+    if expected == "pacbio":
+        assert resolve_platform(None, str(path)) == "pacbio"
+        assert fact.statistics["mean_q"] == 93
+    else:
+        assert fact.statistics["mean_q"] > 30
+        assert fact.statistics["max_q"] == 50
+        with pytest.raises(UsageError, match="Ambiguous long-read"):
+            resolve_platform(None, str(path))
+
+
+@pytest.mark.parametrize("length", [150, 300, 301, 600])
 def test_1070_renamed_short_paired_reads_keep_short_defaults(tmp_path, length):
     paths = []
     for mate in (1, 2):
@@ -304,6 +372,45 @@ def test_1070_renamed_short_paired_gzip_alignment_keeps_bwa(tmp_path):
     )
 
 
+@needs_tools("samtools", "bwa")
+def test_1070_renamed_301bp_fastq_aligns_without_platform_override(tmp_path):
+    genome = "".join(random.Random(1070).choices("ACGT", k=8000))
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
+    reads = _fastq(
+        tmp_path / "miseq.fq.gz",
+        ["SRR123.1", "SRR123.2", "SRR123.3"],
+        lengths=(301,) * 3,
+        genome=genome,
+    )
+    out = tmp_path / "aligned"
+    main(
+        [
+            "align",
+            "--r1",
+            str(reads),
+            "--ref",
+            str(ref),
+            "--outdir",
+            str(out),
+            "--threads",
+            "1",
+            "--memory",
+            "256M",
+        ]
+    )
+    [aligned] = out.glob("*_aligned.bam")
+    assert (
+        run_command(
+            ["samtools", "view", "-c", "-F", "0x904", aligned], capture_output=True
+        ).stdout.strip()
+        == "3"
+    )
+    header = run_command(
+        ["samtools", "view", "-H", aligned], capture_output=True
+    ).stdout
+    assert "\tPL:ILLUMINA" in header and "minimap2" not in header
+
+
 @needs_tools("samtools", "minimap2")
 @pytest.mark.parametrize("realign", [False, True], ids=["align", "realign-fastq"])
 @pytest.mark.parametrize(
@@ -376,6 +483,9 @@ def test_1070_long_fastq_maps_with_detected_preset_and_manifest(
     ]
     manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
     detection = manifest["provenance"]["params"]["platform_detection"][str(reads)]
-    assert detection["statistics"]["median_length"] == 1500
-    assert detection["statistics"]["mean_q"] == 40
+    if tags == "native":
+        assert detection["statistics"] is None
+    else:
+        assert detection["statistics"]["median_length"] == 1500
+        assert detection["statistics"]["mean_q"] == 40
     assert ("read name" if tags == "native" else "header tags") in detection["method"]

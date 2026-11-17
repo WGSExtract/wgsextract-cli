@@ -10,7 +10,12 @@ from pathlib import Path
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.fastq_platform import FastqSampleLimit, fastq_platform
+from wgsextract_cli.core.fastq_platform import (
+    LONG_READ_MIN_MEDIAN,
+    FastqSampleLimit,
+    fastq_platform,
+    fastq_sequencer,
+)
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.results import current_result, warn
@@ -236,7 +241,7 @@ def input_platform(
                 ).statistics
             except (OSError, EOFError, ValueError, zlib.error):
                 pass  # Full FASTQ validation reports damaged input.
-        if statistics and statistics["median_length"] > 300:
+        if statistics and statistics["median_length"] >= LONG_READ_MIN_MEDIAN:
             raise UsageError(
                 "Ambiguous long-read FASTQ platform "
                 f"(median {statistics['median_length']:g} bp). "
@@ -296,7 +301,7 @@ def _detect_platform(
         strict,
     )
     statistics = None
-    if not _is_alignment(str(path)):
+    if method != _READ_NAME and not _is_alignment(str(path)):
         try:
             sample = fastq_platform(
                 str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
@@ -366,6 +371,12 @@ def _input_platform(
         return platform_from_metadata(qname=qname), _READ_NAME
     if Path(path).is_file():
         try:
+            sequencer = fastq_sequencer(path, size, mtime, ctime)
+        except (OSError, EOFError, ValueError, zlib.error):
+            sequencer = None
+        if platform := platform_from_metadata(sequencer=sequencer):
+            return platform, _READ_NAME
+        try:
             sample = fastq_platform(path, size, mtime, ctime)
         except FastqSampleLimit:
             if strict:
@@ -377,7 +388,5 @@ def _input_platform(
             return None, None
         except (OSError, EOFError, ValueError, zlib.error):
             return None, None
-        if platform := platform_from_metadata(sequencer=sample.sequencer):
-            return platform, _READ_NAME
         return sample.platform, sample.method
     return None, None
