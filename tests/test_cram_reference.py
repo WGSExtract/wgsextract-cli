@@ -64,7 +64,7 @@ def test_1061_missing_ur_decodes_from_local_reference(tmp_path, monkeypatch, suf
     assert list(work.iterdir()) == []
     assert (os.environ["REF_PATH"], os.environ["REF_CACHE"]) == before
     wrong = write_fasta(
-        tmp_path / "wrong.fa", {"chr1": "TGCA" * 1000, "chr2": "TGCA" * 1000}
+        tmp_path / "wrong.fa", {"chr1": "TGCA" * 1000, "chr2": "ACGT" * 1000}
     )
     with (
         pytest.raises(WGSExtractError, match="M5"),

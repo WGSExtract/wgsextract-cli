@@ -2,7 +2,6 @@
 
 import gzip
 import hashlib
-import re
 import shutil
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -34,6 +33,8 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
         root = Path(directory)
         pending = root / "sequence"
         digest = hashlib.md5(usedforsecurity=False)
+        digests: dict[str, str] = {}
+        name = ""
         with open(reference, "rb") as signature:
             compressed = signature.read(2) == b"\x1f\x8b"
         opener = gzip.open if compressed else open
@@ -46,8 +47,10 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
                     if has_sequence:
                         target.close()
                         pending.replace(root / digest.hexdigest())
+                        digests[name] = digest.hexdigest()
                         target = stack.enter_context(pending.open("wb"))
                         digest = hashlib.md5(usedforsecurity=False)
+                    name = chunk[1:].split(maxsplit=1)[0].decode()
                     has_sequence = True
                     continue
                 bases = b"".join(chunk.split()).upper()
@@ -56,14 +59,14 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
             target.close()
             if has_sequence:
                 pending.replace(root / digest.hexdigest())
+                digests[name] = digest.hexdigest()
         for line in get_bam_header(alignment, reference).splitlines():
             if not line.startswith("@SQ\t"):
                 continue
             tags = dict(field.split(":", 1) for field in line.split("\t")[1:])
             if tags.get("SN") not in lengths or "M5" not in tags:
                 continue
-            md5 = tags["M5"].lower()
-            if not re.fullmatch(r"[0-9a-f]{32}", md5) or not (root / md5).is_file():
+            if digests.get(tags["SN"]) != tags["M5"].lower():
                 raise WGSExtractError(
                     f"The supplied FASTA cannot decode CRAM reference {tags['SN']}: "
                     "its M5 checksum does not match. Supply the encoding --ref."
