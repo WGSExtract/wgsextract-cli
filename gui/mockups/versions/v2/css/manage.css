@@ -49,6 +49,12 @@
   gap: 2px;
 }
 
+.v2-catalog__toggle {
+  display: none;
+  width: 100%;
+  text-align: left;
+}
+
 .v2-catalog h2 {
   margin: 14px 0 4px;
   color: var(--c-text-3);
@@ -135,6 +141,18 @@
 @container app (max-width: 860px) {
   .v2-cols--catalog {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-catalog:not([data-open]) > :not(.v2-catalog__toggle) {
+    display: none;
+  }
+
+  .v2-catalog__toggle {
+    display: flex;
+  }
+
+  .v2-catalog[data-open] .v2-catalog__toggle .icon {
+    transform: rotate(180deg);
   }
 }
 

@@ -84,6 +84,15 @@
   /* <nav data-render="v2-catalog" data-current="vep">: the All tools list */
   WGSM.render.blocks["v2-catalog"] = function (el, opts) {
     var current = opts.current ? "tool-" + opts.current + ".html" : "tools.html";
+    var name = "";
+    CATALOG.forEach(function (group) {
+      group[1].forEach(function (tool) {
+        if (tool[1] === current) name = tool[0];
+      });
+    });
+    /* Narrow screens show only this row until it is opened */
+    el.appendChild(h("button.v2-btn.v2-catalog__toggle", { type: "button", "aria-expanded": "false", dataset: { v2CatalogToggle: "" } },
+      h("span.v2-grow", h("span.v2-muted", "Tool: "), name), "Change", WGSM.icon("chevron-down", "icon--sm")));
     el.appendChild(h("input.v2-input", { type: "search", placeholder: "Filter tools", "aria-label": "Filter tools", dataset: { v2Filter: "" } }));
     CATALOG.forEach(function (group) {
       el.appendChild(h("h2", group[0]));
@@ -236,6 +245,13 @@
     document.addEventListener("change", function (event) {
       if (event.target.matches("[data-v2-commands]")) commands(event.target.checked);
       recount();
+    });
+    document.addEventListener("click", function (event) {
+      var toggle = event.target.closest("[data-v2-catalog-toggle]");
+      if (!toggle) return;
+      var open = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.parentElement.toggleAttribute("data-open", open);
     });
     document.addEventListener("input", function (event) {
       if (event.target.matches("[data-v2-filter]")) filterCatalog(event.target);

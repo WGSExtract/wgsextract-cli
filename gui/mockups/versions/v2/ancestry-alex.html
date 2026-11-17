@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ancestry and lineage for Alex · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-ancestry-alex" data-shell="v2" data-nav="p-alex" data-title="Ancestry and lineage for Alex" data-parent="Alex|person-alex.html">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>Ancestry and lineage for Alex</h1>
+      <p class="v2-head__sub">Alex’s maternal line, and how her DNA compares with reference populations. Worked out from her 23andMe kit, <span class="v2-mono">genome_Alex_v5_Full_20241103.txt</span>, on Nov 3.</p>
+    </div>
+  </header>
+
+  <div class="v2-notice" data-tone="info" role="status" data-annot-id="from-kit">
+    <i data-icon="chip"></i>
+    <div class="v2-notice__text">
+      <strong>From a kit, so less exact than from a genome</strong>
+      <span>The kit reads about 640,000 markers, including only 3,000 of the mtDNA. Once her Nebula genome is fixed, both are worked out again from it, about 6 minutes.</span>
+    </div>
+    <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="person-alex.html">Fix the genome</a></div>
+  </div>
+
+  <section class="v2-section" data-annot-id="lineage">
+    <h2>Lineage</h2>
+    <div class="v2-sheet">
+      <div class="v2-sheet__pad v2-cols v2-cols--even" style="gap: 32px">
+        <div class="v2-line" data-line="mt" data-annot-id="maternal">
+          <span class="v2-line__kind">Maternal line <small>mtDNA, mother to children</small></span>
+          <span class="v2-line__result">U5b2a1a</span>
+          <span class="v2-muted v2-small">A branch of U5, one of the oldest maternal lines in Europe, found today mostly in the north and east.</span>
+          <span class="v2-small"><strong>Fair confidence:</strong> quality 0.81 of 1; the kit reads 23 of the 31 defining positions.</span>
+          <ol class="v2-path" aria-label="Path from the root of the mtDNA tree">
+            <li><code>L3</code><span>out of Africa</span></li>
+            <li><span>N, then R</span></li>
+            <li><code>U</code><span></span></li>
+            <li><code>U5</code><span>about 30,000 years</span></li>
+            <li><code>U5b2a1</code><span></span></li>
+            <li><code>U5b2a1a</code><span>quality 0.81</span></li>
+          </ol>
+        </div>
+        <div class="v2-line" data-annot-id="paternal">
+          <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+          <span class="v2-muted v2-small">None. Alex is female, so has no Y chromosome. Her father’s or a brother’s genome would show her paternal line.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="v2-section" data-annot-id="ancestry">
+    <h2>Ancestry proportions</h2>
+    <div class="v2-sheet">
+      <div class="v2-sheet__pad v2-section">
+        <div class="v2-stacked" role="img" aria-label="Middle Eastern 81%, Central and South Asian 14%, Sub-Saharan African 4%, East Asian 1%">
+          <span class="v2-s2" style="--w: 81" title="Middle Eastern 81%"></span><span class="v2-s3" style="--w: 14" title="Central &amp; South Asian 14%"></span><span class="v2-s4" style="--w: 4" title="Sub-Saharan African 4%"></span><span class="v2-s5" style="--w: 1" title="East Asian 1%"></span>
+        </div>
+        <p class="v2-small v2-muted" data-annot-id="ancestry-caveat"><strong>Not an ethnicity.</strong> These are shares of reference populations. Each component is named after the groups that carry it most, but many people carry several.</p>
+      </div>
+      <div class="v2-scroll">
+        <table class="v2-table v2-table--wide" aria-label="Ancestry components">
+          <thead><tr><th>Component</th><th class="v2-num">Share</th><th>95% interval</th><th>Carried most by</th></tr></thead>
+          <tbody>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s2"></span>Middle Eastern</span></td><td class="v2-num">81%</td><td><div class="v2-row"><div class="v2-ci v2-s2 v2-grow" style="--v: 81%; --lo: 75%; --hi: 87%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">75–87%</span></div></td><td class="v2-muted">Druze, Palestinian, Bedouin</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s3"></span>Central &amp; South Asian</span></td><td class="v2-num">14%</td><td><div class="v2-row"><div class="v2-ci v2-s3 v2-grow" style="--v: 14%; --lo: 9%; --hi: 19%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">9–19%</span></div></td><td class="v2-muted">Balochi, Brahui, Makrani</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s4"></span>Sub-Saharan African</span></td><td class="v2-num">4%</td><td><div class="v2-row"><div class="v2-ci v2-s4 v2-grow" style="--v: 4%; --lo: 1%; --hi: 7%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">1–7%</span></div></td><td class="v2-muted">Yoruba, Esan, Mandenka</td></tr>
+            <tr><td class="v2-table__main"><span class="v2-row"><span class="v2-swatch v2-s5"></span>East Asian</span></td><td class="v2-num">1%</td><td><div class="v2-row"><div class="v2-ci v2-s5 v2-grow" style="--v: 1%; --lo: 0%; --hi: 3%"><span class="v2-ci__bar"></span><span class="v2-ci__range"></span></div><span class="v2-num v2-dim">0–3%</span></div></td><td class="v2-muted">Han, Japanese, Dai</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="v2-section__note" data-annot-id="ancestry-facts">142,906 of the 187,417 sites are on the kit · compared with 3,129 people from 80 reference populations (HGDP and 1000 Genomes) · intervals are wider than from a genome. Regional detail needs the genome.</p>
+    <code class="v2-cmd v2-dim v2-small">qc/ancestry · ADAMIXTURE K=7 · lineage/mt-haplogroup with PhyloTree 17 and HaploGrep 3</code>
+  </section>
+</div>
+</body>
+</html>
