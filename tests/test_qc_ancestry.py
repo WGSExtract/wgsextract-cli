@@ -181,8 +181,9 @@ def test_reference_not_matching_its_pin_is_refused(tmp_path, sample, monkeypatch
 
 
 @needs_htslib
-def test_reference_is_downloaded_on_first_use_and_deleted_on_request(
-    tmp_path, sample, monkeypatch
+@pytest.mark.parametrize("consent", ["flag", "config"])
+def test_1052_reference_download_needs_consent_then_cached_runs_stay_offline(
+    tmp_path, sample, monkeypatch, consent
 ):
     library = tmp_path / "library"
     published = sample["reflib"] / "ancestry" / ancestry_reference.NAME
@@ -197,12 +198,26 @@ def test_reference_is_downloaded_on_first_use_and_deleted_on_request(
 
     monkeypatch.setattr(ancestry_reference, "download_file", download)
     raw = raw_23andme(sample, tmp_path / "kit.txt")
-    result = _run(sample, raw, build=None, ref=library)
+    refused = _run(sample, raw, build=None, ref=library)
+    assert refused.exit_code == 2
+    assert refused.error and "--download" in refused.error.message
+    assert not fetched
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "allow_reference_downloads", consent == "config")
+    result = _run(
+        sample,
+        raw,
+        build=None,
+        ref=library,
+        download=True if consent == "flag" else None,
+    )
     assert result.exit_code == 0, result.error
     assert fetched == [ancestry_reference.URL]
     assert (library / "ancestry" / ancestry_reference.NAME).is_file()
 
     # Installed: no second download.
+    monkeypatch.setitem(settings, "allow_reference_downloads", False)
     assert _run(sample, raw, build=None, ref=library).exit_code == 0
     assert len(fetched) == 1
 

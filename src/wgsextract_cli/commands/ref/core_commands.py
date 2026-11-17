@@ -101,7 +101,7 @@ def run_index(params: RefIndexParams) -> None:
         run_command(["samtools", "dict", ref, "-o", out_dict])
 
         if aligner == "bwa-mem2":
-            bwa_mem2.ensure_index(ref, download=True)
+            bwa_mem2.ensure_index(ref, download=bool(params.download))
         else:
             logging.info("Indexing FASTA with bwa index (required for alignment)...")
             from wgsextract_cli.core.bwa_index import ensure_index

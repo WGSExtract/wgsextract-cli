@@ -12,6 +12,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.ydna.ystr.panel import PANELS
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
@@ -35,11 +36,11 @@ def _build_param() -> Any:
 
 
 @dataclass(frozen=True, kw_only=True)
-class MtHaplogroupParams(Params):
+class MtHaplogroupParams(DownloadParams):
     """Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
     called first; needs the reference) or a VCF, into
-    ``haplogrep_results.txt``; the tree is downloaded once into the reference
-    library. With ``contamination``, haplocheck also looks for a mixture of
+    ``haplogrep_results.txt``; a missing tree needs ``download`` permission.
+    With ``contamination``, haplocheck also looks for a mixture of
     two haplogroups (``haplocheck_contamination.txt``). Haplogrep reads
     rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
     three more differences) is called at every site and mapped onto the rCRS
@@ -85,7 +86,7 @@ class MtHaplogroupParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-class YHaplogroupParams(Params):
+class YHaplogroupParams(DownloadParams):
     """Predict the Y haplogroup with the bundled native Yleaf from a BAM, CRAM
     or single-sample VCF/BCF. Outputs go to ``yleaf/`` in the output folder."""
 

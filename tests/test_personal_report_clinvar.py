@@ -8,6 +8,7 @@ import jsonschema
 import pytest
 
 from tests.htslib_helpers import needs_tools
+from tests.test_1052_offline_defaults import blocked_network as blocked_network
 from tests.test_personal_report import (
     ACMG_SF_TABLE_1 as ACMG_SF_TABLE_1,
 )
@@ -86,6 +87,22 @@ def test_built_in_list_is_downloaded_once_and_checked_on_each_use(sample, served
     again = pr.build_report(sample)["sections"]["clinvar"]
     assert {f["gene"] for f in again["findings"]} == {"BRCA2", "MUTYH"}
     assert len(served_lists.downloads) == 2
+
+
+def test_1052_report_missing_gene_list_requires_download(
+    sample, served_lists, blocked_network, monkeypatch
+):
+    monkeypatch.setitem(settings, "allow_reference_downloads", False)
+    refused = api.report.build(api.ReportParams(workspace=sample), check=False)
+    assert refused.exit_code == 2
+    assert refused.error and "gene list" in refused.error.message
+    assert "--download" in refused.error.message
+    assert not served_lists.downloads
+    accepted = api.report.build(api.ReportParams(workspace=sample, download=True))
+    assert accepted.exit_code == 0
+    assert len(served_lists.downloads) == 1
+    assert api.report.build(api.ReportParams(workspace=sample)).exit_code == 0
+    assert not blocked_network
 
 
 @pytest.mark.parametrize("problem", ["offline", "tampered"])

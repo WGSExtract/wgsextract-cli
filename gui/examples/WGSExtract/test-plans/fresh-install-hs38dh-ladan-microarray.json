@@ -8,6 +8,7 @@
       "ref_path": "{{bundleWorkspace}}/reference"
     },
     "checkedOptions": {
+      "microarray_download": ["--download"],
       "microarray_formats": [
         "all"
       ]

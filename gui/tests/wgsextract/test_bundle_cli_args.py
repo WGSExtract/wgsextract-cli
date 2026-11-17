@@ -140,7 +140,9 @@ class BundleSandbox:
         self.app_data = root / "App Data" / "WGSExtract-gui"
         shutil.copytree(BUNDLE / "scripts", self.bundle / "scripts")
         runtime = self.app_data / "runtime" / "wgsextract-cli"
-        (runtime / "app").mkdir(parents=True)
+        metadata = runtime / "app" / ".pixi" / "envs" / "default" / "conda-meta"
+        metadata.mkdir(parents=True)
+        (metadata / "pixi").write_text("{}")
         pixi = runtime / ".pixi" / "bin" / "pixi"
         pixi.parent.mkdir(parents=True)
         pixi.write_text(FAKE_PIXI)
@@ -395,15 +397,15 @@ class BundleSandbox:
             )
         argv = self.calls.read_bytes().split(b"\0")[:-1]
         call = [arg.decode() for arg in argv]
-        if call[:2] != ["run", "wgsextract"]:
+        if call[:4] != ["run", "--no-install", "--frozen", "wgsextract"]:
             raise AssertionError(
                 f"{script} ran `pixi {' '.join(call)}`, not wgsextract"
             )
         # The runtime must use the workspace's settings, never the user's config.
         config = ["--config", str(self.bundle / "config.toml")]
-        if call[2:4] != config:
+        if call[4:6] != config:
             raise AssertionError(f"{script} did not pass {' '.join(config)}: {call}")
-        return call[4:]
+        return call[6:]
 
 
 def load_json(path: Path) -> dict:

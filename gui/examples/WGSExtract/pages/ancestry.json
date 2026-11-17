@@ -27,6 +27,18 @@
       "textIcon": "🌳",
       "controls": [
         {
+          "id": "lineage_download",
+          "label": "controls.settings.privacy.downloads.label",
+          "kind": "checkboxGroup",
+          "tooltip": "controls.settings.privacy.downloads.tooltip",
+          "options": [
+            {
+              "id": "--download",
+              "title": "controls.settings.privacy.downloads.label"
+            }
+          ]
+        },
+        {
           "id": "yleaf_pos",
           "label": "controls.ancestry.ancestry-inputs.yleaf_pos.label",
           "kind": "path",
@@ -238,6 +250,9 @@
             ],
             "optionalArguments": [
               [
+                "{{lineage_download}}"
+              ],
+              [
                 "{{lineage_tree_links}}"
               ],
               [
@@ -298,6 +313,9 @@
               "{{bam_path}}"
             ],
             "optionalArguments": [
+              [
+                "{{lineage_download}}"
+              ],
               [
                 "--haplogrep-path",
                 "{{haplogrep_path}}"

@@ -24,6 +24,8 @@
       "vcf_father": "{{bundleWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.vcf.gz"
     },
     "checkedOptions": {
+      "lineage_download": ["--download"],
+      "microarray_download": ["--download"],
       "microarray_formats": [
         "23andme_v5",
         "ancestry_v2",

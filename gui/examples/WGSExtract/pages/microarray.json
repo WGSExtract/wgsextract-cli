@@ -51,6 +51,18 @@
           "kind": "path",
           "tooltip": "controls.microarray.microarray-inputs.out_dir.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "microarray_download",
+          "label": "controls.settings.privacy.downloads.label",
+          "kind": "checkboxGroup",
+          "tooltip": "controls.settings.privacy.downloads.tooltip",
+          "options": [
+            {
+              "id": "--download",
+              "title": "controls.settings.privacy.downloads.label"
+            }
+          ]
         }
       ]
     },
@@ -309,6 +321,9 @@
               [
                 "--ref",
                 "{{ref_fasta}}"
+              ],
+              [
+                "{{microarray_download}}"
               ],
               [
                 "--outdir",

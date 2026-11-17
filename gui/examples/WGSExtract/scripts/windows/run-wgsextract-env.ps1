@@ -108,7 +108,7 @@ function Invoke-ForwardedCommand {
 # another Windows account, or in an app sandbox (an MSIX app such as a store
 # app) whose AppData\Local writes Windows keeps apart, or the folder was removed.
 # Returns $null when config.toml sets that folder in a way this can't read; data
-# sources then leave finding the environment to Pixi.
+# sources and actions must refuse instead of running the host's programs.
 function Get-PixiEnvironmentsDirectory {
     param([Parameter(Mandatory = $true)][string]$AppDir)
     $config = Join-Path $AppDir ".pixi\config.toml"
@@ -211,22 +211,17 @@ if (-not $env:PIXI_CACHE_DIR) {
     $env:PIXI_CACHE_DIR = Join-Path $pixiBaseDir "cache"
 }
 
-# Data sources must answer within seconds, so they never let `pixi run` finish
-# an interrupted install: they need the shim setup writes last and run the
-# environment as it is.
-$runArgs = @("run")
-if ($env:WGSEXTRACT_GUI_DATA_SOURCE -eq "1") {
-    $shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
-    if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {
-        [Console]::Error.WriteLine("WGS Extract CLI setup has not finished ($shim is missing). Run the WGS Extract setup action again.")
-        exit 127
-    }
-    $envsDir = Get-PixiEnvironmentsDirectory -AppDir $appDir
-    if ($envsDir -and -not (Test-PixiDefaultEnvironment -AppDir $appDir -EnvsDir $envsDir)) {
-        [Console]::Error.WriteLine("WGS Extract's tools are missing from $envsDir. Run Setup again on the Settings page to install them.")
-        exit 127
-    }
-    $runArgs += "--no-install"
+# Never let analysis update an installation or fall back to the host's programs.
+$runArgs = @("run", "--no-install", "--frozen")
+$shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
+if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {
+    [Console]::Error.WriteLine("WGS Extract CLI setup has not finished ($shim is missing). Run the WGS Extract setup action again.")
+    exit 127
+}
+$envsDir = Get-PixiEnvironmentsDirectory -AppDir $appDir
+if (-not $envsDir -or -not (Test-PixiDefaultEnvironment -AppDir $appDir -EnvsDir $envsDir)) {
+    [Console]::Error.WriteLine("WGS Extract's tools are missing from $envsDir. Run Setup again on the Settings page to install them.")
+    exit 127
 }
 
 Push-Location $appDir

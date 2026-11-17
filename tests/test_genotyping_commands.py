@@ -515,6 +515,45 @@ def test_hla_index_is_built_once_in_the_reference_library(tmp_path, monkeypatch)
     assert len(calls("t1k-build.pl")) == 1
 
 
+def test_1052_hla_missing_index_requires_download_then_reuses_it_offline(
+    tmp_path, monkeypatch, mhc_bam, hla_setup
+):
+    import socket
+
+    def no_connection(*args, **kwargs):
+        pytest.fail("#1052: HLA tried to contact a server without consent")
+
+    monkeypatch.setattr(socket.socket, "connect", no_connection)
+    monkeypatch.setattr(socket, "getaddrinfo", no_connection)
+    library = tmp_path / "empty-library"
+    library.mkdir()
+    settings["reference_library"] = str(library)
+    params = api.TypingHlaParams(
+        input=Path(mhc_bam), outdir=tmp_path / "out", threads=1
+    )
+    refused = api.genotyping.hla(params, check=False)
+    assert refused.exit_code == 2
+    assert refused.error and "IPD-IMGT/HLA" in refused.error.message
+    assert "--download" in refused.error.message
+    fake_tools(
+        monkeypatch,
+        tmp_path,
+        {
+            "t1k-build.pl": FAKE_T1K_BUILD.format(fail=False),
+            "run-t1k": FAKE_T1K.format(
+                reads=str(hla_setup.reads), genotype=str(hla_setup.genotype)
+            ),
+        },
+    )
+    from dataclasses import replace
+
+    # T1K is the download boundary; the existing fake builds its tiny local index.
+    accepted = api.genotyping.hla(replace(params, download=True))
+    assert accepted.exit_code == 0
+    assert (library / "ref/t1k_hla/hla_dna_seq.fa").is_file()
+    assert api.genotyping.hla(params).exit_code == 0
+
+
 def test_hla_index_build_failure_is_reported(tmp_path, monkeypatch):
     fake_tools(
         monkeypatch, tmp_path, {"t1k-build.pl": FAKE_T1K_BUILD.format(fail=True)}

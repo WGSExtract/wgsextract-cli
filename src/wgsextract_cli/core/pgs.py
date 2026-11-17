@@ -80,11 +80,17 @@ def text_file(path: Path) -> TextIO:
 
 def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
     """Download metadata and harmonized weights, retrying transient failures."""
+    from wgsextract_cli.core.execution_context import current
+    from wgsextract_cli.core.network_policy import require_download
+
     if not re.fullmatch(r"PGS[0-9]{6}", pgs_id):
         raise UsageError("A PGS ID has the form PGS000018.")
     folder.mkdir(parents=True, exist_ok=True)
     metadata = folder / f"{pgs_id}.json"
-    _download(f"https://www.pgscatalog.org/rest/score/{pgs_id}/", metadata)
+    refresh = current().allow_downloads is True
+    if refresh or not metadata.is_file():
+        require_download(f"PGS Catalog metadata for {pgs_id}")
+        _download(f"https://www.pgscatalog.org/rest/score/{pgs_id}/", metadata)
     try:
         info = json.loads(metadata.read_text(encoding="utf-8"))
         url = info["ftp_harmonized_scoring_files"][build]["positions"]
@@ -96,7 +102,9 @@ def catalog_file(pgs_id: str, build: str, folder: Path) -> Path:
             f"The Catalog has no harmonized {build} scoring file for {pgs_id}."
         ) from exc
     path = folder / f"{pgs_id}_{build}.txt.gz"
-    _download(url, path)
+    if refresh or not path.is_file():
+        require_download(f"PGS Catalog scoring file for {pgs_id} ({build})")
+        _download(url, path)
     return path
 
 

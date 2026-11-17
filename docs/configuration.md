@@ -11,6 +11,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
+| `allow_reference_downloads` | boolean | `false` | Allow first-use public reference/model downloads for commands with --download (hosts and request data: docs/privacy.md); no sample uploads |
 | `input_path` | string, path (`~` expands) | unset | Default input BAM/CRAM or FASTQ file |
 | `output_directory` | string, path (`~` expands) | unset | Default output directory |
 | `temp_directory` | string, path (`~` expands) | unset | Optional volume for sort spills, GATK and realign staging |

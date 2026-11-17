@@ -44,8 +44,8 @@ step info        "$WGSE" info --input "$BAM" --ref "$REF" --outdir "$OUT/info" -
 step info_cram   "$WGSE" info --input "$CRAM" --ref "$REF" --outdir "$OUT/info_cram"
 step mt_bam      "$WGSE" extract mt-bam --input "$BAM" --ref "$REF" --outdir "$OUT/mt_bam"
 step mito_vcf    "$WGSE" extract mito-vcf --input "$BAM" --ref "$REF" --outdir "$OUT/mito_vcf"
-step mt_haplo    "$WGSE" lineage mt-haplogroup --input "$BAM" --ref "$REF" --outdir "$OUT/mt_haplo"
-step y_haplo     "$WGSE" lineage y-haplogroup --input "$BAM" --ref "$REF" --outdir "$OUT/y_haplo"
+step mt_haplo    "$WGSE" lineage mt-haplogroup --download --input "$BAM" --ref "$REF" --outdir "$OUT/mt_haplo"
+step y_haplo     "$WGSE" lineage y-haplogroup --download --input "$BAM" --ref "$REF" --outdir "$OUT/y_haplo"
 # Keep predictions/evidence, not downloaded tables or the fresh user's private lock.
 rm -rf "$OUT/reference/yleaf" "$OUT/reference/haplogrep3"
 step snp         "$WGSE" vcf snp --input "$BAM" --ref "$REF" --region 20 --ploidy 2 --outdir "$OUT/snp"

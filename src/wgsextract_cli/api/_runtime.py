@@ -192,7 +192,46 @@ def run_inline(
 
     ``explicit`` names fields the user set, which config must not override even
     when their value is None (``--threads auto``)."""
-    impl(with_config_defaults(params, keep=explicit))
+    params = with_config_defaults(params, keep=explicit)
+    with execution_context.bound(allow_downloads=_allows_downloads(params)):
+        impl(params)
+
+
+def _allows_downloads(params: Params) -> bool:
+    return (
+        params.COMMAND
+        in {
+            "ref aadr",
+            "ref somalier",
+            "ref imputation",
+            "ref ancestry",
+            "ref gnomad-sv",
+            "ref ybrowse",
+            "ref download",
+            "ref library",
+            "ref test-genome",
+            "ref gene-map",
+            "ref clinvar",
+            "ref revel",
+            "ref phylop",
+            "ref gnomad",
+            "ref spliceai",
+            "ref alphamissense",
+            "ref pharmgkb",
+            "ref cadd",
+            "ref gerp",
+            "ref acmg-data",
+            "ref bootstrap",
+            "ref microarray-targets",
+            "vep download",
+            "example-genome download",
+        }
+        or (
+            params.COMMAND == "benchmark"
+            and getattr(params, "dataset", "fake") in {"real", "real-1x", "real-30x"}
+        )
+        or bool(getattr(params, "download", False))
+    )
 
 
 def use_config(path: str | os.PathLike[str] | None = None) -> None:
@@ -308,6 +347,7 @@ def _run(
             with (
                 atomic_output_mode(bool(settings.get("atomic_outputs", False))),
                 run_temporary_directory(None),
+                execution_context.bound(allow_downloads=_allows_downloads(params)),
             ):
                 impl(params)
             checkpoint()

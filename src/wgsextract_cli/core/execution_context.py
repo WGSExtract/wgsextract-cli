@@ -58,6 +58,7 @@ class ExecutionContext:
     tool_hook: Callable[[Sequence[str]], None] | None = None
     config: ConfigState | None = None
     process_scope: object | None = None
+    allow_downloads: bool | None = None
 
 
 _EMPTY = ExecutionContext()  # frozen, so a safe shared default

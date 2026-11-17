@@ -22,6 +22,7 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
+from tests.test_1052_offline_defaults import blocked_network as blocked_network
 from tests.yleaf_helpers import native_tables as native_tables
 from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
@@ -1162,6 +1163,26 @@ def _classify(vcf: str, outdir: Path, **params):
     return api.lineage.mt_haplogroup(
         api.MtHaplogroupParams(input=Path(vcf), outdir=outdir, **params)
     )
+
+
+def test_1052_mt_tree_needs_download_consent_then_runs_offline(
+    tmp_path, mini_tree, blocked_network, monkeypatch
+):
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "allow_reference_downloads", False)
+    vcf = _mt_vcf(tmp_path / "fake.vcf.gz", mini_tree.vcf_body([100, 200, 300]))
+    options = {"haplogrep_path": _haplogrep(tmp_path)}
+    with pytest.raises(CommandFailed) as refused:
+        _classify(vcf, tmp_path / "out", **options)
+    assert refused.value.exit_code == 2
+    assert "Haplogrep tree" in str(refused.value)
+    assert "--download" in str(refused.value)
+    assert not mini_tree.downloads
+    assert _classify(vcf, tmp_path / "out", download=True, **options).exit_code == 0
+    assert _classify(vcf, tmp_path / "out", **options).exit_code == 0
+    assert len(mini_tree.downloads) == 1
+    assert not blocked_network
 
 
 @needs_haplogrep3

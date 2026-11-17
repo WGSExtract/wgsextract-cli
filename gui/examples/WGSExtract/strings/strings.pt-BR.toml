@@ -283,6 +283,8 @@
 "controls.library.library-paths.ref_path.label" = "Caminho dos dados de referência"  # i18n-source-hash:5bb4450f
 "controls.library.library-paths.ref_path.tooltip" = "Caminho para armazenar genomas de referência e bancos de dados baixados."  # i18n-source-hash:315cd245
 "sections.library.genome-management.title" = "Gerenciar genomas de referência"  # i18n-source-hash:e250f092
+"actions.reference-genomes.lookup-sizes.title" = "Consultar tamanhos"  # i18n-source-hash:b7f8357e
+"actions.reference-genomes.lookup-sizes.tooltip" = "Consulta os provedores de referências (incluindo UCSC, NCBI e EBI) com HTTP HEAD ou FTP SIZE para nomes de arquivos públicos cujos tamanhos estão ausentes ou têm pelo menos 30 dias. Nenhum arquivo, posição ou genótipo da amostra é enviado."  # i18n-source-hash:8f0ec6c2
 "controls.library.genome-management.reference_genome.label" = "Genoma de referência"  # i18n-source-hash:4ff94bd8
 "options.library.genome-management.reference_genome.hs38DH.title" = "hs38DH"  # i18n-ignore i18n-source-hash:1237158e
 "options.library.genome-management.reference_genome.GRCh38.title" = "GRCh38"  # i18n-ignore i18n-source-hash:a38f4f7f
@@ -476,6 +478,8 @@
 "controls.settings.post-v063.atomic.tooltip" = "Opt in to publishing completed main outputs by rename. Staged tool provenance paths may differ. Default is off; CLI still protects existing outputs and cleans failed work."  # i18n-ignore; TODO: translate
 "controls.settings.post-v063.awake.label" = "Keep awake during commands"  # i18n-ignore; TODO: translate
 "controls.settings.post-v063.awake.tooltip" = "Best-effort sleep inhibition while CLI commands run. Opt in; default is off. Availability depends on the operating system."  # i18n-ignore; TODO: translate
+"controls.settings.privacy.downloads.label" = "Permitir o download de dados públicos ausentes"  # i18n-source-hash:ae79b947
+"controls.settings.privacy.downloads.tooltip" = "Desativado por padrão. Envia identificadores de arquivos/modelos e metadados de química Dorado ao GitHub/CDN, Amazon S3, UCSC, Zenodo, IPD-IMGT/HLA, PGS Catalog/EBI, Oxford Nanopore ou servidores de árvores configurados. Nenhuma leitura, genótipo ou posição da amostra. Consulte docs/privacy.md."  # i18n-source-hash:d3618c71
 "sections.microarray.post-v063.builds.subtitle" = "AADR exports require GRCh37 or GRCh38. For native CHM13 calling, select the CLI-supported pinned CHM13 reference; no generic liftover or extra mode flag is used. Consumer layouts are marker-only unless a matching sequence-defined indel manifest is supplied through the advanced CLI."  # i18n-ignore; TODO: translate
 
 # TODO: translate the CLI features added after v0.6.3.

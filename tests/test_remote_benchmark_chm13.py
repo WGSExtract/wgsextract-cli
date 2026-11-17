@@ -85,7 +85,7 @@ def test_native_chm13_kit_matches_its_omni_chip(tmp_path: Path) -> None:
     )
     outdir = tmp_path / "kit"
     _run(
-        [*cli, "--config", str(config), "microarray", "--formats"]
+        [*cli, "--config", str(config), "microarray", "--download", "--formats"]
         + [
             ",".join(
                 name.lower().replace("23andme_snps_api", "23andme_api")

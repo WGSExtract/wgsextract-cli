@@ -623,6 +623,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     other panels must not be reused."""
     library = tmp_path / "library"
     fasta = _fasta(library / "genomes" / "hg19.fa")
+    (library / "hg18ToHg19.over.chain.gz").write_bytes(
+        gzip.compress(b"chain 1 chr1 600 + 0 600 chr1 600 + 0 600 1\n600\n\n")
+    )
     templates = library / "microarray" / "raw_file_templates"
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)

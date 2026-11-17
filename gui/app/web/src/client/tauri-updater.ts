@@ -54,13 +54,15 @@ async function initializeTauriUpdaterWhenReady() {
         applyProgressEvent(payload);
         scheduleRender();
     });
-    const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
-    window.setTimeout(() => {
-        void checkForUpdates({
-            revealOnAvailable: Boolean(state.autoUpdate),
-            autoDownloadAndInstall: Boolean(state.autoUpdate && state.autoAcceptUpdate),
-        });
-    }, delay * 1000);
+    if (state.autoUpdate) {
+        const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
+        window.setTimeout(() => {
+            void checkForUpdates({
+                revealOnAvailable: true,
+                autoDownloadAndInstall: Boolean(state.autoAcceptUpdate),
+            });
+        }, delay * 1000);
+    }
 }
 
 export function isUpdateButtonVisible() {

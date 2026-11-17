@@ -291,6 +291,9 @@ def fetch(ref: FileRef, library: Path | None = None) -> Path:
     path = folder / name
     if path.is_file() and file_sha256(path) == ref.sha256:
         return path
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"custom Y tree file {name}")
     folder.mkdir(parents=True, exist_ok=True)
     with build_lock(str(folder / "download.lock")):
         if path.is_file() and file_sha256(path) == ref.sha256:

@@ -159,6 +159,9 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
     files: dict[str, Any] = spec["files"]
     if verified(root, files):
         return root
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"{tree_id} {module} data")
     root.parent.mkdir(parents=True, exist_ok=True)
     with build_lock(str(root.parent / f"{version}.lock")):
         if verified(root, files):

@@ -486,11 +486,13 @@ class TestMicroarraySmoke:
             if check_tool("samtools"):
                 subprocess.run(["samtools", "faidx", self.fake_hg38_fa + ".gz"])
 
-        # Identity hg38->hg19 chain so vendor formats can lift over.
-        with gzip.open(
-            os.path.join(self.ref_dir, "hg38ToHg19.over.chain.gz"), "wt"
-        ) as f:
-            f.write("chain 40 chr1 40 + 0 40 chr1 40 + 0 40 1\n40\n\n")
+        for chain in (
+            "hg38ToHg19.over.chain.gz",
+            "hg19ToHg38.over.chain.gz",
+            "hg18ToHg19.over.chain.gz",
+        ):
+            with gzip.open(os.path.join(self.ref_dir, chain), "wt") as f:
+                f.write("chain 40 chr1 40 + 0 40 chr1 40 + 0 40 1\n40\n\n")
 
         # Create dummy SNP tab file
         tab_file = os.path.join(self.ref_dir, "microarray", "All_SNPs_hg38_ref.tab")
@@ -660,6 +662,7 @@ class TestLineageSmoke:
         args = [
             "lineage",
             "y-haplogroup",
+            "--download",
             "--input",
             self.fake_vcf,
             "--outdir",

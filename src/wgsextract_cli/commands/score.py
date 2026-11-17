@@ -20,6 +20,7 @@ from wgsextract_cli.core import (
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -312,6 +313,8 @@ class _Calibration:
             self.training_regions = self.reference.training_regions(
                 ancestry.pca()["region"].astype(str)
             )
+        except DownloadRequired:
+            raise
         except WGSExtractError as exc:
             self.problem = f"No ancestry projection of this input: {exc}"
 
@@ -329,6 +332,8 @@ def _calibration(
             pgs_reference.library_for(str(params.ref) if params.ref else None),
             cancel=cancel_event(),
         )
+    except DownloadRequired:
+        raise
     except WGSExtractError as exc:
         return None, str(exc)
     return _Calibration(reference, pgs_id), None
