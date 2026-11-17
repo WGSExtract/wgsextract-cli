@@ -16,6 +16,10 @@ from typing import Any
 
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS
 from wgsextract_cli.core import native_deepvariant
+from wgsextract_cli.core.alignment.cram_reference import (
+    clear_cram_reference_caches,
+    cram_reference_cache,
+)
 from wgsextract_cli.core.alignment.cram_staging import (
     region_intervals,
 )
@@ -103,8 +107,8 @@ def _native_args(
         *([f"--output_gvcf={gvcf}"] if gvcf else []),
         f"--num_shards={shards}",
         f"--intermediate_results_dir={work}",
-        f"--checkpoint={native.checkpoint}",
-        f"--small_model_path={native.small_model}",
+        f"--checkpoint={native.checkpoint.resolve()}",
+        f"--small_model_path={native.small_model.resolve()}",
     ]
     if region:
         lengths = read_fai_lengths(ref)
@@ -216,6 +220,7 @@ class _Launcher:
         work: Path,
         gpu_check: Callable[[], None] | None = None,
         preflight: Callable[[], None] | None = None,
+        cram_reference: tuple[str, str] | None = None,
     ):
         self.local = local
         self.image = image
@@ -226,6 +231,7 @@ class _Launcher:
         self.gpu_check = gpu_check
         # A check before the first stage that runs.
         self.preflight = preflight
+        self.cram_reference = cram_reference
 
     def ready(self) -> None:
         """Run the preflight check once, before a stage runs."""
@@ -234,10 +240,17 @@ class _Launcher:
             check()
 
     def launcher(self) -> str:
+        if self.cram_reference and self.local:
+            return str(Path(self.local).resolve())
         return str(self.local) if not self.image else f"{_DV_BIN}/run_deepvariant"
 
     def __call__(
-        self, argv: list[str], *, capture: bool = False, gpu: bool = False
+        self,
+        argv: list[str],
+        *,
+        capture: bool = False,
+        gpu: bool = False,
+        reads: bool = False,
     ) -> str:
         """Run ``argv``; ``gpu`` gives a GPU image's container the GPUs."""
         gpu = gpu and self.gpu_check is not None
@@ -247,9 +260,25 @@ class _Launcher:
             self.gpu_check = lambda: None
         if not self.image:
             # stdin closed: DeepVariant's GNU parallel would read it otherwise.
-            result = run_command(
-                argv, env=_dv_env(), stdin=subprocess.DEVNULL, capture_output=capture
+            reference = (
+                cram_reference_cache(*self.cram_reference, self.work)
+                if reads and self.cram_reference
+                else contextlib.nullcontext(None)
             )
+            with reference as cache:
+                env = _dv_env()
+                if cache is not None:
+                    # The native reader ignores --ref for decoding (#1061).
+                    # A relative cache path avoids interpreting ':' and '%s'
+                    # in the user's output directory as htslib search syntax.
+                    env.update(REF_PATH=f"{cache.name}/%s", REF_CACHE="")
+                result = run_command(
+                    argv,
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    capture_output=capture,
+                    cwd=self.work if cache is not None else None,
+                )
             return (result.stdout or "") if capture else ""
         if not capture:
             # Its temporary files stay out of the stage outputs beside them.
@@ -339,6 +368,10 @@ def _run_stages(
     the VCF was made or kept (not in --dry-run)."""
     work = run.work
     work.mkdir(parents=True, exist_ok=True)
+    if not journal.dry_run:
+        # The journal lock/orphan check precedes this; reclaim SIGKILL leftovers
+        # before either the host preflight or the cache's own space check.
+        clear_cram_reference_caches(work)
     try:
         plan = run([run.launcher(), *dv_args, "--dry_run=true"], capture=True)
     finally:
@@ -453,7 +486,11 @@ def _run_stages(
                         )
                         joblog += " --resume-failed"
                     command = command.replace("parallel ", f"parallel {joblog} ", 1)
-                run(["/bin/bash", "-c", command], gpu=name == "call_variants")
+                run(
+                    ["/bin/bash", "-c", command],
+                    gpu=name == "call_variants",
+                    reads=name == "make_examples",
+                )
             if name == "postprocess_variants":
                 for suffix in ("", ".tbi"):
                     source = Path(str(staged_vcf) + suffix)

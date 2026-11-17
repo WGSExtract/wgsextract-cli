@@ -981,6 +981,8 @@ elif command == "make_examples":
     reads, ref = opts["reads"], opts["ref"]
     if not any(os.path.exists(reads + s) for s in (".bai", ".crai", ".csi")):
         sys.exit(f"[E::idx_find_and_load] Could not retrieve index file for '{reads}'")
+    # Native make_examples doesn't use --ref for CRAM decoding (#1061).
+    subprocess.run([SAMTOOLS, "view", reads], stdout=subprocess.DEVNULL, check=True)
     for selection in (opts.get("regions") or "").split():
         if selection.endswith((".bed", ".bed.gz")):
             if not os.path.isfile(selection):

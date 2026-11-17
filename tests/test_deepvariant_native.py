@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from tests.fake_tools import (
 from tests.htslib_helpers import (
     run_wgsextract,
     sam_to_bam,
+    snp_sample,
     vcf_calls,
     write_fasta,
 )
@@ -74,6 +76,105 @@ from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
 )
+
+
+@pytest.mark.real_config
+@pytest.mark.parametrize(
+    "region", [None, "chr1:900-1600"], ids=["whole-genome", "region"]
+)
+def test_1061_native_cram_missing_ur_keeps_the_planted_variants(
+    tmp_path, monkeypatch, region
+):
+    """The real native reader returned success with an empty VCF on a bad UR."""
+    binary = native_deepvariant.installed()
+    if binary is None:
+        pytest.skip("native DeepVariant and configured weights required")
+    native_deepvariant.require(binary, "WGS")
+    sample = snp_sample(tmp_path / "sample")
+    reference = tmp_path / "supplied.fa"
+    shutil.copyfile(sample.ref, reference)
+    shutil.copyfile(sample.ref + ".fai", str(reference) + ".fai")
+    for path in Path(sample.ref).parent.glob("ref.fa*"):
+        path.unlink()
+    monkeypatch.setenv("REF_PATH", str(tmp_path / "missing"))
+    monkeypatch.setenv("REF_CACHE", str(tmp_path / "missing-cache"))
+    out = tmp_path / "calls"
+    run_wgsextract(
+        "vcf",
+        "deepvariant",
+        "--input",
+        sample.cram,
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(out),
+        "--threads",
+        "2",
+        "--model-type",
+        "WGS",
+        *(["--region", region] if region else []),
+    )
+    assert vcf_calls(out / "deepvariant.vcf.gz") == sample.calls
+    assert not (out / deepvariant.WORK_DIRECTORY).exists()
+
+
+@pytest.mark.parametrize("gpu", [False, True], ids=["cpu", "cuda"])
+def test_1061_native_cram_missing_ur_still_calls_variants(
+    linux_native, monkeypatch, gpu
+):
+    sample = linux_native.sample
+    reference = Path(sample.ref).with_name("supplied.fa")
+    shutil.copyfile(sample.ref, reference)
+    shutil.copyfile(sample.ref + ".fai", str(reference) + ".fai")
+    for path in Path(sample.ref).parent.glob("ref.fa*"):
+        path.unlink()
+    sample.ref = str(reference)
+    monkeypatch.setenv("REF_PATH", str(linux_native.tmp / "missing"))
+    monkeypatch.setenv("REF_CACHE", str(linux_native.tmp / "missing-cache"))
+    call(linux_native, *(["--gpu"] if gpu else []), reads=sample.cram, threads="2")
+    assert vcf_calls(linux_native.out / "deepvariant.vcf.gz") == sample.calls
+    assert not (linux_native.out / deepvariant.WORK_DIRECTORY).exists()
+
+
+def test_1061_interrupted_cache_is_reclaimed_before_disk_preflight(
+    linux_native, monkeypatch
+):
+    work = linux_native.out / deepvariant.WORK_DIRECTORY
+    work.mkdir(parents=True)
+    marker = linux_native.tmp / "abandoned-cache"
+    crashed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import os,sys\nfrom pathlib import Path\n"
+            "from wgsextract_cli.core.alignment.cram_reference import cram_reference_cache\n"
+            "with cram_reference_cache(sys.argv[1], sys.argv[2], Path(sys.argv[3])) as cache:\n"
+            "    Path(sys.argv[4]).write_text(str(cache))\n"
+            "    os._exit(23)\n",
+            linux_native.sample.cram,
+            linux_native.sample.ref,
+            str(work),
+            str(marker),
+        ],
+        check=False,
+    )
+    assert crashed.returncode == 23
+    abandoned = Path(marker.read_text())
+    assert abandoned.is_dir()
+    call(linux_native, "--dry-run", reads=linux_native.sample.cram, threads="2")
+    assert abandoned.is_dir()
+    real_usage = shutil.disk_usage
+
+    def usage(path):
+        space = real_usage(path)
+        return space._replace(free=0) if abandoned.exists() else space
+
+    monkeypatch.setattr(shutil, "disk_usage", usage)
+    call(linux_native, reads=linux_native.sample.cram, threads="2")
+    assert (
+        vcf_calls(linux_native.out / "deepvariant.vcf.gz") == linux_native.sample.calls
+    )
+    assert not work.exists()
 
 
 @pytest.mark.parametrize(

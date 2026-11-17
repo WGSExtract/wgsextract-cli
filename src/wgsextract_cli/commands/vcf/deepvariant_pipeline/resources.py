@@ -134,6 +134,8 @@ def _host_requirement(
         except OSError:
             copy = None
         disk.append((str(work), copy))
+    if native and cram_version(input_file) is not None:
+        disk.append((str(work), sum(lengths.values()) + 1024**2 if lengths else None))
     try:
         with_reads = contigs_with_reads(input_file, ref)
     except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError):
