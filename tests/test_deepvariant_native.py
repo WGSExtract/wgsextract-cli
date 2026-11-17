@@ -18,6 +18,7 @@ from tests.fake_tools import (
 from tests.htslib_helpers import (
     run_wgsextract,
     sam_to_bam,
+    snp_sample,
     vcf_calls,
     write_fasta,
 )
@@ -74,6 +75,46 @@ from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
 )
+
+
+@pytest.mark.real_config
+@pytest.mark.parametrize(
+    "region", [None, "chr1:900-1600"], ids=["whole-genome", "region"]
+)
+def test_1061_native_cram_missing_ur_keeps_the_planted_variants(
+    tmp_path, monkeypatch, region
+):
+    """The real native reader returned success with an empty VCF on a bad UR."""
+    binary = native_deepvariant.installed()
+    if binary is None:
+        pytest.skip("native DeepVariant and configured weights required")
+    native_deepvariant.require(binary, "WGS")
+    sample = snp_sample(tmp_path / "sample")
+    reference = tmp_path / "supplied.fa"
+    shutil.copyfile(sample.ref, reference)
+    shutil.copyfile(sample.ref + ".fai", str(reference) + ".fai")
+    for path in Path(sample.ref).parent.glob("ref.fa*"):
+        path.unlink()
+    monkeypatch.setenv("REF_PATH", str(tmp_path / "missing"))
+    monkeypatch.setenv("REF_CACHE", str(tmp_path / "missing-cache"))
+    out = tmp_path / "calls"
+    run_wgsextract(
+        "vcf",
+        "deepvariant",
+        "--input",
+        sample.cram,
+        "--ref",
+        str(reference),
+        "--outdir",
+        str(out),
+        "--threads",
+        "2",
+        "--model-type",
+        "WGS",
+        *(["--region", region] if region else []),
+    )
+    assert vcf_calls(out / "deepvariant.vcf.gz") == sample.calls
+    assert not (out / deepvariant.WORK_DIRECTORY).exists()
 
 
 @pytest.mark.parametrize(

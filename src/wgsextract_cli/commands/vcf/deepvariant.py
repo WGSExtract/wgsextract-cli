@@ -16,6 +16,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfDeepvariantParams
 from wgsextract_cli.core import native_deepvariant
 from wgsextract_cli.core.alignment.cram_staging import (
+    cram_version,
     needs_cram30,
     stage_cram30,
 )
@@ -631,6 +632,9 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         [ref, input_file, out_vcf, str(work), checkpoint, *region_files, par],
         work,
         preflight=(lambda: _native_gpu_preflight(native)) if native_gpu else None,
+        cram_reference=(input_file, ref)
+        if native and cram_version(input_file)
+        else None,
         gpu_check=(
             (
                 lambda: _check_gpu_free(
@@ -664,7 +668,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         if native:
             batch_size = batch_size or native_deepvariant.default_batch_size()
             dv_args = _native_args(
-                native, ref, reads, str(work / Path(out_vcf).name), shards, work,
+                native,
+                str(absolute_path(ref)) if launcher.cram_reference else ref,
+                str(absolute_path(reads)) if launcher.cram_reference else reads,
+                str(work / Path(out_vcf).name), shards, work,
                 region, batch_size, native_gpu, int(threads),
                 str(work / GVCF_NAME) if gvcf else None,
             )  # fmt: skip
@@ -753,6 +760,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                     **recorded_image,
                     "model_type": model_type,
                     "shards": shards,
+                    **({"cram_reference": "local-md5"} if launcher.cram_reference else {}),
                 },
                 region=region,
                 jobs=int(threads),
