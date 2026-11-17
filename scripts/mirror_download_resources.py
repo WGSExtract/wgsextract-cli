@@ -206,7 +206,8 @@ def publish(entry: dict[str, Any], tag: str, out: Path) -> dict[str, Any]:
         f"{entry['attribution']}\n\nUnmodified bytes from {entry['upstream_url']}\n"
         f"Version: {entry['version']}\nRetrieved: {record['retrieved_at']}\n"
         f"Licence: {entry['licence']}\nSource terms: {entry['licence_url']}\n"
-        f"SHA-256: {record['sha256']}\nSize: {total}\n\n{entry['reason']}\n",
+        f"SHA-256: {record['sha256']}\nSize: {total}\n\n"
+        f"Source licence caveats: {entry['reason']}\n",
         encoding="utf-8",
     )
     upload(notice, tag, existing)

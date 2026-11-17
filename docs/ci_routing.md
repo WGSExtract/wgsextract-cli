@@ -13,6 +13,12 @@ Remote-resource URL probes compare the resolved inventories at the PR's base
 and head (including composed URLs and version changes), checking only added
 URLs or changed mirror SHA-256/size pins. Code-only changes probe no unrelated
 upstream hosts. Real-chip concordance retains its repository-hosted PR fixtures.
+PRs changing `core/annotation_resources.py` also run the live SpliceAI format
+and known-score tests. PRs changing `core/gene_lists.*` or the
+`assets/report/gene_lists.*` manifests run the live gene-list download/pin tests;
+changes to their corresponding live test modules select those tests too.
+These behavioral checks are separate from URL probes: an unchanged URL does
+not excuse validating a changed parser or resource contract.
 Nightly runs check all upstream URLs (including restricted resources and
 reference-genome alternatives), every mirror URL, and GitHub's published asset
 SHA-256/size against the checked-in manifest. They also run the live format,

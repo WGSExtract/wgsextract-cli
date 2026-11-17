@@ -5,9 +5,17 @@ Explicit downloads prefer byte-identical GitHub release copies when
 pins. Merely inspecting resources does not contact GitHub. Each downloaded
 part and the assembled file are verified before installation. An unavailable
 or corrupt mirror produces `MIRROR_FALLBACK` and tries the original URL.
-The upstream copy must match the published snapshot too: changing an upstream
-`latest` file cannot silently change a pinned resource. Cancellation never
-starts a fallback download.
+Immutable upstream copies must match the published snapshot too. Entries with
+`upstream_mutable: true` (ClinVar weekly files and refGene maps) may fall back
+to changed upstream bytes, with an `UPSTREAM_VERSION_DRIFT` warning rather than
+failing every time the original publisher updates them. An explicitly supplied
+SHA-256 remains strict even for mutable sources. Cancellation never starts a
+fallback download.
+
+Mirror parts use stable `DEST.mirror/partNNNN` staging paths so interrupted,
+URL-bound `.partial` transfers resume on the next attempt. An existing upstream
+`DEST.partial` takes precedence over starting a mirror. A successful mirror
+install removes its staging directory and orphaned upstream partial markers.
 
 ## Redistribution audit (2026-11-17)
 
@@ -25,7 +33,7 @@ Public access alone is not permission to redistribute.
 | gnomAD 2.1.1 complete exome VCFs | Upstream only pending component review | ~63 / 92 GB | [gnomAD terms](https://gnomad.broadinstitute.org/terms) grant CC0 for primary data but warn of third-party annotation restrictions. These full VEP-annotated VCFs are not cleared as a whole; this is not a restriction on primary AF facts. |
 | gnomAD v4.1 joint sites, all 24 contigs | Mirror | ~900 GB total; up to ~72 GB/contig | [gnomAD terms](https://gnomad.broadinstitute.org/terms), [source text](https://raw.githubusercontent.com/broadinstitute/gnomad-browser/main/browser/about/policies/terms.md): CC0 primary data, acknowledge gnomAD v4.1 and do not reidentify participants. The joint-sites header contains population counts/frequencies, not CSQ / SpliceAI / REVEL / CADD predictions. No separately restricted prediction annotations are copied. |
 | SpliceAI MANE v1.4 and index | Upstream only | Large VCF plus index | [Illumina licence](https://github.com/Illumina/SpliceAI/blob/master/LICENSE): CC BY-NC scores/models, PolyForm Strict code. An openly accessible Ensembl URL does not remove these terms. hg19 remains manual. |
-| AlphaMissense hg19/hg38 predictions | Mirror, with attribution | ~600 MB each | The [explicit predictions licence at audited commit](https://github.com/google-deepmind/alphamissense/blob/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md#alphamissense-predictions-license) is **CC BY 4.0**, not non-commercial and not the code's Apache licence. Copyright 2023 DeepMind Technologies Limited; Cheng et al., Science 2023, doi:10.1126/science.adg7492. Copies are unmodified; predictions are not validated for clinical use. |
+| AlphaMissense hg19/hg38 predictions | Mirror, retaining the licence conflict explanation | ~600 MB each | The original 2023-08-03 files still embed **CC BY-NC-SA 4.0**. DeepMind subsequently relicensed the predictions database to **CC BY 4.0 on 2024-03-13**, in [commit fe2dc845](https://github.com/google-deepmind/alphamissense/commit/fe2dc845f93310abd6c1b0e8955d7a96c2144d66) and its [README grant](https://github.com/google-deepmind/alphamissense/blob/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md#alphamissense-predictions-license). Redistribution relies on that explicit later grant, not the stale embedded header or the code's Apache licence. The manifest and release NOTICE explain both; copied headers remain unmodified. Copyright 2023 DeepMind Technologies Limited; Cheng et al., Science 2023, doi:10.1126/science.adg7492; not validated for clinical use. |
 | GERP GRCh38, Ensembl 114 / 91 mammals | Mirror | ~9.6 GB | [Ensembl data disclaimer](https://raw.githubusercontent.com/Ensembl/ensembl-webcode/release/116/htdocs/info/about/legal/disclaimer.html): project-generated data available without restriction; retain Ensembl Compara attribution. This does not redistribute the GERP program. |
 | GERP hg19 `All_hg19_RS.bw` | Upstream only | ~7.6 GB | [Third-party UCSC track](https://genome.ucsc.edu/cgi-bin/hgTrackUi?db=hg19&g=All_hg19_RS): an unrestricted grant for this Stanford/Cooper score file was not independently established. |
 | RefSeq gene maps hg19/hg38 | Mirror snapshots | ~8 MB each | [UCSC database README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt), [NCBI molecular-data terms](https://www.ncbi.nlm.nih.gov/home/about/policies/). RefGene annotations are not the licensed UCSC software or liftOver chains. |
@@ -34,7 +42,8 @@ Public access alone is not permission to redistribute.
 | ACMG SF 3.2 / 3.3 gene lists | No new copying; existing release only | Small TSVs | [Lee et al. source](https://pmc.ncbi.nlm.nih.gov/articles/PMC12318660/); underlying Elsevier/table-expression review remains in #864 (licence and provenance review). Existing GitHub URLs and explicit pins are unchanged, not re-cleared by this audit. |
 | Reference bootstrap | No new copying; existing release only | ~170 MB | Already on GitHub. Mixed component rights (vendor lists, chains, presets) remain under #864 (licence and provenance review); do not duplicate based on the repository code licence. |
 | Mini benchmark archive | Existing release and SHA-256 only | See inventory | Already on GitHub `v0.1.0`, explicitly pinned. No second archive or expanded source-rights claim. |
-| 1000 Genomes real-1x / NYGC real-30x benchmark references, alignments and indexes | Mirror | Small indexes through multi-GB CRAM/reference assets | [1000 Genomes reuse](https://www.internationalgenome.org/1000-genomes-summary/#g1k_data_reuse), [IGSR disclaimer](https://www.internationalgenome.org/IGSR_disclaimer/), [NCBI molecular-data terms](https://www.ncbi.nlm.nih.gov/home/about/policies/). Published, openly consented HG00096 data; acknowledge 1000 Genomes / IGSR and NYGC ERP114329 / ERR3240114; no participant reidentification. |
+| 1000 Genomes real-1x / NYGC real-30x benchmark alignments, indexes and hs37d5 reference | Mirror, excluding the HLA-containing GRCh38 FASTA below | Small indexes through multi-GB CRAM/reference assets | [1000 Genomes reuse](https://www.internationalgenome.org/1000-genomes-summary/#g1k_data_reuse), [IGSR disclaimer](https://www.internationalgenome.org/IGSR_disclaimer/), [NCBI molecular-data terms](https://www.ncbi.nlm.nih.gov/home/about/policies/). Published, openly consented HG00096 data; acknowledge 1000 Genomes / IGSR and NYGC ERP114329 / ERR3240114; no participant reidentification. The coordinate-only GRCh38 `.fai` remains eligible. |
+| Benchmark real-30x `GRCh38_full_analysis_set_plus_decoy_hla.fa` | Upstream only | ~3.3 GB | Includes IPD-IMGT/HLA sequences under CC BY-ND. [IMGT's licence](https://www.ebi.ac.uk/ipd/imgt/hla/licence/) explicitly asks people **not to mirror** its data and requires permission for modified distributions. Public hosting by 1000 Genomes does not remove that caveat; see the hs38DH note in [reference-genomes.md](reference-genomes.md). |
 | Reference-genome catalog (including upstream alternatives) | Existing mirrors unchanged | See reference catalog | Audited separately in [reference-genomes.md](reference-genomes.md) and #701 (reference-genome mirrors). Restricted/unclear genomes remain upstream only. |
 
 `UPSTREAM_ONLY` failures identify the resource, original URL and rights reason.
@@ -76,3 +85,6 @@ each night. Complete byte checks run during publication and every on-demand
 mirror download. PR URL probes compare resolved inventories at base and head
 and visit only added/changed URLs; an unrelated upstream outage cannot block a
 PR. See [CI routing](ci_routing.md).
+Changes to annotation resource code retain live SpliceAI format/score tests;
+changes to gene-list code or manifests retain live gene-list downloads and pin
+checks on PRs, even when their URLs did not change.

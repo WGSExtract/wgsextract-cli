@@ -7,6 +7,8 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Iterable
+from fnmatch import fnmatchcase
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -68,6 +70,26 @@ def changed_urls(
     return {url: pin for url, pin in after.items() if before.get(url) != pin}
 
 
+def live_test_targets(paths: Iterable[str]) -> list[str]:
+    """Keep live behavior checks for changed resource code, not unrelated URLs."""
+    changed = set(paths)
+    targets = []
+    if changed & {
+        "src/wgsextract_cli/core/annotation_resources.py",
+        "tests/test_remote_resources.py",
+    }:
+        targets.append("tests/test_remote_resources.py")
+    if "tests/test_remote_downloads.py" in changed or any(
+        fnmatchcase(path, "src/wgsextract_cli/core/gene_lists.*")
+        or fnmatchcase(path, "src/wgsextract_cli/assets/report/gene_lists.*")
+        for path in changed
+    ):
+        targets.append(
+            "tests/test_remote_downloads.py::test_built_in_gene_list_downloads_and_matches_its_pins"
+        )
+    return targets
+
+
 @cache
 def github_assets(owner: str, repo: str, tag: str) -> dict[str, dict[str, Any]]:
     release_id = subprocess.check_output(
@@ -120,15 +142,47 @@ def check_url(url: str, pin: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument(
         "--base", help="PR base SHA; omit for the complete nightly check"
+    )
+    selection.add_argument(
+        "--live-tests-base",
+        help="Run live behavior tests affected since the PR base SHA",
     )
     parser.add_argument("--out", type=Path, default=ROOT / "out/remote-urls.json")
     args = parser.parse_args()
+    base_sha = args.base or args.live_tests_base
+    if base_sha and (
+        not all(c in "0123456789abcdef" for c in base_sha) or len(base_sha) != 40
+    ):
+        parser.error("The PR base must be a full Git commit SHA")
+    if args.live_tests_base:
+        paths = subprocess.check_output(
+            ["git", "diff", "--name-only", "--no-renames", f"{base_sha}...HEAD"],
+            cwd=ROOT,
+            text=True,
+        ).splitlines()
+        targets = live_test_targets(paths)
+        if not targets:
+            print("No changed live-resource behavior tests.")
+            return 0
+        return subprocess.call(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-m",
+                "remote",
+                "-v",
+                *targets,
+                "--basetemp",
+                str(ROOT / "out/remote-pr"),
+            ],
+            cwd=ROOT,
+        )
     urls = snapshot(ROOT)
     if args.base:
-        if not all(c in "0123456789abcdef" for c in args.base) or len(args.base) != 40:
-            parser.error("--base must be a full Git commit SHA")
         base = ROOT / "out/remote-base"
         subprocess.run(
             ["git", "worktree", "add", "--detach", str(base), args.base], check=True

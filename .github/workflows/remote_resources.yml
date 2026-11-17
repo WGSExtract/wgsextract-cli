@@ -75,6 +75,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: pixi run -e dev python scripts/check_remote_resources.py
+      - name: Check changed live SpliceAI and gene-list behavior
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: pixi run -e dev python scripts/check_remote_resources.py --live-tests-base "$BASE_SHA"
       - name: Check nightly formats, scores and existing gene-list pins
         if: github.event_name != 'pull_request'
         run: |

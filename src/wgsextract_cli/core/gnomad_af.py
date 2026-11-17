@@ -95,10 +95,12 @@ def _stream_gnomad_contig(
             nonlocal reported
             try:
                 if mirror:
-                    for chunk in mirror_chunks(mirror, Path(part).parent, cancel_event):
+                    staging = Path(part + ".mirror")
+                    for chunk in mirror_chunks(mirror, staging, cancel_event):
                         sink.write(chunk)
                         on_bytes(len(chunk))
                         reported += len(chunk)
+                    shutil.rmtree(staging)
                 else:
                     pinned = mirror_for(url)
                     digest = hashlib.sha256()

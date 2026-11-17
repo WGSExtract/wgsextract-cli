@@ -108,7 +108,10 @@ These download from their original source only.
 
 **hs38DH:** `GRCh38_full_analysis_set_plus_decoy_hla` includes HLA sequences
 from IMGT/HLA, whose [licence](https://www.ebi.ac.uk/ipd/imgt/hla/licence/)
-asks for permission to redistribute modified data. Its copy in `v0.1.0`
-predates #701 and is under review there.
+is CC BY-ND, explicitly asks people not to mirror the data, and requires
+permission to redistribute modified data. The composite FASTA is therefore
+excluded from the new benchmark mirrors (the coordinate-only `.fai` may be
+copied). Its copy in `v0.1.0` predates #701 (reference-genome mirrors) and
+remains under review there.
 
 GitHub limits each release file to 2 GiB. Every genome's BGZF file fits.

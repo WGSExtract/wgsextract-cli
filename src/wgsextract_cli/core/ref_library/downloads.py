@@ -144,14 +144,17 @@ def download_file(
     ):
         raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
     if use_mirrors and (entry := mirror_for(url)):
-        if download_mirror(
+        if Path(dest + ".partial").exists():
+            logging.info(
+                "Resuming upstream partial for %s; skipping mirror.", entry["id"]
+            )
+        elif download_mirror(
             entry, dest, progress_callback, cancel_event, expected_sha256, use_cache
         ):
             return True
         if cancel_event and cancel_event.is_set():
             return False
-        # A mutable upstream alias must not silently replace a pinned snapshot.
-        if expected_sha256 is None:
+        if expected_sha256 is None and not entry.get("upstream_mutable", False):
             expected_sha256 = entry["sha256"]
     ok = _download_file(
         url,
@@ -162,6 +165,24 @@ def download_file(
         resolve_release_digest=resolve_release_digest,
         use_cache=use_cache,
     )
+    if (
+        ok
+        and use_mirrors
+        and expected_sha256 is None
+        and (entry := mirror_for(url))
+        and entry.get("upstream_mutable", False)
+    ):
+        digest = hashlib.sha256()
+        with open(dest, "rb") as source:
+            for chunk in iter(lambda: source.read(1 << 20), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != entry["sha256"]:
+            logging.warning(
+                "UPSTREAM_VERSION_DRIFT: %s upstream differs from the mirrored "
+                "snapshot; accepting current upstream bytes from %s.",
+                entry["id"],
+                url,
+            )
     if not ok and (entry := resources().get(url)) and not entry["redistributable"]:
         logging.error(
             "UPSTREAM_ONLY: %s could not be downloaded from %s. %s "

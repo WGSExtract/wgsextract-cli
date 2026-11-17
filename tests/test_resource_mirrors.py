@@ -24,12 +24,13 @@ def mirror_catalog(tmp_path, monkeypatch):
     monkeypatch.setattr(resource_mirrors, "MANIFEST", manifest)
     resource_mirrors.resources.cache_clear()
 
-    def install(server, payload, *, allowed=True, split=None):
+    def install(server, payload, *, allowed=True, split=None, mutable=False):
         chunks = [payload] if split is None else [payload[:split], payload[split:]]
         entry = {
             "id": "test-resource",
             "upstream_url": server.url_for("upstream"),
             "redistributable": allowed,
+            "upstream_mutable": mutable,
             "reason": "Non-commercial source terms" if not allowed else "Public data",
             "sha256": hashlib.sha256(payload).hexdigest(),
             "size": len(payload),
@@ -66,10 +67,13 @@ def test_1046_prefers_verified_mirror_and_reassembles_parts(
     payload = b"original complete resource"
     entry = mirror_catalog(source, payload, split=split)
     target = tmp_path / "download"
+    orphan = Path(str(target) + ".partial.source")
+    orphan.write_text("stale source marker")
     assert download_file(entry["upstream_url"], str(target), use_cache=False)
     assert target.read_bytes() == payload
     assert "upstream" not in source.paths
-    assert not list(tmp_path.glob("resource-*"))
+    assert not Path(str(target) + ".mirror").exists()
+    assert not orphan.exists()
 
 
 @pytest.mark.parametrize("failure", ["checksum", "404", "second-part"])
@@ -105,6 +109,84 @@ def test_1046_changed_upstream_cannot_replace_pinned_snapshot(
     assert not download_file(entry["upstream_url"], str(target), use_cache=False)
     assert target.read_bytes() == b"previous installed data"
     assert "checksum mismatch" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("changed", "explicit_pin"), [(True, False), (False, False), (True, True)]
+)
+def test_1046_mutable_upstream_can_advance_without_breaking_fallback(
+    source, mirror_catalog, tmp_path, caplog, changed, explicit_pin
+):
+    payload = b"pinned snapshot"
+    entry = mirror_catalog(source, payload, mutable=True)
+    source.statuses["mirror-0"] = 404
+    upstream = b"new weekly upstream snapshot" if changed else payload
+    source.files["upstream"] = upstream
+    target = tmp_path / "download"
+    accepted = not (changed and explicit_pin)
+    assert (
+        download_file(
+            entry["upstream_url"],
+            str(target),
+            use_cache=False,
+            expected_sha256=entry["sha256"] if explicit_pin else None,
+        )
+        is accepted
+    )
+    if accepted:
+        assert target.read_bytes() == upstream
+    else:
+        assert not target.exists()
+    assert ("UPSTREAM_VERSION_DRIFT" in caplog.text) is (changed and not explicit_pin)
+
+
+@pytest.mark.parametrize(
+    ("mirror", "split"),
+    [(True, None), (True, 4), (False, None)],
+    ids=["mirror-resume", "later-part-resume", "upstream-resume"],
+)
+def test_1046_interrupted_download_resumes_its_original_source(
+    source, mirror_catalog, tmp_path, mirror, split
+):
+    payload = bytes(range(256)) * 3000
+    entry = mirror_catalog(source, payload, split=split)
+    target = tmp_path / "download"
+    cancel = threading.Event()
+
+    def interrupt(done, total, speed):
+        if done >= 256 * 1024:
+            cancel.set()
+
+    assert not download_file(
+        entry["upstream_url"],
+        str(target),
+        interrupt,
+        cancel,
+        use_cache=False,
+        use_mirrors=mirror,
+    )
+    partial = (
+        Path(str(target) + f".mirror/part{1 if split else 0:04d}.partial")
+        if mirror
+        else Path(str(target) + ".partial")
+    )
+    received = partial.stat().st_size
+    assert 0 < received < len(payload)
+    assert not target.exists()
+    cancel.clear()
+    assert download_file(
+        entry["upstream_url"], str(target), cancel_event=cancel, use_cache=False
+    )
+    assert target.read_bytes() == payload
+    assert f"bytes={received}-" in source.gets()
+    assert set(source.paths) == (
+        ({"mirror-0", "mirror-1"} if split else {"mirror-0"})
+        if mirror
+        else {"upstream"}
+    )
+    assert not partial.exists()
+    assert not Path(str(partial) + ".source").exists()
+    assert not Path(str(target) + ".mirror").exists()
 
 
 @pytest.mark.parametrize("available", [True, False])
