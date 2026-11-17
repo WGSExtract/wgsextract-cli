@@ -53,6 +53,9 @@ def remote(tmp_path: Path) -> Path:
             "gui/mockups/shared/version.js": "evil()",
             "gui/mockups/feedback/c-home.json": "{}",
             "gui/mockups/__pycache__/x.js": "x",
+            "gui/mockups/shared/data/igv/demo.cram": "CRAM",
+            "gui/mockups/shared/data/igv/demo.cram.crai": "index",
+            "gui/mockups/run.sh": "rm -rf /",
             "src/other.txt": "not published",
         },
         symlink="gui/mockups/leak.txt",
@@ -101,6 +104,8 @@ def test_publishes_only_static_mockups_of_mockups_branches(tmp_path, remote):
         "feedback/_pages.json",
         "feedback/c-home.json",
         "index.html",
+        "shared/data/igv/demo.cram",
+        "shared/data/igv/demo.cram.crai",
         "shared/version.js",
     ]
     version = (idea / "shared" / "version.js").read_text()

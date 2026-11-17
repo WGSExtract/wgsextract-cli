@@ -30,6 +30,8 @@ PREFIX = "mockups/"
 NAMESPACE = "refs/mockup-previews/"
 SOURCE = "gui/mockups"
 STATIC = {".html", ".css", ".js", ".json", ".svg", ".png", ".webp", ".md", ".txt"}
+# Small demo genome files and their indexes, for an in-page genome viewer
+GENOME_DATA = {".fa", ".fai", ".gz", ".gzi", ".tbi", ".bam", ".bai", ".cram", ".crai"}
 MAX_PREVIEWS = 20
 MAX_FILES = 600
 MAX_BYTES = 25 * 1024 * 1024
@@ -125,7 +127,7 @@ def static_member(member: tarfile.TarInfo) -> PurePosixPath | None:
     rel = PurePosixPath(*path.parts[2:])
     if "__pycache__" in rel.parts or any(part.startswith(".") for part in rel.parts):
         return None
-    if rel.suffix not in STATIC and rel.name != "LICENSE":
+    if rel.suffix not in STATIC | GENOME_DATA and rel.name != "LICENSE":
         return None
     if rel == PurePosixPath("feedback/_pages.json") or rel == PurePosixPath(
         "shared/version.js"
