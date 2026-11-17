@@ -216,17 +216,21 @@ def _run_command(
         # its folder (core/output_location.py).
         from wgsextract_cli.api._cli import command_params
         from wgsextract_cli.api._params import (
-            from_namespace,
+            output_directory_default,
             param_fields,
-            with_config_defaults,
         )
         from wgsextract_cli.core.config import output_directory, settings
 
         command = str(getattr(args, "_command", None) or "")
         cls = command_params(command)
         if cls is not None and any(item.name == "outdir" for item in param_fields(cls)):
-            params = with_config_defaults(from_namespace(cls, args), only={"outdir"})
-            args.outdir = getattr(params, "outdir", None)
+            values = {
+                item.name: value
+                if (value := getattr(args, item.dest, None)) is not None
+                else item.default
+                for item in param_fields(cls)
+            }
+            args.outdir = output_directory_default(cls, values)
         else:
             args.outdir = output_directory([])
         args._default_outdir = args.outdir is not None and not settings.get(

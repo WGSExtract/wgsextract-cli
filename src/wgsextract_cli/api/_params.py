@@ -11,7 +11,7 @@ import os
 import re
 import types
 import typing
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import MISSING, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
@@ -378,6 +378,44 @@ def param_fields(cls: type[Params]) -> tuple[ParamField, ...]:
     return result
 
 
+def output_directory_default(
+    cls: type[Params], values: Mapping[str, Any]
+) -> str | None:
+    """Resolve outputs from a command's contract without constructing it.
+
+    CLI modes can accept stdin or select a sub-operation before its required
+    API fields exist, so output inference must not validate those fields.
+    """
+    from wgsextract_cli.core.config import output_directory
+    from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
+
+    if (
+        cls.COMMAND == "info"
+        and not values.get("cache", True)
+        and not values.get("detailed", False)
+        and not values.get("table_format")
+    ):
+        return None
+    inputs = (
+        []
+        if cls.COMMAND in BESIDE_INPUT_COMMANDS or cls.SAVES_IN_WORKING_FOLDER
+        else [
+            values.get(item.name)
+            for item in param_fields(cls)
+            if item.name
+            in {"input", "inputs", "r1", "r2", "vcf_input", "vcf_inputs", "proband"}
+            and item.spec.path
+            and not item.spec.writes
+            and not (
+                item.name == "input"
+                and cls.VCF_INPUT_OVERRIDES_INPUT
+                and values.get("vcf_input") is not None
+            )
+        ]
+    )
+    return output_directory(inputs)
+
+
 def with_config_defaults(
     params: P,
     keep: Collection[str] = (),
@@ -390,26 +428,6 @@ def with_config_defaults(
 
     updates: dict[str, Any] = {}
     fields = param_fields(type(params))
-    # The files the command reads, which place its default output folder.
-    from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
-
-    inputs = (
-        []
-        if params.COMMAND in BESIDE_INPUT_COMMANDS or params.SAVES_IN_WORKING_FOLDER
-        else [
-            getattr(params, item.name)
-            for item in fields
-            if item.name
-            in {"input", "inputs", "r1", "r2", "vcf_input", "vcf_inputs", "proband"}
-            and item.spec.path
-            and not item.spec.writes
-            and not (
-                item.name == "input"
-                and params.VCF_INPUT_OVERRIDES_INPUT
-                and getattr(params, "vcf_input", None) is not None
-            )
-        ]
-    )
     for item in fields:
         key = item.spec.config_key
         if (
@@ -419,15 +437,13 @@ def with_config_defaults(
             or getattr(params, item.name) is not None
         ):
             continue
-        if (
-            key == "output_directory"
-            and params.COMMAND == "info"
-            and not getattr(params, "cache", True)
-            and not getattr(params, "detailed", False)
-            and not getattr(params, "table_format", None)
-        ):
-            continue
-        value = setting_or_default(key, inputs)
+        value = (
+            output_directory_default(
+                type(params), {f.name: getattr(params, f.name) for f in fields}
+            )
+            if key == "output_directory"
+            else setting_or_default(key)
+        )
         if value is not None and item.spec.cli_type is not None:
             try:
                 value = item.spec.cli_type(str(value))

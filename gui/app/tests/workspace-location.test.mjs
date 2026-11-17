@@ -70,7 +70,10 @@ async function fixture(t, fixtureManifest = manifest) {
   return {
     root,
     source,
-    bundle: path.join(root, "data", "test.app", "BundleWorkspaces", "location.bundle"),
+    bundle: path.join(
+      process.platform === "darwin" ? path.join(root, "Library", "Application Support") : path.join(root, "data"),
+      "test.app", "BundleWorkspaces", "location.bundle",
+    ),
     users: path.join(root, "visible-workspace"),
   };
 }
