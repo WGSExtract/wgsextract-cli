@@ -37,15 +37,15 @@
   <section class="v2-section" data-annot-id="devices">
     <h2>Paired devices</h2>
     <div class="v2-sheet" role="list" aria-label="Paired devices">
-      <div class="v2-item" role="listitem" data-annot-id="device-iphone">
+      <div class="v2-item" role="listitem" data-annot-id="device-iphone" data-v2-if="!device-iphone-removed">
         <span class="v2-item__title">Mac’s iPhone <span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Connected now</span></span>
         <span class="v2-item__desc">Can view, start and cancel jobs · paired Nov 3</span>
-        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-toast="Removed. Mac’s iPhone can no longer connect.">Remove</button></span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-v2-set="device-iphone-removed" data-toast="Removed. Mac’s iPhone can no longer connect.">Remove</button></span>
       </div>
-      <div class="v2-item" role="listitem" data-annot-id="device-ipad">
+      <div class="v2-item" role="listitem" data-annot-id="device-ipad" data-v2-if="!device-ipad-removed">
         <span class="v2-item__title">Living-room iPad <span class="v2-status v2-small"><span class="v2-pip"></span>9 days ago</span></span>
         <span class="v2-item__desc">View only · paired Oct 12</span>
-        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-toast="Removed. The iPad can no longer connect.">Remove</button></span>
+        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet v2-btn--danger" type="button" data-v2-set="device-ipad-removed" data-toast="Removed. The iPad can no longer connect.">Remove</button></span>
       </div>
     </div>
   </section>

@@ -50,6 +50,34 @@ stylesheet and shell (`shared/shells/v3.js`), add an entry to `list` in
 in Compare and on the index. Screens share a key across versions (`home`,
 `person`, `dna-test`, …), so a version may drop a screen or add a new one.
 
+### v2 is interactive
+
+v2 behaves like the app with a pretend computer behind it; every change is
+kept in this browser until you reset it.
+
+- **Tool pages** (`tools.html`, `tool-*.html`) are drawn from one definition
+  per tool in `shared/shells/v2/tools-*.js`. Changing an option, the file or
+  the computer recomputes the command, the time, memory and disk, and the
+  checks before it starts. Rates come from `docs/hardware.md` and
+  `docs/resource_estimates.md` and are noted where they are used; without a
+  measured rate a page says what the CLI's help says ("minutes on a 30x
+  genome"). The tool pages themselves are thin shells; only their
+  `data-page-id` (for notes) and `data-tool` differ.
+- **Demo state** (`shared/shells/v2/state.js`): rename or remove a person,
+  say whose the unassigned reads are, pick files and options, fix Alex's
+  BAM or download bwa-mem2's index. Pages mark what changes with
+  `data-v2-*` attributes listed at the top of that file. **Settings →
+  Mockup → Reset the demo** puts everything back.
+- **Mockup settings**: the computer chip in the top bar (“This Mac”) is a
+  review control. It pretends WGS Extract runs on a MacBook Pro or Air, a
+  Linux workstation with an NVIDIA GPU, a Linux ARM64 server, or a Windows PC
+  or laptop (`shared/shells/v2/machine.js`). Disks, paths, aligners, GPUs and
+  which tools are available follow `docs/windows.md` and `docs/linux-arm64.md`.
+- **Region picker** (`shared/shells/v2/region.js`): every tool that takes
+  `--region` gets the same control: the whole genome, chromosomes or part of
+  one, a gene, or the exact text. Chromosome names follow the file's build
+  (`chr1` on GRCh38, `1` on GRCh37).
+
 ## Review and leave notes
 
 Every page has a dark bar on top that is not part of the design:
@@ -427,7 +455,8 @@ gui/mockups/
     version.js          “local”; the Pages build stamps the commit here
     data/               illustrative genomes, jobs, catalogs
     render/             data-driven blocks (tables, jobs, charts, shell)
-    shells/             each direction’s navigation
+    shells/             each direction’s navigation; shells/v2/ holds v2's
+                        state, machine profiles, region picker and tool engine
     annotate/           the notes tool (store, anchors, pins, panel, about.js)
     mockup.css docs.css
   thumbs/               small screenshots for the index
