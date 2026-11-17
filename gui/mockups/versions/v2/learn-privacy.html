@@ -14,31 +14,31 @@
   <header class="v2-head"><div class="v2-head__text">
     <p class="v2-small v2-muted">LESSON 08 OF 08 · ABOUT 2 MINUTES</p>
     <h1>Privacy &amp; sharing</h1>
-    <p class="v2-head__sub">A genome is identifying data about you and, indirectly, your biological relatives.</p>
+    <p class="v2-head__sub">A genome file uniquely identifies you and carries half of each parent’s and child’s DNA (deoxyribonucleic acid) alongside your own.</p>
   </div></header>
   <section class="v2-section" id="local">
-    <h2>Local analysis and network requests are different</h2>
-    <p>In the app design, analysis runs on the computer hosting the WGS Extract server. A phone is a remote control for that computer, not a place the analysis runs. Choosing another server means trusting that computer with the inputs it can access.</p>
-    <p>This clickable mockup uses pretend genomes and simulated jobs, not your actual DNA. Its review server stores mockup notes; never put real genetic details into review notes or screenshots.</p>
+    <h2>Analysis runs on the computer holding your files</h2>
+    <p>WGS Extract processes BAM (Binary Alignment Map), CRAM (Compressed Reference-oriented Alignment Map) and VCF (Variant Call Format) files directly on the machine hosting its local server; phone access over Wi-Fi acts only as a remote screen, while pointing at another server trusts that machine with your files.</p>
+    <p>This clickable mockup uses fictional genomes and simulated runs. Because its review bar saves notes to a shared database, never paste real genotypes or medical details into review notes.</p>
   </section>
   <section class="v2-section" id="downloads">
-    <h2>Downloading reference data still contacts a server</h2>
-    <p>Reference genomes, annotation databases and tool images can be large downloads. A public-data download contacts its provider, which can see ordinary connection details such as your IP address. That is different from sending your variant positions or genotypes.</p>
-    <p>Ordinary analysis should not silently upload sample-derived information. Review any explicit online lookup or upload: what is sent, to whom, and why? Reading an external reference link also opens a website; internal Learn links stay in the mockup.</p>
+    <h2>Fetching public reference files versus sending sample data</h2>
+    <p>Downloading public references, ClinVar releases or containers (such as the 0.9 GB <code>hs38d1</code> reference for Alex’s BAM) reveals ordinary web connection details like your IP (Internet Protocol) address while sending zero letters of sample DNA.</p>
+    <p>Default analyses never upload sample positions or genotypes; any remote lookup sending sample data requires an explicit opt-in naming what goes where. External reference links open public sites in a new tab, while Learn links stay local.</p>
   </section>
   <section class="v2-section" id="sharing">
-    <h2>Share the smallest useful result, with consent</h2>
+    <h2>Sharing the smallest slice that answers the question</h2>
     <ul>
-      <li>Ask what a recipient actually needs: a report, a region, or all the reads. A regional extract reveals less, but is still sensitive.</li>
-      <li>Removing your name does not make a genome anonymous. Filenames, read headers and report metadata can also identify people.</li>
-      <li>Before a matching-site upload, check acceptance rules, retention, research consent, relative matching and deletion policies.</li>
-      <li>Use access-controlled transfer and encrypted storage or backups. Do not post genetic files on public issue trackers.</li>
+      <li>Share only what is needed: a single-gene region extract or small variant table exposes far less than a 90 GB BAM, though any slice stays sensitive.</li>
+      <li>Stripping your name never anonymizes DNA: internal headers keep sample tags, and a few dozen markers identify people via relative databases.</li>
+      <li>Before uploading a kit to a matching site, read its rules on law-enforcement queries, research opt-ins, retention and backup deletion.</li>
+      <li>Store backups on encrypted drives, use access-controlled transfers and never post sample slices on public issue trackers.</li>
     </ul>
-    <p>Ask permission before analyzing or sharing another person's file. Unexpected family findings can affect people who never chose to be tested.</p>
+    <p>Get clear consent before analyzing or uploading a relative’s file: because Gordon, Helen and Reginald share half their autosomal DNA plus direct lineage markers, one upload exposes family members who never chose to test.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>
-    <p>Review <a class="v2-link" href="settings.html">Settings</a> and <a class="v2-link" href="phone.html">Phone access</a>. Explore <a class="v2-link" href="tool-region.html">Extract a region</a> to see a smaller alternative to sharing a whole genome.</p>
+    <p>Review <a class="v2-link" href="settings.html">Settings</a>, <a class="v2-link" href="phone.html">Phone access</a> and <a class="v2-link" href="tool-region.html">Extract a region</a> to slice out one gene instead of sharing a full genome.</p>
     <h2>Key terms</h2>
     <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-genome">Genome</a><a class="v2-link" href="learn.html#term-kit">DNA-test file</a><a class="v2-link" href="learn.html#term-reference">Reference genome</a></div>
   </aside>
