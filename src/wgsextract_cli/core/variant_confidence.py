@@ -998,7 +998,10 @@ def record(
         totals[key] = value
     result.add_metrics(**totals)
     details = dict(result.details or {})
-    details["confidence"] = [*details.get("confidence", []), summary.details(
+    previous_confidence = details.get("confidence", [])
+    if not isinstance(previous_confidence, Iterable):
+        raise TypeError("Result confidence details must be iterable.")
+    details["confidence"] = [*previous_confidence, summary.details(
         None if output is None else str(output), role
     )]  # fmt: skip
     result.set_details(details)
