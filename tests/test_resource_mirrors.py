@@ -91,11 +91,19 @@ def test_1046_bad_mirror_warns_and_installs_verified_upstream(
             b"corrupt"
         )
     target = tmp_path / "download"
+    if failure == "404":
+        work = Path(str(target) + ".mirror")
+        work.mkdir()
+        (work / "part0000.partial").write_bytes(payload[:4])
+        (work / "part0000.partial.source").write_text(
+            hashlib.sha256(entry["parts"][0]["url"].encode()).hexdigest()
+        )
     with caplog.at_level(logging.WARNING):
         assert download_file(entry["upstream_url"], str(target), use_cache=False)
     assert target.read_bytes() == payload
     assert "upstream" in source.paths
     assert "MIRROR_FALLBACK" in caplog.text
+    assert not Path(str(target) + ".mirror").exists()
 
 
 def test_1046_changed_upstream_cannot_replace_pinned_snapshot(
@@ -171,6 +179,7 @@ def test_1046_interrupted_download_resumes_its_original_source(
         else Path(str(target) + ".partial")
     )
     received = partial.stat().st_size
+    first_part_gets = source.get_paths.count("mirror-0")
     assert 0 < received < len(payload)
     assert not target.exists()
     cancel.clear()
@@ -178,6 +187,9 @@ def test_1046_interrupted_download_resumes_its_original_source(
         entry["upstream_url"], str(target), cancel_event=cancel, use_cache=False
     )
     assert target.read_bytes() == payload
+    if mirror and split:
+        assert first_part_gets > 0
+        assert source.get_paths.count("mirror-0") == first_part_gets
     assert f"bytes={received}-" in source.gets()
     assert set(source.paths) == (
         ({"mirror-0", "mirror-1"} if split else {"mirror-0"})
@@ -187,6 +199,37 @@ def test_1046_interrupted_download_resumes_its_original_source(
     assert not partial.exists()
     assert not Path(str(partial) + ".source").exists()
     assert not Path(str(target) + ".mirror").exists()
+
+
+@pytest.mark.parametrize(
+    "damage", ["torn-tail", "corrupt-first", "corrupt-second", "extra-tail"]
+)
+def test_1046_resume_verifies_assembled_prefix_before_skipping_parts(
+    source, mirror_catalog, tmp_path, damage
+):
+    payload = b"first part and the rest of the resource"
+    entry = mirror_catalog(source, payload, split=10)
+    target = tmp_path / "download"
+    work = Path(str(target) + ".mirror")
+    work.mkdir()
+    if damage == "torn-tail":
+        saved = payload[:15]
+    elif damage == "extra-tail":
+        saved = payload + b"uncommitted trailing bytes"
+    else:
+        index = 0 if damage == "corrupt-first" else 12
+        saved = payload[:index] + b"!" + payload[index + 1 :]
+    (work / "assembled").write_bytes(saved)
+    assert download_file(entry["upstream_url"], str(target), use_cache=False)
+    assert target.read_bytes() == payload
+    expected_gets = {
+        "torn-tail": ["mirror-1"],
+        "extra-tail": [],
+        "corrupt-first": ["mirror-0", "mirror-1"],
+        "corrupt-second": ["mirror-1"],
+    }
+    assert source.get_paths == expected_gets[damage]
+    assert not work.exists()
 
 
 @pytest.mark.parametrize("available", [True, False])

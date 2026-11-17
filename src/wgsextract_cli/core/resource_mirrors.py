@@ -41,10 +41,13 @@ def mirror_chunks(
     cancel_event: CancelEvent | None = None,
     progress_callback: ProgressCallback | None = None,
     use_cache: bool = True,
+    *,
+    assembled: Path | None = None,
 ) -> Iterator[bytes]:
     """Verify each part before yielding; reject a corrupt concatenation too.
 
-    Consumers must discard their output on error (a later part can fail).
+    Streaming consumers must discard derived output on error. File consumers
+    may retain assembled bytes: only the verified complete prefix is reused.
     Directory is stable per destination so URL-bound partials survive retries.
     Download one <=1.9 GB part at a time, retaining interrupted part state.
     """
@@ -55,8 +58,32 @@ def mirror_chunks(
 
     digest = hashlib.sha256()
     size = 0
+    start = 0
     directory.mkdir(parents=True, exist_ok=True)
-    for index, pinned in enumerate(entry["parts"]):
+    if assembled is not None:
+        with assembled.open("r+b") as saved:
+            for pinned in entry["parts"]:
+                checksum = hashlib.sha256()
+                candidate = digest.copy()
+                remaining = pinned["size"]
+                while remaining:
+                    if cancel_event and cancel_event.is_set():
+                        raise MirrorError("download cancelled")
+                    chunk = saved.read(min(1 << 20, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    checksum.update(chunk)
+                    candidate.update(chunk)
+                if remaining or checksum.hexdigest() != pinned["sha256"]:
+                    break
+                digest = candidate
+                size += pinned["size"]
+                start += 1
+            saved.truncate(size)
+        if size and progress_callback:
+            progress_callback(size, entry["size"], 0.0)
+    for index, pinned in enumerate(entry["parts"][start:], start=start):
         part = directory / f"part{index:04d}"
         if cancel_event and cancel_event.is_set():
             raise MirrorError("download cancelled")
@@ -111,14 +138,18 @@ def download_mirror(
         return False
     try:
         work.mkdir(parents=True, exist_ok=True)
-        with staged.open("wb") as output:
+        with staged.open("ab") as output:
             for chunk in mirror_chunks(
-                entry, work, cancel_event, progress_callback, use_cache
+                entry,
+                work,
+                cancel_event,
+                progress_callback,
+                use_cache,
+                assembled=staged,
             ):
                 output.write(chunk)
         staged.replace(target)
     except OSError as exc:
-        staged.unlink(missing_ok=True)
         if not (cancel_event and cancel_event.is_set()):
             logging.warning(
                 "MIRROR_FALLBACK: %s mirror failed (%s); trying upstream %s.",

@@ -13,9 +13,14 @@ SHA-256 remains strict even for mutable sources. Cancellation never starts a
 fallback download.
 
 Mirror parts use stable `DEST.mirror/partNNNN` staging paths so interrupted,
-URL-bound `.partial` transfers resume on the next attempt. An existing upstream
+URL-bound `.partial` transfers resume on the next attempt. Completed parts stay
+in `DEST.mirror/assembled`: a restart verifies its prefix against each pinned
+part SHA-256, truncates incomplete/corrupt trailing bytes, and appends only the
+remaining parts. It does not download the verified prefix again.
+An existing upstream
 `DEST.partial` takes precedence over starting a mirror. A successful mirror
-install removes its staging directory and orphaned upstream partial markers.
+install removes its staging directory and orphaned upstream partial markers;
+a successful upstream fallback also removes all abandoned mirror staging.
 
 ## Redistribution audit (2026-11-17)
 

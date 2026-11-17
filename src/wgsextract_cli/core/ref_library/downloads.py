@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -165,6 +166,15 @@ def download_file(
         resolve_release_digest=resolve_release_digest,
         use_cache=use_cache,
     )
+    if ok and use_mirrors and Path(dest + ".mirror").exists():
+        try:
+            shutil.rmtree(dest + ".mirror")
+        except OSError as exc:
+            logging.warning(
+                "MIRROR_CLEANUP: upstream download installed, but mirror staging "
+                "cleanup failed: %s",
+                exc,
+            )
     if (
         ok
         and use_mirrors
