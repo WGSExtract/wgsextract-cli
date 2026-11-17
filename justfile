@@ -195,6 +195,11 @@ mockups *args:
 mockups *args:
     python mockups/serve.py {{args}}
 
+# Run the shared mock API server the mockups can use (gui/mockups/MOCK_API.md)
+[working-directory("gui")]
+mockups-api *args:
+    node mockups/mock-server/server.mjs {{args}}
+
 # Regenerate the app's site into gui/site/ (published at /app/ on Pages)
 [working-directory("gui")]
 gui-site:
