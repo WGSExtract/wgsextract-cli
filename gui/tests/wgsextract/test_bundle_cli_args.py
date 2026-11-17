@@ -51,8 +51,8 @@ NON_CLI_SCRIPTS = {
 }
 
 FAKE_PIXI = """#!/bin/sh
-if [ "$1" = "run" ] && [ "$2" = "python" ]; then
-    shift 2
+if [ "$1" = "run" ] && [ "$2" = "--no-install" ] && [ "$3" = "--frozen" ] && [ "$4" = "python" ]; then
+    shift 4
     exec __PYTHON__ "$@"
 fi
 for arg in "$@"; do printf '%s\\0' "$arg"; done > "$(dirname "$0")/../calls"
@@ -162,7 +162,7 @@ class BundleSandbox:
             "from pathlib import Path\n"
             "def main(args):\n"
             f"    Path({str(self.calls)!r}).write_bytes("
-            "b'\\0'.join(arg.encode() for arg in ['run', 'wgsextract', *args]) + b'\\0')\n"
+            "b'\\0'.join(arg.encode() for arg in ['run', '--no-install', '--frozen', 'wgsextract', *args]) + b'\\0')\n"
         )
         self.fake_pythonpath = str(runtime / "app")
         self.values = self._representative_values()

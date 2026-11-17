@@ -365,10 +365,11 @@ def _run(
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
         )
+        created = None
         try:
             checkpoint()
             report("start", params.COMMAND, 0.0)
-            _prepare(params, result)
+            created = _prepare(params, result)
             with (
                 atomic_output_mode(bool(settings.get("atomic_outputs", False))),
                 run_temporary_directory(None),
@@ -395,13 +396,13 @@ def _run(
     return result, error, created if default_outdir else None
 
 
-def _prepare(params: Params, result: CommandResult) -> None:
+def _prepare(params: Params, result: CommandResult) -> Path | None:
     """What dispatch does before a command: record and check the input, make
     the output folder."""
     from wgsextract_cli.cli.dispatch import checks_alignment_input, reports_status
 
     if reports_status(params):
-        return
+        return None
     params.preflight()
     input_path = getattr(params, "input", None)
     if isinstance(input_path, str) and is_url(input_path):
@@ -419,4 +420,7 @@ def _prepare(params: Params, result: CommandResult) -> None:
             validate_alignment_input(input_path)
     outdir = getattr(params, "outdir", None)
     if isinstance(outdir, Path):
-        outdir.expanduser().mkdir(parents=True, exist_ok=True)
+        from wgsextract_cli.core.output_location import make_output_folder
+
+        return make_output_folder(outdir)
+    return None
