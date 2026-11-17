@@ -262,7 +262,8 @@ the standard user Lab User:
    bundle and the app's workspace.
 5. Uninstall is Settings > Apps > Uninstall: the registered UninstallString
    opens the uninstaller's wizard, where UI Automation ticks "Delete the
-   application data" and clicks Uninstall and Close, so the controls used are
+   application data", clicks Uninstall, explicitly answers Yes to the separate
+   users-workspace deletion question, and clicks Close, so the controls used are
    the wizard's real ones. The machine must then match the baseline,
    including the registry (Apps entries, user `Path`), the Start menu and
    `%LOCALAPPDATA%`.

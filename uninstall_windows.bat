@@ -111,6 +111,7 @@ if defined LOCALAPPDATA (
     set "CONFIG_FILE=%APPDATA%\wgsextract\wgsextract\config.toml"
 )
 set "LEGACY_CONFIG_FILE=%APPDATA%\wgsextract\wgsextract\config.toml"
+set "USERS_WORKSPACE=%USERPROFILE%\wgs-extract"
 
 echo --- WGS Extract CLI: Windows uninstaller ---
 echo Repository:        !CD!
@@ -119,6 +120,7 @@ echo Shared Pixi envs:  !SHARED_PIXI_ENVS!
 echo Pixi cache:        !PIXI_CACHE_DIR!
 echo Config file:       !CONFIG_FILE!
 echo Legacy config:     !LEGACY_CONFIG_FILE!
+echo Users workspace config: !USERS_WORKSPACE!\config.toml
 echo Pixi install:      !PIXI_HOME!
 echo Pixi default cache: !PIXI_DEFAULT_CACHE!
 if "%REMOVE_MSYS2%"=="1" echo MSYS2 root:        !WGSE_MSYS2_ROOT!
@@ -145,6 +147,8 @@ if "%ASSUME_YES%"=="0" (
 )
 
 if "%REMOVE_CONFIG%"=="1" (
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\remove_users_workspace_config.ps1" -Workspace "%USERS_WORKSPACE%" -RemoveConfig
+    if errorlevel 1 exit /b 1
     call :remove_config_file "%CONFIG_FILE%"
     if errorlevel 1 exit /b 1
     call :remove_config_file "%LEGACY_CONFIG_FILE%"

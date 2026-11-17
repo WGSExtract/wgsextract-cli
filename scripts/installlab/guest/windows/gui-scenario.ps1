@@ -353,6 +353,7 @@ if ($Sabotage -ne "skip-uninstall") {
         Invoke-InSession "uninstall" @{
             uninstallString = $key.UninstallString; displayName = $key.DisplayName
             deleteAppDataLabel = "Delete the application data"
+            removeUsersWorkspace = $true
             env = @{
                 GUI_FOR_CLI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")
                 WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")
