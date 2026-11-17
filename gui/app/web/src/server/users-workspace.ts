@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -179,6 +179,23 @@ export async function isUsersWorkspace(root: string) {
  * entries its last sync copied that the bundle (`bundleNames`, its top-level entries) has. Anything else stays.
  */
 export async function prepareUsersWorkspace(usersRoot: string, bundleRoot: string, bundleNames: ReadonlySet<string>) {
+    if (path.relative(usersRoot, bundleRoot) !== "") {
+        const identities = await Promise.all([usersRoot, bundleRoot].map(async (root) => {
+            try {
+                return await stat(root, { bigint: true });
+            }
+            catch (error) {
+                if (errnoCode(error) === "ENOENT") {
+                    return null;
+                }
+                throw error;
+            }
+        }));
+        const [users, bundle] = identities;
+        if (users && bundle && users.dev === bundle.dev && users.ino === bundle.ino) {
+            throw new Error("The bundle and users workspaces refer to the same physical directory. Choose distinct workspace folders.");
+        }
+    }
     await mkdir(usersRoot, { recursive: true });
     if (path.relative(usersRoot, bundleRoot) !== "" && await isManagedWorkspace(usersRoot)) {
         await releaseLegacyBundleWorkspace(usersRoot, bundleRoot, bundleNames);

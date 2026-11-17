@@ -4,6 +4,18 @@ import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
 import type { PathPickResponse } from "../../../shared/types.js";
+import { createModalFocusBinder } from "./modal-focus.js";
+
+const bindSettingMoveFocus = createModalFocusBinder("[data-setting-move-dialog]", "[data-workspace-location-confirm]", false);
+
+function cancelSettingMove() {
+    if (state.workspaceMove?.running) {
+        return;
+    }
+    state.workspaceMove = null;
+    saveSettingOnly = null;
+    scheduleRender();
+}
 
 type WorkspaceMoveEvent =
     | { type: "progress"; percent: number }
@@ -28,9 +40,7 @@ export function bindWorkspaceLocationEvents(app: HTMLElement) {
         askToMoveWorkspace(null);
     });
     app.querySelectorAll("[data-workspace-location-cancel]").forEach((button) => button.addEventListener("click", () => {
-        state.workspaceMove = null;
-        saveSettingOnly = null;
-        scheduleRender();
+        cancelSettingMove();
     }));
     app.querySelectorAll("[data-workspace-location-confirm]").forEach((button) => button.addEventListener("click", async () => {
         await moveWorkspace();
@@ -42,6 +52,7 @@ export function bindWorkspaceLocationEvents(app: HTMLElement) {
         scheduleRender();
         await save?.();
     });
+    bindSettingMoveFocus(app, cancelSettingMove);
 }
 
 async function chooseWorkspaceLocation() {

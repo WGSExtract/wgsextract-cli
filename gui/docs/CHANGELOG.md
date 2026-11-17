@@ -14,6 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Data sources take `optionalArguments`, as action commands do: a group is left out when a placeholder in it is empty.
 
 ### Changed
+- Workspace migration refuses symlink/junction aliases of the same physical folder before removing old state. Legacy My Genomes settings now move their actual library contents, and bundle test runs expand direct users-workspace placeholders against their separate users root.
+- Folder-move dialogs now take keyboard focus, contain Tab navigation, cancel with Escape and return focus to the initiating control without restoring a cancelled edit.
+- Reference-library setup explicitly selects the configured Reference Data library rather than inheriting the last selected reference FASTA.
 - Packaged desktop resources include the production TOML parser. Bound library folder changes show their move confirmation in a dialog available on every page, including Basic mode.
 - WGSExtract's Variant Calling section replaces the SNP Call, InDel Call, SV Call and CNV Call buttons with **SNP**, **InDel**, **SV** and **CNV** checkboxes and one **Default** button, which runs `wgsextract vcf call` for the checked types, each into its own VCF. **gVCF** writes SNPs and InDels as one gVCF instead, and **Merged** combines everything into one `variants.vcf.gz` (or `variants.g.vcf.gz`) in place of the separate files; both sit on the checkbox row, in Basic too. The buttons (FreeBayes, GATK and DeepVariant beside Default) follow the checkboxes, and the rest of the section's settings sit below them under **Additional options**, in Advanced.
 - WGSExtract's Ancestry Inputs holds only the BAM/CRAM. A new **Haplogroup Analysis** section, shown in Basic too, has the Run Yleaf and Run Mito Haplogrep buttons at its foot, below their options (Advanced only). Y-STR Repeat Counts and its options move to their own Advanced-only section.

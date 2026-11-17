@@ -95,6 +95,23 @@ def test_1087_server_output_follows_the_vcf_override(tmp_path, monkeypatch):
     assert checked.outdir == tmp_path / "current" / "wgse"
 
 
+def test_1087_trio_proband_overrides_unused_inputs_for_output_inference(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delitem(settings, "output_directory", raising=False)
+    checked = PathGuard([tmp_path]).check(
+        params_from_json(
+            find("vcf/trio"),
+            {
+                "input": str(tmp_path / "old" / "unused.bam"),
+                "vcf_input": str(tmp_path / "old-vcf" / "unused.vcf"),
+                "proband": str(tmp_path / "current" / "child.vcf"),
+            },
+        )
+    )
+    assert checked.outdir == tmp_path / "current" / "wgse"
+
+
 @pytest.mark.parametrize(
     "op", ["ref/gene-map", "ref/clinvar", "ref/status", "ref/library-list"]
 )

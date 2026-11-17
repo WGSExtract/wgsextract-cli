@@ -45,7 +45,7 @@ export function renderSettingFolderMoveDialog() {
         return "";
     }
     return `<div class="modal-backdrop" role="presentation">
-      <section class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="setting-move-title">
+      <section class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="setting-move-title" data-setting-move-dialog tabindex="-1">
         <h3 id="setting-move-title">${escapeHTML(state.labels.workspaceLocationMoveTitle)}</h3>
         ${renderWorkspaceMoveStatus()}
       </section>

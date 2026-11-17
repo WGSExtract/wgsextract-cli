@@ -120,6 +120,8 @@ A setting-folder move cannot move the users workspace, the bundle or its source,
 
 Changing a bound library folder on My Genomes or Library opens the same Move / Change Setting Only / Cancel dialog on that page, in Basic and Advanced; it never requires opening the Settings editor.
 
+The move dialog receives keyboard focus, traps Tab/Shift+Tab and supports Escape cancellation, returning focus to the initiating control. Workspace roots that are symlink or junction aliases of the same physical directory are refused before migration, preserving saved state.
+
 Uninstalling removes the bundle workspace with the app, but asks before deleting the users workspace, wherever it is, since its libraries may be shared. Folders the settings file names inside the app's data folder (an older install's libraries) are kept the same way. A silent Windows uninstall keeps them all. So does the quick-uninstall script published with each Windows release.
 
 ## Distribution

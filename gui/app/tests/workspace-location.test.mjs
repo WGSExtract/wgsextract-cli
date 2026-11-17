@@ -128,6 +128,44 @@ test("a folder of the user's with the default name is left alone and the next fr
   assert.equal(usersWorkspaceFor(bundle), `${users}-2`, "the recorded folder stays the default");
 });
 
+test("1087 migration rejects workspace aliases without deleting saved state", async (t) => {
+  const { root, source, bundle } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const saved = '{"fieldValues":{"selected":"/saved/sample.bam"},"colorTheme":"dark"}\n';
+  await writeFile(path.join(bundle, "state.json"), saved);
+  const alias = path.join(root, "users-alias");
+  await symlink(bundle, alias, "junction");
+  await saveUsersWorkspace(manifest, alias);
+
+  await assert.rejects(prepareBundleWorkspace(manifest, source), /same physical directory/);
+
+  assert.equal(await readFile(path.join(bundle, "state.json"), "utf8"), saved);
+  await stat(path.join(bundle, "manifest.json"));
+});
+
+for (const legacy of ["dataset_library", "genome_library"]) {
+  test(`1087 moving a legacy ${legacy} library moves its contents`, async (t) => {
+    const control = { ...settingsControl, settings: [{ id: "mygenomes", key: "mygenomes_library", kind: "path", moveContents: true }] };
+    const custom = { ...manifest, pages: [{ id: "settings", sections: [{ id: "paths", controls: [control] }] }] };
+    const { root, source, bundle, users } = await fixture(t, custom);
+    await prepareBundleWorkspace(custom, source);
+    const old = path.join(users, "datasets");
+    await mkdir(path.join(old, "joe"), { recursive: true });
+    await writeFile(path.join(old, "joe", "sample.bam"), "kept");
+    await writeFile(path.join(users, "config.toml"), `${legacy} = ${JSON.stringify(old)}\ncpu_threads = 3\n`);
+    const target = path.join(root, "new-library");
+
+    await move({ manifest: custom, sourceRoot: source, bundleRoot: bundle, folder: target, setting: { controlID: control.id, key: "mygenomes_library" } });
+
+    assert.equal(await readFile(path.join(target, "joe", "sample.bam"), "utf8"), "kept");
+    await assert.rejects(stat(old), { code: "ENOENT" });
+    const saved = parseToml(await readFile(path.join(users, "config.toml"), "utf8"));
+    assert.equal(saved.mygenomes_library, target);
+    assert.equal(saved[legacy], undefined);
+    assert.equal(saved.cpu_threads, 3);
+  });
+}
+
 test("a users workspace the CLI made is shared, not passed over", async (t) => {
   const { source, users } = await fixture(t);
   await mkdir(path.join(users, "output"), { recursive: true });

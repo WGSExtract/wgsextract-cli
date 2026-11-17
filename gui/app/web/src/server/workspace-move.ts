@@ -1,7 +1,7 @@
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
-import { parse as parseToml, stringify as serializeToml } from "smol-toml";
+import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-paths.js";
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
@@ -75,6 +75,10 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
             throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
         }
         const latest = await readSettings(latestFile);
+        if (setting.key === "mygenomes_library") {
+            delete latest.dataset_library;
+            delete latest.genome_library;
+        }
         await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {

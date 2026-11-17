@@ -578,7 +578,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\/posix\/bootstrap-reference-library\.sh/);
-    assert.match(result.stdout, /fake pixi run --no-install --frozen wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -628,7 +628,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\\windows\\bootstrap-reference-library\.ps1/);
-    assert.match(result.stdout, /fake pixi run --no-install --frozen wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -656,7 +656,7 @@ test("WGSExtract Windows bootstrap runs ref bootstrap", async (t) => {
   try {
     await mkdir(scriptRoot, { recursive: true });
     await cp(sourceScript, script);
-    await writeFile(path.join(scriptRoot, "run-wgsextract.ps1"), [
+    await writeFile(path.join(scriptRoot, "run-wgsextract-env.ps1"), [
       "Write-Output \"fake wgsextract $($args -join ' ')\"",
       "exit 0",
       "",
@@ -674,7 +674,7 @@ test("WGSExtract Windows bootstrap runs ref bootstrap", async (t) => {
     ], { env: process.env });
 
     assert.equal(result.exitCode, 0, result.stderr);
-    assert.match(result.stdout, /fake wgsextract ref bootstrap --ref /);
+    assert.match(result.stdout, /fake wgsextract python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("WGSEXTRACT_REFERENCE_LIBRARY", previousReferenceLibrary);

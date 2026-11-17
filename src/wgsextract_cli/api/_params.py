@@ -407,6 +407,11 @@ def output_directory_default(
             and item.spec.path
             and not item.spec.writes
             and not (
+                cls.COMMAND == "vcf trio"
+                and values.get("proband") is not None
+                and item.name in {"input", "vcf_input"}
+            )
+            and not (
                 item.name == "input"
                 and cls.VCF_INPUT_OVERRIDES_INPUT
                 and values.get("vcf_input") is not None
