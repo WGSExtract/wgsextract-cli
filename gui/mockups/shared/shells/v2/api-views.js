@@ -31,8 +31,15 @@
   function timeAt(mock, job, work) {
     var w = work - job.skipWork;
     if (w <= 0) return job.started;
+    if (job.plan.mode === "net" && job.segments.length) {
+      var points = job.finished === null ? job.segments : job.segments.concat([{ at: job.finished, work: job.stopWork - job.skipWork }]);
+      for (var i = 1; i < points.length; i += 1) {
+        if (w > points[i].work || points[i].work <= points[i - 1].work) continue;
+        return points[i - 1].at + (points[i].at - points[i - 1].at) * (w - points[i - 1].work) / (points[i].work - points[i - 1].work);
+      }
+    }
     if (job.finished !== null && job.stopWork > job.skipWork) return job.started + (job.finished - job.started) * Math.min(1, w / (job.stopWork - job.skipWork));
-    var rate = job.plan.mode === "cpu" ? 1 : mock.doc().net.bps / 1000 || Infinity;
+    var rate = mock.rate(job);
     if (w <= job.segWork) return job.started + (job.segAt - job.started) * (job.segWork ? w / job.segWork : 1);
     return rate === Infinity ? job.segAt : job.segAt + (w - job.segWork) / rate;
   }
@@ -61,28 +68,57 @@
     return { list: list, current: current, done: done };
   }
 
-  /* When each queued job should start: after the running one and those
-   * ahead of it */
-  function schedule(mock, now) {
+  /* Forecast each lane independently, including future bandwidth sharing. */
+  function schedule(mock, now, extra) {
     var doc = mock.doc();
     var rate = doc.net.bps ? doc.net.bps / 1000 : Infinity;
     var t = now;
     var head = null;
-    doc.jobs.forEach(function (j) {
-      if (j.status === "running" && j.kind === "job") {
+    var jobs = doc.jobs.concat(extra ? [extra] : []);
+    var active = [];
+    var queue = [];
+    var out = {};
+    function remaining(j) {
+      var part = doc.partials[j.plan.outputs[0].path];
+      var skip = j.status === "running" ? j.skipWork : part && part.url === j.plan.url ? part.bytes : 0;
+      var left = j.plan.work - skip;
+      var target = j.plan.fail ? Math.floor(left * j.plan.fail.at) : left;
+      return Math.max(0, target - (j.status === "running" ? mock.doneWork(j, now) - skip : 0));
+    }
+    jobs.forEach(function (j) {
+      if (j.kind !== "job") return;
+      if (j.plan.mode === "net") {
+        if (j.status === "running") active.push({ id: j.id, left: remaining(j) });
+        if (j.status === "queued") queue.push(j);
+      } else if (j.status === "running") {
         t = Math.max(t, mock.endAt(j));
         head = j.id;
       }
     });
-    var out = {};
-    doc.jobs.forEach(function (j) {
-      if (j.status !== "queued" || j.kind !== "job") return;
+    jobs.forEach(function (j) {
+      if (j.status !== "queued" || j.kind !== "job" || j.plan.mode !== "cpu") return;
       out[j.id] = { starts_at: t, behind: head };
-      t += j.plan.mode === "cpu" ? j.plan.work : j.plan.work / rate;
+      t += j.plan.work - (j.skipWork || 0);
       head = j.id;
     });
+    t = now;
+    head = null;
+    while (queue.length) {
+      while (queue.length && active.length < mock.maxDownloads) {
+        var j = queue.shift();
+        out[j.id] = { starts_at: t, behind: head };
+        active.push({ id: j.id, left: remaining(j) });
+      }
+      if (!queue.length) break;
+      active.sort(function (a, b) { return a.left - b.left; });
+      var work = active[0].left;
+      t += rate === Infinity ? 0 : work * active.length / rate;
+      active.forEach(function (a) { a.left = Math.max(0, a.left - work); });
+      head = active.shift().id;
+    }
     return out;
   }
+  M.schedule = schedule;
 
   function progress(mock, job, now, st) {
     var p = job.plan;
@@ -90,11 +126,11 @@
     var cur = st.current || st.list[st.list.length - 1];
     var out = { stage: cur ? cur.name : null, message: cur && cur.detail ? cur.detail : null, fraction: fraction };
     if (p.mode === "net") {
-      var bps = mock.doc().net.bps;
+      var bps = mock.rate(job) * 1000;
       out.bytes_done = Math.round(st.done);
       out.bytes_total = p.work;
-      out.rate_bps = job.status === "running" ? bps || null : 0;
-      out.message = F.gb(st.done / 1e9) + " of " + F.gb(p.work / 1e9) + (job.status === "running" ? " at " + F.rate(bps) : "");
+      out.rate_bps = job.status === "running" ? (isFinite(bps) ? bps : null) : 0;
+      out.message = F.gb(st.done / 1e9) + " of " + F.gb(p.work / 1e9) + (job.status === "running" ? " at " + F.rate(isFinite(bps) ? bps : 0) : "");
     }
     if (job.status === "running") out.eta_s = Math.max(0, Math.round((mock.endAt(job) - now) / 1000));
     return out;
@@ -166,7 +202,7 @@
     if (job.finished !== null) ui.took_s = Math.round((job.finished - job.started) / 1000);
     if (job.status === "queued") {
       var s = schedule(mock, now)[job.id];
-      ui.waiting = s ? { reason: "one_at_a_time", behind: s.behind, starts_at: U.iso(s.starts_at), starts_in_s: Math.round((s.starts_at - now) / 1000) } : { reason: "starting" };
+      ui.waiting = s ? { reason: job.plan.mode === "net" ? "download_slots" : "one_at_a_time", behind: s.behind, starts_at: U.iso(s.starts_at), starts_in_s: Math.round((s.starts_at - now) / 1000) } : { reason: "starting" };
       ui.est_s = Math.round((job.plan.mode === "cpu" ? job.plan.work : job.plan.work / ((mock.doc().net.bps || Infinity) / 1000)) / 1000);
     }
     if (job.status === "interrupted" || job.status === "cancelled" || job.status === "failed") {

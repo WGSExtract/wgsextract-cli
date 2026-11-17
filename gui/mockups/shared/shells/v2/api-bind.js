@@ -2,7 +2,7 @@
  *
  *   data-v2-job="realign:gordon"   the newest job for op + person ("id:…"
  *                                  for one job; "label:…" by its label;
- *                                  "running" for whichever job is running)
+ *                                  "running" prefers analysis over downloads)
  *     data-v2-job-text[="full|eta|percent|status|label"]
  *                                  "47% · 1 h 52 min left", "Queued · starts
  *                                  in 1 h 52 min", "Done", "Interrupted at
@@ -31,6 +31,10 @@
       var at = match.lastIndexOf(":");
       return j.op === (at < 0 ? match : match.slice(0, at)) && (at < 0 || j.ui.person === match.slice(at + 1));
     });
+    if (match === "running") {
+      var cpu = hits.filter(function (j) { return j.ui.mode === "cpu"; });
+      if (cpu.length) return cpu[0];
+    }
     return hits[hits.length - 1] || null;
   }
 

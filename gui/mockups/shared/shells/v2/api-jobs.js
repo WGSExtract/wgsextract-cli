@@ -1,4 +1,4 @@
-/* <div data-render="v2-jobs" data-section="running|queued|needs-you|done"
+/* <div data-render="v2-jobs" data-section="running|queued|downloads|needs-you|done"
  * [data-limit="8"]>: one section of the Jobs page, live from
  * GET /v1/jobs?detail=1 and updated on every WGSM.v2api tick. Cards come
  * from api-jobs-cards.js. Needs you holds failed and interrupted jobs that
@@ -15,6 +15,7 @@
   var EMPTY = {
     running: "Nothing is running.",
     queued: "Nothing is waiting.",
+    downloads: "No downloads running or waiting.",
     "needs-you": "Nothing needs you.",
     done: "Nothing has finished yet.",
   };
@@ -28,8 +29,9 @@
 
   function pick(name, jobs, limit) {
     var list = jobs.filter(function (j) {
-      if (name === "running") return j.status === "running";
-      if (name === "queued") return j.status === "queued";
+      if (name === "downloads") return j.ui.mode === "net" && (j.status === "running" || j.status === "queued");
+      if (name === "running") return j.ui.mode === "cpu" && j.status === "running";
+      if (name === "queued") return j.ui.mode === "cpu" && j.status === "queued";
       if (name === "needs-you") return (j.status === "failed" || j.status === "interrupted") && !handled(j, jobs);
       return j.status === "succeeded" || (j.status === "cancelled" && !handled(j, jobs));
     });
@@ -43,6 +45,7 @@
   }
 
   function make(name, job, jobs) {
+    if (name === "downloads") return job.status === "running" ? cards.running(job) : cards.queued(job, jobs);
     if (name === "running") return cards.running(job);
     if (name === "queued") return cards.queued(job, jobs);
     if (name === "needs-you") return cards.needs(job);

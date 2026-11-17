@@ -55,6 +55,10 @@ in Compare and on the index. Screens share a key across versions (`home`,
 v2 behaves like the app with a pretend computer behind it; every change is
 kept in this browser until you reset it.
 
+- **Proposed download manager:** downloads run beside the single analysis
+  job, up to three at once sharing the connection. The Jobs page separates
+  the two lanes. This is not real-server behaviour yet; see
+  [MOCK_API.md](MOCK_API.md#proposed-an-independent-download-manager).
 - **Tool pages** (`tools.html`, `tool-*.html`) are drawn from one definition
   per tool in `shared/shells/v2/tools-*.js`, and they speak the server's API.
   Each field is a parameter of the operation's `Params`; its control, choices

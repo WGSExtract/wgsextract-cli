@@ -105,7 +105,7 @@ into `WGSM.v2state` when they change, so `data-v2-if` hooks follow them.
 
 `data-v2-job` picks the newest job: `op:person` (`realign:gordon`,
 `lineage/y-str:reginald`), `id:<job id>`, `label:<label>`, or `running`
-(whichever job is running, for the sidebar). Inside it,
+(the running analysis job, falling back to a running download, for the sidebar). Inside it,
 `data-v2-job-text` is `full` ("47% · 1 h 52 min left", "Queued · starts in
 …", "Done", "Failed after 12 s", "Interrupted at 62%", "Cancelled"),
 `eta`, `percent`, `status` or `label`; `data-v2-job-bar` sets `--v` on a
@@ -114,7 +114,8 @@ into `WGSM.v2state` when they change, so `data-v2-if` hooks follow them.
 interrupted done stopped active none`. The `data-v2-job` element gets
 `data-v2-job-status`. Static text stays as the fallback until the first tick.
 
-The Jobs page is `<div data-render="v2-jobs" data-section="running|queued|needs-you|done" [data-limit="8"]>`.
+The Jobs page is `<div data-render="v2-jobs" data-section="running|queued|downloads|needs-you|done" [data-limit="8"]>`.
+Running and Queued contain analysis jobs; Downloads contains running and queued downloads.
 
 ## The simulated clock and network
 
@@ -127,13 +128,34 @@ The Jobs page is `<div data-render="v2-jobs" data-section="running|queued|needs-
 - **Network.** Downloads move bytes at **1 GB/s** by default (also 10 MB/s,
   100 MB/s, or 0 for unlimited: done at once), measured in **simulated**
   seconds, so the clock's speed and pause apply to downloads too and a
-  paused demo stays paused. Analysis jobs run on the clock alone. Changing
-  the speed mid-download keeps the bytes already done.
+  paused demo stays paused. This is the connection's total bandwidth,
+  shared equally by running downloads. Analysis jobs run on the clock alone.
+  Changing the speed or active downloads keeps the bytes already done.
 - A download writes `<output>.partial` as it goes, bound to its URL (like
   `download_file`): the partial takes disk space while it grows, is kept when
   the job is cancelled, interrupted or fails, and a rerun with the same URL
   resumes from its last byte (a different URL starts over). On success the
   partial is gone and the file counts instead.
+
+### Proposed: an independent download manager
+
+**PROPOSED server behaviour, not implemented by the real server.** The mock
+runs one analysis job (`MAX_JOBS = 1`) and up to three downloads
+(`MAX_DOWNLOADS = 3`) in independent FIFO lanes. Neither lane blocks the
+other; quick queries still start immediately. A fourth download waits only
+for a download slot. Each active download gets the connection speed divided
+by the active count, and speeds up when another finishes, fails or stops.
+The Jobs page shows these downloads separately, with bytes, shared speed,
+ETA, Cancel and queued Remove actions. ETAs assume the current active set;
+queued start forecasts simulate slot releases and bandwidth sharing.
+
+The real server would need a separate `server_max_downloads` setting and
+download scheduler, classification of net-bound operations (`ref/library`,
+download-mode `ref/index`, `vep/download`, `ref/gnomad`, etc.), shared
+bandwidth accounting/limiting, and per-download progress/ETA reporting.
+Building indexes locally (`ref/index` with `download: false`) stays in the
+analysis lane. Cancellation, failure and interruption keep URL-bound partials
+for byte resume. Mock state version 4 reseeds older stored states.
 
 ## The `_mock` hint
 
@@ -229,9 +251,10 @@ Finished jobs add `finished`, `exit_code`, `error` (`{kind, message}`) and
 `result`, a minimal `wgsextract.result/1` manifest (outputs with
 `size_bytes`, `metrics` from the plan). Downloads' `progress` adds
 `bytes_done`, `bytes_total`, `rate_bps` and `eta_s`. Queued jobs' `ui`
-adds `waiting: {reason: "one_at_a_time", behind, starts_at, starts_in_s}`
+adds `waiting: {reason: "one_at_a_time" | "download_slots", behind, starts_at, starts_in_s}`
 and `est_s`; stopped ones add `resume: {from_step}` or
-`{from_bytes, partial}`. One job runs at a time (`server_max_jobs` = 1);
+`{from_bytes, partial}`. One analysis job runs at a time (`server_max_jobs` = 1);
+downloads use the proposed independent lane above;
 queries (`info`, `sample/show`, `ref/status`) start at once. A rerun of a
 cancelled, failed or interrupted analysis skips the steps it finished (as
 [step resume](../../docs/step-resume.md) does); a download resumes from its

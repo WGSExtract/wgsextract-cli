@@ -1,5 +1,5 @@
-/* Mock server core, part 4: the job engine. Jobs queue (server_max_jobs =
- * 1 runs at a time, quick queries start at once), progress on the simulated
+/* Mock server core, part 4: the job engine. One analysis job and up to
+ * three downloads run beside quick queries. Jobs progress on the simulated
  * clock (analysis) or at the simulated network speed (downloads), finish,
  * fail when asked, cancel, and rerun with step resume. Downloads keep a
  * .partial bound to their URL and resume from its last byte. All state is
@@ -9,8 +9,9 @@
   var M = root.WGSMMock;
   var U = M.util;
   var KEY = "v2-api";
-  var VERSION = 3;
+  var VERSION = 4;
   var MAX_JOBS = 1;
+  var MAX_DOWNLOADS = 3;
   var FINISHED = ["succeeded", "failed", "cancelled", "interrupted"];
 
   function clone(x) {
@@ -42,7 +43,28 @@
 
     function rate(job) {
       if (job.plan.mode === "cpu") return 1;
-      return doc.net.bps ? doc.net.bps / 1000 : Infinity;
+      return doc.net.bps ? doc.net.bps / 1000 / Math.max(1, downloads().length) : Infinity;
+    }
+
+    function downloads() {
+      return doc.jobs.filter(function (j) {
+        return j.status === "running" && j.plan.mode === "net";
+      });
+    }
+
+    /* Freeze work at the old shared rate before changing the active set. */
+    function rebase(t) {
+      downloads().forEach(function (j) {
+        j.segWork = doneWork(j, t) - j.skipWork;
+        j.segAt = t;
+        j.segments.push({ at: t, work: j.segWork });
+      });
+    }
+
+    function release(job, t) {
+      if (job.kind !== "job") return;
+      var key = job.plan.mode === "net" ? "netFreeAt" : "freeAt";
+      doc[key] = Math.max(doc[key], t);
     }
 
     /* Work done (CPU: simulated ms; downloads: bytes), resumed part included */
@@ -79,7 +101,7 @@
       var job = {
         id: U.jobId(fields.created), op: op, kind: desc.kind, params: p, plan: M.plan(op, p, c, c.machine),
         created: fields.created, started: null, finished: null, status: "queued", exit_code: null, error: null,
-        skipWork: 0, segWork: 0, segAt: null, stopWork: null, rerunOf: null, pre: false, note: null, resumed: 0,
+        skipWork: 0, segWork: 0, segAt: null, segments: [], stopWork: null, rerunOf: null, pre: false, note: null, resumed: 0,
       };
       Object.keys(fields).forEach(function (k) {
         if (k !== "mock") job[k] = fields[k];
@@ -98,10 +120,12 @@
     }
 
     function start(job, t) {
+      if (job.plan.mode === "net") rebase(t);
       job.status = "running";
       job.started = t;
       job.segAt = t;
       job.segWork = 0;
+      job.segments = [{ at: t, work: 0 }];
       if (job.plan.mode !== "net") return;
       var path = job.plan.outputs[0].path;
       var part = doc.partials[path];
@@ -116,8 +140,9 @@
     }
 
     function finish(job, t) {
+      if (job.plan.mode === "net") rebase(t);
       job.finished = t;
-      if (job.kind === "job") doc.freeAt = Math.max(doc.freeAt, t);
+      release(job, t);
       if (job.plan.fail) {
         job.stopWork = doneWork(job, t);
         job.status = "failed";
@@ -134,12 +159,13 @@
 
     function stop(job, t, status, message) {
       var was = job.status;
+      if (was === "running" && job.plan.mode === "net") rebase(t);
       job.stopWork = was === "running" ? doneWork(job, t) : 0;
       job.status = status;
       job.finished = t;
       job.exit_code = status === "cancelled" ? 130 : null;
       job.error = { kind: "cancelled", message: message };
-      if (was === "running" && job.kind === "job") doc.freeAt = Math.max(doc.freeAt, t);
+      if (was === "running") release(job, t);
       keepPartial(job);
     }
 
@@ -159,19 +185,28 @@
             nextEnd = e;
           }
         });
-        if (next) {
-          finish(next, Math.max(Math.round(nextEnd), next.started));
+        var busy = running.filter(function (j) {
+          return j.kind === "job" && j.plan.mode === "cpu";
+        }).length;
+        var queued = null;
+        var startAt = Infinity;
+        doc.jobs.forEach(function (j) {
+          if (j.status !== "queued") return;
+          var net = j.plan.mode === "net";
+          if (j.kind === "job" && (net ? downloads().length >= MAX_DOWNLOADS : busy >= MAX_JOBS)) return;
+          var t = j.kind === "query" ? j.created : Math.max(j.created, net ? doc.netFreeAt : doc.freeAt);
+          if (t <= now && t < startAt) {
+            queued = j;
+            startAt = t;
+          }
+        });
+        if (next && nextEnd <= startAt) {
+          finish(next, Math.max(nextEnd, next.started));
           changed = true;
           continue;
         }
-        var busy = running.filter(function (j) {
-          return j.kind === "job";
-        }).length;
-        var queued = doc.jobs.filter(function (j) {
-          return j.status === "queued" && (j.kind === "query" || busy < MAX_JOBS);
-        })[0];
         if (!queued) break;
-        start(queued, queued.kind === "query" ? queued.created : Math.max(queued.created, doc.freeAt));
+        start(queued, startAt);
         changed = true;
       }
       if (changed) save();
@@ -228,7 +263,7 @@
     function seed() {
       clock.reset();
       var now = clock.now();
-      doc = { v: VERSION, rev: 0, machine: null, people: {}, assign: {}, flags: {}, net: { bps: 1e9 }, partials: {}, jobs: [], freeAt: 0 };
+      doc = { v: VERSION, rev: 0, machine: null, people: {}, assign: {}, flags: {}, net: { bps: 1e9 }, partials: {}, jobs: [], freeAt: 0, netFreeAt: 0 };
       doc.jobs = M.seedJobs(now, ctx().files, make);
       doc.seedUsed = used(now);
       save();
@@ -250,6 +285,8 @@
       rerun: rerun,
       doneWork: doneWork,
       endAt: endAt,
+      rate: rate,
+      maxDownloads: MAX_DOWNLOADS,
       used: used,
       isDone: function (job) {
         return FINISHED.indexOf(job.status) >= 0;
@@ -276,11 +313,7 @@
         save();
       },
       setNetwork: function (bps, now) {
-        doc.jobs.forEach(function (j) {
-          if (j.status !== "running" || j.plan.mode !== "net") return;
-          j.segWork = doneWork(j, now) - j.skipWork;
-          j.segAt = now;
-        });
+        rebase(now);
         doc.net.bps = Math.max(0, Number(bps) || 0);
         advance(now);
         save();

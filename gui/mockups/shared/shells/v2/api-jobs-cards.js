@@ -150,14 +150,14 @@
       h("div.v2-grow", h("strong", job.ui.label), why),
       h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", onclick: function () {
         act(api.del("/v1/jobs/" + job.id), "Removed from the queue: " + job.ui.label);
-      } }, "Cancel"));
+      } }, job.ui.mode === "net" ? "Remove" : "Cancel"));
     function update(j, all) {
       var w = j.ui.waiting || {};
       var ahead = (all || []).filter(function (x) {
         return x.id === w.behind;
       })[0];
       var size = j.ui.mode === "net" ? "A " + clock.gb(j.ui.outputs[0].gb) + " download" : "About " + clock.dur(j.ui.est_s * 1000);
-      why.textContent = size + ". Waits because one job runs at a time; starts after " +
+      why.textContent = size + (j.ui.mode === "net" ? ". Waiting for a download slot; starts after " : ". Waits because one analysis job runs at a time; starts after ") +
         (ahead ? "“" + ahead.ui.label + "”" : "the job before it") + (w.starts_in_s > 0 ? ", in about " + clock.dur(w.starts_in_s * 1000) : "") + ".";
     }
     update(job, jobs);

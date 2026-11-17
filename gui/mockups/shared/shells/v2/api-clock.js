@@ -107,7 +107,7 @@
     shared.hidden = true;
     var el = h("div.v2-section.v2-simctl", { dataset: { v2Keep: "off", annotId: "sim-control" } },
       field("Simulated time", speed, time),
-      field("Network", net, h("span.v2-small.v2-muted", "Downloads run at this speed, in simulated time")),
+      field("Network", net, h("span.v2-small.v2-muted", "Running downloads share this speed, in simulated time")),
       field("Mock server", h("div.v2-section", mode, shared, where)),
       h("div.v2-row", reset));
     api.ready.then(update);
