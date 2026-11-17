@@ -8,7 +8,44 @@ from typing import cast
 import pytest
 
 from scripts import validate_github_actions as policy
+from scripts.check_remote_resources import live_test_targets
 from scripts.ci_changes import routes
+
+
+@pytest.mark.parametrize(
+    ("paths", "spliceai", "gene_lists"),
+    [
+        (["src/wgsextract_cli/core/annotation_resources.py"], True, False),
+        (["src/wgsextract_cli/core/gene_lists.py"], False, True),
+        (["src/wgsextract_cli/assets/report/gene_lists.json"], False, True),
+        (
+            [
+                "src/wgsextract_cli/core/annotation_resources.py",
+                "src/wgsextract_cli/assets/report/gene_lists.json",
+            ],
+            True,
+            True,
+        ),
+        (["src/wgsextract_cli/core/constants.py"], False, False),
+    ],
+)
+def test_1046_changed_resource_paths_retain_live_pr_behavior_checks(
+    paths: list[str], spliceai: bool, gene_lists: bool
+) -> None:
+    targets = live_test_targets(paths)
+    assert ("tests/test_remote_resources.py" in targets) is spliceai
+    assert (
+        any("test_built_in_gene_list_downloads" in target for target in targets)
+        is gene_lists
+    )
+    source = (WORKFLOWS / "remote_resources.yml").read_text()
+    step = source.split(
+        "- name: Check changed live SpliceAI and gene-list behavior\n", 1
+    )[1]
+    step = step.split("- name:", 1)[0]
+    # CI contract: changed-URL filtering must not remove behavioral PR tests.
+    assert "if: github.event_name == 'pull_request'" in step
+    assert '--live-tests-base "$BASE_SHA"' in step
 
 
 @pytest.mark.parametrize(

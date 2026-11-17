@@ -39,6 +39,7 @@ class RangeServer:
         self.delays: dict[str, float] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
+        self.get_paths: list[str] = []
         # Other software on the host may probe any new listening port (one
         # sent `GET /` with `Range: bytes=0-16383`, #987); only requests under
         # this unguessable prefix come from the test, so only they are served
@@ -97,6 +98,7 @@ class RangeServer:
                 time.sleep(server.delays.get(path, 0))
                 spec = self.headers.get("Range")
                 server.requests.append(("GET", spec))
+                server.get_paths.append(path)
                 data = self._body(path)
                 if data is None and path in server.statuses:
                     return

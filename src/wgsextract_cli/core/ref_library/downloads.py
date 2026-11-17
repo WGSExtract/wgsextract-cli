@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import time
 from collections.abc import Callable
@@ -121,6 +122,90 @@ def verify_download_sha256(path: str, expected_sha256: str | None) -> bool:
 
 
 def download_file(
+    url: str,
+    dest: str,
+    progress_callback: ProgressCallback | None = None,
+    cancel_event: CancelEvent | None = None,
+    *,
+    expected_sha256: str | None = None,
+    resolve_release_digest: bool = True,
+    use_cache: bool = True,
+    use_mirrors: bool = True,
+) -> bool:
+    """Prefer audited, pinned mirrors; retain the original source as fallback."""
+    from wgsextract_cli.core.resource_mirrors import (
+        download_mirror,
+        mirror_for,
+        resources,
+    )
+
+    require_http_url(url, "download URL")
+    if expected_sha256 is not None and not re.fullmatch(
+        r"[a-fA-F0-9]{64}", expected_sha256
+    ):
+        raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
+    if use_mirrors and (entry := mirror_for(url)):
+        if Path(dest + ".partial").exists():
+            logging.info(
+                "Resuming upstream partial for %s; skipping mirror.", entry["id"]
+            )
+        elif download_mirror(
+            entry, dest, progress_callback, cancel_event, expected_sha256, use_cache
+        ):
+            return True
+        if cancel_event and cancel_event.is_set():
+            return False
+        if expected_sha256 is None and not entry.get("upstream_mutable", False):
+            expected_sha256 = entry["sha256"]
+    ok = _download_file(
+        url,
+        dest,
+        progress_callback,
+        cancel_event,
+        expected_sha256=expected_sha256,
+        resolve_release_digest=resolve_release_digest,
+        use_cache=use_cache,
+    )
+    if ok and use_mirrors and Path(dest + ".mirror").exists():
+        try:
+            shutil.rmtree(dest + ".mirror")
+        except OSError as exc:
+            logging.warning(
+                "MIRROR_CLEANUP: upstream download installed, but mirror staging "
+                "cleanup failed: %s",
+                exc,
+            )
+    if (
+        ok
+        and use_mirrors
+        and expected_sha256 is None
+        and (entry := mirror_for(url))
+        and entry.get("upstream_mutable", False)
+    ):
+        digest = hashlib.sha256()
+        with open(dest, "rb") as source:
+            for chunk in iter(lambda: source.read(1 << 20), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != entry["sha256"]:
+            logging.warning(
+                "UPSTREAM_VERSION_DRIFT: %s upstream differs from the mirrored "
+                "snapshot; accepting current upstream bytes from %s.",
+                entry["id"],
+                url,
+            )
+    if not ok and (entry := resources().get(url)) and not entry["redistributable"]:
+        logging.error(
+            "UPSTREAM_ONLY: %s could not be downloaded from %s. %s "
+            "No redistribution mirror is permitted; retry upstream or supply "
+            "a licensed local copy.",
+            entry["id"],
+            url,
+            entry["reason"],
+        )
+    return ok
+
+
+def _download_file(
     url: str,
     dest: str,
     progress_callback: ProgressCallback | None = None,

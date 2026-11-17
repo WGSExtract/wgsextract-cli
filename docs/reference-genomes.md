@@ -8,6 +8,10 @@ original source (NCBI, EBI, UCSC, AWS) is listed after it as an `-Alt` row,
 and the install falls back to it automatically. The original servers have
 been slow and unreliable, so the copies come first (#701).
 
+For annotation resources, gene maps and benchmark downloads, see
+[download mirrors and source rights](resource-mirrors.md). Their separate
+audit deliberately excludes restricted or unclear third-party data.
+
 ## Listing the library
 
 `wgsextract ref library --list` shows every catalog row (one per source) with
@@ -104,7 +108,10 @@ These download from their original source only.
 
 **hs38DH:** `GRCh38_full_analysis_set_plus_decoy_hla` includes HLA sequences
 from IMGT/HLA, whose [licence](https://www.ebi.ac.uk/ipd/imgt/hla/licence/)
-asks for permission to redistribute modified data. Its copy in `v0.1.0`
-predates #701 and is under review there.
+is CC BY-ND, explicitly asks people not to mirror the data, and requires
+permission to redistribute modified data. The composite FASTA is therefore
+excluded from the new benchmark mirrors (the coordinate-only `.fai` may be
+copied). Its copy in `v0.1.0` predates #701 (reference-genome mirrors) and
+remains under review there.
 
 GitHub limits each release file to 2 GiB. Every genome's BGZF file fits.
