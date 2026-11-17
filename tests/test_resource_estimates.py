@@ -25,7 +25,7 @@ from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 
 GIB = 1024**3
 H2_READS = 679_639_896

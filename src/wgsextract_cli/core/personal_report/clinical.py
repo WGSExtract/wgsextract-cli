@@ -20,7 +20,7 @@ from wgsextract_cli.core.builds import (
     is_hg37_build,
     is_hg38_build,
 )
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.report_documents import (
     ReportClinvarCountsDocument,
     ReportClinvarDocument,

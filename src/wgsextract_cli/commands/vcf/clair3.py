@@ -21,7 +21,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     stage_cram30,
     staging_bytes,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (

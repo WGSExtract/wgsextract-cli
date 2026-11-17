@@ -50,8 +50,8 @@ from wgsextract_cli.core.builds import canonical_build as canonical_build
 from wgsextract_cli.core.builds import is_hg37_build as is_hg37_build
 from wgsextract_cli.core.builds import is_hg38_build as is_hg38_build
 from wgsextract_cli.core.multiqc import find_documents as find_documents
+from wgsextract_cli.core.ref_library.models import sequence_lengths as sequence_lengths
 from wgsextract_cli.core.reference_assets import input_stem as input_stem
-from wgsextract_cli.core.reference_models import sequence_lengths as sequence_lengths
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument as ReportAttemptDocument,
 )

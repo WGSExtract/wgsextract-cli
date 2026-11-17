@@ -21,8 +21,8 @@ from wgsextract_cli.api.vcf import (
     _VcfFileParams,
 )
 from wgsextract_cli.core import read_scope, ultima
-from wgsextract_cli.core.alignment_health import warn_about_alignment
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.health import warn_about_alignment
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (

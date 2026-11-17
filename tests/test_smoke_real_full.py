@@ -19,7 +19,7 @@ from tests.smoke_utils import (
     verify_vcf,
     yleaf_tables_cached,
 )
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.config import settings, typed_settings
 from wgsextract_cli.core.microarray.templates import _resolve_templates_roots
