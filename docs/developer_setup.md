@@ -210,6 +210,13 @@ text, `runs.py` loads local run records and discovers sensitive names, and
 assembles reports and fits GitHub links; existing `core.issue_report` and
 `api.support` imports remain unchanged.
 
+### DeepVariant pipeline
+
+The `commands/vcf/deepvariant.py` command keeps orchestration and its existing
+helper import paths. Its `deepvariant_pipeline/` package separates model/image
+selection (`models.py`), host/postprocess resource planning (`resources.py`) and
+resumable stage execution (`stages.py`).
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
