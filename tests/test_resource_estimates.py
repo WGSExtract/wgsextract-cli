@@ -16,7 +16,7 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
-from wgsextract_cli.commands.alignment import preparation
+from wgsextract_cli.commands.alignment import common, preparation
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
@@ -818,7 +818,7 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
     ref = tmp_path / "ref.fa"
     ref.write_text(">chr1\nA\n")
 
-    for module in (align, preparation):
+    for module in (align, common, preparation):
         monkeypatch.setattr(
             module, "get_tool_path", lambda name: "gatk" if name == "gatk" else None
         )
