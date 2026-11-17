@@ -17,7 +17,7 @@ default) because it costs time, memory and disk.
 | `vcf snp`, `vcf indel` (bcftools) | `bcftools.g.vcf.gz` | available |
 | `vcf deepvariant` (Google's image, `wgse-deepvariant`, Parabricks) | `deepvariant.g.vcf.gz` | available |
 | `vcf gatk` (HaplotypeCaller on the CPU; not `--gpu` or `--scatter`) | `gatk.g.vcf.gz` | available |
-| `vcf clair3` (CPU and `--gpu`) | `clair3.g.vcf.gz` | available, about 2.5-6x slower |
+| `vcf clair3` (CPU and `--gpu`) | `clair3.g.vcf.gz` | available, about 2.4x slower on the CPU and 4.3x with `--gpu` |
 
 `analyze` follows the `config.toml` setting: its SNP step writes the gVCF
 (its indel step doesn't repeat it), and a rerun repeats the SNP step when the
@@ -149,15 +149,16 @@ filters it doesn't change, on the CPU and in HKU's GPU image (`--gpu`). Its
 blocks carry GQ, in Clair3's bins of 5, and MIN_DP; reads below mapping
 quality 5 (Clair3's default) are left out. Its pileup step is much slower
 with it, so a run that asks for it warns (`clair3_gvcf_cost`) and its
-preflight scales the time it reports: about 3.8x on the CPU and 6x on the
-GPU. Clair3 skips contigs the index places no reads on, and with none left
+preflight scales the time it reports: about 2.4x on the CPU and 4.3x on the
+GPU. With the gVCF the CPU path was faster than `--gpu`, so a `--gpu` run's
+warning says so; it still calls on the GPU. Clair3 skips contigs the index places no reads on, and with none left
 writes no gVCF; their bases read as `uncovered`. A missing gVCF when a
 called contig has reads fails the run. Without a `--region` it calls chr1-22, X and Y, so the
 gVCF's `Region` lists those and other contigs read as `not_assessed`.
 
-Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: 75 s for the VCF,
-179 s with the gVCF (2.4x; 3.8x on 6 threads and 6x in the GPU image in
-#863's research), 1.6 MB. The calls and filters were identical. Of 7,055
+Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: on the CPU 75 s
+for the VCF and 189 s with the gVCF (2.4x); with `--gpu` on an RTX 3090
+106 s and 452 s (4.3x). The gVCF was 1.6 MB. The calls and filters were identical. Of 7,055
 truth variants, 2 sit on bases the gVCF calls callable reference.
 
 ## Sex and PAR

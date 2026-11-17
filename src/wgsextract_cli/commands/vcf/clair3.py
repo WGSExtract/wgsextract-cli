@@ -773,11 +773,20 @@ def run_clair3(params: VcfClair3Params) -> None:
         evidence = GvcfEngine(
             "clair3", version, min_mapping_quality=CLAIR3_MIN_MAPPING_QUALITY
         )
+        factor = CLAIR3_GVCF_TIME_FACTOR["clair3-gpu" if gpu else "clair3"]
         warn(
             "clair3_gvcf_cost",
             "Clair3 writes its gVCF from a slower pileup: expect about "
-            f"{CLAIR3_GVCF_TIME_FACTOR['clair3-gpu' if gpu else 'clair3']:g}x "
-            "the calling time (--reference-evidence none skips it).",
+            f"{factor:g}x the calling time (--reference-evidence none skips it)."
+            + (
+                " With the gVCF the CPU was faster than --gpu where we measured "
+                "it (HG002 ONT chr20:10-15 Mb, 4 threads, RTX 3090: 189 s "
+                "against 452 s); leave out --gpu to call on the CPU."
+                if gpu
+                else ""
+            ),
+            time_factor=factor,
+            gpu=bool(gpu),
         )
     call_partitioned(
         params,

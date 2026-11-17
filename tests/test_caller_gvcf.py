@@ -17,6 +17,7 @@ from tests.htslib_helpers import (
     vcf_calls,
     write_fasta,
 )
+from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
 from tests.test_clair3 import linux_x86 as linux_x86
 from tests.test_clair3 import make_model
@@ -90,7 +91,9 @@ def call(sample, caller, request, sex, region=None, **extra):
     # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     request.getfixturevalue("linux_x86")
-    model = make_model(sample.root, "custom")
+    model = sample.root / "custom"
+    if not model.exists():
+        make_model(sample.root, "custom")
     return api.vcf.clair3(VcfClair3Params(**common, model=str(model)), check=False)
 
 
@@ -169,6 +172,46 @@ def test_partitioned_gvcf_is_cut_at_the_par_edge_and_records_excluded_bases_863(
         ("chrX", str(PAR_START - 1), "1" if haploid else "1/1"),
         ("chrX", str(PAR_START), "0/1"),
     ]
+
+
+@pytest.mark.parametrize(("gpu", "factor"), [(False, 2.4), (True, 4.3)])
+def test_clair3_gvcf_cost_is_measured_and_points_gpu_runs_at_the_cpu_863(
+    sample, request, gpu, factor
+):
+    """Issue #863: on HG002 ONT chr20:10-15 Mb the gVCF made Clair3 2.4x
+    slower on the CPU and 4.3x with --gpu, so the CPU was faster. Preflight
+    scales its time by that, and a --gpu run is told the CPU was faster but
+    still calls on the GPU."""
+    # The fake first: it skips on Windows, which linux_x86 would hide.
+    request.getfixturevalue("fake_clair3")
+    host = request.getfixturevalue("clair3_gpu") if gpu else None
+    results = {
+        evidence: call(
+            sample,
+            "clair3",
+            request,
+            "Female",
+            "chr20:500-1500",
+            reference_evidence=evidence,
+            outdir=sample.root / evidence,
+            gpu=gpu,
+        )
+        for evidence in ("none", "gvcf")
+    }
+
+    assert all(r.status == "ok" for r in results.values()), results
+    hours = {
+        evidence: r.details["host_requirement"]["approximate_hours"]
+        for evidence, r in results.items()
+    }
+    # Each is rounded to two significant figures.
+    assert hours["gvcf"] / hours["none"] == pytest.approx(factor, rel=0.1)
+    assert not any(w.code == "clair3_gvcf_cost" for w in results["none"].warnings)
+    (cost,) = [w for w in results["gvcf"].warnings if w.code == "clair3_gvcf_cost"]
+    assert cost.details["time_factor"] == factor
+    assert ("CPU was faster" in cost.message) is gpu
+    if host:
+        assert {r["opts"]["use_gpu"] for r in host.clair3.runs()} == {"True"}
 
 
 @pytest.mark.parametrize("option", ["gpu", "scatter"])
