@@ -13,6 +13,8 @@
   T.define({
     slug: "y-haplogroup", label: "Y haplogroup", op: "lineage/y-haplogroup", group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
     desc: "Places the paternal line on the Y-DNA tree from the SNPs on the Y chromosome.",
+    learn: "Use it to learn your direct paternal line, the one that usually follows the surname: which branch of the human Y tree you belong to, and how far down it you can be placed. A whole genome reads far more Y SNPs than a DNA-test kit, so the branch is usually much more specific.\n\n" +
+      "It applies only to males. Compare your haplogroup with surname and haplogroup projects; Y-STR markers then tell apart close relatives within a branch, and the Y chromosome extract lets YFull or FamilyTreeDNA place you on their latest trees.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Find the haplogroup",
     fields: [
       f.select("tree", "Tree", "YFull’s is the most detailed", "tree", [["yfull", "YFull (pinned release)"], ["yfull_v10", "YFull 10.01"], ["ftdna", "FamilyTreeDNA"], ["isogg", "ISOGG"]], "yfull", { width: 240 }),
@@ -48,6 +50,8 @@
   T.define({
     slug: "mt-haplogroup", label: "mtDNA haplogroup", op: "lineage/mt-haplogroup", group: "Lineage", keywords: "haplogrep phylotree mitotree maternal",
     desc: "Places the maternal line on the mtDNA tree with HaploGrep 3.",
+    learn: "Use it to learn your direct maternal line: your mother’s, her mother’s and so on back. Everyone has one, men included, though only women pass it on.\n\n" +
+      "A whole genome reads the entire mitochondrial sequence, so the branch is usually precise; a DNA-test kit reads only some positions. The quality score says how well the sample fits its branch, and haplocheck flags a mix of two mtDNA types, from contamination or heteroplasmy. To compare in detail with others, the Mitochondrial DNA extract makes a FASTA.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Find the haplogroup",
     fields: [
       f.select("tree", "Tree", function (c) {
@@ -71,6 +75,8 @@
   T.define({
     slug: "y-str", label: "Y-STR markers", op: "lineage/y-str", group: "Lineage", keywords: "ftdna yseq y-111 surname",
     desc: "Counts repeats at Y-STR markers, the numbers FamilyTreeDNA and YSEQ compare between men who share a surname.",
+    learn: "Use it if you’re in, or want to join, a surname project: members compare counts at 37, 67 or 111 markers to see who shares a recent paternal ancestor. The counts change quickly, so they separate men only a few generations apart, which the Y haplogroup can’t.\n\n" +
+      "Short reads can’t measure some long repeats, so a few markers may be left blank, and labs count some markers differently: check before comparing with a lab’s Y-STR test. Males only.",
     accepts: ["reads"], file: "reginald", button: "Count the markers",
     fields: [f.select("panel", "Panel", "Y-111 includes the smaller FamilyTreeDNA panels", "panel",
       [["Y-111", "Y-111 (FamilyTreeDNA)"], ["Y-67", "Y-67"], ["Y-37", "Y-37"], ["Y-25", "Y-25"], ["Y-12", "Y-12"], ["PPY23", "PowerPlex Y23"], ["YfilerPlus", "Yfiler Plus"], ["all", "Every marker"]], "Y-111", { width: 240 })],
@@ -98,6 +104,8 @@
   T.define({
     slug: "ancestry-proportions", label: "Ancestry proportions", op: "qc/ancestry", group: "Lineage", keywords: "admixture k7 k12 hgdp populations",
     desc: "Compares the genome with 80 reference populations and gives the share of each component, at continental and regional level, with 95% intervals.",
+    learn: "Use it for a broad picture of where your ancestors’ populations lived, worked out on your own computer rather than by a testing company. Each component is a pattern shared by groups of reference people, named after where they were sampled.\n\n" +
+      "It’s a model, not an ethnicity or a family tree: results shift with the reference panel and the number of components, and one grandparent’s ancestry can be hard to see. The intervals show how sure each share is. For single lines of descent, see the haplogroups; for relatives, use DNA-test files on matching sites.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Work it out",
     fields: [f.number("bootstrap", "Repeats for the intervals", "More repeats give steadier 95% intervals; 0 skips them", "bootstrap", 100, { width: 90 })],
     more: [f.select("build", "Build", function (c) {

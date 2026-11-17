@@ -34,6 +34,9 @@
   T.define({
     slug: "vep", label: "VEP", op: "vep/run", group: "Annotate", keywords: "variant effect predictor consequence gene transcript ensembl vep-rs",
     desc: "The Variant Effect Predictor: for each variant, which gene and transcript it falls in and what it may do to the protein.",
+    learn: "Use it after calling variants, when you want to know what each one touches: which gene, and whether it changes a protein’s building blocks (missense), cuts the protein short, or sits between genes, as most do.\n\n" +
+      "VEP says what a change does, not whether it matters. ClinVar adds what labs have reported about known variants, and Frequencies and scores adds how common a change is and how harmful models predict it to be. The variant table puts them side by side for searching.\n\n" +
+      "It needs a large cache of gene data for your build, downloaded once.",
     accepts: VCF, file: "helen", button: "Annotate with VEP",
     fields: [
       f.seg("engine", "Engine", function (c) {
@@ -74,6 +77,9 @@
   T.define({
     slug: "clinvar", label: "ClinVar", op: "vcf/clinvar", group: "Annotate", keywords: "pathogenic benign clinical significance health",
     desc: "Marks variants that ClinVar lists with a reported effect on health, from benign to pathogenic, with the conditions submitters named, and how confident each call is.",
+    learn: "Use it out of curiosity about known variants, or to look up a gene you’ve heard about. It only knows variants someone has submitted: a new or very rare change won’t be listed, and VEP or the scores are the way to learn about those.\n\n" +
+      "Expect a few “pathogenic” entries. Most people carry some, usually for recessive conditions they don’t have, and some listings are old, disputed or based on little evidence; the review stars show how well supported each one is.\n\n" +
+      "This isn’t a diagnosis or a clinical test. If something worries you, talk to a doctor or genetic counsellor, who can confirm it with a clinical test.",
     accepts: VCF, file: "helen", button: "Annotate with ClinVar",
     fields: [f.select("release", "ClinVar release", "Installed with Reference data", "clinvar_file", [["installed", "2026-11-02, installed"]], "installed", { width: 240 })],
     more: CONFIDENCE,
@@ -99,6 +105,8 @@
     slug: "scores", label: "Frequencies and scores", op: "vcf/gnomad · vcf/revel · vcf/alphamissense · vcf/cadd · vcf/spliceai", group: "Annotate",
     keywords: "gnomad revel cadd alphamissense spliceai allele frequency pathogenicity",
     desc: "Adds what large databases and prediction models say about each variant: how common it is, and how likely it is to change a protein or its splicing. Rare plus likely harmful is what clinicians look at first.",
+    learn: "Use it when looking through rare variants, to pick out the few worth a closer look. gnomAD says how common each change is; REVEL and AlphaMissense rate changes to a protein’s building blocks, CADD rates any change, and SpliceAI looks at how a gene is cut and joined.\n\n" +
+      "Scores are predictions, not findings: a high score means “possibly damaging”, not “causes disease”, and everyone carries some rare, high-scoring changes. They complement VEP, which names the effect, and ClinVar, which reports what labs have seen. Some downloads are large; CADD is about 85 GB.",
     accepts: VCF, file: "helen", button: "Annotate",
     checklist: { key: "scores", title: "Which?", items: SCORES.map(function (s, i) {
       return { value: s[0], label: s[1], aside: s[2], desc: s[3], on: i < 2 };
@@ -130,6 +138,8 @@
   T.define({
     slug: "variant-table", label: "Variant table", op: "vcf/table", group: "Annotate", keywords: "spreadsheet sqlite tsv parquet search",
     desc: "Turns a VCF into a table you can open in a spreadsheet or search by gene, one row per variant, with the annotations already added.",
+    learn: "Use it to browse your own variants: filter by gene, find an rsID someone mentioned, or sort by how common a change is. A VCF is hard to read by eye; a table isn’t.\n\n" +
+      "It adds no new knowledge of its own. Run VEP, ClinVar or Frequencies and scores first, and their columns come along. A whole genome gives millions of rows, more than Excel can open, so for the full table use the searchable database or Parquet.",
     accepts: VCF, file: "helen", button: "Make the table",
     fields: [
       f.seg("format", "Format", "Parquet is smaller and faster for large tables", "format", [["tsv", "TSV"], ["parquet", "Parquet"]], "tsv"),
@@ -154,6 +164,8 @@
   T.define({
     slug: "pharmacogenomics", label: "Pharmacogenomics", op: "vcf/pharmcat", group: "Annotate", keywords: "pharmcat medicines drugs cpic cyp2c19",
     desc: "PharmCAT reads the genes that affect how some medicines work, such as CYP2C19 and SLCO1B1, and reports each gene’s type with the published dosing guidance.",
+    learn: "Use it if you’re curious how your genes may affect some medicines, for example CYP2C19 and the blood thinner clopidogrel, or SLCO1B1 and statins. PharmCAT names each gene’s star alleles and the published guideline that applies to them.\n\n" +
+      "A home genome can miss variants, and some genes, such as CYP2D6, are hard to read from short reads (Gene typing tries). This isn’t a clinical test: never start, stop or change a medicine because of it. Bring it to your doctor or pharmacist, who can order a clinical test if it matters.",
     accepts: VCF, file: "helen", button: "Run PharmCAT", requires: ["pharmcat"],
     fields: [
       f.toggle("absent", "Missing positions match the reference", "For a whole-genome VCF that lists only differences (not a gVCF): a position it doesn’t mention matches the reference", "absent_to_ref", true),
@@ -183,6 +195,8 @@
     slug: "typing", label: "Gene typing", op: "typing/hla · typing/cyp2d6 · typing/smn · typing/str", group: "Annotate",
     keywords: "hla cyp2d6 smn str expansionhunter t1k cyrius repeat",
     desc: "Reads genes too variable for ordinary variant calling: the HLA genes of the immune system, CYP2D6 for medicines, SMN1 and SMN2, and repeat expansions.",
+    learn: "Use it for genes that ordinary variant calling reads poorly, because they vary enormously, come in near-identical copies, or are long repeats. Each gets its own specialised tool: T1K for HLA, Cyrius for CYP2D6, and ExpansionHunter for repeats.\n\n" +
+      "HLA types matter for transplant matching and some drug reactions, CYP2D6 for many medicines, SMN1 copies for spinal muscular atrophy carrier status, and repeat lengths for conditions such as Huntington’s disease. These are research readings from a home genome, not clinical results: anything that matters for your health needs a clinical test.",
     accepts: ["reads"], file: "reginald", button: "Start typing",
     checklist: { key: "genes", title: "Which genes?", items: TYPING.map(function (t, i) {
       return { value: t[0], label: t[1], desc: t[2], on: i === 0 };

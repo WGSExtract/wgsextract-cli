@@ -14,6 +14,8 @@
   T.define({
     slug: "coverage", label: "Coverage per chromosome", op: "info/calculate-coverage", group: "Quality", keywords: "depth breadth bins targets bed",
     desc: "Measures how many reads cover each place in the genome: the average per chromosome, how much is covered at all, and depth on targets such as a gene panel.",
+    learn: "Use it to check a genome before relying on it: whether the depth is what the lab promised, whether any chromosome is thin, and whether X and Y depth fit the expected sex. About 30× on average, with nearly everything covered, is a good whole genome.\n\n" +
+      "Low or patchy coverage explains missing markers in DNA-test files and uncertain calls later. With a BED file of genes, it reports depth on just those, which is how labs judge a gene panel or exome.",
     accepts: READS, file: "reginald", button: "Measure coverage",
     fields: [
       f.toggle("bins", "Depth bands", "How much of each chromosome has 0, 1–3, 4–7 and 8 or more reads", "with_bins", true),
@@ -37,6 +39,8 @@
   T.define({
     slug: "read-quality", label: "Read quality", op: "qc/fastqc · qc/fastp", group: "Quality", keywords: "fastqc fastp multiqc adapters",
     desc: "Checks raw reads before aligning: base quality along the read, adapters left on, duplication and GC content. Use it when a lab’s reads look wrong.",
+    learn: "Use it on FASTQ files before aligning, or when a genome looks odd: few reads mapped, uneven coverage, strange calls. FastQC draws the standard charts; fastp gives a quicker summary and can trim adapters.\n\n" +
+      "Most labs’ reads pass easily, and a few warnings are normal for whole genomes. If quality really is poor, contact the lab before spending hours aligning. Coverage and Contamination check the aligned genome instead.",
     accepts: ["fastq", "reads"], file: "fastq", button: "Check the reads",
     fields: [
       f.seg("program", "Program", function (c) {
@@ -64,6 +68,8 @@
   T.define({
     slug: "contamination", label: "Contamination", op: "qc/contamination", group: "Quality", keywords: "verifybamid2 freemix",
     desc: "Estimates how much of the sample is another person’s DNA. Above about 2%, results such as rare variants become unreliable.",
+    learn: "Use it once on any genome you plan to rely on, especially if something looks odd. Another person’s reads don’t make anything fail; they quietly turn some of your genotypes into mixed ones, which spoils DNA-test files, haplogroups and rare-variant findings.\n\n" +
+      "VerifyBamID2 compares the reads at common SNPs with population frequencies; a clean sample shows close to 0%. If it’s high, ask the lab. Relatedness catches the other kind of mix-up: a file that isn’t who it should be.",
     accepts: READS, file: "reginald", button: "Check contamination", requires: ["verifybamid2"],
     fields: [f.seg("sites", "Marker set", function (c) {
       return c.v.sites === "10k" ? "Faster and noisier; for low depth" : "1000 Genomes markers; the default";
@@ -79,6 +85,8 @@
   T.define({
     slug: "relatedness", label: "Relatedness", op: "qc/relate", group: "Quality", keywords: "somalier family sample swap kinship",
     desc: "Compares genomes to each other: parent and child, siblings, the same person twice, or unrelated. A pair that should be related but isn’t is a likely sample swap.",
+    learn: "Use it when you have genomes for several family members, to confirm relationships before relying on them and to catch a mislabelled file. It also infers each sample’s sex from X and Y and checks it against what was recorded.\n\n" +
+      "somalier compares a set of common sites, so it’s quick. It tells the same person, parent and child, siblings and second-degree relatives apart, and more distant degrees only roughly. It isn’t a genealogy matching service: to find cousins in other families, upload DNA-test files to matching sites.",
     accepts: READS, file: "reginald", noInput: true, button: "Compare", requires: ["somalier"],
     checklist: { key: "people", title: "Whose genomes?", items: [
       { value: "reginald", label: "Reginald", aside: "CRAM", desc: "reginald-mcdonald.GRCh38.30x.cram", on: true },
@@ -121,6 +129,8 @@
   T.define({
     slug: "vcf-quality", label: "VCF quality", op: "qc/vcf", group: "Quality", keywords: "ti/tv heterozygosity stats",
     desc: "Summarises a VCF: how many SNPs and indels, the ratio of transitions to transversions, heterozygosity and quality. Unusual numbers point to a problem with the calls.",
+    learn: "Use it after calling variants, or on a VCF a lab sent, to see whether the calls look like a typical human genome: for a 30× genome, about 4 to 5 million variants, a ratio of transitions to transversions near 2, and somewhat more heterozygous than homozygous variants.\n\n" +
+      "Numbers far from these point to contamination, low coverage, the wrong reference or a caller set up wrongly. It doesn’t judge individual variants; it’s a sanity check before annotation.",
     accepts: ["vcf"], file: "helen", button: "Check the VCF",
     fields: [],
     run: function (c) {

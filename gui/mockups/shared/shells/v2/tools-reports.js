@@ -8,6 +8,8 @@
   T.define({
     slug: "report", label: "Personal report", op: "report", group: "Reports", keywords: "summary findings acmg secondary",
     desc: "One readable report from the results already made for this person: lineage, ancestry, quality, medicines and reported health variants. It runs no analysis itself, so it takes seconds.",
+    learn: "Use it when you want the highlights in one place, to read or share, instead of opening each result: lineage, ancestry, quality checks, medicine–gene results and reported variants that earlier tools found.\n\n" +
+      "It only includes what has been run, so run more tools first for a fuller report. It’s written for personal interest: its health sections are research results, not a diagnosis, and anything important should be confirmed by a clinical test.",
     accepts: ["reads", "vcf"], file: "reginald", button: "Make the report",
     fields: [
       f.select("genes", "Health genes", "The ClinVar section looks only at these; the ACMG list is genes where a finding is medically actionable", "gene_list",
@@ -31,6 +33,8 @@
   T.define({
     slug: "pgs", label: "Polygenic scores", op: "score/pgs", group: "Reports", keywords: "prs pgs catalog trait risk",
     desc: "Adds up many small effects across the genome into one score for a trait, and places it among a reference population. A score shifts odds a little; it predicts nothing for one person on its own.",
+    learn: "Use it out of curiosity about a trait such as height, or to try published scores from the PGS Catalog. The result is a percentile among a reference population, “higher than 70% of people”, not a chance of anything happening to you.\n\n" +
+      "Scores work best for people whose ancestry matches the studies behind them, mostly of European ancestry so far, and lifestyle, environment and family history often matter more. Research use only: don’t change treatment or screening because of a score. Only the score’s ID and build are sent to the PGS Catalog, never your genotypes.",
     accepts: ["vcf"], file: "helen", button: "Score",
     fields: [
       f.select("trait", "Trait", "Curated scores from the PGS Catalog", "trait",
@@ -64,6 +68,8 @@
   T.define({
     slug: "methylation", label: "Methylation", op: "methylation/pileup", group: "Reports", keywords: "5mc 5hmc cpg modkit epigenetics nanopore",
     desc: "Reads which cytosines carry methyl marks, which switch genes on and off, from Nanopore or PacBio reads that recorded them.",
+    learn: "Use it if you sequenced with Nanopore or PacBio and the reads kept their modification tags: the same reads then show where cytosines are methylated, mostly at CpG sites, without a separate test. Ordinary Illumina genomes don’t record it.\n\n" +
+      "Methylation differs between tissues and changes with age and environment, so a saliva or blood sample shows that tissue at that time. It’s research: patterns are interesting to explore, but they aren’t health results.",
     accepts: ["reads"], file: "reginald", button: "Read methylation", requires: ["modkit"],
     fields: [
       f.seg("context", "Sites", function (c) {

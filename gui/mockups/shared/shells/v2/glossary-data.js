@@ -169,6 +169,16 @@
       short: "How many copies of a chromosome a person has: two for most, one X and one Y in a male.",
       more: "A caller needs it to avoid reporting impossible mixed genotypes on a male’s X or Y." },
 
+    zygosity: { term: "Heterozygous", aliases: ["heterozygous", "homozygous", "heterozygosity"],
+      short: "Two different letters at a position, one from each parent (A/G); homozygous means two the same (G/G).",
+      more: "A genome has more heterozygous than homozygous variants. Too many mixed-looking genotypes can point to contamination; on a male’s X and Y there’s only one copy, so variants there aren’t heterozygous." },
+    titv: { term: "Ti/Tv", aliases: ["transitions to transversions", "transitions", "transversions"],
+      short: "The ratio of transitions (A↔G, C↔T changes) to transversions (every other single-letter change).",
+      more: "Transitions happen more often in nature, so real whole-genome calls give about 2.0 to 2.1. A much lower ratio suggests many false calls." },
+    jointcalling: { term: "Joint calling", aliases: ["joint calling", "joint-called", "joint genotyping"],
+      short: "Calling variants for several people together, from each person’s gVCF.",
+      more: "Everyone gets a genotype at the same positions, so the files can be compared directly, and evidence from the group helps where one person’s reads are thin. It’s how family and population studies are usually called." },
+
     /* Lineage and ancestry */
     haplogroup: { term: "Haplogroup", aliases: ["haplogroup", "haplogroups"],
       short: "A branch of the human family tree for one line of descent: Y-DNA (paternal) or mtDNA (maternal).",
@@ -220,6 +230,25 @@
     cyp2d6: { term: "CYP2D6", aliases: [],
       short: "A liver gene that processes many common medicines, such as codeine and some antidepressants.",
       more: "It’s hard to read from short reads because of a near-identical neighbour gene and frequent extra or missing copies, so it needs a specialised caller (Cyrius)." },
+
+    missense: { term: "Missense", aliases: ["missense"],
+      short: "A one-letter change that swaps one amino acid, a building block of a protein, for another.",
+      more: "Its effect ranges from none to serious, depending on where it is and what it swaps; scores such as REVEL and AlphaMissense estimate it. Changes that keep the same amino acid are synonymous; ones that cut the protein short are stop-gained or frameshift." },
+    pathogenic: { term: "Pathogenic", aliases: ["pathogenic", "likely pathogenic", "benign", "likely benign", "VUS"],
+      short: "The label for a variant reported to cause a condition; benign means it doesn’t, and VUS (uncertain significance) means nobody knows yet.",
+      more: "Labels come from submitters’ evidence and can change. One copy of a variant for a recessive condition usually doesn’t affect you. A label in your own data isn’t a diagnosis; a genetic counsellor can explain what it means." },
+    staralleles: { term: "Star allele", aliases: ["star alleles", "star allele"],
+      short: "A named version of a medicine-related gene, such as CYP2C19*2, defined by the variants it carries.",
+      more: "Your two star alleles together give a predicted type, such as a poor, normal or rapid metabolizer, which prescribing guidelines refer to." },
+    pgs: { term: "Polygenic score", aliases: ["polygenic score", "polygenic scores", "PRS", "PGS"],
+      short: "A sum of many small genetic effects across the genome, weighted from studies of one trait.",
+      more: "It places you among a reference population. It shifts the odds a little but predicts nothing for one person on its own, and it’s less reliable for ancestries the studies under-represent." },
+    methylation: { term: "Methylation", aliases: ["methylation", "methylated", "CpG", "5mC"],
+      short: "A chemical mark on DNA, mostly on a C followed by a G (CpG), that helps switch genes on and off.",
+      more: "It doesn’t change the sequence. Nanopore and PacBio reads can record it directly; it differs between tissues and changes with age." },
+    igv: { term: "IGV", aliases: ["genome browser", "Integrative Genomics Viewer"],
+      short: "The Integrative Genomics Viewer, a free desktop app for looking at reads and variants along the genome.",
+      more: "Open a BAM, CRAM or VCF with its index to see each read lined up at a position. It’s how people check a single finding by eye." },
 
     /* Computing */
     gpu: { term: "GPU", aliases: ["GPUs", "Metal", "CUDA"],

@@ -245,6 +245,8 @@
   T.define({
     slug: "realign", label: "Realign", op: "realign", group: "Align and call", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
     desc: "Aligns a genome again to another reference, so it can be used with tools and sites that expect that build. The original file is kept.",
+    learn: "Use it when a genome was delivered on an older build, usually GRCh37, and you want the tools, databases and DNA-test sites that expect GRCh38, or T2T for the hardest regions. Your DNA doesn’t change: the same reads are placed again on the new reference.\n\n" +
+      "Every read is aligned again, so it takes hours, and you get a second BAM or CRAM beside the first. Once the new file is checked, Convert can remove the old one. Align FASTQ is the same job for reads that were never aligned; a VCF can’t be realigned, because it holds no reads.",
     accepts: ["reads"], file: "gordon", button: "Start realign", dryRun: true,
     fields: ALIGNER_FIELDS,
     moreTitle: "Aligner, resources and steps",
@@ -299,6 +301,8 @@
   T.define({
     slug: "align", label: "Align FASTQ", op: "align", group: "Align and call", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
     desc: "Places raw reads from a sequencer on a reference genome, making the BAM or CRAM that every other tool reads. The FASTQ files are kept.",
+    learn: "Use it when a lab sent only FASTQ files, or when you’d rather start from the raw reads on a reference of your choice. Nothing else can read FASTQ, so this step comes first.\n\n" +
+      "It’s the longest job here: hours for a whole genome, less with bwa-mem3 or WGS Extract’s GPU builds. bwa, bwa-mem2 and bwa-mem3 are for short reads and give the same kind of result; minimap2 is for long reads. If you already have a BAM or CRAM, use Realign instead.",
     accepts: ["fastq"], file: "fastq", button: "Start aligning", dryRun: false,
     fields: ALIGNER_FIELDS.concat([f.text("sample", "Sample name", "Written into the file; sites and tools show it", "sample", "60820188474839")]),
     moreTitle: "Aligner and resources",
