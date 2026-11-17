@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +14,48 @@ from scripts.ci_moves import select_moves
 from scripts.ci_select_tests import select_tests
 from scripts.ci_test_dependencies import ROOT
 from tests.test_ci_selection import repository
+
+
+def test_1045_whole_tree_scanners_do_not_disable_real_repository_moves(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "checkout"
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "clone",
+            "--shared",
+            "--quiet",
+            "--config",
+            "core.longpaths=true",
+            str(ROOT),
+            str(root),
+        ],
+        check=True,
+    )
+    git(root, "config", "user.email", "test@example.com")
+    git(root, "config", "user.name", "CI test")
+    registration = root / "src" / "wgsextract_cli" / "cli" / "registration"
+    probe = registration / ("ci_move_probe" + ".py")
+    target = registration / ("ci_move_relocated" + ".py")
+    # Keep the real registry intact: removing a registered handler without
+    # updating its lazy target correctly falls back for a different reason.
+    shutil.copyfile(registration / ("pet" + ".py"), probe)
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "real source tree with unreferenced handler")
+    base = git(root, "rev-parse", "HEAD")
+    git(root, "mv", str(probe), str(target))
+    git(root, "commit", "-qm", "byte-identical handler move")
+
+    selected = select_moves(base, "HEAD", repository=root)
+
+    assert selected is not None
+    assert "wgsextract_cli.cli.registration.ci_move_relocated" in selected.modules
+    assert "tests/test_subprocess_text.py" in selected.tests
+    assert "tests/test_text_newlines.py" in selected.tests
+    assert len(selected.tests) < len(list((root / "tests").rglob("test_*.py")))
 
 
 def git(root: Path, *args: str) -> str:
@@ -213,6 +256,40 @@ def test_1045_renamed_away_source_readers_force_normal_selection(
     )
     git(root, "add", ".")
     git(root, "commit", "-qm", "move with source reader")
+    assert select_moves(base, "HEAD", repository=root) is None
+
+
+def test_1045_whole_tree_globs_keep_scanners_without_forcing_full_fallback(
+    tmp_path: Path,
+) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "tests/test_scan.py": "from pathlib import Path\nSOURCE = Path(__file__).resolve().parents[1] / 'src'\ndef test_scan():\n    assert list(SOURCE.rglob('*.py'))\n"
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move under source scanner")
+
+    selected = select_moves(base, "HEAD", repository=root)
+
+    assert selected is not None
+    assert "tests/test_reader.py" in selected.tests
+    assert "tests/test_scan.py" in selected.tests
+
+
+def test_1045_narrow_directory_glob_still_forces_normal_selection(
+    tmp_path: Path,
+) -> None:
+    root, base = moved_repository(
+        tmp_path,
+        extra={
+            "tests/test_scan.py": "from pathlib import Path\nSOURCE = Path(__file__).resolve().parents[1] / 'src' / 'wgsextract_cli' / 'core'\ndef test_scan():\n    assert list(SOURCE.glob('*.py'))\n"
+        },
+    )
+    git(root, "add", ".")
+    git(root, "commit", "-qm", "move under narrower scanner")
+
     assert select_moves(base, "HEAD", repository=root) is None
 
 

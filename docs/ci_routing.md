@@ -129,6 +129,10 @@ fixtures, reaches moved modules **or** modules with rewritten imports.
 Unsafe importer consumers retain the normal selector's inclusion/fail-open
 rules. Remaining old-name imports, deferred literal imports or renamed-away
 file readers force normal selection instead of silently omitting consumers.
+Whole-source recursive globs are not removed-path references when both sides
+of a byte-identical rename remain inside the scan. Their scanner tests and
+importing consumers still run; literal removed paths and narrower directory
+globs retain the normal-selection fallback.
 Before pytest, every selected OS imports the surviving changed modules and
 collects the full suite; collection logs are uploaded even on failure. If no
 test imports the moved modules, the existing tiny smoke pair still supplies

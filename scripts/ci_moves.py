@@ -11,6 +11,10 @@ from pathlib import Path
 from scripts.ci_select_tests import import_graph, selection_context
 from scripts.ci_test_dependencies import ROOT, test_inputs
 
+WHOLE_SOURCE_GLOBS = frozenset(
+    {"src/**", "src/**/*.py", "src/wgsextract_cli/**", "src/wgsextract_cli/**/*.py"}
+)
+
 
 class WithoutImports(ast.NodeTransformer):
     def visit_Import(self, node: ast.Import) -> None:
@@ -30,9 +34,11 @@ class MoveSelection:
     modules: list[str]
 
 
-def references_removed(files: dict[str, Path], removed: set[str], root: Path) -> bool:
+def references_removed(
+    files: dict[str, Path], renames: dict[str, str], root: Path
+) -> bool:
     old_modules = set()
-    for path in removed:
+    for path in renames:
         parts = Path(path).relative_to("src").with_suffix("").parts
         old_modules.add(".".join(parts[:-1] if parts[-1] == "__init__" else parts))
 
@@ -43,8 +49,13 @@ def references_removed(files: dict[str, Path], removed: set[str], root: Path) ->
             for old in old_modules
         )
 
+    # A byte-identical rename stays in these scanners' source universe.
+    # Literal paths and narrower directory readers retain the fallback.
     if any(
-        fnmatchcase(path, pattern) for path in removed for pattern in test_inputs(root)
+        fnmatchcase(old, pattern)
+        and not (pattern in WHOLE_SOURCE_GLOBS and fnmatchcase(new, pattern))
+        for old, new in renames.items()
+        for pattern in test_inputs(root)
     ):
         return True
     for name, file in files.items():
@@ -69,7 +80,7 @@ def references_removed(files: dict[str, Path], removed: set[str], root: Path) ->
                     return True
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
                 if any(old in node.value for old in old_modules) or any(
-                    Path(path).name in node.value for path in removed
+                    Path(path).name in node.value for path in renames
                 ):
                     return True
     return False
@@ -106,7 +117,7 @@ def select_moves(
         if not fields or fields == [""]:
             return None
         changed: set[str] = set()
-        removed: set[str] = set()
+        renames: dict[str, str] = {}
         index = 0
         while index < len(fields):
             status, old = fields[index : index + 2]
@@ -115,7 +126,7 @@ def select_moves(
             if status == "R100":
                 new = fields[index]
                 index += 1
-                removed.add(old)
+                renames[old] = new
             elif status != "M":
                 return None
             for path in (old, new):
@@ -131,12 +142,12 @@ def select_moves(
                 return None
             # Imports rewritten in other modules also need their consumers tested.
             changed.update((old, new))
-        if not removed:
+        if not renames:
             return None
         root = repository.resolve()
         context = selection_context(root)
         graph = import_graph(root)
-        if references_removed(graph.files, removed, root):
+        if references_removed(graph.files, renames, root):
             return None
         modules = {context.by_path[path] for path in changed if path in context.by_path}
         if not modules or modules & graph.unsafe:
@@ -144,6 +155,23 @@ def select_moves(
         tests = {
             test for test, closure in context.closures.items() if closure & modules
         }
+        # Import-only edits can still affect whole-tree static checks.
+        readers = {
+            reader
+            for pattern, readers in test_inputs(root).items()
+            if pattern in WHOLE_SOURCE_GLOBS
+            and any(fnmatchcase(path, pattern) for path in changed)
+            for reader in readers
+        }
+        reader_modules = {
+            context.by_path[path] for path in readers if path in context.by_path
+        }
+        tests.update(readers & context.tests.keys())
+        tests.update(
+            test
+            for test, closure in context.closures.items()
+            if closure & reader_modules
+        )
         for test, closure in context.closures.items():
             if closure & graph.unsafe:
                 if {"wgsextract_cli.main", "wgsextract_cli.cli.parser"} & closure:
