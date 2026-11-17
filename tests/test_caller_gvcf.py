@@ -323,10 +323,11 @@ def parabricks_host(tmp_path, monkeypatch, ram):
     return host
 
 
+@pytest.mark.parametrize("evidence", ["none", "gvcf"])
 @pytest.mark.parametrize("bounded", [False, True])
 @pytest.mark.parametrize("sex", ["Male", "Female"])
 def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
-    sample, parabricks_host, sex, bounded
+    sample, parabricks_host, sex, bounded, evidence
 ):
     """Issue #1058: vcf deepvariant --gpu refused every whole genome, since
     a man's non-PAR chrX/chrY (and every chrM) isn't diploid. pbrun has
@@ -338,7 +339,7 @@ def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
     result = api.vcf.deepvariant(
         api.VcfDeepvariantParams(
             input=sample.bam, ref=sample.ref, outdir=sample.root / "calls",
-            gpu=True, region=region, reference_evidence="gvcf",
+            gpu=True, region=region, reference_evidence=evidence,
         ),
         check=False,
     )  # fmt: skip
@@ -376,9 +377,12 @@ def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
         key=lambda call: (list(sample.sequences).index(call[0]), call[1]),
     )
     outputs = {output.role: output for output in result.outputs}
+    assert all(".ploidy_" not in str(output.path) for output in result.outputs)
+    if evidence == "none":
+        assert ROLE not in outputs
+        return
     gvcf = outputs[ROLE]
     assert Path(gvcf.path).name == "deepvariant.g.vcf.gz"
-    assert all(".ploidy_" not in str(output.path) for output in result.outputs)
     assert gvcf.metrics["engine"] == "parabricks-deepvariant"
     covered: Counter[tuple[str, int]] = Counter()
     for fields in records(gvcf.path):
