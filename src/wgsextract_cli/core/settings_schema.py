@@ -219,6 +219,12 @@ class Settings:
         choices=AUTO_OFF,
         fold_case=True,
     )
+    baq: bool = setting(
+        False,
+        "`vcf snp`/`vcf indel`: enable heuristic base alignment quality "
+        "(BAQ) in bcftools mpileup (slower; may reduce low-depth recall); "
+        "off by default; see docs/variant-confidence.md",
+    )
     reference_evidence: str = setting(
         "none",
         "`vcf snp`/`vcf indel`/`vcf deepvariant`/`vcf gatk`/`vcf clair3`: also "
