@@ -32,6 +32,7 @@ SOURCE = "gui/mockups"
 STATIC = {".html", ".css", ".js", ".json", ".svg", ".png", ".webp", ".md", ".txt"}
 # Small demo genome files and their indexes, for an in-page genome viewer
 GENOME_DATA = {
+    ".bed",
     ".fa",
     ".fai",
     ".gz",

@@ -51,6 +51,9 @@ def bare_repo(tmp_path: Path) -> Path:
     (mockups / "review.html").write_text(
         '<body data-page-id="custom-page">Custom</body>'
     )
+    (mockups / "shared/data/igv").mkdir(parents=True)
+    (mockups / "shared/data/igv/demo.cram").write_text("CRAM demo")
+    (mockups / "shared/data/igv/genes.bed").write_text("chr1\t0\t10\tGENE")
     git(source, "add", ".")
     git(source, "commit", "-m", "idea")
     bare = tmp_path / "repo.git"
@@ -142,6 +145,9 @@ def test_776_shared_notes_roundtrip_and_restart(
         assert "Idea X" in read(base, "/preview/x/")
         assert "mockups/x" in read(base, "/preview/")
         assert "All notes" in read(base, "/notes.html")
+        # The genome viewer's demo files are served like they're published
+        assert read(base, "/preview/x/shared/data/igv/demo.cram") == "CRAM demo"
+        assert "GENE" in read(base, "/preview/x/shared/data/igv/genes.bed")
         for path in ("/serve.py", "/preview/x/serve.py", "/preview/x/leak.txt"):
             with pytest.raises(HTTPError) as error:
                 read(base, path)
