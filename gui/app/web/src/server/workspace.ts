@@ -2,7 +2,8 @@ import type { Dirent } from "node:fs";
 import { chmod, cp, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { relativeTopLevelName, resolveUserPath } from "./paths.js";
-import { claimWorkspaceRoot, isWorkspaceSentinel, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
+import { assertAdoptableWorkspaceRoot, bundleWorkspaceRoot, isWorkspaceSentinel, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
+import { claimUsersWorkspaceRoot, prepareUsersWorkspace, registerUsersWorkspace, syncedEntryNames } from "./users-workspace.js";
 import { configEditorControls } from "../../../shared/rendering.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { errnoCode } from "./errors.js";
@@ -26,16 +27,29 @@ interface WorkspaceFingerprint {
 const syncMetadataFileName = ".workspace-sync.json";
 const syncMetadataVersion = 1;
 
-export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoot: string, explicitWorkspaceRoot: string | undefined = undefined) {
-    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : await claimWorkspaceRoot(manifest);
+/**
+ * Prepares the bundle's hidden {{bundleWorkspace}} (its copy of the bundle and its state) and its visible
+ * {{usersWorkspace}}, and returns the bundle workspace. A test run may name either; an explicit bundle workspace
+ * alone is both.
+ */
+export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoot: string, explicitWorkspaceRoot: string | undefined = undefined, explicitUsersRoot: string | undefined = undefined) {
+    const workspaceRoot = explicitWorkspaceRoot ? path.resolve(explicitWorkspaceRoot) : bundleWorkspaceRoot(manifest);
     if (explicitWorkspaceRoot) {
         await assertSafeExplicitWorkspaceRoot(workspaceRoot, manifest, sourceRoot);
     }
-    await mkdir(workspaceRoot, { recursive: true });
-    await writeWorkspaceSentinel(workspaceRoot);
+    else {
+        await assertAdoptableWorkspaceRoot(workspaceRoot);
+    }
+    const usersRoot = explicitUsersRoot ? path.resolve(explicitUsersRoot) : explicitWorkspaceRoot ? workspaceRoot : await claimUsersWorkspaceRoot(manifest) ?? workspaceRoot;
+    registerUsersWorkspace(workspaceRoot, usersRoot);
     const generatedNames = bootstrappedWorkspaceEntryNames(manifest, workspaceRoot);
     const sourceEntries = (await readdir(sourceRoot, { withFileTypes: true })).filter((entry) => !entry.name.startsWith(".") && !generatedNames.has(entry.name));
     const sourceNames = new Set(sourceEntries.map((entry) => entry.name));
+    if (usersRoot !== workspaceRoot) {
+        await prepareUsersWorkspace(usersRoot, workspaceRoot, sourceNames);
+    }
+    await mkdir(workspaceRoot, { recursive: true });
+    await writeWorkspaceSentinel(workspaceRoot);
     const preservedNames = preservedWorkspaceEntryNames(manifest, workspaceRoot);
     const fingerprint = await workspaceSyncFingerprint(manifest, sourceRoot, sourceEntries, preservedNames);
     await removeStaleWorkspaceEntries(workspaceRoot, sourceNames, preservedNames, await previouslySyncedNames(workspaceRoot));
@@ -88,11 +102,7 @@ async function removeStaleWorkspaceEntries(workspaceRoot: string, sourceNames: S
 
 /** The top-level entries the last sync copied from the bundle. */
 async function previouslySyncedNames(workspaceRoot: string): Promise<Set<string>> {
-    const metadata = await readWorkspaceSyncMetadata(workspaceRoot).catch(() => null);
-    const entries = Array.isArray(metadata?.entries) ? metadata.entries : [];
-    const names = entries.map((entry) => String(entry.path ?? "").split(/[\\/]/)[0] ?? "");
-    return new Set(names.filter((name) => name && name !== "." && name !== ".." &&
-        name !== syncMetadataFileName && name !== workspaceSentinelFileName));
+    return new Set(await syncedEntryNames(workspaceRoot));
 }
 
 async function assertSafeExplicitWorkspaceRoot(workspaceRoot: string, manifest: BundleManifest, sourceRoot: string) {

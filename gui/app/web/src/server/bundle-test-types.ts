@@ -77,6 +77,8 @@ export type BundleTestStepReport = {
 
 export type BundleTestOptions = {
     workspaceURL?: string;
+    /** The users workspace for {{usersWorkspace}}; by default the explicit workspace, else the app's. */
+    usersWorkspaceURL?: string;
     bootstrapConfig?: boolean;
     dryRun?: boolean;
     runSetup?: boolean;

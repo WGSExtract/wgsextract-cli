@@ -4,7 +4,8 @@ import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { errorMessage, renderIcon } from "./model.js";
 import { effectiveWebUIFont, shouldRenderInPageBundleLoader } from "./platform.js";
-import { setRender } from "./rerender.js";
+import { scheduleRender, setRender } from "./rerender.js";
+import { clearAdvancedOnlySettingsInBasicMode } from "./operations-config.js";
 import { captureFocus, restoreFocus } from "./focus-state.js";
 import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
 import { runSetup } from "./operations-setup.js";
@@ -52,6 +53,7 @@ async function bootstrap(locale?: string) {
         state.workspaceLocation = bundle.workspaceLocation ?? null;
         state.exitCodeReference = new Map((bundle.manifest.exitCodeReference ?? []).map((entry) => [Number(entry.code), entry]));
         state.bundleRootPath = bundle.bundleRootPath;
+        state.usersWorkspacePath = bundle.usersWorkspacePath ?? "";
         state.sourceRootPath = bundle.sourceRootPath;
         state.lastResultDocumentPaths = bundle.lastResultDocumentPaths ?? {};
         ensureMainTerminal();
@@ -85,6 +87,7 @@ async function bootstrap(locale?: string) {
             state.setupPromptVisible = setupHasNeverRun() && !state.setupPromptDismissed;
         }
         render();
+        void clearAdvancedOnlySettingsInBasicMode().then(scheduleRender);
         initializeTauriUpdater();
         if (bundle.devReload) {
             installDevReload();

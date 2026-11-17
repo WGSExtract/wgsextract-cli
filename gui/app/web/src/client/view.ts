@@ -8,7 +8,8 @@ export { renderActions, renderPrecheckBanner } from "./view/actions.js";
 import { renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderSettingFolderMoveStatus, renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderCollapsibleCard } from "./view/collapsible.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -121,7 +122,7 @@ export function renderPage(page: BundlePage) {
         <h2>${renderIconTitle(page.title, page.iconName, page.textIcon, "📄")}</h2>
         <p>${escapeHTML(page.summary)}</p>
       </header>
-      ${page.id === "settings" ? `${renderSetupStatusSection()}${state.uiMode === "advanced" ? renderWorkspaceLocationSection() : ""}${renderStandardOptionsAccessory()}` : ""}
+      ${page.id === "settings" ? `${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
         ${renderSections(page)}
       </div>
@@ -134,7 +135,7 @@ export function renderPage(page: BundlePage) {
  * A collapsed section also hides the subsections that continue it.
  */
 export function isSectionCollapsible(section: PageSection): boolean {
-    return state.uiMode === "advanced" && Boolean(section.title) && section.subsection !== true && section.collapsible !== false;
+    return (state.uiMode === "advanced" || section.collapsed === true) && Boolean(section.title) && section.subsection !== true && section.collapsible !== false;
 }
 export function sectionExpansionKey(page: BundlePage, section: PageSection): string {
     return `${page.id}/${String(section.id ?? "")}`;
@@ -148,15 +149,19 @@ export function isSectionExpanded(page: BundlePage, section: PageSection): boole
 }
 function renderSections(page: BundlePage): string {
     let parentCollapsed = false;
-    return visibleSections(page, state.uiMode)
+    const sections = visibleSections(page, state.uiMode);
+    const location = page.id === "settings" && state.uiMode === "advanced" ? renderWorkspaceLocationSection() : "";
+    const editorIndex = sections.findIndex((section) => (section.controls ?? []).some((control) => control.kind === "configEditor"));
+    const rendered = sections
         .map((section) => {
             if (section.subsection === true) {
                 return parentCollapsed ? "" : renderSection(section, page);
             }
             parentCollapsed = !isSectionExpanded(page, section);
             return renderSection(section, page);
-        })
-        .join("");
+        });
+    rendered.splice(editorIndex < 0 ? rendered.length : editorIndex, 0, location);
+    return rendered.join("");
 }
 function renderSectionToggle(page: BundlePage, section: PageSection, expanded: boolean): string {
     const verb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
@@ -508,7 +513,7 @@ export function renderConfigEditor(control: ControlSpec, location: ManifestLocat
             </label>
             <button type="button" class="visually-hidden" data-save-config="${escapeAttribute(control.id)}">${escapeHTML(state.labels.saveButtonTitle)}</button>`
         : `<div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>`}
-      ${(control.settings ?? []).map((setting) => renderConfigSetting(control, setting, location)).join("")}
+      ${(control.settings ?? []).filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => renderConfigSetting(control, setting, location)).join("")}
     </div>
   `;
 }
@@ -551,6 +556,7 @@ export function renderConfigSetting(control: ControlSpec, setting: ConfigSetting
               <button type="button" class="secondary-button" data-config-path-prompt="${escapeAttribute(control.id)}:${escapeAttribute(setting.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
         : `<input id="${escapeAttribute(inputID)}" type="text" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(setting.placeholder ?? "")}" ${common}>`}
     </div>
+    ${setting.kind === "path" ? renderSettingFolderMoveStatus(control.id, setting.key ?? setting.id) : ""}
   `;
 }
 

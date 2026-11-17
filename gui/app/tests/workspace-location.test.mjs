@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -10,18 +10,21 @@ const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { applicationSupportDirectory, normalizeContext } = await import("../dist/web/src/server/paths.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
-const { appDataWorkspacesDirectory, appSettingsPath, defaultWorkspaceRoot, saveWorkspacesDirectory, workspaceLocationInfo } =
-  await import("../dist/web/src/server/workspace-location.js");
+const { appDataWorkspacesDirectory, appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
+const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
 const { moveWorkspace } = await import("../dist/web/src/server/workspace-move.js");
 const { displayWorkspacePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
+const { parseFlatToml } = await import("../dist/shared/rendering.js");
 
 const settingsControl = {
   id: "paths",
   label: "Paths",
   kind: "configEditor",
-  configFile: { path: "{{bundleWorkspace}}/settings/config.toml", format: "toml" },
+  configFile: { path: "{{usersWorkspace}}/config.toml", previousPaths: ["{{bundleWorkspace}}/config.toml"], format: "toml" },
   settings: [
-    { id: "output", key: "output_directory", label: "Output", kind: "path" },
+    { id: "output", key: "output_directory", label: "Output", kind: "path", moveContents: true },
+    { id: "reference", key: "reference_library", label: "Reference", kind: "path", moveContents: true },
+    { id: "genomes", key: "reference_genome_library", label: "Genomes", kind: "path", moveContents: true },
     { id: "elsewhere", key: "elsewhere", label: "Elsewhere", kind: "path" },
   ],
 };
@@ -29,6 +32,7 @@ const manifest = {
   id: "location.bundle",
   displayName: "Location Fixture",
   summary: "Tests where workspaces live.",
+  defaultUsersWorkspace: "~/visible-workspace",
   pages: [{ id: "main", title: "Main", summary: "Main page.", sections: [{ id: "main", controls: [settingsControl] }] }],
 };
 
@@ -47,11 +51,7 @@ async function fixture(t, fixtureManifest = manifest) {
   const original = {};
   for (const [key, value] of Object.entries(dataEnvironment(root))) {
     original[key] = process.env[key];
-    if (value === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = value;
-    }
+    process.env[key] = value;
   }
   t.after(async () => {
     for (const [key, value] of Object.entries(original)) {
@@ -66,303 +66,304 @@ async function fixture(t, fixtureManifest = manifest) {
   const source = path.join(root, "source");
   await mkdir(source, { recursive: true });
   await writeFile(path.join(source, "manifest.json"), JSON.stringify(fixtureManifest));
-  return { root, source };
+  return {
+    root,
+    source,
+    bundle: path.join(root, "data", "test.app", "BundleWorkspaces", "location.bundle"),
+    users: path.join(root, "visible-workspace"),
+  };
 }
 
 function move(request) {
   return moveWorkspace({ manifest, onProgress: () => undefined, signal: new AbortController().signal, ...request });
 }
 
-test("a bundle can default its workspace to a visible folder in the home folder", async (t) => {
-  const declared = { ...manifest, defaultWorkspace: "~/visible-workspace" };
-  const { source } = await fixture(t, declared);
+async function settingsIn(file) {
+  return { ...parseFlatToml(await readFile(file, "utf8")) };
+}
 
-  assert.equal(await prepareBundleWorkspace(declared, source), path.join(homedir(), "visible-workspace"));
-  assert.equal(defaultWorkspaceRoot(manifest), path.join(appDataWorkspacesDirectory(), "location.bundle"));
-  for (const defaultWorkspace of ["/etc/app", "~/.hidden", "~/a/b", "~/../up"]) {
-    assert.throws(() => defaultWorkspaceRoot({ ...manifest, defaultWorkspace }), /defaultWorkspace/);
+test("the bundle workspace is the app's, in its data folder; the users workspace is a visible folder in the home folder", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+
+  assert.equal(await prepareBundleWorkspace(manifest, source), bundle);
+  assert.equal(path.dirname(bundle), appDataWorkspacesDirectory());
+  assert.equal(usersWorkspaceFor(bundle), users);
+  assert.equal(await readFile(path.join(users, ".users-workspace"), "utf8"), "WGS Extract users workspace\n");
+  // The app's copy of the bundle stays out of the user's folder.
+  await stat(path.join(bundle, "manifest.json"));
+  await assert.rejects(stat(path.join(users, "manifest.json")), { code: "ENOENT" });
+
+  const info = await usersWorkspaceLocationInfo(manifest, users);
+  assert.deepEqual(info, { workspaceRoot: users, defaultRoot: users, usingDefault: true });
+
+  // A bundle without one uses its bundle workspace for {{usersWorkspace}}, and has no location to show.
+  const plain = { ...manifest, id: "plain.bundle", defaultUsersWorkspace: undefined };
+  const plainSource = path.join(root, "plain");
+  await mkdir(plainSource);
+  await writeFile(path.join(plainSource, "manifest.json"), JSON.stringify(plain));
+  const plainBundle = await prepareBundleWorkspace(plain, plainSource);
+  assert.equal(usersWorkspaceFor(plainBundle), plainBundle);
+  assert.equal(await usersWorkspaceLocationInfo(plain, plainBundle), undefined);
+
+  for (const defaultUsersWorkspace of ["/etc/app", "~/.hidden", "~/a/b", "~/../up"]) {
+    await assert.rejects(prepareBundleWorkspace({ ...manifest, defaultUsersWorkspace }, source), /defaultUsersWorkspace/);
   }
 });
 
-test("PR #531 review: a folder of the user's with the default name is left alone and the next free name is used from then on", async (t) => {
-  const declared = { ...manifest, defaultWorkspace: "~/visible-workspace" };
-  const { root, source } = await fixture(t, declared);
-  for (const name of ["visible-workspace", "visible-workspace-2"]) {
-    await mkdir(path.join(root, name));
-    await writeFile(path.join(root, name, "manifest.json"), "someone else's");
+test("a folder of the user's with the default name is left alone and the next free name is used from then on", async (t) => {
+  const { source, users } = await fixture(t);
+  await mkdir(users);
+  await writeFile(path.join(users, "notes.txt"), "mine");
+
+  const bundle = await prepareBundleWorkspace(manifest, source);
+
+  assert.equal(usersWorkspaceFor(bundle), `${users}-2`);
+  assert.equal(await readFile(path.join(users, "notes.txt"), "utf8"), "mine");
+  await rm(path.join(users, "notes.txt"));
+  await prepareBundleWorkspace(manifest, source);
+  assert.equal(usersWorkspaceFor(bundle), `${users}-2`, "the recorded folder stays the default");
+});
+
+test("a users workspace the CLI made is shared, not passed over", async (t) => {
+  const { source, users } = await fixture(t);
+  await mkdir(path.join(users, "output"), { recursive: true });
+  await writeFile(path.join(users, ".users-workspace"), "WGS Extract users workspace\n");
+  await writeFile(path.join(users, "config.toml"), "cpu_threads = 4\n");
+
+  const bundle = await prepareBundleWorkspace(manifest, source);
+
+  assert.equal(usersWorkspaceFor(bundle), users);
+});
+
+test("a folder chosen in Settings that isn't a users workspace fails saying how to recover, and is left alone", async (t) => {
+  const { root, source } = await fixture(t);
+  const chosen = path.join(root, "chosen");
+  await mkdir(chosen);
+  await writeFile(path.join(chosen, "keep.txt"), "someone else's");
+  await saveUsersWorkspace(manifest, chosen);
+
+  await assert.rejects(prepareBundleWorkspace(manifest, source), /usersWorkspaces/);
+  assert.equal(await readFile(path.join(chosen, "keep.txt"), "utf8"), "someone else's");
+});
+
+test("the home folder workspace of 0.8.5 to 0.8.7 becomes the users workspace, keeping the user's files", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await mkdir(path.join(source, "pages"));
+  await writeFile(path.join(source, "pages", "main.json"), "{}");
+  // As 0.8.7 left it: the bundle's copy, its state and the user's folders, all in ~/visible-workspace.
+  await mkdir(path.join(users, "pages"), { recursive: true });
+  await writeFile(path.join(users, "manifest.json"), JSON.stringify(manifest));
+  await writeFile(path.join(users, "pages", "main.json"), "{}");
+  await writeFile(path.join(users, ".bundle-workspace"), "WGS Extract GUI workspace\n");
+  // A dev bundle's sync record can also name the user's logs folder, which the bundle itself doesn't have.
+  await writeFile(path.join(users, ".workspace-sync.json"), JSON.stringify({ entries: [{ path: "manifest.json" }, { path: "pages" }, { path: path.join("pages", "main.json") }, { path: "logs" }] }));
+  await mkdir(path.join(users, "logs"), { recursive: true });
+  await writeFile(path.join(users, "logs", "run.log"), "kept");
+  await writeFile(path.join(users, "state.json"), JSON.stringify({ fieldValues: { bam: path.join(users, "datasets", "a.bam") } }));
+  await mkdir(path.join(users, "reference"), { recursive: true });
+  await writeFile(path.join(users, "reference", "hg38.fa"), "ACGT");
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(path.join(users, "reference"))}\n`);
+  await mkdir(path.dirname(appSettingsPath()), { recursive: true });
+  await writeFile(appSettingsPath(), JSON.stringify({ unrelated: true }));
+
+  assert.equal(await prepareBundleWorkspace(manifest, source), bundle);
+
+  assert.equal(usersWorkspaceFor(bundle), users);
+  assert.equal(await readFile(path.join(users, "reference", "hg38.fa"), "utf8"), "ACGT");
+  assert.equal(await readFile(path.join(users, "logs", "run.log"), "utf8"), "kept");
+  assert.equal((await settingsIn(path.join(users, "config.toml"))).reference_library, path.join(users, "reference"));
+  for (const name of ["manifest.json", "pages", "state.json", ".workspace-sync.json", ".bundle-workspace"]) {
+    await assert.rejects(stat(path.join(users, name)), { code: "ENOENT" }, name);
   }
+  assert.deepEqual(JSON.parse(await readFile(path.join(bundle, "state.json"), "utf8")).fieldValues, { bam: path.join(users, "datasets", "a.bam") });
+  assert.equal(JSON.parse(await readFile(appSettingsPath(), "utf8")).unrelated, true);
 
-  const fallback = path.join(root, "visible-workspace-3");
-  assert.equal(await prepareBundleWorkspace(declared, source), fallback);
-  assert.equal(await readFile(path.join(root, "visible-workspace", "manifest.json"), "utf8"), "someone else's");
-  assert.equal(await readFile(path.join(root, "visible-workspace-2", "manifest.json"), "utf8"), "someone else's");
-  // Still there once the user's folder is gone: the workspace doesn't jump back.
-  await rm(path.join(root, "visible-workspace"), { recursive: true });
-  assert.equal(await prepareBundleWorkspace(declared, source), fallback);
-  assert.equal((await workspaceLocationInfo(declared, fallback)).usingDefault, true);
+  // Where 0.8.5 to 0.8.7 recorded a moved workspace, that folder is the users workspace.
+  const other = await fixture(t);
+  const moved = path.join(other.root, "big drive", "location.bundle");
+  await mkdir(moved, { recursive: true });
+  await writeFile(path.join(moved, ".bundle-workspace"), "WGS Extract GUI workspace\n");
+  await mkdir(path.dirname(appSettingsPath()), { recursive: true });
+  await writeFile(appSettingsPath(), JSON.stringify({ bundleWorkspacesDirectory: path.join(other.root, "big drive") }));
+  const otherBundle = await prepareBundleWorkspace(manifest, other.source);
+  assert.equal(usersWorkspaceFor(otherBundle), moved);
+  assert.equal(JSON.parse(await readFile(appSettingsPath(), "utf8")).bundleWorkspacesDirectory, undefined);
 });
 
-test("PR #531 re-review: a file, or a folder that can't be read, with the default name doesn't stop the backend", async (t) => {
-  const declared = { ...manifest, defaultWorkspace: "~/visible-workspace" };
-  const { root, source } = await fixture(t, declared);
-  await writeFile(path.join(root, "visible-workspace"), "");
-  // Permissions don't hide a folder from root or on Windows.
-  const unreadable = process.platform !== "win32" && process.getuid?.() !== 0;
-  if (unreadable) {
-    await mkdir(path.join(root, "visible-workspace-2"), { mode: 0o000 });
-  }
+test("a settings file an earlier release kept in the bundle workspace moves to the users workspace; its folders stay", async (t) => {
+  const { source, bundle, users } = await fixture(t);
+  const reference = path.join(bundle, "reference");
+  await mkdir(reference, { recursive: true });
+  await writeFile(path.join(bundle, ".bundle-workspace"), "WGS Extract GUI workspace\n");
+  await writeFile(path.join(bundle, "config.toml"), `reference_library = ${JSON.stringify(reference)}\n`);
+  const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-store.js");
 
-  const fallback = path.join(root, unreadable ? "visible-workspace-3" : "visible-workspace-2");
-  try {
-    assert.equal(await prepareBundleWorkspace(declared, source), fallback);
-  } finally {
-    if (unreadable) {
-      await chmod(path.join(root, "visible-workspace-2"), 0o700);
-    }
-  }
-  assert.equal(await readFile(path.join(root, "visible-workspace"), "utf8"), "");
+  await prepareBundleWorkspace(manifest, source);
+  await bootstrapConfigFiles(manifest, bundle, {});
+
+  assert.equal((await settingsIn(path.join(users, "config.toml"))).reference_library, reference);
+  await assert.rejects(stat(path.join(bundle, "config.toml")), { code: "ENOENT" });
+  await stat(reference);
 });
 
-test("a folder chosen in Settings that isn't a workspace fails saying how to recover, and is left alone", async (t) => {
-  const { root, source } = await fixture(t);
-  await mkdir(path.join(root, "chosen", "location.bundle"), { recursive: true });
-  await writeFile(path.join(root, "chosen", "location.bundle", "notes.txt"), "mine");
-  await saveWorkspacesDirectory(path.join(root, "chosen"));
+test("moving the users workspace takes everything in it along, and saved paths follow unless set elsewhere", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const elsewhere = path.join(root, "shared", "reference");
+  await mkdir(path.join(users, "reference"), { recursive: true });
+  await writeFile(path.join(users, "reference", "hg38.fa"), "ACGT");
+  await saveConfig(settingsControl, undefined, {
+    output_directory: "{{usersWorkspace}}/output",
+    reference_library: path.join(users, "reference"),
+    reference_genome_library: path.join(users, "reference", "genomes"),
+    elsewhere,
+  }, bundle);
+  await writeFile(path.join(bundle, "state.json"), JSON.stringify({ fieldValues: { bam: path.join(users, "mygenomes", "a.bam"), other: elsewhere } }));
 
-  await assert.rejects(prepareBundleWorkspace(manifest, source), (error) => error.message.includes("bundleWorkspacesDirectory") && error.message.includes(appSettingsPath()));
-  assert.equal(await readFile(path.join(root, "chosen", "location.bundle", "notes.txt"), "utf8"), "mine");
+  const chosen = path.join(root, "big drive", "wgs");
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: chosen });
+
+  await assert.rejects(stat(users), { code: "ENOENT" });
+  assert.equal(await readFile(path.join(chosen, "reference", "hg38.fa"), "utf8"), "ACGT");
+  assert.deepEqual(await settingsIn(path.join(chosen, "config.toml")), {
+    output_directory: path.join(chosen, "output"),
+    reference_library: path.join(chosen, "reference"),
+    reference_genome_library: path.join(chosen, "reference", "genomes"),
+    elsewhere,
+  });
+  const state = JSON.parse(await readFile(path.join(bundle, "state.json"), "utf8"));
+  assert.deepEqual(state.fieldValues, { bam: path.join(chosen, "mygenomes", "a.bam"), other: elsewhere });
+
+  assert.equal(await prepareBundleWorkspace(manifest, source), bundle);
+  assert.equal(usersWorkspaceFor(bundle), chosen);
+  assert.equal((await usersWorkspaceLocationInfo(manifest, chosen)).usingDefault, false);
+
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: null });
+  await prepareBundleWorkspace(manifest, source);
+  assert.equal(usersWorkspaceFor(bundle), users);
+  assert.equal(await readFile(path.join(users, "reference", "hg38.fa"), "utf8"), "ACGT");
 });
 
-test("moving keeps setup's run when its runtime is outside the workspace, in the app's data folder", async (t) => {
-  const { root, source } = await fixture(t);
-  const current = await prepareBundleWorkspace(manifest, source);
-  await writeFile(path.join(current, "state.json"), JSON.stringify({ setupRun: { status: "ok" } }));
+test("changing one folder setting moves what is in it, and the settings inside it follow", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const reference = path.join(users, "reference");
+  await mkdir(path.join(reference, "genomes"), { recursive: true });
+  await writeFile(path.join(reference, "genomes", "hg38.fa"), "ACGT");
+  await writeFile(path.join(users, "config.toml"), "cpu_threads = 4\n");
+  await saveConfig(settingsControl, undefined, {
+    output_directory: path.join(users, "output"),
+    reference_library: reference,
+    reference_genome_library: path.join(reference, "genomes"),
+    elsewhere: "",
+  }, bundle);
 
-  const chosen = path.join(root, "big drive");
-  await move({ sourceRoot: source, workspaceRoot: current, directory: chosen });
+  const fast = path.join(root, "fast disk", "reference");
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
 
-  const state = JSON.parse(await readFile(path.join(chosen, "location.bundle", "state.json"), "utf8"));
-  assert.deepEqual(state.setupRun, { status: "ok" });
-});
+  await assert.rejects(stat(reference), { code: "ENOENT" });
+  assert.equal(await readFile(path.join(fast, "genomes", "hg38.fa"), "utf8"), "ACGT");
+  const settings = await settingsIn(path.join(users, "config.toml"));
+  assert.equal(settings.reference_library, fast);
+  assert.equal(settings.reference_genome_library, path.join(fast, "genomes"));
+  assert.equal(settings.output_directory, path.join(users, "output"));
+  assert.equal(settings.cpu_threads, 4, "a setting the editor doesn't show is kept");
 
-test("moving takes the contents along, and saved paths follow unless set elsewhere", async (t) => {
-  const { root, source } = await fixture(t);
-  const current = await prepareBundleWorkspace(manifest, source);
-  const elsewhere = path.join(root, "my outputs");
-  await saveConfig(settingsControl, undefined, { output_directory: "{{bundleWorkspace}}/output", elsewhere }, current);
-  await mkdir(path.join(current, "reference"));
-  await writeFile(path.join(current, "reference", "hg38.fa"), "ACGT");
-  await writeFile(path.join(current, "state.json"), JSON.stringify({
-    fieldValues: { bam: path.join(current, "genomes", "a.bam"), other: elsewhere },
-    setupRun: { status: "ok" },
-  }));
-  // A CLI runtime setup installed in the workspace (WGS Extract's, up to 0.8.6) holds absolute paths.
-  await mkdir(path.join(current, "runtime", "tool", "bin"), { recursive: true });
-
-  const chosen = path.join(root, "big drive");
-  await move({ sourceRoot: source, workspaceRoot: current, directory: chosen });
-
-  const moved = path.join(chosen, "location.bundle");
-  await assert.rejects(stat(current), { code: "ENOENT" });
-  assert.equal(await readFile(path.join(moved, "reference", "hg38.fa"), "utf8"), "ACGT");
-  const config = await readFile(path.join(moved, "settings", "config.toml"), "utf8");
-
-  const { parseFlatToml } = await import("../dist/shared/rendering.js");
-  assert.deepEqual({ ...parseFlatToml(config) }, { output_directory: path.join(moved, "output"), elsewhere });
-  const state = JSON.parse(await readFile(path.join(moved, "state.json"), "utf8"));
-  assert.deepEqual(state.fieldValues, { bam: path.join(moved, "genomes", "a.bam"), other: elsewhere });
-  assert.equal(state.setupRun, null, "setup has to run again");
-
-  assert.equal(await prepareBundleWorkspace(manifest, source), moved);
-  const info = await workspaceLocationInfo(manifest, moved);
-  assert.equal(info.configuredDirectory, chosen);
-  assert.equal(info.usingDefault, false);
-
-  await move({ sourceRoot: source, workspaceRoot: moved, directory: null });
-  assert.equal(await prepareBundleWorkspace(manifest, source), current);
-  assert.equal(await readFile(path.join(current, "reference", "hg38.fa"), "utf8"), "ACGT");
-  assert.equal((await workspaceLocationInfo(manifest, current)).usingDefault, true);
-});
-
-test("moving leaves the CLI runtime behind, except its record of what setup installed", async (t) => {
-  const { root, source } = await fixture(t);
-  const current = await prepareBundleWorkspace(manifest, source);
-  const tool = path.join(current, "runtime", "wgsextract-cli");
-  await mkdir(path.join(tool, "app", ".pixi"), { recursive: true });
-  await writeFile(path.join(tool, "app", ".pixi", "env"), "absolute paths");
-  await writeFile(path.join(tool, "install-manifest.json"), "{}");
-
-  await move({ sourceRoot: source, workspaceRoot: current, directory: path.join(root, "chosen") });
-
-  const movedTool = path.join(root, "chosen", "location.bundle", "runtime", "wgsextract-cli");
-  await assert.rejects(stat(path.join(movedTool, "app")), { code: "ENOENT" });
-  assert.equal(await readFile(path.join(movedTool, "install-manifest.json"), "utf8"), "{}");
+  // A folder that doesn't exist yet only changes the setting.
+  const output = path.join(root, "outputs");
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: output, setting: { controlID: "paths", key: "output_directory" } });
+  assert.equal((await settingsIn(path.join(users, "config.toml"))).output_directory, output);
+  await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: output, setting: { controlID: "paths", key: "elsewhere" } }), /not a folder the app can move/);
 });
 
 test("folders that are unsafe to move to are refused and nothing changes", async (t) => {
-  const { root, source } = await fixture(t);
-  const current = await prepareBundleWorkspace(manifest, source);
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  await writeFile(path.join(users, "config.toml"), "");
   const occupied = path.join(root, "occupied");
-  await mkdir(path.join(occupied, "location.bundle"), { recursive: true });
-  await writeFile(path.join(occupied, "location.bundle", "keep.txt"), "someone else's");
+  await mkdir(occupied, { recursive: true });
+  await writeFile(path.join(occupied, "keep.txt"), "someone else's");
 
-  for (const [directory, message] of [
+  for (const [folder, message] of [
     ["relative/path", /absolute/],
     [path.join(source, "inside"), /cannot be inside/],
-    [path.join(current, "inside"), /cannot be inside/],
+    [path.join(bundle, "inside"), /cannot be inside/],
+    [path.join(users, "inside"), /cannot be inside/],
+    [root, /cannot hold/],
     [occupied, /already has files/],
   ]) {
-    await assert.rejects(move({ sourceRoot: source, workspaceRoot: current, directory }), message);
+    await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder }), message);
   }
 
-  await stat(path.join(current, "manifest.json"));
-  await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" });
-  assert.equal(await readFile(path.join(occupied, "location.bundle", "keep.txt"), "utf8"), "someone else's");
+  await stat(path.join(users, "config.toml"));
+  assert.equal(await readFile(path.join(occupied, "keep.txt"), "utf8"), "someone else's");
 });
 
-test("a chosen folder keeps its workspace across a changed bundle source", async (t) => {
-  const { root, source } = await fixture(t);
-  await saveWorkspacesDirectory(path.join(root, "chosen"));
-  const workspace = await prepareBundleWorkspace(manifest, source);
-  await writeFile(path.join(workspace, "state.json"), "{}\n");
-
-  const updatedSource = path.join(root, "updated-source");
-  await mkdir(updatedSource);
-  await writeFile(path.join(updatedSource, "manifest.json"), JSON.stringify(manifest));
-
-  assert.equal(await prepareBundleWorkspace(manifest, updatedSource), workspace);
-  assert.equal(await readFile(path.join(workspace, "state.json"), "utf8"), "{}\n");
-});
-
-test("paths in the workspace are shown with the token, and real paths reach the settings file and commands", async (t) => {
+test("paths in a workspace are shown with its token, and real paths reach the settings file and commands", async (t) => {
   const { root } = await fixture(t);
-  const workspace = path.join(root, "workspace");
-  const output = path.join(workspace, "output");
-
-  assert.equal(displayWorkspacePath(output, workspace), "{{bundleWorkspace}}/output");
-  assert.equal(displayWorkspacePath(workspace, workspace), "{{bundleWorkspace}}");
-  assert.equal(displayWorkspacePath(`${workspace}-other`, workspace), `${workspace}-other`);
-  assert.equal(displayWorkspacePath("C:\\Users\\Me\\WGS-Extract\\output", "c:\\users\\me\\wgs-extract"), "{{bundleWorkspace}}/output");
+  const bundle = path.join(root, "bundle");
+  const users = path.join(root, "users");
+  const roots = { bundle, users };
+  assert.equal(displayWorkspacePath(path.join(users, "output"), roots), "{{usersWorkspace}}/output");
+  assert.equal(displayWorkspacePath(path.join(bundle, "logs"), roots), "{{bundleWorkspace}}/logs");
+  assert.equal(displayWorkspacePath(users, roots), "{{usersWorkspace}}");
+  assert.equal(displayWorkspacePath(`${users}-other`, roots), `${users}-other`);
+  assert.equal(displayWorkspacePath("C:\\Users\\Me\\WGS-Extract\\output", { bundle, users: "c:\\users\\me\\wgs-extract" }), "{{usersWorkspace}}/output");
+  // The innermost workspace names a path in both.
+  assert.equal(displayWorkspacePath(path.join(bundle, "users", "x"), { bundle, users: path.join(bundle, "users") }), "{{usersWorkspace}}/x");
+  assert.equal(displayWorkspacePath(path.join(bundle, "x"), { bundle }), "{{bundleWorkspace}}/x");
   assert.equal(relocatePath("/home/me/w/a/b", "/home/me/w", "D:\\w"), "D:\\w\\a\\b");
-  // PR #531 review: a sibling folder written through the workspace is outside it, so a move leaves it alone.
   assert.equal(relocatePath("/home/me/w/../shared-reference", "/home/me/w", "/mnt/disk/w"), "/home/me/w/../shared-reference");
-  assert.equal(displayWorkspacePath(`${workspace}/./output/`, workspace), "{{bundleWorkspace}}/output");
 
-  const { path: configFile } = await saveConfig(settingsControl, undefined, { output_directory: "{{bundleWorkspace}}/output", elsewhere: "" }, workspace);
-  assert.match(await readFile(configFile, "utf8"), /output_directory = /);
-  assert.doesNotMatch(await readFile(configFile, "utf8"), /bundleWorkspace/);
-
-  const context = normalizeContext({ fieldValues: { out_dir: "{{bundleWorkspace}}/output", threads: 4 } }, workspace);
-  assert.deepEqual(context.fieldValues, { out_dir: output, threads: 4 });
+  const { registerUsersWorkspace } = await import("../dist/web/src/server/users-workspace.js");
+  registerUsersWorkspace(bundle, users);
+  const context = normalizeContext({ fieldValues: { out: "{{usersWorkspace}}/output", log: "{{bundleWorkspace}}/logs" } }, bundle);
+  assert.deepEqual(context.fieldValues, { out: path.join(users, "output"), log: path.join(bundle, "logs") });
+  assert.equal(context.usersWorkspacePath, users);
 });
 
-function runUninstallCli(source, ...flags) {
+function uninstall(root, ...flags) {
   return new Promise((resolve) => {
-    execFile(process.execPath, [cli, "--app-data-name", "test.app", ...flags, source], { env: process.env },
-      (error, stdout, stderr) => resolve({ code: error ? error.code : 0, stdout, stderr }));
+    execFile(process.execPath, [cli, ...flags, path.join(root, "source")], { env: { ...process.env, ...dataEnvironment(root) } }, (error, stdout, stderr) => {
+      resolve({ code: error ? error.code : 0, stdout, stderr });
+    });
   });
 }
 
-test("uninstall deletes no workspace without being asked, wherever it is", async (t) => {
-  const { root, source } = await fixture(t);
-  const chosen = path.join(root, "chosen");
-  const appDataWorkspace = await prepareBundleWorkspace(manifest, source);
-  await saveWorkspacesDirectory(chosen);
-  const workspace = await prepareBundleWorkspace(manifest, source);
-  await writeFile(path.join(chosen, "keep.txt"), "not the app's");
+test("uninstall removes the bundle workspace, and the users workspace only when asked", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  // An earlier release's library, kept in the app's data folder, that the settings file still names.
+  const oldReference = path.join(bundle, "reference");
+  await mkdir(oldReference, { recursive: true });
+  await writeFile(path.join(oldReference, "hg38.fa"), "ACGT");
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(oldReference)}\n`);
 
-  const printed = await runUninstallCli(source, "--print-workspace");
-  assert.deepEqual(printed.stdout.trim().split(/\r?\n/), [workspace, appDataWorkspace], printed.stderr);
+  const printed = await uninstall(root, "--print-workspace");
+  assert.equal(printed.code, 0, printed.stderr);
+  assert.deepEqual(printed.stdout.trim().split(/\r?\n/), [users, oldReference]);
 
-  for (const flags of [[], ["--remove-app-data"]]) {
-    const kept = await runUninstallCli(source, ...flags);
-    assert.equal(kept.code, 0, `${kept.stdout}\n${kept.stderr}`);
-    await stat(path.join(workspace, "manifest.json"));
-    await stat(path.join(appDataWorkspace, "manifest.json"));
-  }
-  await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" }, "the rest of the app's data is removed");
+  const kept = await uninstall(root, "--remove-app-data");
+  assert.equal(kept.code, 0, kept.stderr);
+  await assert.rejects(stat(path.join(bundle, "manifest.json")), { code: "ENOENT" });
+  assert.equal(await readFile(path.join(oldReference, "hg38.fa"), "utf8"), "ACGT");
+  await stat(path.join(users, "config.toml"));
+  await assert.rejects(stat(path.join(applicationSupportDirectory(), "test.app", "settings.json")), { code: "ENOENT" });
 
-  await saveWorkspacesDirectory(chosen);
-  const removed = await runUninstallCli(source, "--remove-workspace", "--remove-app-data");
-  assert.equal(removed.code, 0, `${removed.stdout}\n${removed.stderr}`);
-  await assert.rejects(stat(workspace), { code: "ENOENT" });
-  await assert.rejects(stat(path.dirname(appSettingsPath())), { code: "ENOENT" });
-  assert.equal(await readFile(path.join(chosen, "keep.txt"), "utf8"), "not the app's");
-  assert.equal((await runUninstallCli(source, "--print-workspace")).stdout, "");
+  const removed = await uninstall(root, "--remove-workspace", "--remove-app-data");
+  assert.equal(removed.code, 0, removed.stderr);
+  await assert.rejects(stat(users), { code: "ENOENT" });
+  await assert.rejects(stat(oldReference), { code: "ENOENT" });
 });
 
-test("PR #531 review: uninstall runs no steps from, and deletes nothing of, a folder that isn't the app's workspace", async (t) => {
-  const { root, source } = await fixture(t);
-  const unrelated = path.join(appDataWorkspacesDirectory(), "location.bundle");
-  await mkdir(unrelated, { recursive: true });
-  await writeFile(path.join(unrelated, "keep.txt"), "not the app's");
-  await saveWorkspacesDirectory(path.join(root, "chosen"));
-  const workspace = await prepareBundleWorkspace(manifest, source);
+test("uninstall runs no steps from, and deletes nothing of, a folder that isn't the app's", async (t) => {
+  const { root, users } = await fixture(t);
+  await mkdir(users, { recursive: true });
+  await writeFile(path.join(users, "keep.txt"), "mine");
 
-  assert.deepEqual((await runUninstallCli(source, "--print-workspace")).stdout.trim().split(/\r?\n/), [workspace]);
-  const removed = await runUninstallCli(source, "--remove-workspace", "--remove-app-data");
-  assert.equal(removed.code, 0, `${removed.stdout}\n${removed.stderr}`);
-  await assert.rejects(stat(workspace), { code: "ENOENT" });
-  assert.equal(await readFile(path.join(unrelated, "keep.txt"), "utf8"), "not the app's");
-  await assert.rejects(stat(appSettingsPath()), { code: "ENOENT" });
-});
+  const result = await uninstall(root, "--remove-workspace", "--remove-app-data");
 
-test("the settings of an app up to 0.8.6 come over from its identifier's folder, which is removed", async (t) => {
-  await fixture(t);
-  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
-  // As the desktop app starts its backend: naming its own data folder explicitly.
-  process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "WGSExtract-gui";
-  const data = applicationSupportDirectory();
-  const legacy = path.join(data, legacyAppDataName);
-  await mkdir(path.join(legacy, "EBWebView"), { recursive: true });
-  await writeFile(path.join(legacy, "settings.json"), '{"bundleWorkspacesDirectory":"D:\\Genomes"}\n');
-
-  await migrateLegacyAppData();
-
-  assert.equal(await readFile(path.join(data, "WGSExtract-gui", "settings.json"), "utf8"), '{"bundleWorkspacesDirectory":"D:\\Genomes"}\n');
-  await assert.rejects(stat(legacy), { code: "ENOENT" });
-});
-
-test("migrating keeps settings already in the app's data folder, and an old folder that still holds a workspace", async (t) => {
-  await fixture(t);
-  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
-  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
-  const data = applicationSupportDirectory();
-  const legacy = path.join(data, legacyAppDataName);
-  await mkdir(path.join(legacy, "BundleWorkspaces", "wgs-extract"), { recursive: true });
-  await writeFile(path.join(legacy, "settings.json"), "{\"old\":true}\n");
-  await mkdir(path.join(data, "WGSExtract-gui"), { recursive: true });
-  await writeFile(path.join(data, "WGSExtract-gui", "settings.json"), "{\"new\":true}\n");
-
-  await migrateLegacyAppData();
-
-  assert.equal(await readFile(path.join(data, "WGSExtract-gui", "settings.json"), "utf8"), "{\"new\":true}\n");
-  assert.equal(await readFile(path.join(legacy, "settings.json"), "utf8"), "{\"old\":true}\n");
-});
-
-test("a test's or dev run's own data folder name is never migrated into", async (t) => {
-  await fixture(t);
-  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
-  const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
-  await mkdir(legacy, { recursive: true });
-  await writeFile(path.join(legacy, "settings.json"), "{}\n");
-
-  await migrateLegacyAppData();
-
-  assert.equal(await readFile(path.join(legacy, "settings.json"), "utf8"), "{}\n");
-  await assert.rejects(stat(path.join(applicationSupportDirectory(), "test.app")), { code: "ENOENT" });
-});
-
-test("migrating keeps an old data folder that the saved settings put the workspace in", async (t) => {
-  await fixture(t);
-  const { migrateLegacyAppData, legacyAppDataName } = await import("../dist/web/src/server/workspace-location.js");
-  delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
-  const legacy = path.join(applicationSupportDirectory(), legacyAppDataName);
-  await mkdir(path.join(legacy, "mine"), { recursive: true });
-  await writeFile(path.join(legacy, "settings.json"), JSON.stringify({ bundleWorkspacesDirectory: path.join(legacy, "mine") }));
-
-  await migrateLegacyAppData();
-
-  await stat(path.join(legacy, "mine"));
-  assert.match(await readFile(path.join(applicationSupportDirectory(), "WGSExtract-gui", "settings.json"), "utf8"), /mine/);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /setup never ran/);
+  assert.equal(await readFile(path.join(users, "keep.txt"), "utf8"), "mine");
 });

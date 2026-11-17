@@ -1,7 +1,12 @@
 import { checkedOptionsForContext, commandContextFromState, configEditorControls, configValueKey, optionTitle } from "../../../shared/rendering.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
+import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
+/** The workspaces the GUI shows paths relative to. */
+export function workspaceRoots(): WorkspaceRoots {
+    return { bundle: state.bundleRootPath, users: state.usersWorkspacePath || undefined };
+}
 export function commandContext(rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
     return commandContextFromState(state, rowValues, sectionValues);
 }

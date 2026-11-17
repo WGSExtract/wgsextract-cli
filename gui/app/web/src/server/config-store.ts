@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { allControls, configEditorControls, parseFlatToml, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
@@ -292,7 +292,7 @@ async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) 
             continue;
         }
         await mkdir(path.dirname(target), { recursive: true });
-        await rename(previous, target);
+        await moveFile(previous, target);
         const folder = path.dirname(previous);
         const relative = path.relative(bundleRoot, folder);
         if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
@@ -575,6 +575,8 @@ export async function loadConfig(control: ControlSpec, requestedPath: string | u
 }
 export async function saveConfig(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
+    // The CLI saves settings of its own in this file too, which the editor doesn't show: keep them.
+    const existing = await readOptionalFlatToml(filePath) ?? {};
     const byKey: Record<string, unknown> = {};
     for (const setting of control.settings ?? []) {
         const key = settingKey(setting);
@@ -585,7 +587,7 @@ export async function saveConfig(control: ControlSpec, requestedPath: string | u
         // The CLI reads this file too, and knows only real paths.
         byKey[key] = setting.kind === "path" && typeof value === "string" ? expandWorkspaceToken(value, bundleRoot) : value;
     }
-    await writeFileAtomically(filePath, serializeFlatToml(byKey));
+    await writeFileAtomically(filePath, serializeFlatToml({ ...existing, ...byKey }));
     return { path: filePath, keyCount: Object.keys(byKey).length };
 }
 
@@ -635,4 +637,18 @@ function typedSettingValue(setting: ConfigSetting, value: unknown): StateValue {
         throw new Error(`Invalid string value for setting ${settingKey(setting)}.`);
     }
     return value;
+}
+
+/** Renames `from` to `to`, or copies it there and deletes it when they are on different disks. */
+async function moveFile(from: string, to: string) {
+    try {
+        await rename(from, to);
+    }
+    catch (error) {
+        if (errnoCode(error) !== "EXDEV") {
+            throw error;
+        }
+        await copyFile(from, to);
+        await rm(from, { force: true });
+    }
 }

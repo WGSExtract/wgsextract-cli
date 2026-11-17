@@ -760,3 +760,44 @@ test("PR #530 review: a section shown by a value from its own data source appear
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Basic mode clears an advanced-only setting, and changing a moveContents folder asks first", async () => {
+  resetState();
+  const { clearAdvancedOnlySettingsInBasicMode, configSettingChanged } = await import("../dist/web/src/client/operations.js");
+  const control = {
+    id: "paths",
+    kind: "configEditor",
+    configFile: { path: "{{usersWorkspace}}/config.toml", format: "toml" },
+    settings: [
+      { id: "out_dir", key: "output_directory", kind: "path", advancedOnly: true },
+      { id: "ref_path", key: "reference_library", kind: "path", moveContents: true },
+    ],
+  };
+  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control] }] }] };
+  state.configValues = { "paths.out_dir": "/chosen/output", "paths.ref_path": "/lib" };
+  const saved = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (path, options) => {
+    if (path === "/api/config/save") {
+      saved.push(JSON.parse(options.body).values);
+      return Promise.resolve(new Response(JSON.stringify({ path: "/u/config.toml", keyCount: 2 }), { status: 200, headers: { "content-type": "application/json" } }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  try {
+    state.uiMode = "advanced";
+    await clearAdvancedOnlySettingsInBasicMode();
+    assert.deepEqual(saved, [], "Advanced mode keeps it");
+
+    state.uiMode = "basic";
+    await clearAdvancedOnlySettingsInBasicMode();
+    assert.equal(saved.at(-1).output_directory, "");
+    assert.equal(saved.at(-1).reference_library, "/lib");
+
+    await configSettingChanged("/fast/lib", control.settings[1], control);
+    assert.deepEqual(state.workspaceMove?.setting, { controlID: "paths", key: "reference_library", from: "/lib" });
+    assert.equal(state.configValues["paths.ref_path"], "/lib", "unchanged until the user answers");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

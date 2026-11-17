@@ -1,29 +1,33 @@
 #!/usr/bin/env node
 /**
- * Runs a bundle's uninstall steps on the app's workspace for it, without the app's window: the
- * Windows uninstaller and the Linux app's Uninstall run this so that uninstalling the app also
- * removes what its setup installed (the same steps as /api/uninstall/stream). Prints the steps'
- * output; exits 1 if any step failed.
+ * Runs a bundle's uninstall steps without the app's window: the Windows uninstaller and the Linux app's
+ * Uninstall run this so that uninstalling the app also removes what its setup installed (the same steps as
+ * /api/uninstall/stream). Prints the steps' output; exits 1 if any step failed.
  *
  * Usage: bundle-uninstall-cli.js [--app-data-name <name>] [--print-workspace] [--remove-workspace] [--remove-app-data] <bundle>
  * --app-data-name names the app's data folder (default WGSExtract-gui), which holds the CLI runtime that
- * setup installed and the app's settings. The bundle's workspaces are where it is now and, if it was moved or the bundle names no
- * defaultWorkspace, in the app's data folder. They hold the user's libraries, settings and outputs, so
- * they are deleted only with --remove-workspace (ask the user first; --print-workspace only prints
- * their paths, one per line, or nothing if there are none). Unless a step failed, --remove-workspace
- * then deletes them and --remove-app-data the app's data folder, keeping any workspace in it.
+ * setup installed, the app's settings and the bundle's hidden {{bundleWorkspace}}. Unless a step failed, the
+ * bundle workspace is then deleted. The users workspace ({{usersWorkspace}}, ~/wgs-extract), and any folder its
+ * settings file names inside the app's data folder (an older install's reference library, say), hold the
+ * user's settings, libraries and outputs: they are deleted only with --remove-workspace (ask the user first;
+ * --print-workspace only prints their paths, one per line, or nothing if there are none). --remove-app-data then
+ * deletes the app's data folder, keeping whatever the user keeps.
  * WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE, if set, receives the result as JSON (as from the macOS app).
  */
 import { existsSync } from "node:fs";
-import { readdir, rm, rmdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, rmdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { configEditorControls, parseFlatToml } from "../../../shared/rendering.js";
+import type { BundleManifest } from "../../../shared/types.js";
+import { isSameOrInsidePath } from "../../../shared/workspace-paths.js";
 import { loadManifestFromRoot } from "./bundle-loader.js";
 import { leaveAppImageEnvironment } from "./appimage-environment.js";
 import { errorMessage } from "./errors.js";
-import { appSupportDirectory } from "./paths.js";
+import { appSupportDirectory, configPath, resolveUserPath } from "./paths.js";
 import { createProcessManager } from "./process-runner.js";
 import { runUninstall, type SetupSummary } from "./setup-runner.js";
-import { appDataWorkspacesDirectory, isManagedWorkspace, migrateLegacyAppData, resolveWorkspaceRoot, workspaceRootIn } from "./workspace-location.js";
+import { isUsersWorkspace, registerUsersWorkspace, resolveUsersWorkspaceRoot } from "./users-workspace.js";
+import { appDataWorkspacesDirectory, bundleWorkspaceRoot, isManagedWorkspace, migrateLegacyAppData } from "./workspace-location.js";
 
 type UninstallResult = SetupSummary & { log: string[] };
 
@@ -56,20 +60,20 @@ async function main(argv: string[]): Promise<number> {
     await migrateLegacyAppData();
     const manifest = await loadManifestFromRoot(path.resolve(bundle));
     // The webview's data and logs are in folders named for the app's identifier, which the uninstaller removes.
-    const appDataFolders = [appSupportDirectory()];
-    // Where prepareBundleWorkspace keeps the workspace now, which can be outside the app's data folder, and where it is kept by default.
-    const workspace = await resolveWorkspaceRoot(manifest);
-    const appDataWorkspace = workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
-    const workspaces = [workspace, appDataWorkspace].filter((root, index) => index === 0 || path.relative(workspace, root) !== "");
-    const managed: string[] = [];
-    for (const root of workspaces) {
-        if (await isManagedWorkspace(root)) {
-            managed.push(root);
+    const appData = appSupportDirectory();
+    const bundleWorkspace = bundleWorkspaceRoot(manifest);
+    const usersWorkspace = await resolveUsersWorkspaceRoot(manifest);
+    // 0.8.5 to 0.8.7 kept the bundle's copy in the users workspace; one never opened since still has it there.
+    const stepRoots: string[] = [];
+    for (const root of [bundleWorkspace, usersWorkspace]) {
+        if (root && !stepRoots.includes(root) && await isManagedWorkspace(root)) {
+            stepRoots.push(root);
         }
     }
+    const userFolders = await usersFolders(manifest, bundleWorkspace, usersWorkspace, appData);
     if (printWorkspace) {
-        for (const root of managed) {
-            console.log(root);
+        for (const folder of userFolders) {
+            console.log(folder);
         }
         return 0;
     }
@@ -79,39 +83,68 @@ async function main(argv: string[]): Promise<number> {
         result.log.push(line);
     };
     // Only the app's own workspaces have steps to run; a folder of the same name that isn't one is never touched.
-    if (managed.length === 0) {
-        note(`No workspace at ${workspace}; setup never ran, nothing to remove.`);
+    if (stepRoots.length === 0) {
+        note(`No workspace at ${bundleWorkspace}; setup never ran, nothing to remove.`);
     }
-    for (const root of managed) {
+    for (const root of stepRoots) {
         if (result.status === "ok") {
             Object.assign(result, await runWorkspaceSteps(root));
         }
     }
     if (result.status !== "ok") {
-        if (removeWorkspace || removeAppData) {
-            // Kept so the user can retry or read what failed.
-            note(`Uninstall steps failed; kept ${[...managed, ...(removeAppData ? appDataFolders : [])].join(", ")}`);
+        // Kept so the user can retry or read what failed.
+        note(`Uninstall steps failed; kept ${[bundleWorkspace, ...userFolders].join(", ")}`);
+        await writeResult(result);
+        return 1;
+    }
+    const kept = removeWorkspace ? [] : userFolders.filter((folder) => existsSync(folder));
+    if (removeWorkspace) {
+        for (const folder of userFolders) {
+            await rm(folder, { recursive: true, force: true });
+            note(`Removed ${folder}`);
         }
     }
-    else {
-        if (removeWorkspace) {
-            for (const root of managed) {
-                await rm(root, { recursive: true, force: true });
-                note(`Removed ${root}`);
-            }
-            await rmdir(appDataWorkspacesDirectory()).catch(() => undefined);
-        }
-        if (removeAppData) {
-            // Whatever is still there: every workspace unless the user chose to delete them, and any folder that isn't the app's.
-            const kept = workspaces.filter((root) => existsSync(root));
-            for (const appData of appDataFolders.filter((folder) => existsSync(folder))) {
-                await removeExcept(appData, kept);
-                note(kept.some((root) => isInside(appData, root)) ? `Removed ${appData}, except the workspace in it` : `Removed ${appData}`);
-            }
-        }
+    // The bundle workspace is the app's own: removed, but for any folder of the user's in it.
+    if (existsSync(bundleWorkspace)) {
+        await removeExcept(bundleWorkspace, kept);
+        note(kept.some((folder) => isInside(bundleWorkspace, folder)) ? `Removed ${bundleWorkspace}, except your folders in it` : `Removed ${bundleWorkspace}`);
+        await rmdir(appDataWorkspacesDirectory()).catch(() => undefined);
+    }
+    if (removeAppData && existsSync(appData)) {
+        await removeExcept(appData, kept);
+        note(kept.some((folder) => isInside(appData, folder)) ? `Removed ${appData}, except your folders in it` : `Removed ${appData}`);
     }
     await writeResult(result);
-    return result.status === "ok" ? 0 : 1;
+    return 0;
+}
+
+/**
+ * The folders of the user's that uninstalling keeps unless they say otherwise: the users workspace, and the
+ * folders its settings file names in the app's data folder (where releases before 0.8.5 kept the libraries).
+ */
+async function usersFolders(manifest: BundleManifest, bundleWorkspace: string, usersWorkspace: string | null, appData: string): Promise<string[]> {
+    const folders: string[] = [];
+    if (usersWorkspace && existsSync(usersWorkspace) && (await isUsersWorkspace(usersWorkspace) || await isManagedWorkspace(usersWorkspace))) {
+        folders.push(usersWorkspace);
+    }
+    registerUsersWorkspace(bundleWorkspace, usersWorkspace ?? bundleWorkspace);
+    for (const control of configEditorControls(manifest)) {
+        if (!control.configFile) {
+            continue;
+        }
+        // Where the app keeps it, or where an earlier release did if the app hasn't moved it since.
+        const candidates = [configPath(control, undefined, bundleWorkspace), ...(control.configFile.previousPaths ?? []).map((previous) => resolveUserPath(previous, bundleWorkspace))];
+        const file = candidates.find((candidate) => existsSync(candidate));
+        const values = parseFlatToml(file ? await readFile(file, "utf8").catch(() => "") : "");
+        for (const setting of control.settings ?? []) {
+            const value = values[setting.key ?? setting.id];
+            if (setting.kind === "path" && typeof value === "string" && path.isAbsolute(value) && existsSync(value) &&
+                isInside(appData, value) && !folders.some((folder) => isSameOrInsidePath(folder, value))) {
+                folders.push(value);
+            }
+        }
+    }
+    return folders;
 }
 
 function isInside(directory: string, candidate: string) {

@@ -11,7 +11,7 @@ export async function runBundleTest(bundleURL: string, plan: BundleTestPlan, opt
     const startedAt = timestamp();
     const sourceRoot = path.resolve(bundleURL);
     const sourceManifest = await loadManifestFromRoot(sourceRoot);
-    const workspaceRoot = await prepareBundleWorkspace(sourceManifest, sourceRoot, options.workspaceURL);
+    const workspaceRoot = await prepareBundleWorkspace(sourceManifest, sourceRoot, options.workspaceURL, options.usersWorkspaceURL);
     const manifest = await loadManifestFromRoot(workspaceRoot);
     const runtime = await makeRuntime(manifest, workspaceRoot, plan.inputs ?? {}, options.bootstrapConfig !== false);
     const messages: string[] = [

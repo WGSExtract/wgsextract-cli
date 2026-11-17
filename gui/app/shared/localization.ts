@@ -109,7 +109,7 @@ export function mergeTables(...tables: Array<StringMap | undefined | null>): Str
 }
 export function localizationLabels(table: StringMap = {}) {
     return {
-        standardOptionsSectionTitle: table["app.standardOptions.title"] ?? "Standard Options",
+        standardOptionsSectionTitle: table["app.standardOptions.title"] ?? "Standard UI Options",
         languageSectionTitle: table["language.setting.title"] ?? "Interface Language",
         languagePickerLabel: table["language.setting.label"] ?? "Language",
         languageSearchPlaceholder: table["language.setting.searchPlaceholder"] ?? "Search languages",
@@ -152,17 +152,20 @@ export function localizationLabels(table: StringMap = {}) {
         openBundleWorkspaceTitle: table["actions.settings.settings-paths.open-bundle-workspace.title"] ?? "Open Bundle Workspace",
         openBundleWorkspaceTooltip: table["actions.settings.settings-paths.open-bundle-workspace.tooltip"] ??
             "Open the writable bundle workspace folder.",
-        workspaceLocationTitle: table["app.workspaceLocation.title"] ?? "Bundle Workspace Location",
-        workspaceLocationFolderLabel: table["app.workspaceLocation.folder.label"] ?? "Workspaces Folder",
-        workspaceLocationCurrentLabel: table["app.workspaceLocation.current.label"] ?? "Current Workspace",
+        workspaceLocationTitle: table["app.workspaceLocation.title"] ?? "Users Workspace Location",
+        workspaceLocationFolderLabel: table["app.workspaceLocation.folder.label"] ?? "Users Workspace Folder",
+        workspaceLocationCurrentLabel: table["app.workspaceLocation.current.label"] ?? "Current Users Workspace",
         workspaceLocationUseDefaultTitle: table["app.workspaceLocation.useDefault.title"] ?? "Use Default",
         workspaceLocationNote: table["app.workspaceLocation.note"] ??
-            "Moving takes the workspace and everything in it to this folder, so every path shown under {{bundleWorkspace}} follows. Folders you set elsewhere stay where they are.",
+            "Holds the settings file and the folders you manage. Moving takes it and everything in it to this folder, so every path shown under {{usersWorkspace}} follows. Folders you set elsewhere stay where they are.",
         workspaceLocationMoveTitle: table["app.workspaceLocation.move.title"] ?? "Move",
         workspaceLocationMoveConfirm: table["app.workspaceLocation.move.confirm"] ??
-            "Move the workspace to {path}? Running actions are stopped, and setup then reinstalls the CLI runtime in the new location.",
-        workspaceLocationMovingFormat: table["app.workspaceLocation.moving.format"] ?? "Moving the workspace: {percent}%",
+            "Move the users workspace and everything in it to %{path}? Running actions are stopped.",
+        workspaceLocationMovingFormat: table["app.workspaceLocation.moving.format"] ?? "Moving: %{percent}%",
         workspaceLocationCancelTitle: table["app.workspaceLocation.cancel.title"] ?? "Cancel",
+        workspaceLocationFolderMoveConfirm: table["app.workspaceLocation.folderMove.confirm"] ??
+            "Move what is in %{from} to %{path}? Running actions are stopped. Change Setting Only leaves it where it is.",
+        workspaceLocationSettingOnlyTitle: table["app.workspaceLocation.settingOnly.title"] ?? "Change Setting Only",
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",

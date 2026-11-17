@@ -10,6 +10,7 @@ type StateLike = {
     checkedOptions?: CheckedOptionsInput;
     configValues?: ValueMap;
     bundleRootPath?: string;
+    usersWorkspacePath?: string;
     manifest?: BundleManifest | null;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
@@ -27,6 +28,9 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     };
     if (state.bundleRootPath != null) {
         context.bundleRootPath = state.bundleRootPath;
+    }
+    if (state.usersWorkspacePath) {
+        context.usersWorkspacePath = state.usersWorkspacePath;
     }
     if (state.homePath != null) {
         context.homePath = state.homePath;
@@ -84,6 +88,9 @@ function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefin
 export function contextValue(context: CommandContext, placeholder: string): StateValue {
     if (placeholder === "bundleRoot" || placeholder === "bundleWorkspace") {
         return context.bundleRootPath;
+    }
+    if (placeholder === "usersWorkspace") {
+        return context.usersWorkspacePath || context.bundleRootPath;
     }
     if (placeholder === "home") {
         return context.homePath;

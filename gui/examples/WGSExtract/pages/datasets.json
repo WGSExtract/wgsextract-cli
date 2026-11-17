@@ -10,10 +10,10 @@
       "title": "sections.library.library-paths.title",
       "controls": [
         {
-          "id": "dataset_library",
-          "label": "controls.datasets.dataset-paths.dataset_library.label",
+          "id": "mygenomes_library",
+          "label": "controls.datasets.dataset-paths.mygenomes_library.label",
           "kind": "path",
-          "tooltip": "controls.datasets.dataset-paths.dataset_library.tooltip"
+          "tooltip": "controls.datasets.dataset-paths.mygenomes_library.tooltip"
         }
       ],
       "iconName": "bundle-folder",
@@ -36,8 +36,8 @@
             "{{ref_path}}"
           ],
           [
-            "--dataset-library",
-            "{{dataset_library}}"
+            "--mygenomes-library",
+            "{{mygenomes_library}}"
           ]
         ]
       },
@@ -65,8 +65,8 @@
                 "{{ref_path}}"
               ],
               [
-                "--dataset-library",
-                "{{dataset_library}}"
+                "--mygenomes-library",
+                "{{mygenomes_library}}"
               ]
             ]
           }
@@ -101,8 +101,8 @@
                 "{{ref_path}}"
               ],
               [
-                "--dataset-library",
-                "{{dataset_library}}"
+                "--mygenomes-library",
+                "{{mygenomes_library}}"
               ]
             ]
           }
@@ -138,8 +138,8 @@
                 "{{ref_path}}"
               ],
               [
-                "--dataset-library",
-                "{{dataset_library}}"
+                "--mygenomes-library",
+                "{{mygenomes_library}}"
               ]
             ]
           }
@@ -237,7 +237,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{dataset_library}}"
+                "{{mygenomes_library}}"
               ],
               [
                 "--tag",
@@ -260,7 +260,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{dataset_library}}"
+                "{{mygenomes_library}}"
               ],
               [
                 "--tag",
@@ -316,7 +316,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{dataset_library}}"
+                "{{mygenomes_library}}"
               ],
               [
                 "--tag",
@@ -365,7 +365,7 @@
             "optionalArguments": [
               [
                 "--target-root",
-                "{{dataset_library}}"
+                "{{mygenomes_library}}"
               ],
               [
                 "--tag",

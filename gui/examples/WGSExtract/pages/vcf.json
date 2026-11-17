@@ -15,7 +15,7 @@
           "id": "vcf_path",
           "label": "controls.vcf.vcf-inputs.vcf_path.label",
           "kind": "path",
-          "defaultDirectory": "{{dataset_library}}",
+          "defaultDirectory": "{{mygenomes_library}}",
           "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
         },
         {
@@ -52,8 +52,8 @@
             "{{ref_path}}"
           ],
           [
-            "--dataset-library",
-            "{{dataset_library}}"
+            "--mygenomes-library",
+            "{{mygenomes_library}}"
           ],
           [
             "--annotation-vcf",

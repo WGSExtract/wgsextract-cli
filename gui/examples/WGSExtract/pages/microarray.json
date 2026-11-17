@@ -16,7 +16,7 @@
           "id": "bam_path",
           "label": "controls.microarray.microarray-inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{dataset_library}}",
+          "defaultDirectory": "{{mygenomes_library}}",
           "tooltip": "controls.microarray.microarray-inputs.bam_path.tooltip"
         },
         {
@@ -134,8 +134,8 @@
             "{{ref_path}}"
           ],
           [
-            "--dataset-library",
-            "{{dataset_library}}"
+            "--mygenomes-library",
+            "{{mygenomes_library}}"
           ]
         ]
       },

@@ -2,12 +2,12 @@
   "name": "CLI v0.6.4 opt-in features - run after the baseline hg19 mini plan and bundle bump",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
-      "ref_fasta": "{{bundleWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "ref_path": "{{bundleWorkspace}}/reference",
-      "out_dir": "{{bundleWorkspace}}/output/post-v063",
-      "fastq_r1": "{{bundleWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
-      "multiqc_directory": "{{bundleWorkspace}}/output"
+      "bam_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "ref_fasta": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "ref_path": "{{usersWorkspace}}/reference",
+      "out_dir": "{{usersWorkspace}}/output/post-v063",
+      "fastq_r1": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "multiqc_directory": "{{usersWorkspace}}/output"
     }
   },
   "steps": [
@@ -19,7 +19,7 @@
       "actionID": "calculate-coverage",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
+          "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz"
         }
       },
       "timeoutSeconds": 1800

@@ -1,13 +1,18 @@
 #!/bin/sh
 set -eu
 
-workspace="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(pwd)}"
-config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-$workspace/config.toml}"
-output_path="$workspace/output"
-reference_path="$workspace/reference"
-# New installs keep My Genomes in mygenomes/ and reference genomes in genomes/.
-# An existing config keeps folders that hold files: its old genome_library stays
-# the dataset library, and genomes already in <reference_library>/genomes stay there.
+# The settings file and the folders the user manages live in the users workspace
+# (~/wgs-extract); what only the app needs (run logs) in its hidden bundle workspace.
+bundle="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(pwd)}"
+users="${WGSEXTRACT_GUI_USERS_WORKSPACE:-$bundle}"
+config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-$users/config.toml}"
+# bundled: the app installed the CLI, so its large system folders (reference data,
+# reference genomes, temporary files) go in the users workspace too, where the user
+# can see and move them. separate: a CLI installed on its own (on a server, say)
+# keeps them where it does by default, local to it, so they are left unset.
+cli_install="${WGSEXTRACT_GUI_CLI_INSTALL:-bundled}"
+
+# An existing config keeps every folder it names; only missing settings are added.
 existing_value() {
   [ -f "$config_path" ] || return 0
   sed -n "s/^$1 = \"\(.*\)\"\r\{0,1\}$/\1/p" "$config_path" | head -n 1 | sed 's/\\\\/\\/g; s/\\"/"/g'
@@ -15,42 +20,75 @@ existing_value() {
 has_files() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
-old_genome_library="$(existing_value genome_library)"
-old_reference_library="$(existing_value reference_library)"
-dataset_library_path="$workspace/mygenomes"
-if [ -n "$old_genome_library" ]; then
-  if [ "${old_genome_library%/}" != "$workspace/genomes" ] || has_files "$old_genome_library"; then
-    dataset_library_path="$old_genome_library"
-  fi
+
+# The My Genomes library, under any of its older names. One that is a workspace's
+# datasets/ folder is renamed mygenomes/, where it stays; an empty genomes/ one
+# (the oldest default) is dropped.
+old_mygenomes="$(existing_value mygenomes_library)"
+[ -n "$old_mygenomes" ] || old_mygenomes="$(existing_value dataset_library)"
+[ -n "$old_mygenomes" ] || old_mygenomes="$(existing_value genome_library)"
+mygenomes_path="$users/mygenomes"
+if [ -n "$old_mygenomes" ]; then
+  old_mygenomes="${old_mygenomes%/}"
+  case "$old_mygenomes" in
+    "$users/datasets" | "$bundle/datasets")
+      renamed="$(dirname "$old_mygenomes")/mygenomes"
+      if [ -d "$old_mygenomes" ] && [ ! -e "$renamed" ]; then
+        mv "$old_mygenomes" "$renamed" || renamed="$old_mygenomes"
+      fi
+      mygenomes_path="$renamed"
+      ;;
+    "$users/genomes" | "$bundle/genomes")
+      if has_files "$old_mygenomes"; then
+        mygenomes_path="$old_mygenomes"
+      fi
+      ;;
+    *)
+      mygenomes_path="$old_mygenomes"
+      ;;
+  esac
 fi
-reference_genome_library_path="$workspace/genomes"
+
+old_reference_library="$(existing_value reference_library)"
+reference_genome_library_path="$users/genomes"
 if [ -n "$old_reference_library" ] && has_files "$old_reference_library/genomes"; then
   reference_genome_library_path="$old_reference_library/genomes"
-elif [ "${dataset_library_path%/}" = "$workspace/genomes" ]; then
-  # genomes/ already holds datasets.
-  reference_genome_library_path="${old_reference_library:-$workspace/reference}/genomes"
+elif [ "$mygenomes_path" = "$users/genomes" ]; then
+  # genomes/ already holds the user's genomes.
+  reference_genome_library_path="${old_reference_library:-$users/reference}/genomes"
 fi
-temp_path="$workspace/temp"
-log_path="$workspace/logs"
-# The CLI requires its temporary directory to exist already.
-mkdir -p "$temp_path" "$log_path"
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
-
-# A path as a TOML basic string's contents, escaped again for the JSON around it.
-toml_json() {
-  json_escape "$(json_escape "$1")"
+# One TOML setting, as a JSON string's contents: key = "value"\n
+setting() {
+  printf '%s = \\"%s\\"\\n' "$1" "$(json_escape "$(json_escape "$2")")"
 }
+# A folder setting the config doesn't have yet. The CLI requires its temporary and
+# log folders to exist already.
+folder_setting() {
+  if [ -z "$(existing_value "$1")" ]; then
+    case "$1" in temp_directory | log_dir) mkdir -p "$2" ;; esac
+  fi
+  setting "$1" "$2"
+}
+
+# Unset: each command writes to a wgse/ folder beside its input files from the lab,
+# whose own folder stays untouched. Only Advanced mode may point it elsewhere.
+contents="$(setting output_directory "")"
+contents="$contents$(folder_setting mygenomes_library "$mygenomes_path")"
+if [ "$cli_install" = "bundled" ]; then
+  contents="$contents$(folder_setting reference_library "$users/reference")"
+  contents="$contents$(folder_setting reference_genome_library "$reference_genome_library_path")"
+  contents="$contents$(folder_setting temp_directory "$users/temp")"
+fi
+contents="$contents$(folder_setting log_dir "$bundle/logs")"
+for key in reference_fasta default_input_vcf mother_vcf_path father_vcf_path haplogrep_executable; do
+  contents="$contents$(setting "$key" "")"
+done
 
 printf '{\n'
 printf '  "path": "%s",\n' "$(json_escape "$config_path")"
-printf '  "contents": "output_directory = \\"%s\\"\\nreference_library = \\"%s\\"\\nreference_genome_library = \\"%s\\"\\ndataset_library = \\"%s\\"\\ntemp_directory = \\"%s\\"\\nlog_dir = \\"%s\\"\\nreference_fasta = \\"\\"\\ndefault_input_vcf = \\"\\"\\nmother_vcf_path = \\"\\"\\nfather_vcf_path = \\"\\"\\nhaplogrep_executable = \\"\\"\\n"\n' \
-  "$(toml_json "$output_path")" \
-  "$(toml_json "$reference_path")" \
-  "$(toml_json "$reference_genome_library_path")" \
-  "$(toml_json "$dataset_library_path")" \
-  "$(toml_json "$temp_path")" \
-  "$(toml_json "$log_path")"
+printf '  "contents": "%s"\n' "$contents"
 printf '}\n'

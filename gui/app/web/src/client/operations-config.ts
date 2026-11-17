@@ -5,6 +5,7 @@ import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
 import { persistBundleState, type PersistBundleStateOptions } from "./operations-state.js";
+import { askToMoveSettingFolder } from "./workspace-location.js";
 import type { ConfigLoadResponse, ConfigSaveResponse, ConfigSetting, ControlSpec } from "../../../shared/types.js";
 
 export async function loadInitialConfigs() {
@@ -59,6 +60,31 @@ async function syncBoundConfigSettings(controlID: string, value: string, removeP
     await persistBundleState(removePersistedState);
 }
 export async function configSettingChanged(value: string, setting: ConfigSetting, control: ControlSpec) {
+    const current = String(state.configValues[configValueKey(control, setting)] ?? "");
+    if (setting.moveContents === true && current.trim() && value.trim() && current !== value) {
+        // The folder's contents may move with it: the user decides, and until then the setting keeps its value.
+        askToMoveSettingFolder(control.id, setting.key ?? setting.id, current, value, () => saveSetting(value, setting, control));
+        return;
+    }
+    await saveSetting(value, setting, control);
+}
+/**
+ * Basic mode shows no advanced-only setting, so none applies there: each one set is cleared when Basic mode is on.
+ * WGSExtract's Output Directory, say, then falls back to the CLI's default beside the input files.
+ */
+export async function clearAdvancedOnlySettingsInBasicMode() {
+    if (state.uiMode !== "basic") {
+        return;
+    }
+    for (const control of configEditorControls(state.manifest ?? {})) {
+        for (const setting of control.settings ?? []) {
+            if (setting.advancedOnly === true && String(state.configValues[configValueKey(control, setting)] ?? "").trim()) {
+                await configSettingChanged("", setting, control);
+            }
+        }
+    }
+}
+async function saveSetting(value: string, setting: ConfigSetting, control: ControlSpec) {
     state.configValues[configValueKey(control, setting)] = value;
     const fieldKey = boundFieldKey(setting);
     if (fieldKey) {

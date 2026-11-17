@@ -17,6 +17,7 @@ import { forgetSetupWithMissingTools } from "./setup-runner.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
 import { migrateLegacyAppData } from "./workspace-location.js";
+import { usersWorkspaceFor } from "./users-workspace.js";
 import { errorMessage } from "./errors.js";
 import { leaveAppImageEnvironment } from "./appimage-environment.js";
 
@@ -88,20 +89,20 @@ const requestContext: RequestHandlerContext = {
             sourceRootPath: nextRuntime.sourceBundleRoot,
         };
     }),
-    moveWorkspace: (directory, emit, signal) => exclusively(async () => {
+    moveWorkspace: (target, emit, signal) => exclusively(async () => {
         await terminateAllProcesses();
         try {
             await moveWorkspace({
                 manifest: bundleRuntime.manifest,
                 sourceRoot: bundleRuntime.sourceBundleRoot,
-                workspaceRoot: bundleRuntime.bundleRoot,
-                directory,
+                bundleRoot: bundleRuntime.bundleRoot,
+                ...target,
                 onProgress: (percent) => emit({ type: "progress", percent }),
                 signal,
             });
         }
         finally {
-            // From wherever the workspace is recorded now, even when a step after the move itself failed.
+            // From wherever the users workspace is recorded now, even when a step after the move itself failed.
             useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
         }
     }),
@@ -123,6 +124,7 @@ listeningServer.listen(port, host, () => {
     console.log(`WGS Extract GUI Web UI: http://${host}:${boundPort}/`);
     console.log(`Bundle source: ${bundleRuntime.sourceBundleRoot}`);
     console.log(`Bundle workspace: ${bundleRuntime.bundleRoot}`);
+    console.log(`Users workspace: ${usersWorkspaceFor(bundleRuntime.bundleRoot)}`);
     if (portFile) {
         writeFile(portFile, `${boundPort}\n`).catch((error) => {
             console.error(`Could not write GFC_PORT_FILE: ${errorMessage(error)}`);
