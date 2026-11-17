@@ -604,7 +604,7 @@ def add_shared_arguments(
     add(
         "--tmp-dir",
         metavar="DIRECTORY",
-        help="Use an existing writable directory for sort spills, GATK and realign staging (overrides temp_directory).",
+        help="Use an existing writable directory for every temporary file this run makes: sort spills, staging and scratch (overrides temp_directory).",
     )
     add(
         "--json",

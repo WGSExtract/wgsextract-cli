@@ -23,6 +23,11 @@ from wgsextract_cli.core.imputed_vcf import describe, imputation_info
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
+from wgsextract_cli.core.temp_directory import (
+    link_new_file,
+    move_file,
+    scratch_parent,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_defaults,
@@ -175,7 +180,9 @@ def _fastqc_report(input_path: str, outdir: str, threads: str) -> dict[str, int]
     stem = fastqc_stem(input_path)
     names = (stem + ".html", stem + ".zip")
     # Staged so a run that writes nothing can't pass with a previous run's reports.
-    with tempfile.TemporaryDirectory(prefix=".fastqc_", dir=outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix=".fastqc_", dir=scratch_parent(outdir)
+    ) as work:
         try:
             run_command(
                 [
@@ -192,7 +199,7 @@ def _fastqc_report(input_path: str, outdir: str, threads: str) -> dict[str, int]
         if not all(Path(work, name).is_file() for name in names):
             raise WGSExtractError(f"FastQC wrote no report for {input_path}.")
         for name in names:
-            os.replace(Path(work, name), Path(outdir, name))
+            move_file(Path(work, name), Path(outdir, name))
     report_html, report_zip = (Path(outdir, name) for name in names)
     result = current_result()
     result.add_output(report_html, "fastqc_report_html")
@@ -323,7 +330,9 @@ def _multiqc_report(params: MultiqcParams) -> int:
     documents = [document for _path, document in multiqc.find_documents(source)]
     try:
         outdir.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix=".multiqc_", dir=outdir) as work:
+        with tempfile.TemporaryDirectory(
+            prefix=".multiqc_", dir=scratch_parent(outdir)
+        ) as work:
             metrics = Path(work, "wgsextract_metrics")
             multiqc.write_custom_content(multiqc.custom_content(documents), metrics)
             # Home-directory MultiQC configuration can otherwise enable AI uploads.
@@ -366,10 +375,10 @@ def _multiqc_report(params: MultiqcParams) -> int:
                     f"{source}."
                 )
             if params.force:
-                os.replace(staged, report)
+                move_file(staged, report)
             else:
                 try:
-                    os.link(staged, report)
+                    link_new_file(staged, report)
                 except FileExistsError as e:
                     raise WGSExtractError(
                         f"Report already exists: {report}. Choose another --outdir or use --force."

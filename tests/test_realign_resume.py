@@ -318,4 +318,61 @@ def test_a_second_run_into_the_same_output_is_refused(tmp_path, genome_and_ref):
     with StepJournal(journal, "realign", ResumePolicy()):
         with pytest.raises(WGSExtractError, match="Another wgsextract run"):
             realign.run(_args(source, ref=ref, outdir=str(out)))
-    assert not (out / "x_aligned.bam").exists()
+
+
+def _tree(folder: Path) -> dict[str, tuple[int, int]]:
+    return {
+        str(path.relative_to(folder)): (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in folder.rglob("*")
+    }
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize("signal", ["9", "INT"])
+def test_fastqs_staged_in_the_output_survive_a_kill_and_go_after_the_resume(
+    tmp_path, genome_and_ref, signal
+):
+    """The staged-command rule: without --tmp-dir, realign's FASTQs (stage 1)
+    wait in the output folder. A run killed while aligning keeps them; the
+    rerun resumes at the alignment and, once it succeeds, removes them, so
+    only the files the user keeps are left. The input's folder is never
+    written."""
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    inputs = _tree(Path(source).parent)
+    log = tmp_path / "calls.log"
+    shims = _dying_tools(tmp_path, log)
+    out = tmp_path / "out"
+
+    def run(die=None):
+        log.write_text("")
+        argv = ["--input", str(source), "--ref", ref, "--outdir", str(out),
+                "--threads", "2", "--memory", "64M", "--native-aligners", "off",
+                "--sample", "Ann"]  # fmt: skip
+        # 1 GiB available forces FASTQ files instead of streaming them.
+        done = _realign_cli(argv, shims, die, signal, available_memory=1024**3)
+        return done, log.read_text().splitlines()
+
+    killed, calls = run(die="bwa mem")
+    assert killed.returncode != 0
+    assert "samtools collate" in calls
+    assert sorted(p.name for p in out.glob("*.fastq.gz")) == [
+        "x_R1.fastq.gz",
+        "x_R2.fastq.gz",
+    ]
+
+    resumed, calls = run()
+    assert resumed.returncode == 0, resumed.stderr
+    assert "Skipping step extract: complete" in resumed.stderr
+    assert "samtools collate" not in calls and "bwa mem" in calls
+    # The journal's lock guard, made when the killed run's lock was
+    # reclaimed, is kept between runs by design (core/file_lock.py).
+    guard = ".x_aligned.bam.steps.json.lock.guard"
+    assert sorted(p.name for p in out.iterdir() if p.name != guard) == [
+        "x_aligned.bam",
+        "x_aligned.bam.bai",
+        "x_aligned.bam.manifest.json",
+        "x_aligned.bam.steps.json",
+    ]
+    assert _tree(Path(source).parent) == inputs

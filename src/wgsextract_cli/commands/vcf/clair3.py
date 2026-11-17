@@ -68,6 +68,7 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.tool_catalog import clair3_host_supported
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -826,7 +827,9 @@ def _run_clair3(
     logging.info(LOG_MESSAGES["vcf_calling_clair3"].format(output=out_vcf))
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_clair3_"
+        ) as work,
     ):
         bed, intervals = None, None
         if region:

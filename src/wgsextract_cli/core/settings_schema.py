@@ -99,7 +99,9 @@ class Settings:
         path=True,
     )
     temp_directory: str | None = setting(
-        None, "Optional volume for sort spills, GATK and realign staging", path=True
+        None,
+        "Temporary Workload directory: every command's temporary work (sort spills, staging, scratch files)",
+        path=True,
     )
     atomic_outputs: bool = setting(
         False,

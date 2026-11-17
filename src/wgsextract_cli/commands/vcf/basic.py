@@ -43,6 +43,7 @@ from wgsextract_cli.core.resource_estimates import (
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
@@ -294,7 +295,9 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
         if Path(sibling + ".fai").is_file():
             yield sibling
             return
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_ref_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_ref_"
+    ) as tmp:
         target = str(Path(tmp, Path(sibling).name))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:

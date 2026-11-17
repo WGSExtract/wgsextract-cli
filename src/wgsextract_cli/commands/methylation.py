@@ -10,7 +10,6 @@ checked, never installed.
 import contextlib
 import gzip
 import logging
-import os
 import subprocess
 import sys
 import tempfile
@@ -51,6 +50,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -655,7 +655,9 @@ def run_pileup(params: MethylationPileupParams) -> None:
     logging.info(f"Tabulating base modifications with modkit to {out_bed}")
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_modkit_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_modkit_"
+        ) as work,
     ):
         index_fasta(use_ref)
         lengths = read_fai_lengths(use_ref)
@@ -709,7 +711,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
             checkpoint()
             run_command(["tabix", "-f", "-p", "bed", staged_bed])
             if staged_bed != out_bed:
-                os.replace(f"{staged_bed}.tbi", index)
+                move_file(f"{staged_bed}.tbi", index)
             summaries = summarize_bedmethyl(staged_bed)
             write_summary(staged_summary, summaries, params.table_format, metadata)
             if parquet:
@@ -718,7 +720,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
                 sites = bedmethyl_to_parquet(staged_bed, staged_table, metadata)
             checkpoint()
         if index.exists():
-            os.replace(index, f"{out_bed}.tbi")
+            move_file(index, f"{out_bed}.tbi")
     result = current_result()
     result.set_reference(ref, lib.build)
     result.add_output(out_bed, "bedmethyl", kind="bed")

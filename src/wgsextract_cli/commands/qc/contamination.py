@@ -27,6 +27,7 @@ from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 from ..genotyping.common import Alignment, env_tool, open_alignment
@@ -241,7 +242,9 @@ def run_contamination(params: QcContaminationParams) -> None:
     stem = f"{aln.stem}.contamination"
     report = Path(aln.outdir, stem + ".selfSM")
     ancestry = Path(aln.outdir, stem + ".Ancestry")
-    with tempfile.TemporaryDirectory(dir=aln.outdir, prefix=".wgse_contam_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(aln.outdir), prefix=".wgse_contam_"
+    ) as work:
         panel = _matching_panel(prefix, aln, work)
         logging.info(
             f"Estimating contamination with VerifyBamID2 ({Path(prefix).name})..."

@@ -9,6 +9,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_prepared,
 )
@@ -69,7 +70,9 @@ def run_cadd(params: VcfCaddParams) -> None:
     else:
         indel_tsv = prepare_tabix_annotation(indel_file, "CADD indel")
         # Number=A values merge per allele, so the indel pass keeps SNV scores.
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_cadd_") as work:
+        with tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_cadd_"
+        ) as work:
             snv_out = str(Path(work, "snv.vcf.gz"))
             annotate_vcf(
                 vcf_in,

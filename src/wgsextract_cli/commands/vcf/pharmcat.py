@@ -37,6 +37,7 @@ from wgsextract_cli.core.reference_resolver import (
     header_contig_lengths,
 )
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import (
@@ -361,7 +362,9 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
     reference = _ensure_reference(python, directory)
     stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(input_vcf).name, flags=re.I)
 
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pharmcat_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_pharmcat_"
+    ) as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
         calls = input_vcf
         if gvcf is None and _depth_only_gvcf(input_vcf):
@@ -412,7 +415,7 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
             if path.is_dir():
                 shutil.copytree(path, target, dirs_exist_ok=True)
             else:
-                os.replace(path, target)
+                move_file(path, target)
         if used_outside_calls:
             current_result().add_output(
                 Path(outdir, f"{stem}.outside.tsv"), "pharmcat_outside_calls"

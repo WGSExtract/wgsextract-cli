@@ -75,6 +75,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -959,7 +960,7 @@ def _sample_vcf(
     """One sample of a multi-sample VCF, as an indexed VCF in a scratch
     directory under ``outdir`` that ``cleanup`` removes."""
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    workdir = tempfile.mkdtemp(prefix="Sample_", dir=outdir)
+    workdir = tempfile.mkdtemp(prefix="Sample_", dir=scratch_parent(outdir))
     cleanup.callback(shutil.rmtree, workdir, ignore_errors=True)
     subset = str(Path(workdir, "sample.vcf.gz"))
     try:

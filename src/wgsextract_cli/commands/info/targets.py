@@ -22,6 +22,7 @@ from typing import IO
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import Column, Value, table_path, write_table
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
 
 from .render import _cram_reference_opts, region_file_tag
@@ -393,7 +394,9 @@ def run_target_coverage(
         len(targets),
         f"{sum(e - s for _, s, e in merged):,}",
     )
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".by-") as scratch:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".by-"
+    ) as scratch:
         union = Path(scratch, "targets.bed")
         union.write_text(
             "".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n"

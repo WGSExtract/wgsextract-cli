@@ -18,6 +18,7 @@ from wgsextract_cli.core.ref_library.assets import read_fai_lengths, sequence_di
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -319,7 +320,7 @@ def call_partitioned(
             run(params, 2, setup, True, None)
             return
         with tempfile.TemporaryDirectory(
-            dir=setup.outdir, prefix=".wgse_gvcf_"
+            dir=scratch_parent(setup.outdir), prefix=".wgse_gvcf_"
         ) as work:
             raw, cut = Path(work, "raw.g.vcf.gz"), Path(work, "cut.g.vcf.gz")
             run(params, 2, setup, True, str(raw))
@@ -347,7 +348,9 @@ def call_partitioned(
     verify_dependencies(["bcftools", "tabix", *(["samtools"] if gvcf else [])])
     output = str(Path(setup.outdir, f"{name}.vcf.gz"))
     called = [i for i in intervals if i.ploidy]
-    with tempfile.TemporaryDirectory(dir=setup.outdir, prefix=".ploidy_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(setup.outdir), prefix=".ploidy_"
+    ) as work:
         parts: list[str] = []
         evidence: list[str] = []
         for ploidy in sorted(active):

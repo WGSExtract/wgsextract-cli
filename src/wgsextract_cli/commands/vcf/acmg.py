@@ -39,6 +39,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -618,7 +619,9 @@ def run_acmg(params: VcfAcmgParams) -> None:
     ]
     env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
     logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_acmg_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_acmg_"
+    ) as work:
         partial = str(Path(work, ACMG_ANNOTATED))
         run = _FastVep(command, strip, env)
         try:
@@ -651,7 +654,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
             run.check()
         finally:
             run.close()
-        Path(partial).replace(out_vcf)
+        move_file(partial, out_vcf)
     for index in (out_vcf + ".tbi", out_vcf + ".csi"):
         Path(index).unlink(missing_ok=True)
     ensure_vcf_indexed(out_vcf)

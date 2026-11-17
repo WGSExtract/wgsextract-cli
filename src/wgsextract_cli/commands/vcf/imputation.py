@@ -44,6 +44,7 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index, parse_memory
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -442,7 +443,9 @@ def run_impute(params: VcfImputeParams) -> None:
         )
     )
     logging.info(f"Imputing {', '.join(chroms)} with {tool} into {out_vcf}")
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_impute_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_impute_"
+    ) as tmp:
         work = Path(tmp)
         if reads_mode:
             parts, metrics = _glimpse(params, panels, threads, outdir, work)

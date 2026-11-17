@@ -403,6 +403,10 @@ def test_clair3_links_go_in_the_configured_temp_directory(
         run_wgsextract(*args, "--input", reads.bam, "--outdir", str(tmp_path / "o2"))
     assert len(fake_clair3.runs()) == 1
 
+    # Clair3's work now goes in temp_directory too, so a spaced one is
+    # refused even for space-free inputs; without one, those need no links
+    # and never touch the spaced system temp folder.
+    monkeypatch.setitem(clair3.settings, "temp_directory", None)
     plain = snp_sample(tmp_path, DORADO_RG)
     run_wgsextract(
         "vcf", "clair3", "--ref", plain.ref, "--model", str(model),

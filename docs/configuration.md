@@ -20,7 +20,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `allow_reference_downloads` | boolean | `false` | Allow first-use public reference/model downloads for commands with --download (hosts and request data: docs/privacy.md); no sample uploads |
 | `input_path` | string, path (`~` expands) | unset | Default input BAM/CRAM or FASTQ file |
 | `output_directory` | string, path (`~` expands) | unset | Default output directory (default: wgse/ beside the primary input BAM, CRAM, FASTQ, VCF or microarray file, or that folder if already wgse/) |
-| `temp_directory` | string, path (`~` expands) | unset | Optional volume for sort spills, GATK and realign staging |
+| `temp_directory` | string, path (`~` expands) | unset | Temporary Workload directory: every command's temporary work (sort spills, staging, scratch files) |
 | `atomic_outputs` | boolean | `false` | Publish completed main outputs by rename (changes tool provenance paths) |
 | `reference_fasta` | string, path (`~` expands) | unset | Path to the reference genome FASTA |
 | `reference_library` | string, path (`~` expands) | unset | Reference data directory (annotation data, gene maps, VEP caches) |

@@ -18,6 +18,7 @@ from wgsextract_cli.core.output_checks import (
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -104,7 +105,7 @@ def _staged_output(final: str) -> Iterator[str]:
 
 def _move_into_place(path: str, final: str) -> None:
     """Rename path onto final, dropping final's now-stale indexes."""
-    Path(path).replace(final)
+    move_file(path, final)
     for index in (final + ".tbi", final + ".csi"):
         Path(index).unlink(missing_ok=True)
 
@@ -244,7 +245,9 @@ def annotate_vcf(
         )
     n_threads = int(get_resource_defaults(threads)[0])
     original_chromosomes = vcf_chromosomes(input_vcf)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_annotate_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_annotate_"
+    ) as work:
         cmd = ["bcftools", "annotate", "-a", annotation, "-c", columns]
         # No resource value can apply to gVCF reference blocks, and looking up
         # every resource line under their END spans makes whole genomes ~25x

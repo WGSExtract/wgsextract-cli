@@ -39,6 +39,7 @@ from wgsextract_cli.core.results import (
     human_output,
     warn,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.tool_catalog import JAVA_JAR
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
@@ -203,7 +204,9 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
     contamination: dict[str, str] | None = None
     contamination_outputs: list[tuple[Path, str]] = []
 
-    with tempfile.TemporaryDirectory(prefix=".wgse_haplogrep_", dir=outdir) as tmp:
+    with tempfile.TemporaryDirectory(
+        prefix=".wgse_haplogrep_", dir=scratch_parent(outdir)
+    ) as tmp:
         # Without a configuration here, Haplogrep loads the one beside its jar
         # and downloads that file's trees into the installation.
         write_config(None, Path(tmp))
@@ -415,7 +418,7 @@ def _run_haplocheck(
     for name, role in _HAPLOCHECK_OUTPUTS:
         if Path(tmp, name).is_file():
             target = outdir / name
-            Path(tmp, name).replace(target)
+            move_file(Path(tmp, name), target)
             outputs.append((target, role))
     if not any(role == "contamination_html" for _, role in outputs):
         # haplocheck 1.3.3 on Windows can't load its report template, but

@@ -60,6 +60,14 @@ regenerated. Use `--force-extract`,
 `--force-step extract`, or `--force` to explicitly regenerate the pair.
 Temporary FASTQs are removed after the resumed alignment succeeds.
 
+Without `--tmp-dir`, `realign` keeps its FASTQs in the output folder between
+steps, since they are also usable inputs (`align --r1 --r2`). They stay there
+when a later step fails, so a rerun skips `extract`, and are removed once the
+alignment succeeds. `--keep-fastq` keeps them as results. Other commands keep
+all temporary work in the `--tmp-dir` workspace (or, without one, a hidden
+folder in the output folder removed when the command ends), and nothing is
+written beside an input except an index it needs.
+
 A step's inputs include the data it reads, not just the sample: the
 reference FASTA, region BED files, DeepVariant checkpoint files and
 installed annotation data (a new ClinVar or gnomAD release reruns

@@ -35,6 +35,7 @@ from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
@@ -138,7 +139,9 @@ def write_gvcf(
     cancelled = Event()
     logging.info(f"Writing reference evidence (gVCF) to {output}...")
     with (
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_gvcf_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_gvcf_"
+        ) as work,
         atomic_output(output) as staged,
     ):
         jobs: list[tuple[str, list[str]]] = []
@@ -269,7 +272,7 @@ def clip_gvcf(
 
     with (
         tempfile.TemporaryDirectory(
-            dir=Path(output).parent, prefix=".wgse_gvcf_clip_"
+            dir=scratch_parent(Path(output).parent), prefix=".wgse_gvcf_clip_"
         ) as work,
         ExitStack() as stack,
     ):
@@ -414,7 +417,7 @@ def publish_gvcf(source: str, output: str, provenance: evidence.Provenance) -> N
     lines = [line for line in header.stdout.splitlines() if not line.startswith(prefix)]  # fmt: skip
     lines.insert(len(lines) - 1, provenance.header())
     with (
-        tempfile.TemporaryDirectory(dir=Path(output).parent, prefix=".wgse_gvcf_") as work,
+        tempfile.TemporaryDirectory(dir=scratch_parent(Path(output).parent), prefix=".wgse_gvcf_") as work,
         atomic_output(output) as staged,
     ):  # fmt: skip
         text = Path(work, "header.txt")

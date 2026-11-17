@@ -31,6 +31,7 @@ from wgsextract_cli.core.alignment.sequencing import (
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import get_bam_header
 
@@ -193,7 +194,9 @@ def run_smn(params: TypingSmnParams) -> None:
     aligner = detect_aligner(header)
 
     prefix = f"{aln.stem}.smn"
-    with tempfile.TemporaryDirectory(dir=aln.outdir, prefix=".wgse_smn_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(aln.outdir), prefix=".wgse_smn_"
+    ) as work:
         manifest = str(Path(work, "manifest.txt"))
         with open(manifest, "w", newline="\n") as f:
             f.write(str(absolute_path(aln.path)) + "\n")

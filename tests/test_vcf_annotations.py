@@ -212,7 +212,7 @@ def test_pharmgkb_vcf_resource_annotates_by_allele(tmp_path):
         "chr1\t300\trs3\tG\tA\t.\t.\tPHARMGKB=rs3|VKORC1|1A|Dosage|warfarin\n"
     )
     outdir = tmp_path / "out"
-    # A plain VCF is bgzipped and indexed beside itself first.
+    # A plain VCF is bgzipped and indexed first, in temporary work.
     run_wgsextract("vcf", "pharmgkb", "--input", sample, "--pharmgkb-file",
                    str(pharmgkb), "--outdir", str(outdir))  # fmt: skip
     assert _query(outdir / "pharmgkb_annotated.vcf.gz", "%ID:%PHARMGKB\n") == [
@@ -221,7 +221,8 @@ def test_pharmgkb_vcf_resource_annotates_by_allele(tmp_path):
         "block:.",
         "del:.",
     ]
-    assert Path(f"{pharmgkb}.gz.tbi").is_file()
+    # Not beside itself: the folder holding the user's files is not written.
+    assert not list(tmp_path.glob("pharmgkb.vcf.*"))
 
 
 # --- ClinVar / REVEL (vcf/clinvar_revel.py) ---------------------------------------

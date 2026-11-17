@@ -19,6 +19,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -249,7 +250,9 @@ def run_to_ubam(params: BamToUbamParams) -> None:
             f"(needs ~{temp_gb + final_gb} GB)."
         )
 
-    with tempfile.TemporaryDirectory(prefix=".wgse_ubam_", dir=outdir) as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix=".wgse_ubam_", dir=scratch_parent(outdir)
+    ) as temp_dir:
         stages = (
             _bam_stages(params, input_path, threads)
             if input_path

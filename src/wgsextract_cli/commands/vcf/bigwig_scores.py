@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.bigwig_resources import _pybigwig, open_bigwig
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_files import (
     check_vcf_build,
@@ -131,7 +132,7 @@ def annotate_from_bigwig(
     try:
         check_vcf_build(vcf_in, bw.chroms(), f"the {label} scores")
         with tempfile.TemporaryDirectory(
-            dir=outdir, prefix=f".wgse_{tag.lower()}_"
+            dir=scratch_parent(outdir), prefix=f".wgse_{tag.lower()}_"
         ) as work:
             scores = str(Path(work, "scores.tsv.gz"))
             with open(scores, "wb") as out:

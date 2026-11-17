@@ -1,3 +1,4 @@
+import errno
 import json
 import os
 import random
@@ -358,3 +359,130 @@ def test_native_pbmm2_rejects_an_unsupported_internal_sort_override(tmp_path):
         pytest.raises(WGSExtractError, match="internal sorter"),
     ):
         align_pbmm2(AlignJob(gpu=False))
+
+
+def _tree(folder: Path) -> dict[str, tuple[int, int]]:
+    return {
+        str(path.relative_to(folder)): (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in folder.rglob("*")
+    }
+
+
+@needs_tools("bcftools")
+@pytest.mark.parametrize("tmp_dir", [False, True], ids=["no-tmp-dir", "tmp-dir"])
+def test_plain_vcf_input_folder_is_left_untouched(capsys, tmp_path, tmp_dir):
+    """The owner's rule: nothing is written into the folder holding a lab's
+    inputs. A plain VCF used to be bgzipped and indexed beside itself."""
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    (lab / "s.vcf").write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t10\tc\tA\tG\t50\tPASS\t.\nchr1\t20\td\tA\tT\t5\tPASS\t.\n",
+        newline="\n",
+    )
+    before = _tree(lab)
+    output, scratch = tmp_path / "out", tmp_path / "scratch"
+    scratch.mkdir()
+    argv = ["vcf", "filter", "--vcf-input", str(lab / "s.vcf"), "--expr",
+            "QUAL>20", "--outdir", str(output)]  # fmt: skip
+    if tmp_dir:
+        argv += ["--tmp-dir", str(scratch)]
+    with _files_seen_under(scratch) as seen:
+        result = _wgsextract(capsys, *argv)
+    assert result["status"] == "ok", result["error"]
+    assert _tree(lab) == before
+    assert sorted(p.name for p in output.iterdir()) == [
+        "filtered.vcf.gz",
+        "filtered.vcf.gz.tbi",
+        "filtered.vcf.manifest.json",
+    ]
+    out = run_command(["bcftools", "query", "-f", "%ID\n", str(output / "filtered.vcf.gz")],
+                      capture_output=True)  # fmt: skip
+    assert out.stdout.split() == ["c"]
+    # With --tmp-dir the working copy is made there, and removed with it.
+    assert any(name.endswith("s.vcf.gz") for name in seen[scratch]) is tmp_dir
+    assert list(scratch.iterdir()) == []
+
+
+@needs_tools("samtools", "bcftools")
+def test_tmp_dir_keeps_command_scratch_out_of_the_output(capsys, tmp_path, folders):
+    """A command's own scratch (extract region's calls, made only to build a
+    consensus FASTA) goes to --tmp-dir: the output holds only kept files."""
+    rng = random.Random(3)
+    chrm = "".join(rng.choices("ACGT", k=2_000))
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chrm})
+    reads = [f"r{i}\t0\tchrM\t{s + 1}\t60\t100M\t*\t0\t0\t{chrm[s : s + 100]}\t{'I' * 100}"
+             for i, s in enumerate(range(0, 1_900, 20))]  # fmt: skip
+    (tmp_path / "in").mkdir()
+    bam = sam_to_bam(["@SQ\tSN:chrM\tLN:2000", *reads], tmp_path / "in" / "sample.bam")
+    output, scratch = folders
+    with _files_seen_under(scratch, output) as seen:
+        result = _wgsextract(capsys, "extract", "region", "--input", bam, "--ref", str(ref),
+                             "--target", "mt", "--formats", "fasta",
+                             "--outdir", str(output), "--tmp-dir", str(scratch))  # fmt: skip
+    assert result["status"] == "ok", result["error"]
+    assert any(name.endswith("calls.vcf.gz") for name in seen[scratch])
+    assert not any("calls.vcf" in name for name in seen[output])
+    assert sorted(p.name for p in output.iterdir()) == [
+        "sample_MT.fasta",
+        "sample_MT.fasta.manifest.json",
+    ]
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize("cross_volume", [False, True], ids=["rename", "copy"])
+def test_move_file_publishes_from_a_tmp_dir_on_another_volume(
+    tmp_path, monkeypatch, cross_volume
+):
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "result.vcf.gz").write_bytes(b"new")
+    (output / "result.vcf.gz").write_bytes(b"previous")
+    if cross_volume:
+        real = os.replace
+
+        def across(source, destination):
+            # OS boundary: a rename between two volumes fails with EXDEV.
+            if Path(source).parent != Path(destination).parent:
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            real(source, destination)
+
+        monkeypatch.setattr(temp_directory.os, "replace", across)
+    temp_directory.move_file(work / "result.vcf.gz", output / "result.vcf.gz")
+    assert (output / "result.vcf.gz").read_bytes() == b"new"
+    assert list(work.iterdir()) == []
+    assert [p.name for p in output.iterdir()] == ["result.vcf.gz"]
+
+
+@pytest.mark.parametrize("cross_volume", [False, True], ids=["link", "copy"])
+def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
+    tmp_path, monkeypatch, cross_volume
+):
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    if cross_volume:
+        real = os.link
+
+        def across(source, destination):
+            # OS boundary: a hard link between two volumes fails with EXDEV.
+            if Path(source).parent != Path(destination).parent:
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            real(source, destination)
+
+        monkeypatch.setattr(temp_directory.os, "link", across)
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    (work / "report.html").unlink()  # a hard link shares the published file
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert [p.name for p in output.iterdir()] == ["report.html"]

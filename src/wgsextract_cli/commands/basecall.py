@@ -24,6 +24,7 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.tool_catalog import INSTALL_HINTS
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -280,7 +281,9 @@ def run_basecall(params: BasecallParams) -> None:
         f"{', ' + ', '.join(codes) if codes else ''}) on {device}; models in "
         f"{models_dir}."
     )
-    with tempfile.TemporaryDirectory(prefix=".wgse_basecall_", dir=outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix=".wgse_basecall_", dir=scratch_parent(outdir)
+    ) as work:
         read_ids = str(params.read_ids) if params.read_ids else None
         if params.regions_bed and params.alignment:
             alignment = str(Path(params.alignment).expanduser())
