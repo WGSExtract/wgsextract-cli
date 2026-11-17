@@ -1,5 +1,7 @@
 import json
+import os
 import plistlib
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +27,44 @@ def oracle(tmp_path, monkeypatch):
 def save(oracle, prefs) -> None:
     data = plistlib.dumps(prefs, fmt=plistlib.FMT_BINARY)
     (oracle.results / "uninstall-preferences.plist").write_bytes(data)
+
+
+def test_1065_mutation_evidence_excludes_unreadable_locks_and_guards(
+    tmp_path, monkeypatch
+):
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    import lab
+
+    source = tmp_path / "results"
+    reference = source / "workload" / "reference"
+    reference.mkdir(parents=True)
+    evidence = source / "evidence"
+    evidence.mkdir()
+    (evidence / "snp.rc").write_text("0\n")
+    (reference / "chain.gz").write_bytes(b"chain data")
+    locks = [reference / f"chain.gz{suffix}" for suffix in (".lock", ".lock.guard")]
+    for path in locks:
+        path.touch()
+        path.chmod(0)
+    try:
+        destination = tmp_path / "mutant"
+        lab.copy_mutation_evidence(source, destination)
+        assert (destination / "evidence" / "snp.rc").read_text() == "0\n"
+        assert (
+            destination / "workload" / "reference" / "chain.gz"
+        ).read_bytes() == b"chain data"
+        assert not list(destination.rglob("*.lock"))
+        assert not list(destination.rglob("*.guard"))
+        assert all(path.exists() for path in locks)
+
+        unreadable = evidence / "snp.rc"
+        unreadable.chmod(0)
+        if os.name != "nt" and not os.access(unreadable, os.R_OK):
+            with pytest.raises(shutil.Error):
+                lab.copy_mutation_evidence(source, tmp_path / "bad-mutant")
+    finally:
+        for path in [*locks, evidence / "snp.rc"]:
+            path.chmod(0o600)
 
 
 def test_an_empty_preferences_file_is_excused(oracle):

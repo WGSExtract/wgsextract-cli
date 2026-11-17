@@ -3,6 +3,7 @@ import os
 import platform
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -17,7 +18,7 @@ from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam
 from wgsextract_cli.core import bwa_index, config
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependencies import clear_tool_caches
-from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.file_lock import build_lock, exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -261,6 +262,47 @@ def test_dead_builder_lock_is_reclaimed(tmp_path):
     with build_lock(str(lock), timeout=0.01):
         assert json.loads(lock.read_text())["pid"] == os.getpid()
     assert not lock.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX umask permission bits")
+@pytest.mark.parametrize("mask", [0o002, 0o022, 0o077])
+def test_1065_shared_library_lock_permissions_honour_umask(tmp_path, mask):
+    lock = tmp_path / "hg19ToHg38.over.chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    previous = os.umask(mask)
+    try:
+        with build_lock(str(lock)):
+            assert stat.S_IMODE(lock.stat().st_mode) == 0o666 & ~mask
+            assert stat.S_IMODE(guard.stat().st_mode) == 0o666 & ~mask
+        with exclusive_lock(lock):
+            assert guard.exists()
+    finally:
+        os.umask(previous)
+    assert not lock.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1065_unreadable_legacy_guard_names_file_and_remedy(tmp_path):
+    lock = tmp_path / "hg19ToHg38.over.chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    guard.touch(mode=0o600)
+    guard.chmod(0)
+    try:
+        # Root bypasses mode bits, so it cannot reproduce another user's EACCES.
+        if os.access(guard, os.R_OK | os.W_OK):
+            pytest.skip("this account bypasses file permissions")
+        with pytest.raises(WGSExtractError) as error, build_lock(str(lock)):
+            pytest.fail("locking must not be skipped on permission errors")
+        message = str(error.value)
+        assert str(guard) in message
+        assert "owner or administrator" in message
+        assert "read/write access" in message
+        assert "Do not delete" in message
+        assert isinstance(error.value.__cause__, PermissionError)
+        assert guard.exists()
+        assert not lock.exists()
+    finally:
+        guard.chmod(0o600)
 
 
 def test_concurrent_stale_lock_reclaimers_never_evict_a_new_owner(tmp_path):
