@@ -16,7 +16,10 @@ from typing import Any
 
 from wgsextract_cli.api.vcf import DEEPVARIANT_STEPS
 from wgsextract_cli.core import native_deepvariant
-from wgsextract_cli.core.alignment.cram_reference import cram_reference_cache
+from wgsextract_cli.core.alignment.cram_reference import (
+    clear_cram_reference_caches,
+    cram_reference_cache,
+)
 from wgsextract_cli.core.alignment.cram_staging import (
     region_intervals,
 )
@@ -365,6 +368,10 @@ def _run_stages(
     the VCF was made or kept (not in --dry-run)."""
     work = run.work
     work.mkdir(parents=True, exist_ok=True)
+    if not journal.dry_run:
+        # The journal lock/orphan check precedes this; reclaim SIGKILL leftovers
+        # before either the host preflight or the cache's own space check.
+        clear_cram_reference_caches(work)
     try:
         plan = run([run.launcher(), *dv_args, "--dry_run=true"], capture=True)
     finally:

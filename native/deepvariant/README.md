@@ -339,7 +339,10 @@ no native rebuild or weights download is needed. The standalone
 `wgse-deepvariant` command does not get the CLI's cache.
 The cache uses approximately one byte per reference base (about 3.2 GB for
 hs38DH), not a copy of the alignment, and is streamed with bounded memory.
-It is removed after make_examples, including on failure. Planning, BAM input
+It is removed after make_examples, including on failure. After an abrupt
+termination, the next non-dry run reclaims abandoned caches under the journal
+lock, after checking that no old tools are still running, before disk preflight.
+Planning, BAM input
 and resuming already-finished make_examples do not build it. Nothing is
 downloaded, and inherited reference-server/cache settings are not used by
 the native reader.

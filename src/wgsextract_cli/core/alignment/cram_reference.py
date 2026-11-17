@@ -12,6 +12,17 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.reference_assets import read_fai_lengths
 from wgsextract_cli.core.utils import WGSExtractError
 
+_CACHE_PREFIX = ".cram-reference-"
+
+
+def clear_cram_reference_caches(work: Path) -> None:
+    """Reclaim interrupted caches after acquiring the journal lock/orphan check."""
+    for path in work.glob(f"{_CACHE_PREFIX}*"):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
 
 @contextmanager
 def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator[Path]:
@@ -29,7 +40,7 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
             "Insufficient free disk space for the CRAM decoding reference "
             f"at {work} (needs ~{required / 1024**3:.2f} GiB)."
         )
-    with TemporaryDirectory(prefix=".cram-reference-", dir=work) as directory:
+    with TemporaryDirectory(prefix=_CACHE_PREFIX, dir=work) as directory:
         root = Path(directory)
         pending = root / "sequence"
         digest = hashlib.md5(usedforsecurity=False)
