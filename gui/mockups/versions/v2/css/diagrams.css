@@ -1,0 +1,84 @@
+/* A narrow drawing is shared by desktop and phone: labels never shrink
+ * from a wide desktop canvas. Status colours are not used as categories. */
+.v2-diagram {
+  margin: 24px 0;
+  padding: 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+}
+
+.v2-diagram:empty {
+  display: none;
+}
+
+.v2-diagram svg {
+  display: block;
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+  margin-inline: auto;
+  overflow: visible;
+  fill: var(--c-text);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.v2-diagram figcaption {
+  max-width: 64ch;
+  margin: 12px auto 4px;
+  color: var(--c-text-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.v2-diagram[data-diagram="file-journey"] svg { max-width: 420px; }
+
+.v2-diagram .dg-heading { font-size: 15px; font-weight: 650; }
+.v2-diagram .dg-small { font-size: 13px; }
+.v2-diagram .dg-center { text-anchor: middle; }
+.v2-diagram .dg-end { text-anchor: end; }
+.v2-diagram .dg-muted { fill: var(--c-text-2); }
+.v2-diagram .dg-base { font-family: inherit; font-weight: 650; white-space: pre; }
+.v2-diagram .dg-panel { fill: var(--c-surface-2); stroke: var(--c-border-strong); }
+.v2-diagram .dg-emphasis { fill: var(--c-primary-soft); stroke: var(--c-primary); }
+.v2-diagram .dg-highlight { fill: var(--c-primary-soft); stroke: var(--c-primary); }
+.v2-diagram .dg-alt { fill: var(--c-primary-soft-text); }
+.v2-diagram .dg-read { fill: var(--c-surface-2); }
+.v2-diagram .dg-chromosome { fill: var(--v2-s7); }
+.v2-diagram .dg-series-a { fill: var(--v2-s1); }
+.v2-diagram .dg-series-b { fill: var(--v2-s2); }
+.v2-diagram .dg-series-c { fill: var(--v2-s7); }
+.v2-diagram .dg-series-d { fill: var(--v2-s4); }
+.v2-diagram .dg-gene { fill: var(--c-primary-soft); stroke: var(--c-primary); }
+.v2-diagram .dg-repeat { fill: var(--c-surface-3); stroke: var(--c-text-3); }
+.v2-diagram .dg-uncertain { fill: var(--c-surface-2); stroke: var(--c-text-3); stroke-dasharray: 4 3; }
+.v2-diagram .dg-organelle { fill: var(--c-surface-3); stroke: var(--c-text-2); }
+.v2-diagram .dg-ring { fill: none; stroke: var(--c-text-2); stroke-width: 3; }
+.v2-diagram .dg-paternal { fill: var(--v2-y); }
+.v2-diagram .dg-maternal { fill: var(--v2-mt); }
+
+.v2-diagram .dg-line,
+.v2-diagram .dg-dashed,
+.v2-diagram .dg-helix,
+.v2-diagram .dg-rung,
+.v2-diagram .dg-chromosome-line,
+.v2-diagram .dg-paternal-line,
+.v2-diagram .dg-maternal-line {
+  fill: none;
+  stroke: var(--c-text-3);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.v2-diagram .dg-dashed { stroke-dasharray: 4 4; }
+.v2-diagram .dg-helix { stroke: var(--v2-s7); stroke-width: 3; }
+.v2-diagram .dg-rung { stroke: var(--c-text-3); }
+.v2-diagram .dg-chromosome-line { stroke: var(--c-border-strong); stroke-width: 9; }
+.v2-diagram .dg-paternal-line { stroke: var(--v2-y); stroke-width: 3; }
+.v2-diagram .dg-maternal-line { stroke: var(--v2-mt); stroke-width: 3; }
+
+@container main (max-width: 560px) {
+  .v2-diagram { padding: 6px; }
+}
