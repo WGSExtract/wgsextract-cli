@@ -8,18 +8,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
-from wgsextract_cli.core.read_counts import (
+from wgsextract_cli.core.alignment.metadata import cram_encoded_with, get_bam_header
+from wgsextract_cli.core.alignment.read_counts import (
     alignment_sample,
     fasta_read_length,
     fastq_statistics,
 )
-from wgsextract_cli.core.ref_library.assets import header_sequences, is_fasta_path
-from wgsextract_cli.core.sequencing import (
+from wgsextract_cli.core.alignment.sequencing import (
     input_platform,
     pacbio_platform,
     record_platform_choice,
 )
+from wgsextract_cli.core.ref_library.assets import header_sequences, is_fasta_path
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_files import verify_paths_exist
 

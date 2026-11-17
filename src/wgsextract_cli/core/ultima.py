@@ -52,7 +52,7 @@ def is_ultima_header(header: str) -> bool:
 
 def alignment_is_ultima(alignment: PathInput) -> bool:
     """Whether a BAM/CRAM's read groups say it came from an Ultima sequencer."""
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
 
     return is_ultima_header(get_bam_header(alignment))
 
@@ -145,7 +145,7 @@ def flow_tag_filter() -> list[str]:
 def alignment_flow_data(alignment: PathInput, reference: PathInput | None) -> FlowData:
     """flow_data for a BAM/CRAM, warning when Ultima reads lack what
     flow-aware callers need."""
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
 
     data = flow_data(alignment, get_bam_header(alignment), reference)
     if data.ultima and not data.flow_aware:

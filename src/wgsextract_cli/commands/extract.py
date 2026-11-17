@@ -18,7 +18,7 @@ from wgsextract_cli.api.extract import (
     _ExtractParams,
 )
 from wgsextract_cli.cli.registration.extract import register as register
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -303,7 +303,7 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
     logging.info(LOG_MESSAGES["extracting_y"].format(chr_y=chr_y, output=out_bam))
     try:
         if use_poz:
-            from wgsextract_cli.core.alignment_metadata import get_bam_header
+            from wgsextract_cli.core.alignment.metadata import get_bam_header
             from wgsextract_cli.core.ref_library.models import sequence_lengths
 
             from ._extract_poz import poz_bed

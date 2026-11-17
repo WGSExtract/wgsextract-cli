@@ -50,13 +50,25 @@ from wgsextract_cli.core.alignment.memory import (
     least_mapping_memory as least_mapping_memory,
 )
 from wgsextract_cli.core.alignment.memory import reference_bases as reference_bases
+from wgsextract_cli.core.alignment.metadata import (
+    cram_encoded_with as cram_encoded_with,
+)
+from wgsextract_cli.core.alignment.metadata import get_bam_header as get_bam_header
 from wgsextract_cli.core.alignment.profiles import (
     validate_output_profile as validate_output_profile,
 )
-from wgsextract_cli.core.alignment_metadata import (
-    cram_encoded_with as cram_encoded_with,
+from wgsextract_cli.core.alignment.read_counts import (
+    alignment_sample as alignment_sample,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header as get_bam_header
+from wgsextract_cli.core.alignment.read_counts import (
+    fastq_input_statistics as fastq_input_statistics,
+)
+from wgsextract_cli.core.alignment.read_counts import unpaired_sample as unpaired_sample
+from wgsextract_cli.core.alignment.sequencing import input_platform as input_platform
+from wgsextract_cli.core.alignment.sequencing import pacbio_platform as pacbio_platform
+from wgsextract_cli.core.alignment.sequencing import (
+    record_platform_choice as record_platform_choice,
+)
 from wgsextract_cli.core.atomic_output import atomic_output as atomic_output
 from wgsextract_cli.core.chunked_alignment import ChunkPlan as ChunkPlan
 from wgsextract_cli.core.chunked_alignment import chunked_disk as chunked_disk
@@ -74,11 +86,6 @@ from wgsextract_cli.core.native_aligners import (
     native_gpu_preference as native_gpu_preference,
 )
 from wgsextract_cli.core.paths import absolute_path as absolute_path
-from wgsextract_cli.core.read_counts import alignment_sample as alignment_sample
-from wgsextract_cli.core.read_counts import (
-    fastq_input_statistics as fastq_input_statistics,
-)
-from wgsextract_cli.core.read_counts import unpaired_sample as unpaired_sample
 from wgsextract_cli.core.reference_assets import (
     find_fasta_by_signature as find_fasta_by_signature,
 )
@@ -122,11 +129,6 @@ from wgsextract_cli.core.samtools_commands import (
     regular_files_bytes as regular_files_bytes,
 )
 from wgsextract_cli.core.samtools_commands import sort_memory as sort_memory
-from wgsextract_cli.core.sequencing import input_platform as input_platform
-from wgsextract_cli.core.sequencing import pacbio_platform as pacbio_platform
-from wgsextract_cli.core.sequencing import (
-    record_platform_choice as record_platform_choice,
-)
 from wgsextract_cli.core.steps import Decision as Decision
 from wgsextract_cli.core.steps import Step as Step
 from wgsextract_cli.core.steps import StepJournal as StepJournal

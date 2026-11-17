@@ -30,9 +30,9 @@ from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core import parabricks as parabricks
 from wgsextract_cli.core.alignment.cram_staging import cram_version as cram_version
 from wgsextract_cli.core.alignment.memory import MappingMemory as MappingMemory
+from wgsextract_cli.core.alignment.read_counts import AlignmentSample as AlignmentSample
+from wgsextract_cli.core.alignment.read_counts import UnpairedSample as UnpairedSample
 from wgsextract_cli.core.config import settings as settings
-from wgsextract_cli.core.read_counts import AlignmentSample as AlignmentSample
-from wgsextract_cli.core.read_counts import UnpairedSample as UnpairedSample
 from wgsextract_cli.core.utils import WGSExtractError as WGSExtractError
 from wgsextract_cli.core.utils import run_command as run_command
 

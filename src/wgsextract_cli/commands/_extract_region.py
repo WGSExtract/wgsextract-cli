@@ -9,7 +9,7 @@ from pathlib import Path
 
 from wgsextract_cli.api.extract import ExtractRegionParams
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.ref_library.models import sequence_lengths

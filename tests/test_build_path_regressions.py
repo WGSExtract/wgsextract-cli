@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import build_from_path
 from wgsextract_cli.core.ref_library.assets import (
     build_hint,

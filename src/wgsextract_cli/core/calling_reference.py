@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.ref_library.assets import (
     header_sequences,

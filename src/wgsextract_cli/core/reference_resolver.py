@@ -9,6 +9,8 @@ from pathlib import Path as Path
 from typing import NamedTuple as NamedTuple
 
 from wgsextract_cli.core import sample_workspace as sample_workspace
+from wgsextract_cli.core.alignment.metadata import get_bam_header as get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_vcf_build as get_vcf_build
 from wgsextract_cli.core.builds import HG37_BUILD_ALIASES as HG37_BUILD_ALIASES
 from wgsextract_cli.core.builds import HG38_BUILD_ALIASES as HG38_BUILD_ALIASES
 from wgsextract_cli.core.builds import build_from_chr1_length as build_from_chr1_length
@@ -52,8 +54,6 @@ from wgsextract_cli.core.reference_models import (
 )
 from wgsextract_cli.core.reference_models import sequence_lengths as sequence_lengths
 
-from .alignment_metadata import get_bam_header as get_bam_header
-from .alignment_metadata import get_vcf_build as get_vcf_build
 from .ref_library.resolver import (
     _UNKNOWN_SIGNATURE as _UNKNOWN_SIGNATURE,
 )

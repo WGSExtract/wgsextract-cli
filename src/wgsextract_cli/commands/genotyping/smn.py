@@ -23,14 +23,14 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingSmnParams
 from wgsextract_cli.commands.info.metrics import is_long_read_library
-from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.pixi_tools import pixi_env_prefix
-from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.sequencing import (
+from wgsextract_cli.core.alignment.sequencing import (
     mixed_platforms,
     mixed_platforms_message,
     read_group_platforms,
 )
+from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.pixi_tools import pixi_env_prefix
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import get_bam_header
 

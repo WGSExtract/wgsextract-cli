@@ -19,10 +19,13 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingStrParams
 from wgsextract_cli.commands.info.metrics import sample_sex_evidence
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    refuse_mixed_platforms,
+)
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import get_bam_header
 

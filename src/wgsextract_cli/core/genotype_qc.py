@@ -156,7 +156,7 @@ def _counted_depths(
         parse_idxstats,
     )
     from wgsextract_cli.commands.info.render import sampled_mapped_bases
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.builds import build_from_chr1_length
     from wgsextract_cli.core.ref_library.models import sequence_lengths
 
@@ -401,7 +401,7 @@ def _region_intervals(region: str, lengths: Mapping[str, int]) -> list[Interval]
 def contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
     """Length of each contig the index places mapped reads on."""
     from wgsextract_cli.commands.info.metrics import parse_idxstats
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     index = alignment_index(alignment)
@@ -460,7 +460,7 @@ def covered_depths(
     count, and when no window has any, every read on the target's contigs is
     counted. A target with no reads there has depth 0."""
     from wgsextract_cli.commands.info.render import _sample_windows
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     wanted = set(targets)

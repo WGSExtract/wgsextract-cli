@@ -24,6 +24,10 @@ from wgsextract_cli.api.methylation import MethylationPileupParams
 from wgsextract_cli.cli.registration.methylation import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.commands.vcf.basic import plain_reference
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    warn_mixed_platforms,
+)
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
@@ -37,7 +41,6 @@ from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.table_writer import (
     Column,
     TableWriter,

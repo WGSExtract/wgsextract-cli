@@ -8,7 +8,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.lineage import YHaplogroupParams
 from wgsextract_cli.commands.info.metrics import sample_sex
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
     build_from_path,

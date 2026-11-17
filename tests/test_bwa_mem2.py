@@ -22,7 +22,7 @@ from wgsextract_cli.commands import align
 from wgsextract_cli.commands.alignment import short_reads
 from wgsextract_cli.core import bwa_mem2
 from wgsextract_cli.core.alignment import memory as alignment_memory
-from wgsextract_cli.core.read_counts import fastq_input_reads
+from wgsextract_cli.core.alignment.read_counts import fastq_input_reads
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.warnings import warn_alignment_sort_space
 

@@ -7,12 +7,12 @@ from functools import lru_cache
 from statistics import median, quantiles
 from typing import NamedTuple
 
-from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.read_counts import (
+from wgsextract_cli.core.alignment.read_counts import (
     _COMPRESSED_SAMPLE_BYTES,
     _DECODED_SAMPLE_BYTES,
     _decoded_prefix,
 )
+from wgsextract_cli.core.constants import SEQUENCERS
 
 LONG_READ_MIN_MEDIAN = 1000
 

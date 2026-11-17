@@ -6,10 +6,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from wgsextract_cli.core.alignment.read_counts import fastq_input_statistics
 from wgsextract_cli.core.native_aligners import native_gpu_preference
-from wgsextract_cli.core.read_counts import (
-    fastq_input_statistics,
-)
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.samtools_commands import (
     regular_files_bytes,

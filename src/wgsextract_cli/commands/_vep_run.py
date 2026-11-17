@@ -13,7 +13,7 @@ from typing import Any
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.core import read_scope
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import (
     build_from_path,
     canonical_build,

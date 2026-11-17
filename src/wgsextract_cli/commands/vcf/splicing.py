@@ -6,7 +6,7 @@ from wgsextract_cli.api.vcf import (
     VcfPharmgkbParams,
     VcfSpliceaiParams,
 )
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import is_hg38_build
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
