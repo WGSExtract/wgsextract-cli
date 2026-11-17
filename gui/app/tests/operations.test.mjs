@@ -761,20 +761,23 @@ test("PR #530 review: a section shown by a value from its own data source appear
   }
 });
 
-test("Basic mode clears an advanced-only setting, and changing a moveContents folder asks first", async () => {
+test("1087 Basic mode ignores advanced-only overrides without erasing shared settings", async () => {
   resetState();
-  const { clearAdvancedOnlySettingsInBasicMode, configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
+  const { saveConfig, configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
+  const { commandContext, configDataSourceContext } = await import("../dist/web/src/client/model.js");
   const control = {
     id: "paths",
     kind: "configEditor",
     configFile: { path: "{{usersWorkspace}}/config.toml", format: "toml" },
     settings: [
       { id: "out_dir", key: "output_directory", kind: "path", advancedOnly: true },
+      { id: "threads", key: "cpu_threads", kind: "text", value: 4, advancedOnly: true },
       { id: "ref_path", key: "reference_library", kind: "path", moveContents: true },
     ],
   };
-  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control] }] }] };
-  state.configValues = { "paths.out_dir": "/chosen/output", "paths.ref_path": "/lib" };
+  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control, { id: "threads", kind: "text", value: 4, advancedOnly: true }] }] }] };
+  state.configValues = { "paths.out_dir": "/chosen/output", "paths.ref_path": "/lib", "paths.threads": 8 };
+  state.fieldValues = { out_dir: "/chosen/output", reference_library: "/lib", threads: 8 };
   const saved = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (path, options) => {
@@ -786,15 +789,23 @@ test("Basic mode clears an advanced-only setting, and changing a moveContents fo
   };
   try {
     state.uiMode = "advanced";
-    await clearAdvancedOnlySettingsInBasicMode();
-    assert.deepEqual(saved, [], "Advanced mode keeps it");
+    assert.equal(commandContext().fieldValues.out_dir, "/chosen/output");
 
     state.uiMode = "basic";
-    await clearAdvancedOnlySettingsInBasicMode();
-    assert.equal(saved.at(-1).output_directory, "");
+    assert.equal(commandContext().fieldValues.out_dir, "");
+    assert.equal(commandContext().fieldValues.threads, "");
+    assert.equal(commandContext().configValues["paths.out_dir"], "");
+    assert.equal(configDataSourceContext(control).fieldValues.output_directory, "");
+    assert.equal(state.configValues["paths.out_dir"], "/chosen/output");
+    assert.equal(state.fieldValues.out_dir, "/chosen/output");
+    assert.deepEqual(saved, [], "reading Basic-mode contexts never saves the config");
+    await saveConfig(control);
+    assert.equal(Object.hasOwn(saved.at(-1), "output_directory"), false);
     assert.equal(saved.at(-1).reference_library, "/lib");
+    state.uiMode = "advanced";
+    assert.equal(commandContext().fieldValues.out_dir, "/chosen/output");
 
-    await configSettingChanged("/fast/lib", control.settings[1], control);
+    await configSettingChanged("/fast/lib", control.settings.find((setting) => setting.key === "reference_library"), control);
     assert.deepEqual(state.workspaceMove?.setting, { controlID: "paths", key: "reference_library", from: "/lib" });
     assert.equal(state.configValues["paths.ref_path"], "/lib", "unchanged until the user answers");
     state.workspaceMove = null;

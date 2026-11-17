@@ -100,6 +100,11 @@ def render() -> str:
         "WGS Extract desktop app keeps its settings in the same folder, so "
         "the two share them.",
         "",
+        "If both a legacy CLI config and a users-workspace config exist, the "
+        "CLI keeps using the legacy file and warns with both paths. Use "
+        "`--config PATH` to select the other explicitly. Opening the desktop "
+        "app does not change this precedence or erase saved advanced settings.",
+        "",
         "Without output_directory, a command writes to a `wgse/` folder beside "
         "its input from the lab (a BAM or CRAM, else FASTQs, else a VCF, else "
         "a raw microarray file), or beside an input already in a `wgse/` "

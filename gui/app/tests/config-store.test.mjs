@@ -135,6 +135,28 @@ test("#1052 WGSExtract download consent and other toggles persist as native TOML
   }
 });
 
+test("1087 saving visible Basic settings preserves omitted advanced settings and CLI-only data", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const control = {
+    id: "settings", kind: "configEditor",
+    configFile: { path: "{{bundleWorkspace}}/config.toml", format: "toml" },
+    settings: [
+      { id: "output", key: "output_directory", kind: "path", advancedOnly: true },
+      { id: "reference", key: "reference_library", kind: "path" },
+    ],
+  };
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(file, 'output_directory = "/intentional/cli/output"\nreference_library = "/old"\nserver_allowed_paths = ["/shared"]\n[dev]\nreal_genome_tests_enabled = true\n');
+
+  await saveConfig(control, undefined, { reference_library: "/new" }, bundleRoot);
+
+  const saved = parseSavedToml(await readFile(file, "utf8"));
+  assert.equal(saved.output_directory, "/intentional/cli/output");
+  assert.equal(saved.reference_library, "/new");
+  assert.deepEqual(saved.server_allowed_paths, ["/shared"]);
+  assert.equal(saved.dev.real_genome_tests_enabled, true);
+});
+
 test("typed setting defaults preserve numbers and booleans when bootstrap merges missing keys", async (t) => {
   const bundleRoot = await tempDirectory(t);
   const control = {

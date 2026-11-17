@@ -4,7 +4,7 @@ import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-pick
 import { clamp } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
-import { checkedOptionsChanged, clearAdvancedOnlySettingsInBasicMode, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
 import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
@@ -478,7 +478,6 @@ async function selectUIMode(value: string) {
     }
     state.uiMode = mode;
     applyUIModeTerminalVisibility();
-    await clearAdvancedOnlySettingsInBasicMode();
     await persistAndRender();
 }
 

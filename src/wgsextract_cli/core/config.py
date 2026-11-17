@@ -219,8 +219,6 @@ def default_config_path() -> Path:
     """config.toml in the users workspace, unless an older install already
     keeps one where the CLI used to (it stays there)."""
     workspace_config = users_workspace() / "config.toml"
-    if workspace_config.is_file():
-        return workspace_config
     for legacy in legacy_config_paths():
         if legacy.is_file():
             return legacy
@@ -246,6 +244,19 @@ def load_config() -> dict[str, Any]:
 
     # Load from config.toml
     config_path = get_config_path()
+    workspace_config = users_workspace() / "config.toml"
+    if (
+        _state().path is None
+        and config_path.is_file()
+        and workspace_config.is_file()
+        and config_path.resolve() != workspace_config.resolve()
+    ):
+        logging.warning(
+            "Multiple configuration files exist: using existing CLI config %s; "
+            "ignoring workspace config %s. Use --config PATH to choose explicitly.",
+            config_path,
+            workspace_config,
+        )
     if config_path.exists():
         try:
             config = read_toml(config_path)

@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
 import { parse as parseToml, stringify as serializeToml } from "smol-toml";
@@ -70,8 +70,12 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
     const target = path.resolve(expandedFolder);
     const save = async () => {
-        const latest = await readSettings(settingsFile);
-        await writeFileAtomically(settingsFile, serializeToml({ ...latest, [setting.key]: target }));
+        const latestFile = (await configFiles(manifest, bundleRoot)).get(control.id);
+        if (!latestFile) {
+            throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
+        }
+        const latest = await readSettings(latestFile);
+        await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
         await save();
@@ -83,8 +87,11 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
 /** Moves `from` to `to`, then rewrites saved paths into it and runs `save`; puts everything back if a step fails. */
 async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, to: string, save: () => Promise<void>) {
     const { manifest, sourceRoot, bundleRoot, onProgress, signal } = request;
-    await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
     const settingsFiles = [...(await configFiles(manifest, bundleRoot)).values()];
+    if (request.setting) {
+        await assertMovableSettingFolder(from, [usersWorkspaceFor(bundleRoot), sourceRoot, bundleRoot, ...settingsFiles]);
+    }
+    await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
     await mkdir(path.dirname(to), { recursive: true });
     await rmdir(to).catch(ignoreMissing);
     const renamed = await renameIfSameVolume(from, to);
@@ -118,6 +125,24 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         });
     }
     await onProgress(100);
+}
+
+async function assertMovableSettingFolder(from: string, protectedPaths: string[]) {
+    const resolvedFrom = await existingRealPath(from);
+    for (const protectedPath of protectedPaths) {
+        if (isSameOrInsidePath(from, protectedPath) || isSameOrInsidePath(resolvedFrom, await existingRealPath(protectedPath))) {
+            throw new HttpError(400, `Cannot move ${from}: it contains the workspace, bundle source or settings file ${protectedPath}. Move the users workspace from Users Workspace Location instead.`);
+        }
+    }
+}
+
+async function existingRealPath(file: string): Promise<string> {
+    return realpath(file).catch((error: unknown) => {
+        if (errnoCode(error) === "ENOENT") {
+            return path.resolve(file);
+        }
+        throw error;
+    });
 }
 
 /** Each settings editor's file, by control ID: the one saved in the app's state, else its declared one. */

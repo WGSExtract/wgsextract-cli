@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -279,6 +279,41 @@ test("changing one folder setting moves what is in it, and the settings inside i
   assert.equal((await settingsIn(path.join(users, "config.toml"))).output_directory, output);
   await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: output, setting: { controlID: "paths", key: "elsewhere" } }), /not a folder the app can move/);
 });
+
+for (const location of ["users", "home", "source", "bundle", "bundle-parent", "settings", "symlink"]) {
+  test(`1087 refuses a setting-folder move containing protected ${location} data without resetting config`, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const destinationRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-protected-move-"));
+    t.after(() => rm(destinationRoot, { recursive: true, force: true }));
+    const destination = path.join(destinationRoot, "moved");
+    const external = path.join(root, "external-settings");
+    const alias = path.join(root, "users-alias");
+    const from = { users, home: root, source, bundle, "bundle-parent": path.dirname(bundle), settings: external, symlink: alias }[location];
+    let settingsFile = path.join(users, "config.toml");
+    if (location === "settings") {
+      await mkdir(external);
+      settingsFile = path.join(external, "config.toml");
+      await writeFile(path.join(bundle, "state.json"), JSON.stringify({ configFilePaths: { paths: settingsFile } }));
+    }
+    if (location === "symlink") {
+      await symlink(users, alias, "junction");
+    }
+    const original = `output_directory = ${JSON.stringify(from)}\ncpu_threads = 3\nserver_allowed_paths = ["/allowed"]\n[dev]\nreal_genome_tests_enabled = true\n`;
+    await writeFile(settingsFile, original);
+
+    await assert.rejects(move({
+      sourceRoot: source, bundleRoot: bundle, folder: destination,
+      setting: { controlID: "paths", key: "output_directory" },
+    }), /Cannot move/);
+
+    assert.equal(await readFile(settingsFile, "utf8"), original);
+    await stat(path.join(source, "manifest.json"));
+    await stat(path.join(bundle, "manifest.json"));
+    await stat(path.join(users, ".users-workspace"));
+    await assert.rejects(stat(destination), { code: "ENOENT" });
+  });
+}
 
 test("1087 loads an old My Genomes library key and respects a subsequently cleared canonical key", async (t) => {
   const { source, bundle, users } = await fixture(t);

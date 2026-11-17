@@ -53,6 +53,54 @@ def test_an_older_install_keeps_its_config_where_it_is(new_install):
     assert get_config_path() == legacy
 
 
+@pytest.mark.parametrize("moved", [False, True])
+def test_1087_gui_config_does_not_replace_existing_cli_settings(
+    new_install, tmp_path, monkeypatch, caplog, moved
+):
+    workspace = Path.home() / "wgs-extract"
+    if moved:
+        appdata = tmp_path / "desktop"
+        appdata.mkdir()
+        monkeypatch.setattr(
+            "wgsextract_cli.core.users_workspace.user_data_dir",
+            lambda *a, **k: str(appdata),
+        )
+        workspace = tmp_path / "moved workspace"
+        (appdata / "settings.json").write_text(
+            json.dumps({"usersWorkspaces": {"wgs-extract": str(workspace)}})
+        )
+    workspace.mkdir(parents=True, exist_ok=True)
+    workspace_config = workspace / "config.toml"
+    gui_contents = 'cpu_threads = 2\noutput_directory = "/gui/outputs"\n'
+    workspace_config.write_text(gui_contents)
+    legacy = legacy_config_paths()[-1]
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    legacy.write_text('cpu_threads = 3\noutput_directory = "/cli/outputs"\n')
+
+    config.reload_settings()
+
+    assert get_config_path() == legacy
+    assert settings["cpu_threads"] == 3
+    assert settings["output_directory"] == "/cli/outputs"
+    assert any(
+        str(legacy) in message
+        and str(workspace_config) in message
+        and "--config" in message
+        for message in caplog.messages
+    )
+    save_config({"cpu_threads": 4})
+    assert workspace_config.read_text() == gui_contents
+    assert config.read_toml(legacy)["cpu_threads"] == 4
+
+    caplog.clear()
+    config.set_config_path(workspace_config)
+    config.reload_settings()
+    assert settings["cpu_threads"] == 2
+    assert not any(
+        "Multiple configuration files" in message for message in caplog.messages
+    )
+
+
 def test_genomes_default_to_the_users_workspace(new_install):
     assert mygenomes_library() == str(Path.home() / "wgs-extract" / "mygenomes")
 

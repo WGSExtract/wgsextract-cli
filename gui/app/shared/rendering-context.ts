@@ -1,4 +1,4 @@
-import { allControls } from "./rendering-controls.js";
+import { allControls, configEditorControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
 import { currentSetupPlatform } from "./setup-platforms.js";
 import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
@@ -18,11 +18,11 @@ type StateLike = {
 } & LooseRecord;
 
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
-    const { fieldValues, checkedOptions } = valuesForUIMode(state);
+    const { fieldValues, checkedOptions, configValues } = valuesForUIMode(state);
     const context: CommandContext = {
         fieldValues: { ...fieldValues, ...sectionValues },
         checkedOptions,
-        configValues: { ...(state.configValues ?? {}), ...fieldValues, ...sectionValues },
+        configValues: { ...configValues, ...fieldValues, ...sectionValues },
         rowValues,
         placeholderLabels: placeholderLabelsFromManifest(state.manifest),
     };
@@ -41,8 +41,9 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     return context;
 }
 /** Basic mode runs commands with the controls it hides at their defaults, and the options it hides unchecked. */
-function valuesForUIMode(state: StateLike): { fieldValues: ValueMap; checkedOptions: StringMap } {
+function valuesForUIMode(state: StateLike): { fieldValues: ValueMap; checkedOptions: StringMap; configValues: ValueMap } {
     const fieldValues: ValueMap = { ...(state.fieldValues ?? {}) };
+    const configValues: ValueMap = { ...(state.configValues ?? {}) };
     const checked: CheckedOptionsInput = { ...(state.checkedOptions ?? {}) };
     if (normalizeUIMode(state.uiMode) === "basic" && state.manifest) {
         const hidden = basicModeHiddenInputs(state.manifest);
@@ -61,8 +62,23 @@ function valuesForUIMode(state: StateLike): { fieldValues: ValueMap; checkedOpti
                 checked[id] = normalizeSelectedIDs(selected).filter((option) => !hiddenOptions.has(option));
             }
         }
+        for (const control of configEditorControls(state.manifest)) {
+            for (const setting of control.settings ?? []) {
+                if (setting.advancedOnly !== true) {
+                    continue;
+                }
+                for (const name of new Set([setting.id, setting.key ?? setting.id])) {
+                    fieldValues[name] = "";
+                    configValues[name] = "";
+                    configValues[`${control.id}.${name}`] = "";
+                    if (Object.hasOwn(checked, name)) {
+                        checked[name] = [];
+                    }
+                }
+            }
+        }
     }
-    return { fieldValues, checkedOptions: checkedOptionsForContext(checked) };
+    return { fieldValues, checkedOptions: checkedOptionsForContext(checked), configValues };
 }
 function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefined): Labels {
     const labels: Labels = {};

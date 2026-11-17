@@ -4,8 +4,7 @@ import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { errorMessage, renderIcon } from "./model.js";
 import { effectiveWebUIFont, shouldRenderInPageBundleLoader } from "./platform.js";
-import { scheduleRender, setRender } from "./rerender.js";
-import { clearAdvancedOnlySettingsInBasicMode } from "./operations-config.js";
+import { setRender } from "./rerender.js";
 import { captureFocus, restoreFocus } from "./focus-state.js";
 import { captureKeyedScrollStates, captureScrollState, restoreKeyedScrollStates, restoreScrollState, type ScrollSnapshot } from "./scroll-state.js";
 import { runSetup } from "./operations-setup.js";
@@ -87,7 +86,6 @@ async function bootstrap(locale?: string) {
             state.setupPromptVisible = setupHasNeverRun() && !state.setupPromptDismissed;
         }
         render();
-        void clearAdvancedOnlySettingsInBasicMode().then(scheduleRender);
         initializeTauriUpdater();
         if (bundle.devReload) {
             installDevReload();

@@ -581,6 +581,9 @@ export async function saveConfig(control: ControlSpec, requestedPath: string | u
     const byKey: Record<string, unknown> = {};
     for (const setting of control.settings ?? []) {
         const key = settingKey(setting);
+        if (![key, setting.id, `${control.id}.${setting.id}`].some((name) => Object.hasOwn(values, name))) {
+            continue;
+        }
         const value = typedSettingValue(
             setting,
             values[key] ?? values[setting.id] ?? values[`${control.id}.${setting.id}`] ?? setting.value ?? "",

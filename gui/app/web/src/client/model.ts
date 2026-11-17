@@ -1,4 +1,4 @@
-import { checkedOptionsForContext, commandContextFromState, configEditorControls, configValueKey, optionTitle } from "../../../shared/rendering.js";
+import { commandContextFromState, configEditorControls, configValueKey, optionTitle } from "../../../shared/rendering.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
@@ -19,13 +19,7 @@ export function configDataSourceContext(control: ControlSpec): CommandContext {
             settingValues[setting.key] = value;
         }
     }
-    return {
-        fieldValues: { ...state.fieldValues, ...settingValues },
-        checkedOptions: checkedOptionsForContext(state.checkedOptions),
-        configValues: settingValues,
-        rowValues: {},
-        bundleRootPath: state.bundleRootPath,
-    };
+    return commandContextFromState({ ...state, fieldValues: { ...state.fieldValues, ...settingValues }, configValues: settingValues });
 }
 export function syncSharedField(setting: ConfigSetting, value: StateValue) {
     if (setting.key && Object.hasOwn(state.fieldValues, setting.key)) {

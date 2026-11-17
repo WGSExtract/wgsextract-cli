@@ -74,22 +74,6 @@ export async function configSettingChanged(value: string, setting: ConfigSetting
     }
     await saveSetting(value, setting, control);
 }
-/**
- * Basic mode shows no advanced-only setting, so none applies there: each one set is cleared when Basic mode is on.
- * WGSExtract's Output Directory, say, then falls back to the CLI's default beside the input files.
- */
-export async function clearAdvancedOnlySettingsInBasicMode() {
-    if (state.uiMode !== "basic") {
-        return;
-    }
-    for (const control of configEditorControls(state.manifest ?? {})) {
-        for (const setting of control.settings ?? []) {
-            if (setting.advancedOnly === true && String(state.configValues[configValueKey(control, setting)] ?? "").trim()) {
-                await configSettingChanged("", setting, control);
-            }
-        }
-    }
-}
 async function saveSetting(value: string, setting: ConfigSetting, control: ControlSpec) {
     state.configValues[configValueKey(control, setting)] = value;
     const fieldKey = boundFieldKey(setting);
@@ -103,7 +87,7 @@ async function saveSetting(value: string, setting: ConfigSetting, control: Contr
 }
 export async function saveConfig(control: ControlSpec, reportSuccess = false) {
     try {
-        const values = Object.fromEntries((control.settings ?? []).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
+        const values = Object.fromEntries((control.settings ?? []).filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
         const result = await api<ConfigSaveResponse>("/api/config/save", {
             method: "POST",
             body: { controlID: control.id, path: state.configFilePaths[control.id], values },
