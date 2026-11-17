@@ -14,6 +14,7 @@
     "info/calculate-coverage": ["job", "Coverage", 25, "Coverage per chromosome"],
     "sample/show": ["query", "Sample", 0.1, "Show a sample's settings"],
     "ref/status": ["query", "Reference status", 0.1, "Which reference data is installed"],
+    "deps/check": ["query", "Check tools", 0.1, "Check the tools on this computer"],
     realign: ["job", "Realign", 216, "Realign a BAM or CRAM to another reference"],
     align: ["job", "Align", 300, "Align FASTQ reads to a reference"],
     "bam/index": ["job", "Index", 6, "Create a BAM or CRAM index"],
@@ -341,6 +342,11 @@
     var outputs = (hint.outputs || outputsFor(op, p, file, machine)).map(function (out) {
       var o2 = Object.assign({ kind: "data", role: "output" }, out);
       o2.disk = M.diskFor(machine, o2.disk || o2.path).id;
+      if (hint.targetDisk) {
+        var target = M.diskFor(machine, hint.targetDisk);
+        o2.disk = target.id;
+        o2.path = target.path.replace(/\/$/, "") + "/wgs-extract/" + base(o2.path);
+      }
       return o2;
     });
     var steps = normSteps(hint.steps || (has(STEPS, op) && STEPS[op]) || [[net ? "Download" : "Run", 1]]);

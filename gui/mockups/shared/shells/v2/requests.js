@@ -155,14 +155,6 @@
 
   /* --- sending ------------------------------------------------------- */
 
-  /* Say so when the server refuses (the button's toast said "Queued") */
-  function checked(promise) {
-    return promise.then(function (res) {
-      if (res.status >= 300) WGSM.toast("The server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
-      return res;
-    });
-  }
-
   function runHours(out) {
     if (typeof out.hours === "number") return out.hours;
     var t = out.timeText || "";
@@ -178,15 +170,30 @@
       });
     });
     var label = out.jobName || ctx.def.label + (ctx.def.noInput ? "" : " for " + ctx.name);
-    return Promise.all(requests.map(function (req) {
-      var mock = {
+    function mock(req) {
+      return {
         label: requests.length > 1 ? label + " · " + req.op : label,
         person: ctx.def.noInput ? null : ctx.file.person,
         hours: runHours(out) / requests.length,
         memGB: out.memGB,
       };
-      return checked(WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, extra, { _mock: mock })));
-    }));
+    }
+    /* A dry run writes nothing, so it skips the missing-reference and
+     * disk checks and says only when the server refuses it */
+    if (extra) {
+      return Promise.all(requests.map(function (req) {
+        return WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, extra, { _mock: mock(req) })).then(function (res) {
+          if (res.status >= 300) WGSM.toast("The server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
+          return res;
+        });
+      }));
+    }
+    return WGSM.v2edge.beforeRun(ctx, requests).then(function (ok) {
+      if (!ok) return [];
+      return Promise.all(requests.map(function (req) {
+        return WGSM.v2edge.send(req.op, Object.assign({}, req.params, { _mock: mock(req) }));
+      }));
+    });
   }
 
   /* A download or a fix as the real operation that does it: [op, params,
@@ -208,7 +215,7 @@
   function download(flag, label) {
     var job = downloadJob(flag, label);
     if (!job) return Promise.resolve(null);
-    return checked(WGSM.v2api.post("/v1/ops/" + job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: [flag] } })));
+    return WGSM.v2edge.send(job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: flag === "alex-fixed" ? [flag, "ref-hs38d1"] : [flag] } }));
   }
 
   WGSM.v2requests = { schema: schema, resolve: resolve, build: build, command: command, start: start, download: download };

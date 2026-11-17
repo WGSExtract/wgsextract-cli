@@ -38,7 +38,7 @@
       <div class="v2-item" data-annot-id="ref-hs37d5">
         <span class="v2-item__title">hs37d5 <span class="v2-dim v2-small">GRCh37</span></span>
         <span class="v2-item__desc">Used by Gordon · 3.0 GB. Downloading its aligner indexes stopped at 62% when the computer slept.</span>
-        <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip" data-state="attention"></span>Interrupted</span><button class="v2-btn v2-btn--sm" type="button" data-toast="Resuming from the last finished step. See Jobs.">Resume</button></span>
+        <span class="v2-item__aside"><span class="v2-status"><span class="v2-pip" data-state="attention"></span>Interrupted</span><button class="v2-btn v2-btn--sm" type="button" data-edge="resume-index">Resume</button></span>
       </div>
       <div class="v2-item" data-annot-id="ref-hs38d1">
         <span class="v2-item__title">hs38d1 <span class="v2-dim v2-small">GRCh38 + decoys</span></span>
@@ -100,7 +100,7 @@
         </table>
       </div>
       <div class="v2-row v2-row--wrap">
-        <button class="v2-btn v2-btn--sm" type="button" data-toast="Checking 2 reference genomes, about 4 minutes">Verify installed genomes</button>
+        <button class="v2-btn v2-btn--sm" type="button" data-edge="verify-references">Verify installed genomes</button>
         <code class="v2-cmd v2-dim v2-small">ref/library · ref/index · ref/verify · {{bundleWorkspace}}/reference</code>
       </div>
     </div>
@@ -112,7 +112,7 @@
   <div class="dialog__body">
     <p>This frees 160 MB. Files you already annotated keep their ClinVar columns, and you can install it again at any time.</p>
   </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Keep it</button><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="ClinVar removed. 160 MB freed.">Remove</button></div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Keep it</button><button class="v2-btn v2-btn--danger" type="button" data-edge="remove-clinvar">Remove</button></div>
 </dialog>
 </body>
 </html>

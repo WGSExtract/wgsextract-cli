@@ -468,6 +468,7 @@
     defs: defs,
     order: order,
     pageOf: pageOf,
+    run: startJob,
     refresh: refresh,
     /* The API requests a tool page would send now */
     requests: function (root) {
