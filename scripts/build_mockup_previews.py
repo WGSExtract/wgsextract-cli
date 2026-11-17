@@ -31,7 +31,18 @@ NAMESPACE = "refs/mockup-previews/"
 SOURCE = "gui/mockups"
 STATIC = {".html", ".css", ".js", ".json", ".svg", ".png", ".webp", ".md", ".txt"}
 # Small demo genome files and their indexes, for an in-page genome viewer
-GENOME_DATA = {".fa", ".fai", ".gz", ".gzi", ".tbi", ".bam", ".bai", ".cram", ".crai"}
+GENOME_DATA = {
+    ".fa",
+    ".fai",
+    ".gz",
+    ".gzi",
+    ".tbi",
+    ".bam",
+    ".bai",
+    ".csi",
+    ".cram",
+    ".crai",
+}
 MAX_PREVIEWS = 20
 MAX_FILES = 600
 MAX_BYTES = 25 * 1024 * 1024
