@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reference genomes · Learn · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-learn-reference" data-shell="v2" data-nav="learn" data-title="Reference genomes" data-parent="Learn|learn.html">
+<article class="v2-page v2-lesson" data-annot-id="page">
+  <header class="v2-head"><div class="v2-head__text">
+    <p class="v2-small v2-muted">LESSON 05 OF 08 · ABOUT 3 MINUTES</p>
+    <h1>Reference genomes</h1>
+    <p class="v2-head__sub">A coordinate only makes sense on the map it came from.</p>
+  </div></header>
+  <section class="v2-section" id="reference">
+    <h2>A shared map, not an ideal genome</h2>
+    <p>A <abbr class="v2-term" data-term="reference">reference genome</abbr> is a collection of named DNA sequences. Reads are aligned against it, and variants are described relative to it. Its sequences are commonly stored in a FASTA file.</p>
+    <p>No single sequence represents everyone's DNA equally well. Some regions are difficult to map because of repeats, highly variable alleles or sequence missing from the reference.</p>
+  </section>
+  <section class="v2-section" id="builds">
+    <h2>GRCh37, GRCh38 and T2T are different maps</h2>
+    <ul>
+      <li><abbr class="v2-term" data-term="grch37">GRCh37</abbr>: Genome Reference Consortium human build 37 (2009). Many older files and marker resources use its coordinates. UCSC hg19 is closely related, not identical in every sequence.</li>
+      <li><abbr class="v2-term" data-term="grch38">GRCh38</abbr>: build 38 (2013), correcting and adding sequence. Widely supported by current resources.</li>
+      <li><abbr class="v2-term" data-term="t2t">T2T-CHM13</abbr>: the Telomere-to-Telomere CHM13 assembly fills many previously unresolved repeat-rich regions. CHM13 itself has no Y chromosome; some bundles add a separate complete HG002 Y.</li>
+    </ul>
+    <p>There is no universally best choice for every downstream task. Use references supported by your tools and databases, and record the precise bundle and version. Merely changing “1” to “chr1” does not convert builds.</p>
+  </section>
+  <section class="v2-section" id="coordinates">
+    <h2>Coordinates can move — and counting conventions differ</h2>
+    <p>Adding or correcting sequence shifts positions. A location in GRCh37 need not describe the same DNA at that number in GRCh38. A complete variant description includes the assembly, chromosome, position and allele change.</p>
+    <p>VCF positions count from 1. <abbr class="v2-term" data-term="bed">BED</abbr> intervals count starts from 0 and exclude the end: BED <code>0 100</code> covers the first 100 bases. Mixing conventions creates one-base errors even within the same build.</p>
+  </section>
+  <section class="v2-section" id="liftover">
+    <h2>Liftover is coordinate translation, not re-sequencing</h2>
+    <p><abbr class="v2-term" data-term="liftover">Liftover</abbr> uses a <abbr class="v2-term" data-term="chain">chain file</abbr> of aligned blocks between assemblies to translate positions. The chain must match the source, destination and direction.</p>
+    <p>Some variants fail to map, map more than once, or need strand and allele changes. It cannot recover read evidence. Realigning original reads lets them find new placements on the new reference; that takes longer and can change which variants are called.</p>
+  </section>
+  <section class="v2-section" id="cram">
+    <h2>CRAM needs the exact reference, not a similar label</h2>
+    <p>A <abbr class="v2-term" data-term="cram">CRAM</abbr> can encode read bases as differences from reference sequence. To reconstruct them, the decoder needs matching sequence, usually verified by checksums.</p>
+    <p><abbr class="v2-term" data-term="hs37d5">hs37d5</abbr>, <abbr class="v2-term" data-term="hs38">hs38</abbr>, hs38d1 and hs38DH identify different reference bundles. Extra <abbr class="v2-term" data-term="decoy">decoys</abbr> or alternative sequences can change read placement. Preserve the reference identity and checksum with your archive.</p>
+    <p>If identification is ambiguous, confirm it with the lab. A confident-looking filename is not enough.</p>
+  </section>
+  <aside class="v2-sheet v2-sheet__pad v2-section">
+    <h2>Try it</h2>
+    <p>Browse <a class="v2-link" href="references.html">Reference data</a> and compare a build label with a specific bundle. See <a class="v2-link" href="tool-align.html">Align reads</a> for reference and aligner choices.</p>
+    <h2>Key terms</h2>
+    <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-build">Build</a><a class="v2-link" href="learn.html#term-t2t">T2T</a><a class="v2-link" href="learn.html#term-liftover">Liftover</a><a class="v2-link" href="learn.html#term-chain">Chain file</a></div>
+  </aside>
+  <nav class="v2-lesson__nav" aria-label="Lesson navigation">
+    <a class="v2-link" href="learn-variants.html" rel="prev">← Variants &amp; confidence</a>
+    <a class="v2-link" href="learn-health.html" rel="next">Next: Interpreting health findings →</a>
+  </nav>
+</article>
+</body>
+</html>

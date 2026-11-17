@@ -33,12 +33,13 @@
     <summary>Which files can I add?</summary>
     <div class="v2-more__body">
       <dl>
-        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>A whole genome as the lab delivers it: every read, placed on a reference genome. The most useful kind, since every other kind can be made from it.</dd>
+        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>Read sequences, quality scores and their alignment records against a reference. Keep these to inspect evidence or call variants again; they cannot restore reads or quality detail the lab already discarded.</dd>
         <dt><abbr class="v2-term" data-term="fastq">FASTQ</abbr></dt><dd>Raw reads that haven’t been aligned yet, usually two files. They’re aligned first, which takes a few hours.</dd>
-        <dt>VCF</dt><dd>Only the places where the genome differs from the reference. Enough for DNA-test files, lineage, ancestry and annotation.</dd>
+        <dt><abbr class="v2-term" data-term="vcf">VCF</abbr></dt><dd>Variant Call Format: coordinates, alleles and called genotypes, usually at variant sites only. Useful for annotation and some exports; missing sites are not automatically reference.</dd>
         <dt>Raw data</dt><dd>The text file from 23andMe, AncestryDNA, MyHeritage and similar tests: about 600,000–700,000 markers.</dd>
       </dl>
       <p>Labs and testing companies offer these as downloads in your account. Keep the BAM or CRAM if you have it: a VCF or a raw-data file can be made from it, but not the other way round.</p>
+      <p>Learn the basics: <a class="v2-link" href="learn-files.html">Your file journey</a>.</p>
     </div>
   </details>
 

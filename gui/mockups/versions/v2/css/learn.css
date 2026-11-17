@@ -1,0 +1,157 @@
+/* Lessons use the same flat sheets and text rhythm as tool pages. */
+.v2-lesson {
+  max-width: 860px;
+  line-height: 1.65;
+}
+
+.v2-lesson section,
+.v2-glossary article {
+  scroll-margin-top: 24px;
+}
+
+.v2-lesson h2 {
+  font-size: 19px;
+}
+
+.v2-lesson p,
+.v2-lesson ul,
+.v2-lesson ol {
+  max-width: 72ch;
+}
+
+.v2-lesson ul,
+.v2-lesson ol {
+  padding-left: 22px;
+}
+
+.v2-lesson li + li {
+  margin-top: 6px;
+}
+
+.v2-lesson__terms,
+.v2-lesson__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.v2-lesson__nav {
+  justify-content: space-between;
+  padding-top: 16px;
+  border-top: 1px solid var(--c-border);
+}
+
+.v2-lesson-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+}
+
+.v2-lesson-list a {
+  display: block;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text);
+  text-decoration: none;
+}
+
+.v2-lesson-list a:hover strong {
+  color: var(--c-primary);
+  text-decoration: underline;
+}
+
+.v2-lesson-list span {
+  display: block;
+  margin-top: 3px;
+  color: var(--c-text-2);
+  font-size: 13px;
+}
+
+.v2-lesson .v2-file-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.1fr) auto minmax(0, 1fr) auto minmax(0, 0.8fr);
+  align-items: center;
+  gap: 8px;
+  max-width: none;
+  padding: 16px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+  list-style: none;
+}
+
+.v2-file-flow li + li {
+  margin: 0;
+}
+
+.v2-file-flow strong,
+.v2-file-flow small {
+  display: block;
+}
+
+.v2-file-flow small {
+  color: var(--c-text-2);
+}
+
+.v2-glossary article {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.v2-glossary h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.v2-glossary p + p {
+  margin-top: 6px;
+  color: var(--c-text-2);
+}
+
+.v2-glossary article:target {
+  border-left: 3px solid var(--c-primary);
+  padding-left: 14px;
+}
+
+.v2-glossary [hidden],
+.v2-termpop__reference[hidden] {
+  display: none;
+}
+
+.v2-termpop__reference {
+  display: block;
+  margin-top: 6px;
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.v2-glossary__letters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+@container app (max-width: 620px) {
+  .v2-lesson-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .v2-lesson {
+    line-height: 1.6;
+  }
+
+  .v2-lesson .v2-section__head {
+    flex-wrap: wrap;
+  }
+
+  .v2-lesson .v2-file-flow {
+    display: flex;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .v2-file-flow li > span {
+    display: inline-block;
+    transform: rotate(90deg);
+  }
+}

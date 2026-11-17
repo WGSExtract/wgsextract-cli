@@ -39,11 +39,12 @@
     <div class="v2-more__body">
       <p>The reads stay the same; only the way they’re stored changes.</p>
       <dl>
-        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> to <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>Stores each read as its differences from the <abbr class="v2-term" data-term="reference">reference genome</abbr>, in about a third of the space. Nothing is lost, but the CRAM opens only with that same reference, here hs37d5, so keep it installed.</dd>
+        <dt><abbr class="v2-term" data-term="bam">BAM</abbr> to <abbr class="v2-term" data-term="cram">CRAM</abbr></dt><dd>Compresses alignment records, often using differences from the <abbr class="v2-term" data-term="reference">reference genome</abbr>. Size varies with the data. A lossless conversion preserves read records, but needs the exact reference to decode them, here hs37d5. Keep that reference available.</dd>
         <dt>BAM to BAM</dt><dd>About the same size. Sorts the reads, or rewrites a file a tool won’t accept.</dd>
-        <dt>To <abbr class="v2-term" data-term="fastq">FASTQ</abbr></dt><dd>Takes the reads back to their unaligned form, as two files. They must be aligned again before most tasks can use them; make them for a service or aligner that asks for FASTQ.</dd>
+        <dt>To <abbr class="v2-term" data-term="fastq">FASTQ</abbr></dt><dd>Exports retained read sequences and base qualities without placements. Paired-end data usually makes R1 and R2 files. Align again for coordinate-based analysis; this cannot restore discarded qualities or original sequencer signals.</dd>
       </dl>
       <p>Converting doesn’t change the <abbr class="v2-term" data-term="build">genome build</abbr>. To move from GRCh37 to GRCh38, realign instead.</p>
+      <p>Learn the basics: <a class="v2-link" href="learn-files.html#bam">BAM, CRAM and what to keep</a>.</p>
     </div>
   </details>
 

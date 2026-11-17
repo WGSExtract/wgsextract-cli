@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How sequencing works · Learn · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-learn-sequencing" data-shell="v2" data-nav="learn" data-title="How sequencing works" data-parent="Learn|learn.html">
+<article class="v2-page v2-lesson" data-annot-id="page">
+  <header class="v2-head"><div class="v2-head__text">
+    <p class="v2-small v2-muted">LESSON 02 OF 08 · ABOUT 4 MINUTES</p>
+    <h1>How sequencing works</h1>
+    <p class="v2-head__sub">Many overlapping observations become an estimate of your DNA sequence.</p>
+  </div></header>
+  <section class="v2-section" id="sample">
+    <h2>From sample to digital letters</h2>
+    <p>A lab extracts DNA from a sample such as blood or saliva, prepares molecules for a sequencer, and records signals from them. Software called a basecaller turns those signals into estimated A, C, G and T letters with quality scores. The lab commonly delivers these as <abbr class="v2-term" data-term="fastq">FASTQ</abbr> files.</p>
+    <p>This differs from a <abbr class="v2-term" data-term="chip">microarray</abbr>, the physical chip used by many ancestry tests. An array tests selected known positions; sequencing reads stretches of DNA and can find differences the chip was not designed to test.</p>
+  </section>
+  <section class="v2-section" id="reads">
+    <h2>A read is one observation of a fragment</h2>
+    <p>A <abbr class="v2-term" data-term="reads">read</abbr> is a string of estimated DNA letters. A short-read genome often has hundreds of millions of reads. They overlap different parts of the genome, like many snippets from a long book.</p>
+    <p><abbr class="v2-term" data-term="paired">Paired-end</abbr> sequencing reads both ends of a DNA fragment. “2 × 150 bp” means two linked 150-base reads, usually in R1 and R2 files. It does not mean the whole fragment between them was read.</p>
+  </section>
+  <section class="v2-section" id="platforms">
+    <h2>Short and long reads answer different questions</h2>
+    <ul>
+      <li><abbr class="v2-term" data-term="illumina">Illumina</abbr> commonly produces accurate short reads, often 100–150 bases. Repeated DNA can make their placement ambiguous.</li>
+      <li><abbr class="v2-term" data-term="pacbio">PacBio HiFi</abbr> repeatedly reads circularized templates to produce accurate long reads, often around 10–25 kb.</li>
+      <li><abbr class="v2-term" data-term="ont">Oxford Nanopore (ONT)</abbr> measures electrical signals as molecules pass through pores. Reads can be tens of kb or longer; chemistry and basecalling models affect accuracy.</li>
+    </ul>
+    <p><abbr class="v2-term" data-term="longreads">Long reads</abbr> can bridge repeats, larger changes and distant variants. Read <abbr class="v2-term" data-term="n50">N50</abbr> summarizes length by bases, not accuracy. Use aligner presets and caller models matching the technology.</p>
+    <p>Suitable long-read data can also preserve evidence of DNA <abbr class="v2-term" data-term="methylation">methylation</abbr>, chemical marks that do not change the base sequence. Ordinary Illumina whole-genome reads do not measure those marks.</p>
+  </section>
+  <section class="v2-section" id="depth">
+    <h2>30× is an average, not a guarantee</h2>
+    <p><abbr class="v2-term" data-term="depth">Depth</abbr> counts reads covering a position. A mean of 30× means roughly 30 observations per base across the chosen region. Some positions may have none, others many more; duplicate or ambiguously mapped reads may not be usable.</p>
+    <p>“Coverage” can also mean the fraction of bases reaching a threshold, such as 95% at 10× or more. Check which definition a chart uses. One-copy regions commonly have less depth than two-copy autosomes.</p>
+  </section>
+  <section class="v2-section" id="quality">
+    <h2>Three quality questions — three different scores</h2>
+    <ul>
+      <li><abbr class="v2-term" data-term="phred">Base quality</abbr>: is this letter correct? Q30 corresponds to a modeled 1-in-1,000 error probability.</li>
+      <li><abbr class="v2-term" data-term="mapq">MAPQ</abbr>, mapping quality: is the read placed in the right region?</li>
+      <li><abbr class="v2-term" data-term="gq">GQ</abbr>, genotype quality: how confident is a caller in the genotype inferred from the reads?</li>
+    </ul>
+    <p>These are software estimates. High depth does not erase mapping bias or <abbr class="v2-term" data-term="contamination">contamination</abbr>. Unmapped reads may be low quality, missing human sequence or other organisms; they do not prove infection.</p>
+  </section>
+  <aside class="v2-sheet v2-sheet__pad v2-section">
+    <h2>Try it</h2>
+    <p>Explore <a class="v2-link" href="tool-read-quality.html">Read quality</a> for FASTQ or <a class="v2-link" href="tool-coverage.html">Coverage</a> for aligned reads. Compare mean depth with poorly covered regions.</p>
+    <h2>Key terms</h2>
+    <div class="v2-lesson__terms"><a class="v2-link" href="learn.html#term-reads">Read</a><a class="v2-link" href="learn.html#term-depth">Depth</a><a class="v2-link" href="learn.html#term-phred">Phred</a><a class="v2-link" href="learn.html#term-mapq">MAPQ</a></div>
+  </aside>
+  <nav class="v2-lesson__nav" aria-label="Lesson navigation">
+    <a class="v2-link" href="learn-dna.html" rel="prev">← DNA &amp; genomes</a>
+    <a class="v2-link" href="learn-files.html" rel="next">Next: Your file journey →</a>
+  </nav>
+</article>
+</body>
+</html>
