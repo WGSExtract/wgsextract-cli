@@ -26,7 +26,10 @@ from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5, pinned_sequences
+from wgsextract_cli.core.ref_library.mitochondrial import (
+    CHM13_CHRM_MD5,
+    pinned_sequences,
+)
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 

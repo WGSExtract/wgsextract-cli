@@ -190,7 +190,7 @@ def run_vep_download(params: VepDownloadParams) -> None:
 
 
 def run_vep_delete(params: VepDeleteParams) -> None:
-    from wgsextract_cli.core import library_removal
+    from wgsextract_cli.core.ref_library import removal as library_removal
 
     cache_root = params.engine_cache_root()
     paths = library_removal.vep_release_paths(

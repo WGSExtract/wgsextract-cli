@@ -7,7 +7,7 @@ import pytest
 
 from tests.smoke_utils import run_cli
 from wgsextract_cli.core import microarray_revisions as revisions
-from wgsextract_cli.core.microarray_utils import _PACKAGED_TEMPLATES, template_rows
+from wgsextract_cli.core.microarray.templates import _PACKAGED_TEMPLATES, template_rows
 from wgsextract_cli.core.utils import WGSExtractError
 
 BASE = [(f"rs{i}", str(1 + i % 22), str(1000 + i)) for i in range(3000)]

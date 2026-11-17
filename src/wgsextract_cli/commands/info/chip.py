@@ -5,16 +5,16 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.info import ChipParams
+from wgsextract_cli.core.microarray.templates import (
+    _PACKAGED_TEMPLATES,
+    _resolve_templates_roots,
+)
 from wgsextract_cli.core.microarray_revisions import (
     Detection,
     Revision,
     detect,
     load_catalogue,
     read_raw_export,
-)
-from wgsextract_cli.core.microarray_utils import (
-    _PACKAGED_TEMPLATES,
-    _resolve_templates_roots,
 )
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.results import current_result, human_output

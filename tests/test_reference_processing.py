@@ -22,12 +22,12 @@ import pytest
 from tests.htslib_helpers import needs_htslib, needs_tools
 from tests.http_server import serving
 from wgsextract_cli.commands.ref import library_commands
-from wgsextract_cli.core import library_removal
 from wgsextract_cli.core import reference_processing as rp
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.ref_library import downloads
+from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

@@ -31,7 +31,6 @@ from wgsextract_cli.api.ref import (
 from wgsextract_cli.core import (
     ancestry_reference,
     gnomad_sv,
-    library_removal,
     read_scope,
     somalier_resources,
 )
@@ -62,6 +61,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 # Module level so the per-command dependency scan sees the chain download
 # (curl, optionally) that `ref bootstrap` and `ref aadr` make.
 from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
+from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,

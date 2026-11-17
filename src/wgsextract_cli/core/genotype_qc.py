@@ -23,7 +23,7 @@ from wgsextract_cli.core.alignment.cram_counts import (
 )
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
-from wgsextract_cli.core.microarray_utils import GenotypeTally, is_autosome
+from wgsextract_cli.core.microarray.templates import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index

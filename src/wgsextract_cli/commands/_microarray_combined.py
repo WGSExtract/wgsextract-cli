@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, TextIO
 from wgsextract_cli.core.imputed_vcf import imputation_info
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import MicroarrayQuality, quality_policy
-from wgsextract_cli.core.microarray_utils import GenotypeTally, sort_alleles
+from wgsextract_cli.core.microarray.templates import GenotypeTally, sort_alleles
 from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,

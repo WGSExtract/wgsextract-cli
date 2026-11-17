@@ -6,7 +6,7 @@ import pytest
 
 from tests.smoke_utils import REPO_ROOT
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,
 )
@@ -95,7 +95,7 @@ class TestMicroarrayTranslation(unittest.TestCase):
         """
         Verify that genotypes and RSIDs are preserved when converting to vendor format.
         """
-        # Templates root resolution (matching microarray_utils logic)
+        # Templates root resolution (matching microarray.templates logic)
         templates_root = self.templates_dir
         if os.path.isdir(
             os.path.join(templates_root, "microarray", "raw_file_templates")

@@ -22,14 +22,14 @@ from wgsextract_cli.core.haplogrep_trees import (
     write_config,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
-from wgsextract_cli.core.mito_reference import (
+from wgsextract_cli.core.paths import absolute_path, java_local_path
+from wgsextract_cli.core.ref_library.mitochondrial import (
     CHM13_CHRM,
     CHM13_CHRM_MD5,
     RCRS_MD5,
     mito_origin,
     ref_agreement,
 )
-from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.reference_models import MITO_BY_LENGTH, sequence_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary

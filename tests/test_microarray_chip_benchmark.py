@@ -14,7 +14,7 @@ from wgsextract_cli.commands.benchmark.chip import (
     read_chip_export,
     score_chip,
 )
-from wgsextract_cli.core.microarray_utils import FORMAT_ALIASES
+from wgsextract_cli.core.microarray.templates import FORMAT_ALIASES
 
 
 @pytest.mark.parametrize(

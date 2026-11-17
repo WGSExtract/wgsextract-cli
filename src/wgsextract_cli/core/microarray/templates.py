@@ -69,7 +69,7 @@ _VENDOR_CHROMS = {"23": "X", "24": "Y", "25": "X", "26": "MT", "XY": "X"}
 # GRCh37's chrX pseudoautosomal regions, diploid in men too.
 _X_PARS_GRCH37 = ((60001, 2699520), (154931044, 155260560))
 _PACKAGED_TEMPLATES = (
-    Path(__file__).resolve().parents[1] / "assets" / "microarray" / "raw_file_templates"
+    Path(__file__).resolve().parents[2] / "assets" / "microarray" / "raw_file_templates"
 )
 
 

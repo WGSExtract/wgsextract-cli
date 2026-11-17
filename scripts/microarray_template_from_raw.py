@@ -13,7 +13,7 @@ import gzip
 import re
 from pathlib import Path
 
-from wgsextract_cli.core.microarray_utils import get_template_format
+from wgsextract_cli.core.microarray.templates import get_template_format
 
 TEMPLATES = (
     Path(__file__).resolve().parents[1]

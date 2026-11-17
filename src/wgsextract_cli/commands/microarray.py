@@ -53,15 +53,15 @@ from wgsextract_cli.core.microarray.quirks import (
     load_strand_quirks,
     quirks_mode,
 )
+from wgsextract_cli.core.microarray.templates import (
+    GenotypeTally,
+    _resolve_templates_roots,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray_targets import (
     build_genome_wide_target,
     is_genome_wide_target,
     ncbi36_chain,
-)
-from wgsextract_cli.core.microarray_utils import (
-    GenotypeTally,
-    _resolve_templates_roots,
-    resolve_format_key,
 )
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
@@ -183,7 +183,7 @@ def _convert_microarray_outputs(
 ) -> dict[str, GenotypeTally]:
     """Write the requested outputs (``formats``, default all of
     ``params.formats``); return each vendor file's autosomal tally."""
-    from wgsextract_cli.core.microarray_utils import (
+    from wgsextract_cli.core.microarray.templates import (
         convert_to_vendor_format,
         get_template_format,
         liftover_hg38_to_hg19,
@@ -557,7 +557,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
     from wgsextract_cli.core.microarray.resource_identity import resource_identity
-    from wgsextract_cli.core.microarray_utils import (
+    from wgsextract_cli.core.microarray.templates import (
         get_template_format,
         template_resource_paths,
     )
@@ -791,7 +791,7 @@ def _output_units(
     generates each vendor or AADR unit. The combined unit exists when the run
     keeps something of its own: the combined kit (not kept beside AADR files,
     which are called in a scratch directory) or the genotype table."""
-    from wgsextract_cli.core.microarray_utils import get_template_format
+    from wgsextract_cli.core.microarray.templates import get_template_format
 
     units: dict[str, reuse.Unit] = {}
     formats: dict[str, str] = {}

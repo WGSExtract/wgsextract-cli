@@ -52,13 +52,13 @@ from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
-from wgsextract_cli.core.microarray_targets import collect_template_markers
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     convert_to_vendor_format,
     get_template_format,
     resolve_format_key,
 )
+from wgsextract_cli.core.microarray_targets import collect_template_markers
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
