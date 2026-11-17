@@ -39,7 +39,7 @@ from typing import Any
 
 from wgsextract_cli.core.alignment import splice as alignment_splice
 from wgsextract_cli.core.atomic_output import atomic_write
-from wgsextract_cli.core.reference_assets import header_sequences
+from wgsextract_cli.core.ref_library.assets import header_sequences
 from wgsextract_cli.core.remote_input import copy_range, is_url
 from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory

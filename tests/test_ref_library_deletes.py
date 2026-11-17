@@ -70,7 +70,7 @@ def test_bootstrap_skips_aadr_and_its_install_and_delete_toggle(
         return True
 
     monkeypatch.setattr(
-        "wgsextract_cli.core.reference_processing.download_bootstrap", bootstrap
+        "wgsextract_cli.core.ref_library.processing.download_bootstrap", bootstrap
     )
     api.ref.bootstrap(api.RefBootstrapParams(ref=reflib))
     # The AADR 2M server is slow: the panel is an optional Reference Data

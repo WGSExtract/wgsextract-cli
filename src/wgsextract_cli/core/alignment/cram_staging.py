@@ -20,7 +20,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.paths import PathInput
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.samtools_commands import (
     alignment_index,

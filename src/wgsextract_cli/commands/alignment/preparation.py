@@ -31,8 +31,8 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_statistics
-from wgsextract_cli.core.reference_assets import is_fasta_path, reference_genomes_dir
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import is_fasta_path, reference_genomes_dir
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,

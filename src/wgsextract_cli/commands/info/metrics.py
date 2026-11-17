@@ -19,7 +19,7 @@ from wgsextract_cli.core.constants import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import n_count_paths
+from wgsextract_cli.core.ref_library.assets import n_count_paths
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.sequencing import platform_from_metadata
@@ -543,7 +543,7 @@ def _detect_sex(
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
-            from wgsextract_cli.core.reference_models import sequence_lengths
+            from wgsextract_cli.core.ref_library.models import sequence_lengths
 
             header = run_command(
                 ["samtools", "view", "-H", input_path], capture_output=True

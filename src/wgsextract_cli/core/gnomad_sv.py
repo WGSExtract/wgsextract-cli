@@ -34,8 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.sv_frequency import TABLE_COLUMNS, sv_type
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 

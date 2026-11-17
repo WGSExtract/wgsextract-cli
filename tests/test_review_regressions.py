@@ -9,7 +9,7 @@ from tests.htslib_helpers import needs_tools
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.commands.vcf.annotation_helpers import prepare_tabix_annotation
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import run_command
 
 

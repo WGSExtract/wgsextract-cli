@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+
 from .alignment import memory as alignment_memory
 from .native_support import is_arm64_docker_host
-from .reference_assets import read_fai_lengths
 from .region_selection import selected_intervals
 from .samtools_commands import parse_memory
 

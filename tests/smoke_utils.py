@@ -47,7 +47,7 @@ def vep_cache_dir(ref: str | Path | None) -> Path:
 
 def yleaf_tables_cached(build: str, tree: str = "yfull") -> bool:
     """Keep optional real-data smoke tests from downloading large tables."""
-    from wgsextract_cli.core.reference_assets import resolve_reference_library
+    from wgsextract_cli.core.ref_library.assets import resolve_reference_library
     from wgsextract_cli.ydna.yleaf_native.data import manifest
     from wgsextract_cli.ydna.yleaf_native.trees import module_root, tree_metadata
 

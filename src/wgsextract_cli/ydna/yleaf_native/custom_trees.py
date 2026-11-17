@@ -22,8 +22,8 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from wgsextract_cli.core.download_progress import redact_urls
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 from .data import file_sha256

@@ -118,7 +118,7 @@ def sex_samples_args(
     female). Unknown sex refuses sex-dependent calling. Regions whose
     ploidy is the same for both sexes need no whole-alignment sex scan."""
     from wgsextract_cli.commands.info.metrics import sample_sex_evidence
-    from wgsextract_cli.core.reference_models import sequence_lengths
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
     from wgsextract_cli.core.results import current_result
 
     if not alignment.lower().endswith((".bam", ".cram")):

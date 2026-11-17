@@ -49,7 +49,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.parabricks import gpu_memory, verify_gpu_docker
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.resource_estimates import (
     CLAIR3_GVCF_TIME_FACTOR,

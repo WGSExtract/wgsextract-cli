@@ -21,8 +21,8 @@ from wgsextract_cli.core.paths import (
     java_local_path,
     windows_local_app_dir,
 )
-from wgsextract_cli.core.reference_assets import input_stem, reference_dict_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem, reference_dict_path
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     _normalize_subprocess_cmd,

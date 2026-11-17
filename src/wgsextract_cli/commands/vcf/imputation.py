@@ -35,9 +35,9 @@ from wgsextract_cli.core.imputation_panel import (
 from wgsextract_cli.core.imputed_vcf import HEADER_KEY
 from wgsextract_cli.core.imputed_vcf import LOW_CONFIDENCE_FILTER as LOW_CONFIDENCE
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
-from wgsextract_cli.core.reference_assets import reference_library_of
-from wgsextract_cli.core.reference_models import sequence_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import reference_library_of
+from wgsextract_cli.core.ref_library.models import sequence_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_imputation,
     preflight_resources,

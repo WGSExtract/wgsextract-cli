@@ -17,7 +17,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.read_counts import fastq_input_reads
-from wgsextract_cli.core.reference_assets import is_fasta_path, reference_genomes_dir
+from wgsextract_cli.core.ref_library.assets import is_fasta_path, reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.utils import (

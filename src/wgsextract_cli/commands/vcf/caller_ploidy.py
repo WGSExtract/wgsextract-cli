@@ -14,8 +14,8 @@ from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.builds import canonical_build, ploidy_for_build
-from wgsextract_cli.core.reference_assets import read_fai_lengths, sequence_dictionary
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths, sequence_dictionary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -163,7 +163,7 @@ def calling_ploidy(
     if library.ploidy_file:
         text = Path(library.ploidy_file).read_text()
     elif canonical_build(library.build) in {"hg19", "hg38"}:
-        from wgsextract_cli.core.reference_processing import _ploidy_content
+        from wgsextract_cli.core.ref_library.processing import _ploidy_content
 
         assert library.build is not None
         text = _ploidy_content(ploidy_for_build(library.build))

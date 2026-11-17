@@ -62,7 +62,7 @@ def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Pa
     Stream homopolymer chunks so chromosome-scale coordinate fixtures do not
     require a chromosome-sized Python string or an uncompressed disk copy.
     """
-    from wgsextract_cli.core.reference_resolver import header_contig_lengths
+    from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 
     header = run_command(
         ["bcftools", "view", "-h", str(vcf)], capture_output=True

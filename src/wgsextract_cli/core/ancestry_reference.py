@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     import numpy as np
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 FOLDER = "ancestry"
@@ -126,7 +126,7 @@ def library_for(ref: str | None) -> str:
     """The library whose reference ``qc ancestry --ref ref`` uses: an external
     FASTA chooses only the sequence; the reference is in the configured
     library (or the library the FASTA is in)."""
-    from wgsextract_cli.core.reference_resolver import library_roots
+    from wgsextract_cli.core.ref_library.resolver import library_roots
 
     return resolve_reference_library(library_roots(ref).resource_root(FOLDER))
 

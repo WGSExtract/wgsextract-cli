@@ -12,10 +12,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem
-from wgsextract_cli.core.reference_resolver import (
-    ReferenceLibrary,
-)
+from wgsextract_cli.core.ref_library.assets import input_stem
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,

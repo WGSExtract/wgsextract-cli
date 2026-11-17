@@ -160,7 +160,7 @@ def _autosome(contig: str) -> bool:
 def record_density(vcf: str, header: str) -> float | None:
     """Records per megabase of the autosomes the header lists with lengths,
     from the index's counts (else by reading the records)."""
-    from wgsextract_cli.core.reference_resolver import header_contig_lengths
+    from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 
     lengths = {c: n for c, n in header_contig_lengths(header).items() if _autosome(c)}
     if not lengths:
