@@ -19,10 +19,11 @@ from wgsextract_cli.core.alignment.memory import (
     check_mapping_memory,
     estimate_mapping_memory,
 )
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.alignment.profiles import (
     output_profile_options,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.read_counts import fastq_input_statistics
 from wgsextract_cli.core.atomic_output import (
     atomic_outputs_enabled,
     safe_output,
@@ -36,7 +37,6 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.paths import java_local_path
-from wgsextract_cli.core.read_counts import fastq_input_statistics
 from wgsextract_cli.core.ref_library.assets import is_fasta_path
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,

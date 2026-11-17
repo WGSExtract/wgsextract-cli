@@ -212,7 +212,7 @@ def test_chrY_only_cram_keeps_the_assembly_n_adjustment(tmp_path):
             return_value={1: (1_575_757, 236_363_550)},
         ),
         patch(
-            "wgsextract_cli.core.alignment_metadata.get_bam_header",
+            "wgsextract_cli.core.alignment.metadata.get_bam_header",
             return_value=header,
         ),
     ):

@@ -11,7 +11,8 @@ import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta, write_read_pairs
 from wgsextract_cli.commands.alignment.reads import resolve_platform
-from wgsextract_cli.core import sample_workspace, sequencing
+from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core.alignment import sequencing as sequencing
 from wgsextract_cli.core.alignment.fastq import validate_fastq
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command

@@ -248,7 +248,7 @@ def test_align_ultima_bam_carries_flow_tags_through_bwa(tmp_path):
     assert int(fields[1]) & 0x10 and fields[9] == seq
     assert _tag(out, "tp") == f"tp:B:c,{','.join(reversed(tp.split(',')))}"
     assert _tag(out, "t0") == f"t0:Z:{t0[::-1]}"
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
 
     header = get_bam_header(tmp_path / "o" / "ug_aligned.bam")
     assert "FO:TGCATGCA" in header and "tp:reference" in header

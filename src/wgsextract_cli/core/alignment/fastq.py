@@ -10,7 +10,7 @@ from contextlib import ExitStack, nullcontext
 from itertools import zip_longest
 from pathlib import Path
 
-from wgsextract_cli.core.read_counts import FastqStatistics
+from wgsextract_cli.core.alignment.read_counts import FastqStatistics
 from wgsextract_cli.core.utils import WGSExtractError
 
 

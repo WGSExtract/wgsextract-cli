@@ -11,7 +11,12 @@ from typing import IO
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
 from wgsextract_cli.core.alignment.cram_staging import stage_bam
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    pacbio_platform,
+    refuse_mixed_platforms,
+)
 from wgsextract_cli.core.dependencies import PIXI_TOOL_ENVS, get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -22,11 +27,6 @@ from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_varia
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.sequencing import (
-    input_platform,
-    pacbio_platform,
-    refuse_mixed_platforms,
-)
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     MissingDependencyError,

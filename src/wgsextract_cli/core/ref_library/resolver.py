@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.alignment_metadata import get_bam_header, get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_bam_header, get_vcf_build
 from wgsextract_cli.core.builds import (
     HG37_BUILD_ALIASES,
     HG38_BUILD_ALIASES,

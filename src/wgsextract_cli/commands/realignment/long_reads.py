@@ -5,7 +5,7 @@ import shutil
 from dataclasses import replace
 from pathlib import Path
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.chunked_alignment import (
     ChunkPlan,

@@ -49,13 +49,16 @@ from wgsextract_cli.core.alignment.memory import (
 from wgsextract_cli.core.alignment.memory import (
     estimate_mapping_memory as estimate_mapping_memory,
 )
+from wgsextract_cli.core.alignment.metadata import get_bam_header as get_bam_header
 from wgsextract_cli.core.alignment.profiles import (
     output_profile_options as output_profile_options,
 )
 from wgsextract_cli.core.alignment.profiles import (
     validate_output_profile as validate_output_profile,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header as get_bam_header
+from wgsextract_cli.core.alignment.read_counts import (
+    fastq_input_statistics as fastq_input_statistics,
+)
 from wgsextract_cli.core.atomic_output import atomic_output_mode as atomic_output_mode
 from wgsextract_cli.core.atomic_output import (
     atomic_outputs_enabled as atomic_outputs_enabled,
@@ -98,9 +101,6 @@ from wgsextract_cli.core.native_support import (
 from wgsextract_cli.core.paths import absolute_path as absolute_path
 from wgsextract_cli.core.paths import java_local_path as java_local_path
 from wgsextract_cli.core.pixi_tools import pixi_install_command as pixi_install_command
-from wgsextract_cli.core.read_counts import (
-    fastq_input_statistics as fastq_input_statistics,
-)
 from wgsextract_cli.core.ref_library.assets import is_fasta_path as is_fasta_path
 from wgsextract_cli.core.ref_library.assets import (
     reference_genomes_dir as reference_genomes_dir,

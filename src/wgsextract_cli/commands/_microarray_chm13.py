@@ -21,7 +21,7 @@ from wgsextract_cli.commands._microarray_combined import (
     record_kit,
     record_microarray_run,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genotype_qc import warn_about_genotypes
 from wgsextract_cli.core.library_cache import microarray_cache_root

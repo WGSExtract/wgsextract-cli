@@ -4,22 +4,18 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.alignment_metadata import cram_encoded_with, get_bam_header
+from wgsextract_cli.core.alignment.metadata import cram_encoded_with, get_bam_header
+from wgsextract_cli.core.alignment.read_counts import unpaired_sample
+from wgsextract_cli.core.alignment.sequencing import pacbio_platform
 from wgsextract_cli.core.chunked_alignment import (
     parse_size,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.read_counts import (
-    unpaired_sample,
-)
 from wgsextract_cli.core.reference_assets import (
     find_fasta_by_signature,
     input_stem,
     reference_genomes_dir,
     resolve_reference_library,
-)
-from wgsextract_cli.core.sequencing import (
-    pacbio_platform,
 )
 from wgsextract_cli.core.utils import (
     UsageError,

@@ -8,7 +8,11 @@ import sys
 
 from wgsextract_cli.api.vcf import VcfDeepvariantParams
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    refuse_mixed_platforms,
+)
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
     docker,
@@ -21,7 +25,6 @@ from wgsextract_cli.core.region_selection import (
     is_region_file,
     region_items,
 )
-from wgsextract_cli.core.sequencing import input_platform, refuse_mixed_platforms
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 # Google's image; Bioconda's deepvariant has shipped no DeepVariant since 1.8.

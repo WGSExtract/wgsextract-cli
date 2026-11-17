@@ -15,8 +15,9 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands.align import AlignJob
 from wgsextract_cli.commands.info.metrics import determine_sequencer
-from wgsextract_cli.core import results, sequencing
+from wgsextract_cli.core import results
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.alignment import sequencing as sequencing
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import WGSExtractError, run_command

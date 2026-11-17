@@ -11,16 +11,16 @@ from wgsextract_cli.core.alignment.memory import (
     available_memory,
     check_mapping_memory,
 )
+from wgsextract_cli.core.alignment.read_counts import (
+    alignment_sample,
+    fastq_input_statistics,
+)
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.read_counts import (
-    alignment_sample,
-    fastq_input_statistics,
-)
 from wgsextract_cli.core.reference_assets import (
     input_stem,
 )

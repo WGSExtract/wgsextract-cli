@@ -44,7 +44,7 @@ from pathlib import Path
 from threading import Event
 from typing import IO
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,

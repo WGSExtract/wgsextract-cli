@@ -8,6 +8,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from os import fspath
 from pathlib import Path
 
+from wgsextract_cli.core.alignment.metadata import get_bam_header as get_bam_header
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput, append_suffix, expand_path
 from wgsextract_cli.core.ref_library.resolver import (
@@ -15,9 +16,6 @@ from wgsextract_cli.core.ref_library.resolver import (
     header_contig_lengths,
 )
 
-from .alignment_metadata import (
-    get_bam_header as get_bam_header,
-)
 from .utils import (
     MissingDependencyError,
     UsageError,
