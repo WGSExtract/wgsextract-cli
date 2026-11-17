@@ -43,8 +43,19 @@
     WGSM.pref(KEY, JSON.stringify(doc));
   }
 
+  /* Generated files and made-up people, mirrored from the mock (see
+   * api-files.js): {files: {key: FILES entry}, people: {id: {name, note}}} */
+  function generated() {
+    try {
+      var g = JSON.parse(WGSM.pref("v2-generated") || "null") || {};
+      return { files: g.files || {}, people: g.people || {} };
+    } catch (err) {
+      return { files: {}, people: {} };
+    }
+  }
+
   function person(id) {
-    var base = PEOPLE[id] || { name: id, note: "" };
+    var base = PEOPLE[id] || generated().people[id] || { name: id, note: "" };
     var own = doc.people[id] || {};
     return { id: id, name: own.name || base.name, note: own.note !== undefined ? own.note : base.note, removed: !!own.removed };
   }
@@ -300,6 +311,7 @@
     initials: initials,
     flag: flag,
     ownerName: ownerName,
+    generated: generated,
     replaceWords: replaceWords,
     /* File picked on a tool page, by FILES key (machine.js) */
     pick: function (key) {

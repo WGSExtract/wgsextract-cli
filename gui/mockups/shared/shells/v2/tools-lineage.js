@@ -16,7 +16,7 @@
   }
 
   T.define({
-    slug: "y-haplogroup", label: "Y haplogroup", ops: ["lineage/y-haplogroup"], group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
+    slug: "y-haplogroup", label: "Y haplogroup", needsY: true, ops: ["lineage/y-haplogroup"], group: "Lineage", keywords: "yleaf yfull ftdna isogg paternal",
     lesson: { href: "learn-ancestry.html#lineage", label: "Haplogroups & direct lineages" },
     desc: "Places the paternal line on the Y-DNA tree from the SNPs on the Y chromosome.",
     learn: "Use it to learn your direct paternal line, the one that usually follows the surname: which branch of the human Y tree you belong to, and how far down it you can be placed. A whole genome reads far more Y SNPs than a DNA-test kit, so the branch is usually much more specific.\n\n" +
@@ -68,7 +68,7 @@
   });
 
   T.define({
-    slug: "y-str", label: "Y-STR markers", ops: ["lineage/y-str"], group: "Lineage", keywords: "ftdna yseq y-111 surname",
+    slug: "y-str", label: "Y-STR markers", needsY: true, ops: ["lineage/y-str"], group: "Lineage", keywords: "ftdna yseq y-111 surname",
     lesson: { href: "learn-ancestry.html#lineage", label: "Y-STRs & paternal comparisons" },
     desc: "Counts repeats at Y-STR markers, the numbers FamilyTreeDNA and YSEQ compare between men who share a surname.",
     learn: "Use it if you’re in, or want to join, a surname project: members compare counts at 37, 67 or 111 markers to see who shares a recent paternal ancestor. The counts change quickly, so they separate men only a few generations apart, which the Y haplogroup can’t.\n\n" +

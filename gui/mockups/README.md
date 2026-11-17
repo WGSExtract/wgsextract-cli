@@ -90,6 +90,13 @@ kept in this browser until you reset it.
   `shared/shells/v2/machine-spec.js` checks it, in the browser and on the
   shared server alike. On a shared server the choice is the server's, so
   every browser connected to it follows it.
+- **Generated files** (`shared/shells/v2/api-files.js`, `generated.js`): Add
+  files › **Add generated files** adds made-up files (whole genomes from
+  several companies, long reads, exomes, FASTQ, VCFs, DNA-test kits) from a
+  catalog, for made-up people, a new named person, someone in the library or
+  nobody. They take disk space, show in the library and on
+  `person-added.html?id=`, and every tool can run on them. Mockup settings ›
+  **Generated files catalog** edits the templates. See MOCK_API.md.
 - **Region picker** (`shared/shells/v2/region.js`): every tool that takes
   `--region` gets the same control: the whole genome, chromosomes or part of
   one, a gene, or the exact text. Chromosome names follow the file's build

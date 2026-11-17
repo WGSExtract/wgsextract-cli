@@ -61,7 +61,7 @@
   });
 
   T.define({
-    slug: "y-chromosome", label: "Y chromosome", ops: ["extract/ydna-bam", "extract/ydna-vcf"], group: "Extract", keywords: "ydna yfull big y",
+    slug: "y-chromosome", label: "Y chromosome", needsY: true, ops: ["extract/ydna-bam", "extract/ydna-vcf"], group: "Extract", keywords: "ydna yfull big y",
     lesson: { href: "learn-ancestry.html#lineage", label: "What a paternal lineage tells you" },
     desc: "The Y chromosome on its own, passed from father to son. YFull and FamilyTreeDNA’s Big Y tools read the BAM; the VCF lists named Y SNPs.",
     learn: "Use it to send your paternal line to YFull or FamilyTreeDNA for detailed placement and matching with other men, without sharing the rest of the genome. It applies only to males; a woman’s paternal line needs her father’s or a brother’s genome.\n\n" +

@@ -147,6 +147,11 @@
       dir: "@downloads", disk: "system", depth: 30, gb: 93, size: 77, platform: "illumina" },
   };
 
+  /* Files generated on the Add files page live in the mock's state
+   * (api-files.js); api-server.js mirrors them here for the file pickers */
+  var GENERATED = WGSM.v2state.generated().files;
+  var ALL_FILES = Object.assign({}, FILES, GENERATED);
+
   /* Real paths for API requests: the workspace and ~ resolved, as the
    * server needs absolute paths (shown in the GUI as {{bundleWorkspace}}) */
   var HOME = P.os === "windows" ? "C:/Users/you" : P.os === "macos" ? "/Users/you" : "/home/you";
@@ -195,7 +200,10 @@
   WGSM.v2machine = {
     profiles: PROFILES,
     machine: MACHINE,
-    files: FILES,
+    /* The library: the demo's files and generated ones */
+    files: ALL_FILES,
+    /* The demo's own files, the mock's seed */
+    baseFiles: FILES,
     unavailable: unavailable,
     /* Optional tool sets missing here: [env, label] */
     missingSets: function () {

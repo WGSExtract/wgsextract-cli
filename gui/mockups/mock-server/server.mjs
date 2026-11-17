@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MOCKUPS = path.resolve(HERE, "..");
 const SHELL = path.join(MOCKUPS, "shared/shells/v2");
-const CORE = ["../../data/api-schema", "machine-spec", "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin"];
+const CORE = ["../../data/api-schema", "machine-spec", "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-files"];
 const USAGE = `Usage: server.mjs [--host 127.0.0.1] [--port 8767] [--state FILE] [--speed N]
 
   --host    address to listen on (0.0.0.0 for other computers)
@@ -70,7 +70,7 @@ export function loadDemoData(M) {
   return M.buildConfig({
     profiles: plain(WGSM.v2machine.profiles),
     machineKey: WGSM.v2machine.machine.key,
-    files: plain(WGSM.v2machine.files),
+    files: plain(WGSM.v2machine.baseFiles),
     people: plain(WGSM.v2state.people()),
   });
 }

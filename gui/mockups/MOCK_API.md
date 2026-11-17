@@ -276,6 +276,7 @@ download fields of `progress`.
 | `POST /v1/library/files/{id}/assign` | `{"person": "gordon"}` or `{"name": "New person"}` → the library |
 | `POST /v1/estimate` | `{op, params}` → `{label, mode, duration_s, download_bytes, memory_gb, ram_gb, fits_memory, steps, disk: [{disk, need_gb, temp_gb, free_gb, fits}], starts_at, starts_in_s, finishes_at}` |
 | `GET /v1/references` | `{"references": [{id, name, build, kind, gb, installed, flag, indexes?, downloading?, partial?}]}` |
+| `DELETE /v1/library/files/{id}` | Removes a generated file (below) from the library, and its made-up person with their last file; 409 `seed_file` for the demo's own files |
 
 ### Mock only
 
@@ -289,6 +290,27 @@ download fields of `progress`.
 | `GET`/`POST /v1/mock/flags` | `{flags, explicit}`; POST `{set: [], unset: [], clear: []}` |
 | `GET`/`POST /v1/mock/machine` | `{profile, custom}`: which `machine.js` computer the server pretends to be. `profile: "custom"` takes `custom: {label, cpu, os, arch, cores, bigCores, ramGB, gpu, gpuGB, system, genomes, volumes, missing}`, checked by `machine-spec.js` (400 with the problems) |
 | `GET /v1/mock/state` | The whole stored state |
+| `GET`/`PUT`/`DELETE /v1/mock/catalog` | `{templates, custom}`: what Add files › Add generated files can make. PUT `{templates}` (1–60) is checked: 400 `usage` with `error.details`; DELETE restores the default |
+| `GET /v1/mock/files` | `{files, people}`: generated files (shaped like `machine.js` FILES entries) and the made-up people they belong to |
+| `POST /v1/mock/files` | `{template, count (1–20), whose: "new" \| "unassigned" \| <person id>, name?}` → the files and people just made, as lists; `"new"` makes one made-up person per file, unless `name` is given |
+| `DELETE /v1/mock/files` | Removes every generated file and made-up person |
+
+#### Generated files
+
+Testing with more than the McDonalds: Add files › **Add generated files**
+picks templates from the catalog (`api-files.js`: Nebula, Dante and
+Sequencing.com 30×, low-pass, exome, Big Y, Nanopore on T2T, HiFi, a FASTQ
+pair, a VCF, 23andMe and AncestryDNA) and how many of each. Each file gets a
+name from the template's pattern (`{first}`, `{last}`, `{First}`, `{Last}`,
+`{digits}`, `{code}`, `{date}`, `{depth}`), a disk (the genomes disk from
+20 GB, else Downloads) that loses its space, and the template's build,
+reference, depth, platform and sex. A template that isn't indexed gives the
+file a `no_index` issue. The jobs, estimates, library and disks see them as
+they see the seed files, and the pages read them through the
+`v2-generated` mirror, synced every few ticks. Made-up people have their
+own page (`person-added.html?id=`) listing the tools that take their files;
+`tool-*.html?file=<id>` opens a tool on one. Mockup settings › Generated
+files catalog edits the templates; reset removes the files and the edits.
 
 ## The demo's starting jobs
 

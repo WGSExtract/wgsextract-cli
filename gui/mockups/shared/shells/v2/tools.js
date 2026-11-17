@@ -4,7 +4,7 @@
  *
  * A definition: { slug, label, ops: [API operations], group, desc, accepts:
  * ["reads"|"vcf"|"fastq"|"kit"], file, requires: [tools this computer must
- * have], learn (plain-language "what is this for", paragraphs split by blank
+ * have], needsY (only for genomes with a Y chromosome), learn (plain-language "what is this for", paragraphs split by blank
  * lines), lesson (optional {href, label}), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
  * run(ctx) }. Field keys are the operations' Params names (requests.js checks
  * them against the API schema); a field the API doesn't take says ui: true.
@@ -99,6 +99,9 @@
 
   function context(def, root) {
     var M = WGSM.v2machine;
+    /* ?file=<FILES key> (a made-up person's page links so) picks the file */
+    var asked = WGSM.params.get("file");
+    if (asked && M.files[asked] && def.accepts.indexOf(M.files[asked].kind) >= 0 && WGSM.v2state.pick() !== asked) WGSM.v2state.pick(asked);
     var key = WGSM.v2state.pick() || def.file;
     if (!M.files[key] || def.accepts.indexOf(M.files[key].kind) < 0) key = def.file;
     var file = M.files[key];

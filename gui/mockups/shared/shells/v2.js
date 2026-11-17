@@ -121,23 +121,29 @@
    * the simulated clock and server (when present), and a reset */
   function mockDialog() {
     var editor = WGSM.v2machineEditor.build();
+    var catalog = WGSM.v2generated.catalogEditor();
     return h("dialog.dialog.v2-mock", { id: "v2-mock", "aria-labelledby": "v2-mock-title", dataset: { v2NoTerms: "" } },
       h("div.dialog__header", h("h2.dialog__title", { id: "v2-mock-title" }, "Mockup settings")),
       h("div.dialog__body",
         h("p.v2-small.v2-muted", "Not part of the app. Pretend WGS Extract runs on another computer, or build your own, to see how pages, estimates and tools change."),
         editor.el,
-        h("section", h("h3.v2-mock__h", "Simulation"), h("div", { dataset: { v2MockSlot: "" } }))),
+        h("section", h("h3.v2-mock__h", "Simulation"), h("div", { dataset: { v2MockSlot: "" } })),
+        catalog.el),
       h("div.dialog__footer.v2-mock__footer",
         h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", dataset: { v2Reset: "", toast: "The demo is back to how it started" } }, "Reset the demo"),
         h("span.v2-spacer"),
         h("button.v2-btn", { type: "button", "data-close": "" }, "Cancel"),
         h("button.v2-btn.v2-btn--primary", { type: "button", onclick: function (event) {
           var dialog = event.currentTarget.closest("dialog");
-          editor.apply().then(function (reload) {
-            if (reload) location.reload();
-            else if (!WGSM.qs(".v2-notice:not([hidden])", dialog)) WGSM.qs("[data-close]", dialog).click();
+          /* The catalog first: a new computer reloads the page */
+          catalog.apply().then(function (ok) {
+            if (!ok) return;
+            return editor.apply().then(function (reload) {
+              if (reload) location.reload();
+              else if (!WGSM.qs(".v2-notice:not([hidden])", dialog)) WGSM.qs("[data-close]", dialog).click();
+            });
           });
-        } }, "Use this computer")));
+        } }, "Apply")));
   }
 
   function tabbar() {
@@ -216,6 +222,7 @@
     WGSM.v2region.start();
     WGSM.v2catalog.start();
     WGSM.v2tools.start();
+    WGSM.v2generated.start();
     WGSM.v2terms.start();
     WGSM.qs("[data-v2-mock-slot]").appendChild(WGSM.v2clock.control());
     /* The Jobs count: running, queued, and what needs you */

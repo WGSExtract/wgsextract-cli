@@ -66,7 +66,7 @@
       var flags = mock.flags();
       var t = now();
       var people = Object.keys(c.people).map(function (id) {
-        return { id: id, name: c.people[id].name, note: c.people[id].note, removed: !!c.people[id].removed, files: [] };
+        return { id: id, name: c.people[id].name, note: c.people[id].note, removed: !!c.people[id].removed, generated: !!c.people[id].generated, files: [] };
       });
       var byId = {};
       people.forEach(function (p) {
@@ -75,7 +75,9 @@
       var unassigned = [];
       Object.keys(c.files).forEach(function (k) {
         var f = Object.assign({ id: k }, c.files[k]);
-        var v = fileView(f, f.needs && !flags[f.needs] ? "needs_fix" : "ready", f.needs ? { needs: f.needs } : {});
+        var extra = f.needs ? { needs: f.needs } : {};
+        if (f.generated) Object.assign(extra, { generated: true, source: f.source, issues: f.issues || [] });
+        var v = fileView(f, f.needs && !flags[f.needs] ? "needs_fix" : "ready", extra);
         var who = owner(f);
         (who && hasOwn(byId, who) ? byId[who].files : unassigned).push(v);
       });

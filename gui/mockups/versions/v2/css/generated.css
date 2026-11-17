@@ -1,0 +1,96 @@
+/* Generated files (shared/shells/v2/generated.js): mockup tooling that adds
+ * made-up files to the library */
+.v2-gen__groups {
+  display: contents;
+}
+
+.v2-gen__groups > .v2-group {
+  border-top: 1px solid var(--c-border);
+}
+
+.v2-gen__source {
+  color: var(--c-text-3);
+  font-weight: 400;
+}
+
+.v2-gen__remove {
+  margin-left: auto;
+  padding: 2px 6px;
+}
+
+.v2-status:has(.v2-gen__remove) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.v2-gen__who {
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialog.v2-gen {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.v2-gen .dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.v2-gen__list {
+  max-height: min(48vh, 420px);
+  overflow-y: auto;
+}
+
+.v2-gen__choice .v2-choice__desc {
+  font-size: 12px;
+}
+
+.v2-gen__issues {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--c-text-2);
+}
+
+.v2-gen__tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.v2-gen__tool {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r);
+  background: var(--c-surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+.v2-gen__tool:hover {
+  border-color: var(--v2-cyan);
+}
+
+/* Wider than the dialog: it scrolls sideways instead of squeezing selects */
+.v2-gen-cat__table {
+  width: max-content;
+}
+
+.v2-gen-cat__table td:first-child .v2-input {
+  min-width: 200px;
+}
+
+.v2-gen-cat__table td:nth-child(n + 2) .v2-input {
+  min-width: 0;
+}
+
+.v2-gen-cat__table .v2-select {
+  min-width: 96px;
+}

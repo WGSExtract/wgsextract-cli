@@ -35,7 +35,7 @@
 
   function config() {
     var mm = WGSM.v2machine;
-    return M.buildConfig({ profiles: mm.profiles, machineKey: mm.machine.key, files: mm.files, people: WGSM.v2state.people() });
+    return M.buildConfig({ profiles: mm.profiles, machineKey: mm.machine.key, files: mm.baseFiles, people: WGSM.v2state.people() });
   }
 
   function localMock() {
@@ -203,6 +203,22 @@
     });
   }
 
+  /* Files generated on the Add files page (api-files.js), mirrored into
+   * this browser for machine.js's file pickers; "v2-generated" fires when
+   * they change */
+  var generatedSeen = null;
+  function syncGenerated() {
+    return request("GET", "/v1/mock/files").then(function (res) {
+      if (res.status !== 200) return;
+      var text = JSON.stringify({ files: res.body.files, people: res.body.people });
+      if (generatedSeen === null) generatedSeen = WGSM.pref("v2-generated") || JSON.stringify({ files: {}, people: {} });
+      if (text === generatedSeen) return;
+      generatedSeen = text;
+      WGSM.pref("v2-generated", text);
+      WGSM.emit("v2-generated", res.body);
+    });
+  }
+
   function notify() {
     var detail = { mode: state.mode, now: clock().now() };
     listeners.slice().forEach(function (fn) {
@@ -223,7 +239,9 @@
       });
     return step
       .then(function () {
-        if (ticks++ % 3 === 0) return syncFlags();
+        var n = ticks++;
+        if (n % 10 === 0) syncGenerated();
+        if (n % 3 === 0) return syncFlags();
       })
       .then(notify);
   }
@@ -291,10 +309,12 @@
     reset: function () {
       if (state.mode === "browser") {
         localMock().reset();
-        return tick();
+        return tick().then(syncGenerated);
       }
-      return request("POST", "/v1/mock/reset").then(tick);
+      return request("POST", "/v1/mock/reset").then(tick).then(syncGenerated);
     },
+    /* Refresh the generated files mirror now (after adding or removing) */
+    syncGenerated: syncGenerated,
     /* For WGSM.v2clock */
     clock: clock,
     syncClock: syncClock,

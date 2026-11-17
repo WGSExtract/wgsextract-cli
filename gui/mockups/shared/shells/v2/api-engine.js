@@ -38,7 +38,9 @@
       Object.keys(config.people).concat(Object.keys(doc.people)).forEach(function (id) {
         people[id] = Object.assign({ name: id, note: "" }, config.people[id], doc.people[id]);
       });
-      return { machine: machine, files: M.resolveFiles(config, machine), people: people };
+      /* Seed files, then files added since (api-files.js) */
+      var files = doc.added ? { files: Object.assign({}, config.files, doc.added) } : config;
+      return { machine: machine, files: M.resolveFiles(files, machine), people: people };
     }
 
     function rate(job) {
@@ -256,6 +258,10 @@
       });
       Object.keys(doc.partials).forEach(function (k) {
         u[doc.partials[k].disk] += doc.partials[k].bytes / 1e9;
+      });
+      Object.keys(doc.added || {}).forEach(function (k) {
+        var d = doc.added[k].disk;
+        u[d] = (u[d] || 0) + doc.added[k].size;
       });
       return u;
     }

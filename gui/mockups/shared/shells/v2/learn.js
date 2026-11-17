@@ -44,12 +44,14 @@
       if (!target || !list.contains(target)) return;
       search.value = "";
       filter();
-      requestAnimationFrame(function () { target.scrollIntoView({ block: "start" }); });
+      target.scrollIntoView({ block: "start" });
     }
     search.addEventListener("input", filter);
     window.addEventListener("hashchange", revealAnchor);
     WGSM.append(el, [search, count, letters, list]);
     filter();
-    requestAnimationFrame(revealAnchor);
+    /* After the rest of the page has started (not a frame callback, which
+     * a backgrounded or headless window may hold back) */
+    setTimeout(revealAnchor);
   };
 })();
