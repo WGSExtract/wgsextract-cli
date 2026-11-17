@@ -14,3 +14,7 @@ snapshot provenance. Existing completed resource records are never rewritten.
 Refresh snapshots only as part of an explicit rights review. Preserve their
 exact bytes: the source-licence assets already uploaded to a release are
 immutable, even when only website formatting changes.
+
+The directory is `-text` in `.gitattributes`: Windows `core.autocrlf` must not
+change the source bytes. Do not normalize these files or weaken checksum
+verification to accommodate a converted checkout.

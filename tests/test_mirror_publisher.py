@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+import subprocess
 from email.utils import formatdate
+from pathlib import Path
 from urllib.request import Request, urlopen
 
 import pytest
@@ -10,6 +12,44 @@ import pytest
 from scripts import mirror_resource_terms as terms
 from scripts import mirror_resource_transfer as transfer
 from tests.http_server import RangeServer
+
+
+def test_1046_windows_checkout_preserves_pinned_terms_bytes(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    relative = Path("src/wgsextract_cli/assets/resource_terms")
+    index = json.loads((root / relative / "sources.json").read_text())
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitattributes").write_bytes((root / ".gitattributes").read_bytes())
+    (repo / "control.txt").write_bytes(b"ordinary text\n")
+    target = repo / relative
+    target.mkdir(parents=True)
+    for name in {record["file"] for record in index["sources"].values()}:
+        (target / name).write_bytes((root / relative / name).read_bytes())
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "core.autocrlf=false", "add", "."],
+        check=True,
+    )
+    checkout = tmp_path / "windows"
+    checkout.mkdir()
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "core.autocrlf=true",
+            "checkout-index",
+            "--all",
+            f"--prefix={checkout.as_posix()}/",
+        ],
+        check=True,
+    )
+    assert (checkout / "control.txt").read_bytes() == b"ordinary text\r\n"
+    for record in index["sources"].values():
+        payload = (checkout / relative / record["file"]).read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == record["sha256"]
 
 
 @pytest.fixture
