@@ -15,6 +15,10 @@ verified data is reused offline. `--no-download` overrides a persistent opt-in:
 allow_reference_downloads = false
 ```
 
+`analyze comprehensive` runs these same guarded subcommands. Provision missing
+data first with the download command named in the error, or explicitly opt in
+through `config.toml` before running the comprehensive workflow.
+
 The option is shared by the CLI and typed Python/server parameters. The
 read-only MCP surface refuses download permissions. A server job needs both
 job authorization and download permission; merely starting the server grants
@@ -60,8 +64,8 @@ behavior. Classification describes the baseline, before this change.
 
 | Command/option | Network on baseline? | Classification / disposition |
 | --- | --- | --- |
-| `help`, version, `config`, `sample`, `support issue-report`, `deps check`, `info`, coverage, chip inspection | No | Local; no install/update/size probe; support builds a redacted report but does not upload it |
-| `extract` family, `align`, local-input `realign`, `microarray`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
+| `help`, version, `config`, `sample`, `report-issue`, `deps check`, `info`, coverage, chip inspection | No | Local; no install/update/size probe; support builds a redacted report but does not upload it |
+| `extract` and `bam` families, `repair`, `align`, local-input `realign`, `microarray`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | No | Local chain-file paths passed to pyliftover, never build-name auto-fetch |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | No | Local caches/indexes only; VEP cache missing names `vep download` |
@@ -74,6 +78,7 @@ behavior. Classification describes the baseline, before this change.
 | `score pgs --trait/--pgs-id` | Yes, including repeated runs | **Default-violation**: require `--download` for absent Catalog files; reuse local copies |
 | `typing hla` without local index | Yes | **Default-violation**: require `--download` for IPD-IMGT/HLA |
 | `lineage mt-haplogroup`, `lineage y-haplogroup`, custom remote Y trees | Yes when data absent | **Default-violation**: require `--download`; cache reuse remains local |
+| `analyze comprehensive` | Inherits first-use tree downloads from lineage steps | **Default-violation**: child commands now refuse missing data without consent; pre-provision it or explicitly opt in through config |
 | `report` with clinical findings and absent selected gene list | Yes | **Default-violation**: require `--download`, not silent partial placement |
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
