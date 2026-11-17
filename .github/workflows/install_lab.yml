@@ -113,7 +113,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # The app as users get it: the latest WGS Extract app release (or the one
@@ -250,7 +253,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux-app-${{ matrix.cli }}
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos:
@@ -282,7 +288,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos-app:
@@ -379,7 +388,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos-app-${{ matrix.cli }}
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows:
@@ -401,7 +413,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Weekly: each sabotaged install, on its own fresh runner, must fail.
@@ -424,7 +439,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows-sabotage-${{ matrix.sabotage }}
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows-app:
@@ -486,6 +504,8 @@ jobs:
           path: |
             out/installlab/ci-windows-app/results
             out/installlab/ci-windows-app/screens
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Judged on Linux: the oracle needs samtools/bcftools, which have no native

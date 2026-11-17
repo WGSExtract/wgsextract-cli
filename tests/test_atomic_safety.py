@@ -1,8 +1,10 @@
+import errno
 import json
 import os
 import platform
 import shutil
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -17,7 +19,7 @@ from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam
 from wgsextract_cli.core import bwa_index, config
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependencies import clear_tool_caches
-from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.file_lock import build_lock, exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -261,6 +263,97 @@ def test_dead_builder_lock_is_reclaimed(tmp_path):
     with build_lock(str(lock), timeout=0.01):
         assert json.loads(lock.read_text())["pid"] == os.getpid()
     assert not lock.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX umask permission bits")
+@pytest.mark.parametrize("mask", [0o002, 0o022, 0o077])
+def test_1065_shared_library_lock_permissions_honour_umask(tmp_path, mask):
+    lock = tmp_path / "hg19ToHg38.over.chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    modes = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+from wgsextract_cli.core.file_lock import build_lock
+
+lock = Path(sys.argv[1])
+os.umask(int(sys.argv[2]))
+with build_lock(str(lock)):
+    print(json.dumps([
+        stat.S_IMODE(lock.stat().st_mode),
+        stat.S_IMODE(Path(f"{lock}.guard").stat().st_mode),
+    ]))
+""",
+            str(lock),
+            str(mask),
+        ],
+        text=True,
+    )
+    assert json.loads(modes) == [0o666 & ~mask, 0o666 & ~mask]
+    with exclusive_lock(lock):
+        assert stat.S_IMODE(guard.stat().st_mode) == 0o666 & ~mask
+    assert not lock.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1065_unreadable_legacy_guard_names_file_and_remedy(tmp_path):
+    lock = tmp_path / "hg19ToHg38.over.chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    guard.touch(mode=0o600)
+    guard.chmod(0)
+    try:
+        # Root bypasses mode bits, so it cannot reproduce another user's EACCES.
+        if os.access(guard, os.R_OK | os.W_OK):
+            pytest.skip("this account bypasses file permissions")
+        with pytest.raises(WGSExtractError) as error, build_lock(str(lock)):
+            pytest.fail("locking must not be skipped on permission errors")
+        message = str(error.value)
+        assert str(guard) in message
+        assert "owner or administrator" in message
+        assert "read/write access" in message
+        assert "Do not delete" in message
+        assert isinstance(error.value.__cause__, PermissionError)
+        assert guard.exists()
+        assert not lock.exists()
+    finally:
+        guard.chmod(0o600)
+
+
+@pytest.mark.parametrize("concurrent_creator", [False, True])
+def test_1065_shared_guard_in_sticky_directory_keeps_locking(
+    tmp_path, monkeypatch, concurrent_creator
+):
+    lock = tmp_path / "chain.gz.lock"
+    guard = Path(f"{lock}.guard")
+    if not concurrent_creator:
+        guard.touch()
+    real_open = os.open
+
+    def protected_open(path, flags, *args, **kwargs):
+        if Path(path) == guard:
+            if concurrent_creator and not guard.exists() and flags & os.O_CREAT:
+                created = real_open(guard, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666)
+                os.close(created)
+            # Linux protected_regular rejects O_CREAT on another user's guard,
+            # but O_EXCL still reports EEXIST. Simulate this OS boundary without
+            # requiring administrator privileges or a second local account.
+            if guard.exists() and flags & os.O_CREAT and not flags & os.O_EXCL:
+                raise PermissionError(errno.EACCES, "Permission denied", str(guard))
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", protected_open)
+    with exclusive_lock(lock):
+        inode = guard.stat().st_ino
+        with pytest.raises(WGSExtractError, match="Timed out"):
+            with exclusive_lock(lock, timeout=0.01):
+                pytest.fail("the existing guard must still serialize callers")
+    assert guard.stat().st_ino == inode
 
 
 def test_concurrent_stale_lock_reclaimers_never_evict_a_new_owner(tmp_path):
