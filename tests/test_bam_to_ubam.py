@@ -102,7 +102,7 @@ def test_existing_read_groups_win_over_sample_and_platform(tmp_path, caplog):
         run_wgsextract(
             "bam", "to-ubam", "--input", bam, "--sample", "other", "--platform", "ONT"
         )
-    out = tmp_path / "NA1_unaligned.bam"
+    out = tmp_path / "wgse" / "NA1_unaligned.bam"
     assert "@RG\tID:lane1\tSM:NA1\tPL:ILLUMINA" in _samtools("view", "-H", str(out))
     assert _sorted_tags(_reads(out)) == _sorted_tags(_expected_reads("lane1"))
     assert "--sample/--platform are ignored" in caplog.text
@@ -116,7 +116,7 @@ def test_cram_input_needs_and_uses_its_reference(tmp_path):
         "bam", "to-ubam", "--input", cram, "--ref", str(ref), "--sample", "S9",
         "--library", "L7",
     )  # fmt: skip
-    out = tmp_path / "kit" / "s_unaligned.bam"
+    out = tmp_path / "kit" / "wgse" / "s_unaligned.bam"
     header = _samtools("view", "-H", str(out))
     assert "@RG\tID:HABCDEFXX.2\tSM:S9\tLB:L7\tPU:HABCDEFXX.2\tPL:ILLUMINA" in header
     assert _sorted_tags(_reads(out)) == _sorted_tags(_expected_reads("HABCDEFXX.2"))
@@ -132,7 +132,7 @@ def test_single_end_gzipped_fastq_with_platform_override(tmp_path):
     with gzip.open(fq, "wt") as f:
         f.write("@m1\nACGTA\n+\nIIIII\n@m0\nTTGCA\n+\n!!!!!\n")
     run_wgsextract("bam", "to-ubam", "--r1", str(fq), "--platform", "PACBIO")
-    out = tmp_path / "HG002_unaligned.bam"
+    out = tmp_path / "wgse" / "HG002_unaligned.bam"
     assert "@RG\tID:HG002\tSM:HG002\tLB:lib1\tPL:PACBIO" in _samtools(
         "view", "-H", str(out)
     )
@@ -149,7 +149,7 @@ def test_undetectable_platform_warns(tmp_path, caplog):
         run_wgsextract("bam", "to-ubam", "--r1", str(fq))
     assert "pass --platform" in caplog.text
     assert "@RG\tID:x\tSM:x\tLB:lib1\n" in _samtools(
-        "view", "-H", str(tmp_path / "x_unaligned.bam")
+        "view", "-H", str(tmp_path / "wgse" / "x_unaligned.bam")
     )
 
 
@@ -195,7 +195,8 @@ def test_insufficient_space_and_failed_pipeline_leave_no_output(tmp_path, monkey
     monkeypatch.setattr(_bam_ubam, "run_pipeline", broken)
     with pytest.raises(WGSExtractError, match="Unaligned BAM creation failed"):
         run_wgsextract("bam", "to-ubam", "--r1", str(fq))
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["x.fq"]
+    # The run may leave its (empty) wgse/ output folder, but no file.
+    assert [p.name for p in tmp_path.rglob("*") if p.is_file()] == ["x.fq"]
 
 
 def test_pre_casava_illumina_name_gets_no_bogus_platform_unit():
@@ -207,7 +208,7 @@ def test_uppercase_fastq_extension_is_stripped(tmp_path):
     fq = tmp_path / "NA1_R1.FASTQ.GZ"
     fq.write_bytes(gzip.compress(b"@read7\nACGT\n+\nIIII\n"))
     run_wgsextract("bam", "to-ubam", "--r1", str(fq))
-    assert (tmp_path / "NA1_unaligned.bam").exists()
+    assert (tmp_path / "wgse" / "NA1_unaligned.bam").exists()
 
 
 def test_bcl2fastq_read_one_suffix_is_not_the_sample_name(tmp_path):
@@ -216,7 +217,7 @@ def test_bcl2fastq_read_one_suffix_is_not_the_sample_name(tmp_path):
     r1.write_text(f"@{_NAME.format(1)} 1:N:0:1\nACGT\n+\nIIII\n")
     r2.write_text(f"@{_NAME.format(1)} 2:N:0:1\nACGT\n+\nIIII\n")
     run_wgsextract("bam", "to-ubam", "--r1", str(r1), "--r2", str(r2))
-    (out,) = tmp_path.glob("*_unaligned.bam")
+    (out,) = (tmp_path / "wgse").glob("*_unaligned.bam")
     assert "R1" not in out.name
     (rg,) = [
         h for h in _samtools("view", "-H", str(out)).splitlines() if h[:3] == "@RG"
@@ -228,4 +229,4 @@ def test_single_end_fastq_with_slash_one_names_stays_unpaired(tmp_path):
     fq = tmp_path / "se.fq"
     fq.write_text("@HWI-ST1234:8:1101:1000:2000#0/1\nACGT\n+\nIIII\n")
     run_wgsextract("bam", "to-ubam", "--r1", str(fq), "--platform", "ILLUMINA")
-    assert [r[1] for r in _reads(tmp_path / "se_unaligned.bam")] == ["4"]
+    assert [r[1] for r in _reads(tmp_path / "wgse" / "se_unaligned.bam")] == ["4"]

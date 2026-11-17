@@ -352,8 +352,8 @@ class SampleWorkspace:
     @property
     def is_genome_folder(self) -> bool:
         """Whether the folder holds one person's files: the --genome folder, a
-        dataset-library entry, or a folder with genome-config.toml."""
-        from wgsextract_cli.core.config import dataset_library
+        My Genomes library entry, or a folder with genome-config.toml."""
+        from wgsextract_cli.core.config import mygenomes_library
         from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
 
         active = current_workspace()
@@ -361,10 +361,7 @@ class SampleWorkspace:
             return True
         if (self.folder / GENOME_CONFIG_NAME).is_file():
             return True
-        library = dataset_library()
-        if not library:
-            return False
-        root = absolute_path(str(library))
+        root = absolute_path(mygenomes_library())
         return self.folder != root and self.folder.is_relative_to(root)
 
     def _valid(self, name: str, value: object) -> str | None:

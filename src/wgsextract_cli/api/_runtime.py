@@ -192,9 +192,20 @@ def run_inline(
 
     ``explicit`` names fields the user set, which config must not override even
     when their value is None (``--threads auto``)."""
+    from wgsextract_cli.core.output_location import remove_if_empty
+
     params = with_config_defaults(params, keep=explicit)
-    with execution_context.bound(allow_downloads=_allows_downloads(params)):
-        impl(params)
+    outdir = getattr(params, "outdir", None)
+    fresh = (
+        Path(outdir).expanduser()
+        if outdir and not Path(outdir).expanduser().exists()
+        else None
+    )
+    try:
+        with execution_context.bound(allow_downloads=_allows_downloads(params)):
+            impl(params)
+    finally:
+        remove_if_empty(fresh)
 
 
 def _allows_downloads(params: Params) -> bool:

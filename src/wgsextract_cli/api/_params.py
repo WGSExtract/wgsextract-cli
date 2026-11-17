@@ -60,7 +60,8 @@ class ParamSpec:
     a tuple one takes one or more values, as does an option whose type is a
     variable-length tuple (``tuple[Path, ...]``). ``group`` (title, description) puts
     the option in that section of the command's help. ``hidden_flags`` are
-    old spellings of the option the CLI still accepts but its help leaves out.
+    old spellings of the option the CLI still accepts but its help leaves out,
+    and ``former_names`` old names of the field a server request may still use.
     """
 
     help: str | None = None
@@ -88,6 +89,7 @@ class ParamSpec:
     group: tuple[str, str | None] | None = None
     hidden_flags: tuple[str, ...] = ()
     url: bool = False
+    former_names: tuple[str, ...] = ()
 
     @property
     def description(self) -> str:
@@ -123,6 +125,7 @@ def param(
     group: tuple[str, str | None] | None = None,
     hidden_flags: tuple[str, ...] = (),
     url: bool = False,
+    former_names: tuple[str, ...] = (),
 ) -> Any:
     """Declare a Params field; omit ``default`` for a required one.
 
@@ -157,6 +160,7 @@ def param(
         group=group,
         hidden_flags=hidden_flags,
         url=url,
+        former_names=former_names,
     )
     return dataclasses.field(default=default, metadata={_SPEC: spec})
 
@@ -376,14 +380,27 @@ def param_fields(cls: type[Params]) -> tuple[ParamField, ...]:
 def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
     """Fill ``None`` fields that have a ``config_key`` from config.toml, except
     the fields named in ``keep``."""
-    from wgsextract_cli.core.config import settings
+    from wgsextract_cli.core.config import setting_or_default
 
     updates: dict[str, Any] = {}
-    for item in param_fields(type(params)):
+    fields = param_fields(type(params))
+    # The files the command reads, which place its default output folder.
+    from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
+
+    inputs = (
+        []
+        if params.COMMAND in BESIDE_INPUT_COMMANDS
+        else [
+            getattr(params, item.name)
+            for item in fields
+            if item.spec.path and not item.spec.writes
+        ]
+    )
+    for item in fields:
         key = item.spec.config_key
         if not key or item.name in keep or getattr(params, item.name) is not None:
             continue
-        value = settings.get(key)
+        value = setting_or_default(key, inputs)
         if value is not None and item.spec.cli_type is not None:
             try:
                 value = item.spec.cli_type(str(value))

@@ -37,7 +37,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # --- Path Configuration ---
 # Default input and output paths
 # input = "~/my_genome.bam"
-# outdir = "~/wgse_output"
+# outdir = "~/wgs-extract/output"  # the default: output/ in the users workspace
 
 # Path to a specific reference genome FASTA
 # ref = "~/my_genome.fa"
@@ -48,8 +48,9 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # Folder for the reference genomes alone (default: genomes/ in reflib)
 # reference_genome_library = "~/wgse_reference/genomes"
 
-# Dataset library directory, with one subfolder per person/sample.
-# dataset_library = "~/wgse_datasets"
+# My Genomes library, with one subfolder per person/sample
+# (default: mygenomes/ in the users workspace, ~/wgs-extract).
+# mygenomes_library = "~/wgs-extract/mygenomes"
 
 # --- Analysis Settings ---
 # System resources
@@ -587,7 +588,7 @@ def add_shared_arguments(
     add(
         "--genome",
         help=(
-            "Genome ID: a folder in dataset_library, such as joe or "
+            "Genome ID: a folder in the My Genomes library, such as joe or "
             "test-1000genomes/<id>. Uses that folder for inputs and outputs."
         ),
     )

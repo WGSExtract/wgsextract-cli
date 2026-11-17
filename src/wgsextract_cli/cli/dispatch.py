@@ -205,6 +205,21 @@ def _run_command(
     args: argparse.Namespace, explicit_dests: set[str], result: CommandResult
 ) -> None:
     # --genome fills in input/outdir; preflight failures keep the snapshot.
+    if (
+        hasattr(args, "outdir")
+        and args.outdir is None
+        and "outdir" not in explicit_dests
+    ):
+        # Unset, outputs go to wgse/ beside the lab's primary input, never in
+        # its folder (core/output_location.py).
+        from wgsextract_cli.core.config import output_directory
+        from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
+
+        command = str(getattr(args, "_command", None) or "")
+        inputs = [getattr(args, dest, None) for dest in (*INPUT_ARGS, "inputs")]
+        args.outdir = output_directory(
+            [] if command in BESIDE_INPUT_COMMANDS else inputs
+        )
     result.provenance.params = params_from_args(args)
     for dest, role in INPUT_ARGS.items():
         value = getattr(args, dest, None)
@@ -226,12 +241,25 @@ def _run_command(
         from wgsextract_cli.core.alignment.input import validate_alignment_input
 
         validate_alignment_input(input_path)
+    from wgsextract_cli.core.output_location import (
+        make_output_folder,
+        remove_if_empty,
+    )
+
+    created = None
     if (
         args.outdir
         and not status
         and getattr(args, "command", None) not in READ_ONLY_COMMANDS
     ):
-        Path(args.outdir).mkdir(parents=True, exist_ok=True)
+        created = make_output_folder(args.outdir)
+    try:
+        _run_handler(args)
+    finally:
+        remove_if_empty(created)
+
+
+def _run_handler(args: argparse.Namespace) -> None:
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 
     with keep_awake(

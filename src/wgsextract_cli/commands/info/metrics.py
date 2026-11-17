@@ -12,7 +12,7 @@ from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import (
     N_ADJUST,
     SEQUENCERS,
@@ -441,7 +441,7 @@ def cached_info(
     for folder in (
         outdir,
         str(absolute_path(input_path).parent),
-        settings.get("output_directory"),
+        output_directory([input_path]),
     ):
         cache = str(Path(folder, name)) if folder else ""
         try:

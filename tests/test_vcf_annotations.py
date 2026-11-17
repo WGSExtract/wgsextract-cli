@@ -503,7 +503,8 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
     assert commands[0][-2:] == ["--ref", lib]
-    assert sorted(os.listdir(tmp_path)) == ["chain_step_1_clinvar", "in.vcf.gz"]
+    assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
+    assert os.listdir(tmp_path / "wgse") == ["chain_step_1_clinvar"]
 
 
 @needs_bcftools
@@ -864,6 +865,9 @@ def test_annotating_an_output_onto_itself_is_refused(tmp_path):
             clinvar,
             "--ref",
             str(reference),
+            # Only an output folder pointed at the input's own folder could.
+            "--outdir",
+            str(tmp_path),
         )
     assert Path(previous).read_bytes() == before
 

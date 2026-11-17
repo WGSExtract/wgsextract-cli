@@ -446,27 +446,16 @@ def _status_ref_param() -> Any:
     )
 
 
-def _dataset_library_param(help: str) -> Any:
+def _mygenomes_library_param(help: str) -> Any:
     return param(
         None,
         help=help,
-        doc="Dataset library folder for the test genome (default: config "
-        "dataset_library, else ``datasets`` beside the reference library).",
+        doc="My Genomes library folder for the test genome (default: config "
+        "mygenomes_library, else mygenomes/ in the users workspace).",
         path="directory",
-        hidden_flags=("--genome-library",),
+        hidden_flags=("--dataset-library", "--genome-library"),
+        former_names=("dataset_library",),
     )
-
-
-def _datasets_beside(ref: Path | None, datasets: Path | None) -> Iterator[Path]:
-    """The ``datasets`` folder beside the library ``ref`` names, which a
-    command uses with neither ``datasets`` nor config dataset_library set."""
-    from wgsextract_cli.core.config import dataset_library
-
-    if ref is None or datasets is not None or dataset_library():
-        return
-    library = _library_named(ref)
-    if library.is_absolute():  # a relative ref is refused as it is
-        yield library.parent / "datasets"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -481,8 +470,8 @@ class RefStatusParams(Params):
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    dataset_library: Path | None = _dataset_library_param(
-        "Dataset library directory used for test dataset status."
+    mygenomes_library: Path | None = _mygenomes_library_param(
+        "My Genomes library folder used for the test genome status."
     )
     annotation_vcf: Path | None = param(
         None,
@@ -494,22 +483,20 @@ class RefStatusParams(Params):
         if self.ref is None:
             return
         yield "ref", _library_named(self.ref)
-        for datasets in _datasets_beside(self.ref, self.dataset_library):
-            yield "ref", datasets
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefTestGenomeParams(Params):
     """The test genome: the small hg19 benchmark dataset (1000 Genomes
-    HG00096) in the dataset library. Reports whether it is installed;
+    HG00096) in the My Genomes library. Reports whether it is installed;
     ``install`` downloads it (SHA-256 pinned) and ``delete`` deletes it."""
 
     COMMAND = "ref test-genome"
 
     ref: Path | None = _status_ref_param()
-    dataset_library: Path | None = _dataset_library_param(
-        "Dataset library to install into (default: config dataset_library, "
-        "else datasets beside the reference library)."
+    mygenomes_library: Path | None = _mygenomes_library_param(
+        "My Genomes library to install into (default: config "
+        "mygenomes_library, else mygenomes/ in the users workspace)."
     )
     install: bool = param(
         False,
@@ -534,18 +521,15 @@ class RefTestGenomeParams(Params):
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         if self.ref is not None:
             yield "ref", _library_named(self.ref)
-        for datasets in _datasets_beside(self.ref, self.dataset_library):
-            yield "ref", datasets
-        unset = self.ref is None and self.dataset_library is None
-        if (self.install or self.delete) and unset:
-            # The folder written is then config's dataset_library or the one
-            # beside the default library, which must be allowed too.
-            yield "dataset_library", self._datasets()
+        if (self.install or self.delete) and self.mygenomes_library is None:
+            # The folder written is then config's mygenomes_library or the
+            # default one, which must be allowed too.
+            yield "mygenomes_library", self._datasets()
 
     def _datasets(self) -> Path:
-        from wgsextract_cli.commands.ref.status import dataset_library_for
+        from wgsextract_cli.commands.ref.status import mygenomes_library_for
 
-        return dataset_library_for(self.ref, self.dataset_library)
+        return mygenomes_library_for(self.mygenomes_library)
 
     def write_folders(self) -> Iterator[Path]:
         if self.install or self.delete:

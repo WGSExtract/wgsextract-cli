@@ -134,7 +134,9 @@ def test_a_hom_ref_child_is_not_recessive(tmp_path):
 
 
 @pytest.mark.parametrize("input_option", ["--vcf-input", "--input"])
-def test_trio_defaults_to_denovo_beside_the_proband_input(tmp_path, input_option):
+def test_trio_defaults_to_denovo_in_wgse_beside_the_proband_input(
+    tmp_path, input_option
+):
     child, mother, father = _trio(
         tmp_path,
         child=["100 denovo A G 0/1:99"],
@@ -144,8 +146,8 @@ def test_trio_defaults_to_denovo_beside_the_proband_input(tmp_path, input_option
     run_wgsextract(
         "vcf", "trio", input_option, child, "--mother", mother, "--father", father
     )
-    assert _ids(tmp_path / "trio_denovo.vcf.gz") == ["denovo"]
-    assert not (tmp_path / "trio_recessive.vcf.gz").exists()
+    assert _ids(tmp_path / "wgse" / "trio_denovo.vcf.gz") == ["denovo"]
+    assert not (tmp_path / "wgse" / "trio_recessive.vcf.gz").exists()
 
 
 @pytest.mark.parametrize(

@@ -13,7 +13,7 @@ from wgsextract_cli.api.examples import (
     ExampleGenomeListParams,
 )
 from wgsextract_cli.cli.registration.examples import register as register
-from wgsextract_cli.core.config import dataset_library
+from wgsextract_cli.core.config import configured_mygenomes_library
 from wgsextract_cli.core.download_progress import curl_progress_args, redact_urls
 from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -300,12 +300,12 @@ def run_download(params: ExampleGenomeDownloadParams) -> None:
             current_result().add_output(destination, role)
         _write_genome_config(example, example_dir)
         current_result().add_output(example_dir / GENOME_CONFIG_NAME, "genome_config")
-        library = dataset_library()
+        library = configured_mygenomes_library()
         hint = (
             ""
             if library and Path(library).expanduser().resolve() == root
             else " after setting "
-            + tomli_w.dumps({"dataset_library": str(root)}).strip()
+            + tomli_w.dumps({"mygenomes_library": str(root)}).strip()
             + " in config.toml"
         )
         logging.info(

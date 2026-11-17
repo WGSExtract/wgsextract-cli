@@ -89,6 +89,25 @@ def render() -> str:
         "picks another file for one run. Command-line options override "
         "settings for a run.",
         "",
+        "config.toml lives in the users workspace, `~/wgs-extract` "
+        "(`%USERPROFILE%\\wgs-extract` on Windows), beside the default My "
+        "Genomes library (`mygenomes/`): the folders you manage and may want "
+        "on another disk. An install that "
+        "already keeps config.toml where earlier versions did (the per-user "
+        "config folder, `~/.config/wgsextract` on macOS) keeps using it. "
+        "Reference data, reference genomes and temporary files stay in the "
+        "CLI's own data folder unless config.toml names other folders. The "
+        "WGS Extract desktop app keeps its settings in the same folder, so "
+        "the two share them.",
+        "",
+        "Without output_directory, a command writes to a `wgse/` folder beside "
+        "its input from the lab (a BAM or CRAM, else FASTQs, else a VCF, else "
+        "a raw microarray file), or beside an input already in a `wgse/` "
+        "folder. The folder of the lab's original files stays untouched: only "
+        "indexes that must sit beside their files are written there, and "
+        "writing a BAM, CRAM, FASTQ, VCF or microarray file into it warns "
+        "(`primary_overwrite`).",
+        "",
         "Every value is checked when the file loads: a value of the wrong type, "
         "outside its range or not one of its choices stops the run with an "
         "error that names the setting and what it expects. An unknown setting "

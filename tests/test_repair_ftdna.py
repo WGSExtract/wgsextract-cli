@@ -178,7 +178,7 @@ def test_repair_vcf_cleans_filter_column_so_bcftools_reads_it(tmp_path, suffix):
     if suffix == ".vcf.gz":
         src = Path(bgzip_index(src))
     run_wgsextract("repair", "ftdna-vcf", "--input", str(src))
-    out = tmp_path / "kit_repaired.vcf"
+    out = tmp_path / "wgse" / "kit_repaired.vcf"
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual;q10 2 1"]
     assert out.read_text().splitlines()[:7] == _VCF.splitlines()[:7]
 
@@ -231,4 +231,4 @@ def test_repair_cram_finds_the_reference_beside_it(tmp_path, monkeypatch):
     (tmp_path / "library").mkdir()
     monkeypatch.setitem(settings, "reference_library", str(tmp_path / "library"))
     run_wgsextract("repair", "ftdna-bam", "--input", cram)
-    assert _records(str(kit / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"
+    assert _records(str(kit / "wgse" / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"

@@ -27,12 +27,12 @@ def _target_root_param() -> Any:
     return param(
         None,
         help=(
-            "Dataset library root. Defaults to config dataset_library, or datasets/ "
-            "in the source checkout (or user data directory) when unset."
+            "My Genomes library root. Defaults to config mygenomes_library, "
+            "else mygenomes/ in the users workspace (~/wgs-extract)."
         ),
-        doc="Dataset library folder holding the test-1000genomes collection "
-        "(default: config dataset_library, else the datasets folder of the "
-        "checkout or user data folder).",
+        doc="My Genomes library folder holding the test-1000genomes collection "
+        "(default: config mygenomes_library, else mygenomes/ in the users "
+        "workspace).",
         path="directory",
     )
 
@@ -114,13 +114,10 @@ class ExampleGenomeDownloadParams(Params):
         # a symlink out of the allowed folders (the guard resolves those).
         from wgsextract_cli.commands._examples_catalog import COLLECTION_DIR
         from wgsextract_cli.commands.examples import written_paths
-        from wgsextract_cli.core import runtime
-        from wgsextract_cli.core.config import dataset_library
+        from wgsextract_cli.core.config import mygenomes_library
 
-        root = self.target_root or dataset_library()
-        collection = (
-            Path(root).expanduser() if root else runtime.repo_root() / "datasets"
-        ) / COLLECTION_DIR
+        root = self.target_root or mygenomes_library()
+        collection = Path(root).expanduser() / COLLECTION_DIR
         yield "target_root", collection
         for folder, files in written_paths(self, collection).items():
             yield "target_root", folder

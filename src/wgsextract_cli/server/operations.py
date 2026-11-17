@@ -180,6 +180,9 @@ def params_from_json(op: Operation, data: object, *, read_only: bool = False) ->
     if not isinstance(data, Mapping):
         raise RequestError(400, "usage", "The parameters must be a JSON object.")
     fields = {f.name: f for f in param_fields(op.params)}
+    # A request may still use a field's former name.
+    former = {old: f.name for f in fields.values() for old in f.spec.former_names}
+    data = {former.get(str(key), str(key)): value for key, value in data.items()}
     missing = [f.name for f in op.fields() if f.required and f.name not in data]
     if missing:
         raise RequestError(

@@ -418,7 +418,7 @@ def test_hla_extraction_uses_hg19_mhc_and_numeric_names(tmp_path, hla_setup):
     run_wgsextract("typing", "hla", "-i", path, "--hla-index", str(hla_setup.index))
     names, _ = json.loads(hla_setup.reads.read_text())
     assert names == ["in"]
-    assert (tmp_path / "s.hla.pharmcat.tsv").exists()
+    assert (tmp_path / "wgse" / "s.hla.pharmcat.tsv").exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="T1K is not supported on Windows")
@@ -700,7 +700,8 @@ def test_cyp2d6_writes_only_calls_cyrius_stands_behind(
     tmp_path, cyrius, caplog, result, pharmcat, warning
 ):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
-    stale = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    stale = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
+    stale.parent.mkdir()
     stale.write_text("CYP2D6\t*1/*1\n")
     cyrius.set_result(**result)
     run_wgsextract("typing", "cyp2d6", "-i", path)
@@ -754,7 +755,7 @@ def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
     cyrius.set_result(**fields)
     main(["typing", "cyp2d6", "-i", path, "--config", str(tmp_path / "config.toml")])
 
-    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
     assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
     assert (
         (tmp_path / "NA12878.cyrius.tsv").read_text().endswith("NA12878\t*1/*4\tPASS\n")
@@ -784,7 +785,7 @@ def test_cyp2d6_names_three_copies_as_pharmcat_does(tmp_path, cyrius):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
     cyrius.set_result(Genotype="*1/*2x3", Filter="PASS", Total_CN=4)
     run_wgsextract("typing", "cyp2d6", "-i", path)
-    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
     assert pharmcat.read_text(encoding="utf-8") == "CYP2D6\t*1/*2x≥3\n"
 
 
@@ -867,7 +868,7 @@ def test_cyp2d6_realigns_alt_contig_reads_to_primary_chr22(tmp_path, cyrius):
     assert all(int(r[4]) > 0 for r in seen if r[0] != "norm")
     [command] = cyrius.calls("cyrius")
     assert "-r" not in command
-    assert (tmp_path / "in" / "s.cyp2d6.pharmcat.tsv").read_text() == (
+    assert (tmp_path / "in" / "wgse" / "s.cyp2d6.pharmcat.tsv").read_text() == (
         "CYP2D6\t*1/*2x2\n"
     )
 

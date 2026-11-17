@@ -60,12 +60,13 @@ def test_fastp_rejects_a_file_with_no_reads(tmp_path):
 
 
 @needs_tools("fastp")
-def test_fastp_single_end_writes_beside_its_input(tmp_path):
+def test_fastp_single_end_writes_to_wgse_beside_its_input(tmp_path):
     r1 = _fastq(tmp_path / "sample.fq", NAMES, 1)
     run_wgsextract("qc", "fastp", "--r1", r1)
-    assert _names(tmp_path / "sample_fp_1.fastq.gz") == NAMES
-    assert not (tmp_path / "sample_fp_2.fastq.gz").exists()
-    assert (tmp_path / "sample_fastp.json").is_file()
+    out = tmp_path / "wgse"
+    assert _names(out / "sample_fp_1.fastq.gz") == NAMES
+    assert not (out / "sample_fp_2.fastq.gz").exists()
+    assert (out / "sample_fastp.json").is_file()
 
 
 def test_fastp_requires_r1():
@@ -82,7 +83,9 @@ def test_fastp_reports_a_missing_r2(tmp_path):
 @needs_tools("fastp")
 def test_fastp_failure_is_reported(tmp_path):
     r1 = _fastq(tmp_path / "sample.fq", NAMES, 1)
-    (tmp_path / "sample_fp_1.fastq.gz").mkdir()  # fastp can't open its output
+    (tmp_path / "wgse" / "sample_fp_1.fastq.gz").mkdir(
+        parents=True
+    )  # fastp can't open its output
     with pytest.raises(WGSExtractError, match="fastp failed"):
         run_wgsextract("qc", "fastp", "--r1", r1)
 
