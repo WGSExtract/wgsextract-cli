@@ -78,11 +78,11 @@ def _valid_alleles(reported: str, forward: str) -> bool:
 @functools.cache
 def load_strand_quirks(path: Path | None = None) -> tuple[StrandQuirk, ...]:
     path = path or STRAND_TABLE
+    from wgsextract_cli.core.microarray.revisions import load_catalogue
     from wgsextract_cli.core.microarray.templates import (
         _template_corrections,
         get_template_format,
     )
-    from wgsextract_cli.core.microarray_revisions import load_catalogue
 
     revisions = {r.id: r for r in load_catalogue()}
     corrected = {(template, marker) for template, marker, _ in _template_corrections()}

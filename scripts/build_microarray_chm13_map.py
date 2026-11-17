@@ -32,13 +32,13 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteProjection,
     load_site_map,
 )
+from wgsextract_cli.core.microarray.targets import _FORMATS, _template_paths
 from wgsextract_cli.core.microarray.templates import (
     _chrom_for_liftover,
     _resolve_templates_roots,
     ncbi36_to_grch37,
     template_rows,
 )
-from wgsextract_cli.core.microarray_targets import _FORMATS, _template_paths
 
 _COMPLEMENT = str.maketrans("ACGT", "TGCA")
 

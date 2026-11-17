@@ -12,8 +12,9 @@ from scripts.microarray_aadr_markers import build_markers
 from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core import aadr_resources, microarray_targets
+from wgsextract_cli.core import aadr_resources
 from wgsextract_cli.core.microarray import aadr
+from wgsextract_cli.core.microarray import targets as microarray_targets
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

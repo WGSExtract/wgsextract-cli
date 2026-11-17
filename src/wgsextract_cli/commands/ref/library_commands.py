@@ -60,7 +60,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 
 # Module level so the per-command dependency scan sees the chain download
 # (curl, optionally) that `ref bootstrap` and `ref aadr` make.
-from wgsextract_cli.core.microarray_targets import hg19_to_hg38_chain
+from wgsextract_cli.core.microarray.targets import hg19_to_hg38_chain
 from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
@@ -571,7 +571,7 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
 
 def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:
     from wgsextract_cli.commands.microarray import PACKAGED_ASSETS
-    from wgsextract_cli.core.microarray_targets import build_genome_wide_target
+    from wgsextract_cli.core.microarray.targets import build_genome_wide_target
 
     reflib = _library(params.ref)
     if params.delete:

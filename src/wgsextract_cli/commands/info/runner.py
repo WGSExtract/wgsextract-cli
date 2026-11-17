@@ -16,7 +16,7 @@ from wgsextract_cli.api.info import (
     InfoParams,
 )
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.alignment_health import alignment_health
+from wgsextract_cli.core.alignment.health import alignment_health
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.builds import (

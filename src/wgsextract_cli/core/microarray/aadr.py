@@ -15,10 +15,7 @@ from pyliftover import LiftOver
 
 from wgsextract_cli.core.aadr_resources import require_aadr_2m
 from wgsextract_cli.core.builds import canonical_build
-from wgsextract_cli.core.microarray_targets import (
-    _write_target,
-    hg19_to_hg38_chain,
-)
+from wgsextract_cli.core.microarray.targets import _write_target, hg19_to_hg38_chain
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 AADR_FORMATS = {
