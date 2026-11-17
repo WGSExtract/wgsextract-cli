@@ -51,7 +51,6 @@ from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument,
-    ReportClinicalEvidenceDocument,
     ReportEvidenceDocument,
     ReportFactDocument,
     ReportFindingDocument,
@@ -1415,7 +1414,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     findings = []
     gene_calls: dict[str, tuple[gene_lists.Gene, list[Mapping[str, Any]]]] = {}
     for call in () if unavailable else [*calls, *conflicts]:
-        review: dict[str, Any] = clinical_evidence.review_evidence(call)
+        review = clinical_evidence.review_evidence(call)
         pos = _int(call.get("pos"))
         chrom = str(call.get("chrom") or "")
         genes = _call_genes(gene_list, call, build, chrom, pos)
@@ -1480,14 +1479,7 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                     depth=_int(call.get("depth")),
                     genotype_quality=_int(call.get("genotype_quality")),
                     alt_fraction=_float(call.get("alt_fraction")),
-                    clinical_evidence=ReportClinicalEvidenceDocument(
-                        id=review["id"],
-                        review_status=review["review_status"],
-                        stars=review["stars"],
-                        review_tier=review["review_tier"],
-                        conflict=review["conflict"],
-                        conflict_evidence=review["conflict_evidence"],
-                    ),
+                    clinical_evidence=review,
                     original_record=call.get(clinical_evidence.ORIGIN) or None,
                     mnv_components=call.get(clinical_evidence.COMPONENTS) or None,
                     mnv_residual_copies=call.get("_mnv_residual_copies"),
@@ -1831,7 +1823,7 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
     )
     findings = []
     for r in rare_rows[:MAX_SV_FINDINGS]:
-        chrom: Any = r.get("chrom")
+        chrom = str(r.get("chrom") or "")
         pos, end = _int(r.get("pos")), _int(r.get("end"))
         af = _float(r.get("sv_af"))
         size = f", {_number(_int(r.get('svlen')))} bp" if r.get("svlen") else ""

@@ -2,6 +2,7 @@
 
 from typing import Annotated, Literal, TypedDict
 
+from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
 
 
@@ -53,15 +54,6 @@ class ReportEvidenceDocument(TypedDict):
     ]
 
 
-class ReportClinicalEvidenceDocument(TypedDict, total=False):
-    id: str | None
-    review_status: str | None
-    stars: Annotated[int | None, Constraints(minimum=0, maximum=4)]
-    review_tier: str
-    conflict: bool
-    conflict_evidence: str | None
-
-
 class ReportVariantRequired(TypedDict):
     chrom: str
     pos: int | None
@@ -75,7 +67,7 @@ class ReportVariantRequired(TypedDict):
 
 
 class ReportVariantDocument(ReportVariantRequired, total=False):
-    clinical_evidence: ReportClinicalEvidenceDocument
+    clinical_evidence: ClinicalEvidenceDocument
     original_record: str | None
     mnv_components: str | None
     mnv_residual_copies: Annotated[int | None, Constraints(minimum=1, maximum=2)]

@@ -300,8 +300,8 @@ The committed schema is regenerated with `scripts/gen_report_schema.py`
 (`--check` detects drift), also included in `just regen`. Source-run,
 newest-attempt, warning, missing-command, external-link, finding, evidence,
 variant, pharmacogenomics, fact and QC components come from the writer-used
-types in `core/report_documents.py`; their HTML and Markdown renderers use
-the same types.
+types in `core/report_documents.py` and `core/clinical_evidence.py`; their
+HTML and Markdown renderers use the same types.
 The remaining section/root rules are still handwritten in
 `scripts/schema_sources/wgsextract.report.1.json`, separate from the generated
 artifact, while those writer models are migrated. This does not add runtime

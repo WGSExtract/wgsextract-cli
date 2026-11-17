@@ -8,6 +8,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator
 
 from scripts.gen_report_schema import report_schema
+from wgsextract_cli.core import clinical_evidence, personal_report
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json"
@@ -220,3 +221,46 @@ def test_929_generated_facts_and_qc_keep_extensions_and_arbitrary_json_values() 
             assert not validate.is_valid(
                 {key: value for key, value in record.items() if key != field}
             )
+
+
+def test_929_numeric_clinvar_identity_stays_a_schema_valid_identifier() -> None:
+    record = clinical_evidence.review_evidence(
+        {clinical_evidence.IDENTITY: 123, "CLNREVSTAT": "reviewed_by_expert_panel"}
+    )
+    assert record["id"] == "123"
+    component_validator("reportClinicalEvidence").validate(record)
+
+
+def test_929_missing_sv_chromosome_does_not_emit_schema_invalid_null(
+    tmp_path: Path,
+) -> None:
+    table = tmp_path / "sv.tsv"
+    table.write_text(
+        "pos\tend\tsvtype\tsv_freq\tsv_af\tgenotype\tfilter\n"
+        "5\t6\tDEL\trare\t0.0001\t0/1\tPASS\n",
+        encoding="utf-8",
+    )
+    genes = tmp_path / "genes.tsv"
+    genes.write_text(
+        "gene\tcategory\tinheritance\thg38_chrom\thg38_start\thg38_end\n"
+        "GENEA\ttest\tAD\tchr1\t1\t10\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "sv.manifest.json"
+    document = {
+        "command": "vcf sv-freq",
+        "status": "ok",
+        "inputs": [],
+        "outputs": [{"path": str(table), "role": "sv_frequencies"}],
+        "metrics": {},
+        "provenance": {"finished": "2025-01-01T00:00:00+00:00"},
+    }
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    report = personal_report.build_report(
+        tmp_path,
+        sources=[personal_report.Source(manifest, document)],
+        gene_list=genes,
+    )
+    variant = report["sections"]["structural_variants"]["findings"][0]["variant"]
+    assert variant["chrom"] == ""
+    component_validator("reportVariant").validate(variant)
