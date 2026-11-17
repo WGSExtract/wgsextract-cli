@@ -110,7 +110,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux
-          path: out/installlab
+          # The app (the lab user) writes download lock guards owner-only;
+          # the runner can't read them, and they are no evidence.
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock.guard
           retention-days: 14
 
   # The app as users get it: the latest WGS Extract app release (or the one
@@ -247,7 +251,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux-app-${{ matrix.cli }}
-          path: out/installlab
+          # The app (the lab user) writes download lock guards owner-only;
+          # the runner can't read them, and they are no evidence.
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock.guard
           retention-days: 14
 
   macos:
@@ -278,7 +286,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos
-          path: out/installlab
+          # The app (the lab user) writes download lock guards owner-only;
+          # the runner can't read them, and they are no evidence.
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock.guard
           retention-days: 14
 
   macos-app:
@@ -375,7 +387,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos-app-${{ matrix.cli }}
-          path: out/installlab
+          # The app (the lab user) writes download lock guards owner-only;
+          # the runner can't read them, and they are no evidence.
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock.guard
           retention-days: 14
 
   windows:
@@ -500,7 +516,11 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: install-lab-windows*
-          path: out/installlab
+          # The app (the lab user) writes download lock guards owner-only;
+          # the runner can't read them, and they are no evidence.
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock.guard
       # Each evidence set is judged; a sabotaged run passes only by failing on
       # the checks its sabotage breaks. Keep judging available app evidence if
       # another app matrix job failed before it could upload anything.
