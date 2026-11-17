@@ -22,8 +22,8 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from tests.http_server import serving
 from wgsextract_cli.core.alignment import splice as alignment_splice
+from wgsextract_cli.core.alignment.cram_staging import cram_version
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
-from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.resource_estimates import GIB
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 

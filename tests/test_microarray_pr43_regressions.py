@@ -245,25 +245,17 @@ def test_23andme_writer_does_not_expand_existing_mt_chromosome():
 
 
 def test_liftover_accepts_prefixed_chromosome_names(tmp_path):
-    chain_file = tmp_path / "hg38ToHg19.over.chain.gz"
-    chain_file.touch()
+    chain_file = tmp_path / "hg38ToHg19.over.chain"
+    chain_file.write_text(
+        "chain 1 chr1 1000 + 0 990 chr1 1000 + 10 1000 1\n990\n\n"
+        "chain 1 chrM 16569 + 0 990 chrM 16571 + 10 1000 2\n990\n"
+    )
     input_txt = tmp_path / "input.txt"
     output_txt = tmp_path / "output.txt"
     input_txt.write_text(
         "rsChrM\tchrM\t100\tAA\nrsChr1\tchr1\t200\tCC\nrsMT\tMT\t300\tGG\n"
     )
-    seen_chroms = []
-
-    class FakeLiftOver:
-        def __init__(self, chain_path):
-            assert chain_path == str(chain_file)
-
-        def convert_coordinate(self, chrom, pos):
-            seen_chroms.append(chrom)
-            return [(chrom, pos + 10, "+", 1)]
-
-    with patch("wgsextract_cli.core.microarray.coordinates.LiftOver", FakeLiftOver):
-        liftover_hg38_to_hg19(str(input_txt), str(output_txt), str(chain_file))
+    liftover_hg38_to_hg19(str(input_txt), str(output_txt), str(chain_file))
 
     rows = {
         parts[0]: parts
@@ -271,10 +263,9 @@ def test_liftover_accepts_prefixed_chromosome_names(tmp_path):
             line.split("\t") for line in output_txt.read_text().strip().splitlines()
         )
     }
-    assert seen_chroms == ["chrM", "chr1", "chrM"]
-    assert rows["rsChrM"] == ["rsChrM", "MT", "110", "AA"]
+    assert rows["rsChrM"] == ["rsChrM", "MT", "100", "AA"]
     assert rows["rsChr1"] == ["rsChr1", "1", "210", "CC"]
-    assert rows["rsMT"] == ["rsMT", "MT", "310", "GG"]
+    assert rows["rsMT"] == ["rsMT", "MT", "300", "GG"]
     assert all(parts[1] != "MTT" for parts in rows.values())
 
 

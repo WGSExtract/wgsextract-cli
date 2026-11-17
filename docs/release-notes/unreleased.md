@@ -17,6 +17,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   it is off unless asked for, and every output carries the disclaimer. It
   refuses databases that lack any of its eight sources (ClinVar and its
   protein index, gnomAD v4.1 and its constraint, ClinGen, REVEL, SpliceAI,
+  phyloP), which you build with `fastvep sa-build`. GRCh38; Linux and macOS,
+  not Windows. See [acmg.md](../acmg.md).
+- On a `vcf acmg` VCF, `vcf table` fills the columns `acmg_class`,
+  `acmg_criteria` and `acmg_transcript` (empty otherwise) and records the
+  research-only disclaimer in its metadata and manifest; `report` adds an
+  **Automated ACMG classes (research only)** section, headed by the
+  disclaimer, with the carried alleles' classes and the P/LP calls in the
+  gene list's genes; and the desktop app runs `vcf acmg` once you tick that
+  you understand it is research use only.
   phyloP). GRCh38; Linux and macOS, not Windows. See [acmg.md](../acmg.md).
 - `ref acmg-data` downloads those eight sources and the Ensembl GFF3 from
   their publishers, checks them against the checksums they publish, shows
@@ -41,13 +50,24 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   to write it, so its preflight allows about 20 GiB for a whole genome (5
   without).
 
+- `score pgs` and `vcf pharmcat` read a VCF's reference evidence: when the
+  caller published a gVCF beside the VCF (found through its result manifest),
+  a site the VCF doesn't list counts as reference only where the gVCF read it
+  well; coverage gaps, low-quality, filtered and no-call bases stay missing
+  (in PharmCAT, a no-call `--absent-to-ref` can't fill). A gVCF given to
+  `score pgs` directly is now read the same way: its reference blocks and
+  `0/0` records need enough depth and genotype quality, and haploid `0`
+  blocks no longer block a site. On HG002 chr20 with PGS000018, matched sites
+  rose from 12,723 to about 44,000. See
+  [reference-evidence.md](../reference-evidence.md#commands-that-read-it).
 - `vcf gatk --reference-evidence gvcf` writes `gatk.g.vcf.gz` (+ `.tbi`):
   HaplotypeCaller's gVCF, banded by GQ at 10, 20, 30 and 60 (about 1.4 GB a
   genome, against 6.5 GB with GATK's default bands), and the VCF genotyped
   from it by GenotypeGVCFs. Not with `--gpu` or `--scatter`.
   `vcf clair3 --reference-evidence gvcf` writes `clair3.g.vcf.gz` from the
-  same run, on the CPU or the GPU; it is about 2.5-6x slower, which the run
-  warns about. A man's haploid chrX and chrY are called apart from the rest,
+  same run, on the CPU or the GPU; it is about 2.4x slower on the CPU and
+  4.3x on the GPU, which the run warns about (in one 5 Mb measurement the
+  CPU was faster than `--gpu` with the gVCF; a `--gpu` run's warning reports it). A man's haploid chrX and chrY are called apart from the rest,
   and their gVCF parts are cut at the partition edges and gathered in order.
 
 - `wgse-deepvariant` 0.3.1 writes a gVCF PL value for every genotype, those

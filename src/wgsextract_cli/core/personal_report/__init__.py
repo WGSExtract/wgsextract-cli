@@ -23,6 +23,7 @@ import gzip
 import json
 import os
 import re
+import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -32,6 +33,7 @@ from typing import Any
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import (
+    acmg,
     clinical_evidence,
     contamination,
     gene_lists,
@@ -49,20 +51,32 @@ from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.reference_models import sequence_lengths
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument,
+    ReportEvidenceDocument,
+    ReportFactDocument,
+    ReportFindingDocument,
+    ReportFindingSection,
     ReportLinkDocument,
+    ReportMetricDocument,
     ReportMissingDocument,
+    ReportPgxAlternativeDocument,
+    ReportPgxDocument,
     ReportSourceDocument,
+    ReportVariantDocument,
     ReportWarningDocument,
 )
 from wgsextract_cli.core.sample_workspace import WORKSPACE_FILE, SampleWorkspace
 from wgsextract_cli.core.table_writer import Column, Value
 from wgsextract_cli.core.utils import UsageError
 
+from . import acmg_calls
 from .rendering import (
     NEWER_ATTEMPT_FAILED as NEWER_ATTEMPT_FAILED,
 )
 from .rendering import (
     NOT_DIAGNOSIS as NOT_DIAGNOSIS,
+)
+from .rendering import (
+    RESEARCH_ONLY as RESEARCH_ONLY,
 )
 from .rendering import (
     _number,
@@ -119,6 +133,7 @@ SECTIONS = {
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
+    "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
     "microarray": "Microarray export",
 }
@@ -158,7 +173,8 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "section",
         TEXT,
-        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar or structural_variants.",
+        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar, "
+        "acmg_research or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
@@ -179,7 +195,11 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column("confidence_reasons", TEXT, "Reason codes, '|'-separated."),
     Column("evidence_file", TEXT, "Evidence file, relative to the sample folder."),
     Column("evidence_region", TEXT, "Region of the evidence (chrom:pos, gene)."),
-    Column("disclaimer", TEXT, "Technical result, not diagnosis."),
+    Column(
+        "disclaimer",
+        TEXT,
+        "Technical result, not diagnosis (research use only for acmg_research).",
+    ),
     Column("clinvar_id", TEXT, "ClinVar resource record identity."),
     Column("clinvar_review_status", TEXT, "CLNREVSTAT assertion review status."),
     Column(
@@ -538,7 +558,7 @@ def _quote(text: str) -> str:
 
 
 def _finding(
-    section: str,
+    section: ReportFindingSection,
     label: str,
     value: str,
     *,
@@ -551,24 +571,27 @@ def _finding(
     detail: str | None = None,
     gene: str | None = None,
     note: str | None = None,
-    variant: Mapping[str, Any] | None = None,
+    variant: ReportVariantDocument | None = None,
     links: Sequence[tuple[str, str]] = (),
-) -> dict[str, Any]:
-    return {
-        "section": section,
-        "label": label,
-        "value": value,
-        "detail": detail,
-        "gene": gene,
-        "note": note,
-        "confidence": confidence,
-        "confidence_reasons": list(reasons),
-        "confidence_basis": basis,
-        "evidence": {"file": evidence, "region": region, "manifest": manifest},
-        "variant": dict(variant) if variant else None,
-        "links": [ReportLinkDocument(label=label, url=url) for label, url in links],
-        "disclaimer": NOT_DIAGNOSIS,
-    }
+    disclaimer: str = NOT_DIAGNOSIS,
+) -> ReportFindingDocument:
+    return ReportFindingDocument(
+        section=section,
+        label=label,
+        value=value,
+        detail=detail,
+        gene=gene,
+        note=note,
+        confidence=confidence,
+        confidence_reasons=list(reasons),
+        confidence_basis=basis,
+        evidence=ReportEvidenceDocument(
+            file=evidence, region=region, manifest=manifest
+        ),
+        variant=variant.copy() if variant else None,
+        links=[ReportLinkDocument(label=label, url=url) for label, url in links],
+        disclaimer=disclaimer,
+    )
 
 
 def _section(
@@ -662,24 +685,24 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     trio = ctx.latest(_command("vcf trio"))
     trio = trio if trio is not None and trio.status == "ok" else None
     section = _section("overview", [info, run, trio, repeat_run], ctx)
-    facts = []
+    facts: list[ReportFactDocument] = []
     for name, label in _OVERVIEW_FACTS:
         fact = ctx.fact(name)
         if fact is None:
             continue
         value = fact.get("value")
         facts.append(
-            {
-                "name": name,
-                "label": label,
-                "value": value,
-                "text": _fact_text(name, value),
-                "source": fact.get("source"),
-                "method": fact.get("method"),
-                "confidence": fact.get("confidence"),
-                "file": fact.get("file"),
-                "at": fact.get("at"),
-            }
+            ReportFactDocument(
+                name=name,
+                label=label,
+                value=value,
+                text=_fact_text(name, value),
+                source=fact.get("source"),
+                method=fact.get("method"),
+                confidence=fact.get("confidence"),
+                file=fact.get("file"),
+                at=fact.get("at"),
+            )
         )
     if info is not None and info.status == "ok":
         # Outside a sample workspace nothing is recorded; `info` still says.
@@ -689,17 +712,17 @@ def _overview(ctx: _Context) -> dict[str, Any]:
             if name in known or value in (None, "", "Unknown"):
                 continue
             facts.append(
-                {
-                    "name": name,
-                    "label": dict(_OVERVIEW_FACTS)[name],
-                    "value": value,
-                    "text": _fact_text(name, value),
-                    "source": "info",
-                    "method": "info --detailed metrics (no sample workspace)",
-                    "confidence": None,
-                    "file": next(iter(map(ctx.rel, info.files("inputs"))), None),
-                    "at": info.finished or None,
-                }
+                ReportFactDocument(
+                    name=name,
+                    label=dict(_OVERVIEW_FACTS)[name],
+                    value=value,
+                    text=_fact_text(name, value),
+                    source="info",
+                    method="info --detailed metrics (no sample workspace)",
+                    confidence=None,
+                    file=next(iter(map(ctx.rel, info.files("inputs"))), None),
+                    at=info.finished or None,
+                )
             )
     estimate = _contamination_fact(ctx, run)
     if estimate is not None:
@@ -723,19 +746,16 @@ def _overview(ctx: _Context) -> dict[str, Any]:
                 f"may be affected. See {contamination.GUIDE}.",
             )
         )
-    qc = []
+    qc: list[ReportMetricDocument] = []
     if info is not None and info.status == "ok":
         for key, label, unit in _QC_METRICS:
             value = info.metrics.get(key)
             if value in (None, ""):
                 continue
             qc.append(
-                {
-                    "name": key,
-                    "label": label,
-                    "value": value,
-                    "text": _number(value, unit),
-                }
+                ReportMetricDocument(
+                    name=key, label=label, value=value, text=_number(value, unit)
+                )
             )
     section["qc"] = qc
     if facts:
@@ -759,7 +779,23 @@ def _overview(ctx: _Context) -> dict[str, Any]:
     return section
 
 
-def _contamination_fact(ctx: _Context, run: Source | None) -> dict[str, Any] | None:
+def _contaminated(ctx: _Context, inputs: Iterable[Path]) -> float | None:
+    """The selected sample's FREEMIX when it is at or above
+    ``qc_max_contamination``: the estimate the overview shows, else one
+    recorded for a run's own ``inputs``."""
+    run = ctx.latest(_command("qc contamination"))
+    estimate = _contamination_fact(ctx, run if run and run.status == "ok" else None)
+    value = estimate["value"] if estimate else None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        threshold = contamination.max_contamination()
+        return float(value) if threshold and value >= threshold else None
+    for file in inputs:
+        if (found := contamination.contaminated(file)) is not None:
+            return found
+    return None
+
+
+def _contamination_fact(ctx: _Context, run: Source | None) -> ReportFactDocument | None:
     """The selected alignment's contamination estimate: from the sample
     workspace (only that file's, or the genome folder's), else from its
     newest successful `qc contamination` run."""
@@ -768,34 +804,34 @@ def _contamination_fact(ctx: _Context, run: Source | None) -> dict[str, Any] | N
     if fact is not None:
         found = fact.to_dict()
         value = found.get("value")
-        return {
-            "name": contamination.FACT,
-            "label": CONTAMINATION_LABEL,
-            "value": value,
-            "text": _fact_text(contamination.FACT, value),
-            "source": found.get("source"),
-            "method": found.get("method"),
-            "confidence": found.get("confidence"),
-            "file": found.get("file"),
-            "at": found.get("at"),
-        }
+        return ReportFactDocument(
+            name=contamination.FACT,
+            label=CONTAMINATION_LABEL,
+            value=value,
+            text=_fact_text(contamination.FACT, value),
+            source=found.get("source"),
+            method=found.get("method"),
+            confidence=found.get("confidence"),
+            file=found.get("file"),
+            at=found.get("at"),
+        )
     value = run.metrics.get("freemix") if run is not None else None
     if run is None or not isinstance(value, (int, float)):
         return None
-    return {
-        "name": contamination.FACT,
-        "label": CONTAMINATION_LABEL,
-        "value": value,
-        "text": _fact_text(contamination.FACT, value),
-        "source": "qc contamination",
-        "method": "qc contamination metrics (no sample workspace)",
-        "confidence": run.metrics.get("freemix_confidence"),
-        "file": next(iter(map(ctx.rel, run.files("inputs"))), None),
-        "at": run.finished or None,
-    }
+    return ReportFactDocument(
+        name=contamination.FACT,
+        label=CONTAMINATION_LABEL,
+        value=value,
+        text=_fact_text(contamination.FACT, value),
+        source="qc contamination",
+        method="qc contamination metrics (no sample workspace)",
+        confidence=run.metrics.get("freemix_confidence"),
+        file=next(iter(map(ctx.rel, run.files("inputs"))), None),
+        at=run.finished or None,
+    )
 
 
-def _fact_text(name: str, value: Any) -> str:
+def _fact_text(name: str, value: object) -> str:
     if isinstance(value, Mapping):
         return ", ".join(f"{k} {_number(v, 'x')}" for k, v in value.items())
     if name == "mean_coverage":
@@ -1050,12 +1086,18 @@ def _pharmcat_findings(section: dict[str, Any], source: Source, ctx: _Context) -
             region=f"gene {gene}",
             manifest=ctx.rel(source.manifest),
         )
-        finding["pgx"] = {
-            "status": row.status,
-            "alternatives": row.alternatives,
-            "phenotype_consistent": row.phenotype_consistent,
-            "source": "PharmCAT",
-        }
+        finding["pgx"] = ReportPgxDocument(
+            status=row.status,
+            alternatives=[
+                ReportPgxAlternativeDocument(
+                    diplotype=alternative["diplotype"],
+                    phenotype=alternative["phenotype"],
+                )
+                for alternative in row.alternatives
+            ],
+            phenotype_consistent=row.phenotype_consistent,
+            source="PharmCAT",
+        )
         section["findings"].append(finding)
 
 
@@ -1427,25 +1469,25 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
                 ),
                 region=f"{chrom}:{pos}",
                 manifest=ctx.rel(source.manifest),
-                variant={
-                    "chrom": chrom,
-                    "pos": pos,
-                    "ref": call.get("ref"),
-                    "alt": call.get("alt"),
-                    "genotype": call.get("genotype"),
-                    "zygosity": call.get("zygosity"),
-                    "depth": _int(call.get("depth")),
-                    "genotype_quality": _int(call.get("genotype_quality")),
-                    "alt_fraction": _float(call.get("alt_fraction")),
-                    "clinical_evidence": review,
-                    "original_record": call.get(clinical_evidence.ORIGIN) or None,
-                    "mnv_components": call.get(clinical_evidence.COMPONENTS) or None,
-                    "mnv_residual_copies": call.get("_mnv_residual_copies"),
-                    "phase_set": str(
+                variant=ReportVariantDocument(
+                    chrom=chrom,
+                    pos=pos,
+                    ref=call.get("ref"),
+                    alt=call.get("alt"),
+                    genotype=call.get("genotype"),
+                    zygosity=call.get("zygosity"),
+                    depth=_int(call.get("depth")),
+                    genotype_quality=_int(call.get("genotype_quality")),
+                    alt_fraction=_float(call.get("alt_fraction")),
+                    clinical_evidence=review,
+                    original_record=call.get(clinical_evidence.ORIGIN) or None,
+                    mnv_components=call.get(clinical_evidence.COMPONENTS) or None,
+                    mnv_residual_copies=call.get("_mnv_residual_copies"),
+                    phase_set=str(
                         call.get("_mnv_phase_set") or call.get("phase_set") or ""
                     )
                     or None,
-                },
+                ),
             )
         )
     order = {label: i for i, label in enumerate(CONFIDENCE)}
@@ -1469,14 +1511,21 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     section["counts"] = {
         "carried": len(calls),
         "in_gene_list": sum(
-            not f["variant"]["clinical_evidence"]["conflict"] for f in findings
+            not (
+                f["variant"]
+                and f["variant"].get("clinical_evidence", {}).get("conflict")
+            )
+            for f in findings
         ),
         "outside_gene_list": outside,
         "unplaced": unplaced,
         **{
             label: sum(
                 f["confidence"] == label
-                and not f["variant"]["clinical_evidence"]["conflict"]
+                and not (
+                    f["variant"]
+                    and f["variant"].get("clinical_evidence", {}).get("conflict")
+                )
                 for f in findings
             )
             for label in variant_confidence.LABELS
@@ -1534,6 +1583,203 @@ def _clinvar(ctx: _Context) -> dict[str, Any]:
     return section
 
 
+def _acmg_research(ctx: _Context) -> dict[str, Any] | None:
+    """fastVEP's automated ACMG/AMP classes (`vcf acmg`, issue 629): the
+    carried alleles' classes, and the P/LP calls in the gene list's genes
+    under its reporting rules. Research only; None when `vcf acmg` never ran."""
+    source = ctx.latest(_command_or_role("vcf acmg", "acmg_summary"))
+    if source is None:
+        return None
+    section = _section("acmg_research", [source], ctx)
+    described = gene_lists.describe(ctx.gene_list)
+    section["title"] = SECTIONS["acmg_research"].format(gene_list=described["name"])
+    section["gene_list"] = described
+    section["disclaimer"] = acmg.DISCLAIMER
+    # The disclaimer heads the section; the run's warning would repeat it.
+    section["warnings"] = [
+        w for w in section["warnings"] if w["code"] != "acmg_research_only"
+    ]
+    if source.status != "ok":
+        return section
+    summary: Mapping[str, Any] = {}
+    if path := source.output("acmg_summary"):
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            loaded = None
+        summary = loaded if isinstance(loaded, Mapping) else {}
+    tool = summary.get("tool") or {}
+    section["tool"] = (
+        f"{tool.get('name', 'fastVEP')} {tool['version']}"
+        if tool.get("version")
+        else None
+    )
+    section["criteria_not_evaluated"] = [
+        str(c) for c in summary.get("criteria_not_evaluated") or []
+    ]
+    vcf = source.output("annotated_vcf")
+    section["all_calls"] = ctx.rel(vcf)
+    if vcf is None:
+        section["warnings"].append(
+            {
+                "code": "evidence_missing",
+                "message": "The classified VCF of the vcf acmg run is missing; "
+                "rerun vcf acmg.",
+            }
+        )
+        section["summary"] = "The classified VCF is missing."
+        return section
+    try:
+        found = acmg_calls.scan(
+            vcf,
+            variant_confidence.thresholds_from(),
+            contaminated=_contaminated(ctx, source.files("inputs")) is not None,
+        )
+    except (OSError, EOFError, ValueError, IndexError, zlib.error) as e:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="unreadable_evidence",
+                message=f"The classified VCF {vcf.name} can't be read ({e}); "
+                "rerun vcf acmg.",
+            )
+        )
+        section["summary"] = "The classified VCF can't be read."
+        return section
+    samples = found.header.samples
+    if len(samples) > 1:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="confidence_first_sample_only",
+                message=f"The classes counted and the calls listed are the first "
+                f"sample's ({samples[0]}) of this {len(samples)}-sample VCF; "
+                "subset it to the intended sample (bcftools view -s) and rerun "
+                "vcf acmg.",
+            )
+        )
+    if found.rare_imputed:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="rare_imputed_not_listed",
+                message=f"{found.rare_imputed} imputed P/LP "
+                f"allele{'s' * (found.rare_imputed != 1)} rarer than 1% in the "
+                "panel (or of unknown panel frequency) are counted but not "
+                "listed: imputation can't see a rare allele the reads don't "
+                "show. See the classified VCF.",
+            )
+        )
+    build = _gene_build(_vcf_build(vcf))
+    section["build"] = build
+    gene_list = gene_lists.GeneList(described["id"], described["name"], ())
+    unavailable = False
+    if found.calls:
+        try:
+            gene_list = gene_lists.load(ctx.gene_list)
+        except gene_lists.GeneListUnavailable as error:
+            unavailable = True
+            section["warnings"].append(
+                {"code": "gene_list_unavailable", "message": str(error)}
+            )
+    findings = []
+    outside = unplaced = 0
+    for call in () if unavailable else found.calls:
+        row = call.row
+        chrom, pos = str(row["chrom"]), _int(row["pos"])
+        symbol = str(row["gene"] or "")
+        if symbol:
+            genes = gene_list.named([symbol])
+        elif pos is not None and gene_list.has_spans(build):
+            genes = gene_list.genes_at(build, chrom, pos)
+        else:
+            unplaced += 1
+            continue
+        if not genes:
+            outside += 1
+            continue
+        cls = str(row["acmg_class"])
+        symbols = "/".join(g.symbol for g in genes)
+        criteria = str(row["acmg_criteria"] or "").replace("&", ", ")
+        findings.append(
+            _finding(
+                "acmg_research",
+                f"{symbols} {cls} (automated)",
+                f"{acmg.CLASSES[cls]} (automated)",
+                detail="; ".join(
+                    filter(
+                        None,
+                        [
+                            f"criteria met: {criteria}" if criteria else "",
+                            f"classified on {row['acmg_transcript']}"
+                            if row["acmg_transcript"]
+                            else "",
+                            str(row["hgvs_p"] or row["hgvs_c"] or ""),
+                            str(row["consequence"] or ""),
+                        ],
+                    )
+                ),
+                gene=symbols,
+                note="; ".join(
+                    f"{g.symbol}: {g.note}" if len(genes) > 1 else g.note
+                    for g in genes
+                    if g.note
+                )
+                or None,
+                confidence=call.confidence,
+                reasons=call.reasons,
+                basis="not assessed: a sites-only VCF has no genotype to judge"
+                if found.sites_only
+                else variant_confidence.SCHEME,
+                evidence=ctx.rel(vcf),
+                region=f"{chrom}:{pos}",
+                manifest=ctx.rel(source.manifest),
+                variant=ReportVariantDocument(
+                    chrom=chrom,
+                    pos=pos,
+                    ref=row["ref"],
+                    alt=row["alt"],
+                    genotype=row["genotype"],
+                    zygosity=row["zygosity"],
+                    depth=row["depth"],
+                    genotype_quality=row["gq"],
+                    alt_fraction=call.alt_fraction,
+                    phase_set=call.phase_set,
+                ),
+                disclaimer=RESEARCH_ONLY,
+            )
+        )
+    order = {label: i for i, label in enumerate(CONFIDENCE)}
+    findings.sort(key=lambda f: (order.get(f["confidence"], 9), f["gene"] or ""))
+    section["findings"] = findings
+    pathogenic = len(found.calls)
+    if unavailable:
+        unplaced = pathogenic
+    section["counts"] = {
+        **{cls.lower(): found.carried[cls] for cls in acmg.CLASSES},
+        "in_gene_list": len(findings),
+        "outside_gene_list": outside,
+        "unplaced": unplaced,
+    }
+    if unplaced and not unavailable:
+        section["warnings"].append(
+            {
+                "code": "gene_annotation_missing",
+                "message": f"{unplaced} P/LP call{'s' * (unplaced != 1)} have no "
+                "VEP gene symbol and the gene list has no spans to place them by; "
+                "see the classified VCF.",
+            }
+        )
+    classes = ", ".join(f"{found.carried[c]:,} {c}" for c in acmg.CLASSES)
+    alleles = "alleles" if found.sites_only else "carried alleles"
+    section["summary"] = (
+        f"fastVEP's automated classes of the {sum(found.carried.values()):,} "
+        f"{alleles} it classified: {classes}. "
+        f"{len(findings):,} P/LP call{'s' * (len(findings) != 1)} in "
+        f"{described['name']} genes; {outside:,} more elsewhere"
+        + (f"; {unplaced:,} not placed" if unplaced else "")
+        + ". Research use only; not a diagnosis."
+    )
+    return section
+
+
 # Rare SVs listed as findings, rarest first; the rest are in the table.
 MAX_SV_FINDINGS = 100
 _NOT_CARRIED = {"0/0", "0|0", "./.", ".|.", ".", "0"}
@@ -1577,6 +1823,7 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
     )
     findings = []
     for r in rare_rows[:MAX_SV_FINDINGS]:
+        chrom = str(r.get("chrom") or "")
         pos, end = _int(r.get("pos")), _int(r.get("end"))
         af = _float(r.get("sv_af"))
         size = f", {_number(_int(r.get('svlen')))} bp" if r.get("svlen") else ""
@@ -1597,17 +1844,17 @@ def _structural_variants(ctx: _Context) -> dict[str, Any]:
                 evidence=ctx.rel(source.output("annotated_vcf")),
                 region=region,
                 manifest=ctx.rel(source.manifest),
-                variant={
-                    "chrom": r.get("chrom"),
-                    "pos": pos,
-                    "ref": None,
-                    "alt": f"<{r.get('svtype')}>",
-                    "genotype": r.get("genotype"),
-                    "zygosity": None,
-                    "depth": None,
-                    "genotype_quality": None,
-                    "alt_fraction": None,
-                },
+                variant=ReportVariantDocument(
+                    chrom=chrom,
+                    pos=pos,
+                    ref=None,
+                    alt=f"<{r.get('svtype')}>",
+                    genotype=r.get("genotype"),
+                    zygosity=None,
+                    depth=None,
+                    genotype_quality=None,
+                    alt_fraction=None,
+                ),
             )
         )
     section["findings"] = findings
@@ -1945,6 +2192,7 @@ def build_report(
         )
         or folder.name
     )
+    research = _acmg_research(ctx)
     sections = {
         "overview": _overview(ctx),
         "lineage": _lineage(ctx),
@@ -1952,6 +2200,8 @@ def build_report(
         "pharmacogenomics": _pharmacogenomics(ctx),
         "carrier_screening": _carrier_screening(ctx),
         "clinvar": _clinvar(ctx),
+        # Opt-in research: shown only when `vcf acmg` ran, never asked for.
+        **({"acmg_research": research} if research is not None else {}),
         "structural_variants": _structural_variants(ctx),
         "microarray": _microarray(ctx),
     }

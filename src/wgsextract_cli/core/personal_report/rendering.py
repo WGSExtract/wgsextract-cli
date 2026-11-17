@@ -12,13 +12,18 @@ from urllib.parse import quote
 
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument,
+    ReportFactDocument,
+    ReportFindingDocument,
     ReportLinkDocument,
+    ReportMetricDocument,
     ReportMissingDocument,
     ReportSourceDocument,
     ReportWarningDocument,
 )
 
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
+# The disclaimer of findings from automated ACMG classes (`vcf acmg`).
+RESEARCH_ONLY = "Research use only; not a diagnosis."
 # Section warning: a newer attempt failed; the section shows an older result.
 NEWER_ATTEMPT_FAILED = "newer_attempt_failed"
 
@@ -145,6 +150,8 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             f'<span class="status {_h(section["status"])}">'
             f"{_h(section['status'].replace('_', ' '))}</span></h2>"
         )
+        if section.get("disclaimer"):
+            out.append(f'<p class="disclaimer"><b>{_h(section["disclaimer"])}</b></p>')
         if section.get("summary"):
             out.append(f"<p>{_h(section['summary'])}</p>")
         if section.get("error"):
@@ -155,7 +162,9 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
         )
         out.extend(_html_section_body(name, section, base))
         if section["findings"]:
-            out.append(_html_findings(section["findings"], report, base))
+            out.append(
+                _html_findings(section["findings"], report["confidence_reasons"], base)
+            )
         if section["missing"]:
             out.append(
                 '<p class="muted">Not run yet (run in the sample folder):</p><ul>'
@@ -182,25 +191,7 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
 def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list[str]:
     out: list[str] = []
     if name == "overview":
-        if section["facts"]:
-            out.append("<table><tr><th>Fact</th><th>Value</th><th>Method</th>"
-                       "<th>Confidence</th><th>From</th></tr>")  # fmt: skip
-            for f in section["facts"]:
-                method = "your override" if f["source"] == "override" else f["method"]
-                out.append(
-                    f"<tr><td>{_h(f['label'])}</td><td>{_h(f['text'])}</td>"
-                    f"<td>{_h(method)}</td><td>{_h(f['confidence'] or 'not recorded')}</td>"
-                    f"<td>{_h(f['file'])}</td></tr>"
-                )
-            out.append("</table>")
-        if section["qc"]:
-            cells = "".join(
-                f"<tr><td>{_h(q['label'])}</td><td>{_h(q['text'])}</td></tr>"
-                for q in section["qc"]
-            )
-            out.append(
-                f"<table><tr><th>QC metric</th><th>Value</th></tr>{cells}</table>"
-            )
+        out.extend(_html_overview(section["facts"], section["qc"]))
     elif name == "clinvar":
         gl = section["gene_list"]
         source = [_h(gl["citation"])] if gl["citation"] else []
@@ -241,6 +232,13 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "acmg_research":
+        out.extend(f'<p class="muted">{_h(line)}</p>' for line in _acmg_notes(section))
+        if section.get("all_calls"):
+            out.append(
+                f'<p class="muted">Every classified allele: '
+                f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
+            )
     elif name == "ancestry" and section["components"]:
         out.append(f'<p class="muted">{_h(section["note"])}</p>')
         for k in sorted({c["k"] for c in section["components"]}):
@@ -282,7 +280,23 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
     return out
 
 
-def _call_text(v: Mapping[str, Any]) -> str:
+def _acmg_notes(section: Mapping[str, Any]) -> list[str]:
+    """The gene list, classifier and criteria never evaluated behind the
+    automated ACMG classes."""
+    gl = section["gene_list"]
+    notes = [f"Gene list: {gl['name']} ({gl['genes']} genes)."]
+    if section.get("tool"):
+        notes.append(f"Classified by {section['tool']}.")
+    if section.get("criteria_not_evaluated"):
+        notes.append(
+            "Criteria never evaluated: "
+            + ", ".join(section["criteria_not_evaluated"])
+            + "."
+        )
+    return notes
+
+
+def _call_text(v: Mapping[str, object]) -> str:
     """'REF>ALT GT zygosity, DP n, GQ n', leaving out what the call lacks
     (an SV has no REF, depth or GQ)."""
     if not v:
@@ -302,13 +316,12 @@ def _call_text(v: Mapping[str, Any]) -> str:
 
 
 def _html_findings(
-    items: Sequence[Mapping[str, Any]], report: Mapping[str, Any], base: str
+    items: Sequence[ReportFindingDocument], reasons: Mapping[str, str], base: str
 ) -> str:
-    reasons = report["confidence_reasons"]
     out = ["<table><tr><th>Finding</th><th>Result</th><th>Detail</th>"
            "<th>Call</th><th>Sequencing confidence</th><th>Evidence</th><th></th></tr>"]  # fmt: skip
     for f in items:
-        v = f["variant"] or {}
+        v: Mapping[str, object] = f["variant"] or {}
         call = _h(_call_text(v))
         why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
         detail = _h(f["detail"]) + (f"<br><i>{_h(f['note'])}</i>" if f["note"] else "")
@@ -326,6 +339,29 @@ def _html_findings(
         )
     out.append("</table>")
     return "".join(out)
+
+
+def _html_overview(
+    facts: Sequence[ReportFactDocument], qc: Sequence[ReportMetricDocument]
+) -> list[str]:
+    out: list[str] = []
+    if facts:
+        out.append("<table><tr><th>Fact</th><th>Value</th><th>Method</th>"
+                   "<th>Confidence</th><th>From</th></tr>")  # fmt: skip
+        for f in facts:
+            method = "your override" if f["source"] == "override" else f["method"]
+            out.append(
+                f"<tr><td>{_h(f['label'])}</td><td>{_h(f['text'])}</td>"
+                f"<td>{_h(method)}</td><td>{_h(f['confidence'] or 'not recorded')}</td>"
+                f"<td>{_h(f['file'])}</td></tr>"
+            )
+        out.append("</table>")
+    if qc:
+        cells = "".join(
+            f"<tr><td>{_h(q['label'])}</td><td>{_h(q['text'])}</td></tr>" for q in qc
+        )
+        out.append(f"<table><tr><th>QC metric</th><th>Value</th></tr>{cells}</table>")
+    return out
 
 
 # Kept as is in Markdown link destinations; anything else is percent-encoded.
@@ -366,6 +402,54 @@ def _md_link(text: str, href: str | None) -> str:
     return f"[{_md(text)}](<{quote(href, safe=_URL_SAFE)}>)"
 
 
+def _markdown_overview(
+    facts: Sequence[ReportFactDocument], qc: Sequence[ReportMetricDocument]
+) -> list[str]:
+    out: list[str] = []
+    if facts:
+        out += [
+            "",
+            "| Fact | Value | Method | Confidence | From |",
+            "|---|---|---|---|---|",
+        ]
+        for f in facts:
+            method = "your override" if f["source"] == "override" else f["method"]
+            out.append(
+                f"| {_md(f['label'])} | {_md(f['text'])} | {_md(method)} | "
+                f"{_md(f['confidence'] or 'not recorded')} | {_md(f['file'])} |"
+            )
+    if qc:
+        out += ["", "| QC metric | Value |", "|---|---|"]
+        out += [f"| {_md(q['label'])} | {_md(q['text'])} |" for q in qc]
+    return out
+
+
+def _markdown_findings(
+    items: Sequence[ReportFindingDocument], reasons: Mapping[str, str], base: str
+) -> list[str]:
+    out = [
+        "",
+        "| Finding | Result | Detail | Call | Confidence | Evidence | |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for f in items:
+        v: Mapping[str, object] = f["variant"] or {}
+        call = _call_text(v)
+        why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
+        links = _finding_links(f["links"], _md_link)
+        detail = " — ".join(x for x in (f["detail"], f["note"]) if x)
+        evidence = f["evidence"]
+        target = evidence["file"] or evidence["manifest"]
+        out.append(
+            f"| {_md(f['label'])} | {_md(f['value'])} {links} | {_md(detail)} | "
+            f"{_md(call)} | **{_md(f['confidence'])}**"
+            f"{' (' + _md(why) + ')' if why else ''} | "
+            f"{_md_link(evidence['file'] or 'manifest', _href(target, base))} "
+            f"{_md_code(evidence['region'], cell=True)} | {_md(f['disclaimer'])} |"
+        )
+    return out
+
+
 def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
     """The report as Markdown, with the same sections, findings and links."""
     sample = report["sample"]
@@ -382,27 +466,16 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
     for name, section in report["sections"].items():
         status = section["status"].replace("_", " ")
         out += ["", f"## {_md(section['title'])} ({_md(status)})"]
+        if section.get("disclaimer"):
+            out += ["", f"> **{_md(section['disclaimer'])}**"]
         if section.get("summary"):
             out += ["", _md(section["summary"])]
         if section.get("error"):
             out += ["", f"**Failed:** {_md(section['error'])}"]
         for w in _warning_rows(section["warnings"], newer=True):
             out += ["", f"**Newer attempt failed:** {_md(w['message'])}"]
-        if name == "overview" and section["facts"]:
-            out += [
-                "",
-                "| Fact | Value | Method | Confidence | From |",
-                "|---|---|---|---|---|",
-            ]
-            for f in section["facts"]:
-                method = "your override" if f["source"] == "override" else f["method"]
-                out.append(
-                    f"| {_md(f['label'])} | {_md(f['text'])} | {_md(method)} | "
-                    f"{_md(f['confidence'] or 'not recorded')} | {_md(f['file'])} |"
-                )
-        if name == "overview" and section["qc"]:
-            out += ["", "| QC metric | Value |", "|---|---|"]
-            out += [f"| {_md(q['label'])} | {_md(q['text'])} |" for q in section["qc"]]
+        if name == "overview":
+            out += _markdown_overview(section["facts"], section["qc"])
         if name == "clinvar":
             gl = section["gene_list"]
             source = [_md(gl["citation"])] if gl["citation"] else []
@@ -442,6 +515,13 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "acmg_research":
+            out += ["", *(_md(line) for line in _acmg_notes(section))]
+            if section.get("all_calls"):
+                href = _href(section["all_calls"], base)
+                out.append(
+                    f"Every classified allele: {_md_link(section['all_calls'], href)}"
+                )
         if name == "ancestry" and section["components"]:
             out += ["", f"_{_md(section['note'])}_"]
             for k in sorted({c["k"] for c in section["components"]}):
@@ -478,26 +558,7 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                     f"{f'{rate:.1%}' if isinstance(rate, (int, float)) else ''} |"
                 )
         if section["findings"]:
-            out += [
-                "",
-                "| Finding | Result | Detail | Call | Confidence | Evidence | |",
-                "|---|---|---|---|---|---|---|",
-            ]
-            for f in section["findings"]:
-                v = f["variant"] or {}
-                call = _call_text(v)
-                why = "; ".join(reasons.get(r, r) for r in f["confidence_reasons"])
-                links = _finding_links(f["links"], _md_link)
-                detail = " — ".join(x for x in (f["detail"], f["note"]) if x)
-                evidence = f["evidence"]
-                target = evidence["file"] or evidence["manifest"]
-                out.append(
-                    f"| {_md(f['label'])} | {_md(f['value'])} {links} | {_md(detail)} | "
-                    f"{_md(call)} | **{_md(f['confidence'])}**"
-                    f"{' (' + _md(why) + ')' if why else ''} | "
-                    f"{_md_link(evidence['file'] or 'manifest', _href(target, base))} "
-                    f"{_md_code(evidence['region'], cell=True)} | {_md(f['disclaimer'])} |"
-                )
+            out += _markdown_findings(section["findings"], reasons, base)
         if section["missing"]:
             out += ["", "Not run yet (run in the sample folder):", ""]
             out += _missing_lines(section["missing"], markdown=True)

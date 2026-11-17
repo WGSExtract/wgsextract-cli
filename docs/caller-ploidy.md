@@ -42,12 +42,20 @@ are explicitly refused rather than silently interpreted as diploid.
   haploid calls, rather than converting every heterozygous prediction to ALT.
   Without an explicit region, it retains its chr1–22/X/Y default scope rather
   than extending calls to ALT/decoy contigs.
-* **wgse-deepvariant and GPU/Parabricks paths:** explicitly refuse requests
-  requiring non-diploid handling until those paths are qualified. Diploid-only
-  regions still work. For Google's pipeline rather than the native engine, set
-  `deepvariant_native = "off"` in config.toml.
+* **Parabricks DeepVariant (`--gpu`):** pbrun has `--haploid-contigs` but no
+  PAR regions option, so it calls each ploidy set separately, like GATK: one
+  run over the diploid intervals (autosomes, the PARs and a woman's chrX), and
+  one over the haploid intervals (a man's non-PAR chrX and chrY, and chrM)
+  with `--haploid-contigs` naming their contigs and `--interval-file`
+  keeping it off the PARs. Ploidy-zero intervals aren't called. Each run
+  checks the GPU's free memory just before it starts. Like Google's, its
+  haploid calls keep diploid GT encoding (`1/1`).
+* **wgse-deepvariant, GATK `--gpu` and Clair3 `--gpu`:** explicitly refuse
+  requests requiring non-diploid handling until those paths are qualified.
+  Diploid-only regions still work. For Google's pipeline rather than the
+  native engine, set `deepvariant_native = "off"` in config.toml.
 
-GATK and Clair3 outputs are clipped by variant POS to the partition, so a call
+GATK, Clair3 and Parabricks DeepVariant outputs are clipped by variant POS to the partition, so a call
 overlapping a boundary cannot be emitted by both partitions. With
 `--reference-evidence gvcf` each partition's gVCF blocks are also cut at its
 edges before the parts are gathered (see

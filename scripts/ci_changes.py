@@ -13,7 +13,14 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.ci_select_tests import ci_path, ci_test_targets, os_selection, select_tests  # noqa: E402
+from scripts.ci_moves import select_moves  # noqa: E402
+from scripts.ci_select_tests import (  # noqa: E402
+    SMOKE_TESTS,
+    ci_path,
+    ci_test_targets,
+    os_selection,
+    select_tests,
+)
 from scripts.ci_test_dependencies import (  # noqa: E402
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_MODULES,
@@ -56,6 +63,38 @@ INSTALL_FILES = {
     ".github/workflows/install_lab.yml",
     ".github/workflows/gui-build.yml",
 }
+
+
+def setup_checks(paths: list[str]) -> bool:
+    return any(
+        not path.endswith(".md")
+        and (
+            path.startswith(
+                (
+                    "packaging/",
+                    "gui/",
+                    ".github/",
+                    "scripts/installlab/",
+                    "src/wgsextract_cli/cli/",
+                )
+            )
+            or path in INSTALL_FILES
+            or path.startswith(("scripts/test_install", "scripts/dev_setup"))
+        )
+        for path in paths
+    )
+
+
+def queue_windows_required(paths: list[str]) -> bool:
+    """Code and uncertain runtime inputs require Windows, even without consumers."""
+    return any(
+        not path.endswith(".md")
+        and not ci_path(path)
+        and path not in GENERATED_DOCS
+        and path not in DOCS_ONLY_SCRIPTS
+        and path not in DOCS_TEST_MODULES
+        for path in paths
+    )
 
 
 def site_validation(paths: list[str]) -> bool:
@@ -182,7 +221,11 @@ def main() -> None:
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
+    queue_windows = queue_windows_required(paths)
     tests = "all" if args.full_suite else select_tests(paths)
+    moves = None if args.full_suite else select_moves(args.base, args.head)
+    if moves is not None:
+        tests = moves.tests
     if args.full_suite:
         selected["cli"] = True
     if args.print_tests:
@@ -190,6 +233,10 @@ def main() -> None:
         return
     ci_tests = ci_test_targets(paths)
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
+    output += (
+        f"setup_checks={str(setup_checks(paths) or args.force_install_lab).lower()}\n"
+    )
+    output += "move_modules=" + json.dumps(moves.modules if moves else []) + "\n"
     output += (
         "docs_tests="
         + json.dumps(
@@ -221,6 +268,11 @@ def main() -> None:
         + "\n"
     )
     for os, targets in os_selection(paths, tests, cli=selected["cli"]).items():
+        if moves is not None and targets == []:
+            # Import/collection validation still needs a runner when no test imports it.
+            targets = list(SMOKE_TESTS)
+        if args.full_suite and os == "windows" and not queue_windows:
+            targets = []
         output += (
             f"{os}_tests="
             + (targets if isinstance(targets, str) else json.dumps(targets))

@@ -7,11 +7,13 @@ UCSC's hg18ToHg19 chain), so their union is the genome-wide target; for GRCh38
 its positions are lifted with UCSC's hg19ToHg38 chain, except chrM: GRCh37's MT
 and hg38's chrM are both the rCRS. The result is saved in the library as
 ``microarray/All_SNPs_<build>_ref.tab.gz`` and rebuilt when it was built by an
-older version of this builder.
+older version of this builder, or its template bodies, corrections or chains
+change. The adjacent inputs sidecar records content identities for those resources.
 """
 
 import gzip
 import hashlib
+import json
 import logging
 import os
 import subprocess
@@ -26,7 +28,9 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
 from wgsextract_cli.core.microarray.coordinates import sole_placement
+from wgsextract_cli.core.microarray.resource_identity import resource_identity
 from wgsextract_cli.core.microarray_utils import (
+    _PACKAGED_TEMPLATES,
     _chrom_for_liftover,
     _resolve_templates_roots,
     _template_body_paths,
@@ -119,14 +123,33 @@ def is_genome_wide_target(path: str, reflib_dir: str, build: str) -> bool:
         return False
 
 
-def _is_current(target: str) -> bool:
+def _is_current(target: str, inputs: dict[str, object]) -> bool:
     if not (Path(target).is_file() and Path(target + ".tbi").is_file()):
         return False
     try:
         with gzip.open(target, "rt") as f:
-            return f.readline() == _VERSION_LINE
-    except (OSError, EOFError):
+            if f.readline() != _VERSION_LINE:
+                return False
+        try:
+            recorded = Path(target + ".inputs.json").read_text(encoding="utf-8")
+        except FileNotFoundError:
+            # Current-version targets predate resource sidecars.
+            return True
+        return bool(json.loads(recorded) == inputs)
+    except (OSError, EOFError, ValueError):
         return False
+
+
+def _write_inputs(target: str, inputs: dict[str, object]) -> None:
+    metadata = Path(target + ".inputs.json")
+    with tempfile.TemporaryDirectory(
+        dir=metadata.parent, prefix=".target-inputs-"
+    ) as work:
+        staged = Path(work, "inputs.json")
+        staged.write_text(
+            json.dumps(inputs, sort_keys=True) + "\n", encoding="utf-8", newline="\n"
+        )
+        staged.replace(metadata)
 
 
 def _template_paths(roots: list[str]) -> Iterator[tuple[str, bool, list[str]]]:
@@ -207,28 +230,88 @@ def build_genome_wide_target(
 ) -> str:
     """Write and index microarray/All_SNPs_<build>_ref.tab.gz unless it's
     current; return its path. Liftover chains are looked for in chain_roots,
-    then in reflib_dir, where a missing one is downloaded.
+    then in reflib_dir, where missing chains are downloaded only for rebuilds.
 
     Runs that start together on one library take turns (a lock file), and a run
-    that finds the target already built by another uses it."""
+    that finds the target already built by another uses it. Current-version
+    targets predating resource sidecars remain usable in read-only libraries;
+    their sidecars are added opportunistically when writable."""
     target_build = canonical_build(build)
     if target_build not in ("hg19", "hg38"):
         raise WGSExtractError(
             f"Microarray targets can only be built for hg19 or hg38, not {build}."
         )
     out = genome_wide_target_path(reflib_dir, target_build)
+    roots = _resolve_templates_roots(list(template_roots))
+    template_files = [
+        path for _name, _ncbi36, paths in _template_paths(roots) for path in paths
+    ]
+    templates = [
+        {
+            "format": name,
+            "parts": [resource_identity(path, include_path=False) for path in paths],
+        }
+        for name, _ncbi36, paths in _template_paths(roots)
+    ]
+    chain36_needed = needs_ncbi36_chain(template_roots)
+    chain38_needed = target_build == "hg38" and bool(template_files)
+    chain36 = (
+        _installed_chain(reflib_dir, HG18_TO_HG19_CHAIN, chain_roots)
+        if chain36_needed
+        else None
+    )
+    chain38 = (
+        _installed_chain(reflib_dir, HG19_TO_HG38_CHAIN, chain_roots)
+        if chain38_needed
+        else None
+    )
+    recorded_inputs: dict[str, object] = {}
+    try:
+        recorded = json.loads(Path(out + ".inputs.json").read_text(encoding="utf-8"))
+        if isinstance(recorded, dict):
+            recorded_inputs = recorded
+    except (OSError, ValueError):
+        pass
+    inputs: dict[str, object] = {
+        "version": TARGET_VERSION,
+        "templates": templates,
+        "corrections": resource_identity(
+            _PACKAGED_TEMPLATES / "corrections.tsv", include_path=False
+        ),
+        # Missing source chains don't invalidate a completed offline target.
+        "chain36": resource_identity(chain36, include_path=False)
+        if chain36
+        else recorded_inputs.get("chain36")
+        if chain36_needed
+        else None,
+        "chain38": resource_identity(chain38, include_path=False)
+        if chain38
+        else recorded_inputs.get("chain38")
+        if chain38_needed
+        else None,
+    }
     # Before taking the lock, so a current target in a read-only library is used.
-    if _is_current(out):
+    if _is_current(out, inputs):
+        if not Path(out + ".inputs.json").exists():
+            try:
+                _write_inputs(out, inputs)
+            except OSError as error:
+                logging.debug(
+                    "Using current target without a resource sidecar: %s", error
+                )
         return out
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     with _build_lock(out + ".lock"):
-        if _is_current(out):
+        if _is_current(out, inputs):
             return out
-        chain36 = (
-            ncbi36_chain(reflib_dir, chain_roots)
-            if needs_ncbi36_chain(template_roots)
-            else None
+        chain36 = ncbi36_chain(reflib_dir, chain_roots) if chain36_needed else None
+        chain38 = (
+            hg19_to_hg38_chain(reflib_dir, chain_roots) if chain38_needed else None
         )
+        inputs["chain36"] = resource_identity(chain36, include_path=False)
+        inputs["chain38"] = resource_identity(chain38, include_path=False)
+        if _is_current(out, inputs):
+            return out
         markers = collect_template_markers(template_roots, chain36)
         if not markers:
             if Path(out).is_file() and Path(out + ".tbi").is_file():
@@ -246,10 +329,10 @@ def build_genome_wide_target(
             "chip template markers (once; it's saved in the reference library)."
         )
         if target_build == "hg38":
-            markers = _lift_to_hg38(
-                markers, hg19_to_hg38_chain(reflib_dir, chain_roots)
-            )
+            assert chain38 is not None
+            markers = _lift_to_hg38(markers, chain38)
         _write_target(markers, out)
+        _write_inputs(out, inputs)
     logging.info(f"Saved the {target_build} microarray target: {out}")
     return out
 
@@ -286,18 +369,32 @@ def download_chain(source: ChainSource, dest: str) -> bool:
     return False
 
 
-def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
-    found = next(
-        (c for d in search if Path(c := str(Path(d, source.name))).is_file()), None
+def _installed_chain(
+    reflib_dir: str, source: ChainSource, search: Sequence[str] = ()
+) -> str | None:
+    return next(
+        (
+            str(path)
+            for directory in (*search, reflib_dir)
+            if (path := Path(directory, source.name)).is_file()
+        ),
+        None,
     )
+
+
+def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
+    found = _installed_chain(reflib_dir, source, search)
     if found:
         return found
     chain = str(Path(reflib_dir, source.name))
-    if not Path(chain).is_file() and not download_chain(source, chain):
-        raise WGSExtractError(
-            f"Could not download {source.name} (tried {', '.join(source.urls)}), "
-            "needed to place the chip markers on another genome build."
-        )
+    if not Path(chain).is_file():
+        Path(chain).parent.mkdir(parents=True, exist_ok=True)
+        with _build_lock(chain + ".lock"):
+            if not Path(chain).is_file() and not download_chain(source, chain):
+                raise WGSExtractError(
+                    f"Could not download {source.name} (tried {', '.join(source.urls)}), "
+                    "needed to place the chip markers on another genome build."
+                )
     return chain
 
 

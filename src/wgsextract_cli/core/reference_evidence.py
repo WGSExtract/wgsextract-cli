@@ -4,7 +4,8 @@ A variant-only VCF cannot tell a confident reference base from one nobody
 looked at. With ``--reference-evidence gvcf`` a caller also publishes a gVCF
 (role ``reference_evidence``, its index ``reference_evidence_index``) next to
 its unchanged variant VCF. ``spans`` reads one and classifies every requested
-base into one ``State``; PGS, PharmCAT and ``vcf confidence`` are to share it.
+base into one ``State``; ``score pgs`` and ``vcf pharmcat`` find a VCF's
+gVCF with ``companion``.
 docs/reference-evidence.md explains each state and the rules.
 
 The gVCF's ``##wgseReferenceEvidence`` header (``provenance_header``) records
@@ -19,6 +20,7 @@ from __future__ import annotations
 
 import enum
 import hashlib
+import json
 import re
 import subprocess
 import tempfile
@@ -27,6 +29,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
@@ -247,12 +250,26 @@ def _float(value: str | None) -> float | None:
         return None
 
 
+def reference_depth(
+    info: Mapping[str, str], values: Mapping[str, str], *, block: bool
+) -> int | None:
+    """Block evidence needs an explicit minimum; point DP is not a block floor."""
+    floors = [
+        depth
+        for value in (info.get("MIN_DP"), values.get("MIN_DP"))
+        if (depth := _int(value)) is not None and depth >= 0
+    ]
+    if floors:
+        return min(floors)
+    return None if block else _int(values.get("DP"))
+
+
 def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
     """The state of the bases one gVCF record covers (its first sample)."""
-    if fields[6] not in {"PASS", "."}:
-        return State.FILTERED
     keys = fields[8].split(":") if len(fields) > 9 else []
     values = dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
+    if fields[6] not in {"PASS", "."} or values.get("FT", ".") not in {"PASS", "."}:
+        return State.FILTERED
     alleles = re.split(r"[/|]", values.get("GT", "."))
     alts = fields[4].split(",")
     carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
@@ -261,8 +278,10 @@ def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> S
     if carried or any(a != "0" for a in alleles):
         return State.NO_CALL
     info = _info(fields[7])
-    depths = [d for d in (_int(info.get("MIN_DP")), _int(values.get("MIN_DP")), _int(values.get("DP"))) if d is not None]  # fmt: skip
-    depth = min(depths) if depths else None
+    block = "END" in info and all(
+        alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
+    )
+    depth = reference_depth(info, values, block=block)
     if depth == 0:
         return State.UNCOVERED
     scale = 0.5 if len(alleles) == 1 else 1.0
@@ -336,11 +355,17 @@ def _joined(spans: Iterable[Span]) -> Iterator[Span]:
         yield pending
 
 
+_CONTIG_ID = re.compile(r"^##contig=<(?:.*?,)?ID=([^,>]+)", re.MULTILINE)
+
+
 @dataclass
 class ReferenceEvidence:
-    """An indexed gVCF, read as reference evidence."""
+    """An indexed gVCF, read as reference evidence. ``known_lengths`` (say,
+    from the reference FASTA's index) supplies the length of a contig the
+    header declares without one; a contig of unknown length is not assessed."""
 
     path: str
+    known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
@@ -349,7 +374,12 @@ class ReferenceEvidence:
         header = run_command(
             ["bcftools", "view", "-h", self.path], capture_output=True
         ).stdout
-        self.lengths = header_contig_lengths(header)
+        declared = header_contig_lengths(header)
+        self.lengths = {}
+        for name in _CONTIG_ID.findall(header):
+            length = declared.get(name) or self.known_lengths.get(name)
+            if length:
+                self.lengths.setdefault(name, length)
         self.provenance = next(
             (p for line in header.splitlines() if (p := parse_provenance(line))), None
         )
@@ -515,3 +545,79 @@ def count_bases(spans: Iterable[Span]) -> Counter[State]:
     for span in spans:
         counts[span.state] += span.length
     return counts
+
+
+def _recorded_file(
+    record: Mapping[str, object], manifest: Path, document: Mapping[str, object]
+) -> Path | None:
+    """A file a result manifest recorded, where it is now (relative to the
+    manifest when its folder has moved), if its recorded fingerprint shows
+    it unchanged since; without one the file can't be trusted to be the
+    run's."""
+    from wgsextract_cli.core.results import fingerprint
+
+    recorded = Path(str(record.get("path") or ""))
+    place = recorded
+    original = document.get("manifest")
+    if not recorded.is_file() and isinstance(original, str):
+        try:
+            place = manifest.parent / recorded.relative_to(Path(original).parent)
+        except ValueError:
+            return None
+    expected = record.get("fingerprint")
+    if not expected or not place.is_file() or fingerprint(place) != expected:
+        return None
+    return place
+
+
+def companion(vcf: PathInput) -> str | None:
+    """The gVCF the run that wrote ``vcf`` published beside it, if any: the
+    ``reference_evidence`` output of a successful result manifest that also
+    lists ``vcf`` among its outputs. The manifests read are those in the
+    VCF's folder and those its sample workspace recorded; both files must
+    still be the ones the manifest describes (same fingerprint), and the gVCF
+    indexed. Of several such runs the newest wins."""
+    from wgsextract_cli.core import sample_workspace
+    from wgsextract_cli.core.results import MANIFEST_SUFFIX
+
+    given = Path(vcf).expanduser().absolute()
+    path = given.resolve()
+    if not path.is_file():
+        return None
+    candidates = {
+        manifest
+        for folder in {given.parent, path.parent}
+        for manifest in folder.glob(f"*{MANIFEST_SUFFIX}")
+    }
+    workspace = sample_workspace.workspace_for(given)
+    if workspace is not None:
+        candidates.update(workspace.recorded_manifests())
+    found: list[tuple[str, str]] = []
+    for manifest in candidates:
+        try:
+            document = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        if not isinstance(document, dict) or document.get("status") != "ok":
+            continue
+        outputs = [o for o in document.get("outputs") or [] if isinstance(o, dict)]
+        if not any(
+            o.get("role") != ROLE
+            and (p := _recorded_file(o, manifest, document)) is not None
+            and p.resolve() == path
+            for o in outputs
+        ):
+            continue
+        provenance = document.get("provenance")
+        finished = str(
+            (provenance.get("finished") if isinstance(provenance, dict) else "") or ""
+        )
+        for record in outputs:
+            if record.get("role") != ROLE:
+                continue
+            gvcf = _recorded_file(record, manifest, document)
+            if gvcf is not None and any(
+                Path(f"{gvcf}{suffix}").is_file() for suffix in (".tbi", ".csi")
+            ):
+                found.append((finished, str(gvcf)))
+    return max(found)[1] if found else None

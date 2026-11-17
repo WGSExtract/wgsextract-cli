@@ -1,4 +1,5 @@
 import type { ActionSpec, BundleManifest, CommandSpec, LooseRecord } from "./types.js";
+import type { ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "./generated/server-transport.js";
 
 /** Result document formats the app can read (docs/result-documents.md). */
 export const resultDocumentFormats = ["wgsextract.result/1"] as const;
@@ -20,27 +21,22 @@ export interface ResultDocumentSpec {
 /** Stands in `arguments` for a file the app makes for each run and reads the document from. */
 export const resultDocumentPathPlaceholder = "{{resultDocumentPath}}";
 
-export type ResultScalar = string | number | boolean | null;
-export type ResultScalars = Record<string, ResultScalar>;
+export type ResultScalar = ResultFileRecord["metrics"][string];
+export type ResultScalars = ResultFileRecord["metrics"];
 
-export interface ResultFile {
-    path: string;
-    role: string;
-    kind: string;
-    exists: boolean;
-    sizeBytes: number | null;
-    metrics: ResultScalars;
+export interface ResultFile extends Pick<ResultFileRecord, "path" | "role" | "kind" | "exists" | "metrics"> {
+    sizeBytes: ResultFileRecord["size_bytes"];
 }
 
 export interface ResultWarning {
-    code: string;
-    message: string;
-    details: ResultScalars;
+    code: ResultWarningRecord["code"];
+    message: ResultWarningRecord["message"];
+    details: ResultWarningRecord["details"];
 }
 
 export interface ResultError {
     kind: string;
-    message: string;
+    message: ResultErrorRecord["message"];
 }
 
 /** The parts of a result document the app shows and checks. */

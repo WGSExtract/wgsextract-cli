@@ -17,9 +17,12 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core.alignment.cram_counts import (
+    cram_container_totals,
+    multi_ref_contigs,
+)
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
-from wgsextract_cli.core.cram_counts import cram_container_totals, multi_ref_contigs
 from wgsextract_cli.core.microarray_utils import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn

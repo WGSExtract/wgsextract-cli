@@ -32,6 +32,8 @@ class Constraints:
     maximum: float | None = None
     pattern: str | None = None
     format: str | None = None
+    minLength: int | None = None
+    enum: tuple[str | int | float | bool | None, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +120,8 @@ def output_schema(
                 if not isinstance(metadata, Constraints):
                     raise TypeError(f"Unsupported schema metadata: {metadata!r}")
                 values: dict[str, object] = vars(metadata)
+                if metadata.enum is not None:
+                    values = {**values, "enum": list(metadata.enum)}
                 result.update(
                     {name: value for name, value in values.items() if value is not None}
                 )

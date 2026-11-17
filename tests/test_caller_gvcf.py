@@ -17,6 +17,7 @@ from tests.htslib_helpers import (
     vcf_calls,
     write_fasta,
 )
+from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
 from tests.test_clair3 import linux_x86 as linux_x86
 from tests.test_clair3 import make_model
@@ -90,7 +91,9 @@ def call(sample, caller, request, sex, region=None, **extra):
     # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     request.getfixturevalue("linux_x86")
-    model = make_model(sample.root, "custom")
+    model = sample.root / "custom"
+    if not model.exists():
+        make_model(sample.root, "custom")
     return api.vcf.clair3(VcfClair3Params(**common, model=str(model)), check=False)
 
 
@@ -169,6 +172,46 @@ def test_partitioned_gvcf_is_cut_at_the_par_edge_and_records_excluded_bases_863(
         ("chrX", str(PAR_START - 1), "1" if haploid else "1/1"),
         ("chrX", str(PAR_START), "0/1"),
     ]
+
+
+@pytest.mark.parametrize(("gpu", "factor"), [(False, 2.4), (True, 4.3)])
+def test_clair3_gvcf_cost_is_measured_and_reported_to_gpu_runs_863(
+    sample, request, gpu, factor
+):
+    """Issue #863: on HG002 ONT chr20:10-15 Mb the gVCF made Clair3 2.4x
+    slower on the CPU and 4.3x with --gpu. Preflight scales its time by that,
+    and a --gpu run is told the CPU was faster there but still calls on the
+    GPU."""
+    # The fake first: it skips on Windows, which linux_x86 would hide.
+    request.getfixturevalue("fake_clair3")
+    host = request.getfixturevalue("clair3_gpu") if gpu else None
+    results = {
+        evidence: call(
+            sample,
+            "clair3",
+            request,
+            "Female",
+            "chr20:500-1500",
+            reference_evidence=evidence,
+            outdir=sample.root / evidence,
+            gpu=gpu,
+        )
+        for evidence in ("none", "gvcf")
+    }
+
+    assert all(r.status == "ok" for r in results.values()), results
+    hours = {
+        evidence: r.details["host_requirement"]["approximate_hours"]
+        for evidence, r in results.items()
+    }
+    # Each is rounded to two significant figures.
+    assert hours["gvcf"] / hours["none"] == pytest.approx(factor, rel=0.1)
+    assert not any(w.code == "clair3_gvcf_cost" for w in results["none"].warnings)
+    (cost,) = [w for w in results["gvcf"].warnings if w.code == "clair3_gvcf_cost"]
+    assert cost.details["time_factor"] == factor
+    assert ("CPU was faster" in cost.message) is gpu
+    if host:
+        assert {r["opts"]["use_gpu"] for r in host.clair3.runs()} == {"True"}
 
 
 @pytest.mark.parametrize("option", ["gpu", "scatter"])
@@ -302,3 +345,101 @@ def test_a_deletion_starting_before_a_partition_covers_its_bases_1009(
     assert state(gathered, "chr20", 100) is State.VARIANT
     assert state(gathered, "chr20", 101) is State.VARIANT
     assert state(gathered, "chr20", 200) is State.CALLABLE_REFERENCE
+
+
+@pytest.fixture
+def parabricks_host(tmp_path, monkeypatch, ram):
+    """An x86-64 Linux GPU host (RTX 3090, 128 GB) whose pbrun is faked."""
+    import os
+    import platform
+
+    from tests.fake_tools import FakeParabricks
+    from wgsextract_cli.core.parabricks import DEFAULT_IMAGE
+
+    if sys.platform == "win32":
+        pytest.skip("Parabricks runs on Linux; fakes run by shebang")
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    ram(128 * 10**9)
+    host = FakeParabricks(tmp_path / "gpu", DEFAULT_IMAGE)
+    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
+    return host
+
+
+@pytest.mark.parametrize("evidence", ["none", "gvcf"])
+@pytest.mark.parametrize("bounded", [False, True])
+@pytest.mark.parametrize("sex", ["Male", "Female"])
+def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
+    sample, parabricks_host, sex, bounded, evidence
+):
+    """Issue #1058: vcf deepvariant --gpu refused every whole genome, since
+    a man's non-PAR chrX/chrY (and every chrM) isn't diploid. pbrun has
+    --haploid-contigs but no PAR option, so the haploid bases run apart,
+    limited by an interval file, and the runs are gathered in reference
+    order with a gVCF that claims each base once."""
+    region = "chr20:500-1500,chrX:9000-11000,chrY:100-600" if bounded else None
+    run_wgsextract("sample", "set", "--input", str(sample.bam), "--sex", sex)
+    result = api.vcf.deepvariant(
+        api.VcfDeepvariantParams(
+            input=sample.bam, ref=sample.ref, outdir=sample.root / "calls",
+            gpu=True, region=region, reference_evidence=evidence,
+        ),
+        check=False,
+    )  # fmt: skip
+
+    assert result.status == "ok", result.error
+    runs = {
+        "haploid" if "--haploid-contigs" in args else "diploid": intervals
+        for (_, args), intervals in zip(
+            parabricks_host.runs(), parabricks_host.intervals(), strict=True
+        )
+    }
+    haploid_args = [a for _, a in parabricks_host.runs() if "--haploid-contigs" in a]
+    male = sex == "Male"
+    if bounded:
+        diploid = [("chr20", 499, 1500), ("chrX", PAR_START - 1, 11000)]
+        haploid = [("chrX", 8999, PAR_START - 1), ("chrY", 99, 600)] if male else []
+    else:
+        diploid = [("chr20", 0, LENGTH), ("chrX", PAR_START - 1, LENGTH)]
+        haploid = [("chrX", 0, PAR_START - 1), ("chrY", 0, LENGTH)] if male else []
+        haploid.append(("chrM", 0, 500))
+    if not male:
+        # A woman's chrX is diploid throughout; her chrY isn't called.
+        diploid[1] = ("chrX", 8999 if bounded else 0, 11000 if bounded else LENGTH)
+    # contract: the PARs are diploid and only non-PAR X/Y (and chrM) haploid.
+    assert runs["diploid"] == diploid
+    assert runs.get("haploid", []) == haploid
+    contigs = list(dict.fromkeys(c for c, _, _ in haploid))
+    # contract: pbrun treats only the haploid run's own contigs as haploid.
+    assert [a[a.index("--haploid-contigs") + 1] for a in haploid_args] == (
+        [",".join(contigs)] if contigs else []
+    )
+    calls = [(c[0], int(c[1])) for c in vcf_calls(sample.root / "calls" / "deepvariant.vcf.gz")]  # fmt: skip
+    assert calls == sorted(
+        {(c, s + 1) for c, s, _ in diploid + haploid},
+        key=lambda call: (list(sample.sequences).index(call[0]), call[1]),
+    )
+    outputs = {output.role: output for output in result.outputs}
+    assert all(".ploidy_" not in str(output.path) for output in result.outputs)
+    if evidence == "none":
+        assert ROLE not in outputs
+        return
+    gvcf = outputs[ROLE]
+    assert Path(gvcf.path).name == "deepvariant.g.vcf.gz"
+    assert gvcf.metrics["engine"] == "parabricks-deepvariant"
+    covered: Counter[tuple[str, int]] = Counter()
+    for fields in records(gvcf.path):
+        if fields[4] == "<*>":
+            end = int(fields[7].split("END=")[1].split(";")[0])
+            covered.update((fields[0], p) for p in range(int(fields[1]), end + 1))
+    assert max(covered.values()) == 1
+    assert set(covered) == {
+        (c, p) for c, s, e in diploid + haploid for p in range(s + 1, e + 1)
+    }
+    assert state(gvcf.path, "chrX", PAR_START + 200) is State.CALLABLE_REFERENCE
+    if male:
+        assert (
+            f"chrX:{9000 if bounded else 1}-{PAR_START - 1}=1" in gvcf.metrics["ploidy"]
+        )
+    else:
+        assert state(gvcf.path, "chrY", 300) is State.EXCLUDED_BY_POLICY

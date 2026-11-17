@@ -39,6 +39,16 @@ HG00096 dataset. Its human-readable status identifies it as **WGS Extract hg19
 mini benchmark genome**, the same title shown by the app. The status and path
 are also available in the JSON result's `details`.
 
+## Shared-library permissions
+
+On POSIX systems, new `.lock` and `.guard` coordination files use `0666`
+filtered by the process umask. For a group-writable reference library, use a
+shared group, writable directories and a umask such as `0002` for every writer.
+Existing guards keep their permissions. If an older guard denies access, ask
+its owner or administrator to grant the shared users read/write access to the
+named file and access to its directory. Do not delete guards while any run may
+be using the library: replacing a guard can break locking between processes.
+
 ## Deleting a genome
 
 `wgsextract ref library --delete CODE` (or the file name, such as

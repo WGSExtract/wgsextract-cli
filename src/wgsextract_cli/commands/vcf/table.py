@@ -14,6 +14,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfTableParams
+from wgsextract_cli.core import acmg
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
@@ -265,6 +266,7 @@ def run_table(params: VcfTableParams) -> None:
         header = stream.header
         build = _reference_build(header)
         annotations = ",".join(header.annotations)
+        research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
         keeps_metadata = sqlite_path is not None or params.table_format == "parquet"
         metadata = provenance(
@@ -276,6 +278,7 @@ def run_table(params: VcfTableParams) -> None:
             region=params.region or "",
             annotations=annotations,
             carried_only=str(not params.all_alleles).lower(),
+            acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
         rows = _write_tables(
             stream,
@@ -310,6 +313,8 @@ def run_table(params: VcfTableParams) -> None:
             "with 'wgsextract vep run' and 'wgsextract vcf clinvar'.",
             path=input_vcf,
         )
+    if research_acmg:
+        warn("acmg_research_only", acmg.DISCLAIMER, path=input_vcf)
     if rows == 0:
         warn("no_variants", f"No variants to tabulate in {input_vcf}.", path=input_vcf)
     found = f" ({annotations})" if annotations else ""

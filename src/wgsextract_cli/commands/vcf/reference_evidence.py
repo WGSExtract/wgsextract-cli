@@ -56,12 +56,13 @@ def _stages(
     region_args: list[str],
     profile: list[str],
     call_args: list[str],
+    baq: bool = False,
 ) -> list[list[str]]:
     bands = evidence.BCFTOOLS_BANDS
     # contract: no -I (indel sites must not read as reference), MAPQ >= 20,
     # and depth bands on both mpileup and call make the evidence's meaning.
     mpileup = [
-        "bcftools", "mpileup", *profile, "-B",
+        "bcftools", "mpileup", *profile, *([] if baq else ["-B"]),
         "-q", str(evidence.BCFTOOLS_MIN_MAPPING_QUALITY), "-g", bands,
         "-a", "FORMAT/AD,FORMAT/DP", "-C", "50", "-f", ref, "-Ou",
         *region_args, alignment,
@@ -124,6 +125,7 @@ def write_gvcf(
     ploidy_args: list[str],
     sex_args: list[str],
     prior_args: list[str],
+    baq: bool = False,
     environment: Mapping[str, str] | None = None,
 ) -> str:
     """Write and publish ``bcftools.g.vcf.gz`` (+ .tbi) in ``outdir``, both as
@@ -154,7 +156,15 @@ def write_gvcf(
         def call(index: int) -> None:
             name, region_args = jobs[index]
             run_pipeline(
-                _stages(alignment, ref, parts[index], region_args, profile, call_args),
+                _stages(
+                    alignment,
+                    ref,
+                    parts[index],
+                    region_args,
+                    profile,
+                    call_args,
+                    baq=baq,
+                ),
                 env=env,
                 description="Reference evidence (gVCF)"
                 + (f" ({name})" if name else ""),

@@ -30,6 +30,7 @@ from typing import IO
 
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, read_scope
+from wgsextract_cli.core.acmg import DISCLAIMER
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -64,13 +65,6 @@ from .basic import vcf_input_handler
 
 ACMG_ANNOTATED = "acmg_annotated.vcf.gz"
 ACMG_SUMMARY = "acmg_summary.json"
-DISCLAIMER = (
-    "Research use only; not a diagnosis. These ACMG/AMP classes are computed "
-    "automatically by fastVEP from public databases, without the clinical, "
-    "family and functional evidence (PS3/BS3, PS4, PP1, PP4) a classification "
-    "needs, and a VUS can mean that nothing was checked. Don't act on them "
-    "without a clinical genetics professional."
-)
 # The order `vcf table` picks a transcript in (pick_csq), so fastVEP's one row
 # per allele is the table's transcript for all but a few records.
 PICK_ORDER = "mane_select,canonical,biotype,rank"

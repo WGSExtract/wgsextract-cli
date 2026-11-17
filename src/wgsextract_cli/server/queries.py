@@ -16,9 +16,9 @@ import zlib
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeGuard, TypeVar
 
-from wgsextract_cli.core import personal_report
+from wgsextract_cli.core import acmg, personal_report
 from wgsextract_cli.core.results import MANIFEST_SUFFIX
 from wgsextract_cli.core.results import SCHEMA_ID as RESULT_SCHEMA
 from wgsextract_cli.core.utils import WGSExtractError
@@ -43,6 +43,7 @@ _RSID = re.compile(r"rs\d+")
 _TRUE = ("1", "true", "yes")
 _FALSE = ("0", "false", "no")
 _SIGNIFICANCE_SPLIT = re.compile(r"[/|,]")
+_ACMG_COLUMNS = tuple(name for name in COLUMN_NAMES if name.startswith("acmg_"))
 InputT = TypeVar("InputT", bound=LookupInputs)
 
 
@@ -54,7 +55,7 @@ class Query(Generic[InputT]):
     route: str
     summary: str
     inputs: type[InputT]
-    answer: Callable[[PathGuard, InputT], dict[str, Any]]
+    answer: Callable[[PathGuard, InputT], Mapping[str, object]]
 
     @property
     def properties(self) -> dict[str, dict[str, object]]:
@@ -68,8 +69,10 @@ class Query(Generic[InputT]):
     def schema(self) -> dict[str, object]:
         return self.inputs.schema()
 
-    def run(self, guard: PathGuard, arguments: Mapping[str, object]) -> dict[str, Any]:
-        return self.answer(guard, self.inputs.parse(arguments))
+    def run(
+        self, guard: PathGuard, arguments: Mapping[str, object]
+    ) -> dict[str, object]:
+        return dict(self.answer(guard, self.inputs.parse(arguments)))
 
     def from_query_string(self, query: Mapping[str, list[str]]) -> dict[str, object]:
         """HTTP query parameters as JSON values of this query's schema."""
@@ -106,9 +109,10 @@ def _path(guard: PathGuard, arguments: LookupInputs) -> Path:
     return Path(os.path.expanduser(text))
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        value: object = json.loads(path.read_text(encoding="utf-8"))
+        return value
     except (OSError, ValueError) as e:
         raise RequestError(404, "unreadable", f"Can't read {path}: {e}") from None
 
@@ -116,14 +120,18 @@ def _read_json(path: Path) -> Any:
 # Manifests -------------------------------------------------------------------
 
 
-def read_manifest(guard: PathGuard, arguments: ManifestInputs) -> dict[str, Any]:
+def _is_object(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict) and all(isinstance(key, str) for key in value)
+
+
+def read_manifest(guard: PathGuard, arguments: ManifestInputs) -> dict[str, object]:
     path = _path(guard, arguments)
     if not path.name.endswith(MANIFEST_SUFFIX):
         raise RequestError(
             400, "usage", f"path must be a result manifest (*{MANIFEST_SUFFIX})."
         )
     document = _read_json(path)
-    if not isinstance(document, dict) or document.get("schema") != RESULT_SCHEMA:
+    if not _is_object(document) or document.get("schema") != RESULT_SCHEMA:
         raise RequestError(400, "usage", f"{path} is not a {RESULT_SCHEMA} manifest.")
     if not arguments.full:
         document.pop("provenance", None)
@@ -147,7 +155,7 @@ def _region(text: str) -> tuple[str, int, int]:
     return match["chrom"], start, end
 
 
-def _typed(name: str, text: str) -> Any:
+def _typed(name: str, text: str) -> str | int | float | None:
     if text == "":
         return None
     kind = _TYPES.get(name)
@@ -225,7 +233,7 @@ def _sqlite_rows(
         db.close()
 
 
-def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]:
+def query_variants(guard: PathGuard, arguments: VariantInputs) -> VariantPage:
     path = _path(guard, arguments)
     if not path.is_file():
         raise RequestError(404, "not_found", f"No variant table {path}.")
@@ -243,7 +251,7 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]
         raise RequestError(400, "usage", "cursor must be a next_cursor value.")
     after = int(cursor)
 
-    def keep(row: Mapping[str, Any]) -> bool:
+    def keep(row: Mapping[str, object]) -> bool:
         if gene is not None and row.get("gene") != gene:
             return False
         if rsid is not None and rsid not in str(row.get("rsid") or "").split(";"):
@@ -291,7 +299,7 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]
             "path must be a vcf table output: *_variants.tsv, .parquet or .sqlite.",
         )
     wanted = arguments.columns or COLUMN_NAMES
-    found: list[dict[str, Any]] = []
+    found: list[dict[str, object]] = []
     next_cursor = None
     last = after
     try:
@@ -310,7 +318,9 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]
         if close:
             close()
     page: VariantPage = {"path": str(path), "rows": found, "next_cursor": next_cursor}
-    return dict(page)
+    if any(key in row for row in found for key in _ACMG_COLUMNS):
+        page["disclaimer"] = acmg.DISCLAIMER
+    return page
 
 
 # Report ----------------------------------------------------------------------
@@ -339,21 +349,22 @@ def _report_file(guard: PathGuard, path: Path) -> Path:
     return path
 
 
-def report_section(guard: PathGuard, arguments: ReportInputs) -> dict[str, Any]:
+def report_section(guard: PathGuard, arguments: ReportInputs) -> dict[str, object]:
     path = _report_file(guard, _path(guard, arguments))
     document = _read_json(path)
-    if not isinstance(document, dict) or document.get("schema") != (
+    if not _is_object(document) or document.get("schema") != (
         personal_report.SCHEMA_ID
     ):
         raise RequestError(
             400, "usage", f"{path} is not a {personal_report.SCHEMA_ID} report."
         )
     sections = document.get("sections") or {}
-    if not isinstance(sections, dict) or not all(
-        isinstance(s, dict) for s in sections.values()
-    ):
+    if not _is_object(sections) or not all(_is_object(s) for s in sections.values()):
         raise RequestError(400, "usage", f"{path} has malformed report sections.")
-    head = {
+    section_objects = {
+        key: section for key, section in sections.items() if _is_object(section)
+    }
+    head: dict[str, object] = {
         "path": str(path),
         "generated": document.get("generated"),
         "sample": document.get("sample"),
@@ -365,16 +376,16 @@ def report_section(guard: PathGuard, arguments: ReportInputs) -> dict[str, Any]:
             **head,
             "sections": {
                 key: {"status": s.get("status"), "summary": s.get("summary")}
-                for key, s in sections.items()
+                for key, s in section_objects.items()
             },
         }
-    if name not in sections:
+    if name not in section_objects:
         raise RequestError(
             404,
             "no_section",
-            f"No section {name!r}; the report has {', '.join(sections)}.",
+            f"No section {name!r}; the report has {', '.join(section_objects)}.",
         )
-    return {**head, "section": name, **sections[name]}
+    return {**head, "section": name, **section_objects[name]}
 
 
 LookupQuery = Query[ManifestInputs] | Query[VariantInputs] | Query[ReportInputs]
@@ -395,7 +406,8 @@ QUERIES: dict[str, LookupQuery] = {
             "Look up a sample's variants in a `vcf table` output (*_variants "
             ".sqlite, .tsv or .parquet) by gene, rsID, region, ClinVar "
             "significance or confidence. Returns at most `limit` rows and a "
-            "next_cursor to continue.",
+            "next_cursor to continue. A page with automated ACMG classes "
+            "(acmg_* columns, research only) carries their disclaimer.",
             VariantInputs,
             query_variants,
         ),

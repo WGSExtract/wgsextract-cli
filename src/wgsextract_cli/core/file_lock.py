@@ -36,7 +36,22 @@ else:
 @contextlib.contextmanager
 def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
     # Keep this inode: deleting it would let concurrent reclaimers lock different files.
-    fd = os.open(str(path) + ".guard", os.O_CREAT | os.O_RDWR, 0o600)
+    guard = Path(f"{path}.guard")
+    try:
+        try:
+            # The kernel applies the current umask; never replace the inode.
+            fd = os.open(guard, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o666)
+        except FileExistsError:
+            # O_CREAT can deny another user's file in a sticky shared directory.
+            fd = os.open(guard, os.O_RDWR)
+    except PermissionError as error:
+        raise WGSExtractError(
+            f"Cannot open lock guard {guard}: {error.strerror or error} "
+            f"(errno {error.errno}). Ask the file "
+            "owner or administrator to grant read/write access to this file "
+            "and access to its parent directory for users sharing the library. "
+            "Do not delete the guard while any run may be using the library."
+        ) from error
     try:
         while True:
             try:
@@ -112,7 +127,7 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
                 if _abandoned(path, timeout):
                     path.unlink(missing_ok=True)
             try:
-                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
             except FileExistsError:
                 pass
             else:

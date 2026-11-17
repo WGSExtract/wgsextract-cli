@@ -25,6 +25,13 @@ A command can describe its run as a JSON result document: the files it wrote, wa
 
 **`format`** is the only format the app reads today: [`wgsextract.result/1`](../../docs/result-manifest.md), the document every `wgsextract` command writes with `--json` or `--result-file PATH`.
 
+The raw file, warning and error record types are generated from the Python
+writer dataclasses by `scripts/gen_server_contracts.py` into
+`app/shared/generated/server-transport.ts`. The normalized UI types and tolerant
+parser in `app/shared/result-document.ts` remain handwritten: they accept omitted
+compact fields and unknown future error kinds, rather than asserting that loaded
+JSON is a validated writer record.
+
 ## Running a covered action
 
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.

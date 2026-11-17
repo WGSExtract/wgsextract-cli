@@ -70,7 +70,7 @@ def test_903_independent_cancelled_retry_still_reports_confirmed_flake(
     assert api.retried == []
 
 
-def test_903_newer_unfinished_push_cannot_be_marked_green_by_old_nightly() -> None:
+def test_1038_green_nightly_reports_recovery_while_successor_is_queued() -> None:
     api = ReplayGitHub()
     api.run.update(head_branch="main", event="push", pull_requests=[])
     observer = Observer(api)
@@ -81,4 +81,59 @@ def test_903_newer_unfinished_push_cannot_be_marked_green_by_old_nightly() -> No
         dict(api.run, id=999, event="push", status="queued", conclusion=None)
     ]
     observer.process(api.run)
-    assert bug["state"] == "open"
+    assert bug["state"] == "closed"
+
+
+@pytest.mark.parametrize("conclusion", ["success", "failure"])
+@pytest.mark.parametrize("successor_status", ["queued", "in_progress"])
+def test_1038_conclusive_main_verdict_survives_a_continuous_push_backlog(
+    conclusion: str, successor_status: str
+) -> None:
+    api = ReplayGitHub()
+    api.run = recorded("main_run")
+    observer = Observer(api)
+    observer.process(api.run)
+    bug = api.issues[0]
+    api.run = dict(api.run, id=api.run["id"] + 1, conclusion=conclusion)
+    api.other_runs = [
+        dict(
+            api.run,
+            id=api.run["id"] + 1,
+            status=successor_status,
+            conclusion=None,
+        )
+    ]
+
+    observer.process(api.run, rerun_tests=True)
+
+    assert bug["state"] == ("closed" if conclusion == "success" else "open")
+    if conclusion == "failure":
+        marker = f"<!-- ci-red-run:{api.run['id']}:{api.run['run_attempt']} -->"
+        assert any(marker in comment["body"] for comment in api.comments[bug["number"]])
+    assert api.retried == []
+
+
+@pytest.mark.parametrize("conclusion", ["success", "failure"])
+def test_1038_delayed_main_verdict_cannot_overwrite_a_newer_completed_run(
+    conclusion: str,
+) -> None:
+    api = ReplayGitHub()
+    api.run = recorded("main_run")
+    observer = Observer(api)
+    observer.process(api.run)
+    bug = api.issues[0]
+    older = dict(api.run, conclusion=conclusion)
+    api.run = dict(
+        api.run,
+        id=api.run["id"] + 1,
+        conclusion="failure" if conclusion == "success" else "success",
+    )
+    observer.process(api.run)
+    expected = bug["state"]
+    api.other_runs = [dict(api.run)]
+    api.run = older
+
+    observer.process(api.run)
+
+    assert bug["state"] == expected
+    assert api.retried == []
