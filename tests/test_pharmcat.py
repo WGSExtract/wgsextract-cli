@@ -790,3 +790,30 @@ def test_pharmcats_reference_is_fetched_once_with_its_own_downloader(tmp_path):
     assert Path(reference).read_text() == f"fetched {tmp_path}"
     (tmp_path / "pcat" / "__init__.py").write_text("raise SystemExit(1)\n")
     assert pharmcat._ensure_reference([sys.executable], str(tmp_path)) == reference
+
+
+@needs_htslib
+def test_863_definition_partly_outside_the_gvcfs_region_is_not_reference(tmp_path):
+    """Issue #863: a definition whose second base lies outside the region the
+    caller assessed must not be made 0/0 from a block that runs past it."""
+    from wgsextract_cli.core.reference_evidence import GQ, Provenance
+
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    variants = _vcf(tmp_path / "variants.vcf.gz", "", contig="chr1")
+    provenance = Provenance("deepvariant", "1", GQ, region="chr1:1-105").header()
+    gvcf = _vcf(
+        tmp_path / "caller.g.vcf.gz",
+        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=110\tGT:DP:GQ\t0/0:40:60\n",
+        contig="chr1",
+        header=QUALITY_HEADER + provenance + "\n",
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    prepared = prepare_input(
+        variants, str(release), str(release / REFERENCE_FASTA), str(work), gvcf=gvcf
+    )
+    (row,) = [r.split("\t") for r in _view(prepared, "-H") if r.split("\t")[1] == "105"]
+    assert row[9] == "./."
+    evidence = (work / "evidence.vcf").read_text()
+    assert "PGX_STATE=not_assessed" in evidence

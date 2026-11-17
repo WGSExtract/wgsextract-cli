@@ -27,7 +27,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
-from wgsextract_cli.core import runtime, variant_confidence
+from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
@@ -106,9 +106,12 @@ def prepare_input(
     reference: str,
     work: str,
     params: VcfPharmcatParams | None = None,
+    gvcf: str | None = None,
 ) -> str:
     """input_vcf cut to PharmCAT's regions, in its contig names, with gVCF
-    blocks expanded to positions and only GT kept."""
+    blocks expanded to positions and only GT kept. ``gvcf``, the gVCF the
+    caller of a variant-only input_vcf published beside it, decides the
+    definitions input_vcf doesn't list (pharmcat_evidence.expand)."""
     regions = str(Path(directory, "pharmcat_regions.bed"))
     with open(regions) as f:
         bed_lines = [line.split("\t") for line in f if line.strip()]
@@ -151,6 +154,7 @@ def prepare_input(
         work,
         [(f[0], int(f[1]), int(f[2])) for f in bed_lines],
         variant_confidence.thresholds_from(params),
+        gvcf,
     )
     # GATK/DRAGEN gVCFs keep ##GVCFBlock lines after expansion, and PharmCAT's
     # pipeline refuses any VCF that has them as a gVCF.
@@ -325,13 +329,17 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         raise WGSExtractError(f"PharmCAT needs a GRCh38 VCF; {input_vcf} is {build}.")
     directory = pharmcat_directory(params, lib)
     python = _python(directory)
+    gvcf = reference_evidence.companion(input_vcf)
+    if gvcf is not None:
+        current_result().add_input(gvcf, reference_evidence.ROLE)
+        logging.info(f"Reference evidence for absent PharmCAT sites: {gvcf}")
     input_vcf = ensure_vcf_prepared(input_vcf)  # bgzipped and indexed
     reference = _ensure_reference(python, directory)
     stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(input_vcf).name, flags=re.I)
 
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pharmcat_") as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
-        prepared = prepare_input(input_vcf, directory, reference, work, params)
+        prepared = prepare_input(input_vcf, directory, reference, work, params, gvcf)
         confidence = label_pgx_calls(input_vcf, work, params)
         run_out = Path(work, "outputs")
         run_out.mkdir()
