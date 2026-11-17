@@ -289,7 +289,7 @@ _GPU_MINIMAP2_PRESETS = {"map-hifi": "map-hifi", "map-ont": "map-ont"}
 def run(job: AlignJob) -> None:
     _cram_reference(job)
     job.platform = _alignment_file_platform(job) or resolve_platform(
-        job.platform, job.r1, job.input_ref
+        job.platform, job.r1, job.input_ref, job.r2
     )
     aligner = select_aligner(job)
     if job.platform == "ultima":

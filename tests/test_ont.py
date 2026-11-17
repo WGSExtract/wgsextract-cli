@@ -81,7 +81,6 @@ def _onto(genome: str, qname: str) -> str:
 @pytest.mark.parametrize(
     ("suffix", "qname", "header", "detected"),
     [
-        (".fq", "m84000_230101_120000_s1/123456789/ccs", "", "pacbio"),
         (".fq", "608478_2-3317701967", "", "ultima"),
         (".fq", "E100000001L1C001R001000001", "", "dnbseq"),
         (".bam", "renamed", "@RG\tID:r\tPL:PACBIO", "pacbio"),

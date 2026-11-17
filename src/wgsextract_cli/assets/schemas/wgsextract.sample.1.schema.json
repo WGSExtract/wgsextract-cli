@@ -127,6 +127,15 @@
     "observed_sex_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -172,6 +181,15 @@
     "platform_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -198,7 +216,14 @@
           "format": "date-time"
         },
         "value": {
-          "$ref": "#/$defs/platform"
+          "enum": [
+            "illumina",
+            "ont",
+            "pacbio",
+            "ultima",
+            "dnbseq",
+            "Unknown"
+          ]
         }
       },
       "required": [
@@ -213,6 +238,15 @@
     "build_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -254,6 +288,15 @@
     "sex_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -295,6 +338,15 @@
     "superpopulation_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -342,6 +394,15 @@
     "nonnegative_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -384,6 +445,15 @@
     "fraction_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -427,6 +497,15 @@
     "ancestry_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -473,6 +552,15 @@
     "depths_fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
@@ -518,6 +606,15 @@
     "fact": {
       "type": "object",
       "properties": {
+        "statistics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_fingerprint": {
+          "type": "string"
+        },
         "method": {
           "type": "string",
           "description": "How it was detected."
