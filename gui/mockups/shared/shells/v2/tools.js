@@ -41,10 +41,11 @@
     region: function (small) {
       return { type: "region", key: "region", label: "Region", small: small || "", flag: "region", def: "" };
     },
+    /* Empty means every core (the CLI's auto); estimates use c.v.threads || cores */
     threads: function () {
       return f.number("threads", "CPU threads", function (c) {
-        return "All " + c.M.cores + " cores by default";
-      }, "threads", 12, { width: 90 });
+        return "Empty: all " + c.M.cores + " cores";
+      }, "threads", "", { width: 90, placeholder: "auto" });
     },
     sortMemory: function (small) {
       return f.select("memory", "Sort memory per thread", small || "Auto: a quarter of the RAM, at least 1 GB per thread", "memory",
@@ -128,7 +129,7 @@
       return h("label.v2-switch", h("input", { type: "checkbox", role: "switch", "aria-label": label, checked: field.def || null, dataset: { v2Key: field.key } }));
     }
     if (field.type === "number") {
-      return h("input.v2-input", { type: "number", value: field.def, "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 100) + "px" } });
+      return h("input.v2-input", { type: "number", min: 0, value: field.def, placeholder: field.placeholder || null, "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 100) + "px" } });
     }
     if (field.type === "text") {
       return h("input.v2-input" + (field.mono ? ".v2-input--mono" : ""), { type: "text", placeholder: field.placeholder || "", "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 240) + "px" } });
@@ -336,15 +337,23 @@
     if (/^ref-/.test(flag)) return ["ref/library", { ref: rest }, gb, "Download reference " + rest];
     if (flag === "panel-1kg") return ["ref/imputation", {}, gb, "Download the 1000 Genomes panel"];
     if (/^vepcache-/.test(flag)) return ["vep/download", { engine: rest }, gb, "Download the VEP cache (" + rest + ")"];
-    if (/^pgs-/.test(flag)) return ["score/pgs", { trait: rest, download_only: true }, 0.05, "Download the " + rest + " scoring file"];
+    if (/^pgs-/.test(flag)) return ["ref/pgs", { trait: rest }, 0.05, "Download the " + rest + " scoring file"];
     if (flag === "alex-fixed") return ["bam/index", { input: M.path(M.files.alex) }, 0.9, "Fix Alex’s BAM: download hs38d1 and index it"];
     if (/^data-/.test(flag)) return ["ref/" + rest, {}, gb, "Download " + rest];
     return ["ref/library", { name: flag }, gb, "Download " + flag];
   }
 
+  /* Say so when the server refuses a job (the button's toast said "Queued") */
+  function checked(promise) {
+    return promise.then(function (res) {
+      if (res.status >= 300) WGSM.toast("The server refused it: " + ((res.body && res.body.error && res.body.error.message) || res.status), "circle-alert");
+      return res;
+    });
+  }
+
   function startDownload(flag, label) {
     var job = downloadJob(flag, label);
-    return WGSM.v2api.post("/v1/ops/" + job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: [flag] } }));
+    return checked(WGSM.v2api.post("/v1/ops/" + job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: [flag] } })));
   }
 
   /* hours for the mock server's clock, from the estimate or its words */
@@ -364,13 +373,13 @@
       if (value !== "" && value !== false && value !== null && !(Array.isArray(value) && !value.length)) params[k] = value;
     });
     var disk = (out.disk || [])[0];
-    return WGSM.v2api.post("/v1/ops/" + def.op.split(" · ")[0], Object.assign(params, { _mock: {
+    return checked(WGSM.v2api.post("/v1/ops/" + def.op.split(" · ")[0], Object.assign(params, { _mock: {
       label: out.jobName || def.label + " for " + ctx.name,
       person: ctx.file.person,
       hours: runHours(out),
       memGB: out.memGB,
       outputs: disk ? [{ path: ctx.m.outdir(ctx.file) + ctx.file.stem + "." + def.slug, gb: disk[1], disk: disk[0] }] : [],
-    } }));
+    } })));
   }
 
   function refresh() {

@@ -4,6 +4,11 @@
  * Environment-agnostic. */
 (function (root) {
   "use strict";
+
+  /* Own keys only: ids like "constructor" mustn't match Object's members */
+  function hasOwn(table, key) {
+    return Object.prototype.hasOwnProperty.call(table, key);
+  }
   var M = root.WGSMMock;
   var U = M.util;
 
@@ -72,11 +77,11 @@
         var f = Object.assign({ id: k }, c.files[k]);
         var v = fileView(f, f.needs && !flags[f.needs] ? "needs_fix" : "ready", f.needs ? { needs: f.needs } : {});
         var who = owner(f);
-        (who && byId[who] ? byId[who].files : unassigned).push(v);
+        (who && hasOwn(byId, who) ? byId[who].files : unassigned).push(v);
       });
       /* Files jobs are making or have made */
       mock.doc().jobs.forEach(function (j) {
-        var p = byId[j.plan.person];
+        var p = hasOwn(byId, j.plan.person) ? byId[j.plan.person] : null;
         if (!p || ["queued", "running", "succeeded"].indexOf(j.status) < 0) return;
         j.plan.outputs.filter(function (o) {
           return o.library;
@@ -98,7 +103,7 @@
     r.add("PATCH", "/v1/library/people/{id}", "proposed", function (req) {
       var c = mock.ctx();
       var id = req.params.id;
-      if (!c.people[id]) M.fail(404, "unknown_person", "No person " + JSON.stringify(id) + ".");
+      if (!hasOwn(c.people, id)) M.fail(404, "unknown_person", "No person " + JSON.stringify(id) + ".");
       var b = req.body || {};
       if (b.name !== undefined && !String(b.name).trim()) M.fail(400, "usage", "A person needs a name.");
       var own = (mock.doc().people[id] = Object.assign({}, mock.doc().people[id]));
@@ -114,7 +119,7 @@
     /* PROPOSED — mock only. Remove a person from the library; their files
      * stay on disk */
     r.add("DELETE", "/v1/library/people/{id}", "proposed", function (req) {
-      if (!mock.ctx().people[req.params.id]) M.fail(404, "unknown_person", "No person " + JSON.stringify(req.params.id) + ".");
+      if (!hasOwn(mock.ctx().people, req.params.id)) M.fail(404, "unknown_person", "No person " + JSON.stringify(req.params.id) + ".");
       mock.doc().people[req.params.id] = Object.assign({}, mock.doc().people[req.params.id], { removed: true });
       mock.save();
       return { id: req.params.id, removed: true, files_kept: true };
@@ -124,14 +129,14 @@
      * {"name": "New person"} */
     r.add("POST", "/v1/library/files/{id}/assign", "proposed", function (req) {
       var c = mock.ctx();
-      if (!c.files[req.params.id]) M.fail(404, "unknown_file", "No file " + JSON.stringify(req.params.id) + ".");
+      if (!hasOwn(c.files, req.params.id)) M.fail(404, "unknown_file", "No file " + JSON.stringify(req.params.id) + ".");
       var b = req.body || {};
       var id = b.person;
       if (!id && b.name) {
         id = String(b.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "person";
-        if (!c.people[id]) mock.doc().people[id] = { name: String(b.name).trim(), note: "", added: true };
+        if (!hasOwn(c.people, id)) mock.doc().people[id] = { name: String(b.name).trim(), note: "", added: true };
       }
-      if (!id || !mock.ctx().people[id]) M.fail(400, "usage", "Give an existing person id or a new name.");
+      if (!id || !hasOwn(mock.ctx().people, id)) M.fail(400, "usage", "Give an existing person id or a new name.");
       mock.doc().assign[req.params.id] = id;
       mock.save();
       return library();

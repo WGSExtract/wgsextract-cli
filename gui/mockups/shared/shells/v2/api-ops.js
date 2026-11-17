@@ -42,7 +42,47 @@
     "ref/gnomad-sv": ["net", "Download gnomAD-SV", 1.7, "Install gnomAD structural variants"],
     "ref/test-genome": ["net", "Download an example genome", 9.6, "Install an example genome"],
     "ref/download": ["net", "Download a file", 1, "Download one file by URL"],
+    "vcf/freebayes": ["job", "FreeBayes", 300, "Call variants with FreeBayes"],
+    "vcf/clair3": ["job", "Clair3", 165, "Call long-read variants with Clair3"],
+    "vcf/sv": ["job", "Structural variants", 80, "Find structural variants"],
+    "vcf/cnv": ["job", "Copy-number changes", 90, "Find copy-number changes"],
+    "vcf/trio": ["job", "Family trio", 10, "Analyse a child with both parents"],
+    "vcf/gnomad": ["job", "gnomAD frequencies", 5, "Annotate with gnomAD frequencies"],
+    "vcf/revel": ["job", "REVEL", 3, "Annotate with REVEL scores"],
+    "vcf/cadd": ["job", "CADD", 8, "Annotate with CADD scores"],
+    "vcf/alphamissense": ["job", "AlphaMissense", 3, "Annotate with AlphaMissense"],
+    "vcf/spliceai": ["job", "SpliceAI", 4, "Annotate with SpliceAI"],
+    "vcf/pharmcat": ["job", "Pharmacogenomics", 6, "Run PharmCAT"],
+    "qc/fastqc": ["job", "Read quality", 90, "Check reads with FastQC"],
+    "qc/fastp": ["job", "Read quality (fastp)", 15, "Check reads with fastp"],
+    "qc/contamination": ["job", "Contamination", 15, "Estimate contamination"],
+    "qc/relate": ["job", "Relatedness", 5, "Compare genomes for relatedness"],
+    "qc/vcf": ["job", "VCF quality", 2, "Summarise a VCF"],
+    "typing/hla": ["job", "HLA typing", 25, "Type the HLA genes"],
+    "typing/cyp2d6": ["job", "CYP2D6 typing", 10, "Type CYP2D6"],
+    "typing/smn": ["job", "SMN typing", 5, "Count SMN1 and SMN2 copies"],
+    "typing/str": ["job", "Repeat expansions", 40, "Size repeat expansions"],
+    "extract/custom": ["job", "Extract a region", 2, "Copy the reads of a region or gene"],
+    "extract/region": ["job", "Extract a region", 10, "Extract a chromosome set"],
+    "extract/mito-fasta": ["job", "mtDNA FASTA", 2, "Extract the mtDNA sequence"],
+    "extract/mito-vcf": ["job", "mtDNA VCF", 2, "Extract mtDNA variants"],
+    "extract/mt-bam": ["job", "mtDNA BAM", 2, "Extract mtDNA reads"],
+    "extract/ydna-bam": ["job", "Y-DNA BAM", 4, "Extract Y reads"],
+    "extract/ydna-vcf": ["job", "Y-DNA VCF", 4, "Extract Y SNP calls"],
+    "extract/unmapped": ["job", "Unmapped reads", 20, "Extract unmapped reads"],
+    "score/pgs": ["job", "Polygenic score", 5, "Compute a polygenic score"],
+    "methylation/pileup": ["job", "Methylation", 180, "Read methylation marks"],
+    "ref/revel": ["net", "Download REVEL", 0.6, "Install REVEL scores"],
+    "ref/cadd": ["net", "Download CADD", 85, "Install CADD scores"],
+    "ref/alphamissense": ["net", "Download AlphaMissense", 0.6, "Install AlphaMissense scores"],
+    "ref/spliceai": ["net", "Download SpliceAI", 1, "Install SpliceAI scores"],
+    "ref/pgs": ["net", "Download a scoring file", 0.05, "Download a PGS Catalog scoring file"],
+    "ref/acmg": ["net", "Download the ACMG gene list", 0.001, "Download the ACMG secondary-findings gene list"],
   };
+
+  function has(table, key) {
+    return Object.prototype.hasOwnProperty.call(table, key);
+  }
 
   /* Steps: [name, weight] (CPU: share of the time; downloads: GB) */
   var STEPS = {
@@ -60,7 +100,7 @@
   var REF_GB = { hs38: 0.9, hs37d5: 0.9, T2Tv20: 0.9, hs38d1: 1.0, hs38DH: 1.0, hg38: 0.9, hg19: 0.9, hs37: 0.9 };
 
   function describe(op) {
-    var o = OPS[op];
+    var o = has(OPS, op) ? OPS[op] : null;
     return o && { op: op, kind: o[0] === "query" ? "query" : "job", destructive: false, summary: o[3] };
   }
 
@@ -118,7 +158,7 @@
       case "vcf/gatk":
         return [{ path: dir + "/" + stem + "." + op.split("/")[1] + ".vcf.gz", gb: 0.15, kind: "vcf", role: "calls" }];
       default:
-        if (OPS[op] && OPS[op][0] === "net") return netOutputs(op, p, machine);
+        if (has(OPS, op) && OPS[op][0] === "net") return netOutputs(op, p, machine);
         return [{ path: dir + "/" + stem + "_" + op.replace(/\//g, "_") + ".json", gb: 0.001, kind: "json", role: "report" }];
     }
   }
@@ -174,7 +214,7 @@
   /* The job's plan, from defaults and the request's "_mock" hint.
    * work: CPU jobs in simulated ms, downloads in bytes. */
   M.plan = function (op, params, config, machine) {
-    var o = OPS[op];
+    var o = has(OPS, op) ? OPS[op] : null;
     if (!o) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + ".");
     var p = params || {};
     var hint = p._mock || {};
@@ -188,7 +228,7 @@
       o2.disk = M.diskFor(machine, o2.disk || o2.path).id;
       return o2;
     });
-    var steps = normSteps(hint.steps || STEPS[op] || [[net ? "Download" : "Run", 1]]);
+    var steps = normSteps(hint.steps || (has(STEPS, op) && STEPS[op]) || [[net ? "Download" : "Run", 1]]);
     var total;
     if (net) {
       var gb = hint.gb || outputs.reduce(function (a, out) {

@@ -303,7 +303,12 @@
         if (before && before !== build) {
           var input = WGSM.qs("input[type=hidden]", el);
           var p = parse(input.value);
-          if (!p.error && p.parts.length) {
+          var gene = geneFor(input.value, before);
+          if (gene) {
+            /* A gene sits elsewhere on the other build */
+            var span = GENES[gene][grch37(build) ? 2 : 1];
+            input.value = name(GENES[gene][0], build) + ":" + span[0] + "-" + span[1];
+          } else if (!p.error && p.parts.length) {
             input.value = p.parts.map(function (x) {
               return name(x.chrom, build) + (x.start !== null ? ":" + x.start + "-" + x.end : "");
             }).join(",");
