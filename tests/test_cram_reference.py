@@ -12,10 +12,10 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
 @needs_tools("samtools")
-@pytest.mark.parametrize("compressed", [False, True])
-def test_1061_missing_ur_decodes_from_local_reference(
-    tmp_path, monkeypatch, compressed
-):
+@pytest.mark.parametrize(
+    "suffix", ["", ".gz", ".bgz"], ids=["plain", "gzip", "bgzf-name"]
+)
+def test_1061_missing_ur_decodes_from_local_reference(tmp_path, monkeypatch, suffix):
     encoding = write_fasta(
         tmp_path / "gone.fa", {"chr1": "aCgT" * 1000, "chr2": "TGCA" * 1000}
     )
@@ -36,11 +36,11 @@ def test_1061_missing_ur_decodes_from_local_reference(
     run_command(["samtools", "view", "-C", "-T", str(encoding), "-o", cram, bam])
     for path in tmp_path.glob("gone.fa*"):
         path.unlink()
-    if compressed:
-        with gzip.open(str(reference) + ".gz", "wb") as target:
+    if suffix:
+        with gzip.open(str(reference) + suffix, "wb") as target:
             target.write(reference.read_bytes())
-        shutil.copyfile(str(reference) + ".fai", str(reference) + ".gz.fai")
-        reference = reference.with_suffix(".fa.gz")
+        shutil.copyfile(str(reference) + ".fai", str(reference) + suffix + ".fai")
+        reference = reference.with_name(reference.name + suffix)
     monkeypatch.setenv("REF_PATH", str(tmp_path / "missing"))
     monkeypatch.setenv("REF_CACHE", str(tmp_path / "missing-cache"))
     before = (os.environ["REF_PATH"], os.environ["REF_CACHE"])

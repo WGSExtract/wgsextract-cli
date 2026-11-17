@@ -33,8 +33,10 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
     with TemporaryDirectory(prefix=".cram-reference-", dir=work) as directory:
         root = Path(directory)
         pending = root / "sequence"
-        digest = hashlib.md5()
-        opener = gzip.open if reference.endswith(".gz") else open
+        digest = hashlib.md5(usedforsecurity=False)
+        with open(reference, "rb") as signature:
+            compressed = signature.read(2) == b"\x1f\x8b"
+        opener = gzip.open if compressed else open
         with ExitStack() as stack:
             source = stack.enter_context(opener(reference, "rb"))
             target = stack.enter_context(pending.open("wb"))
@@ -45,7 +47,7 @@ def cram_reference_cache(alignment: str, reference: str, work: Path) -> Iterator
                         target.close()
                         pending.replace(root / digest.hexdigest())
                         target = stack.enter_context(pending.open("wb"))
-                        digest = hashlib.md5()
+                        digest = hashlib.md5(usedforsecurity=False)
                     has_sequence = True
                     continue
                 bases = b"".join(chunk.split()).upper()
