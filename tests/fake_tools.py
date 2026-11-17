@@ -1333,8 +1333,12 @@ _FAKE_PBRUN = r"""
 import json, os, subprocess, sys
 
 tool, args = sys.argv[1], sys.argv[2:]
+# Interval files are logged as read, since their runs delete them.
+beds = [args[i + 1] for i, arg in enumerate(args) if arg == "--interval-file"]
+intervals = [line.split()[:3] for bed in beds if os.path.isfile(bed)
+             for line in open(bed) if line.strip()]
 with open(LOG, "a") as out:
-    out.write(json.dumps({"tool": tool, "args": args}) + "\n")
+    out.write(json.dumps({"tool": tool, "args": args, "intervals": intervals}) + "\n")
 if not os.environ.get("FAKE_GPUS"):
     sys.exit("pbrun: no CUDA-capable device is detected")
 # GPU memory each mode allocates (MiB), as measured on an RTX 3090: fq2bam's
@@ -1515,7 +1519,8 @@ class FakeParabricks:
     NVIDIA runtime and ``image``, whose ``pbrun`` aligns with the real bwa and
     minimap2 (map-pbmm2 as map-hifi) and calls a homozygous variant at the
     start of each interval it's given (-L literals, --interval-file BEDs).
-    ``runs`` are the pbrun commands, as (tool, args). ``set_gpus`` sets the
+    ``runs`` are the pbrun commands, as (tool, args), and ``intervals``
+    their interval files' BED intervals. ``set_gpus`` sets the
     GPUs' memory (MiB) that nvidia-smi reports and pbrun runs out of."""
 
     def __init__(self, root: Path, image: str) -> None:
@@ -1546,3 +1551,10 @@ class FakeParabricks:
             return []
         records = [json.loads(line) for line in self.log.read_text().splitlines()]
         return [(r["tool"], r["args"]) for r in records]
+
+    def intervals(self) -> list[list[tuple[str, int, int]]]:
+        """Each run's --interval-file BED intervals, as pbrun read them."""
+        if not self.log.exists():
+            return []
+        records = [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [[(c, int(s), int(e)) for c, s, e in r["intervals"]] for r in records]

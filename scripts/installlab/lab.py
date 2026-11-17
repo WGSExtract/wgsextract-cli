@@ -1236,16 +1236,14 @@ def _append(path: Path, line: str) -> None:
     path.write_text(path.read_text() + line + "\n")
 
 
-def _unreadable(directory: str, names: list[str]) -> list[str]:
-    """Entries the runner can't read, left out of a mutant's copy: the app
-    runs as the lab user, whose owner-only files (a download's lock guard,
-    0600) the runner can't copy, and the judge reads none of them."""
-    return [
-        name
-        for name in names
-        if not os.path.islink(os.path.join(directory, name))
-        and not os.access(os.path.join(directory, name), os.R_OK)
-    ]
+def copy_mutation_evidence(source: Path, destination: Path) -> None:
+    """Copy the whole results tree for mutation, excluding coordination files."""
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns("*.lock", "*.guard"),
+    )
 
 
 def cmd_mutate(args: argparse.Namespace) -> None:
@@ -1265,7 +1263,7 @@ def cmd_mutate(args: argparse.Namespace) -> None:
     for name, mutate in mutations.items():
         copy = args.results.parent / f"mutant-{name}"
         shutil.rmtree(copy, ignore_errors=True)
-        shutil.copytree(args.results, copy, symlinks=True, ignore=_unreadable)
+        copy_mutation_evidence(args.results, copy)
         mutate(copy)
         print(f"\n--- mutation {name}")
         if judge(copy, meta["target"]):

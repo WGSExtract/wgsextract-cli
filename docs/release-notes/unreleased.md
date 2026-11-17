@@ -76,8 +76,9 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   genome, against 6.5 GB with GATK's default bands), and the VCF genotyped
   from it by GenotypeGVCFs. Not with `--gpu` or `--scatter`.
   `vcf clair3 --reference-evidence gvcf` writes `clair3.g.vcf.gz` from the
-  same run, on the CPU or the GPU; it is about 2.5-6x slower, which the run
-  warns about. A man's haploid chrX and chrY are called apart from the rest,
+  same run, on the CPU or the GPU; it is about 2.4x slower on the CPU and
+  4.3x on the GPU, which the run warns about (in one 5 Mb measurement the
+  CPU was faster than `--gpu` with the gVCF; a `--gpu` run's warning reports it). A man's haploid chrX and chrY are called apart from the rest,
   and their gVCF parts are cut at the partition edges and gathered in order.
 
 - `wgse-deepvariant` 0.3.1 writes a gVCF PL value for every genotype, those

@@ -14,20 +14,32 @@ on:
       smoke-only:
         type: boolean
         default: false
+      setup-checks:
+        type: boolean
+        default: true
+      move-modules:
+        type: string
+        default: "[]"
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ci-arm64-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  nightly:
+    uses: ./.github/workflows/nightly_guard.yml
+    with:
+      workflow: linux_arm64.yml
   native-arm64:
-    if: inputs.tests != '[]'
+    needs: nightly
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: linux-arm64
@@ -37,3 +49,5 @@ jobs:
       matrix: '[{"tier": "all", "shard": "all", "label": "native"}]'
       tests: ${{ inputs.tests || 'all' }}
       smoke-only: ${{ inputs.smoke-only == true }}
+      setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
+      move-modules: ${{ inputs.move-modules || '[]' }}

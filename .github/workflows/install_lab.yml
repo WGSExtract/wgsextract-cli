@@ -17,6 +17,9 @@ run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_r
 on:
   workflow_call:
     inputs:
+      macos:
+        type: boolean
+        default: true
       app_run:
         type: string
         default: ""
@@ -110,11 +113,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux
-          # The app (the lab user) writes download lock guards owner-only;
-          # the runner can't read them, and they are no evidence.
           path: |
             out/installlab
-            !out/installlab/**/*.lock.guard
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # The app as users get it: the latest WGS Extract app release (or the one
@@ -251,14 +253,14 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux-app-${{ matrix.cli }}
-          # The app (the lab user) writes download lock guards owner-only;
-          # the runner can't read them, and they are no evidence.
           path: |
             out/installlab
-            !out/installlab/**/*.lock.guard
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos:
+    if: github.event_name != 'pull_request' || inputs.macos
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -286,16 +288,15 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos
-          # The app (the lab user) writes download lock guards owner-only;
-          # the runner can't read them, and they are no evidence.
           path: |
             out/installlab
-            !out/installlab/**/*.lock.guard
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' && (github.event_name != 'pull_request' || inputs.macos) }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:
@@ -387,11 +388,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos-app-${{ matrix.cli }}
-          # The app (the lab user) writes download lock guards owner-only;
-          # the runner can't read them, and they are no evidence.
           path: |
             out/installlab
-            !out/installlab/**/*.lock.guard
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows:
@@ -413,7 +413,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Weekly: each sabotaged install, on its own fresh runner, must fail.
@@ -436,7 +439,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows-sabotage-${{ matrix.sabotage }}
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows-app:
@@ -498,6 +504,8 @@ jobs:
           path: |
             out/installlab/ci-windows-app/results
             out/installlab/ci-windows-app/screens
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Judged on Linux: the oracle needs samtools/bcftools, which have no native

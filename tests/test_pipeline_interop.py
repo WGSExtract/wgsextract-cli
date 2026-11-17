@@ -22,6 +22,7 @@ HEADER = (
     '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
     '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
     '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+    '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum block depth">\n'
     '##INFO=<ID=END,Number=1,Type=Integer,Description="End of the block">\n'
     "##source=nf-core/sarek\n"
 )
@@ -126,21 +127,24 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
     [("chr1", "<*>", 1999), ("1", ".", 2000)],
     ids=["deepvariant", "dragen-no-chr"],
 )
-def test_gvcf_reference_blocks_are_calls_and_gaps_are_no_calls(
-    tmp_path, library, contig, block, end
+@pytest.mark.parametrize("with_minimum", [False, True])
+def test_issue_1044_reference_blocks_need_minimum_and_gaps_are_no_calls(
+    tmp_path, library, contig, block, end, with_minimum
 ):
     config, fasta, seq = library
     # rs101 in a 0/0 block, rs102 a variant, rs103 in a ./. block (no
     # coverage). DRAGEN genome VCFs write blocks with ALT "." and, like
     # GRCh37 pipelines, may name contigs without "chr" unlike the FASTA. Its
     # blocks can also overlap the next record, which then outranks the block.
+    fields = "GT:GQ:MIN_DP" if with_minimum else "GT:GQ"
+    reference = "0/0:50:30" if with_minimum else "0/0:50"
     gvcf = _vcf(
         tmp_path / "P1_N.deepvariant.g.vcf",
         ["P1_N"],
         [
-            f"{contig}\t1\t.\t{seq[0]}\t{block}\t0\t.\tEND={end}\tGT:GQ\t0/0:50",
+            f"{contig}\t1\t.\t{seq[0]}\t{block}\t0\t.\tEND={end}\t{fields}\t{reference}",
             f"{contig}\t2000\t.\tA\tC,<*>\t40\tPASS\t.\tGT:GQ\t1/1:40",
-            f"{contig}\t2001\t.\t{seq[2000]}\t{block}\t0\t.\tEND=2500\tGT:GQ\t0/0:50",
+            f"{contig}\t2001\t.\t{seq[2000]}\t{block}\t0\t.\tEND=2500\t{fields}\t{reference}",
             f"{contig}\t2501\t.\t{seq[2500]}\t{block}\t0\t.\tEND=3500\tGT:GQ\t./.:0",
         ],
         contig=contig,
@@ -150,7 +154,7 @@ def test_gvcf_reference_blocks_are_calls_and_gaps_are_no_calls(
     assert done.returncode == 0, done.stderr
     # Named like the input, so the gVCF's kit can't replace its VCF's.
     assert _kit(outdir / "P1_N.deepvariant.g_23andMe_V3.txt") == {
-        "rs101": "AA",
+        "rs101": "AA" if with_minimum else "--",
         "rs102": "CC",
         "rs103": "--",
     }

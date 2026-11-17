@@ -1,6 +1,6 @@
-"""Generate report/1's typed common components without duplicating them.
+"""Generate report/1's common components and finding graph from writer types.
 
-The remaining section/finding contract is still handwritten in schema_sources;
+The remaining section/root contract is still handwritten in schema_sources;
 it is kept separate from the generated artifact and migrated in later slices.
 """
 
@@ -15,12 +15,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 from wgsextract_cli.core.report_documents import (  # noqa: E402
     ReportAttemptDocument,
+    ReportEvidenceDocument,
+    ReportFactDocument,
+    ReportFindingDocument,
     ReportLinkDocument,
+    ReportMetricDocument,
     ReportMissingDocument,
+    ReportPgxAlternativeDocument,
+    ReportPgxDocument,
     ReportSourceDocument,
+    ReportVariantDocument,
     ReportWarningDocument,
 )
 
@@ -39,6 +47,14 @@ def report_schema() -> dict[str, object]:
         ReportWarningDocument: Shape("reportWarning"),
         ReportMissingDocument: Shape("reportMissing", additional=False),
         ReportLinkDocument: Shape("reportLink", additional=False),
+        ReportFindingDocument: Shape("finding", additional=False),
+        ReportEvidenceDocument: Shape("reportEvidence", additional=False),
+        ReportVariantDocument: Shape("reportVariant", additional=False),
+        ClinicalEvidenceDocument: Shape("reportClinicalEvidence", additional=False),
+        ReportPgxDocument: Shape("reportPgx", additional=False),
+        ReportPgxAlternativeDocument: Shape("reportPgxAlternative", additional=False),
+        ReportFactDocument: Shape("fact"),
+        ReportMetricDocument: Shape("metric"),
     }
     if {shape.name for shape in shapes.values()} & definitions.keys():
         raise TypeError("Typed report definitions must not also be handwritten.")
@@ -47,18 +63,23 @@ def report_schema() -> dict[str, object]:
         ("sources", "reportSource"),
         ("warnings", "reportWarning"),
         ("missing", "reportMissing"),
+        ("findings", "finding"),
     ):
         if properties[field]["items"] != {"$ref": f"#/$defs/{name}"}:
             raise TypeError(f"Report {field} must reference its generated definition.")
-    if document["$defs"]["finding"]["properties"]["links"]["items"] != {
-        "$ref": "#/$defs/reportLink"
-    }:
-        raise TypeError("Report links must reference their generated definition.")
+    overview = document["properties"]["sections"]["properties"]["overview"][
+        "properties"
+    ]
+    for field, name in (("facts", "fact"), ("qc", "metric")):
+        if overview[field]["items"] != {"$ref": f"#/$defs/{name}"}:
+            raise TypeError(f"Report {field} must reference its generated definition.")
     for model in (
         ReportSourceDocument,
         ReportWarningDocument,
         ReportMissingDocument,
-        ReportLinkDocument,
+        ReportFindingDocument,
+        ReportFactDocument,
+        ReportMetricDocument,
     ):
         name = shapes[model].name
         component = output_schema(

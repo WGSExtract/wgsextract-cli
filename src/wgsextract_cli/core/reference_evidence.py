@@ -250,6 +250,20 @@ def _float(value: str | None) -> float | None:
         return None
 
 
+def reference_depth(
+    info: Mapping[str, str], values: Mapping[str, str], *, block: bool
+) -> int | None:
+    """Block evidence needs an explicit minimum; point DP is not a block floor."""
+    floors = [
+        depth
+        for value in (info.get("MIN_DP"), values.get("MIN_DP"))
+        if (depth := _int(value)) is not None and depth >= 0
+    ]
+    if floors:
+        return min(floors)
+    return None if block else _int(values.get("DP"))
+
+
 def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
     """The state of the bases one gVCF record covers (its first sample)."""
     keys = fields[8].split(":") if len(fields) > 9 else []
@@ -264,8 +278,10 @@ def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> S
     if carried or any(a != "0" for a in alleles):
         return State.NO_CALL
     info = _info(fields[7])
-    depths = [d for d in (_int(info.get("MIN_DP")), _int(values.get("MIN_DP")), _int(values.get("DP"))) if d is not None]  # fmt: skip
-    depth = min(depths) if depths else None
+    block = "END" in info and all(
+        alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
+    )
+    depth = reference_depth(info, values, block=block)
     if depth == 0:
         return State.UNCOVERED
     scale = 0.5 if len(alleles) == 1 else 1.0
