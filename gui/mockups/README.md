@@ -149,7 +149,8 @@ How it’s built: pushing or deleting a `mockups/*` branch runs
 `.github/workflows/mockup_previews.yml`, which only starts the Pages workflow
 (`pages.yml`) on `main`; the `github-pages` environment deploys from `main`
 alone. That workflow runs `scripts/build_mockup_previews.py` from `main`,
-which copies just the static files (HTML, CSS, JS, JSON, images, Markdown)
+which copies just the static files (HTML, CSS, JS, JSON, images, Markdown,
+and small demo genome files such as BAM, CRAM, FASTA and their indexes)
 under `gui/mockups/` of each branch, read from `git archive` and never run.
 Only branches of this repository count, so only people with write access can
 publish a preview; forks can’t. Pages also republishes on every push to
