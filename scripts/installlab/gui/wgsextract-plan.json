@@ -13,6 +13,8 @@
       "haplogrep_path": "haplogrep3"
     },
     "checkedOptions": {
+      "lineage_download": ["--download"],
+      "microarray_download": ["--download"],
       "microarray_formats": [
         "23andme_v5"
       ]

@@ -380,8 +380,8 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
     assert.equal(bamResult.exitCode, 0, bamResult.stderr);
 
     const calls = await readFile(path.join(tempRoot, "calls.log"), "utf8");
-    assert.match(calls, new RegExp(`PIXI\\|run\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-vcf\\|--input\\|${escapeRegExp(vcfInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
-    assert.match(calls, new RegExp(`PIXI\\|run\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-bam\\|--input\\|${escapeRegExp(bamInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
+    assert.match(calls, new RegExp(`PIXI\\|run\\|--no-install\\|--frozen\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-vcf\\|--input\\|${escapeRegExp(vcfInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
+    assert.match(calls, new RegExp(`PIXI\\|run\\|--no-install\\|--frozen\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-bam\\|--input\\|${escapeRegExp(bamInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -429,7 +429,7 @@ test("WGSExtract Windows runtime wrapper does not wait for stdin unless requeste
 
     assert.equal(result.exitCode, 0, result.stderr);
     const calls = await readFile(path.join(tempRoot, "calls.log"), "utf8");
-    assert.match(calls, /PIXI\|run wgsextract ref list/);
+    assert.match(calls, /PIXI\|run --no-install --frozen wgsextract ref list/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -617,7 +617,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\\windows\\bootstrap-reference-library\.ps1/);
-    assert.match(result.stdout, /fake pixi run wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);

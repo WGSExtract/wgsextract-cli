@@ -25,6 +25,8 @@ through `config.toml` before running the comprehensive workflow.
 The desktop exposes the same default-off setting under Settings → advanced
 settings → **Allow missing public-data downloads**, with the request disclosure
 in its tooltip.
+Lineage and microarray pages also offer an unchecked per-run download option.
+Fresh-install automation plans select it explicitly; ordinary runs do not.
 
 The option is shared by the CLI and typed Python/server parameters. The
 read-only MCP surface refuses download permissions. A server job needs both
