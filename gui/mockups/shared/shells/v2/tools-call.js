@@ -17,7 +17,7 @@
   }
 
   function regionShare(c) {
-    return c.v.region ? 0.04 : 1;
+    return WGSM.v2region.share(c.v.region, c.file.build);
   }
 
   function opts(c, line, keys) {
@@ -48,14 +48,18 @@
     moreTitle: "Resources",
     more: [
       f.toggle("parallel", "Call chromosomes in parallel", "Uses every thread; the calls are the same", "parallel", true),
-      f.seg("mimalloc", "Faster memory allocator", "wgse-mimalloc: about a quarter faster on Apple Silicon, the same calls", "mimalloc", [["auto", "Auto"], ["off", "Off"]], "auto"),
+      f.seg("mimalloc", "Faster memory allocator", "wgse-mimalloc: about a quarter faster on Apple Silicon, the same calls", "mimalloc", [["auto", "Auto"], ["off", "Off"]], "auto", {
+        when: function (c) {
+          return c.M.os === "macos";
+        },
+      }),
       f.number("minDepth", "Warn below depth", "Warns when the mean depth is lower; 0 turns it off", "qc_min_depth", 15, { width: 90 }),
       f.threads(),
     ],
     run: function (c) {
       var kinds = c.v.kinds;
       var threads = c.v.parallel ? c.v.threads || c.M.cores : 1;
-      var fast = c.v.mimalloc === "auto" && c.tool("wgse-mimalloc");
+      var fast = c.v.mimalloc === "auto" && c.M.tools["wgse-mimalloc"];
       var perGb = { snp: (fast ? 102 : 132) * 9 / 1.5 / 3600, indel: (fast ? 155 : 193) * 9 / 1.5 / 3600 };
       var hours = kinds.reduce(function (sum, k) {
         return sum + perGb[k] * c.file.gb * regionShare(c) / threads;
@@ -67,7 +71,7 @@
       });
       return {
         count: kinds.length + (kinds.length === 1 ? " VCF" : " VCFs"),
-        hours: hours, memGB: 0.35 * threads + 1, disk: [[c.file.disk, 1.2 * regionShare(c)]],
+        hours: hours, memGB: 0.35 * threads + 1, disk: [[c.m.diskName(c.file), 1.2 * regionShare(c)]],
         checks: [["bcftools", "1.21" + (fast ? ", with wgse-mimalloc" : ", system allocator"), "ok", "Found"]],
         command: [lines.join("\n")], blocked: kinds.length ? null : "Choose SNPs, indels or both.",
         makes: "Saved in " + c.name + "’s folder.", jobName: "SNPs and indels for " + c.name,
@@ -101,7 +105,7 @@
       if (c.v.evidence === "gvcf") hours *= 1.05;
       var mem = 1 + Number(c.v.batch) * 12 / 1024 + 1 + (native ? 0 : 4);
       var out = {
-        hours: hours, memGB: mem, disk: [[c.file.disk, 17.3 * regionShare(c) + 0.4]],
+        hours: hours, memGB: mem, disk: [[c.m.diskName(c.file), 17.3 * regionShare(c) + 0.4]],
         checks: native ? [["wgse-deepvariant", "0.1.1 (DeepVariant 1.10.0), Metal", "ok", "Found"]] : [["Docker", "Docker Desktop is running", "ok", "Found"]],
         command: opts(c, [base(c, "vcf deepvariant")], [["model", "--model-type", "WGS"], ["region", "--region", ""], ["evidence", "--reference-evidence", "none"], ["batch", "--batch-size", "512"], ["force", "--force", "flag"]]),
         makes: "Makes " + c.file.stem + ".deepvariant.vcf.gz in " + c.name + "’s folder.", jobName: "DeepVariant for " + c.name, notes: [],
@@ -115,7 +119,7 @@
   T.define({
     slug: "gatk", label: "GATK HaplotypeCaller", op: "vcf/gatk", group: "Align and call", keywords: "broad java",
     desc: "The Broad Institute’s variant caller, which many labs use.",
-    accepts: READS, file: "reginald", button: "Start HaplotypeCaller",
+    accepts: READS, file: "reginald", button: "Start HaplotypeCaller", requires: ["gatk", "java"],
     fields: [
       f.region(), EVIDENCE("little extra time; the VCF is then genotyped from it"),
       f.toggle("scatter", "Split into intervals", "", "scatter", false, {
@@ -123,17 +127,15 @@
           return c.file.platform === "ultima" ? null : "Only for Ultima reads (flow mode)";
         },
       }),
-      f.toggle("gpu", "NVIDIA GPU (Parabricks)", "", "gpu", false, {
+      f.toggle("gpu", "NVIDIA Parabricks", "HaplotypeCaller on the GPU, in Docker", "gpu", false, {
         disabled: function (c) {
-          return c.M.nvidia ? null : "Needs Linux with an NVIDIA GPU";
+          return c.M.parabricks ? null : "Needs Linux with an NVIDIA GPU of 16 GB or more";
         },
       }),
     ],
     run: function (c) {
       return {
-        hours: null, timeText: "hours on a 30x genome", memGB: 6, disk: [[c.file.disk, 0.6]],
-        warnings: c.tool("java") ? [] : [{ tone: "warn", icon: "wrench", id: "java", title: "Java is missing", text: "GATK needs Java 17 or later. WGS Extract doesn’t install tools itself.", action: { label: "How to install", href: "install.html" } }],
-        blocked: c.tool("java") ? null : "Install Java first.",
+        hours: null, timeText: c.v.gpu ? "about a minute per chromosome like chr20" : "hours on a 30x genome", memGB: c.v.gpu ? 18 : 6, disk: [[c.m.diskName(c.file), 0.6]],
         command: opts(c, [base(c, "vcf gatk")], [["region", "--region", ""], ["evidence", "--reference-evidence", "none"]]),
         makes: "Makes " + c.file.stem + ".gatk.vcf.gz in " + c.name + "’s folder.",
       };
@@ -143,11 +145,11 @@
   T.define({
     slug: "freebayes", label: "FreeBayes", op: "vcf/freebayes", group: "Align and call", keywords: "haplotype bayesian",
     desc: "A haplotype-based caller that finds SNPs, indels and small complex changes together. Useful as a second opinion beside bcftools or DeepVariant.",
-    accepts: READS, file: "reginald", button: "Start FreeBayes",
+    accepts: READS, file: "reginald", button: "Start FreeBayes", requires: ["freebayes"],
     fields: [f.region()],
     run: function (c) {
       return {
-        hours: null, timeText: "hours on a 30x genome", disk: [[c.file.disk, 1.2]],
+        hours: null, timeText: "hours on a 30x genome", disk: [[c.m.diskName(c.file), 1.2]],
         checks: [["FreeBayes", "1.3.8", "ok", "Found"]], command: opts(c, [base(c, "vcf freebayes")], [["region", "--region", ""]]),
         makes: "Makes " + c.file.stem + ".freebayes.vcf.gz in " + c.name + "’s folder.",
       };
@@ -157,7 +159,7 @@
   T.define({
     slug: "clair3", label: "Clair3", op: "vcf/clair3", group: "Align and call", keywords: "nanopore pacbio long read",
     desc: "A deep-learning caller for Nanopore and PacBio long reads. Its model must match the basecaller that made the reads.",
-    accepts: READS, file: "reginald", button: "Start Clair3",
+    accepts: READS, file: "reginald", button: "Start Clair3", requires: ["clair3"],
     fields: [
       f.text("model", "Model", "Default: chosen from the reads’ basecaller", "model", "r1041_e82_400bps_sup_v500", { mono: true, width: 300 }),
       f.region(), EVIDENCE("about 4 times the time on a CPU"),
@@ -165,8 +167,8 @@
     run: function (c) {
       var hours = 33 * regionShare(c) / (c.v.threads || c.M.cores);
       return {
-        hours: c.v.evidence === "gvcf" ? hours * 4 : hours, memGB: 16, disk: [[c.file.disk, 30 * regionShare(c)]],
-        notes: [{ tone: "info", icon: "info", id: "long", title: "For long reads", text: c.name + "’s file has Illumina short reads; use DeepVariant or bcftools for them. Clair3 has no GPU path on Apple Silicon.", action: { label: "DeepVariant", href: "tool-deepvariant.html" } }],
+        hours: c.v.evidence === "gvcf" ? hours * 4 : hours, memGB: 16, disk: [[c.m.diskName(c.file), 30 * regionShare(c)]],
+        notes: [{ tone: "info", icon: "info", id: "long", title: "For long reads", text: c.name + "’s file has Illumina short reads; use DeepVariant or bcftools for them." + (c.M.os === "macos" ? " On Apple Silicon Clair3 runs on the CPU only." : ""), action: { label: "DeepVariant", href: "tool-deepvariant.html" } }],
         blocked: "Clair3 is for Nanopore and PacBio reads, and isn’t installed.",
         command: opts(c, [base(c, "vcf clair3")], [["model", "--model", ""], ["region", "--region", ""], ["evidence", "--reference-evidence", "none"]]),
       };
@@ -176,7 +178,7 @@
   T.define({
     slug: "structural-variants", label: "Structural variants", op: "vcf/sv", group: "Align and call", keywords: "delly sniffles pbsv large deletions",
     desc: "Finds large changes that SNP calling misses: deletions, duplications, inversions and moved pieces of DNA, from about 50 letters to millions.",
-    accepts: READS, file: "reginald", button: "Find structural variants",
+    accepts: READS, file: "reginald", button: "Find structural variants", requires: ["delly"],
     fields: [
       f.select("caller", "Caller", "Auto: Delly for short reads, Sniffles or pbsv for long reads", "caller", [["auto", "Auto: Delly"], ["delly", "Delly"], ["sniffles", "Sniffles"], ["pbsv", "pbsv (PacBio only)"]], "auto", { width: 220 }),
       f.region(),
@@ -188,7 +190,7 @@
     ],
     run: function (c) {
       var out = {
-        hours: null, timeText: "hours on a 30x genome", memGB: 4, disk: [[c.file.disk, 0.1]],
+        hours: null, timeText: "hours on a 30x genome", memGB: 4, disk: [[c.m.diskName(c.file), 0.1]],
         checks: [["Delly", "1.2.6", "ok", "Found"]],
         command: opts(c, [base(c, "vcf sv")], [["caller", "--caller", "auto"], ["region", "--region", ""], ["long", "--long-read", "flag"], ["repeats", "--tandem-repeats", ""]]),
         makes: "Makes a structural-variant VCF in " + c.name + "’s folder.",
@@ -202,11 +204,11 @@
   T.define({
     slug: "cnv", label: "Copy-number changes", op: "vcf/cnv", group: "Align and call", keywords: "cnv delly copy number",
     desc: "Finds stretches of the genome present in more or fewer copies than usual, from read depth, with Delly.",
-    accepts: READS, file: "reginald", button: "Find copy-number changes",
+    accepts: READS, file: "reginald", button: "Find copy-number changes", requires: ["delly"],
     fields: [f.number("ploidy", "Baseline copies", "2 for most of the genome", "ploidy", 2, { width: 80 }), f.region()],
     run: function (c) {
       return {
-        hours: null, timeText: "hours on a 30x genome", memGB: 4, disk: [[c.file.disk, 0.1]],
+        hours: null, timeText: "hours on a 30x genome", memGB: 4, disk: [[c.m.diskName(c.file), 0.1]],
         command: opts(c, [base(c, "vcf cnv")], [["ploidy", "--ploidy", 2], ["region", "--region", ""]]),
         makes: "Makes a CNV VCF in " + c.name + "’s folder.",
       };
@@ -224,7 +226,7 @@
     ],
     run: function (c) {
       var out = {
-        hours: null, timeText: "hours on a 30x genome", disk: [[c.file.disk, c.v.haplotag ? c.file.size : 0.3]],
+        hours: null, timeText: "hours on a 30x genome", disk: [[c.m.diskName(c.file), c.v.haplotag ? c.file.size : 0.3]],
         command: opts(c, [base(c, "vcf phase"), "--vcf-input " + c.file.stem + ".snps.vcf.gz"], [["phaser", "--phaser", "whatshap"], ["haplotag", "--haplotag", "flag"], ["region", "--region", ""]]),
         notes: [{ tone: "warn", icon: "variant", id: "needs-vcf", title: c.name + " has no VCF yet", text: "Phasing sorts existing calls into the two copies of each chromosome. Call variants first.", action: { label: "Call variants", href: "tool-call-variants.html" } }],
         blocked: "Call variants for " + c.name + " first.",
@@ -274,7 +276,7 @@
     run: function (c) {
       var kit = c.file.kind === "kit";
       var out = {
-        hours: kit ? 0.75 : 2.8 * 8 / (c.v.threads || c.M.cores), memGB: kit ? 3.4 : 3.1, disk: [["Macintosh HD", 31]],
+        hours: kit ? 0.75 : 2.8 * 8 / (c.v.threads || c.M.cores), memGB: kit ? 3.4 : 3.1, disk: [[c.M.systemDisk, 31]],
         checks: [[kit ? "Beagle" : "GLIMPSE2", kit ? "5.4" : "2.0.1", "ok", "Found"]],
         notes: c.flag("panel-1kg") ? [] : [{ tone: "warn", icon: "download", id: "panel", title: "The 1000 Genomes panel isn’t installed", text: "Phased haplotypes for chr1–22: about 30 GB.", action: { label: "Download 30 GB", set: "panel-1kg", toast: "Downloading the 1000 Genomes panel (30 GB). See Jobs." } }],
         command: opts(c, ["wgsextract vcf impute " + (kit ? "--vcf-input " : "--input ") + c.m.path(c.file)], [["chromosomes", "--chromosomes", ""], ["minGp", "--min-gp", kit ? 0.95 : 0.9]]),

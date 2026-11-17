@@ -49,34 +49,46 @@
     return capped && m === "auto" ? 0.25 : gb;
   }
 
-  /* Which aligner runs, how, and what it costs */
+  /* Which aligner runs, how, and what it costs, on this computer */
   function plan(c) {
-    var native = c.v.native !== "off";
+    var M = c.M;
+    var mac = M.os === "macos";
+    var native = M.native && c.v.native !== "off";
     var index = c.flag("mem2-" + c.v.ref);
-    var threads = c.v.threads || c.M.cores;
-    var sortThreads = c.v.threads && c.v.threads !== c.M.cores ? threads : c.M.bigCores;
+    var threads = c.v.threads || M.cores;
+    var sortThreads = c.v.threads && c.v.threads !== M.cores ? threads : M.bigCores;
+    var gpu = mac ? "the GPU" : "the NVIDIA GPU";
     function cost(aligner, rate, memAligner, capped) {
       return { aligner: aligner, rate: rate, mem: memAligner + sortThreads * sortPerThread(c, capped) + 4 };
     }
-    if (longRead(c) || c.v.aligner === "minimap2") {
-      var p = cost(native ? "wgse-minimap2 on the CPU" : "minimap2", null, 12, false);
-      p.records = "minimap2’s";
-      return p;
+    if (c.v.gpu && M.parabricks) {
+      var pb = cost("Parabricks fq2bam on the NVIDIA GPU", null, 0, false);
+      pb.mem = 41;
+      pb.records = "BWA-MEM’s";
+      pb.timeText = "tens of minutes";
+      return pb;
     }
-    var mem3 = cost(native ? "wgse-bwa-mem3 on the GPU" : "bwa-mem3", 0.155, 11, false);
+    if (longRead(c) || c.v.aligner === "minimap2") {
+      var mm = cost(native && mac ? "wgse-minimap2 on the CPU" : "minimap2", null, 12, false);
+      mm.records = "minimap2’s";
+      return mm;
+    }
+    var mem3Name = native ? "wgse-bwa-mem3" + (mac ? " on the GPU" : M.nvidia ? " on the NVIDIA GPU (experimental)" : " on the CPU") : "bwa-mem3";
+    var mem3 = cost(mem3Name, mac ? 0.155 : 0.15, 11, false);
+    var noMem3 = c.m.unavailable("bwa-mem3");
     if (c.v.fast || c.v.aligner === "bwa-mem3") {
-      if (!native) return { blocked: "bwa-mem3 isn’t installed outside WGS Extract’s native aligners; turn them back on." };
+      if (noMem3) return { blocked: noMem3 + "." };
       if (!index) return { needsIndex: true };
       if (c.v.fast) {
-        mem3.rate = 0.078;
-        mem3.aligner = "wgse-bwa-mem3 --fast on the GPU";
+        mem3.rate = mem3.rate / 2;
+        mem3.aligner += ", --fast";
         mem3.records = "its own (not BWA’s)";
       } else {
         mem3.records = "bwa’s exact";
       }
       return mem3;
     }
-    var fitsMem3 = index && native && mem3.mem <= c.M.ramGB - 2;
+    var fitsMem3 = index && !noMem3 && (native || M.os === "linux") && mem3.mem <= M.ramGB - 2;
     var wantMem2 = c.v.aligner === "bwa-mem2" || (c.v.aligner === "auto" && index);
     if (c.v.aligner === "bwa-mem2" && !index) return { needsIndex: true };
     if (fitsMem3) {
@@ -84,12 +96,16 @@
       mem3.standIn = wantMem2 ? "bwa-mem2" : "bwa";
       return mem3;
     }
+    var arm = M.platform === "linux-arm64" ? 1.2 : 1;
     if (wantMem2) {
-      var two = native ? cost("wgse-bwa-mem2 on the GPU", 0.23, 11, true) : cost("bwa-mem2 on the CPU", 0.52, 17, true);
+      var two = native && mac ? cost("wgse-bwa-mem2 on the GPU", 0.23, 11, true) : cost("bwa-mem2 on the CPU", 0.52 * arm, 17, true);
       two.records = "bwa-mem2’s";
       return two;
     }
-    var bwa = native ? cost("wgse-bwa on the GPU", 0.28, 6.75 + (c.v.dense ? 0.8 : 0), false) : cost("bwa on the CPU", 0.7, 6, false);
+    var onGpu = native && (mac || M.nvidia);
+    var bwa = onGpu
+      ? cost("wgse-bwa on " + gpu, mac ? 0.28 : 0.19, 6.75 + (c.v.dense ? 0.8 : 0), false)
+      : cost(native ? "wgse-bwa on the CPU" : "bwa on the CPU", 0.7, 6 + (native && c.v.dense ? 0.8 : 0), false);
     if (native && c.v.dense) bwa.rate *= 0.923;
     bwa.records = "bwa’s exact";
     bwa.dense = native;
@@ -97,7 +113,7 @@
   }
 
   function hoursFor(c, p, file) {
-    if (p.rate === null) return longRead(c) ? 1.4 * file.size / (c.v.threads || c.M.cores) : null;
+    if (p.rate === null) return longRead(c) && !p.timeText ? 1.4 * file.size / (c.v.threads || c.M.cores) : null;
     return (p.rate * file.gb * 1.15) / (c.v.threads || c.M.cores);
   }
 
@@ -123,6 +139,9 @@
       when: function (c) {
         return !longRead(c);
       },
+      disabled: function (c) {
+        return c.m.unavailable("bwa-mem3");
+      },
     }),
   ];
 
@@ -132,15 +151,32 @@
     f.seg("profile", "Output profile", function (c) {
       return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.profile];
     }, "output_profile", [["default", "Default"], ["archive", "Archive"], ["calling", "For calling"]], "default"),
-    f.seg("native", "WGS Extract’s aligners", "Builds for Apple Silicon that use the GPU, with the same records as upstream", "native_aligners", [["auto", "Use them"], ["off", "Off"]], "auto"),
+    f.seg("native", "WGS Extract’s aligners", function (c) {
+      return c.M.os === "macos" ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
+    }, "native_aligners", [["auto", "Use them"], ["off", "Off"]], "auto", {
+      when: function (c) {
+        return c.M.native;
+      },
+    }),
     f.toggle("dense", "Dense suffix array", function (c) {
       var p = plan(c);
       return p.dense ? "About 8% faster with wgse-bwa; holds 0.8 GB more in memory. Build it once with ref dense-sa" : "Only wgse-bwa reads it; " + (p.aligner || "this aligner") + " runs here, so it would be unused";
-    }, "dense_suffix_array", false),
-    f.toggle("preferGpu", "Use the GPU even when tight", "If no GPU plan fits in memory, use it anyway rather than the slower CPU; may swap heavily", "prefer_native_gpu", false),
-    f.toggle("gpu", "NVIDIA GPU (Parabricks)", "", "gpu", false, {
+    }, "dense_suffix_array", false, {
+      when: function (c) {
+        return c.M.native;
+      },
+    }),
+    f.toggle("preferGpu", "Use the GPU even when tight", "If no GPU plan fits in memory, use it anyway rather than the slower CPU; may swap heavily", "prefer_native_gpu", false, {
+      when: function (c) {
+        return c.M.native && (c.M.metal || c.M.nvidia);
+      },
+    }),
+    f.toggle("gpu", "NVIDIA Parabricks", "BWA-MEM, sorting and duplicate marking on the GPU, in Docker", "gpu", false, {
       disabled: function (c) {
-        return c.M.nvidia ? null : "Needs Linux with an NVIDIA GPU of 16 GB or more";
+        if (c.M.parabricks) return null;
+        if (c.M.nvidia && c.M.os === "windows") return "Parabricks needs Linux; this GPU is used on Linux only";
+        if (c.M.nvidia) return "Parabricks needs a GPU with 16 GB or more";
+        return "Needs Linux with an NVIDIA GPU of 16 GB or more";
       },
     }),
     f.threads(),
@@ -160,13 +196,15 @@
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",
         text: "bwa-mem2 and bwa-mem3 read it. WGS Extract never builds it automatically: building needs about 90 GB of memory, so the published one is downloaded.",
         action: { label: "Download 17 GB", set: "mem2-" + c.v.ref, toast: "Downloading bwa-mem2’s index for " + c.v.ref + " (17 GB). See Jobs." } });
-    } else if (!c.flag("mem2-" + c.v.ref) && !longRead(c) && c.v.aligner === "auto" && c.v.native !== "off") {
+    } else if (!c.flag("mem2-" + c.v.ref) && !longRead(c) && c.v.aligner === "auto" && !c.v.gpu) {
       var faster = Object.assign({}, c, { flag: function (name) {
         return name === "mem2-" + c.v.ref || c.flag(name);
       } });
       var alt = plan(faster);
-      notes.push({ tone: "info", icon: "zap", id: "faster", title: "Could be faster: " + c.m.duration(hoursFor(c, alt, c.file)) + " with bwa-mem3",
-        text: "With bwa-mem2’s index for " + refLabel(c.v.ref) + " (a 17 GB download, once), wgse-bwa-mem3 stands in for bwa and writes the same records.",
+      var altHours = hoursFor(c, alt, c.file);
+      var nowHours = hoursFor(c, p, c.file);
+      if (altHours && nowHours && altHours < nowHours * 0.9) notes.push({ tone: "info", icon: "zap", id: "faster", title: "Could be faster: " + c.m.duration(altHours) + " with " + alt.aligner.split(" ")[0],
+        text: "With bwa-mem2’s index for " + refLabel(c.v.ref) + " (a 17 GB download, once), " + alt.aligner.split(" ")[0] + " runs" + (alt.standIn ? " in bwa’s place and writes the same records" : "") + ".",
         action: { label: "Download 17 GB", set: "mem2-" + c.v.ref, toast: "Downloading bwa-mem2’s index for " + c.v.ref + " (17 GB). See Jobs." } });
     }
     if (!refInstalled(c, c.v.ref)) {
@@ -188,7 +226,8 @@
     if (c.v.platform !== "illumina") line.push("--platform " + c.v.platform);
     if (c.v.profile !== "default") line.push("--output-profile " + c.v.profile);
     else line.push("--format " + c.v.format);
-    if (c.v.native === "off") line.push("--native-aligners off");
+    if (c.v.native === "off" && c.M.native) line.push("--native-aligners off");
+    if (c.v.gpu && c.M.parabricks) line.push("--gpu");
     if (c.v.dense) line.push("--dense-suffix-array");
     if (c.v.preferGpu) line.push("--prefer-native-gpu");
     if (c.v.threads && c.v.threads !== c.M.cores) line.push("--threads " + c.v.threads);
@@ -198,7 +237,7 @@
   }
 
   function alignerChecks(p) {
-    return p.aligner ? [["Aligner", p.aligner + (p.standIn ? " (for " + p.standIn + ")" : "") + ", writing " + p.records + " records", "ok", "Found"]] : [];
+    return p.aligner ? [["Aligner", p.aligner + (p.standIn ? " (in " + p.standIn + "’s place)" : "") + ", writing " + p.records + " records", "ok", "Found"]] : [];
   }
 
   T.define({
@@ -211,7 +250,7 @@
       f.toggle("keep", "Keep the extracted reads", function (c) {
         return "About " + c.m.gb(c.file.gb * 0.83) + " of FASTQ more; otherwise reads stream straight to the aligner";
       }, "keep_fastq", false),
-      f.seg("tmp", "Temporary files on", "Sorting spills here", "tmp_dir", [["out", "Beside the output"], ["Macintosh HD", "Macintosh HD"]], "out"),
+      f.seg("tmp", "Temporary files on", "Sorting spills here", "tmp_dir", [["out", "Beside the output"], ["system", "System disk"]], "out"),
       f.toggle("force", "Start over", "Ignore steps an earlier run finished", "force", false),
     ]),
     run: function (c) {
@@ -219,9 +258,9 @@
       var out = { notes: alignerNotes(c, p), checks: alignerChecks(p) };
       var file = c.file;
       var outName = file.stem + "_aligned." + (c.v.format === "BAM" && c.v.profile === "default" ? "bam" : "cram");
-      var outDisk = file.disk;
+      var outDisk = c.m.diskName(file);
       var size = outputGB(c, file);
-      var tmpDisk = c.v.tmp === "out" ? outDisk : c.v.tmp;
+      var tmpDisk = c.v.tmp === "out" ? outDisk : c.M.systemDisk;
       out.disk = [];
       var spill = size * 1.2;
       var onOut = size + (c.v.keep ? file.gb * 0.83 : 0) + (tmpDisk === outDisk ? spill : 0);
@@ -238,11 +277,12 @@
       }
       if (!c.m.ready(file)) out.blocked = "Fix this file first: it has no index.";
       out.hours = p.aligner ? hoursFor(c, p, file) : null;
+      out.timeText = p.timeText;
       out.memGB = p.mem;
       var cmd = alignerCommand(c, "wgsextract realign --input " + c.m.path(file), p);
       cmd.splice(1, 0, "--ref " + c.v.ref + " --outdir " + c.m.outdir(file));
       if (c.v.keep) cmd.push("--keep-fastq");
-      if (c.v.tmp !== "out") cmd.push("--tmp-dir \"/Volumes/Macintosh HD/tmp\"");
+      if (c.v.tmp !== "out") cmd.push("--tmp-dir " + c.m.native(c.M.os === "windows" ? "C:/Temp" : "/tmp"));
       if (c.v.force) cmd.push("--force");
       out.command = cmd;
       out.makes = "Makes " + outName + " in " + c.name + "’s folder; the original stays.";
@@ -266,17 +306,18 @@
           text: "Choose whose they are, so the new file joins that person and their results use it.", action: { label: "Choose a person", href: "home.html" } });
       }
       var size = outputGB(c, c.file);
-      out.disk = [["Genomes", size * 2.2]];
+      out.disk = [[c.M.genomesDisk, size * 2.2]];
       out.hours = p.aligner ? hoursFor(c, p, c.file) : null;
+      out.timeText = p.timeText;
       out.memGB = p.mem;
       if (p.needsIndex) out.blocked = "Download bwa-mem2’s index first.";
       if (p.blocked) out.blocked = p.blocked;
       if (!refInstalled(c, c.v.ref)) out.blocked = "Download " + refLabel(c.v.ref) + " first.";
-      var cmd = alignerCommand(c, "wgsextract align --r1 " + c.file.r1, p);
-      cmd.splice(1, 0, "--r2 " + c.file.r2, "--ref " + c.v.ref + " --outdir /Volumes/Genomes/");
+      var cmd = alignerCommand(c, "wgsextract align --r1 " + c.m.path(c.file, c.file.r1), p);
+      cmd.splice(1, 0, "--r2 " + c.m.path(c.file, c.file.r2), "--ref " + c.v.ref + " --outdir " + c.m.native(c.M.genomesPath + "/"));
       if (c.v.sample) cmd.push("--sample " + c.v.sample);
       out.command = cmd;
-      out.makes = "Makes " + (c.v.sample || "the sample") + "." + (c.v.format === "BAM" && c.v.profile === "default" ? "bam" : "cram") + " on Genomes.";
+      out.makes = "Makes " + (c.v.sample || "the sample") + "." + (c.v.format === "BAM" && c.v.profile === "default" ? "bam" : "cram") + " on " + c.M.genomesDisk + ".";
       out.jobName = "Align " + c.name + "’s reads";
       return out;
     },

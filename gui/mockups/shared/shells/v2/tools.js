@@ -3,11 +3,13 @@
  * checks whenever an option or the input file changes.
  *
  * A definition: { slug, label, op, group, desc, accepts: ["reads"|"vcf"|
- * "fastq"], file, fields, more, moreTitle, checklist, extra(ctx), run(ctx) }.
+ * "fastq"|"kit"], file, requires: [tools this computer must have], fields,
+ * more, moreTitle, checklist, extra(ctx), run(ctx) }.
  * run(ctx) returns { hours, memGB, disk: [[where, GB]], checks, notes,
  * warnings, command: [lines], makes, blocked, button, timeText }; timeText
  * stands in for hours when no rate is documented. ctx has v (option
- * values by key), file, name (whose file), M (the machine) and flag(). */
+ * values by key), file, name (whose file), M (the machine), m (machine.js
+ * helpers), flag() and no(tool), why this computer can't run a tool. */
 (function () {
   "use strict";
   var WGSM = window.WGSM;
@@ -98,9 +100,9 @@
     }
     return {
       def: def, v: v, file: file, fileKey: key, name: M.owner(file), M: M.machine, m: M,
-      flag: WGSM.v2state.flag, tool: function (name) {
-        return !!M.machine.tools[name];
-      },
+      flag: WGSM.v2state.flag,
+      /* Why this computer can't run a tool, or null */
+      no: M.unavailable,
     };
   }
 
@@ -234,6 +236,13 @@
     var def = defs[root.dataset.tool];
     var ctx = context(def, root);
     var out = def.run(ctx) || {};
+    (def.requires || []).forEach(function (tool) {
+      var why = ctx.no(tool);
+      if (!why || out.blocked === why + ".") return;
+      out.blocked = why + ".";
+      (out.notes = out.notes || []).unshift({ tone: "warn", icon: "triangle-alert", id: "unavailable", title: "Not on this computer", text: why + ". " + (tool === "java" ? "WGS Extract doesn’t install tools itself." : "Run it on a computer that has it, from this app or its phone access."),
+        action: tool === "java" ? { label: "How to install", href: "install.html" } : null });
+    });
     if (!ctx.m.ready(ctx.file) && !out.blocked) {
       out.blocked = "Fix this file first.";
       (out.notes = out.notes || []).unshift({ tone: "warn", icon: "wrench", id: "fix", title: ctx.name + "’s " + ctx.file.tag + " can’t be used yet",
