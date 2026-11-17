@@ -1,7 +1,8 @@
 /* WGSM.v2bind: static markup that follows live jobs, with no page script.
  *
  *   data-v2-job="realign:gordon"   the newest job for op + person ("id:…"
- *                                  for one job; "label:…" by its label)
+ *                                  for one job; "label:…" by its label;
+ *                                  "running" for whichever job is running)
  *     data-v2-job-text[="full|eta|percent|status|label"]
  *                                  "47% · 1 h 52 min left", "Queued · starts
  *                                  in 1 h 52 min", "Done", "Interrupted at
@@ -24,6 +25,7 @@
 
   function pick(jobs, match) {
     var hits = jobs.filter(function (j) {
+      if (match === "running") return j.status === "running" && j.kind === "job";
       if (match.indexOf("id:") === 0) return j.id === match.slice(3);
       if (match.indexOf("label:") === 0) return j.ui.label === match.slice(6);
       var at = match.lastIndexOf(":");

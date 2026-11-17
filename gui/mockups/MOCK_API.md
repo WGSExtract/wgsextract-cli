@@ -104,7 +104,8 @@ into `WGSM.v2state` when they change, so `data-v2-if` hooks follow them.
 ```
 
 `data-v2-job` picks the newest job: `op:person` (`realign:gordon`,
-`lineage/y-str:reginald`), `id:<job id>` or `label:<label>`. Inside it,
+`lineage/y-str:reginald`), `id:<job id>`, `label:<label>`, or `running`
+(whichever job is running, for the sidebar). Inside it,
 `data-v2-job-text` is `full` ("47% · 1 h 52 min left", "Queued · starts in
 …", "Done", "Failed after 12 s", "Interrupted at 62%", "Cancelled"),
 `eta`, `percent`, `status` or `label`; `data-v2-job-bar` sets `--v` on a
