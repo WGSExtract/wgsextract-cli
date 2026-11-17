@@ -382,6 +382,11 @@ followed.
 ## Implementation layout
 
 The internal `core/personal_report/` package keeps the existing import interface.
-Its initializer collects evidence and builds the JSON document and findings
-table; `rendering.py` formats the offline HTML/Markdown documents and evidence
-links. Confidence and clinical rules are independent of presentation.
+Its initializer assembles the JSON document and findings table, re-exporting
+existing helper paths. `context.py` collects manifests and workspace evidence
+and provides shared finding/confidence support. `overview.py` builds sample,
+lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
+carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`variant_sections.py` handles automated ACMG and structural-variant evidence.
+`rendering.py` formats the offline HTML/Markdown documents and evidence links.
+Confidence and clinical rules remain independent of presentation.
