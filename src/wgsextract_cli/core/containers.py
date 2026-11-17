@@ -19,7 +19,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.reference_lookup import REF_PATH
+from wgsextract_cli.core.ref_library.lookup import REF_PATH
 from wgsextract_cli.core.steps import RUN_TAG
 from wgsextract_cli.core.utils import (
     MissingDependencyError,

@@ -19,6 +19,12 @@ from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.cli.registration.align import register as register
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array, ultima
+from wgsextract_cli.core.alignment.fastq import (
+    check_primary_reads,
+    fastq_input,
+    stage_read_input,
+    validate_fastq,
+)
 from wgsextract_cli.core.alignment.memory import (
     BWA_MEM3_CUDA_BYTES,
     BWA_MEM3_METAL_BYTES,
@@ -27,6 +33,10 @@ from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     check_mapping_memory,
     estimate_mapping_memory,
+)
+from wgsextract_cli.core.alignment.profiles import (
+    output_profile_options,
+    validate_output_profile,
 )
 from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import (
@@ -40,12 +50,6 @@ from wgsextract_cli.core.dependencies import get_tool_path as get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
-)
-from wgsextract_cli.core.fastq_validation import (
-    check_primary_reads,
-    fastq_input,
-    stage_read_input,
-    validate_fastq,
 )
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -64,10 +68,6 @@ from wgsextract_cli.core.native_aligners import (
     platform_binaries,
 )
 from wgsextract_cli.core.native_support import require_native_tool
-from wgsextract_cli.core.output_profiles import (
-    output_profile_options,
-    validate_output_profile,
-)
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.read_counts import (
@@ -127,6 +127,11 @@ from .alignment.output import (
 from .alignment.output import (
     run_streamed_alignment as run_streamed_alignment,
 )
+from .alignment.read_groups import _RG_PLATFORMS as _RG_PLATFORMS
+from .alignment.read_groups import _ultima_read_group as _ultima_read_group
+from .alignment.read_groups import read_group as read_group
+from .alignment.read_groups import read_group_descriptions as read_group_descriptions
+from .alignment.read_groups import ultima_read_groups as ultima_read_groups
 from .alignment.reads import _READ_FILE_SUFFIXES as _READ_FILE_SUFFIXES
 from .alignment.reads import LONG_READ_TAGS as LONG_READ_TAGS
 from .alignment.reads import _alignment_file_platform as _alignment_file_platform
@@ -1110,47 +1115,6 @@ def duplicate_marker(paired: bool) -> str:
     return "markdup"
 
 
-# SAM-spec @RG PL values for --platform.
-_RG_PLATFORMS = {
-    "illumina": "ILLUMINA",
-    "dnbseq": "DNBSEQ",
-    "pacbio": "PACBIO",
-    "hifi": "PACBIO",
-    "clr": "PACBIO",
-    "ont": "ONT",
-    "nanopore": "ONT",
-    "ultima": ultima.PLATFORM,
-}
-
-
-def read_group(
-    stem: str,
-    sample: str | None = None,
-    platform: str | None = None,
-    description: str = "",
-) -> str:
-    """The @RG line for -R (bwa, minimap2 expand the \\t). Variant callers and
-    multi-sample tools need each sample's own SM, and GATK requires a read group
-    with a platform. The default sample is the reads' name without its mate
-    marker (family.mother_R1 -> family.mother), so different people stay apart."""
-    sample = sample or pair_stem(stem)
-    platform = _RG_PLATFORMS.get(platform or "", "ILLUMINA")
-    line = f"@RG\\tID:{stem}\\tSM:{sample}\\tLB:{sample}\\tPL:{platform}"
-    return line + (f"\\tDS:{description}" if description else "")
-
-
-def read_group_descriptions(reads: str, input_ref: str | None) -> str:
-    """The DS of a BAM/CRAM's read groups, which name the basecaller models
-    (Dorado's basecall_model=..., that Clair3's model choice reads) or PacBio's
-    READTYPE; several distinct ones are all kept."""
-    descriptions = dict.fromkeys(
-        group["DS"]
-        for group in ultima.read_groups(get_bam_header(reads, input_ref))
-        if group.get("DS")
-    )
-    return " ".join(descriptions)
-
-
 def _bwa_setup(
     job: AlignJob,
     task: str,
@@ -1381,21 +1345,6 @@ ULTIMA_DUPLICATE_ARGS = [
 ]  # fmt: skip
 
 
-def ultima_read_groups(header: str, sample: str | None, stem: str) -> list[str]:
-    """The @RG lines of an Ultima BAM/CRAM for the realigned output, which keeps
-    each read's RG: the flow order (FO) and max homopolymer class (mc) GATK
-    needs live there. Output flow tags are in reference orientation (tp:)."""
-    lines = []
-    for rg in ultima.read_groups(header):
-        rg.setdefault("SM", sample or pair_stem(stem))
-        if sample:
-            rg["SM"] = sample
-        rg.setdefault("PL", ultima.PLATFORM)
-        rg["tp"] = "reference"
-        lines.append("\t".join(["@RG", *(f"{k}:{v}" for k, v in rg.items())]))
-    return lines
-
-
 def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
     """Align Ultima reads (FASTQ, or a BAM/CRAM: unaligned from the sequencer,
     or aligned, to realign) with BWA-MEM as Ultima's pipeline does. The flow
@@ -1470,12 +1419,6 @@ def align_ultima(job: AlignJob, cram_opt: list[str] | None = None) -> None:
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
     record_alignment(out_path, tool, setup.ref)
-
-
-def _ultima_read_group(job: AlignJob, stem: str, tagged: bool) -> str:
-    """read_group's line, plus the flow order GATK needs for tagged reads."""
-    rg = read_group(stem, job.sample, job.platform)
-    return rg + f"\\tFO:{ultima.DEFAULT_FLOW_ORDER}\\ttp:reference" if tagged else rg
 
 
 def _sort_and_mark_ultima(

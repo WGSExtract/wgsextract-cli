@@ -686,7 +686,7 @@ class ChunkedAlignment:
         return ["samtools", "view", *options, "--region-file", str(bed), path]
 
     def _output_options(self) -> list[str]:
-        from wgsextract_cli.core.output_profiles import output_profile_options
+        from wgsextract_cli.core.alignment.profiles import output_profile_options
 
         if self.format == "CRAM":
             return [

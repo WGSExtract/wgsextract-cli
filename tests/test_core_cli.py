@@ -27,10 +27,10 @@ from wgsextract_cli.core import (
     mimalloc,
     native_aligners,
     native_deepvariant,
-    output_profiles,
     process_registry,
     resource_policy,
 )
+from wgsextract_cli.core.alignment import profiles as output_profiles
 from wgsextract_cli.core.microarray import quirks as microarray_quirks
 from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import WGSExtractError

@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.alignment.profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
-from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 

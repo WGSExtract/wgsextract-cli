@@ -10,7 +10,7 @@ from wgsextract_cli.core import execution_context, live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
-from wgsextract_cli.core.reference_lookup import local_reference_lookup
+from wgsextract_cli.core.ref_library.lookup import local_reference_lookup
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -223,7 +223,7 @@ def _run_command(
         and checks_alignment_input(f"{command} {getattr(args, 'qc_cmd', '') or ''}")
         and Path(input_path).suffix.lower() in {".bam", ".cram"}
     ):
-        from wgsextract_cli.core.alignment_input import validate_alignment_input
+        from wgsextract_cli.core.alignment.input import validate_alignment_input
 
         validate_alignment_input(input_path)
     if (

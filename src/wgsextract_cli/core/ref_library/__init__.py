@@ -2,6 +2,7 @@
 
 ``catalog`` and ``downloads`` manage available genomes and transfers.
 ``ncount`` writes FASTA N-run sidecars; ``needs`` finds missing command resources.
+``lookup`` scopes htslib reference discovery to local-only locations.
 """
 
 from .catalog import get_available_genomes

@@ -269,7 +269,7 @@ def _run(
         snapshot_config,
     )
     from wgsextract_cli.core.process_registry import proc_registry
-    from wgsextract_cli.core.reference_lookup import local_reference_lookup
+    from wgsextract_cli.core.ref_library.lookup import local_reference_lookup
     from wgsextract_cli.core.temp_directory import run_temporary_directory
 
     # A read-only call, running beside others, reads the configuration as it
@@ -349,7 +349,7 @@ def _prepare(params: Params, result: CommandResult) -> None:
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(
             params.COMMAND
         ):
-            from wgsextract_cli.core.alignment_input import validate_alignment_input
+            from wgsextract_cli.core.alignment.input import validate_alignment_input
 
             validate_alignment_input(input_path)
     outdir = getattr(params, "outdir", None)
