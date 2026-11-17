@@ -9,27 +9,102 @@
 
   /* The library by person. Illustrative, like shared/data/genomes.js. */
   var PEOPLE = [
-    { id: "hg002", name: "HG002", note: "son", initials: "H2", state: "ok", href: V + "person.html" },
-    { id: "hg003", name: "HG003", note: "father", initials: "H3", state: "busy", href: V + "person.html?p=hg003" },
-    { id: "hg004", name: "HG004", note: "mother", initials: "H4", state: "ok", href: V + "person.html?p=hg004" },
-    { id: "alex", name: "Alex", note: "2 files", initials: "A", state: "attention", href: V + "person-alex.html" },
+    { id: "reginald", name: "Reginald", note: "son", initials: "RM", state: "ok", href: V + "person.html" },
+    { id: "gordon", name: "Gordon", note: "father", initials: "GM", state: "busy", href: V + "person-gordon.html" },
+    { id: "helen", name: "Helen", note: "mother", initials: "HM", state: "ok", href: V + "person-helen.html" },
+    { id: "alex", name: "Alex", note: "2 files", initials: "AM", state: "attention", href: V + "person-alex.html" },
   ];
-  var RUNNING = { title: "Realigning HG003 to hs38", progress: 47, eta: "1 h 52 min left" };
+  var RUNNING = { title: "Realigning Gordon to hs38", progress: 47, eta: "1 h 52 min left" };
   var PLACES = [
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
     { id: "tools", label: "All tools", icon: "sliders-horizontal", href: V + "tools.html" },
-    { id: "references", label: "Reference genomes", icon: "reference", href: V + "references.html" },
+    { id: "references", label: "Reference data", icon: "reference", href: V + "references.html" },
   ];
   var FOOT = [
     { id: "phone", label: "Phone access", icon: "remote", href: V + "phone.html" },
     { id: "settings", label: "Settings", icon: "settings", href: V + "settings.html" },
   ];
   var TABS = [
-    { id: "home", label: "Library", icon: "library-big", href: V + "home.html", also: ["add", "p-hg002", "p-alex"] },
+    { id: "home", label: "Library", icon: "library-big", href: V + "home.html", also: ["add", "p-reginald", "p-gordon", "p-helen", "p-alex"] },
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
     { id: "tools", label: "Tools", icon: "sliders-horizontal", href: V + "tools.html" },
     { id: "settings", label: "More", icon: "menu", href: V + "settings.html", also: ["references", "phone", "states"] },
   ];
+
+  /* All tools: [group, [label, page, server operations it covers]] */
+  var CATALOG = [
+    ["Align and call", [
+      ["Realign", "tools.html", "realign"],
+      ["Align FASTQ", "tool-align.html", "align"],
+      ["Call SNPs and indels", "tool-call-variants.html", "vcf/snp vcf/indel"],
+      ["DeepVariant", "tool-deepvariant.html", "vcf/deepvariant"],
+      ["GATK HaplotypeCaller", "tool-gatk.html", "vcf/gatk"],
+      ["Structural variants", "tool-structural-variants.html", "vcf/sv"],
+      ["Phase variants", "tool-phase.html", "vcf/phase"],
+    ]],
+    ["Quality", [
+      ["Coverage per chromosome", "tool-coverage.html", "info/calculate-coverage"],
+      ["Read quality (FastQC)", "tool-read-quality.html", "qc/fastqc qc/fastp"],
+      ["Contamination", "tool-contamination.html", "qc/contamination"],
+      ["Relatedness", "tool-relatedness.html", "qc/relate"],
+      ["VCF quality", "tool-vcf-quality.html", "qc/vcf"],
+    ]],
+    ["Annotate", [
+      ["VEP", "tool-vep.html", "vep/run"],
+      ["ClinVar", "tool-clinvar.html", "vcf/clinvar"],
+      ["Variant table", "tool-variant-table.html", "vcf/table"],
+      ["Pharmacogenomics", "tool-pharmacogenomics.html", "vcf/pharmcat"],
+      ["HLA and CYP2D6 typing", "tool-typing.html", "typing/hla typing/cyp2d6"],
+    ]],
+    ["Extract", [
+      ["Region or gene", "tool-region.html", "extract/region extract/custom"],
+      ["Mitochondrial DNA", "tool-mtdna.html", "extract/mito-fasta"],
+      ["Y chromosome", "tool-y-chromosome.html", "extract/ydna-bam"],
+      ["Unmapped reads", "tool-unmapped.html", "extract/unmapped"],
+    ]],
+    ["Lineage", [
+      ["Y haplogroup", "tool-y-haplogroup.html", "lineage/y-haplogroup"],
+      ["mtDNA haplogroup", "tool-mt-haplogroup.html", "lineage/mt-haplogroup"],
+      ["Y-STR markers", "tool-y-str.html", "lineage/y-str"],
+      ["Ancestry proportions", "tool-ancestry-proportions.html", "qc/ancestry"],
+    ]],
+  ];
+
+  /* The page of the tool that runs a server operation, else All tools */
+  function toolPage(op) {
+    var page = "tools.html";
+    CATALOG.forEach(function (group) {
+      group[1].forEach(function (tool) {
+        if (tool[2].split(" ").indexOf(op) >= 0) page = tool[1];
+      });
+    });
+    return V + page;
+  }
+
+  /* <nav data-render="v2-catalog" data-current="vep">: the All tools list */
+  WGSM.render.blocks["v2-catalog"] = function (el, opts) {
+    var current = opts.current ? "tool-" + opts.current + ".html" : "tools.html";
+    el.appendChild(h("input.v2-input", { type: "search", placeholder: "Filter tools", "aria-label": "Filter tools", dataset: { v2Filter: "" } }));
+    CATALOG.forEach(function (group) {
+      el.appendChild(h("h2", group[0]));
+      group[1].forEach(function (tool) {
+        el.appendChild(h("a", { href: href(V + tool[1]), "aria-current": tool[1] === current ? "page" : null, dataset: { ops: tool[2] } }, tool[0]));
+      });
+    });
+  };
+
+  function filterCatalog(box) {
+    var q = box.value.trim().toLowerCase();
+    var nav = box.closest(".v2-catalog");
+    WGSM.qsa("a", nav).forEach(function (a) {
+      a.hidden = !!q && (a.textContent + " " + a.dataset.ops).toLowerCase().indexOf(q) < 0;
+    });
+    WGSM.qsa("h2", nav).forEach(function (head) {
+      var any = false;
+      for (var n = head.nextElementSibling; n && n.tagName === "A"; n = n.nextElementSibling) any = any || !n.hidden;
+      head.hidden = !any;
+    });
+  }
 
   function href(path) {
     return WGSM.keepParams(WGSM.link(path));
@@ -144,13 +219,13 @@
         ["Convert or save space", "bam/to-cram", "convert", "Do", V + "convert.html"],
         ["Add files", "info", "plus", "Do", V + "add.html"],
         ["Jobs", "", "jobs", "Go to", V + "jobs.html"],
-        ["Reference genomes", "ref/library", "reference", "Go to", V + "references.html"],
+        ["Reference data", "ref/library", "reference", "Go to", V + "references.html"],
         ["Settings", "", "settings", "Go to", V + "settings.html"],
       ].map(function (o) {
         return { label: o[0], sub: o[1], icon: o[2], group: o[3], href: o[4] };
       });
       var tools = WGSM.data.ops.map(function (o) {
-        return { label: o[0], sub: o[1], icon: o[2], group: "Tools · " + o[3], href: V + "tools.html" };
+        return { label: o[0], sub: o[1], icon: o[2], group: "Tools · " + o[3], href: toolPage(o[1]) };
       });
       return people.concat(go, tools);
     },
@@ -162,8 +237,9 @@
       if (event.target.matches("[data-v2-commands]")) commands(event.target.checked);
       recount();
     });
+    document.addEventListener("input", function (event) {
+      if (event.target.matches("[data-v2-filter]")) filterCatalog(event.target);
+    });
     recount();
-    var p = WGSM.params.get("p");
-    if (p) WGSM.toast("Mockup: every person except Alex shows HG002’s page", "info");
   };
 })();

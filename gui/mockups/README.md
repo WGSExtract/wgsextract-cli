@@ -456,5 +456,6 @@ pages also work offline and from `file://`.
 6. Link it from `index.html`. Root ruff/pytest and the app’s lint skip this
    folder; check pages in a browser at phone and desktop sizes.
 
-Sample data is illustrative: names follow the GIAB HG002 trio, and sizes,
-coverage and haplogroups are realistic-looking, not measured.
+Sample data is illustrative: v1 names follow the GIAB HG002 trio and v2 uses
+made-up people (the McDonald family and Alex Moreno); sizes, coverage and
+haplogroups are realistic-looking, not measured.

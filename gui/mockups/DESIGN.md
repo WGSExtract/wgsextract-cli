@@ -271,7 +271,7 @@ What the review found, and what v2 does about it:
 
 | v1 | v2 |
 | --- | --- |
-| The sidebar's task pages (DNA-test files, Ancestry, Convert) each start with their own genome picker, so the file is still chosen again per page. | The sidebar lists the **people**. Every task starts from a person and is named for them ("DNA-test files for HG002"); only All tools has a picker. |
+| The sidebar's task pages (DNA-test files, Ancestry, Convert) each start with their own genome picker, so the file is still chosen again per page. | The sidebar lists the **people**. Every task starts from a person and is named for them ("DNA-test files for Reginald"); only All tools has a picker. |
 | A library of files: one person's BAM and 23andMe kit are unrelated rows, and a realign adds a third. | **People with their files underneath.** Results and tasks use the person's best file; a file with no owner asks "whose is this?". |
 | Ancestry & lineage is a task on desktop and "Results" on the phone. | Results **belong to the person**: a summary on their page and one detail page. Desktop and phone use the same words. |
 | Home stacks a fix-it card, four stat tiles, the table, suggestions and jobs; the running job shows four times. | Home is the library. One attention line, the next action on each person's row, the running job on its row and once in the sidebar. |

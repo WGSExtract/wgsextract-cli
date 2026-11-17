@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Y-STR markers · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-tool-y-str" data-shell="v2" data-nav="tools" data-title="Y-STR markers">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>All tools</h1>
+      <p class="v2-head__sub">Every operation WGS Extract can run, with all of its options. Most of them are also on each person’s page; this is the place to reach the rest.</p>
+    </div>
+  </header>
+
+  <div class="v2-cols v2-cols--catalog">
+    <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="y-str"></nav>
+
+    <div class="v2-stack" data-annot-id="tool">
+      <section class="v2-section" data-annot-id="tool-head">
+        <div class="v2-section__head"><h2 class="v2-h2--lg">Y-STR markers</h2><code class="v2-cmd v2-dim v2-small">lineage/y-str</code></div>
+        <p class="v2-muted">Counts repeats at Y-STR markers, the numbers FamilyTreeDNA and YSEQ compare between men with the same surname.</p>
+        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
+      </section>
+<div class="v2-notice" data-tone="info" role="status" data-annot-id="queued"><i data-icon="clock"></i><div class="v2-notice__text"><strong>Already queued for Reginald</strong><span>Y-111 starts after Gordon’s realign. Change the panel here to queue another.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="jobs.html">See Jobs</a></div></div>
+      <div class="v2-sheet" data-annot-id="options">
+        <div class="v2-sheet__pad v2-fields">
+          <div class="v2-field"><span class="v2-field__label">Panel<small>The set of markers; Y-111 includes the smaller FTDNA panels</small><code class="v2-cmd">panel</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Panel" style="max-width: 260px"><option>Y-111 (FamilyTreeDNA)</option><option>Y-67</option><option>Y-37</option><option>Y-25</option><option>Y-12</option><option>PowerPlex Y23</option><option>Yfiler Plus</option><option>Every marker</option></select></div></div>
+        </div>
+      </div>
+
+      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract lineage y-str --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram --panel Y-111</pre>
+    </div>
+  </div>
+
+  <div class="v2-actionbar" data-annot-id="action">
+    <div class="v2-actionbar__sum">
+      <strong>About 4 min</strong>
+      <span>The markers appear on Reginald’s ancestry page, ready to compare.</span>
+    </div>
+    <div class="v2-actionbar__btns">
+
+      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: Y-STR markers. See Jobs.">Queue</button>
+    </div>
+  </div>
+</div>
+
+<dialog class="dialog" id="pick" aria-labelledby="pick-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Which file?</h2></div>
+  <div class="dialog__body">
+    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option></select>
+    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
+</dialog>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GATK HaplotypeCaller · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-tool-gatk" data-shell="v2" data-nav="tools" data-title="GATK HaplotypeCaller">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>All tools</h1>
+      <p class="v2-head__sub">Every operation WGS Extract can run, with all of its options. Most of them are also on each person’s page; this is the place to reach the rest.</p>
+    </div>
+  </header>
+
+  <div class="v2-cols v2-cols--catalog">
+    <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="gatk"></nav>
+
+    <div class="v2-stack" data-annot-id="tool">
+      <section class="v2-section" data-annot-id="tool-head">
+        <div class="v2-section__head"><h2 class="v2-h2--lg">GATK HaplotypeCaller</h2><code class="v2-cmd v2-dim v2-small">vcf/gatk</code></div>
+        <p class="v2-muted">The Broad Institute’s variant caller, which many labs use. Accurate and slow; splitting the genome into parts makes it faster.</p>
+        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
+      </section>
+
+      <div class="v2-sheet" data-annot-id="options">
+        <div class="v2-sheet__pad v2-fields">
+          <div class="v2-field"><span class="v2-field__label">Split into parts<small>Calls each part at once on its own core: about 4 h instead of 11 h</small><code class="v2-cmd">scatter</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Split into parts" checked></label></div></div>
+          <div class="v2-field"><span class="v2-field__label">Region<small>Leave empty for the whole genome</small><code class="v2-cmd">region</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Region" placeholder="Whole genome, or chr20 or chr20:1-1000000" style="max-width: 320px"></div></div>
+          <div class="v2-field"><span class="v2-field__label">Matching sites too<small>Also write a gVCF, for merging with family</small><code class="v2-cmd">reference_evidence</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="evidence" role="group" aria-label="Reference evidence"><button type="button" value="none" aria-pressed="true">Variants only</button><button type="button" value="gvcf">Also a gVCF</button></div></div></div>
+        </div>
+      </div>
+
+      <section class="v2-section" data-annot-id="preflight">
+        <h2>Before it starts</h2>
+        <div class="v2-sheet">
+          <div class="v2-item"><span class="v2-item__title">Memory</span><span class="v2-item__desc">Needs up to 16 GB; this Mac has 32 GB</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
+          <div class="v2-item"><span class="v2-item__title">Space on Macintosh HD</span><span class="v2-item__desc">Needs about 0.5 GB; 412 GB free</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
+        </div>
+        <div class="v2-notice" data-tone="warn" role="status" data-annot-id="java"><i data-icon="wrench"></i><div class="v2-notice__text"><strong>Java is missing</strong><span>GATK needs Java 17 or later. WGS Extract doesn’t install tools itself.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="install.html">How to install</a></div></div>
+      </section>
+
+      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract vcf gatk --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram \
+  --ref hs38 --scatter --threads 12</pre>
+    </div>
+  </div>
+
+  <div class="v2-actionbar" data-annot-id="action">
+    <div class="v2-actionbar__sum">
+      <strong>About 4 h · up to 16 GB memory · 0.5 GB</strong>
+      <span>Install Java first; the button stays off until it’s found.</span>
+    </div>
+    <div class="v2-actionbar__btns">
+
+      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" disabled data-toast="Queued: GATK HaplotypeCaller. See Jobs.">Start HaplotypeCaller</button>
+    </div>
+  </div>
+</div>
+
+<dialog class="dialog" id="pick" aria-labelledby="pick-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Call variants in which file?</h2></div>
+  <div class="dialog__body">
+    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Alex · NG1A2B3C4D.bam</option></select>
+    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
+</dialog>
+</body>
+</html>

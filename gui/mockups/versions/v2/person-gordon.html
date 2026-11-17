@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gordon · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-person-gordon" data-shell="v2" data-nav="p-gordon" data-title="Gordon" data-parent="Library|home.html">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__who">
+      <span class="v2-avatar v2-avatar--lg">GM</span>
+      <div class="v2-head__text">
+        <h1>Gordon McDonald</h1>
+        <p class="v2-head__sub">Father of Reginald · male · 1 genome file, 38× on GRCh37, and a GRCh38 copy being made</p>
+      </div>
+    </div>
+    <div class="v2-head__actions">
+      <button class="v2-btn v2-btn--quiet" type="button" data-open="#person-menu" aria-label="Rename, notes, remove"><i data-icon="ellipsis"></i></button>
+    </div>
+  </header>
+
+  <a class="v2-notice" data-tone="info" href="jobs.html" style="text-decoration: none" data-annot-id="running">
+    <i data-icon="realign"></i>
+    <div class="v2-notice__text">
+      <strong>Realigning to hs38 · 47% · 1 h 52 min left</strong>
+      <span>Makes a GRCh38 copy, which most sites and tools expect. The BAM stays as it is. Until then, everything here uses the BAM.</span>
+      <span class="v2-bar" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Realigning to hs38"><span style="--v: 47%"></span></span>
+    </div>
+  </a>
+
+  <div class="v2-cols">
+    <div class="v2-stack">
+      <section class="v2-section" data-annot-id="lineage">
+        <div class="v2-section__head"><h2>Lineage</h2><span class="v2-dim v2-small">From the BAM</span></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-cols--even v2-cols" style="gap: 24px">
+            <div class="v2-line" data-line="y">
+              <span class="v2-line__kind">Paternal line <small>Y-DNA, father to son</small></span>
+              <span class="v2-line__result">J-ZS241</span>
+              <span class="v2-muted v2-small">The same as Reginald’s, as a father and son should be. High confidence: 42 of 43 markers.</span>
+            </div>
+            <div class="v2-line" data-line="mt">
+              <span class="v2-line__kind">Maternal line <small>mtDNA, from his mother</small></span>
+              <span class="v2-line__result">H1c</span>
+              <span class="v2-muted v2-small">A branch of H, the most common maternal line in Europe. Gordon passes it to no one; only mothers pass on mtDNA. High confidence.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="ancestry">
+        <div class="v2-section__head"><h2>Ancestry proportions</h2></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-row v2-row--wrap">
+            <span class="v2-grow v2-muted v2-small">Not worked out yet. It compares Gordon’s genome with 80 reference populations.</span>
+            <a class="v2-btn v2-btn--sm" href="tool-ancestry-proportions.html"><i data-icon="admixture"></i>Work it out · 6 min</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="files">
+        <div class="v2-section__head"><h2>Files</h2><a class="v2-link v2-small" href="add.html">Add a file for Gordon</a></div>
+        <div class="v2-sheet">
+          <div class="v2-sheet__pad v2-section" data-annot-id="file-bam">
+            <div class="v2-row v2-row--wrap"><span class="v2-tag">BAM</span><span class="v2-file__name v2-grow">60820188479016.bam</span><span class="v2-status v2-small"><span class="v2-pip" data-state="ok"></span>Ready · used for everything on this page</span></div>
+            <code class="v2-cmd v2-dim v2-small">/Volumes/Genomes/Gordon/60820188479016.bam</code>
+            <dl class="v2-kv">
+              <div><dt>Mean depth</dt><dd>38.2× <small>good for every task</small></dd></div>
+              <div><dt>Reads mapped</dt><dd>99.1% <small>1.05 billion reads</small></dd></div>
+              <div><dt>Reads</dt><dd>2 × 150 bp <small>Illumina, paired</small></dd></div>
+              <div><dt>Reference</dt><dd>hs37d5 <small>GRCh37, installed</small></dd></div>
+              <div><dt>Size</dt><dd>92.4 GB <small>on Genomes</small></dd></div>
+            </dl>
+          </div>
+          <div class="v2-sheet__pad v2-section" data-annot-id="file-cram">
+            <div class="v2-row v2-row--wrap"><span class="v2-tag">CRAM</span><span class="v2-file__name v2-grow">60820188479016.hs38.cram</span><span class="v2-status v2-small"><span class="v2-pip" data-state="busy"></span>Being made · 47%</span></div>
+            <p class="v2-small v2-muted">When it’s done, this GRCh38 copy becomes the file Gordon’s results come from. The BAM is then only needed by tools that want GRCh37; Convert can remove it to free 92 GB.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="v2-section" data-annot-id="made">
+        <div class="v2-section__head"><h2>Made from this genome</h2><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Opening Gordon’s folder"><i data-icon="folder-open"></i>Open folder</button></div>
+        <div class="v2-sheet v2-scroll">
+          <table class="v2-table" aria-label="Results and files made from Gordon">
+            <thead><tr><th>What</th><th>Result</th><th>When</th><th><span class="visually-hidden">Open</span></th></tr></thead>
+            <tbody>
+              <tr><td class="v2-table__main">Y haplogroup</td><td><span class="v2-hap" data-line="y">J-ZS241</span> · 42 of 43 markers</td><td class="v2-dim">Nov 12</td><td class="v2-num"></td></tr>
+              <tr><td class="v2-table__main">mtDNA haplogroup</td><td><span class="v2-hap" data-line="mt">H1c</span> · quality 0.91</td><td class="v2-dim">Nov 12</td><td class="v2-num"></td></tr>
+              <tr><td class="v2-table__main">Relatedness</td><td>Reginald’s father, as expected</td><td class="v2-dim">Nov 13</td><td class="v2-num"><a class="v2-link" href="tool-relatedness.html">Open</a></td></tr>
+              <tr><td class="v2-table__main">Realign to hs38</td><td><span class="v2-status"><span class="v2-pip" data-state="busy"></span>Running · 47%</span></td><td class="v2-dim">Today 08:15</td><td class="v2-num"><a class="v2-link" href="jobs.html">Job</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <aside class="v2-section" data-annot-id="do">
+      <h2>Do with this genome</h2>
+      <div class="v2-sheet">
+        <a class="v2-do" href="convert.html"><i data-icon="convert"></i><span class="v2-do__title">Convert or save space</span><span class="v2-do__cost">45 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">The BAM as CRAM is about a third of the size</span></a>
+        <a class="v2-do" href="tool-ancestry-proportions.html"><i data-icon="admixture"></i><span class="v2-do__title">Ancestry proportions</span><span class="v2-do__cost">6 min<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">Shares of 80 reference populations</span></a>
+        <a class="v2-do" href="tool-call-variants.html"><i data-icon="variant"></i><span class="v2-do__title">Call variants</span><span class="v2-do__cost">about 3 h<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">Make a VCF of where this genome differs</span></a>
+        <a class="v2-do" href="tools.html"><i data-icon="sliders-horizontal"></i><span class="v2-do__title">All tools</span><span class="v2-do__cost"><i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">Quality checks, annotation, extracts</span></a>
+        <div class="v2-sheet__label">After the realign</div>
+        <div class="v2-do" aria-disabled="true"><i data-icon="chip"></i><span class="v2-do__title">Make DNA-test files</span><span class="v2-do__cost">in 1 h 52 min</span><span class="v2-do__desc">From the GRCh38 copy, which reads more of each chip’s markers</span></div>
+      </div>
+      <p class="v2-section__note">Times are estimates for this Mac and this file. Jobs for Gordon wait for the realign.</p>
+    </aside>
+  </div>
+</div>
+
+<dialog class="dialog" id="person-menu" aria-labelledby="pm-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pm-title">Gordon McDonald</h2></div>
+  <div class="dialog__body">
+    <label class="v2-field__label">Name<input class="v2-input" type="text" value="Gordon McDonald"></label>
+    <label class="v2-field__label">Note<input class="v2-input" type="text" value="father"></label>
+    <p class="v2-small v2-muted">Removing a person takes them out of the library. Their genome files are never deleted; you choose whether to also remove the results WGS Extract made (12 MB).</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn v2-btn--primary" type="button" data-close>Done</button></div>
+</dialog>
+</body>
+</html>

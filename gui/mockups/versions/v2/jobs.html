@@ -23,15 +23,15 @@
     <div class="v2-sheet">
       <div class="v2-sheet__pad v2-section">
         <div class="v2-row v2-row--wrap">
-          <span class="v2-avatar">H3</span><strong class="v2-grow">Realign HG003 to hs38</strong>
+          <span class="v2-avatar">GM</span><strong class="v2-grow">Realign Gordon to hs38</strong>
           <span class="v2-status v2-small"><span class="v2-pip" data-state="busy"></span>47% · 1 h 52 min left</span>
         </div>
-        <div class="v2-steps" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Realign HG003 to hs38">
+        <div class="v2-steps" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Realign Gordon to hs38">
           <div class="v2-step" data-state="done" style="--w: 1" title="Extract reads · done"><span>Extract reads · done</span><span class="v2-bar"><span style="--v: 100%"></span></span></div>
           <div class="v2-step" data-state="running" style="--w: 4"><span>Align · 412 M of 876 M reads</span><span class="v2-bar"><span style="--v: 47%"></span></span></div>
           <div class="v2-step" style="--w: 1" title="Sort and index · waiting"><span>Sort and index</span><span class="v2-bar"><span style="--v: 0%"></span></span></div>
         </div>
-        <p class="v2-small v2-muted">Now matching each read to its place on hs38. Started 08:15. When it’s done, HG003 gets a new file, <span class="v2-mono">HG003.hs38.cram</span>, and the old BAM stays.</p>
+        <p class="v2-small v2-muted">Now matching each read to its place on hs38. Started 08:15. When it’s done, Gordon gets a new file, <span class="v2-mono">60820188479016.hs38.cram</span>, and the old BAM stays.</p>
         <details class="v2-more">
           <summary>Log</summary>
           <div class="v2-more__body v2-section">
@@ -41,8 +41,8 @@
 08:52:41 Step extract: done
 08:52:41 Step align: bwa-mem2 mem -t 12 hs38.fa (interleaved)
 09:56:10 align: 412,118,004 of 876,231,560 reads (47.0%)</pre>
-            <pre class="v2-code v2-cmd">wgsextract realign --input /Volumes/Genomes/HG003/HG003.hs37d5.38x.bam \
-  --ref hs38 --output /Volumes/Genomes/HG003/HG003.hs38.cram --threads 12</pre>
+            <pre class="v2-code v2-cmd">wgsextract realign --input /Volumes/Genomes/Gordon/60820188479016.bam \
+  --ref hs38 --output /Volumes/Genomes/Gordon/60820188479016.hs38.cram --threads 12</pre>
           </div>
         </details>
         <div class="v2-row"><button class="v2-btn v2-btn--sm v2-btn--danger" type="button" data-open="#cancel-realign">Cancel</button></div>
@@ -54,9 +54,9 @@
     <h2>Queued</h2>
     <div class="v2-sheet">
       <div class="v2-sheet__pad v2-row v2-row--wrap">
-        <span class="v2-avatar">H2</span>
-        <div class="v2-grow"><strong>Y-STR markers for HG002</strong><p class="v2-small v2-muted">About 4 min. Waits because one job runs at a time; starts after HG003’s realign.</p></div>
-        <button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Removed from the queue: Y-STR markers for HG002">Cancel</button>
+        <span class="v2-avatar">RM</span>
+        <div class="v2-grow"><strong>Y-STR markers for Reginald</strong><p class="v2-small v2-muted">About 4 min. Waits because one job runs at a time; starts after Gordon’s realign.</p></div>
+        <button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Removed from the queue: Y-STR markers for Reginald">Cancel</button>
       </div>
     </div>
   </section>
@@ -66,7 +66,7 @@
     <div class="v2-sheet">
       <div class="v2-sheet__pad v2-section" data-annot-id="needs-snps">
         <div class="v2-row v2-row--wrap">
-          <span class="v2-avatar">A</span><strong class="v2-grow">Call SNPs for Alex</strong>
+          <span class="v2-avatar">AM</span><strong class="v2-grow">Call SNPs for Alex</strong>
           <span class="v2-status v2-small"><span class="v2-pip" data-state="bad"></span>Failed after 12 s</span>
         </div>
         <p class="v2-small v2-muted">Alex’s BAM has no index, so it can’t be read by region. Creating one fixes it; nothing else was changed.</p>
@@ -74,7 +74,7 @@
       </div>
       <div class="v2-sheet__pad v2-section" data-annot-id="needs-download">
         <div class="v2-row v2-row--wrap">
-          <i data-icon="reference"></i><strong class="v2-grow">Download reference hs37d5 indexes <span class="v2-dim v2-small" style="font-weight: 400">for HG003</span></strong>
+          <i data-icon="reference"></i><strong class="v2-grow">Download reference hs37d5 indexes <span class="v2-dim v2-small" style="font-weight: 400">for Gordon</span></strong>
           <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>Interrupted at 62%</span>
         </div>
         <p class="v2-small v2-muted">This Mac went to sleep during the download. Resume continues from the last finished step.</p>
@@ -86,10 +86,10 @@
   <section class="v2-section" data-annot-id="done">
     <h2>Done</h2>
     <div class="v2-sheet">
-      <a class="v2-do" href="result.html"><span class="v2-avatar">H4</span><span class="v2-do__title">DNA-test files for HG004</span><span class="v2-do__cost">3 days ago<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">2 files, for GEDmatch and MyHeritage · took 11 min</span></a>
-      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">H2</span><span class="v2-do__title">Ancestry for HG002</span><span class="v2-do__cost">Today 06:14<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">5 components, mostly European and Middle Eastern</span></a>
-      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">H2</span><span class="v2-do__title">Y haplogroup for HG002</span><span class="v2-do__cost">Today 06:11<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc"><span class="v2-hap" data-line="y">J-ZS241</span> · took 3 min 41 s</span></a>
-      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">H2</span><span class="v2-do__title">mtDNA haplogroup for HG002</span><span class="v2-do__cost">Today 06:09<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc"><span class="v2-hap" data-line="mt">K1a1b1a</span> · took 58 s</span></a>
+      <a class="v2-do" href="result.html"><span class="v2-avatar">HM</span><span class="v2-do__title">DNA-test files for Helen</span><span class="v2-do__cost">3 days ago<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">2 files, for GEDmatch and MyHeritage · took 11 min</span></a>
+      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">RM</span><span class="v2-do__title">Ancestry for Reginald</span><span class="v2-do__cost">Today 06:14<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc">5 components, mostly European and Middle Eastern</span></a>
+      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">RM</span><span class="v2-do__title">Y haplogroup for Reginald</span><span class="v2-do__cost">Today 06:11<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc"><span class="v2-hap" data-line="y">J-ZS241</span> · took 3 min 41 s</span></a>
+      <a class="v2-do" href="ancestry.html"><span class="v2-avatar">RM</span><span class="v2-do__title">mtDNA haplogroup for Reginald</span><span class="v2-do__cost">Today 06:09<i data-icon="chevron-right" class="icon--sm"></i></span><span class="v2-do__desc"><span class="v2-hap" data-line="mt">K1a1b1a</span> · took 58 s</span></a>
     </div>
   </section>
 
@@ -97,9 +97,9 @@
 </div>
 
 <dialog class="dialog" id="cancel-realign" aria-labelledby="cr-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="cr-title">Cancel HG003’s realign?</h2></div>
-  <div class="dialog__body"><p class="v2-muted">The aligning done so far (1 h 4 min) is lost. The extracted reads are kept, so running it again starts at Align. HG003’s BAM isn’t touched.</p></div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Keep running</button><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Cancelled: realign HG003 to hs38">Cancel the realign</button></div>
+  <div class="dialog__header"><h2 class="dialog__title" id="cr-title">Cancel Gordon’s realign?</h2></div>
+  <div class="dialog__body"><p class="v2-muted">The aligning done so far (1 h 4 min) is lost. The extracted reads are kept, so running it again starts at Align. Gordon’s BAM isn’t touched.</p></div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Keep running</button><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Cancelled: realign Gordon to hs38">Cancel the realign</button></div>
 </dialog>
 </body>
 </html>

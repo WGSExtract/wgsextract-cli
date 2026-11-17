@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HLA and CYP2D6 typing · v2 · WGS Extract mockups</title>
+<link rel="stylesheet" href="../../design-system/wgse.css">
+<link rel="stylesheet" href="../../shared/mockup.css">
+<link rel="stylesheet" href="v2.css">
+<script src="../../shared/boot.js" defer></script>
+</head>
+<body data-page-id="v2-tool-typing" data-shell="v2" data-nav="tools" data-title="HLA and CYP2D6 typing">
+<div class="v2-page" data-annot-id="page">
+  <header class="v2-head" data-annot-id="header">
+    <div class="v2-head__text">
+      <h1>All tools</h1>
+      <p class="v2-head__sub">Every operation WGS Extract can run, with all of its options. Most of them are also on each person’s page; this is the place to reach the rest.</p>
+    </div>
+  </header>
+
+  <div class="v2-cols v2-cols--catalog">
+    <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="typing"></nav>
+
+    <div class="v2-stack" data-annot-id="tool">
+      <section class="v2-section" data-annot-id="tool-head">
+        <div class="v2-section__head"><h2 class="v2-h2--lg">HLA and CYP2D6 typing</h2><code class="v2-cmd v2-dim v2-small">typing/hla · typing/cyp2d6</code></div>
+        <p class="v2-muted">Reads genes too variable for ordinary variant calling: the HLA genes of the immune system, CYP2D6 for medicines, SMN1 and SMN2, and repeat expansions.</p>
+        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
+      </section>
+
+      <form class="v2-section" id="genes" data-annot-id="genes">
+        <h2>Which genes?</h2>
+        <div class="v2-sheet">
+          <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">HLA</span><span class="v2-choice__aside">25 min</span><span class="v2-choice__desc">HLA-A, -B, -C, -DRB1, -DQB1 and others, for transplant matching and research</span></label>
+          <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">CYP2D6</span><span class="v2-choice__aside">10 min</span><span class="v2-choice__desc">Star alleles for about a quarter of common medicines · needs Cyrius</span></label>
+          <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">SMN1 and SMN2</span><span class="v2-choice__aside">5 min</span><span class="v2-choice__desc">Copy numbers, for spinal muscular atrophy carrier status</span></label>
+          <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">Repeat expansions</span><span class="v2-choice__aside">40 min</span><span class="v2-choice__desc">Repeats such as HTT and FMR1, with ExpansionHunter</span></label>
+        </div>
+      </form>
+
+      <div class="v2-sheet" data-annot-id="options">
+        <div class="v2-sheet__pad v2-fields">
+          <div class="v2-field"><span class="v2-field__label">HLA allele index<small>Built from IPD-IMGT/HLA the first time; 70 MB</small><code class="v2-cmd">hla_index</code></span><div class="v2-field__control"><select class="v2-select" aria-label="HLA allele index" style="max-width: 260px"><option>Build on first use</option><option>Choose a file…</option></select></div></div>
+          <div class="v2-field"><span class="v2-field__label">Sex for repeats<small>Read from the genome: male</small><code class="v2-cmd">sex</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="sex" role="group" aria-label="Sex"><button type="button" value="male" aria-pressed="true">Male</button><button type="button" value="female">Female</button></div></div></div>
+        </div>
+      </div>
+
+      <section class="v2-section" data-annot-id="preflight">
+        <h2>Before it starts</h2>
+        <div class="v2-sheet">
+          <div class="v2-item"><span class="v2-item__title">T1K</span><span class="v2-item__desc">1.0.5</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Found</span></div>
+          <div class="v2-item"><span class="v2-item__title">ExpansionHunter</span><span class="v2-item__desc">5.0.0</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Found</span></div>
+        </div>
+        <div class="v2-notice" data-tone="info" role="status" data-annot-id="cyrius"><i data-icon="download"></i><div class="v2-notice__text"><strong>CYP2D6 needs Cyrius, which isn’t installed</strong><span>Cyrius is installed separately from its authors under their own licence, which doesn’t allow WGS Extract to bundle it.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="install.html">How to install</a></div></div>
+      </section>
+
+      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract typing hla --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram --ref hs38</pre>
+    </div>
+  </div>
+
+  <div class="v2-actionbar" data-annot-id="action">
+    <div class="v2-actionbar__sum">
+      <strong><span data-v2-count="#genes">1</span> <span data-v2-plural="typing|typings">typing</span> · about 25 min</strong>
+      <span>Results appear on Reginald’s page.</span>
+    </div>
+    <div class="v2-actionbar__btns">
+
+      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-v2-need="#genes" data-toast="Queued: HLA and CYP2D6 typing. See Jobs.">Start typing</button>
+    </div>
+  </div>
+</div>
+
+<dialog class="dialog" id="pick" aria-labelledby="pick-title">
+  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Type which file?</h2></div>
+  <div class="dialog__body">
+    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Alex · NG1A2B3C4D.bam</option></select>
+    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
+  </div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
+</dialog>
+</body>
+</html>
