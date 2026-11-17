@@ -662,6 +662,7 @@ class TestLineageSmoke:
         args = [
             "lineage",
             "y-haplogroup",
+            "--download",
             "--input",
             self.fake_vcf,
             "--outdir",

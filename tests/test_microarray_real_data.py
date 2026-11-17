@@ -103,6 +103,7 @@ class TestMicroarrayRealData:
             "--input",
             self.isolated_input,
             "microarray",
+            "--download",
             "--formats",
             ",".join(formats_to_test),
         ]
