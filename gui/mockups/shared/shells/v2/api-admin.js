@@ -77,15 +77,25 @@
       return flags();
     });
 
-    /* MOCK-ONLY. Which pretend computer (machine.js profile) the server is */
+    /* MOCK-ONLY. Which pretend computer the server is: a machine.js
+     * preset, or "custom" with a profile (machine-spec.js) */
     function machine() {
       var m = mock.ctx().machine;
-      return { profile: m.key, label: m.label, profiles: Object.keys(mock.config.profiles) };
+      var custom = m.key === "custom" ? mock.doc().machineCustom : null;
+      return { profile: m.key, label: m.label, spec: m.spec, custom: custom, profiles: Object.keys(mock.config.profiles).concat(["custom"]) };
     }
     r.add("GET", "/v1/mock/machine", "mock", machine);
     r.add("POST", "/v1/mock/machine", "mock", function (req) {
-      var key = (req.body || {}).profile;
-      if (key !== null && !mock.config.profiles[key]) M.fail(400, "usage", "Unknown profile " + JSON.stringify(key) + ".");
+      var b = req.body || {};
+      var key = b.profile;
+      if (key === "custom") {
+        var spec = M.machineSpec.normalize(b.custom);
+        if (!b.custom || typeof b.custom !== "object") M.fail(400, "usage", "A custom computer needs \"custom\": its settings.");
+        if (spec.errors.length) M.fail(400, "usage", spec.errors.join("; ") + ".");
+        mock.doc().machineCustom = spec.profile;
+      } else if (key !== null && !mock.config.profiles[key]) {
+        M.fail(400, "usage", "Unknown profile " + JSON.stringify(key) + ".");
+      }
       mock.doc().machine = key;
       mock.save();
       return machine();

@@ -52,7 +52,7 @@
   /* Which aligner runs, how, and what it costs, on this computer */
   function plan(c) {
     var M = c.M;
-    var mac = M.os === "macos";
+    var mac = M.appleSilicon;
     var native = M.native && c.v.native_aligners !== "off";
     var index = c.flag("mem2-" + c.v.ref);
     var threads = c.v.threads || M.cores;
@@ -155,7 +155,7 @@
       return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.output_profile];
     }, { def: "default", labels: { default: "Default", archive: "Archive", calling: "For calling" } }),
     f.param("native_aligners", "WGS Extract’s aligners", function (c) {
-      return c.M.os === "macos" ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
+      return c.M.appleSilicon ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
     }, {
       def: "auto", labels: { auto: "Use them", off: "Off" },
       when: function (c) {
@@ -225,7 +225,7 @@
   }
 
   T.define({
-    slug: "realign", label: "Realign", ops: ["realign"], group: "Align and call", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
+    slug: "realign", label: "Realign", ops: ["realign"], group: "Align", keywords: "bwa bwa-mem2 bwa-mem3 minimap2 reference build",
     desc: "Aligns a genome again to another reference, so it can be used with tools and sites that expect that build. The original file is kept.",
     learn: "Use it when a genome was delivered on an older build, usually GRCh37, and you want the tools, databases and DNA-test sites that expect GRCh38, or T2T for the hardest regions. Your DNA doesn’t change: the same reads are placed again on the new reference.\n\n" +
       "Every read is aligned again, so it takes hours, and you get a second BAM or CRAM beside the first. Once the new file is checked, Convert can remove the old one. Align FASTQ is the same job for reads that were never aligned; a VCF can’t be realigned, because it holds no reads.",
@@ -274,7 +274,7 @@
   });
 
   T.define({
-    slug: "align", label: "Align FASTQ", ops: ["align"], group: "Align and call", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
+    slug: "align", label: "Align FASTQ", ops: ["align"], group: "Align", keywords: "fastq bwa bwa-mem2 bwa-mem3 minimap2",
     desc: "Places raw reads from a sequencer on a reference genome, making the BAM or CRAM that every other tool reads. The FASTQ files are kept.",
     learn: "Use it when a lab sent only FASTQ files, or when you’d rather start from the raw reads on a reference of your choice. Nothing else can read FASTQ, so this step comes first.\n\n" +
       "It’s the longest job here: hours for a whole genome, less with bwa-mem3 or WGS Extract’s GPU builds. bwa, bwa-mem2 and bwa-mem3 are for short reads and give the same kind of result; minimap2 is for long reads. If you already have a BAM or CRAM, use Realign instead.",

@@ -79,6 +79,13 @@ kept in this browser until you reset it.
   Linux workstation with an NVIDIA GPU, a Linux ARM64 server, or a Windows PC
   or laptop (`shared/shells/v2/machine.js`). Disks, paths, aligners, GPUs and
   which tools are available follow `docs/windows.md` and `docs/linux-arm64.md`.
+  **Custom** builds your own computer (`machine-editor.js`): OS, ARM64 or
+  x86-64 (an Intel Mac loses Metal, the native Apple-silicon builds and
+  Clair3), processor, cores, memory, GPU and its memory, up to six extra
+  volumes, and which optional tool sets are installed.
+  `shared/shells/v2/machine-spec.js` checks it, in the browser and on the
+  shared server alike. On a shared server the choice is the server's, so
+  every browser connected to it follows it.
 - **Region picker** (`shared/shells/v2/region.js`): every tool that takes
   `--region` gets the same control: the whole genome, chromosomes or part of
   one, a gene, or the exact text. Chromosome names follow the file's build

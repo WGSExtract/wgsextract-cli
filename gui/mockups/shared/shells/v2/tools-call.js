@@ -24,7 +24,7 @@
   var READS = ["reads"];
 
   T.define({
-    slug: "call-variants", label: "Call SNPs and indels", ops: ["vcf/snp", "vcf/indel"], group: "Align and call", keywords: "bcftools vcf",
+    slug: "call-variants", label: "Call SNPs and indels", ops: ["vcf/snp", "vcf/indel"], group: "Call variants", keywords: "bcftools vcf",
     desc: "Makes a VCF of the places where this genome differs from the reference: single-letter changes (SNPs) and small insertions and deletions (indels), with bcftools. Fast and good for most uses; DeepVariant is more accurate.",
     learn: "Use it when you have a BAM or CRAM and want a VCF: for annotation, health-related lookups, or a small file to share. bcftools is the quickest caller and does well on a 30× genome. If the lab already sent a VCF, you may not need this.\n\n" +
       "DeepVariant makes fewer mistakes, especially with indels, but takes far longer; GATK matches what many labs run; FreeBayes is a second opinion. Ask for a gVCF too if you’ll combine family members’ genomes later.",
@@ -45,7 +45,7 @@
       f.param("mimalloc", "Faster memory allocator", "wgse-mimalloc: about a quarter faster on Apple Silicon, the same calls", {
         def: "auto", labels: { auto: "Auto", off: "Off" },
         when: function (c) {
-          return c.M.os === "macos";
+          return c.M.appleSilicon;
         },
       }),
       f.param("qc_min_depth", "Warn below depth", "Warns when the mean depth is lower; 0 turns it off. Empty: 15 (3 on Y and mtDNA)", { width: 90 }),
@@ -73,6 +73,7 @@
   /* DeepVariant engines on this computer: [value, label, small] */
   function dvEngines(c) {
     var M = c.M;
+    if (M.os === "macos" && !M.appleSilicon) return [["docker", "Google’s image", "Google’s CPU image in Docker"]];
     if (M.os === "macos") {
       return [["native", "Native", "wgse-deepvariant: no Docker, inference on the Metal GPU"], ["docker", "Google’s image", "In Docker, x86-64 emulated on Apple Silicon: much slower"]];
     }
@@ -86,14 +87,14 @@
     var M = c.M;
     var depth = c.file.depth / 30;
     if (engine === "parabricks") return null;
-    if (engine === "docker") return 60 * depth * (M.os === "macos" ? 3 : 1);
-    if (M.os === "macos") return 3.77 * 6 * (c.file.depth / 35);
+    if (engine === "docker") return 60 * depth * (M.appleSilicon ? 3 : 1);
+    if (M.appleSilicon) return 3.77 * 6 * (c.file.depth / 35);
     if (M.platform === "linux-arm64") return null;
     return (M.nvidia ? 12 : 28) * depth;
   }
 
   T.define({
-    slug: "deepvariant", label: "DeepVariant", ops: ["vcf/deepvariant"], group: "Align and call", keywords: "google deep learning",
+    slug: "deepvariant", label: "DeepVariant", ops: ["vcf/deepvariant"], group: "Call variants", keywords: "google deep learning",
     desc: "Google’s deep-learning variant caller: the most accurate SNP and indel calls, and slower than bcftools.",
     learn: "Use it when accuracy matters more than time: for a VCF you’ll keep, for health-related lookups, or to compare with a lab’s calls. A trained neural network reads images of the reads around each position, and makes fewer mistakes than classic callers, especially with indels.\n\n" +
       "Its model must match the data: there are models for Illumina whole genomes, exomes, PacBio and Nanopore. It’s much slower than bcftools on a CPU and faster with a GPU. For a quick first VCF, bcftools is enough.",
@@ -139,13 +140,13 @@
       };
       if (c.v.model_type === "ONT_R104" && c.M.arch !== "x86-64") out.blocked = c.m.unavailable("dv-ont") || "The Nanopore model needs an x86-64 computer.";
       if (c.v.model_type && c.v.model_type !== "WGS" && c.M.platform === "linux-arm64") out.blocked = c.m.unavailable("dv-models") + ".";
-      if (engine === "docker" && c.M.os === "macos") out.notes.push({ tone: "warn", icon: "clock", id: "docker", title: "Google’s image is x86-64", text: "On Apple Silicon Docker emulates it, several times slower than the native engine, which makes the same calls." });
+      if (engine === "docker" && c.M.appleSilicon) out.notes.push({ tone: "warn", icon: "clock", id: "docker", title: "Google’s image is x86-64", text: "On Apple Silicon Docker emulates it, several times slower than the native engine, which makes the same calls." });
       return out;
     },
   });
 
   T.define({
-    slug: "gatk", label: "GATK HaplotypeCaller", ops: ["vcf/gatk"], group: "Align and call", keywords: "broad java",
+    slug: "gatk", label: "GATK HaplotypeCaller", ops: ["vcf/gatk"], group: "Call variants", keywords: "broad java",
     desc: "The Broad Institute’s variant caller, which many labs use.",
     learn: "Use it to match how many clinical and research labs make their VCFs, or when another tool expects GATK’s output. It rebuilds the sequence locally around each candidate change, which helps with indels.\n\n" +
       "It needs Java and is the slowest caller here. Its gVCFs are the usual route to calling a family together (joint calling). For one person, DeepVariant is usually more accurate and bcftools much faster.",
@@ -172,7 +173,7 @@
   });
 
   T.define({
-    slug: "freebayes", label: "FreeBayes", ops: ["vcf/freebayes"], group: "Align and call", keywords: "haplotype bayesian",
+    slug: "freebayes", label: "FreeBayes", ops: ["vcf/freebayes"], group: "Call variants", keywords: "haplotype bayesian",
     desc: "A haplotype-based caller that finds SNPs, indels and small complex changes together. Useful as a second opinion beside bcftools or DeepVariant.",
     learn: "Use it when you want an independent second set of calls: positions where FreeBayes and bcftools or DeepVariant disagree are the ones worth checking by eye. It considers short stretches of reads together, so it handles changes close to each other well.\n\n" +
       "On its own it’s slower than bcftools and less accurate than DeepVariant, so it’s rarely the first choice. Like the others, it makes a VCF that every annotation tool can read.",
@@ -188,7 +189,7 @@
   });
 
   T.define({
-    slug: "clair3", label: "Clair3", ops: ["vcf/clair3"], group: "Align and call", keywords: "nanopore pacbio long read",
+    slug: "clair3", label: "Clair3", ops: ["vcf/clair3"], group: "Call variants", keywords: "nanopore pacbio long read",
     desc: "A deep-learning caller for Nanopore and PacBio long reads. Its model must match the basecaller that made the reads.",
     learn: "Use it for long-read genomes from Oxford Nanopore or PacBio, where short-read callers do poorly. Its neural network has learned each sequencing chemistry’s typical errors, which is why the model must match how the reads were made.\n\n" +
       "Long reads reach repeats and duplicated genes that short reads can’t, so a long-read VCF covers more of the genome. For short Illumina reads, use bcftools, DeepVariant or GATK instead.",
@@ -201,14 +202,14 @@
       var hours = 33 * regionShare(c) / (c.v.threads || c.M.cores);
       return {
         hours: c.v.reference_evidence === "gvcf" ? hours * 4 : hours, memGB: 16, disk: [[c.m.diskName(c.file), 30 * regionShare(c)]],
-        notes: [{ tone: "info", icon: "info", id: "long", title: "For long reads", text: c.name + "’s file has Illumina short reads; use DeepVariant or bcftools for them." + (c.M.os === "macos" ? " On Apple Silicon Clair3 runs on the CPU only." : ""), action: { label: "DeepVariant", href: "tool-deepvariant.html" } }],
+        notes: [{ tone: "info", icon: "info", id: "long", title: "For long reads", text: c.name + "’s file has Illumina short reads; use DeepVariant or bcftools for them." + (c.M.appleSilicon ? " On Apple Silicon Clair3 runs on the CPU only." : ""), action: { label: "DeepVariant", href: "tool-deepvariant.html" } }],
         blocked: "Clair3 is for Nanopore and PacBio reads, and isn’t installed.",
       };
     },
   });
 
   T.define({
-    slug: "structural-variants", label: "Structural variants", ops: ["vcf/sv"], group: "Align and call", keywords: "delly sniffles pbsv large deletions",
+    slug: "structural-variants", label: "Structural variants", ops: ["vcf/sv"], group: "Call variants", keywords: "delly sniffles pbsv large deletions",
     desc: "Finds large changes that SNP calling misses: deletions, duplications, inversions and moved pieces of DNA, from about 50 letters to millions.",
     learn: "Use it to look beyond small changes: a genome has thousands of structural variants, and together they change more letters than all its SNPs. Delly finds them in short reads from read pairs that sit oddly and reads split across a break; Sniffles and pbsv use long reads, which find far more.\n\n" +
       "Most are common and harmless, so add population frequencies (gnomAD-SV) before looking for rare ones. Short-read calls include false ones and miss many insertions: treat any single call as a lead, not a fact. Copy-number changes gives a depth-based view of the larger deletions and duplications.",
@@ -235,7 +236,7 @@
   });
 
   T.define({
-    slug: "cnv", label: "Copy-number changes", ops: ["vcf/cnv"], group: "Align and call", keywords: "cnv delly copy number",
+    slug: "cnv", label: "Copy-number changes", ops: ["vcf/cnv"], group: "Call variants", keywords: "cnv delly copy number",
     desc: "Finds stretches of the genome present in more or fewer copies than usual, from read depth, with Delly.",
     learn: "Use it to find larger deletions and duplications, usually thousands of letters or more, as stretches where read depth drops to about half or rises above the usual two copies. Even coverage matters, so a 30× whole genome suits it.\n\n" +
       "It complements Structural variants: depth is good at large copy changes, while read pairs and split reads find exact break points and inversions, which don’t change depth. Most CNVs are common, so check how common one is before reading much into it.",
@@ -250,7 +251,7 @@
   });
 
   T.define({
-    slug: "phase", label: "Phase variants", ops: ["vcf/phase"], group: "Align and call", keywords: "whatshap longphase haplotag",
+    slug: "phase", label: "Phase variants", ops: ["vcf/phase"], group: "Call variants", keywords: "whatshap longphase haplotag",
     desc: "Works out which variants came together from the same parent, using reads that span more than one. Needs the person’s reads and a VCF of their variants.",
     learn: "Use it when it matters whether two variants sit on the same copy of a chromosome, for example two changes in one gene: on the same copy, the other copy still works; on different copies, both are affected.\n\n" +
       "Reads only link variants close enough to share a read, so you get phased blocks rather than whole chromosomes; long reads make much longer blocks. With both parents’ genomes, Family trio phases by inheritance instead, and imputation phases statistically from a reference panel.",
@@ -275,7 +276,7 @@
   });
 
   T.define({
-    slug: "trio", label: "Family trio", ops: ["vcf/trio"], group: "Align and call", keywords: "de novo recessive compound heterozygous parents",
+    slug: "trio", label: "Family trio", ops: ["vcf/trio"], group: "Call variants", keywords: "de novo recessive compound heterozygous parents",
     desc: "Looks at a child with both parents: variants new in the child (de novo), and ones inherited from both sides that could matter (recessive, compound heterozygous).",
     learn: "Use it when you have genomes for a child and both biological parents. Comparing the three shows which variants each parent passed on, finds changes that are new in the child, and phases the child’s variants by inheritance.\n\n" +
       "Everyone has around 50 to 100 new mutations, almost all harmless, and many candidates turn out to be sequencing errors. Variants inherited from both sides in one gene matter mainly for rare recessive conditions. This is research, not a diagnosis; a genetic counsellor can explain what a finding means.",
@@ -311,7 +312,7 @@
   });
 
   T.define({
-    slug: "impute", label: "Imputation", ops: ["vcf/impute"], group: "Align and call", keywords: "glimpse beagle low pass kit",
+    slug: "impute", label: "Imputation", ops: ["vcf/impute"], group: "Call variants", keywords: "glimpse beagle low pass kit",
     desc: "Fills in genotypes a low-coverage genome or a genotype VCF didn’t read, from the haplotypes of the 1000 Genomes panel: GLIMPSE2 from reads, Beagle from a VCF of genotypes such as chip calls.",
     learn: "Use it for a low-coverage genome (about 0.5–8×) or a DNA-test kit, to estimate millions of genotypes they didn’t read, from patterns shared with the 3,202 people of the 1000 Genomes panel. It works on GRCh38.\n\n" +
       "Imputed genotypes are estimates with a probability, least certain for rare variants, and only variants the panel holds can be filled in. It adds little to a 30× genome, which already reads nearly every position, and it’s never a substitute for sequencing.",

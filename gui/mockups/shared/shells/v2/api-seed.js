@@ -22,18 +22,13 @@
     };
   };
 
-  function niceTotal(free) {
-    var sizes = [256, 512, 1000, 2000, 4000, 8000, 16000];
-    return sizes.filter(function (s) {
-      return s >= free * 1.3;
-    })[0] || Math.ceil(free * 1.5);
-  }
-
-  /* The pretend computer: a machine.js profile as plain data */
-  M.machineFrom = function (config, key) {
-    var k = key && config.profiles[key] ? key : config.machineKey;
-    var P = config.profiles[k];
-    var systemPath = P.os === "windows" ? "C:/" : P.os === "linux" ? "/home" : "/";
+  /* The pretend computer: a machine.js preset, or "custom" with its own
+   * profile (machine-spec.js), as plain data */
+  M.machineFrom = function (config, key, custom) {
+    var k = key === "custom" && custom ? key : key && config.profiles[key] ? key : config.machineKey;
+    var P = k === "custom" ? M.machineSpec.normalize(custom).profile : config.profiles[k];
+    var niceTotal = M.machineSpec.niceTotal;
+    var systemPath = M.machineSpec.systemPath(P.os);
     return {
       key: k,
       label: P.label,
@@ -48,9 +43,11 @@
       genomesPath: P.genomes[2],
       downloads: P.os === "windows" ? "C:/Users/you/Downloads" : "~/Downloads",
       disks: [
-        { id: "system", name: P.system[0], path: systemPath, base: P.system[1], total: niceTotal(P.system[1]) },
-        { id: "genomes", name: P.genomes[0], path: P.genomes[2], base: P.genomes[1], total: niceTotal(P.genomes[1]) },
-      ],
+        { id: "system", name: P.system[0], path: systemPath, base: P.system[1], total: P.system[2] || niceTotal(P.system[1]) },
+        { id: "genomes", name: P.genomes[0], path: P.genomes[2], base: P.genomes[1], total: P.genomes[3] || niceTotal(P.genomes[1]) },
+      ].concat((P.volumes || []).map(function (v, i) {
+        return { id: "volume" + (i + 1), name: v[0], path: v[2], base: v[1], total: v[3] || niceTotal(v[1]) };
+      })),
     };
   };
 

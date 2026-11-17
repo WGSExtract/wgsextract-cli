@@ -37,7 +37,7 @@
       })) : h("p.v2-small.v2-muted", "Everything WGS Extract can run on this computer is here.")));
     if (limits.length) {
       el.appendChild(h("section.v2-section", { dataset: { annotId: "platform" } },
-        h("h2", "Not available on " + { windows: "Windows", "linux-arm64": "Linux ARM64", macos: "macOS" }[m.machine.platform]),
+        h("h2", "Not available on " + m.machine.platformName),
         h("div.v2-sheet", h("ul.v2-sheet__pad.v2-small", { style: { paddingLeft: "34px", margin: 0 } }, limits.map(function (text) {
           return h("li", text);
         }))),

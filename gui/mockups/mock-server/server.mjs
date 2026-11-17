@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MOCKUPS = path.resolve(HERE, "..");
 const SHELL = path.join(MOCKUPS, "shared/shells/v2");
-const CORE = ["../../data/api-schema", "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin"];
+const CORE = ["../../data/api-schema", "machine-spec", "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin"];
 const USAGE = `Usage: server.mjs [--host 127.0.0.1] [--port 8767] [--state FILE] [--speed N]
 
   --host    address to listen on (0.0.0.0 for other computers)
@@ -62,7 +62,7 @@ export function loadCore() {
 export function loadDemoData(M) {
   const WGSM = { pref: () => null, page: { id: "mock-server" }, emit() {}, on() {} };
   const context = vm.createContext({ window: { WGSM }, console });
-  for (const name of ["state", "machine"]) {
+  for (const name of ["state", "machine-spec", "machine"]) {
     const file = path.join(SHELL, name + ".js");
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }

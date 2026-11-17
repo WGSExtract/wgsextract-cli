@@ -264,7 +264,7 @@ download fields of `progress`.
 | `POST /v1/mock/reset` | Everything back to the seed, clock included |
 | `POST /v1/mock/interrupt` | As if the server stopped: queued and running jobs become `interrupted` |
 | `GET`/`POST /v1/mock/flags` | `{flags, explicit}`; POST `{set: [], unset: [], clear: []}` |
-| `GET`/`POST /v1/mock/machine` | `{profile}`: which `machine.js` computer the shared server pretends to be |
+| `GET`/`POST /v1/mock/machine` | `{profile, custom}`: which `machine.js` computer the server pretends to be. `profile: "custom"` takes `custom: {label, cpu, os, arch, cores, bigCores, ramGB, gpu, gpuGB, system, genomes, volumes, missing}`, checked by `machine-spec.js` (400 with the problems) |
 | `GET /v1/mock/state` | The whole stored state |
 
 ## The demo's starting jobs

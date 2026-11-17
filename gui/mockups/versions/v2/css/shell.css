@@ -279,12 +279,94 @@
   color: var(--c-text);
 }
 
-.v2-mock__machines {
+/* Mockup settings: wide, so presets sit in a grid and controls don't wrap */
+.dialog.v2-mock {
+  width: min(900px, calc(100vw - 32px));
+}
+
+.v2-mock .dialog__body {
   display: flex;
   flex-direction: column;
-  margin: 12px 0;
-  padding: 0;
-  border: 0;
+  gap: 12px;
+}
+
+.v2-mock__h {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.v2-mock__presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+}
+
+.v2-mock__preset {
+  border: 1px solid var(--c-border);
+  border-radius: var(--v2-r);
+}
+
+.v2-mock__more > summary {
+  color: var(--c-text-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.v2-mock__details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.v2-mock__scroll {
+  overflow-x: auto;
+}
+
+.v2-mock__volumes {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.v2-mock__volumes th {
+  padding: 4px 6px;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.v2-mock__volumes td {
+  padding: 3px 6px;
+  vertical-align: middle;
+}
+
+.v2-mock__volumes td:first-child .v2-input {
+  min-width: 110px;
+}
+
+.v2-mock__volumes td:nth-child(2) .v2-input {
+  min-width: 150px;
+}
+
+.v2-mock__sets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+}
+
+.v2-mock .v2-seg {
+  flex-wrap: nowrap;
+}
+
+.v2-mock .v2-seg button {
+  white-space: nowrap;
+}
+
+.v2-mock__footer .v2-spacer {
+  flex: 1;
 }
 
 .v2-main {

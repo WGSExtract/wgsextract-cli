@@ -5,7 +5,7 @@
   "use strict";
   var WGSM = window.WGSM;
   var h = WGSM.h;
-  var GROUPS = ["Align and call", "Quality", "Annotate", "Reports", "Extract", "Lineage"];
+  var GROUPS = ["Align", "Call variants", "Quality", "Annotate", "Reports", "Extract", "Lineage"];
 
   function tools(group) {
     var T = WGSM.v2tools;

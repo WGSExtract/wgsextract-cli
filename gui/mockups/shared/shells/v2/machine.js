@@ -8,17 +8,17 @@
   var WGSM = window.WGSM;
 
   var PROFILES = {
-    "mac-pro": { label: "MacBook Pro", spec: "Apple M2 Pro · 12 cores · 32 GB", os: "macos", arch: "arm64", cores: 12, bigCores: 8, ramGB: 32, gpu: "metal",
+    "mac-pro": { label: "MacBook Pro", cpu: "Apple M2 Pro", spec: "Apple M2 Pro · 12 cores · 32 GB", os: "macos", arch: "arm64", cores: 12, bigCores: 8, ramGB: 32, gpu: "metal",
       system: ["Macintosh HD", 412], genomes: ["Genomes", 1126, "/Volumes/Genomes"], missing: ["gatk", "pharmcat", "cyrius", "clair3", "modkit", "vep"] },
-    "mac-air": { label: "MacBook Air", spec: "Apple M1 · 8 cores · 16 GB", os: "macos", arch: "arm64", cores: 8, bigCores: 4, ramGB: 16, gpu: "metal",
+    "mac-air": { label: "MacBook Air", cpu: "Apple M1", spec: "Apple M1 · 8 cores · 16 GB", os: "macos", arch: "arm64", cores: 8, bigCores: 4, ramGB: 16, gpu: "metal",
       system: ["Macintosh HD", 180], genomes: ["Genomes", 1126, "/Volumes/Genomes"], missing: ["gatk", "pharmcat", "cyrius", "clair3", "modkit", "vep", "deepvariant", "t1k"] },
-    "linux-gpu": { label: "Linux workstation", spec: "Ryzen 9 · 16 cores · 64 GB · RTX 3090 24 GB", os: "linux", arch: "x86-64", cores: 16, bigCores: 16, ramGB: 64, gpu: "nvidia", gpuGB: 24,
+    "linux-gpu": { label: "Linux workstation", cpu: "Ryzen 9", spec: "Ryzen 9 · 16 cores · 64 GB · RTX 3090 24 GB", os: "linux", arch: "x86-64", cores: 16, bigCores: 16, ramGB: 64, gpu: "nvidia", gpuGB: 24,
       system: ["Home", 900], genomes: ["Genomes", 3600, "/mnt/genomes"], missing: ["cyrius", "modkit"] },
-    "linux-arm": { label: "Linux ARM64 server", spec: "Neoverse N2 · 16 cores · 64 GB", os: "linux", arch: "arm64", cores: 16, bigCores: 16, ramGB: 64, gpu: null,
+    "linux-arm": { label: "Linux ARM64 server", cpu: "Neoverse N2", spec: "Neoverse N2 · 16 cores · 64 GB", os: "linux", arch: "arm64", cores: 16, bigCores: 16, ramGB: 64, gpu: null,
       system: ["Home", 600], genomes: ["Genomes", 2000, "/mnt/genomes"], missing: ["clair3", "modkit", "vep"] },
-    windows: { label: "Windows PC", spec: "Core i7 · 12 cores · 32 GB · RTX 4070 12 GB", os: "windows", arch: "x86-64", cores: 12, bigCores: 12, ramGB: 32, gpu: "nvidia", gpuGB: 12,
+    windows: { label: "Windows PC", cpu: "Core i7", spec: "Core i7 · 12 cores · 32 GB · RTX 4070 12 GB", os: "windows", arch: "x86-64", cores: 12, bigCores: 12, ramGB: 32, gpu: "nvidia", gpuGB: 12,
       system: ["C:", 380], genomes: ["Genomes", 1800, "D:/Genomes"], missing: ["cyrius"] },
-    "windows-laptop": { label: "Windows laptop", spec: "Core i5 · 8 cores · 16 GB", os: "windows", arch: "x86-64", cores: 8, bigCores: 8, ramGB: 16, gpu: null,
+    "windows-laptop": { label: "Windows laptop", cpu: "Core i5", spec: "Core i5 · 8 cores · 16 GB", os: "windows", arch: "x86-64", cores: 8, bigCores: 8, ramGB: 16, gpu: null,
       system: ["C:", 210], genomes: ["Genomes", 900, "D:/Genomes"], missing: ["gatk", "pharmcat", "vep-rs"] },
   };
   var DEFAULT = "mac-pro";
@@ -51,21 +51,30 @@
     macos: {
       "dv-ont": "The Nanopore model needs an x86-64 computer",
     },
+    "macos-intel": {
+      clair3: "Clair3 isn’t built for Intel Macs",
+    },
   };
 
+  var SPEC = (window.WGSMMock || globalThis.WGSMMock).machineSpec;
+
+  /* The chosen computer: a preset, or "custom" with its own settings */
   function profileKey() {
     var key = WGSM.v2state.doc.machine;
+    if (key === "custom" && WGSM.v2state.doc.machineCustom) return key;
     return PROFILES[key] ? key : DEFAULT;
   }
 
   var key = profileKey();
-  var P = PROFILES[key];
+  var P = key === "custom" ? SPEC.normalize(WGSM.v2state.doc.machineCustom).profile : PROFILES[key];
   var platform = P.os === "linux" ? "linux-" + P.arch : P.os;
+  var appleSilicon = P.os === "macos" && P.arch === "arm64";
 
   var MACHINE = {
     key: key,
     label: P.label,
     spec: P.spec,
+    cpu: P.cpu,
     os: P.os,
     arch: P.arch,
     platform: platform,
@@ -78,20 +87,29 @@
     gpuGB: P.gpuGB || 0,
     /* Parabricks: Linux x86-64 with an NVIDIA GPU of 16 GB or more */
     parabricks: P.os === "linux" && P.arch === "x86-64" && P.gpu === "nvidia" && P.gpuGB >= 16,
-    /* WGS Extract's own aligner builds: Metal on Apple Silicon; on Linux
+    /* WGS Extract's own aligner builds: Metal on Apple silicon; on Linux
      * x86-64 wgse-bwa (CUDA when there's an NVIDIA GPU) and wgse-bwa-mem3 */
-    native: P.os === "macos" || (P.os === "linux" && P.arch === "x86-64"),
+    native: appleSilicon || (P.os === "linux" && P.arch === "x86-64"),
+    appleSilicon: appleSilicon,
+    platformName: { windows: "Windows", "linux-arm64": "Linux ARM64", "linux-x86-64": "Linux x86-64", macos: appleSilicon ? "Apple silicon" : "Intel Macs" }[platform],
     disks: {},
+    /* Every volume: [name, free GB, path] */
+    volumes: [],
     systemDisk: P.system[0],
     genomesDisk: P.genomes[0],
     genomesPath: P.genomes[2],
     downloads: P.os === "windows" ? "C:/Users/you/Downloads" : "~/Downloads",
     /* Optional Pixi tool sets (pixi.toml [environments]) not installed here */
     missing: P.missing,
-    tools: { docker: P.os !== "windows", "wgse-mimalloc": P.os === "macos" },
+    tools: { docker: P.os !== "windows", "wgse-mimalloc": appleSilicon },
   };
-  MACHINE.disks[P.system[0]] = P.system[1];
-  MACHINE.disks[P.genomes[0]] = P.genomes[1];
+  [[P.system[0], P.system[1], SPEC.systemPath(P.os)], P.genomes].concat(P.volumes || []).forEach(function (v) {
+    MACHINE.disks[v[0]] = v[1];
+    MACHINE.volumes.push([v[0], v[1], v[2]]);
+  });
+
+  /* What this computer's platform can't run */
+  var OWN = P.os === "macos" ? LIMITS[appleSilicon ? "macos" : "macos-intel"] : LIMITS[platform] || {};
 
   /* The optional Pixi environment each tool comes in (pixi.toml) */
   var ENVS = {
@@ -104,9 +122,7 @@
   };
 
   function unavailable(name) {
-    var limits = LIMITS[platform] || {};
-    var mac = P.os === "macos" ? LIMITS.macos : {};
-    if (limits[name] || mac[name]) return limits[name] || mac[name];
+    if (OWN[name]) return OWN[name];
     var env = ENVS[name];
     /* On Apple Silicon DeepVariant is the native wgse-deepvariant build */
     if (env && P.missing.indexOf(env[0]) >= 0) return env[1] + " isn’t installed";
@@ -184,16 +200,24 @@
     /* Optional tool sets missing here: [env, label] */
     missingSets: function () {
       return Object.keys(ENVS).filter(function (k) {
-        return P.missing.indexOf(ENVS[k][0]) >= 0 && !(LIMITS[platform] || {})[k];
+        return P.missing.indexOf(ENVS[k][0]) >= 0 && !OWN[k];
       }).map(function (k) {
         return [ENVS[k][0], ENVS[k][1]];
       });
     },
     /* What this platform can't run at all */
     limits: function () {
-      var own = LIMITS[platform] || {};
-      return Object.keys(own).map(function (k) {
-        return own[k];
+      return Object.keys(OWN).map(function (k) {
+        return OWN[k];
+      });
+    },
+    /* Every optional tool set: [env, label] */
+    envSets: function () {
+      var seen = {};
+      return Object.keys(ENVS).map(function (k) {
+        return ENVS[k];
+      }).filter(function (e) {
+        return !seen[e[0]] && (seen[e[0]] = true);
       });
     },
     /* The Pixi environment that provides a tool, for install hints */
@@ -222,15 +246,27 @@
     outdir: function (file) {
       return native(dir(file) + "/");
     },
-    /* Choose the pretend computer; the page reloads to show it */
-    choose: function (profile) {
+    /* Choose the pretend computer (a preset key, or "custom" with its
+     * settings); the page reloads to show it */
+    choose: function (profile, custom) {
       WGSM.v2state.doc.machine = profile;
+      if (custom) WGSM.v2state.doc.machineCustom = SPEC.normalize(custom).profile;
       WGSM.v2state.save();
+    },
+    /* The saved custom computer, or null */
+    custom: function () {
+      return WGSM.v2state.doc.machineCustom || null;
+    },
+    /* This computer as plain profile data, for the mock server */
+    profile: function () {
+      return JSON.parse(JSON.stringify(P));
     },
     /* The static pages' Mac-specific words, for the chosen computer */
     localize: function () {
       if (key === DEFAULT) return;
-      var pairs = [["Macintosh HD", MACHINE.systemDisk], ["/Volumes/Genomes", MACHINE.genomesPath]];
+      var pairs = [["Macintosh HD", MACHINE.systemDisk], ["/Volumes/Genomes", MACHINE.genomesPath],
+        ["412 GB free", gb(P.system[1]) + " free"], ["1.1 TB free", gb(P.genomes[1]) + " free"],
+        ["on Genomes", "on " + MACHINE.genomesDisk], ["to Genomes", "to " + MACHINE.genomesDisk]];
       if (MACHINE.os !== "macos") pairs.push(["This Mac", "This PC"], ["this Mac", "this PC"], ["⌘K", "Ctrl K"]);
       WGSM.v2state.replaceWords(pairs);
     },

@@ -119,23 +119,24 @@
   /* Review controls, not app UI: which computer the mockup pretends to be,
    * the simulated clock and server (when present), and a reset */
   function mockDialog() {
-    var profiles = WGSM.v2machine.profiles;
-    return h("dialog.dialog", { id: "v2-mock", "aria-labelledby": "v2-mock-title", dataset: { v2NoTerms: "" } },
+    var editor = WGSM.v2machineEditor.build();
+    return h("dialog.dialog.v2-mock", { id: "v2-mock", "aria-labelledby": "v2-mock-title", dataset: { v2NoTerms: "" } },
       h("div.dialog__header", h("h2.dialog__title", { id: "v2-mock-title" }, "Mockup settings")),
       h("div.dialog__body",
-        h("p.v2-small.v2-muted", "Not part of the app. Pretend WGS Extract runs on another computer to see how pages, estimates and tools change."),
-        h("fieldset.v2-mock__machines", h("legend.v2-small", "Computer"), Object.keys(profiles).map(function (key) {
-          var pr = profiles[key];
-          return h("label.v2-choice",
-            h("input.v2-check", { type: "radio", name: "v2-machine", value: key, checked: key === M().key ? true : null }),
-            h("span.v2-choice__title", pr.label), h("span.v2-choice__aside", { "aria-hidden": "true" }, { macos: "macOS", linux: "Linux", windows: "Windows" }[pr.os]),
-            h("span.v2-choice__desc", pr.spec));
-        })),
-        h("div", { dataset: { v2MockSlot: "" } }),
-        h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", dataset: { v2Reset: "", toast: "The demo is back to how it started" } }, "Reset the demo: names, files, options")),
-      h("div.dialog__footer",
+        h("p.v2-small.v2-muted", "Not part of the app. Pretend WGS Extract runs on another computer, or build your own, to see how pages, estimates and tools change."),
+        editor.el,
+        h("section", h("h3.v2-mock__h", "Simulation"), h("div", { dataset: { v2MockSlot: "" } }))),
+      h("div.dialog__footer.v2-mock__footer",
+        h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", dataset: { v2Reset: "", toast: "The demo is back to how it started" } }, "Reset the demo"),
+        h("span.v2-spacer"),
         h("button.v2-btn", { type: "button", "data-close": "" }, "Cancel"),
-        h("button.v2-btn.v2-btn--primary", { type: "button", "data-close": "", dataset: { v2Machine: "" } }, "Use this computer")));
+        h("button.v2-btn.v2-btn--primary", { type: "button", onclick: function (event) {
+          var dialog = event.currentTarget.closest("dialog");
+          editor.apply().then(function (reload) {
+            if (reload) location.reload();
+            else if (!WGSM.qs(".v2-notice:not([hidden])", dialog)) WGSM.qs("[data-close]", dialog).click();
+          });
+        } }, "Use this computer")));
   }
 
   function tabbar() {
@@ -205,13 +206,7 @@
       if (event.target.matches("[data-v2-commands]")) commands(event.target.checked);
       recount();
     });
-    document.addEventListener("click", function (event) {
-      if (!event.target.closest("[data-v2-machine]")) return;
-      var pick = WGSM.qs('input[name="v2-machine"]:checked');
-      if (!pick || pick.value === M().key) return;
-      WGSM.v2machine.choose(pick.value);
-      location.reload();
-    });
+    WGSM.v2machineEditor.follow();
     /* Order matters: saved state renames and restores options first, then
      * the modules that read them start */
     WGSM.v2state.apply();

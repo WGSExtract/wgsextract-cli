@@ -35,8 +35,8 @@
         else temp[j.plan.tempDisk] += j.plan.tempGB;
       });
       return m.disks.map(function (d) {
-        var free = d.base + seed[d.id] - used[d.id];
-        return { id: d.id, name: d.name, path: d.path, total_gb: d.total, free_gb: round(free), held_gb: round(temp[d.id]), system: d.id === "system" };
+        var free = d.base + (seed[d.id] || 0) - (used[d.id] || 0);
+        return { id: d.id, name: d.name, path: d.path, total_gb: d.total, free_gb: round(free), held_gb: round(temp[d.id] || 0), system: d.id === "system" };
       });
     }
 

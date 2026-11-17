@@ -51,6 +51,7 @@
         },
         realNow: Date.now,
         machineKey: WGSM.v2machine.machine.key,
+        machineCustom: WGSM.v2machine.machine.key === "custom" ? WGSM.v2machine.profile() : null,
       });
     }
     return local;

@@ -32,7 +32,7 @@
 
     /* The machine, its files and the people as they are now */
     function ctx() {
-      var machine = M.machineFrom(config, doc.machine || opts.machineKey);
+      var machine = doc.machine ? M.machineFrom(config, doc.machine, doc.machineCustom) : M.machineFrom(config, opts.machineKey, opts.machineCustom);
       var people = {};
       Object.keys(config.people).concat(Object.keys(doc.people)).forEach(function (id) {
         people[id] = Object.assign({ name: id, note: "" }, config.people[id], doc.people[id]);
