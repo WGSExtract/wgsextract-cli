@@ -40,7 +40,7 @@
   /* A shell's own modules, loaded before it (shared/shells/<shell>/) */
   var SHELL_MODULES = {
     v2: ["state", "machine-spec", "machine", "machine-editor", "glossary-data", "glossary", "learn", "region", "../../data/api-schema", "requests", "tools", "tools-align", "tools-call", "tools-quality",
-      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog", "install",
+      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "tools-files", "tools-inspect", "tools-vcf", "tools-long", "catalog", "install",
       "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-server",
       "api-clock", "api-bind", "api-jobs-cards", "api-jobs"],
   };

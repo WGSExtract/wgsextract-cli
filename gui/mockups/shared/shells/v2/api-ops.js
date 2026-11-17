@@ -75,6 +75,42 @@
     "ref/cadd": ["net", "Download CADD", 85, "Install CADD scores"],
     "ref/alphamissense": ["net", "Download AlphaMissense", 0.6, "Install AlphaMissense scores"],
     "ref/spliceai": ["net", "Download SpliceAI", 1, "Install SpliceAI scores"],
+    "bam/to-bam": ["job", "Convert to BAM", 40, "Convert an alignment to indexed BAM"],
+    "bam/to-ubam": ["job", "Make uBAM", 40, "Remove alignments and sort by read name"],
+    "bam/unalign": ["job", "Export FASTQ", 50, "Write name-matched paired FASTQs"],
+    "bam/sort": ["job", "Sort and index", 25, "Coordinate-sort a new copy"],
+    "bam/unsort": ["job", "Mark unsorted", 15, "Copy with an unsorted header"],
+    "bam/unindex": ["job", "Remove indexes", 0.1, "Delete index files, keeping the reads"],
+    "bam/merge": ["job", "Merge runs", 35, "Merge sorted files from one sample"],
+    "bam/identify": ["query", "Identify reference", 0.1, "Read the sequence dictionary"],
+    "repair/ftdna-bam": ["job", "Repair FTDNA read names", 20, "Write a repaired BAM copy"],
+    "repair/ftdna-vcf": ["job", "Repair FTDNA FILTER labels", 1, "Write a repaired plain VCF"],
+    "sample/set": ["job", "Set sample overrides", 0.1, "Record sex and platform overrides"],
+    "sample/unset": ["job", "Remove sample overrides", 0.1, "Return selected facts to detection"],
+    "sign/create": ["job", "Create checksums", 5, "Hash files and optionally sign the manifest"],
+    "sign/verify": ["job", "Verify checksums", 5, "Verify file hashes and signature trust"],
+    "info/coverage-sample": ["job", "Sample coverage", 2, "Estimate coverage from sampled windows"],
+    "info/chip": ["query", "Identify chip", 0.1, "Identify microarray vendor and revision"],
+    "analyze/comprehensive": ["job", "Whole-sample analysis", 120, "Inspect, call, annotate and filter"],
+    "analyze/batch-gen": ["job", "Prepare batch CSV", 0.1, "Group local files into samples"],
+    "qc/multiqc": ["job", "MultiQC", 2, "Combine existing quality reports"],
+    "qc/multiqc-metrics": ["job", "Export MultiQC metrics", 0.2, "Export custom-content files"],
+    "vcf/filter": ["job", "Filter variants", 2, "Keep matching variants in a new VCF"],
+    "vcf/annotate": ["job", "Copy annotations", 3, "Copy columns from a local source"],
+    "vcf/chain-annotate": ["job", "Annotation chain", 20, "Apply installed annotation steps"],
+    "vcf/acmg": ["job", "Research ACMG", 8, "Research-only automated classification"],
+    "vcf/gerp": ["job", "GERP++", 3, "Annotate evolutionary constraint"],
+    "vcf/phylop": ["job", "phyloP", 3, "Annotate conservation and acceleration"],
+    "vcf/pharmgkb": ["job", "PharmGKB", 3, "Annotate drug-response associations"],
+    "vcf/sv-freq": ["job", "SV frequencies", 4, "Match structural variants to population data"],
+    "vcf/to-fasta": ["job", "Consensus FASTA", 5, "Apply variants to the reference"],
+    "extract/bam-subset": ["job", "Random subset", 15, "Downsample reads to a new BAM"],
+    "extract/y-mt-extract": ["job", "Y and mtDNA reads", 3, "Copy Y and mitochondrial reads"],
+    "panel/bed": ["job", "Gene-panel BED", 0.1, "Pad and merge local gene coordinates"],
+    basecall: ["job", "Basecall signal", 180, "Turn POD5 into an unaligned BAM"],
+    "pet-align": ["job", "Align pet reads", 240, "Align and call a dog or cat genome"],
+    "ref/gerp": ["net", "Download GERP++", 3, "Install conservation scores"],
+    "ref/phylop": ["net", "Download phyloP", 10, "Install conservation scores"],
   };
 
   function has(table, key) {
@@ -146,8 +182,9 @@
 
   /* Default outputs: [{path, gb, kind, role, library}] */
   function outputsFor(op, p, file, machine) {
-    var stem = file ? file.stem : base(p.input || "output").replace(/\..*$/, "");
-    var dir = p.outdir ? String(p.outdir).replace(/[\\/]$/, "") : file ? dirOf(file.path) : machine.workspace + "/output";
+    var source = p.input || p.r1 || (p.inputs && p.inputs[0]) || p.manifest || (p.paths && p.paths[0]);
+    var stem = file ? file.stem : base(source || "output").replace(/\..*$/, "");
+    var dir = p.outdir ? String(p.outdir).replace(/[\\/]$/, "") : file ? dirOf(file.path) : source ? dirOf(source) : machine.workspace + "/output";
     var size = file ? file.size || 1 : 1;
     var ext = String(p.format || (p.output_profile && p.output_profile !== "default" ? "CRAM" : "BAM")).toLowerCase();
     switch (op) {
@@ -156,9 +193,10 @@
       case "align":
         return [{ path: dir + "/" + stem.replace(/_R?1(_001)?$/, "") + "_aligned." + ext, gb: Math.round(size * (ext === "cram" ? 0.44 : 1.1)), kind: ext, role: "output", library: true }];
       case "bam/to-cram":
-        return [{ path: dir + "/" + stem + ".cram", gb: Math.round(size * 0.38), kind: "cram", role: "output", library: true }];
+        return [{ path: dir + "/" + stem + ".cram", gb: Math.round(size * (file && file.tag === "CRAM" ? 1 : 0.38)), kind: "cram", role: "output", library: true }];
       case "bam/index":
-        return [{ path: (file ? file.path : p.input) + ".bai", gb: 0.009, kind: "bai", role: "index" }];
+        var index = /\.cram$/i.test(p.input) ? "crai" : "bai";
+        return [{ path: (file ? file.path : p.input) + "." + index, gb: 0.009, kind: index, role: "index" }];
       case "microarray":
         return [
           { path: dir + "/" + stem + "_CombinedKit_v5.txt", gb: 0.024, kind: "tsv", role: "kit" },
@@ -171,8 +209,69 @@
         return [{ path: dir + "/" + stem + "." + op.split("/")[1] + ".vcf.gz", gb: 0.15, kind: "vcf", role: "calls" }];
       default:
         if (has(OPS, op) && OPS[op][0] === "net") return netOutputs(op, p, machine);
+        var result = operationOutputs(op, p, file, dir, stem, size);
+        if (result) return result;
         return [{ path: dir + "/" + stem + "_" + op.replace(/\//g, "_") + ".json", gb: 0.001, kind: "json", role: "report" }];
     }
+  }
+
+  /* Mock sizes, not benchmark claims. Read copies scale with the source;
+   * annotations scale with the VCF. No fabricated ".op-name" extensions. */
+  function operationOutputs(op, p, file, dir, stem, size) {
+    function output(name, gb, kind) {
+      return [{ path: p.output || dir + "/" + name, gb: gb, kind: kind, role: "output" }];
+    }
+    var bamSize = size * (file && file.tag === "CRAM" ? 3 : 1);
+    if (op === "bam/unindex" || op === "sign/verify" || op === "sample/show" || op === "info/chip" || op === "bam/identify") return [];
+    if (/^sample\//.test(op)) return output("wgsextract.sample.toml", 0.000001, "toml");
+    if (op === "bam/to-bam") return output(stem + ".bam", bamSize, "bam");
+    if (op === "bam/to-ubam") return output(stem + "_unaligned.bam", bamSize * 0.8, "bam");
+    if (op === "bam/unalign") return ["R1", "R2"].map(function (mate) {
+      return { path: p[mate.toLowerCase()] || dir + "/" + stem + "_" + mate + ".fastq.gz", gb: bamSize * 0.45, kind: "fastq", role: "output" };
+    });
+    if (op === "bam/sort" || op === "bam/unsort") {
+      var kind = file && file.tag === "CRAM" ? "cram" : "bam";
+      return output(stem + (op === "bam/sort" ? "_sorted." : "_unsorted.") + kind, size, kind);
+    }
+    if (op === "bam/merge") return output("merged" + (p.cram ? ".cram" : ".bam"), bamSize * (p.inputs || []).length * (p.cram ? 0.38 : 1), p.cram ? "cram" : "bam");
+    if (op === "repair/ftdna-bam") return output(stem + "_repaired.bam", bamSize, "bam");
+    if (op === "repair/ftdna-vcf") return output(stem + "_repaired.vcf", size * 4, "vcf");
+    if (op === "sign/create") return output("SHA256SUMS", 0.000001, "text");
+    if (op === "analyze/batch-gen") return output("batch.csv", 0.00001, "csv");
+    if (op === "qc/multiqc") return [{ path: (p.outdir || p.input) + "/multiqc_report.html", gb: 0.005, kind: "html", role: "report" }];
+    if (op === "qc/multiqc-metrics") return [{ path: (p.outdir || p.input) + "/wgsextract_metrics_mqc.json", gb: 0.0001, kind: "json", role: "report" }];
+    if (op === "panel/bed") return p.list_presets ? [] : output("panel.bed", 0.0001, "bed");
+    if (op === "extract/bam-subset") return output(stem + "_subset.bam", bamSize * (p.fraction || 0.1), "bam");
+    if (op === "extract/y-mt-extract") return output(stem + "_Y_MT.bam", bamSize * 0.01, "bam");
+    if (op === "extract/region") {
+      var target = { mt: "MT", y: "Y", ymt: "Y_MT", autox: "autosomes_X" }[p.target];
+      return String(p.formats || "bam").split(",").map(function (format) {
+        return { path: dir + "/" + stem + "_" + (format === "bam" && p.target === "mt" ? "mtDNA" : target) + "." + (format === "vcf" ? "vcf.gz" : format),
+          gb: (format === "bam" ? bamSize : format === "fasta" ? 3 : 0.2) * (p.target === "autox" ? 0.98 : p.target === "mt" ? 0.0005 : 0.01), kind: format, role: "output" };
+      });
+    }
+    if (op === "basecall") {
+      var model = base(p.model || "hac").replace(/[^a-zA-Z0-9._-]/g, "_");
+      return output(stem + "." + model + ".bam", size * 0.25, "bam");
+    }
+    if (op === "pet-align") {
+      var petStem = stem.replace(/_R?1(_001)?$/, "") + "_" + p.species;
+      var petKind = String(p.format || "BAM").toLowerCase();
+      return output(petStem + "." + petKind, size * (petKind === "cram" ? 0.4 : 1), petKind)
+        .concat(output(petStem + ".vcf.gz", 0.15, "vcf"));
+    }
+    if (op === "analyze/comprehensive") return p.dry_run ? [] : output("significant_SNP_" + stem + ".vcf.gz", 0.01, "vcf");
+    if (op === "vcf/to-fasta") return output(stem + "_consensus.fa.gz", p.region ? 0.001 : 0.9, "fasta");
+    var names = { filter: "filtered", annotate: "annotated", "chain-annotate": "chain_annotated", acmg: "acmg_annotated",
+      gerp: "gerp_annotated", phylop: "phylop_annotated", pharmgkb: "pharmgkb_annotated", "sv-freq": "sv_freq_annotated" };
+    var name = names[op.replace(/^vcf\//, "")];
+    if (name) {
+      var results = output(name + ".vcf.gz", size * (op === "vcf/filter" ? 0.2 : 1.3), "vcf");
+      if (op === "vcf/acmg") results = results.concat(output("acmg_summary.json", 0.0001, "json"));
+      if (op === "vcf/sv-freq") results = results.concat(output("sv_freq.tsv", 0.001, "tsv"));
+      return results;
+    }
+    return null;
   }
 
   function netOutputs(op, p, machine) {
@@ -230,7 +329,7 @@
     if (!o) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + ".");
     var p = params || {};
     var hint = p._mock || {};
-    var file = fileFor(config, p.input || p.vcf_input);
+    var file = fileFor(config, p.input || p.vcf_input || p.r1 || (p.inputs && p.inputs[0]));
     var personId = hint.person !== undefined ? hint.person : file ? file.person : null;
     var person = personId && config.people[personId];
     var who = person ? first(person.name) : "";

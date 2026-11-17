@@ -183,5 +183,51 @@
     },
   });
 
+  T.define({
+    slug: "read-subset", label: "Random read subset", ops: ["extract/bam-subset"], group: "Extract",
+    lesson: { href: "learn-sequencing.html#depth", label: "Read depth & missing calls" },
+    desc: "Keep a random fraction of the reads in a smaller BAM, optionally within one region.",
+    learn: "Use it to try a pipeline on less data, or study what lower depth does to your results. This is downsampling, not compression: discarded reads are missing from the new file.\n\nKeep the original genome for real analysis. A random slice can lose rare evidence and is not guaranteed to preserve every chromosome’s depth.",
+    accepts: READS, file: "reginald", button: "Make subset",
+    fields: [f.number("fraction", "Fraction to keep", "0.1 keeps about 10%; greater than 0 and at most 1", 0.1, { send: true, max: 1 }), f.region()],
+    more: [f.threads(), f.sortMemory()],
+    requests: function (c, base) { return [base("extract/bam-subset", { fraction: c.v.fraction === "" ? 0.1 : c.v.fraction })]; },
+    run: function (c) {
+      return { hours: null, timeText: "minutes", disk: [[c.m.diskName(c.file), c.file.size * (Number(c.v.fraction) || 0.1) * (c.file.tag === "CRAM" ? 3 : 1)]],
+        blocked: c.v.fraction === "" || c.v.fraction <= 0 || c.v.fraction > 1 ? "Choose a fraction greater than 0 and at most 1." : null,
+        makes: "Makes " + c.file.stem + "_subset.bam; the original stays." };
+    },
+  });
+
+  T.define({
+    slug: "chromosome-set", label: "Chromosome sets", ops: ["extract/region", "extract/y-mt-extract"], group: "Extract",
+    lesson: { href: "learn-ancestry.html#lineage", label: "Y & mitochondrial inheritance" },
+    desc: "Extract mtDNA, Y, both together, or chromosomes 1–22 plus X, as reads, variants or sequence.",
+    learn: "Use it for a standard chromosome group instead of typing regions. BAM keeps the read evidence; VCF calls variants; FASTA applies those calls to the matching reference.\n\nThe combined Y + mtDNA BAM can be made directly without calling variants. A female sample usually has no meaningful Y evidence. Extracting only part of a genome does not make it anonymous.",
+    accepts: READS, file: "reginald", button: "Extract",
+    fields: [
+      f.param("target", "Chromosomes", "", { labels: { mt: "Mitochondrial", y: "Y", ymt: "Y + mitochondrial", autox: "1–22 + X" } }),
+      f.select("formats", "Output", "VCF and FASTA need the matching installed reference",
+        [["bam", "BAM reads"], ["vcf", "VCF variants"], ["fasta", "FASTA sequence"], ["bam,vcf,fasta", "All three"]], "bam"),
+      f.toggle("direct_ymt", "Combined reads only", "Use the direct Y + mtDNA BAM extraction", false, {
+        ui: true, when: function (c) { return c.v.target === "ymt" && c.v.formats === "bam"; },
+      }),
+    ],
+    more: [f.param("poz", "Reliable Y regions only", "CombBED/McDonald/Poznik regions; GRCh37/38 only"),
+      f.param("ybrowse", "Named Y SNPs", "Installed yBrowse targets; GRCh38 only"), f.threads(), f.sortMemory()],
+    requests: function (c, base) {
+      return [c.v.target === "ymt" && c.v.formats === "bam" && c.v.direct_ymt
+        ? base("extract/y-mt-extract") : base("extract/region", { target: c.v.target, formats: c.v.formats })];
+    },
+    run: function (c) {
+      var y = c.v.target === "y" || c.v.target === "ymt";
+      return { timeText: c.v.target === "autox" && c.v.formats !== "bam" ? "hours on a whole genome" : "minutes",
+        blocked: y && noY(c) ? "No Y chromosome in this genome." :
+          c.v.poz && c.file.build !== "GRCh37" && c.file.build !== "GRCh38" ? "Reliable Y regions need GRCh37 or GRCh38." :
+            c.v.ybrowse && c.file.build !== "GRCh38" ? "Named Y SNPs need GRCh38." : null,
+        makes: "Saves the selected chromosome group beside the input; the whole genome stays." };
+    },
+  });
+
   WGSM.v2extract = { noY: noY };
 })();

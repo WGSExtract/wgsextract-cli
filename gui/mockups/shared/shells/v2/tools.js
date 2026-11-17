@@ -6,7 +6,9 @@
  * ["reads"|"vcf"|"fastq"|"kit"], file, requires: [tools this computer must
  * have], learn (plain-language "what is this for", paragraphs split by blank
  * lines), lesson (optional {href, label}), fields, more, moreTitle, checklist, extra(ctx), requests(ctx, base),
- * run(ctx) }. Field keys are the operations' Params names (requests.js checks
+ * run(ctx) }. noInput hides the library-file picker for explicit path inputs;
+ * allowUnready lets inspection and repair run on files needing attention.
+ * Field keys are the operations' Params names (requests.js checks
  * them against the API schema); a field the API doesn't take says ui: true.
  * requests(ctx, base) returns [{op, params}] when a run isn't one request
  * of the first operation; base(op, extra) builds one from the fields.
@@ -140,10 +142,12 @@
       return h("label.v2-switch", h("input", { type: "checkbox", role: "switch", "aria-label": label, checked: field.def || null, dataset: { v2Key: field.key } }));
     }
     if (field.type === "number") {
-      return h("input.v2-input", { type: "number", min: 0, value: field.def, placeholder: field.placeholder || null, "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 100) + "px" } });
+      return h("input.v2-input", { type: "number", min: field.min === undefined ? 0 : field.min, max: field.max === undefined ? null : field.max,
+        step: field.spec && field.spec.type === "number" ? "any" : 1, value: field.def, placeholder: field.placeholder || null,
+        "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 100) + "px" } });
     }
     if (field.type === "text") {
-      return h("input.v2-input" + (field.mono ? ".v2-input--mono" : ""), { type: "text", placeholder: field.placeholder || "", "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 240) + "px" } });
+      return h("input.v2-input" + (field.mono ? ".v2-input--mono" : ""), { type: "text", value: field.def || "", placeholder: field.placeholder || "", "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 240) + "px" } });
     }
     if (field.type === "region") return WGSM.v2region.build(field);
     return h("span.v2-small.v2-mono", { dataset: { v2Show: field.key } });
@@ -262,7 +266,7 @@
         text: missing ? "It’s an optional tool set. WGS Extract checks for tools but doesn’t install them: pixi install --locked -e " + ctx.m.env(tool) + "." : why + ". Run it on a computer that has it; this app can connect to one.",
         action: missing ? { label: "How to install", href: "install.html" } : null });
     });
-    if (!ctx.m.ready(ctx.file) && !out.blocked) {
+    if (!def.noInput && !def.allowUnready && !ctx.m.ready(ctx.file) && !out.blocked) {
       out.blocked = "Fix this file first.";
       (out.notes = out.notes || []).unshift({ tone: "warn", icon: "wrench", id: "fix", title: ctx.name + "’s " + ctx.file.tag + " can’t be used yet",
         text: "It has no index, and its reference isn’t installed.", action: { label: "Fix it · 9 min", set: ctx.file.needs, toast: "Downloading hs38d1 and indexing the BAM. See Jobs." } });
@@ -294,7 +298,7 @@
     var go = WGSM.qs("[data-v2-go]");
     go.textContent = out.button || def.button || "Start";
     go.disabled = !!out.blocked;
-    go.dataset.toast = "Queued: " + (out.jobName || def.label + " for " + ctx.name) + ". See Jobs.";
+    go.dataset.toast = "Queued: " + (out.jobName || def.label + (def.noInput ? "" : " for " + ctx.name)) + ". See Jobs.";
     WGSM.icons.hydrate(root);
     WGSM.v2terms.wrap(root);
   }

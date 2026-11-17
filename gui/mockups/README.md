@@ -68,11 +68,20 @@ kept in this browser until you reset it.
   it after the API changes). A run is one or more `POST /v1/ops/{op}`
   requests, and the command line beside it is derived from those requests.
   Changing an option, the file or the computer recomputes the requests, the
-  time, memory and disk, and the checks before it starts. Rates come from `docs/hardware.md` and
+  time, memory and disk, and the checks before it starts. Documented rates come from `docs/hardware.md` and
   `docs/resource_estimates.md` and are noted where they are used; without a
   measured rate a page says what the CLI's help says ("minutes on a 30x
   genome"). The tool pages themselves are thin shells; only their
   `data-page-id` (for notes) and `data-tool` differ.
+  The catalog also covers file conversion and repair, sample overrides,
+  checksum manifests, batch preparation, specialist VCF annotations,
+  chromosome sets, Nanopore basecalling and adaptive-sampling panels, and
+  dog/cat alignment. Related operations share a page; job links return to
+  that page. Folder and signal inputs are paths on the connected computer,
+  not browser uploads. Research ACMG classification and optional public
+  Dorado model downloads require explicit acknowledgement.
+  File-housekeeping estimates are illustrative, scaled to file size and CPU
+  threads, not benchmark claims.
 - **Demo state** (`shared/shells/v2/state.js`): rename or remove a person,
   say whose the unassigned reads are, pick files and options, fix Alex's
   BAM or download bwa-mem2's index. Pages mark what changes with

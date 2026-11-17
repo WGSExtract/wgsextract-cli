@@ -98,14 +98,16 @@
       if (value === undefined) return;
       var unset = f.default === null || f.default === undefined;
       var base = unset ? (field.send ? undefined : coerce(f, field.def)) : f.default;
-      if (JSON.stringify(value) === JSON.stringify(base)) return;
+      if (s.required.indexOf(field.key) < 0 && JSON.stringify(value) === JSON.stringify(base)) return;
       if (f.type === "boolean" && !value && base === undefined) return;
-      out[field.key] = f.path ? M.realPath(value) : value;
+      out[field.key] = f.path ? (Array.isArray(value) ? value.map(M.realPath) : M.realPath(value)) : value;
     });
     var file = ctx.file;
-    if (file.kind === "vcf" && s.fields.vcf_input) out.vcf_input = M.realPath(M.path(file));
-    else if (s.fields.input && file.kind !== "fastq") out.input = M.realPath(M.path(file));
-    if (s.fields.outdir && !out.outdir) out.outdir = M.realPath(M.outdir(file));
+    if (!ctx.def.noInput) {
+      if (file.kind === "vcf" && s.fields.vcf_input) out.vcf_input = M.realPath(M.path(file));
+      else if (s.fields.input && file.kind !== "fastq") out.input = M.realPath(M.path(file));
+      if (s.fields.outdir && !out.outdir) out.outdir = M.realPath(M.outdir(file));
+    }
     return Object.assign(out, extra || {});
   }
 
@@ -169,14 +171,13 @@
 
   function start(ctx, out) {
     var requests = build(ctx);
-    var disk = (out.disk || [])[0];
+    var label = out.jobName || ctx.def.label + (ctx.def.noInput ? "" : " for " + ctx.name);
     return Promise.all(requests.map(function (req) {
       var mock = {
-        label: requests.length > 1 ? (out.jobName || ctx.def.label + " for " + ctx.name) + " · " + req.op : out.jobName || ctx.def.label + " for " + ctx.name,
-        person: ctx.file.person,
+        label: requests.length > 1 ? label + " · " + req.op : label,
+        person: ctx.def.noInput ? null : ctx.file.person,
         hours: runHours(out) / requests.length,
         memGB: out.memGB,
-        outputs: disk ? [{ path: ctx.m.outdir(ctx.file) + ctx.file.stem + "." + req.op.replace(/\//g, "-"), gb: disk[1] / requests.length, disk: disk[0] }] : [],
       };
       return checked(WGSM.v2api.post("/v1/ops/" + req.op, Object.assign({}, req.params, { _mock: mock })));
     }));
