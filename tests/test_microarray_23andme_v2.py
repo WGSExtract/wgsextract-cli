@@ -5,7 +5,7 @@ from wgsextract_cli.commands.microarray import (
     PACKAGED_ASSETS,
     _template_search_roots,
 )
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     get_template_format,
     resolve_format_key,

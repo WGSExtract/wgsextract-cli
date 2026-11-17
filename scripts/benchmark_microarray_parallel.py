@@ -17,7 +17,7 @@ from pathlib import Path
 import psutil
 
 from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
-from wgsextract_cli.core.microarray_utils import get_template_format
+from wgsextract_cli.core.microarray.templates import get_template_format
 from wgsextract_cli.core.paths import absolute_path
 
 

@@ -29,7 +29,7 @@ from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
 from wgsextract_cli.core.microarray.coordinates import sole_placement
 from wgsextract_cli.core.microarray.resource_identity import resource_identity
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _chrom_for_liftover,
     _resolve_templates_roots,

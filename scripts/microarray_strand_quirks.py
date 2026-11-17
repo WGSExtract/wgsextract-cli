@@ -41,18 +41,18 @@ from microarray_chip_catalogue import (  # noqa: E402
 )
 
 from wgsextract_cli.core.microarray.quirks import STRAND_TABLE  # noqa: E402
-from wgsextract_cli.core.microarray_revisions import (  # noqa: E402
-    _COLUMN_LABELS,
-    CATALOGUE,
-    Revision,
-    load_catalogue,
-)
-from wgsextract_cli.core.microarray_utils import (  # noqa: E402
+from wgsextract_cli.core.microarray.templates import (  # noqa: E402
     _resolve_templates_for_format,
     chr_to_int,
     get_template_format,
     template_rows,
     vendor_chrom,
+)
+from wgsextract_cli.core.microarray_revisions import (  # noqa: E402
+    _COLUMN_LABELS,
+    CATALOGUE,
+    Revision,
+    load_catalogue,
 )
 from wgsextract_cli.core.utils import WGSExtractError  # noqa: E402
 

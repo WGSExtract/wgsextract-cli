@@ -10,7 +10,7 @@ import logging
 import subprocess
 from typing import Any
 
-from wgsextract_cli.core.alt_mapping import alt_unaware, alt_unaware_message
+from wgsextract_cli.core.alignment.alt_mapping import alt_unaware, alt_unaware_message
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index

@@ -25,7 +25,7 @@ from tests.htslib_helpers import (
 from tests.yleaf_helpers import native_tables as native_tables
 from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
-from wgsextract_cli.core.mito_reference import (
+from wgsextract_cli.core.ref_library.mitochondrial import (
     CHM13_CHRM_MD5,
     RCRS_MD5,
     pinned_sequences,

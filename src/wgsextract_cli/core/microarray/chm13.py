@@ -17,7 +17,7 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteMap,
     load_site_map,
 )
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
+from wgsextract_cli.core.ref_library.mitochondrial import CHM13_CHRM_MD5
 from wgsextract_cli.core.utils import WGSExtractError, popen
 
 

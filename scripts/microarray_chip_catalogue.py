@@ -31,6 +31,11 @@ import zlib
 from pathlib import Path
 from typing import Any, TextIO
 
+from wgsextract_cli.core.microarray.templates import (
+    _resolve_templates_for_format,
+    get_template_format,
+    template_rows,
+)
 from wgsextract_cli.core.microarray_revisions import (
     _COLUMN_LABELS,
     CATALOGUE,
@@ -41,11 +46,6 @@ from wgsextract_cli.core.microarray_revisions import (
     estimate_jaccard,
     fingerprint,
     parse_raw_export,
-)
-from wgsextract_cli.core.microarray_utils import (
-    _resolve_templates_for_format,
-    get_template_format,
-    template_rows,
 )
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -354,7 +354,7 @@ def _closest_template(
 
 
 def _relation(name: str, relation: str, added: int, removed: int) -> dict[str, Any]:
-    from wgsextract_cli.core.microarray_utils import FORMAT_ALIASES
+    from wgsextract_cli.core.microarray.templates import FORMAT_ALIASES
 
     keys = sorted(k for k, v in FORMAT_ALIASES.items() if v == name)
     return {

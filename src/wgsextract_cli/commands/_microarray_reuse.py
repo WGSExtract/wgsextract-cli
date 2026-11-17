@@ -28,7 +28,7 @@ from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.resource_identity import resource_identity
-from wgsextract_cli.core.microarray_utils import GenotypeTally
+from wgsextract_cli.core.microarray.templates import GenotypeTally
 from wgsextract_cli.core.results import FileRecord, current_result
 
 SIDECAR_SUFFIX = ".inputs.json"

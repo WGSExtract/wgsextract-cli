@@ -5,7 +5,7 @@ import gzip
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     get_template_format,
     vendor_chrom,
     vendor_output_profile,

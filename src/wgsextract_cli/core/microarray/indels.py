@@ -21,7 +21,7 @@ from wgsextract_cli.core.microarray.indel_probes import (
     read_indel_manifest,
 )
 from wgsextract_cli.core.microarray.quality import quality_policy
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _haploid_letter,
     _resolve_templates_for_format,
     get_template_format,

@@ -15,7 +15,7 @@ import pytest
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
 from wgsextract_cli.core.microarray.coordinates import project_coordinates
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,
 )
@@ -78,7 +78,7 @@ def test_23andme_writes_the_header_then_the_template_markers_in_order(tmp_path):
 def test_issue_1043_correction_edits_take_effect_in_the_same_api_process(
     tmp_path, monkeypatch
 ):
-    from wgsextract_cli.core import microarray_utils
+    from wgsextract_cli.core.microarray import templates as microarray_utils
 
     assets = tmp_path / "assets"
     assets.mkdir()
