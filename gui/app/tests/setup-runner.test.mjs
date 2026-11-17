@@ -558,7 +558,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\/posix\/bootstrap-reference-library\.sh/);
-    assert.match(result.stdout, /fake pixi run --no-install wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);

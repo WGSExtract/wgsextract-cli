@@ -56,4 +56,4 @@ fi
 # cache inside the bundle runtime.
 export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-$runtime/.pixi/cache}"
 cd "$app_dir"
-exec "$pixi" run --no-install "$@"
+exec "$pixi" run --no-install --frozen "$@"

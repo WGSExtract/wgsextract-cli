@@ -4,6 +4,8 @@ Ordinary analysis, inspection and reporting stay on this computer. Defaults
 must not attempt a connection, even when a reference, tree, gene list or
 model is missing. There is no telemetry, usage reporting or background CLI
 update check. Missing dependencies are reported, never installed by analysis.
+Runtime Pixi invocations use both `--no-install` and `--frozen`: skipping
+installation alone would still allow lockfile resolution and registry queries.
 
 Explicit download/install commands may use the network. Other commands need
 `--download` before fetching missing public data. Without permission they
@@ -64,7 +66,7 @@ behavior. Classification describes the baseline, before this change.
 
 | Command/option | Network on baseline? | Classification / disposition |
 | --- | --- | --- |
-| `help`, version, `config`, `sample`, `report-issue`, `deps check`, `info`, coverage, chip inspection | No | Local; no install/update/size probe; support builds a redacted report but does not upload it |
+| `help`, version, `config`, `sample`, `report-issue`, `info`, coverage, chip inspection | No | Local; no install/update/size probe; support builds a redacted report but does not upload it |
 | `extract` and `bam` families, `repair`, `align`, local-input `realign`, `microarray`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | No | Local chain-file paths passed to pyliftover, never build-name auto-fetch |
@@ -84,7 +86,8 @@ behavior. Classification describes the baseline, before this change.
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |
 | Desktop launch | GitHub update check | **Default-violation**: only the explicit update action checks (automated update testing remains explicitly enabled by its harness) |
-| Installed CLI/desktop analysis launchers | Pixi could complete/update environments | **Default-violation**: always `--no-install`; Setup remains explicit |
+| `deps check` / shared optional-tool discovery and version probes | Pixi could resolve a changed manifest | **Default-violation**: frozen lockfile queries/probes, without environment installation |
+| Installed CLI/desktop analysis launchers | Pixi could complete/update environments or resolve a changed manifest | **Default-violation**: always `--no-install --frozen`; Setup remains explicit |
 | CLI/app telemetry | None found | No default telemetry endpoint |
 
 PR #1019 (ACMG site-restricted annotation data) is coordinated separately:

@@ -213,7 +213,7 @@ if (-not $env:PIXI_CACHE_DIR) {
 
 # Never let analysis finish or update an installation. Data sources also
 # require the shim that setup writes last.
-$runArgs = @("run", "--no-install")
+$runArgs = @("run", "--no-install", "--frozen")
 if ($env:WGSEXTRACT_GUI_DATA_SOURCE -eq "1") {
     $shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
     if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {

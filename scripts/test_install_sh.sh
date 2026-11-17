@@ -48,9 +48,9 @@ case "${1:-}" in
         ;;
     run)
         shift
-        if [ "${1:-}" = "--no-install" ]; then
+        while [ "${1:-}" = "--no-install" ] || [ "${1:-}" = "--frozen" ]; do
             shift
-        fi
+        done
         if [ "${1:-}" = "--manifest-path" ]; then
             test -f "${2:-}" || { printf 'missing manifest: %s\n' "${2:-}" >&2; exit 3; }
             shift 2

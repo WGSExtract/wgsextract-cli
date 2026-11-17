@@ -395,15 +395,15 @@ class BundleSandbox:
             )
         argv = self.calls.read_bytes().split(b"\0")[:-1]
         call = [arg.decode() for arg in argv]
-        if call[:3] != ["run", "--no-install", "wgsextract"]:
+        if call[:4] != ["run", "--no-install", "--frozen", "wgsextract"]:
             raise AssertionError(
                 f"{script} ran `pixi {' '.join(call)}`, not wgsextract"
             )
         # The runtime must use the workspace's settings, never the user's config.
         config = ["--config", str(self.bundle / "config.toml")]
-        if call[3:5] != config:
+        if call[4:6] != config:
             raise AssertionError(f"{script} did not pass {' '.join(config)}: {call}")
-        return call[5:]
+        return call[6:]
 
 
 def load_json(path: Path) -> dict:

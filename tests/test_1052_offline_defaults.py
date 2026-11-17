@@ -1,5 +1,6 @@
 """#1052: local operations must not even attempt DNS or a socket connection."""
 
+import os
 import shutil
 import socket
 import subprocess
@@ -127,8 +128,8 @@ def test_1052_read_only_mcp_refuses_download_permission(tmp_path):
     assert getattr(error.value, "code", None) == "read_only"
 
 
-@needs_htslib
-def test_1052_subprocess_extraction_works_in_a_network_namespace(tmp_path):
+@pytest.fixture
+def network_namespace():
     unshare = shutil.which("unshare")
     if not unshare:
         pytest.skip("host has no unprivileged network-namespace sandbox")
@@ -136,6 +137,13 @@ def test_1052_subprocess_extraction_works_in_a_network_namespace(tmp_path):
     probe = subprocess.run([*sandbox, "true"], capture_output=True)
     if probe.returncode:
         pytest.skip("host disallows unprivileged network namespaces")
+    return sandbox
+
+
+@needs_htslib
+def test_1052_subprocess_extraction_works_in_a_network_namespace(
+    tmp_path, network_namespace
+):
     bam = sam_to_bam(
         [
             "@HD\tVN:1.6\tSO:coordinate",
@@ -146,7 +154,7 @@ def test_1052_subprocess_extraction_works_in_a_network_namespace(tmp_path):
     )
     run = subprocess.run(
         [
-            *sandbox,
+            *network_namespace,
             sys.executable,
             "-m",
             "wgsextract_cli.main",
@@ -164,6 +172,71 @@ def test_1052_subprocess_extraction_works_in_a_network_namespace(tmp_path):
     )
     assert run.returncode == 0, run.stderr
     assert (tmp_path / "fake_mtDNA.bam").is_file()
+
+
+def test_1052_runtime_launcher_does_not_resolve_a_changed_manifest(
+    tmp_path, network_namespace
+):
+    pixi = os.environ.get("PIXI_EXE") or shutil.which("pixi")
+    if not pixi:
+        pytest.skip("real Pixi is not installed")
+    project = tmp_path / "app"
+    project.mkdir()
+    manifest = project / "pixi.toml"
+    original = (
+        '[workspace]\nname = "offline-1052"\nversion = "0.1.0"\n'
+        'channels = []\nplatforms = ["linux-64", "linux-aarch64"]\n'
+    )
+    manifest.write_text(original)
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("PIXI_PROJECT_")
+    }
+    env.update(
+        PIXI=pixi,
+        PIXI_HOME=str(tmp_path / "pixi-home"),
+        PIXI_CACHE_DIR=str(tmp_path / "pixi-cache"),
+        WGSEXTRACT_APP_DIR=str(project),
+    )
+    subprocess.run(
+        [*network_namespace, pixi, "lock", "--manifest-path", str(manifest)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    lock = project / "pixi.lock"
+    before = lock.read_bytes()
+    manifest.write_text(
+        original.replace(
+            "channels = []",
+            'channels = ["https://example.invalid/privacy-channel"]',
+        )
+        + '\n[dependencies]\nprivacy-network-sentinel = "*"\n'
+    )
+    launcher = (
+        Path(__file__).parents[1]
+        / "gui/examples/WGSExtract/scripts/posix/run-wgsextract-env.sh"
+    )
+    run = subprocess.run(
+        [
+            *network_namespace,
+            "sh",
+            str(launcher),
+            sys.executable,
+            "-c",
+            "print('offline-1052')",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert run.returncode == 0, run.stderr
+    assert "offline-1052" in run.stdout
+    assert lock.read_bytes() == before
 
 
 @needs_tools("samtools", "bwa-mem2")
