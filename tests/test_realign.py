@@ -22,9 +22,9 @@ from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.realign import RealignJob
 from wgsextract_cli.core import parabricks
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.alignment.cram_staging import cram_version
 from wgsextract_cli.core.alignment.memory import MappingMemory
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.read_counts import AlignmentSample, UnpairedSample
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

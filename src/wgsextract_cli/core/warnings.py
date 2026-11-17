@@ -3,7 +3,7 @@ import math
 import shutil
 from pathlib import Path
 
-from wgsextract_cli.core.cram_counts import cram_read_counts
+from wgsextract_cli.core.alignment.cram_counts import cram_read_counts
 from wgsextract_cli.core.messages import SYSTEM_MESSAGES as MESSAGES
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.samtools_commands import alignment_index

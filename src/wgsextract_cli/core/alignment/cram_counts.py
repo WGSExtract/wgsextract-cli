@@ -13,7 +13,7 @@ import zlib
 from collections import Counter
 from typing import BinaryIO
 
-from .paths import PathInput
+from ..paths import PathInput
 
 
 def _read(stream: BinaryIO, size: int) -> bytes:

@@ -9,7 +9,7 @@ so, so the command doesn't look like it worked.
 import os
 import subprocess
 
-from wgsextract_cli.core.cram_counts import cram_container_totals
+from wgsextract_cli.core.alignment.cram_counts import cram_container_totals
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
