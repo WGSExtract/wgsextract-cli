@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "fastq-inputs",
+      "collapsible": false,
       "title": "sections.fastq.inputs.title",
       "iconName": "sequence-reads",
       "textIcon": "〰️",
@@ -30,7 +31,15 @@
           "kind": "path",
           "tooltip": "controls.fastq.fastq-inputs.out_dir.tooltip",
           "advancedOnly": true
-        },
+        }
+      ]
+    },
+    {
+      "id": "fastq-analysis",
+      "title": "sections.fastq.analysis.title",
+      "iconName": "sequence-reads",
+      "textIcon": "〰️",
+      "controls": [
         {
           "id": "fastqc_multiqc",
           "label": "controls.fastq.fastqc-multiqc.label",
@@ -201,7 +210,6 @@
           }
         }
       ],
-      "subsection": true,
       "advancedOnly": true
     },
     {

@@ -260,6 +260,19 @@ export function bindEvents(bootstrap: Bootstrap) {
         localStorage.setItem("wgsextractGui.sidebarVisible", state.isSidebarVisible ? "true" : "false");
         scheduleRender();
     });
+    elements("[data-section-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = requiredDataset(button, "sectionToggle");
+            if (!state.toggledSections.delete(key)) {
+                state.toggledSections.add(key);
+            }
+            scheduleRender();
+        });
+    });
+    app.querySelector("[data-setup-toggle]")?.addEventListener("click", (event) => {
+        state.setupExpanded = (event.currentTarget as HTMLElement).getAttribute("aria-expanded") !== "true";
+        scheduleRender();
+    });
     elements("[data-retry-source]").forEach((button) => {
         button.addEventListener("click", () => {
             retryDataSource(requiredDataset(button, "retrySource"));

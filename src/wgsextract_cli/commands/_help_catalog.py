@@ -249,6 +249,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "cnv.vcf.gz (+ .tbi).",
         "wgsextract vcf cnv --input sample.cram",
     ),
+    "vcf call": _h(
+        "Each type's own VCF (snps.vcf.gz, indels.vcf.gz, the SV caller's VCF, "
+        "cnv.vcf.gz), with --reference-evidence gvcf one bcftools.g.vcf.gz for "
+        "SNPs and indels instead; --merge replaces them with variants.vcf.gz "
+        "(variants.g.vcf.gz with the gVCF) (+ .tbi).",
+        "wgsextract vcf call --input sample.cram --types snp,indel --merge",
+        "wgsextract vcf call --input sample.cram --types snp,indel,sv,cnv",
+    ),
     # vcf: annotation, filtering and analysis
     "vcf annotate": _h(
         "annotated.vcf.gz (+ .tbi).",

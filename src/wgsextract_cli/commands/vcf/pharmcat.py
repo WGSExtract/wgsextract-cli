@@ -316,6 +316,27 @@ def _vcf_build(vcf: str) -> str | None:
     return None
 
 
+def _depth_only_gvcf(vcf: str) -> bool:
+    """Whether ``vcf`` is a WGS Extract gVCF whose reference blocks carry
+    depth but no genotype quality (bcftools'), which the direct-input path,
+    needing GQ, would turn into no-calls."""
+    source = reference_evidence.ReferenceEvidence(vcf)
+    return (
+        source.provenance is not None
+        and source.quality_model == reference_evidence.DEPTH_ONLY
+    )
+
+
+def _variant_records(vcf: str, work: str) -> str:
+    """``vcf``'s records with an alternate genotype, without its reference
+    blocks and the unseen ``<*>`` allele."""
+    variants = str(Path(work, "variants.vcf.gz"))
+    run_command(["bcftools", "view", "-i", 'GT="alt"', "--trim-alt-alleles",
+                 "-Oz", "-o", variants, vcf])  # fmt: skip
+    ensure_vcf_indexed(variants)
+    return variants
+
+
 def run_pharmcat(params: VcfPharmcatParams) -> None:
     verify_dependencies(["bcftools", "tabix", "samtools"])
     input_vcf = require_vcf_input(params)
@@ -339,8 +360,16 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
 
     with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pharmcat_") as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
-        prepared = prepare_input(input_vcf, directory, reference, work, params, gvcf)
-        confidence = label_pgx_calls(input_vcf, work, params)
+        calls = input_vcf
+        if gvcf is None and _depth_only_gvcf(input_vcf):
+            # vcf call --reference-evidence gvcf writes SNPs and indels only
+            # as this gVCF: read its variants as the calls, and its depth-only
+            # blocks as their reference evidence, as for a companion gVCF.
+            logging.info(f"{input_vcf} is a depth-only gVCF: using its blocks as "
+                         "the reference evidence for absent PharmCAT sites.")  # fmt: skip
+            gvcf, calls = input_vcf, _variant_records(input_vcf, work)
+        prepared = prepare_input(calls, directory, reference, work, params, gvcf)
+        confidence = label_pgx_calls(calls, work, params)
         run_out = Path(work, "outputs")
         run_out.mkdir()
         command = [

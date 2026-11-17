@@ -38,6 +38,7 @@ GENOME_COMMANDS = frozenset(
         "qc contamination",
         "typing cyp2d6",
         "typing str",
+        "vcf call",
         "vcf clair3",
         "vcf cnv",
         "vcf deepvariant",

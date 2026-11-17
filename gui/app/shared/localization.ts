@@ -202,6 +202,8 @@ export function localizationLabels(table: StringMap = {}) {
         loadingTitle: table["app.loading.title"] ?? "Loading...",
         refreshingTitle: table["app.refreshing.title"] ?? "Refreshing...",
         retryButtonTitle: table["app.retryButton.title"] ?? "Retry",
+        sectionExpandLabel: table["app.section.expand.label"] ?? "Expand Section",
+        sectionCollapseLabel: table["app.section.collapse.label"] ?? "Collapse Section",
         loadWebUITitle: table["app.error.loadWebUI.title"] ?? "Could not load Web UI",
         libraryEmptyTitle: table["app.library.empty"] ?? "No library items are defined.",
         actionMissingInputsFormat: table["app.action.missingInputs.format"] ?? "Missing: %{inputs}",

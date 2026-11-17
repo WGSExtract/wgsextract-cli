@@ -1382,6 +1382,10 @@ steps whose tool or data is missing are skipped with a warning.
 | `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
 | `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCF files generated during the chain process. |
 
+### `api.vcf.call_types(value: str) -> list[str]`
+
+`--types`' variant types, each once, in `CALL_TYPES` order.
+
 ### `api.vcf.cnv(VcfCnvParams)`
 
 CLI: `wgsextract vcf cnv`.
@@ -1428,6 +1432,41 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | `long_read` | `bool` | `False` | `--long-read` | Long-read data from any platform: use Sniffles unless --caller selects pbsv for PacBio reads. |
 | `ccs` | `bool` | `False` | `--ccs` | Use pbsv CCS/HiFi thresholds when --caller pbsv is selected. |
 | `tandem_repeats` | `Path \| None` | `None` | `--tandem-repeats` | Optional tandem-repeat BED for pbsv discover or Sniffles (recommended for long-read SV calling). |
+| `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+
+### `api.vcf.call(VcfCallParams)`
+
+CLI: `wgsextract vcf call`.
+
+Call the chosen types; each type's output carries its own role, and
+`merge` adds `merged_variants`.
+
+`VcfCallParams`: Call the chosen variant types in one run, each into the file its own
+command writes: `snps.vcf.gz` (`vcf snp`), `indels.vcf.gz`
+(`vcf indel`), the SV caller's VCF (`vcf sv`) and `cnv.vcf.gz`
+(`vcf cnv`). With `reference_evidence` gvcf, SNPs and indels go into
+`bcftools.g.vcf.gz` alone. `merge` joins the parts, by position, into
+`variants.vcf.gz` (`variants.g.vcf.gz` with the gVCF; output role
+`merged_variants`) and removes them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `types` | `str` | `'snp,indel'` | `--types` | Comma-separated variant types to call: snp and indel (bcftools), sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel. |
+| `merge` | `bool` | `False` | `--merge` | Merge the called types into one variants.vcf.gz (+ .tbi), or variants.g.vcf.gz with the gVCF, in place of each type's own VCF. |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz (+ .tbi), with reference blocks, in place of snps.vcf.gz and indels.vcf.gz; none: the variant VCFs. Default: config reference_evidence, else none. One of: `none`, `gvcf` |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | SNP and indel ploidy name or value, as for vcf snp. |
+| `cnv_ploidy` | `int \| None` | `None` | `--cnv-ploidy` | CNV baseline ploidy, as vcf cnv's --ploidy (default: 2). |
+| `sv_caller` | `str \| None` | `None` | `--sv-caller` | SV caller (default: as vcf sv picks: sniffles for ONT or long reads, pbsv/sniffles for PacBio, else delly). One of: `delly`, `pbsv`, `sniffles` |
+| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data, as for vcf sv. |
+| `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data, as for vcf sv. |
+| `long_read` | `bool` | `False` | `--long-read` | Long-read data, as for vcf sv. |
+| `ccs` | `bool` | `False` | `--ccs` | pbsv CCS/HiFi thresholds, as for vcf sv. |
+| `tandem_repeats` | `Path \| None` | `None` | `--tandem-repeats` | Tandem-repeat BED for pbsv or Sniffles, as for vcf sv. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.freebayes(VcfFreebayesParams)`

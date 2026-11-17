@@ -212,6 +212,9 @@ def test_a_bam_needs_no_reference_to_read_but_one_to_call_variants(
     assert _needs(capsys, library, "info", "--input", bam) == []
     calls = _needs(capsys, library, "vcf", "snp", "--input", bam)
     assert [m["id"] for m in calls] == ["hs37d5"]
+    # The GUI's Default calling button runs vcf call (PR 1060 review).
+    calls = _needs(capsys, library, "vcf", "call", "--input", bam)
+    assert [m["id"] for m in calls] == ["hs37d5"]
 
 
 def test_an_explicit_fasta_is_trusted(tmp_path, library, capsys):

@@ -102,6 +102,8 @@
 "app.loading.title" = "Loading..."
 "app.refreshing.title" = "Refreshing..."
 "app.retryButton.title" = "Retry"
+"app.section.expand.label" = "Expand Section"
+"app.section.collapse.label" = "Collapse Section"
 "app.error.loadWebUI.title" = "Could not load Web UI"
 "app.library.empty" = "No library items are defined."
 "app.action.missingInputs.format" = "Missing: %{inputs}"

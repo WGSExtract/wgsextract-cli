@@ -47,6 +47,27 @@ test("WGSExtract new options do not change default argv or selected formats", ()
   }
 });
 
+test("WGSExtract variant calling: type checkboxes, gVCF and Merged drive one vcf call", () => {
+  // Default: SNP and InDel checked, one file per type, and no gVCF even if config.toml asks for one.
+  assert.deepEqual(wgsCommand("extract", "vcf-call"), [
+    "vcf", "call", "--input", "sample.bam", "--types", "indel,snp", "--reference-evidence=none",
+  ]);
+  const all = wgsCommand("extract", "vcf-call", {}, {
+    vcf_call_types: ["snp", "indel", "sv", "cnv"], vcf_merge: ["--merge"], vcf_gvcf: ["--reference-evidence=gvcf"],
+  });
+  assert.deepEqual(all.slice(0, 6), ["vcf", "call", "--input", "sample.bam", "--types", "cnv,indel,snp,sv"]);
+  assert.ok(all.includes("--merge") && all.includes("--reference-evidence=gvcf"), all.join(" "));
+  // gVCF also reaches the callers that write one; FreeBayes has none.
+  const gvcf = { vcf_gvcf: ["--reference-evidence=gvcf"] };
+  for (const action of ["vcf-call", "vcf-gatk", "vcf-deepvariant"]) {
+    // The checked box comes after the explicit none, so it wins.
+    const argv = wgsCommand("extract", action, {}, gvcf);
+    assert.ok(argv.indexOf("--reference-evidence=gvcf") > argv.indexOf("--reference-evidence=none"), action);
+    assert.ok(wgsCommand("extract", action).includes("--reference-evidence=none"), action);
+  }
+  assert.ok(!wgsCommand("extract", "vcf-freebayes", {}, gvcf).includes("--reference-evidence=gvcf"));
+});
+
 test("WGSExtract Run Yleaf sends only native y-haplogroup flags (#538)", () => {
   assert.deepEqual(wgsCommand("ancestry", "run-yleaf"), ["lineage", "y-haplogroup", "--input", "sample.bam"]);
   assert.deepEqual(wgsCommand("ancestry", "run-yleaf", { yleaf_tree: "isogg" }, {
@@ -134,7 +155,7 @@ test("WGSExtract targeted opt-ins are restricted to the relevant commands", () =
   for (const action of ["region-mt", "region-ymt", "region-autox"]) {
     assert.ok(!wgsCommand("extract", action, {}, choices).some((arg) => ["--poz", "--ybrowse"].includes(arg)));
   }
-  assert.ok(!wgsCommand("extract", "vcf-snp", {}, choices).includes("--scatter"));
+  assert.ok(!wgsCommand("extract", "vcf-call", {}, choices).includes("--scatter"));
   assert.deepEqual(wgsCommand("fastq", "multiqc", {
     multiqc_input: "reports with spaces", out_dir: "new reports",
   }, { multiqc_force: ["--force"] }), [

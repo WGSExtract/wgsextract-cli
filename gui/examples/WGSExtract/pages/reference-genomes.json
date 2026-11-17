@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "reference-genome-paths",
+      "collapsible": false,
       "title": "sections.library.library-paths.title",
       "controls": [
         {
@@ -16,8 +17,7 @@
         }
       ],
       "iconName": "bundle-folder",
-      "textIcon": "📁",
-      "advancedOnly": true
+      "textIcon": "📁"
     },
     {
       "id": "genome-management",

@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "annotate-inputs",
+      "collapsible": false,
       "title": "sections.vcf.vcf-inputs.title",
       "iconName": "inspect-variants",
       "textIcon": "🔎",

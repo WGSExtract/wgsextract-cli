@@ -47,6 +47,8 @@ BUILTIN_REQUIRED_KEYS: list[str] = [
     "app.loading.title",
     "app.refreshing.title",
     "app.retryButton.title",
+    "app.section.expand.label",
+    "app.section.collapse.label",
     "app.error.loadWebUI.title",
     "app.library.empty",
     "app.action.missingInputs.format",

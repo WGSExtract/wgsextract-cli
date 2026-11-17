@@ -4,7 +4,7 @@ $workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUN
 $configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
 $outputPath = Join-Path $workspace "output"
 $referencePath = Join-Path $workspace "reference"
-# New installs keep datasets in datasets\ and reference genomes in genomes\.
+# New installs keep My Genomes in mygenomes\ and reference genomes in genomes\.
 # An existing config keeps folders that hold files: its old genome_library stays
 # the dataset library, and genomes already in <reference_library>\genomes stay there.
 function Test-HasFiles {
@@ -29,7 +29,7 @@ function Get-ExistingValue {
 $oldGenomeLibrary = Get-ExistingValue "genome_library"
 $oldReferenceLibrary = Get-ExistingValue "reference_library"
 $oldDefaultGenomes = Join-Path $workspace "genomes"
-$datasetLibraryPath = Join-Path $workspace "datasets"
+$datasetLibraryPath = Join-Path $workspace "mygenomes"
 if ($oldGenomeLibrary -and (-not (Test-SamePath $oldGenomeLibrary $oldDefaultGenomes) -or (Test-HasFiles $oldGenomeLibrary))) {
     $datasetLibraryPath = $oldGenomeLibrary
 }

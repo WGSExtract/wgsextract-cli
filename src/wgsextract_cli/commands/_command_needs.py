@@ -124,6 +124,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
+    "vcf call": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),

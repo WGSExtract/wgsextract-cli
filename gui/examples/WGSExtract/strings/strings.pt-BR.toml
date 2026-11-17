@@ -61,7 +61,7 @@
 "actions.info-bam.bam-commands.bam-unalign.tooltip" = "Extraia leituras brutas do BAM/CRAM selecionado para arquivos FASTQ no diretório de saída compartilhado."  # i18n-source-hash:199fc869
 "actions.info-bam.bam-commands.repair-ftdna-bam.title" = "Reparar BAM FTDNA"  # i18n-source-hash:e16c01d5
 "actions.info-bam.bam-commands.repair-ftdna-bam.tooltip" = "Corrija erros de formatação de BAM do Family Tree DNA que podem causar falhas em ferramentas padrão como GATK."  # i18n-source-hash:f35cd54d
-"sections.info-bam.realign-commands.title" = "Realinhar"  # i18n-source-hash:39f654b7
+"sections.info-bam.realign-commands.title" = "Realinhar BAM/CRAM"  # i18n-source-hash:be10d386
 "sections.info-bam.realign-commands.subtitle" = "Realinhar um BAM existente a uma nova referência."  # i18n-source-hash:ec2dcf97
 "controls.info-bam.realign-commands.realign_ref.label" = "Novo genoma de referência"  # i18n-source-hash:903a6c57
 "controls.info-bam.realign-commands.realign_ref.tooltip" = "Genoma de referência FASTA para alinhar. Esta é a nova referência alvo, não a que o BAM de origem usa atualmente."  # i18n-source-hash:30943c35
@@ -69,7 +69,7 @@
 "actions.info-bam.realign-commands.realign.tooltip" = "Realinha o BAM/CRAM carregado à referência selecionada. Reutiliza FASTQs extraídos quando disponíveis, caso contrário extrai sob demanda. O espaço em disco é verificado antecipadamente."  # i18n-source-hash:433a9b5e
 "pages.extract.title" = "Extrair"  # i18n-source-hash:6d84ceaf
 "pages.extract.summary" = "Extraia ou transforme dados dos arquivos FASTQ, BAM ou VCF; como DNA mitocondrial, leituras do cromossomo Y ou não mapeadas, subconjuntos aleatórios de BAM ou regiões personalizadas, alinhar leituras FASTQ, realinhar um BAM ou chamar variantes."  # i18n-source-hash:7c89e607
-"sections.extract.extract-inputs.title" = "Subconjunto"  # i18n-source-hash:30e294ac
+"sections.extract.extract-inputs.title" = "Subconjunto de BAM/CRAM"  # i18n-source-hash:52112dd7
 "controls.extract.extract-inputs.bam_path.label" = "BAM/CRAM"  # i18n-ignore i18n-source-hash:9516dd2d
 "controls.extract.extract-inputs.bam_path.tooltip" = "Arquivo BAM ou CRAM de entrada."  # i18n-source-hash:1165be08
 "controls.extract.extract-inputs.out_dir.label" = "Diretório de saída"  # i18n-source-hash:772dbe47
@@ -102,13 +102,14 @@
 "pages.microarray.title" = "Microarranjo"  # i18n-source-hash:460d4369
 "pages.microarray.summary" = "Gere arquivos de genotipagem (dados brutos) em formatos compatíveis com os fornecedores, que simulam os arquivos de resultados de microarray de empresas como 23andMe, AncestryDNA e MyHeritage, para envio a ferramentas como GEDmatch, Genvue e outras."  # i18n-source-hash:4e0523e4
 "sections.microarray.microarray-inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
+"sections.microarray.refinements.title" = "Refinamentos adicionais"  # i18n-source-hash:dd769654
 "controls.microarray.microarray-inputs.bam_path.label" = "Entrada BAM/CRAM"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Arquivo BAM ou CRAM de entrada."  # i18n-source-hash:1165be08
 "controls.microarray.microarray-inputs.ref_fasta.label" = "Genoma de referência"  # i18n-source-hash:4ff94bd8
 "controls.microarray.microarray-inputs.ref_fasta.tooltip" = "FASTA do genoma de referência baixado, da biblioteca de genomas de referência, usado para genotipar o BAM/CRAM."  # i18n-source-hash:41ec5480
 "controls.microarray.microarray-inputs.out_dir.label" = "Diretório de saída"  # i18n-source-hash:772dbe47
 "controls.microarray.microarray-inputs.out_dir.tooltip" = "Diretório onde os arquivos de kit de microarray gerados serão gravados."  # i18n-source-hash:b6d2a02d
-"sections.microarray.microarray-formats.title" = "Formatos de destino"  # i18n-source-hash:c1a6a3d1
+"sections.microarray.microarray-formats.title" = "Gerar formatos de destino de microarray"  # i18n-source-hash:90fd5cda
 "controls.microarray.microarray-formats.microarray_formats.label" = "Formatos"  # i18n-source-hash:2804d9f1
 "options.microarray.microarray-formats.microarray_formats.mthfr-genetics-uk.title" = "MTHFR Genetics UK"  # i18n-ignore i18n-source-hash:ab8f87db
 "options.microarray.microarray-formats.microarray_formats.genera-br.title" = "Genera BR"  # i18n-ignore i18n-source-hash:9b4fa248
@@ -122,6 +123,8 @@
 "pages.ancestry.title" = "Ancestralidade"  # i18n-source-hash:4447427c
 "pages.ancestry.summary" = "Identifique haplogrupos e linhagens ancestrais profundas. Yleaf rastreia a descendência paterna Y-DNA, enquanto Haplogrep rastreia a descendência mitocondrial materna com base em marcadores no seu DNA."  # i18n-source-hash:5780d6c1
 "sections.ancestry.ancestry-inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
+"sections.ancestry.haplogroup-analysis.title" = "Análise de haplogrupos"  # i18n-source-hash:0c5dd003
+"sections.ancestry.y-str.title" = "Contagens de repetições Y-STR"  # i18n-source-hash:7fb45a33
 "controls.ancestry.ancestry-inputs.bam_path.label" = "BAM/CRAM"  # i18n-ignore i18n-source-hash:9516dd2d
 "controls.ancestry.ancestry-inputs.bam_path.tooltip" = "Arquivo BAM ou CRAM de entrada."  # i18n-source-hash:1165be08
 "controls.ancestry.ancestry-inputs.yleaf_tree.label" = "Árvore Y"  # i18n-source-hash:224cb3f4
@@ -141,7 +144,7 @@
 "controls.ancestry.ancestry-inputs.haplogrep_path.tooltip" = "Caminho para o JAR ou executável Haplogrep para previsão de linhagem mitocondrial."  # i18n-source-hash:3ccc413b
 "actions.ancestry.ancestry-inputs.run-yleaf.title" = "Executar Yleaf"  # i18n-source-hash:4d0cb52f
 "actions.ancestry.ancestry-inputs.run-yleaf.tooltip" = "Preveja o haplogrupo paterno usando Yleaf. Requer um BAM com leituras do cromossomo Y."  # i18n-source-hash:f793b314
-"actions.ancestry.ancestry-inputs.run-haplogrep.title" = "Executar Haplogrep"  # i18n-source-hash:111c7746
+"actions.ancestry.ancestry-inputs.run-haplogrep.title" = "Executar Haplogrep mito"  # i18n-source-hash:33d29dac
 "actions.ancestry.ancestry-inputs.run-haplogrep.tooltip" = "Preveja o haplogrupo materno usando Haplogrep. Requer um BAM com leituras mitocondriais."  # i18n-source-hash:b252df2a
 "pages.vcf.title" = "VCF"  # i18n-ignore i18n-source-hash:557dfc21
 "pages.vcf.summary" = "Arquivos VCF listam as posições em que o DNA difere do genoma de referência. Use esta página para analisar seus arquivos VCF e gerar relatórios."  # i18n-source-hash:56fbf478
@@ -157,6 +160,7 @@
 "controls.vcf.vcf-inputs.out_dir.label" = "Dir. de saída"  # i18n-source-hash:5006317a
 "controls.vcf.vcf-inputs.out_dir.tooltip" = "Diretório onde logs, caches e resultados serão salvos."  # i18n-source-hash:e8866c7f
 "sections.vcf.variant-calling.title" = "Chamada de variantes a partir de BAM/CRAM"  # i18n-source-hash:64463e50
+"sections.vcf.variant-calling.options.title" = "Opções adicionais"  # i18n-source-hash:bd2f4e0a
 "sections.vcf.vcf-annotation.title" = "Anotação e filtragem de VCF"  # i18n-source-hash:3c73d5b0
 "controls.vcf.variant-calling.vcf_region.label" = "Região"  # i18n-source-hash:0f217179
 "controls.vcf.variant-calling.vcf_region.placeholder" = "chrM, chr1:100-200"  # i18n-ignore i18n-source-hash:7c7bb30e
@@ -171,14 +175,18 @@
 "controls.vcf.variant-calling.vcf_filter_expr.tooltip" = "Expressão de filtro do BCFtools, por exemplo QUAL>30 && DP>10."  # i18n-source-hash:b9d8fb93
 "controls.vcf.variant-calling.vcf_ann_vcf.label" = "VCF de referência para anotações"  # i18n-source-hash:f19d6e50
 "controls.vcf.variant-calling.vcf_ann_vcf.tooltip" = "Arquivo VCF a usar para anotação, como ClinVar ou dbSNP."  # i18n-source-hash:98e0bd76
-"actions.vcf.variant-calling.vcf-snp.title" = "Chamada de SNP"  # i18n-source-hash:c7180fe4
-"actions.vcf.variant-calling.vcf-snp.tooltip" = "Chame Single Nucleotide Polymorphisms com bcftools para análise de ancestralidade e mutações pontuais."  # i18n-source-hash:56186bac
-"actions.vcf.variant-calling.vcf-indel.title" = "Chamada de InDel"  # i18n-source-hash:ff0d4e41
-"actions.vcf.variant-calling.vcf-indel.tooltip" = "Chame pequenas inserções e deleções com bcftools."  # i18n-source-hash:8a29f428
-"actions.vcf.variant-calling.vcf-sv.title" = "Chamada de SV"  # i18n-source-hash:d9fd86e5
-"actions.vcf.variant-calling.vcf-sv.tooltip" = "Chama variantes estruturais. As leituras Nanopore detectadas usam Sniffles; as outras usam Delly, a menos que um modo de leituras longas seja selecionado."  # i18n-source-hash:550294f4
-"actions.vcf.variant-calling.vcf-cnv.title" = "Chamada de CNV"  # i18n-source-hash:d41ff39d
-"actions.vcf.variant-calling.vcf-cnv.tooltip" = "Chame variantes de número de cópias usando Delly. Detecta regiões de DNA duplicadas ou deletadas."  # i18n-source-hash:9512de28
+"actions.vcf.variant-calling.vcf-call.title" = "Padrão"  # i18n-source-hash:808d7dca
+"actions.vcf.variant-calling.vcf-call.tooltip" = "Chamar os tipos de variantes marcados: SNPs e InDels com bcftools, SVs (Delly, ou Sniffles/pbsv para leituras longas) e CNVs com Delly. Cada tipo recebe seu próprio VCF, a menos que gVCF ou Mesclado esteja marcado."  # i18n-source-hash:646a369e
+"controls.vcf.variant-calling.vcf_call_types.label" = "Tipos de variantes"  # i18n-source-hash:2af2a286
+"controls.vcf.variant-calling.vcf_call_types.tooltip" = "Os tipos de variantes que o botão Padrão chama."  # i18n-source-hash:454e0cca
+"options.vcf.variant-calling.vcf_call_types.snp.title" = "SNP"  # i18n-ignore
+"options.vcf.variant-calling.vcf_call_types.indel.title" = "InDel"  # i18n-ignore
+"options.vcf.variant-calling.vcf_call_types.sv.title" = "SV"  # i18n-ignore
+"options.vcf.variant-calling.vcf_call_types.cnv.title" = "CNV"  # i18n-ignore
+"controls.vcf.variant-calling.vcf_gvcf.label" = "gVCF"  # i18n-ignore
+"controls.vcf.variant-calling.vcf_gvcf.tooltip" = "Gravar SNPs e InDels em um único gVCF, com blocos de referência (sem variante), em vez de VCFs separados. Também vale para GATK e DeepVariant, que gravam um gVCF ao lado do VCF."  # i18n-source-hash:f483b15d
+"controls.vcf.variant-calling.vcf_merge.label" = "Mesclado"  # i18n-source-hash:0c445598
+"controls.vcf.variant-calling.vcf_merge.tooltip" = "Mesclar os tipos chamados em um único VCF, variants.vcf.gz (variants.g.vcf.gz com gVCF), em vez de um VCF por tipo."  # i18n-source-hash:7599db0c
 "actions.vcf.variant-calling.vcf-freebayes.title" = "Freebayes"  # i18n-ignore i18n-source-hash:a7127e2b
 "actions.vcf.variant-calling.vcf-freebayes.tooltip" = "Execute Freebayes, um detector Bayesiano de variantes que funciona bem em regiões complexas ou com profundidade variável."  # i18n-source-hash:653c92c1
 "actions.vcf.variant-calling.vcf-gatk.title" = "GATK HC"  # i18n-ignore i18n-source-hash:c82038b5
@@ -403,8 +411,8 @@
 "rows.library.genome-management.reference_genomes.GRCh37.source" = "Genome Reference Consortium"  # i18n-ignore i18n-source-hash:7601c1c0
 "rows.library.genome-management.reference_genomes.T2T-CHM13.build" = "CHM13 v2"  # i18n-ignore i18n-source-hash:19f08799
 "rows.library.genome-management.reference_genomes.T2T-CHM13.source" = "Telomere-to-Telomere"  # i18n-ignore i18n-source-hash:cafdd528
-"controls.datasets.dataset-paths.dataset_library.label" = "Caminho da biblioteca de conjuntos de dados"  # i18n-source-hash:c0ce24d4
-"controls.datasets.dataset-paths.dataset_library.tooltip" = "Diretório dos conjuntos de dados do usuário, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome. Os genomas de referência nunca vão para cá."  # i18n-source-hash:a5e2ea99
+"controls.datasets.dataset-paths.dataset_library.label" = "Caminho da biblioteca Meus genomas"  # i18n-source-hash:9c88b5a5
+"controls.datasets.dataset-paths.dataset_library.tooltip" = "Diretório de Meus genomas, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome. Os genomas de referência nunca ficam aqui."  # i18n-source-hash:cbd0a243
 "sections.datasets.test-dataset.title" = "Conjunto de dados de teste"  # i18n-source-hash:da935796
 "sections.datasets.test-dataset.summary" = "Baixar ou excluir o pequeno conjunto de dados de benchmark hospedado no GitHub, usado nos fluxos de trabalho de teste do WGS Extract."  # i18n-source-hash:3d75cbc7
 "actions.datasets.test-dataset.test-dataset-download.title" = "Baixar conjunto de dados de teste"  # i18n-source-hash:15909a2d
@@ -418,7 +426,7 @@
 "actions.datasets.test-dataset.test-dataset-installed.title" = "Conjunto de dados de teste instalado"  # i18n-source-hash:b0e32a18
 "actions.datasets.test-dataset.test-dataset-installed.tooltip" = "O mini conjunto de dados de benchmark hg19 está instalado na biblioteca de conjuntos de dados configurada."  # i18n-source-hash:d394d3a4
 "actions.datasets.test-dataset.test-dataset-installed.disabledTooltip" = "O conjunto de dados de teste já está instalado."  # i18n-source-hash:fe494c82
-"controls.settings.settings-paths.dataset_library.label" = "Biblioteca de conjuntos de dados"  # i18n-source-hash:a63500a0
+"controls.settings.settings-paths.dataset_library.label" = "Biblioteca Meus genomas"  # i18n-source-hash:22531d8d
 "controls.settings.settings-paths.dataset_library.tooltip" = "Diretório padrão da biblioteca de conjuntos de dados, uma pasta por pessoa ou amostra, usado por wgsextract-cli --genome. Os genomas de referência nunca vão para cá."  # i18n-source-hash:6c38f036
 "controls.settings.settings-paths.reference_genome_library.label" = "Biblioteca de genomas de referência"  # i18n-source-hash:de3aadd7
 "controls.settings.settings-paths.reference_genome_library.tooltip" = "Pasta que guarda apenas os genomas de referência baixados e os arquivos criados a partir deles (índices, contagens de N). Nada mais é gravado lá."  # i18n-source-hash:19981b40
@@ -574,6 +582,7 @@
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
 "controls.reference-genome.emptyText" = "Nenhum carregado. Veja a página Genomas de referência para adicionar."  # i18n-source-hash:e328ff9b
 "sections.fastq.inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
+"sections.fastq.analysis.title" = "Análise"  # i18n-source-hash:62c7fcf4
 "controls.fastq.fastqc-multiqc.label" = "Mesclar os relatórios R1 e R2 com o MultiQC"  # i18n-source-hash:7dad70bf
 "controls.fastq.fastqc-multiqc.tooltip" = "Com um FASTQ R2 escolhido, o FastQC analisa as duas leituras e o MultiQC mescla os dois relatórios em multiqc_report.html, substituindo um anterior na pasta de saída."  # i18n-source-hash:7aa5f7f6
 "sections.extract.inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
@@ -607,6 +616,7 @@
 "pages.workflows.title" = "Fluxos de trabalho"  # i18n-source-hash:825ce9e9
 "pages.workflows.summary" = "Executar toda a análise de uma vez, resumir o conjunto de dados de uma amostra, registrar o que se sabe de uma amostra e assinar ou verificar arquivos de resultados."  # i18n-source-hash:5cdb787a
 "sections.cli.typing.title" = "Genotipagem a partir do BAM/CRAM"  # i18n-source-hash:e2050fdb
+"sections.cli.typing.subtitle" = "Diversas ferramentas de genotipagem. A extração de genotipagem por microarray tem sua própria página."  # i18n-source-hash:df0ea789
 "controls.cli.hla_index.label" = "Índice de alelos HLA"  # i18n-source-hash:83160329
 "controls.cli.hla_index.tooltip" = "Índice de alelos T1K (hla_dna_seq.fa). Em branco: criado nos dados de referência no primeiro uso."  # i18n-source-hash:9deca14a
 "controls.cli.str_catalog.label" = "Catálogo de repetições"  # i18n-source-hash:908b424a
@@ -615,7 +625,7 @@
 "controls.cli.str_sex.tooltip" = "O número de alelos do chrX. Em branco: inferido da cobertura de chrX/chrY."  # i18n-source-hash:e5bff384
 "options.cli.value.male.title" = "male"  # i18n-ignore i18n-source-hash:030ef4a5
 "options.cli.value.female.title" = "female"  # i18n-ignore i18n-source-hash:96a1a08d
-"sections.cli.phasing.title" = "Faseamento"  # i18n-source-hash:e30decba
+"sections.cli.phasing.title" = "Fasear VCF"  # i18n-source-hash:253bbb6b
 "sections.cli.phasing.subtitle" = "Usa o BAM/CRAM das entradas e o VCF escolhido aqui."  # i18n-source-hash:bdbe8b20
 "controls.cli.phase_region.label" = "Região"  # i18n-source-hash:0f217179
 "controls.cli.phase_region.tooltip" = "Região cromossômica, por ex. chrM ou chrY:10000-20000. Em branco: o genoma inteiro."  # i18n-source-hash:40f91d20
@@ -625,7 +635,7 @@
 "options.cli.value.longphase.title" = "longphase"  # i18n-ignore i18n-source-hash:68f9a73f
 "controls.cli.phase_haplotag.label" = "Gravar leituras com haplotag"  # i18n-source-hash:f106ca6e
 "controls.cli.phase_haplotag.tooltip" = "Gravar também as leituras marcadas com haplótipo (HP) e bloco de fase (PS)."  # i18n-source-hash:960d3bd4
-"sections.cli.panel.title" = "BED de regiões de genes"  # i18n-source-hash:92f36621
+"sections.cli.panel.title" = "Criar BED de regiões de genes"  # i18n-source-hash:2f706b51
 "controls.cli.panel_genes.label" = "Genes"  # i18n-ignore i18n-source-hash:36adafb1
 "controls.cli.panel_genes.tooltip" = "Símbolos de genes separados por vírgula, por ex. CYP2D6,HLA-A."  # i18n-source-hash:c36aac84
 "controls.cli.panel_gene_file.label" = "Arquivo de lista de genes"  # i18n-source-hash:0fc2e6f6
@@ -736,6 +746,7 @@
 "controls.cli.pharmcat_outside_call.label" = "Arquivo de chamada externa"  # i18n-source-hash:b85eadc2
 "controls.cli.pharmcat_outside_call.tooltip" = "Arquivo de chamada externa do PharmCAT (gene<TAB>diplótipo), por ex. da tipagem CYP2D6 ou HLA."  # i18n-source-hash:f7dfef9e
 "sections.cli.consensus.title" = "Genoma de consenso"  # i18n-source-hash:9b4dfbba
+"sections.cli.consensus.subtitle" = "Grava um genoma de consenso a partir do arquivo VCF fornecido. Idealmente, deve ser um gVCF com todos os tipos de variantes desejados. Escolher os genótipos \"IUPAC\" gera um arquivo de consenso diploide."  # i18n-source-hash:7eacaa3d
 "controls.cli.fasta_region.label" = "Região"  # i18n-source-hash:0f217179
 "controls.cli.fasta_region.tooltip" = "Região cromossômica, por ex. chrM ou chrY:10000-20000. Em branco: o genoma inteiro."  # i18n-source-hash:40f91d20
 "controls.cli.fasta_sample.label" = "Amostra do VCF"  # i18n-source-hash:6e3c1189
@@ -757,7 +768,7 @@
 "controls.cli.fasta_mask.tooltip" = "BED das regiões a substituir por N, por ex. baixa cobertura."  # i18n-source-hash:02516cfd
 "controls.cli.fasta_chain.label" = "Gravar um arquivo chain"  # i18n-source-hash:520bb7ff
 "controls.cli.fasta_chain.tooltip" = "Mapear também as coordenadas de referência para o consenso."  # i18n-source-hash:951d81d8
-"sections.cli.chip.title" = "Identificar um arquivo de dados brutos"  # i18n-source-hash:2d694055
+"sections.cli.chip.title" = "Analisar um arquivo de dados brutos de microarray"  # i18n-source-hash:147de3e8
 "controls.cli.chip_file.label" = "Arquivo de dados brutos"  # i18n-source-hash:dd10c57f
 "controls.cli.chip_file.tooltip" = "Um arquivo de dados brutos de chip para consumidores (23andMe, AncestryDNA, MyHeritage, FTDNA, ...)."  # i18n-source-hash:4d9e3798
 "sections.cli.annotation-downloads.title" = "Downloads de anotações"  # i18n-source-hash:790aa6cf
