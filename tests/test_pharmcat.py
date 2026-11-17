@@ -838,11 +838,13 @@ def test_a_depth_only_gvcf_given_directly_reads_its_blocks_as_reference_evidence
     provenance = Provenance("bcftools", "1.21", DEPTH_ONLY).header()
     gvcf = _vcf(
         tmp_path / "bcftools.g.vcf.gz",
-        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=104\tGT:DP\t0/0:30\n"
+        # Blocks as bcftools writes them: INFO/MIN_DP is the depth floor.
+        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=104;MIN_DP=30\tGT:DP\t0/0:30\n"
         f"{{c}}\t103\t.\t{_base(103)}\tT,<*>\t50\tPASS\t.\tGT:DP\t0/1:30\n"
-        "{c}\t105\t.\tA\t<*>\t.\tPASS\tEND=110\tGT:DP\t0/0:30\n",
+        "{c}\t105\t.\tA\t<*>\t.\tPASS\tEND=110;MIN_DP=30\tGT:DP\t0/0:30\n",
         contig="chr1",
         header='##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">\n'
+        '##INFO=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
         + provenance
         + "\n",
     )
