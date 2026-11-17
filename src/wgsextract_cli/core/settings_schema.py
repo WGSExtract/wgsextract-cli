@@ -84,6 +84,11 @@ class DevSettings:
 class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
+    allow_reference_downloads: bool = setting(
+        False,
+        "Allow first-use public reference/model downloads for commands with "
+        "--download (hosts and request data: docs/privacy.md); no sample uploads",
+    )
     input_path: str | None = setting(
         None, "Default input BAM/CRAM or FASTQ file", path=True
     )

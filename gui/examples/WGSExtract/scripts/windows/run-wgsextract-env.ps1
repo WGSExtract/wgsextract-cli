@@ -211,10 +211,9 @@ if (-not $env:PIXI_CACHE_DIR) {
     $env:PIXI_CACHE_DIR = Join-Path $pixiBaseDir "cache"
 }
 
-# Data sources must answer within seconds, so they never let `pixi run` finish
-# an interrupted install: they need the shim setup writes last and run the
-# environment as it is.
-$runArgs = @("run")
+# Never let analysis finish or update an installation. Data sources also
+# require the shim that setup writes last.
+$runArgs = @("run", "--no-install")
 if ($env:WGSEXTRACT_GUI_DATA_SOURCE -eq "1") {
     $shim = Join-Path (Split-Path -Parent $appDir) "bin\wgsextract.cmd"
     if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) {
@@ -226,7 +225,6 @@ if ($env:WGSEXTRACT_GUI_DATA_SOURCE -eq "1") {
         [Console]::Error.WriteLine("WGS Extract's tools are missing from $envsDir. Run Setup again on the Settings page to install them.")
         exit 127
     }
-    $runArgs += "--no-install"
 }
 
 Push-Location $appDir

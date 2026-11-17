@@ -21,6 +21,7 @@ from typing import Any
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
@@ -226,7 +227,7 @@ class RefDownloadParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-class RefIndexParams(Params):
+class RefIndexParams(DownloadParams):
     """Index a FASTA: ``.fai`` (and ``.gzi``), the ``.dict`` sequence
     dictionary and the aligner's index, written beside it."""
 
@@ -237,7 +238,7 @@ class RefIndexParams(Params):
     aligner: str = param(
         "bwa",
         help="Aligner index to make. bwa-mem2's maps faster but takes 17 GB of "
-        "memory for a human genome; hs38DH's is downloaded, others need ~90 GB "
+        "memory for a human genome; --download permits fetching hs38DH's, others need ~90 GB "
         "of memory to build.",
         choices=ALIGNER_INDEXES,
     )

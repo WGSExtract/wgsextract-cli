@@ -188,6 +188,11 @@ def load(
     """The verified reference, downloaded first if ``fetch`` and missing."""
     file = path(reflib)
     if not file.is_file():
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download(
+            "HGDP+1KG ancestry reference", "wgsextract ref ancestry --install"
+        )
         if not fetch:
             raise WGSExtractError(
                 f"The ancestry reference is not installed ({file}). Run "

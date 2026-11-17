@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.report_documents import ReportGeneListDocument
@@ -164,7 +165,7 @@ def load(spec: str | Path | None, library: Path | None = None) -> GeneList:
         try:
             path = ensure_builtin(list_id, library)
             genes = _read_tsv(path.read_text(encoding="utf-8"), path)
-        except GeneListUnavailable:
+        except (GeneListUnavailable, DownloadRequired):
             raise
         except (OSError, WGSExtractError) as error:
             raise GeneListUnavailable(
@@ -204,6 +205,9 @@ def ensure_builtin(list_id: str, library: Path | None = None) -> Path:
     path = folder / Path(meta["download"]).name
     if _verified(path, meta["sha256"]):
         return path
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"{meta['name']} gene list")
     folder.mkdir(parents=True, exist_ok=True)
     with build_lock(str(folder / f"{path.name}.lock")):
         if _verified(path, meta["sha256"]):

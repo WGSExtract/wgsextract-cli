@@ -5,8 +5,8 @@ DPB1, ...) by aligning reads to every IPD-IMGT/HLA allele. Reads aligned to the
 MHC, the HLA-* decoys and chromosome 6 ALT contigs (with their unmapped mates)
 are extracted first, which keeps a 30x genome to under two minutes.
 
-The allele index is built on first use from the current IPD-IMGT/HLA release
-(a 45 MB download) into <reference library>/ref/t1k_hla.
+With --download permission, a missing allele index is built from the current
+IPD-IMGT/HLA release (45 MB) into <reference library>/ref/t1k_hla.
 """
 
 from __future__ import annotations
@@ -155,6 +155,9 @@ def hla_index(params: TypingHlaParams) -> str:
             "reference_library in config.toml, or pass --hla-index."
         )
     if not Path(directory, INDEX_FASTA).is_file():
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download("IPD-IMGT/HLA T1K allele index")
         _build_index(directory)
     return str(Path(directory, INDEX_FASTA))
 

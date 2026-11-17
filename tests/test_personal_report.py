@@ -79,7 +79,9 @@ def served_lists(
     # In config.toml too, which the CLI reloads.
     config = get_config_path()
     config.write_text(
-        config.read_text() + f"reference_library = {json.dumps(str(served.library))}\n"
+        "allow_reference_downloads = true\n"
+        + config.read_text()
+        + f"reference_library = {json.dumps(str(served.library))}\n"
     )
     reload_settings()
     pinned = {

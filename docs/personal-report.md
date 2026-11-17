@@ -115,10 +115,12 @@ Pick another list with `--gene-list` or `report_gene_list` in config.toml:
 - **A built-in list**: `acmg-sf-3.3` (the default) or `acmg-sf-3.2`. Built-in
   lists are assets of the GitHub release `report-gene-lists-v3`, pinned by
   SHA-256 in `src/wgsextract_cli/assets/report/gene_lists.json`. The report
-  downloads one the first time it has ClinVar calls to place, into
+  downloads a missing list only with `--download` permission, into
   `report/gene_lists/` of the reference library, and checks it against the
-  pinned SHA-256 whenever it reads it. Offline, without a downloaded list,
-  the section warns (`gene_list_unavailable`) and places no calls; the other
+  pinned SHA-256 whenever it reads it. Without a local list and permission,
+  the command errors without connecting and asks for `--download` (see
+  [privacy](privacy.md)). If an explicitly permitted download fails, the
+  section warns (`gene_list_unavailable`) and places no calls; the other
   sections are unaffected.
 - **A TSV file** with a `gene` column, and optionally `category`,
   `inheritance` (`AD`, `AR`, `SD`, `XL`; see below), `note`, and

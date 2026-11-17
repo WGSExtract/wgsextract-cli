@@ -15,6 +15,13 @@ Please cite Ralf et al., *Molecular Biology and Evolution* 35(5):1291–1294
 The modified Yleaf-derived files retain GPL-3.0-or-later licensing;
 see [NOTICE](NOTICE) and the [upstream sync procedure](src/wgsextract_cli/ydna/yleaf_native/README.md).
 
+## Privacy
+
+Default commands stay offline: no telemetry, background update checks or
+silent reference downloads. Missing public data requires an explicit
+`--download`; sample-derived information must never be sent without a
+separate, documented opt-in. See [network permissions and destinations](docs/privacy.md).
+
 ## Install
 
 macOS and Linux: open Terminal, paste this command, and press Enter.

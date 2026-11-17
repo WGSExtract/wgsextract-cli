@@ -18,6 +18,7 @@ from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
@@ -267,7 +268,7 @@ class RelateParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-class QcAncestryParams(Params):
+class QcAncestryParams(DownloadParams):
     """Admixture-style proportions of 7 continental and 12 sub-continental
     HGDP+1KG reference components (not an ethnicity), with 95% intervals,
     from a BAM/CRAM, VCF or microarray file. Writes ``<stem>.ancestry.tsv``

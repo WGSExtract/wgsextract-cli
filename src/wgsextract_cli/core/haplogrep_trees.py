@@ -116,6 +116,9 @@ def ensure_tree(tree_id: str, library: str | Path | None = None) -> HaplogrepTre
     files: dict[str, Any] = meta["files"]
     if _verified(root, files):
         return tree
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"Haplogrep tree {tree.spec}")
     root.parent.mkdir(parents=True, exist_ok=True)
     with build_lock(str(root.parent / f"{version}.lock")):
         if _verified(root, files):

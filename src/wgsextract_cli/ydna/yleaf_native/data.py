@@ -118,6 +118,9 @@ def ensure_data(build: str | None, library: Path | None = None) -> Path:
             asset = metadata["archives"][key]
             if verified(root, asset["files"]):
                 continue
+            from wgsextract_cli.core.network_policy import require_download
+
+            require_download(f"Yleaf {key} tables")
             logging.info(
                 "Downloading Yleaf %s tables (%s)...", key, metadata["upstream"]["tag"]
             )

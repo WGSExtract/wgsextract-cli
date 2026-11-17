@@ -38,11 +38,15 @@ releases these data under CC0 1.0.
 The reference is one file (about 16 MB). It holds the sites, the component
 allele frequencies for K=7 and K=12, and a PCA of the reference samples, which
 [polygenic scores](pgs.md) use for their ancestry-adjusted percentiles. It is downloaded from this project's GitHub
-release `ancestry-ref-1` into `<library>/ancestry/` on first use, or with
+release `ancestry-ref-1` into `<library>/ancestry/` only with `--download`, or with
 `wgsextract ref ancestry --install`. Its SHA-256 is pinned and checked before
 every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
 (186,306 of the sites lift over) and T2T-CHM13 (140,020).
 `scripts/ancestry_reference/` rebuilds it from gnomAD.
+
+Without a verified local reference, the default command errors without a
+connection attempt and asks for `--download`. See [privacy](privacy.md) for
+hosts, request data and the `allow_reference_downloads` config setting.
 
 ## Inputs
 

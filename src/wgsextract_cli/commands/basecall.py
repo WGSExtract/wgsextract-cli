@@ -1,8 +1,8 @@
 """`basecall`: Nanopore POD5 signal to an unaligned BAM with ONT's Dorado.
 
 Dorado is an optional tool that users install from ONT's releases; it is
-checked, never installed. Dorado picks the model for the run's chemistry and
-downloads it into the models folder (the wgsextract cache by default). The
+checked, never installed. With --download, Dorado picks the model for the run's
+chemistry and downloads it into the models folder (the wgsextract cache by default). The
 unaligned BAM keeps Dorado's read tags, MM/ML base modifications included,
 and `align --r1` takes it as Nanopore reads.
 """
@@ -245,6 +245,14 @@ def run_basecall(params: BasecallParams) -> None:
     model_folder = check_model(params.model)
     model = str(Path(params.model).expanduser()) if model_folder else params.model
     pod5_files(source)
+    if not model_folder or codes:
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download(
+            "Dorado models (a model name/modification can send POD5 chemistry "
+            "metadata and model identifiers to Oxford Nanopore); use --model "
+            "with a local model directory and no --modified-bases to stay offline"
+        )
     device = resolve_device(params.device)
     verify_dependencies(["samtools"])
     dorado, version = resolve_dorado(params.dorado_path)

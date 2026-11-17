@@ -250,7 +250,7 @@ def check_index(ref: str) -> None:
 
 def _unbuildable(ref: str, prebuilt: PrebuiltIndex | None) -> WGSExtractError:
     how = (
-        "Run `wgsextract ref index --aligner bwa-mem2` to download the published one"
+        "Run `wgsextract ref index --aligner bwa-mem2 --download` to download the published one"
         if prebuilt
         else "Build it on a computer with that much memory and copy the "
         f"{', '.join(INDEX_SUFFIXES)} files next to the reference"

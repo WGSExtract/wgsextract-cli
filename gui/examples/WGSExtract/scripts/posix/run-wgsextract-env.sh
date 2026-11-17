@@ -45,22 +45,15 @@ else
   exit 127
 fi
 
-# Data sources must answer within seconds, so they never let `pixi run` finish
-# an interrupted install: they need the environment Pixi marks as installed
-# and run it as it is.
-run_flags=""
-if [ "${WGSEXTRACT_GUI_DATA_SOURCE:-}" = "1" ]; then
-  if [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
-    printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
-    printf 'Run the WGS Extract setup action again.\n' >&2
-    exit 127
-  fi
-  run_flags="--no-install"
+# Running an analysis must never finish or update an installation.
+if [ "${WGSEXTRACT_GUI_DATA_SOURCE:-}" = "1" ] && [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
+  printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
+  printf 'Run the WGS Extract setup action again.\n' >&2
+  exit 127
 fi
 
 # Match the launcher written by the installer, which keeps Pixi's package
 # cache inside the bundle runtime.
 export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-$runtime/.pixi/cache}"
 cd "$app_dir"
-# shellcheck disable=SC2086 # run_flags is empty or a single flag.
-exec "$pixi" run $run_flags "$@"
+exec "$pixi" run --no-install "$@"

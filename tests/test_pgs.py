@@ -378,12 +378,27 @@ def test_617_download_retries_and_records_catalog_licence(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         )
     )
     assert result.details["license"] == "Test licence"
     assert result.details["pgs_id"] == pgs_id
     assert result.metrics["score_sum"] == pytest.approx(1.0)
     assert "pgs_uncurated_score" in {w.code for w in result.warnings}
+
+    def offline(*args, **kwargs):
+        pytest.fail("#1052: cached PGS scoring must not refresh without --download")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    cached = api.score.pgs(
+        api.ScorePgsParams(
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            pgs_id=pgs_id,
+            outdir=tmp_path,
+        )
+    )
+    assert cached.metrics["score_sum"] == pytest.approx(result.metrics["score_sum"])
 
 
 @pytest.mark.parametrize(
@@ -431,7 +446,11 @@ def test_864_bmi_alias_warns_of_its_scores_author_licence(
     monkeypatch.setattr(urllib.request, "urlopen", response)
     result = api.score.pgs(
         api.ScorePgsParams(
-            input=FIXTURES / "sample.vcf", build="GRCh38", trait="bmi", outdir=tmp_path
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            trait="bmi",
+            outdir=tmp_path,
+            download=True,
         )
     )
     warned = [w for w in result.warnings if w.code == "pgs_license_restricted"]
@@ -527,6 +546,7 @@ def test_617_truncated_catalog_download_retries_before_scoring(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         )
     )
     assert requests[bad_url] == 2
@@ -571,6 +591,7 @@ def test_617_bad_catalog_download_never_replaces_a_good_cached_copy(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         ),
         check=False,
     )
@@ -1084,7 +1105,7 @@ def test_617_pr925_reference_download_failure_is_its_own_status(
     monkeypatch.setattr(
         "wgsextract_cli.core.pgs_reference.download_file", lambda *a, **k: False
     )
-    result = _calibrated(world, tmp_path / "out")
+    result = _calibrated(world, tmp_path / "out", download=True)
     assert result.exit_code == 0, result.error
     assert result.details["percentile"] is None
     assert result.details["percentile_status"] == "reference_unavailable"

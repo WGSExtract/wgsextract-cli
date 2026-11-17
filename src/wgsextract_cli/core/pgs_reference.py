@@ -341,6 +341,9 @@ def load(
     """The verified reference, downloaded first when missing."""
     file = path(reflib)
     if not (file.is_file() and _sha256(file) == SHA256):
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download(f"PGS calibration reference {NAME}")
         file.parent.mkdir(parents=True, exist_ok=True)
         if not download_file(
             URL,

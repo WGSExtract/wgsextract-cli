@@ -28,6 +28,7 @@ from wgsextract_cli.core.download_progress import (
     redact_urls,
     require_http_url,
 )
+from wgsextract_cli.core.network_policy import require_download
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from . import segmented
@@ -133,6 +134,7 @@ def download_file(
     use_mirrors: bool = True,
 ) -> bool:
     """Prefer audited, pinned mirrors; retain the original source as fallback."""
+    require_download(Path(dest).name)
     from wgsextract_cli.core.resource_mirrors import (
         download_mirror,
         mirror_for,

@@ -32,6 +32,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.results import CommandResult
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import input_param, outdir_param, ref_param, threads_param
@@ -82,7 +83,7 @@ class TypingSmnParams(_TypingParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-class TypingHlaParams(_TypingParams):
+class TypingHlaParams(_TypingParams, DownloadParams):
     """Type HLA class I and II genes with T1K from reads of the MHC, HLA
     decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
     -DRB1, -DQA1, -DQB1, -DPA1 and -DPB1 (None without a confident call) and
@@ -93,9 +94,9 @@ class TypingHlaParams(_TypingParams):
     hla_index: Path | None = param(
         None,
         help="T1K allele index (hla_dna_seq.fa). Default: <reference library>/"
-        "ref/t1k_hla, built from IPD-IMGT/HLA on first use.",
+        "ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
         doc="T1K allele index (hla_dna_seq.fa); None uses the reference "
-        "library's ref/t1k_hla one, built from IPD-IMGT/HLA on first use.",
+        "library's ref/t1k_hla one; download permits building it if missing.",
         metavar="FASTA",
         path="file",
     )
