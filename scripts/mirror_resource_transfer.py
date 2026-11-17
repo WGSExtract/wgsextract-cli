@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import random
 import shutil
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timezone
+from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
 from typing import Any
@@ -39,6 +43,48 @@ class RangesUnsupported(OSError):
     pass
 
 
+def retry_after_seconds(error: OSError | HTTPException) -> float:
+    if not isinstance(error, HTTPError) or error.code not in (429, 503):
+        return 0.0
+    value = error.headers.get("Retry-After", "") if error.headers else ""
+    try:
+        return max(0.0, float(int(value)))
+    except (ValueError, TypeError, OverflowError):
+        try:
+            date = parsedate_to_datetime(value)
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=timezone.utc)
+            return max(0.0, date.timestamp() - time.time())
+        except (ValueError, TypeError, OverflowError):
+            return 0.0
+
+
+@dataclass
+class RetryPolicy:
+    stalled: int = 0
+
+    def pause(
+        self, error: OSError | HTTPException, *, progress: bool, label: str
+    ) -> bool:
+        retry_after = retry_after_seconds(error)
+        if isinstance(error, HTTPError):
+            error.close()
+        self.stalled = 0 if progress else self.stalled + 1
+        if self.stalled >= ATTEMPTS:
+            return False
+        base = min(60.0, 2.0 ** max(0, self.stalled - 1))
+        delay = max(random.uniform(base, min(60.0, base * 1.25)), retry_after)
+        logging.warning(
+            "%s interrupted (%s); retrying in %.1f s (%s consecutive stalled failures)",
+            label,
+            error,
+            delay,
+            self.stalled,
+        )
+        time.sleep(delay)
+        return True
+
+
 def source_info(url: str) -> Source:
     with urlopen(
         Request(url, method="HEAD", headers={"User-Agent": USER_AGENT}), timeout=120
@@ -58,7 +104,8 @@ def fetch_range(source: Source, path: Path, start: int, end: int) -> None:
     """Close each response before upload; resume a short read at its exact byte."""
     # Prior-process bytes have no saved source identity; only resume this transfer.
     path.write_bytes(b"")
-    for attempt in range(ATTEMPTS):
+    retry = RetryPolicy()
+    while True:
         received = path.stat().st_size if path.exists() else 0
         if received == end - start + 1:
             return
@@ -97,14 +144,9 @@ def fetch_range(source: Source, path: Path, start: int, end: int) -> None:
             failure: OSError | HTTPException = exc
         except (OSError, HTTPException) as exc:
             failure = exc
-        logging.warning(
-            "Range %s-%s interrupted (%s); retry %s/%s",
-            start,
-            end,
-            failure,
-            attempt + 1,
-            ATTEMPTS,
-        )
+        progress = path.stat().st_size > received
+        if not retry.pause(failure, progress=progress, label=f"Range {start}-{end}"):
+            break
     raise OSError(
         f"Could not finish Range {start}-{end} from {source.url}"
     ) from failure
@@ -120,7 +162,10 @@ def fetch_whole(source: Source, path: Path, part_size: int) -> None:
             f"RANGE_REQUIRED: upstream ignores Range; {source.size:,} bytes exceed "
             "the 10 GiB whole-file fallback or available disk budget. Use a range-capable upstream."
         )
-    for attempt in range(ATTEMPTS):
+    retry = RetryPolicy()
+    high_water = 0
+    while True:
+        received = 0
         try:
             with (
                 urlopen(
@@ -140,6 +185,7 @@ def fetch_whole(source: Source, path: Path, part_size: int) -> None:
                         raise OSError("Short whole-file upstream response")
                     target.write(chunk)
                     remaining -= len(chunk)
+                    received += len(chunk)
                 if response.read(1):
                     raise ValueError("Upstream exceeded its advertised size")
             return
@@ -149,12 +195,10 @@ def fetch_whole(source: Source, path: Path, part_size: int) -> None:
             failure: OSError | HTTPException = exc
         except (OSError, HTTPException) as exc:
             failure = exc
-        logging.warning(
-            "Whole-file transfer interrupted (%s); retry %s/%s",
-            failure,
-            attempt + 1,
-            ATTEMPTS,
-        )
+        progress = received > high_water
+        high_water = max(high_water, received)
+        if not retry.pause(failure, progress=progress, label="Whole-file transfer"):
+            break
     raise OSError(
         f"Could not finish whole-file transfer from {source.url}"
     ) from failure

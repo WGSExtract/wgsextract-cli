@@ -11,6 +11,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 
+class DownloadHTTPServer(ThreadingHTTPServer):
+    """Leave listen-queue room for parallel segmented-download connections."""
+
+    request_queue_size = 64
+
+
 class RangeServer:
     """Serves ``files[path]``, or ``data`` for any other path (404 when None),
     with byte ranges, and records each request.
@@ -144,7 +150,7 @@ class RangeServer:
                     return
                 self.wfile.write(body)
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd = DownloadHTTPServer(("127.0.0.1", 0), Handler)
         self.base = f"http://127.0.0.1:{self.httpd.server_port}{self.prefix[:-1]}"
         self.url = self.url_for("hs38.fa.gz")
         # A short poll keeps shutdown() from waiting out the default half second.

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from email.utils import formatdate
 from urllib.request import Request, urlopen
 
 import pytest
@@ -22,6 +23,7 @@ def source(monkeypatch):
 
     monkeypatch.setattr(terms, "urlopen", open_http)
     monkeypatch.setattr(transfer, "urlopen", open_http)
+    monkeypatch.setattr(transfer.time, "sleep", lambda seconds: None)
     yield server
     server.close()
 
@@ -148,17 +150,19 @@ def test_1046_oversized_non_range_source_fails_before_full_download(
     assert not list(tmp_path.iterdir())
 
 
-def test_1046_repeatedly_dropped_part_fails_without_publishing(source, tmp_path):
+def test_1046_range_progress_resets_the_retry_budget(source, tmp_path):
     source.files["upstream"] = b"x" * 32768
     source.drop_starts = {0, 16384, 24576, 28672, 30720}
-    with pytest.raises(OSError, match="Could not finish Range"):
-        transfer.transfer_resource(
-            source.url_for("upstream"),
-            tmp_path,
-            "source",
-            32768,
-            lambda *args: pytest.fail("Incomplete data must not be published"),
-        )
+    parts = []
+    transfer.transfer_resource(
+        source.url_for("upstream"),
+        tmp_path,
+        "source",
+        32768,
+        lambda path, digest, size: parts.append(path.read_bytes()),
+    )
+    assert b"".join(parts) == source.files["upstream"]
+    assert len(source.gets()) > transfer.ATTEMPTS
     assert not list(tmp_path.iterdir())
 
 
@@ -176,3 +180,94 @@ def test_1046_unbound_stale_part_cannot_poison_a_new_publication(source, tmp_pat
         expected_sha256=hashlib.sha256(payload).hexdigest(),
     )
     assert b"".join(parts) == payload
+
+
+@pytest.mark.parametrize("ranged", [True, False], ids=["ranged", "whole"])
+@pytest.mark.parametrize(
+    ("status", "retry_after"), [(503, None), (429, "7"), (503, "date")]
+)
+def test_1046_rate_limited_publication_waits_then_succeeds(
+    source, tmp_path, monkeypatch, ranged, status, retry_after
+):
+    payload = b"resource after a transient server failure"
+    source.files["upstream"] = payload
+    source.ignore_ranges = not ranged
+    responses = []
+    delays = []
+    monkeypatch.setattr(transfer.time, "time", lambda: 1_800_000_000.0)
+    monkeypatch.setattr(
+        transfer.time,
+        "sleep",
+        lambda seconds: delays.append(seconds) if seconds else None,
+    )
+    if retry_after == "date":
+        retry_after = formatdate(1_800_000_020, usegmt=True)
+    handler = source.httpd.RequestHandlerClass
+
+    class TransientFailure(handler):
+        def do_GET(self):
+            if (
+                self.path == source.prefix + "upstream"
+                and bool(self.headers.get("Range")) is ranged
+            ):
+                if not responses:
+                    responses.append(status)
+                    self.send_response(status)
+                    if retry_after is not None:
+                        self.send_header("Retry-After", retry_after)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                responses.append(206 if ranged else 200)
+            super().do_GET()
+
+    source.httpd.RequestHandlerClass = TransientFailure
+    parts = []
+    record = transfer.transfer_resource(
+        source.url_for("upstream"),
+        tmp_path,
+        "source",
+        64,
+        lambda path, digest, size: parts.append(path.read_bytes()),
+    )
+    assert b"".join(parts) == payload
+    assert record["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert responses == [status, 206 if ranged else 200]
+    assert len(delays) == 1
+    if retry_after is None:
+        assert 1 <= delays[0] <= 1.25
+    else:
+        assert delays[0] >= (7 if status == 429 else 20)
+
+
+@pytest.mark.parametrize("ranged", [True, False], ids=["ranged", "whole"])
+def test_1046_stalled_failures_back_off_and_exhaust_the_budget(
+    source, tmp_path, monkeypatch, ranged
+):
+    source.files["upstream"] = b"source data"
+    info = transfer.source_info(source.url_for("upstream"))
+    source.statuses["upstream"] = 503
+    delays = []
+    monkeypatch.setattr(
+        transfer.time,
+        "sleep",
+        lambda seconds: delays.append(seconds) if seconds else None,
+    )
+    with pytest.raises(OSError, match="Could not finish"):
+        if ranged:
+            transfer.fetch_range(info, tmp_path / "part", 0, info.size - 1)
+        else:
+            transfer.fetch_whole(info, tmp_path / "whole", 64)
+    assert len(source.gets()) == transfer.ATTEMPTS
+    assert len(delays) == transfer.ATTEMPTS - 1
+    for index, delay in enumerate(delays):
+        assert 2**index <= delay <= 2**index * 1.25
+
+
+def test_1046_whole_file_retries_require_a_new_high_water_mark(source, tmp_path):
+    source.files["upstream"] = b"x" * 32
+    info = transfer.source_info(source.url_for("upstream"))
+    source.drops = transfer.ATTEMPTS + 1
+    with pytest.raises(OSError, match="Could not finish whole-file"):
+        transfer.fetch_whole(info, tmp_path / "whole", 64)
+    assert len(source.gets()) == transfer.ATTEMPTS + 1

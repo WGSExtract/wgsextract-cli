@@ -2,10 +2,11 @@ import json
 import os
 import secrets
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 
 import pytest
 
+from tests.http_server import DownloadHTTPServer
 from wgsextract_cli.core.ref_library import downloads, segmented
 from wgsextract_cli.core.ref_library.segmented import ranged_size
 
@@ -76,7 +77,7 @@ class _Server:
                 self.end_headers()
                 self.wfile.write(body)
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd = DownloadHTTPServer(("127.0.0.1", 0), Handler)
         self.url = f"http://127.0.0.1:{self.httpd.server_port}{self.path}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 

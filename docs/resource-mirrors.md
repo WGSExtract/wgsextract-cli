@@ -65,6 +65,11 @@ limit). Splitting is binary concatenation, not recompression or a scientific
 transformation. Each part uses a separate bounded HTTP Range request; a short
 connection resumes at its last received byte. The response is closed **before**
 uploading that part, so an upload cannot leave a long upstream connection idle.
+Transient failures wait with exponential backoff and jitter; 429/503 responses
+honor `Retry-After` (seconds or HTTP date). Five consecutive failures without
+new byte progress exhaust the retry budget. Range progress resets that budget;
+whole-file restarts reset it only after reaching a new high-water mark, so
+repeatedly downloading the same truncated prefix cannot retry forever.
 Sizes, Content-Range and source ETag/Last-Modified preconditions protect the
 snapshot; local part hashes are checked against GitHub's uploaded SHA-256/size
 before the final whole-file SHA-256 record is published.

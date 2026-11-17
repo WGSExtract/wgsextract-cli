@@ -12,6 +12,7 @@ import pytest
 
 from scripts import check_remote_resources as checks
 from scripts import mirror_download_resources as publisher
+from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
 from wgsextract_cli.core import gnomad_af, resource_mirrors
@@ -318,6 +319,7 @@ def test_1046_snapshot_resolves_all_contigs_and_keeps_restricted_sources():
 def test_1046_publisher_splits_records_and_keeps_attribution(
     source, tmp_path, monkeypatch, truncated, licence
 ):
+    monkeypatch.setattr(transfer.time, "sleep", lambda seconds: None)
     payload = b"redistributable source bytes"
     source.files.update(upstream=payload, licence=b"Public data source licence")
     entry = {
