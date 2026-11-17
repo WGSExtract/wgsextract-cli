@@ -90,14 +90,17 @@
     ["alphamissense", "AlphaMissense", "", "DeepMind’s predicted effect of missense changes", "vcf/alphamissense", "data-alphamissense", "min_score"],
     ["cadd", "CADD", "≈ 85 GB", "How harmful any change may be, as a PHRED score", "vcf/cadd", "data-cadd", "min_score"],
     ["spliceai", "SpliceAI", "", "Whether a change may disturb splicing", "vcf/spliceai", "data-spliceai", null],
+    ["gerp", "GERP++ conservation", "", "How strongly evolution has preserved a position", "vcf/gerp", "data-gerp", "min_score"],
+    ["phylop", "phyloP conservation", "≈ 10 GB", "Conservation or faster-than-expected evolution at a position", "vcf/phylop", "data-phylop", "min_score"],
   ];
 
   T.define({
-    slug: "scores", label: "Frequencies and scores", ops: ["vcf/gnomad", "vcf/revel", "vcf/alphamissense", "vcf/cadd", "vcf/spliceai"], group: "Annotate",
+    slug: "scores", label: "Frequencies and scores", ops: ["vcf/gnomad", "vcf/revel", "vcf/alphamissense", "vcf/cadd", "vcf/spliceai", "vcf/gerp", "vcf/phylop"], group: "Annotate",
     lesson: { href: "learn-health.html#scores", label: "Prediction scores & population frequencies" },
-    keywords: "gnomad revel cadd alphamissense spliceai allele frequency pathogenicity",
+    keywords: "gnomad revel cadd alphamissense spliceai gerp phylop conservation allele frequency pathogenicity",
     desc: "Adds what large databases and prediction models say about each variant: how common it is, and how likely it is to change a protein or its splicing. Rare plus likely harmful is what clinicians look at first.",
     learn: "Use it when looking through rare variants, to pick out the few worth a closer look. gnomAD says how common each change is; REVEL and AlphaMissense rate changes to a protein’s building blocks, CADD rates any change, and SpliceAI looks at how a gene is cut and joined.\n\n" +
+      "GERP++ and phyloP measure evolutionary conservation, not clinical pathogenicity: high positive scores suggest a position has changed less than expected. Negative phyloP scores suggest faster evolution.\n\n" +
       "Scores are predictions, not findings: a high score means “possibly damaging”, not “causes disease”, and everyone carries some rare, high-scoring changes. They complement VEP, which names the effect, and ClinVar, which reports what labs have seen. Some downloads are large; CADD is about 85 GB.",
     accepts: VCF, file: "helen", button: "Annotate",
     checklist: { key: "scores", title: "Which?", items: SCORES.map(function (s, i) {
@@ -105,9 +108,12 @@
     }) },
     fields: [
       f.param("max_af", "Keep only rarer than", "gnomAD: a frequency such as 0.01 (1%); empty keeps all", { width: 100 }),
-      f.param("min_score", "Keep only scores above", "REVEL or AlphaMissense 0.5, CADD 20; empty keeps all", { width: 100 }),
+      f.param("min_score", "Also a high-score copy", "At least this score, in an extra filtered VCF. Scales differ: REVEL / AlphaMissense 0–1, CADD PHRED, conservation has its own scale. Applies to every selected score; empty skips the extra copy", { width: 100 }),
     ],
-    more: CONFIDENCE,
+    more: CONFIDENCE.concat([
+      f.param("gerp_file", "Local GERP++ data", "Empty: use installed data", { when: function (c) { return c.v.scores.indexOf("gerp") >= 0; } }),
+      f.param("phylop_file", "Local phyloP data", "Empty: use installed data", { when: function (c) { return c.v.scores.indexOf("phylop") >= 0; } }),
+    ]),
     requests: function (c, base) {
       return SCORES.filter(function (s) {
         return c.v.scores.indexOf(s[0]) >= 0;
@@ -119,7 +125,8 @@
       var picks = c.v.scores;
       var out = { count: picks.length + (picks.length === 1 ? " source" : " sources"), hours: null, timeText: "minutes", notes: [] };
       SCORES.forEach(function (s) {
-        if (picks.indexOf(s[0]) >= 0 && !c.flag(s[5])) out.notes.push(download(s[5], s[1], s[2].replace("≈ ", "")));
+        var local = s[0] === "gerp" ? c.v.gerp_file : s[0] === "phylop" ? c.v.phylop_file : null;
+        if (picks.indexOf(s[0]) >= 0 && !local && !c.flag(s[5])) out.notes.push(download(s[5], s[1], s[2].replace("≈ ", "")));
       });
       if (!picks.length) out.blocked = "Choose at least one.";
       else if (out.notes.length) out.blocked = "Download the data first.";
