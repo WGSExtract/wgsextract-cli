@@ -44,6 +44,8 @@ case "${1:-}" in
         printf 'pixi 0.0.0-test\n'
         ;;
     install)
+        mkdir -p .pixi/envs/default/conda-meta
+        printf '{}\n' > .pixi/envs/default/conda-meta/pixi
         exit 0
         ;;
     run)

@@ -10,6 +10,15 @@ import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { forgetSetupWithMissingTools, runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 
+async function installRuntimeMarker(appDir) {
+  const metadata = path.join(appDir, ".pixi", "envs", "default", "conda-meta");
+  await mkdir(metadata, { recursive: true });
+  await writeFile(path.join(metadata, "pixi"), "{}");
+  const bin = path.join(path.dirname(appDir), "bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(path.join(bin, "wgsextract.cmd"), "@echo off\r\n");
+}
+
 test("normalizes setup platform aliases", () => {
   assert.equal(currentSetupPlatform("darwin"), "macos");
   assert.equal(currentSetupPlatform("mac"), "macos");
@@ -316,7 +325,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await mkdir(outDir, { recursive: true });
     await writeFile(vcfInput, "original-vcf\n");
     await writeFile(bamInput, "original-bam\n");
@@ -401,7 +410,7 @@ test("WGSExtract Windows runtime wrapper does not wait for stdin unless requeste
 
   try {
     await cp(sourceScripts, scriptsRoot, { recursive: true });
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, [
       "@echo off",
       `>> "${path.join(tempRoot, "calls.log")}" echo PIXI^|%*`,
@@ -541,7 +550,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   try {
     await cp(sourceBundleRoot, bundleRoot, { recursive: true });
     await rm(path.join(bundleRoot, "reference"), { force: true, recursive: true });
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, "#!/bin/sh\necho fake pixi \"$@\"\nexit 0\n");
     await chmod(fakePixi, 0o755);
     process.env.PIXI = fakePixi;
@@ -585,7 +594,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, [
       "@echo off",
       "echo fake pixi %*",

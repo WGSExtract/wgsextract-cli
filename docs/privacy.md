@@ -6,6 +6,8 @@ model is missing. There is no telemetry, usage reporting or background CLI
 update check. Missing dependencies are reported, never installed by analysis.
 Runtime Pixi invocations use both `--no-install` and `--frozen`: skipping
 installation alone would still allow lockfile resolution and registry queries.
+Incomplete installed runtimes fail with setup guidance, rather than falling back
+to a potentially different CLI on the host's PATH.
 
 Explicit download/install commands may use the network. Other commands need
 `--download` before fetching missing public data. Without permission they

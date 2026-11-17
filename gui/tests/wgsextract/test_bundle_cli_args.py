@@ -140,7 +140,9 @@ class BundleSandbox:
         self.app_data = root / "App Data" / "WGSExtract-gui"
         shutil.copytree(BUNDLE / "scripts", self.bundle / "scripts")
         runtime = self.app_data / "runtime" / "wgsextract-cli"
-        (runtime / "app").mkdir(parents=True)
+        metadata = runtime / "app" / ".pixi" / "envs" / "default" / "conda-meta"
+        metadata.mkdir(parents=True)
+        (metadata / "pixi").write_text("{}")
         pixi = runtime / ".pixi" / "bin" / "pixi"
         pixi.parent.mkdir(parents=True)
         pixi.write_text(FAKE_PIXI)

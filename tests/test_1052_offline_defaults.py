@@ -174,7 +174,7 @@ def test_1052_subprocess_extraction_works_in_a_network_namespace(
     assert (tmp_path / "fake_mtDNA.bam").is_file()
 
 
-def test_1052_runtime_launcher_does_not_resolve_a_changed_manifest(
+def test_1052_runtime_launcher_never_resolves_or_uses_an_uninstalled_environment(
     tmp_path, network_namespace
 ):
     pixi = os.environ.get("PIXI_EXE") or shutil.which("pixi")
@@ -207,6 +207,21 @@ def test_1052_runtime_launcher_does_not_resolve_a_changed_manifest(
         check=True,
         timeout=30,
     )
+    subprocess.run(
+        [
+            *network_namespace,
+            pixi,
+            "install",
+            "--frozen",
+            "--manifest-path",
+            str(manifest),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
     lock = project / "pixi.lock"
     before = lock.read_bytes()
     manifest.write_text(
@@ -220,15 +235,16 @@ def test_1052_runtime_launcher_does_not_resolve_a_changed_manifest(
         Path(__file__).parents[1]
         / "gui/examples/WGSExtract/scripts/posix/run-wgsextract-env.sh"
     )
+    command = [
+        *network_namespace,
+        "sh",
+        str(launcher),
+        sys.executable,
+        "-c",
+        "print('offline-1052')",
+    ]
     run = subprocess.run(
-        [
-            *network_namespace,
-            "sh",
-            str(launcher),
-            sys.executable,
-            "-c",
-            "print('offline-1052')",
-        ],
+        command,
         env=env,
         capture_output=True,
         text=True,
@@ -237,6 +253,13 @@ def test_1052_runtime_launcher_does_not_resolve_a_changed_manifest(
     assert run.returncode == 0, run.stderr
     assert "offline-1052" in run.stdout
     assert lock.read_bytes() == before
+    (project / ".pixi/envs/default/conda-meta/pixi").unlink()
+    refused = subprocess.run(
+        command, env=env, capture_output=True, text=True, timeout=30
+    )
+    assert refused.returncode == 127
+    assert "setup" in refused.stderr.lower()
+    assert "offline-1052" not in refused.stdout
 
 
 @needs_tools("samtools", "bwa-mem2")

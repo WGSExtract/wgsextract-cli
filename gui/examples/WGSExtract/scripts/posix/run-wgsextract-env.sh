@@ -45,8 +45,8 @@ else
   exit 127
 fi
 
-# Running an analysis must never finish or update an installation.
-if [ "${WGSEXTRACT_GUI_DATA_SOURCE:-}" = "1" ] && [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
+# Pixi's no-install mode otherwise falls back to programs on the host's PATH.
+if [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
   printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
   printf 'Run the WGS Extract setup action again.\n' >&2
   exit 127

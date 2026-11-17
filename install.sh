@@ -344,6 +344,15 @@ write_pixi_exports() {
     fi
 }
 
+write_cli_environment_check() {
+    cat <<'SH'
+if [ ! -f "$install_dir/app/.pixi/envs/default/conda-meta/pixi" ]; then
+    printf 'Error: WGS Extract CLI setup is incomplete. Run the installer again.\n' >&2
+    exit 127
+fi
+SH
+}
+
 write_cli_launcher() {
     if [ "$BIN_DIR" = "$DEFAULT_BIN_DIR" ]; then
         {
@@ -353,6 +362,7 @@ write_cli_launcher() {
             printf 'script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)\n'
             printf 'install_dir="$script_dir"\n'
             write_pixi_exports
+            write_cli_environment_check
             printf 'exec %s run --no-install --frozen --manifest-path "$install_dir/app/pixi.toml" wgsextract "$@"\n' "$(quote_sh "$PIXI")"
         } > "$LAUNCHER"
     else
@@ -362,6 +372,7 @@ write_cli_launcher() {
             printf 'set -eu\n'
             printf 'install_dir=%s\n' "$(quote_sh "$INSTALL_DIR")"
             write_pixi_exports
+            write_cli_environment_check
             printf 'exec %s run --no-install --frozen --manifest-path %s wgsextract "$@"\n' "$(quote_sh "$PIXI")" "$(quote_sh "$APP_DIR/pixi.toml")"
         } > "$LAUNCHER"
     fi
