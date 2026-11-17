@@ -23,10 +23,14 @@
     }));
     var move = W.qs('[data-edge="workspace"]');
     if (move) {
-      W.qs(".v2-mono", move.parentElement).textContent = s.workspace;
+      /* The seed keeps {{bundleWorkspace}}; show it as a real folder, home as ~ */
+      var M = W.v2machine;
+      var real = M.realPath(s.workspace);
+      var home = M.realPath("~/x").slice(0, -2);
+      W.qs(".v2-mono", move.parentElement).textContent = real.indexOf(home) === 0 ? "~" + real.slice(home.length) : real;
       api.get("/v1/disks").then(function (res) {
         if (res.status !== 200) return;
-        var matches = res.body.disks.filter(function (d) { return s.workspace.indexOf(d.path) === 0; }).sort(function (a, b) { return b.path.length - a.path.length; });
+        var matches = res.body.disks.filter(function (d) { return real.indexOf(M.realPath(d.path)) === 0; }).sort(function (a, b) { return b.path.length - a.path.length; });
         var disk = matches[0] || res.body.disks[0];
         W.qs(".v2-dim", move.parentElement).textContent = W.v2clock.gb(Math.max(0, disk.free_gb)) + " free on " + disk.name;
       });
