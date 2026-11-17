@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-from wgsextract_cli.core import personal_report
+from wgsextract_cli.core import acmg, personal_report
 from wgsextract_cli.core.results import MANIFEST_SUFFIX
 from wgsextract_cli.core.results import SCHEMA_ID as RESULT_SCHEMA
 from wgsextract_cli.core.utils import WGSExtractError
@@ -43,6 +43,7 @@ _RSID = re.compile(r"rs\d+")
 _TRUE = ("1", "true", "yes")
 _FALSE = ("0", "false", "no")
 _SIGNIFICANCE_SPLIT = re.compile(r"[/|,]")
+_ACMG_COLUMNS = tuple(name for name in COLUMN_NAMES if name.startswith("acmg_"))
 InputT = TypeVar("InputT", bound=LookupInputs)
 
 
@@ -310,6 +311,8 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> dict[str, Any]
         if close:
             close()
     page: VariantPage = {"path": str(path), "rows": found, "next_cursor": next_cursor}
+    if any(key in row for row in found for key in _ACMG_COLUMNS):
+        page["disclaimer"] = acmg.DISCLAIMER
     return dict(page)
 
 
@@ -395,7 +398,8 @@ QUERIES: dict[str, LookupQuery] = {
             "Look up a sample's variants in a `vcf table` output (*_variants "
             ".sqlite, .tsv or .parquet) by gene, rsID, region, ClinVar "
             "significance or confidence. Returns at most `limit` rows and a "
-            "next_cursor to continue.",
+            "next_cursor to continue. A page with automated ACMG classes "
+            "(acmg_* columns, research only) carries their disclaimer.",
             VariantInputs,
             query_variants,
         ),

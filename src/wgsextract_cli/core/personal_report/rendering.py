@@ -19,6 +19,8 @@ from wgsextract_cli.core.report_documents import (
 )
 
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
+# The disclaimer of findings from automated ACMG classes (`vcf acmg`).
+RESEARCH_ONLY = "Research use only; not a diagnosis."
 # Section warning: a newer attempt failed; the section shows an older result.
 NEWER_ATTEMPT_FAILED = "newer_attempt_failed"
 
@@ -145,6 +147,8 @@ def render_html(report: Mapping[str, Any], base: str = ".") -> str:
             f'<span class="status {_h(section["status"])}">'
             f"{_h(section['status'].replace('_', ' '))}</span></h2>"
         )
+        if section.get("disclaimer"):
+            out.append(f'<p class="disclaimer"><b>{_h(section["disclaimer"])}</b></p>')
         if section.get("summary"):
             out.append(f"<p>{_h(section['summary'])}</p>")
         if section.get("error"):
@@ -241,6 +245,13 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "acmg_research":
+        out.extend(f'<p class="muted">{_h(line)}</p>' for line in _acmg_notes(section))
+        if section.get("all_calls"):
+            out.append(
+                f'<p class="muted">Every classified allele: '
+                f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
+            )
     elif name == "ancestry" and section["components"]:
         out.append(f'<p class="muted">{_h(section["note"])}</p>')
         for k in sorted({c["k"] for c in section["components"]}):
@@ -280,6 +291,22 @@ def _html_section_body(name: str, section: Mapping[str, Any], base: str) -> list
             )
         out.append("</table>")
     return out
+
+
+def _acmg_notes(section: Mapping[str, Any]) -> list[str]:
+    """The gene list, classifier and criteria never evaluated behind the
+    automated ACMG classes."""
+    gl = section["gene_list"]
+    notes = [f"Gene list: {gl['name']} ({gl['genes']} genes)."]
+    if section.get("tool"):
+        notes.append(f"Classified by {section['tool']}.")
+    if section.get("criteria_not_evaluated"):
+        notes.append(
+            "Criteria never evaluated: "
+            + ", ".join(section["criteria_not_evaluated"])
+            + "."
+        )
+    return notes
 
 
 def _call_text(v: Mapping[str, Any]) -> str:
@@ -382,6 +409,8 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
     for name, section in report["sections"].items():
         status = section["status"].replace("_", " ")
         out += ["", f"## {_md(section['title'])} ({_md(status)})"]
+        if section.get("disclaimer"):
+            out += ["", f"> **{_md(section['disclaimer'])}**"]
         if section.get("summary"):
             out += ["", _md(section["summary"])]
         if section.get("error"):
@@ -442,6 +471,13 @@ def render_markdown(report: Mapping[str, Any], base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "acmg_research":
+            out += ["", *(_md(line) for line in _acmg_notes(section))]
+            if section.get("all_calls"):
+                href = _href(section["all_calls"], base)
+                out.append(
+                    f"Every classified allele: {_md_link(section['all_calls'], href)}"
+                )
         if name == "ancestry" and section["components"]:
             out += ["", f"_{_md(section['note'])}_"]
             for k in sorted({c["k"] for c in section["components"]}):

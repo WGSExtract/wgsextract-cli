@@ -107,7 +107,12 @@ class Job(JobRequired, total=False):
     params: dict[str, object]
 
 
-class VariantPage(TypedDict):
+class VariantPageRequired(TypedDict):
     path: str
     rows: list[dict[str, object]]
     next_cursor: str | None
+
+
+class VariantPage(VariantPageRequired, total=False):
+    # acmg.DISCLAIMER, when a row has an acmg_* column: research use only.
+    disclaimer: str

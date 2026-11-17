@@ -515,3 +515,66 @@ def test_732_non_probability_gp_never_becomes_a_probability(gp):
         "GT:GP", f"0/1:{gp}",
     )  # fmt: skip
     assert _rows([record])[("800", "T")]["genotype_probability"] is None
+
+
+# What `vcf acmg` writes (issue 629): Number=A classes on a vep-rs VCF.
+ACMG_HEADER = HEADER.replace(
+    "##FORMAT=<ID=GT,",
+    '##INFO=<ID=ACMG_CLASS,Number=A,Type=String,Description="Research only">\n'
+    '##INFO=<ID=ACMG_CRITERIA,Number=A,Type=String,Description="Criteria">\n'
+    '##INFO=<ID=ACMG_TRANSCRIPT,Number=A,Type=String,Description="Transcript">\n'
+    '##WGSE_ACMG=<Disclaimer="Research use only">\n'
+    "##FORMAT=<ID=GT,",
+)
+
+
+@needs_htslib
+def test_629_acmg_classes_become_research_only_columns(tmp_path):
+    plain = tmp_path / "acmg_annotated.vcf"
+    plain.write_text(
+        ACMG_HEADER
+        + _record(
+            "chr1", "100", ".", "C", "T,G", "50", "PASS",
+            "ACMG_CLASS=LP,VUS;ACMG_CRITERIA=PVS1&PM2_Supporting,PM2_Supporting;"
+            "ACMG_TRANSCRIPT=ENST1,ENST1",
+            "GT:DP:GQ", "1/2:30:99",
+        )
+        + _record("chr1", "200", ".", "A", "G", "50", "PASS", ".", "GT", "0/1")
+    )  # fmt: skip
+    out = tmp_path / "out"
+    result = CommandResult("vcf table")
+    with collecting(result):
+        run_wgsextract(
+            "vcf", "table", "--vcf-input", bgzip_index(plain), "--outdir", str(out)
+        )  # fmt: skip
+
+    rows = _tsv(out / "acmg_annotated_variants.tsv")
+    acmg = ("acmg_class", "acmg_criteria", "acmg_transcript")
+    assert [rows["100", "T"][c] for c in acmg] == ["LP", "PVS1&PM2_Supporting", "ENST1"]
+    assert [rows["100", "G"][c] for c in acmg] == ["VUS", "PM2_Supporting", "ENST1"]
+    assert [rows["200", "G"][c] for c in acmg] == ["", "", ""]
+
+    db = sqlite3.connect(out / "acmg_annotated_variants.sqlite")
+    metadata = dict(db.execute("SELECT key, value FROM metadata"))
+    described = dict(db.execute("SELECT name, description FROM columns"))
+    db.close()
+    assert "acmg" in metadata["annotations"].split(",")
+    assert metadata["acmg_disclaimer"].startswith("Research use only; not a diagnosis")
+    assert described["acmg_class"].startswith("Research only, not a diagnosis")
+    assert [w.code for w in result.warnings] == ["acmg_research_only"]
+
+
+@needs_htslib
+def test_629_a_table_without_acmg_classes_says_nothing_of_them(annotated_vcf, tmp_path):
+    result = CommandResult("vcf table")
+    with collecting(result):
+        run_wgsextract(
+            "vcf", "table", "--vcf-input", annotated_vcf, "--outdir", str(tmp_path)
+        )  # fmt: skip
+    db = sqlite3.connect(tmp_path / "sample_variants.sqlite")
+    keys = {key for (key,) in db.execute("SELECT key FROM metadata")}
+    classes = db.execute("SELECT count(acmg_class) FROM variants").fetchone()
+    db.close()
+    assert "acmg_disclaimer" not in keys
+    assert classes == (0,)
+    assert "acmg_research_only" not in {w.code for w in result.warnings}

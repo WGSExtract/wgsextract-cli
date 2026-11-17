@@ -369,6 +369,9 @@
               "type": "null"
             }
           ]
+        },
+        "disclaimer": {
+          "type": "string"
         }
       },
       "required": [
