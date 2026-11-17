@@ -438,9 +438,20 @@ def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys
     results = tmp_path / "results"
     _cli_json(capsys, "vcf", "clinvar", "--input", other, "--vcf-input", sample,
               *_clinvar(tmp_path, sample), "--outdir", str(results))  # fmt: skip
+    genes = tmp_path / "genes.tsv"
+    genes.write_text("gene\nBRCA1\n")
 
     def sources(vcf: str) -> list[str]:
-        report = _cli_json(capsys, "report", "--input", vcf, "--results", str(results))
+        report = _cli_json(
+            capsys,
+            "report",
+            "--input",
+            vcf,
+            "--results",
+            str(results),
+            "--gene-list",
+            str(genes),
+        )
         return [name for role, name in _inputs(report) if role == "manifest"]
 
     assert sources(other) == []

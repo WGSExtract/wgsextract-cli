@@ -12,7 +12,8 @@ from wgsextract_cli.core.microarray.quirks import MODES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
-from ._params import Params, param
+from ._network import DownloadParams
+from ._params import param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
     depth_param,
@@ -44,12 +45,13 @@ def _formats_type(text: str) -> str:
 
 
 @dataclass(frozen=True, kw_only=True)
-class MicroarrayParams(Params):
+class MicroarrayParams(DownloadParams):
     """Generate a combined 23andMe-style kit and the selected vendor or AADR
     formats from a BAM, CRAM or VCF.
 
     Fields left at ``None`` fall back to config.toml (``microarray_*``
-    settings) and then to the documented default.
+    settings) and then to the documented default. Missing public liftOver
+    chains require ``download``; lifting sample coordinates stays local.
     """
 
     COMMAND = "microarray"

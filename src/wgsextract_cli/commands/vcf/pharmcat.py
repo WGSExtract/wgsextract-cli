@@ -91,6 +91,9 @@ def _python(directory: str) -> list[str]:
 def _ensure_reference(python: list[str], directory: str) -> str:
     reference = str(Path(directory, REFERENCE_FASTA))
     if not Path(reference).is_file():
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download("PharmCAT GRCh38 reference.fna.bgz (Zenodo record 7288118)")
         logging.info("Fetching PharmCAT's GRCh38 reference (about 1 GB, once)...")
         fetch = (
             "import sys; sys.path.insert(0, sys.argv[1]); import pcat; "

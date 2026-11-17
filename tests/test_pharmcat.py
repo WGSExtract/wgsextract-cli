@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -778,18 +779,42 @@ def test_pharmcat_without_its_environment_says_how_to_install_it(tmp_path, monke
                        str(release))  # fmt: skip
 
 
-def test_pharmcats_reference_is_fetched_once_with_its_own_downloader(tmp_path):
-    (tmp_path / "pcat").mkdir()
-    (tmp_path / "pcat" / "__init__.py").write_text(
-        "from pathlib import Path\n"
+@needs_htslib
+def test_1052_pharmcat_reference_requires_consent_and_cached_runs_stay_offline(
+    tmp_path, pharmcat_env
+):
+    release = _release(tmp_path / "pharmcat")
+    backup = release / "reference-cache"
+    backup.mkdir()
+    for suffix in ("", ".fai", ".gzi"):
+        source = release / f"{REFERENCE_FASTA}{suffix}"
+        if source.exists():
+            source.replace(backup / source.name)
+    downloader = release / "pcat" / "__init__.py"
+    downloader.parent.mkdir()
+    downloader.write_text(
+        "from pathlib import Path\nimport shutil\n"
         "def download_reference_fasta_and_index(d):\n"
-        f"    Path(d, {REFERENCE_FASTA!r}).write_text('fetched ' + d)\n"
+        "    for source in (Path(d) / 'reference-cache').iterdir():\n"
+        "        shutil.copyfile(source, Path(d) / source.name)\n"
     )
-    reference = pharmcat._ensure_reference([sys.executable], str(tmp_path))
-    assert reference == str(tmp_path / REFERENCE_FASTA)
-    assert Path(reference).read_text() == f"fetched {tmp_path}"
-    (tmp_path / "pcat" / "__init__.py").write_text("raise SystemExit(1)\n")
-    assert pharmcat._ensure_reference([sys.executable], str(tmp_path)) == reference
+    sample = Path(_vcf(tmp_path / "sample.vcf.gz", SNPS))
+    params = api.VcfPharmcatParams(
+        vcf_input=sample, pharmcat_dir=release, outdir=tmp_path / "out"
+    )
+    refused = api.vcf.pharmcat(params, check=False)
+    assert refused.exit_code == 2
+    assert refused.error and "reference.fna.bgz" in refused.error.message
+    assert "--download" in refused.error.message
+    assert not (release / REFERENCE_FASTA).exists()
+
+    permitted = api.vcf.pharmcat(replace(params, download=True), check=False)
+    assert permitted.exit_code == 0, permitted.error
+    assert (tmp_path / "out" / "sample.phenotype.json").is_file()
+    downloader.write_text("raise RuntimeError('cached run invoked the downloader')\n")
+    cached = api.vcf.pharmcat(replace(params, outdir=tmp_path / "cached"), check=False)
+    assert cached.exit_code == 0, cached.error
+    assert (tmp_path / "cached" / "sample.phenotype.json").is_file()
 
 
 @needs_htslib

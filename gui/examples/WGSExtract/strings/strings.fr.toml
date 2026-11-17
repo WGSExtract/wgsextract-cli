@@ -476,6 +476,8 @@
 "controls.settings.post-v063.atomic.tooltip" = "Opt in to publishing completed main outputs by rename. Staged tool provenance paths may differ. Default is off; CLI still protects existing outputs and cleans failed work."  # i18n-ignore; TODO: translate
 "controls.settings.post-v063.awake.label" = "Keep awake during commands"  # i18n-ignore; TODO: translate
 "controls.settings.post-v063.awake.tooltip" = "Best-effort sleep inhibition while CLI commands run. Opt in; default is off. Availability depends on the operating system."  # i18n-ignore; TODO: translate
+"controls.settings.privacy.downloads.label" = "Autoriser le téléchargement des données publiques manquantes"  # i18n-source-hash:ae79b947
+"controls.settings.privacy.downloads.tooltip" = "Désactivé par défaut. Envoie les identifiants de fichiers/modèles et les métadonnées de chimie Dorado à GitHub/CDN, Amazon S3, UCSC, Zenodo, IPD-IMGT/HLA, PGS Catalog/EBI, Oxford Nanopore ou aux serveurs d'arbres configurés. Aucune lecture, aucun génotype ni position de l'échantillon. Voir docs/privacy.md."  # i18n-source-hash:d3618c71
 "sections.microarray.post-v063.builds.subtitle" = "AADR exports require GRCh37 or GRCh38. For native CHM13 calling, select the CLI-supported pinned CHM13 reference; no generic liftover or extra mode flag is used. Consumer layouts are marker-only unless a matching sequence-defined indel manifest is supplied through the advanced CLI."  # i18n-ignore; TODO: translate
 
 # TODO: translate the CLI features added after v0.6.3.

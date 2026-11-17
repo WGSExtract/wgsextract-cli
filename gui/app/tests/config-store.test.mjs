@@ -110,25 +110,28 @@ function parseSavedToml(text) {
   return parseFlatToml(text);
 }
 
-test("saving WGSExtract Settings keeps disabled/enabled/disabled toggles as native TOML booleans", async (t) => {
+test("#1052 WGSExtract download consent and other toggles persist as native TOML booleans", async (t) => {
   const bundleRoot = await tempDirectory(t);
   const page = JSON.parse(await readFile(new URL("../../examples/WGSExtract/pages/settings.json", import.meta.url), "utf8"));
   const control = page.sections.flatMap((section) => section.controls ?? []).find((item) => item.kind === "configEditor");
 
   for (const [value, expected] of [[false, false], ["true", true], ["false", false]]) {
     const saved = await saveConfig(control, undefined, {
-      atomic_outputs: value, keep_awake: value, output_directory: "123", reference_library: "false",
+      atomic_outputs: value, keep_awake: value, allow_reference_downloads: value,
+      output_directory: "123", reference_library: "false",
     }, bundleRoot);
     const text = await readFile(saved.path, "utf8");
     const parsed = parseSavedToml(text);
     assert.equal(parsed.atomic_outputs, expected);
     assert.equal(parsed.keep_awake, expected);
+    assert.equal(parsed.allow_reference_downloads, expected);
     assert.equal(parsed.output_directory, "123");
     assert.equal(parsed.reference_library, "false");
     assert.match(text, new RegExp(`atomic_outputs = ${expected}\\n`));
     const loaded = await loadConfig(control, undefined, bundleRoot);
     assert.equal(loaded.values.atomic_outputs, expected);
     assert.equal(loaded.values.keep_awake, expected);
+    assert.equal(loaded.values.allow_reference_downloads, expected);
   }
 });
 

@@ -20,6 +20,9 @@ allow_reference_downloads = false
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.
+The desktop exposes the same default-off setting under Settings → advanced
+settings → **Allow missing public-data downloads**, with the request disclosure
+in its tooltip.
 
 The option is shared by the CLI and typed Python/server parameters. The
 read-only MCP surface refuses download permissions. A server job needs both
@@ -40,6 +43,8 @@ genotypes or variant coordinates.
 | Opt-in | Destination | Request data |
 | --- | --- | --- |
 | `qc ancestry --download` | GitHub WGSExtract releases/CDN | Pinned HGDP+1KG reference filename, not sample ancestry or positions |
+| `microarray --download` | `hgdownload.soe.ucsc.edu`; GitHub WGSExtract releases/CDN as mirror | Whole hg18→hg19 / hg19→hg38 chain filenames; sample coordinates are lifted locally and never sent |
+| `vcf pharmcat --download` | `zenodo.org`, via PharmCAT's reference downloader (record 7288118) | Public GRCh38 reference archive/index filenames, not pharmacogenetic variants or sample files |
 | `ref index --aligner bwa-mem2 --download` | Published hs38DH index on Amazon S3 | Reference index filenames, not read/sample information; without permission the index is built locally if RAM permits |
 | `typing hla --download` | IPD-IMGT/HLA's public distribution, via T1K (GitHub ANHIG/IMGTHLA) | Allele-database identifiers, not reads or HLA calls |
 | `lineage mt-haplogroup --download` | GitHub `genepi/phylotree-fu-rcrs`, `genepi/phylotree-rcrs-17`, `genebygene/mitotree` releases/CDN | Selected tree ID/version, not haplogroup or variants |
@@ -67,9 +72,9 @@ behavior. Classification describes the baseline, before this change.
 | Command/option | Network on baseline? | Classification / disposition |
 | --- | --- | --- |
 | `help`, version, `config`, `sample`, `report-issue`, `info`, coverage, chip inspection | No | Local; no install/update/size probe; support builds a redacted report but does not upload it |
-| `extract` and `bam` families, `repair`, `align`, local-input `realign`, `microarray`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
+| `extract` and `bam` families, `repair`, `align`, local-input `realign`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
-| Liftover/chip coordinates | No | Local chain-file paths passed to pyliftover, never build-name auto-fetch |
+| Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | No | Local caches/indexes only; VEP cache missing names `vep download` |
 | DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; `--pull=never`; no runtime dependency installation |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
@@ -79,6 +84,7 @@ behavior. Classification describes the baseline, before this change.
 | `qc ancestry`, calibrated `score pgs` | Yes when reference absent | **Default-violation**: require `--download` |
 | `score pgs --trait/--pgs-id` | Yes, including repeated runs | **Default-violation**: require `--download` for absent Catalog files; reuse local copies |
 | `typing hla` without local index | Yes | **Default-violation**: require `--download` for IPD-IMGT/HLA |
+| `vcf pharmcat` without its reference FASTA | Yes, in PharmCAT's downloader subprocess | **Default-violation** found in review: require `--download` before starting the subprocess |
 | `lineage mt-haplogroup`, `lineage y-haplogroup`, custom remote Y trees | Yes when data absent | **Default-violation**: require `--download`; cache reuse remains local |
 | `analyze comprehensive` | Inherits first-use tree downloads from lineage steps | **Default-violation**: child commands now refuse missing data without consent; pre-provision it or explicitly opt in through config |
 | `report` with clinical findings and absent selected gene list | Yes | **Default-violation**: require `--download`, not silent partial placement |

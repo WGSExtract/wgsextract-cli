@@ -8,13 +8,21 @@ command end to end.
 """
 
 import gzip
+import hashlib
 import random
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
+from tests.http_server import serving
 from tests.smoke_utils import state_directory_setting
+from wgsextract_cli import api
+from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.microarray import targets
 
 pytestmark = needs_htslib
 
@@ -102,6 +110,56 @@ def test_microarray_builds_its_target_and_calls_the_chip_markers(
         if not line.startswith("#")
     }
     assert kit == {rsid: genotype for rsid, _, genotype in MARKERS}
+
+
+def test_1052_microarray_chain_download_needs_consent_and_then_reuses_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = tmp_path / "reference"
+    _, sequence = _library(library)
+    fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": sequence})
+    bam = _sample_bam(tmp_path, sequence)
+    _identity_chain(library / "microarray" / "hg38ToHg19.over.chain.gz")
+    chain = tmp_path / "chain.gz"
+    _identity_chain(chain)
+    body = chain.read_bytes()
+    settings["reference_library"] = str(library)
+    params = api.MicroarrayParams(
+        input=Path(bam),
+        ref=fasta,
+        formats="23andme_v3",
+        outdir=tmp_path / "out",
+        threads=1,
+    )
+    with serving(body) as server:
+        monkeypatch.setattr(
+            targets,
+            "HG19_TO_HG38_CHAIN",
+            targets.ChainSource(
+                "hg19ToHg38.over.chain.gz",
+                (server.url_for("hg19ToHg38.over.chain.gz"),),
+                hashlib.sha256(body).hexdigest(),
+            ),
+        )
+        refused = api.microarray.generate(params, check=False)
+        assert refused.exit_code == 2
+        assert refused.error and "--download" in refused.error.message
+        assert not (library / "hg19ToHg38.over.chain.gz").exists()
+        permitted = api.microarray.generate(replace(params, download=True), check=False)
+        assert permitted.exit_code == 0, permitted.error
+    cached = api.microarray.generate(
+        replace(params, outdir=tmp_path / "cached"), check=False
+    )
+    assert cached.exit_code == 0, cached.error
+    for folder in ("out", "cached"):
+        kit = {
+            line.split("\t")[0]: line.split("\t")[3].strip()
+            for line in (tmp_path / folder / "sample_23andMe_V3.txt")
+            .read_text()
+            .splitlines()
+            if not line.startswith("#")
+        }
+        assert kit == {rsid: genotype for rsid, _, genotype in MARKERS}
 
 
 def test_ref_outside_the_library_still_finds_the_library_liftover_chain(

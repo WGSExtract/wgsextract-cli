@@ -24,6 +24,7 @@ from wgsextract_cli.core.settings_schema import REFERENCE_EVIDENCE_MODES
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
@@ -668,10 +669,11 @@ class VcfPharmgkbParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-class VcfPharmcatParams(_VcfFileParams):
+class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     """Star-allele diplotypes and drug-response phenotypes from a GRCh38 VCF
     with PharmCAT: ``<stem>.report.html``, ``.report.json`` and
-    ``.phenotype.json``."""
+    ``.phenotype.json``. Missing PharmCAT reference FASTA needs ``download``;
+    no sample data is sent to its public reference publisher."""
 
     COMMAND = "vcf pharmcat"
 

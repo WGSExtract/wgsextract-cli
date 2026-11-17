@@ -56,6 +56,14 @@
               "tooltip": "controls.settings.post-v063.awake.tooltip"
             },
             {
+              "id": "allow_reference_downloads",
+              "key": "allow_reference_downloads",
+              "label": "controls.settings.privacy.downloads.label",
+              "kind": "toggle",
+              "value": false,
+              "tooltip": "controls.settings.privacy.downloads.tooltip"
+            },
+            {
               "id": "out_dir",
               "key": "output_directory",
               "label": "controls.settings.settings-paths.out_dir.label",

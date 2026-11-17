@@ -116,7 +116,7 @@ if ($Sabotage -eq "noop-installer") {
 }
 Update-SessionEnvironment
 Step "update_kept_data" @("type", (Join-Path $InstallDir "reference\lab-marker"))
-Step "post_update_mt" @("pixi", "run", "wgsextract", "lineage", "mt-haplogroup",
+Step "post_update_mt" @("pixi", "run", "wgsextract", "lineage", "mt-haplogroup", "--download",
     "--input", (Join-Path $Data "HG00096.hg19-mini.bam"), "--ref", (Join-Path $Data "hg19-mini.fa.gz"),
     "--outdir", (Join-Path $R "post_update_mt")) $InstallDir
 
