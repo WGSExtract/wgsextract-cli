@@ -192,18 +192,25 @@ def run_inline(
 
     ``explicit`` names fields the user set, which config must not override even
     when their value is None (``--threads auto``)."""
+    from wgsextract_cli.core.config import settings
     from wgsextract_cli.core.output_location import remove_if_empty
 
-    params = with_config_defaults(params, keep=explicit)
-    outdir = getattr(params, "outdir", None)
+    filled = with_config_defaults(params, keep=explicit)
+    outdir = getattr(filled, "outdir", None)
+    # The command creates its default output folder; a run that leaves it
+    # empty (it failed, or wrote nothing) doesn't leave an empty wgse/ behind.
+    # A folder the user named stays, even empty.
+    default = getattr(params, "outdir", None) is None and not settings.get(
+        "output_directory"
+    )
     fresh = (
         Path(outdir).expanduser()
-        if outdir and not Path(outdir).expanduser().exists()
+        if default and outdir and not Path(outdir).expanduser().exists()
         else None
     )
     try:
-        with execution_context.bound(allow_downloads=_allows_downloads(params)):
-            impl(params)
+        with execution_context.bound(allow_downloads=_allows_downloads(filled)):
+            impl(filled)
     finally:
         remove_if_empty(fresh)
 
@@ -293,12 +300,15 @@ def execute(
     """
     read_only = _runs_concurrently(params)
     with contextlib.nullcontext() if read_only else _LOCK:
-        result, error = _run(params, impl, progress, cancel, read_only)
+        result, error, created = _run(params, impl, progress, cancel, read_only)
         if write_manifest:
             try:
                 result.write_manifest()
             except OSError as e:
                 logging.warning(f"Could not write the result manifest: {e}")
+        from wgsextract_cli.core.output_location import remove_if_empty
+
+        remove_if_empty(created)
     if check and result.exit_code:
         raise CommandFailed(result) from error
     return result
@@ -310,8 +320,9 @@ def _run(
     progress: ProgressCallback | None,
     cancel: CancelToken | None,
     read_only: bool,
-) -> tuple[CommandResult, BaseException | None]:
-    """Run ``impl`` in a context of its own; the result and what failed it."""
+) -> tuple[CommandResult, BaseException | None, Path | None]:
+    """Run ``impl`` in a context of its own; the result, what failed it, and
+    the default output folder it created (to remove if the run left it empty)."""
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import (
         ensure_settings_loaded,
@@ -346,6 +357,9 @@ def _run(
         ),
         local_reference_lookup(),
     ):
+        default_outdir = getattr(params, "outdir", None) is None and not settings.get(
+            "output_directory"
+        )
         params = with_config_defaults(params)
         result.provenance.params = redact_params(params.to_dict())
         unregister = (
@@ -378,7 +392,7 @@ def _run(
                 unregister()
             proc_registry.accept_new(scope)
     result.finalize(probe_tools=True)
-    return result, error
+    return result, error, created if default_outdir else None
 
 
 def _prepare(params: Params, result: CommandResult) -> None:
