@@ -20,7 +20,7 @@
     pharmgkb: { term: "PharmGKB", full: "Pharmacogenomics Knowledgebase", aliases: [],
       short: "Public database cataloguing published links between human gene variants and medication response.",
       more: "Clinical prescribing weighs full star-allele calls alongside organ function, age and interacting drugs, so review any hit with a physician or pharmacist.", learn: "learn-health.html#medicines" },
-    pod5: { term: "POD5", aliases: ["POD5 signal"],
+    pod5: { term: "POD5", full: "Oxford Nanopore raw-signal file format, version 5", aliases: ["POD5 signal"],
       short: "Oxford Nanopore container format for raw electrical pore-current measurements and run metadata.",
       more: "Keeping POD5 files lets you re-run basecalling later with newer Dorado models or extract methylation tags that standard FASTQ files drop.", learn: "learn-sequencing.html#platforms" },
     dorado: { term: "Dorado", aliases: [],

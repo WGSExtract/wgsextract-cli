@@ -16,18 +16,7 @@
     <h1>Your file journey</h1>
     <p class="v2-head__sub">How tens of gigabytes of raw reads step down into a compact variant table, and why keeping aligned reads lets you re-run callers later.</p>
   </div></header>
-  <figure class="v2-section" data-annot-id="journey">
-    <ol class="v2-file-flow" aria-label="File journey in processing order">
-      <li><strong>FASTQ</strong><small>Reads + base quality</small></li>
-      <li><span aria-hidden="true">→</span> align</li>
-      <li><strong>BAM / CRAM</strong><small>Reads + placements</small></li>
-      <li><span aria-hidden="true">→</span> call</li>
-      <li><strong>VCF / gVCF</strong><small>Genotypes + evidence</small></li>
-      <li><span aria-hidden="true">→</span> annotate</li>
-      <li><strong>Reports</strong><small>Context + limits</small></li>
-    </ol>
-    <figcaption class="v2-small v2-muted">Each arrow is a compute step rather than a format rename, and every stage after FASTQ depends on one chosen reference genome.</figcaption>
-  </figure>
+  <figure class="v2-section v2-diagram" data-render="v2-diagram" data-diagram="file-journey" data-annot-id="journey"></figure>
   <section class="v2-section" id="fastq">
     <h2>FASTQ: unplaced reads straight from the sequencer</h2>
     <p><abbr class="v2-term" data-term="fastq">FASTQ</abbr> (FASTA with Quality scores) holds raw DNA (deoxyribonucleic acid) reads before chromosome positions are assigned, storing each read’s name, bases and per-base quality string. Paired-end runs arrive as compressed R1 and R2 files (~30–100 GB total at 30×, such as the unassigned 2 × 38.5 GB pair in the library).</p>

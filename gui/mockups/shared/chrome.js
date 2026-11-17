@@ -94,11 +94,11 @@
         themeButton(),
         this.annotBtn,
         this.notesBtn,
-        h("a.mk-btn", { href: WGSM.notes.hosted ? "/notes.html" : new URL(WGSM.link("notes.html"), location.href).href }, "All notes"),
-        WGSM.notes.hosted ? h("button.mk-btn", { type: "button", onclick: function () {
+        h("a.mk-btn", { href: WGSM.notes.hosted ? "/notes.html" : new URL(WGSM.link("notes.html"), location.href).href, title: "All notes" }, WGSM.icon("list", "icon--sm"), h("span.mk-hide-narrow", "All notes")),
+        WGSM.notes.hosted ? h("button.mk-btn", { type: "button", title: "Refresh ideas", onclick: function () {
           WGSM.notes.api("refresh", {}).then(function () { WGSM.toast("Preview refresh requested"); },
             function (err) { WGSM.toast(err.message, "circle-alert"); });
-        } }, "Refresh ideas") : null
+        } }, WGSM.icon("refresh-cw", "icon--sm"), h("span.mk-hide-narrow", "Refresh ideas")) : null
       );
       var version = window.WGSM_VERSION || {};
       var preview = version.source === "preview" || WGSM.notes.idea !== "main"

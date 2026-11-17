@@ -24,7 +24,7 @@
   <section class="v2-section" id="reads">
     <h2>Reading both ends of each DNA fragment</h2>
     <p>Each sequenced snippet is a <abbr class="v2-term" data-term="reads">read</abbr>; Reginald’s genome holds 876 million of them, stacked so random read errors wash out.</p>
-    <p>Most short-read runs are <abbr class="v2-term" data-term="paired">paired-end</abbr> (“2 × 150 bp”, base pairs): from a fragment several hundred bases long, the machine reads 150 bases from one end into R1 and 150 from the other into R2, using the known spacing between mates to guide alignment.</p>
+    <p>Most short-read runs are <abbr class="v2-term" data-term="paired">paired-end</abbr> (“2 × 150 bp”, meaning two reads of 150 base pairs): from a fragment several hundred bases long, the machine reads 150 bases from one end into R1 and 150 from the other into R2, using the known spacing between mates to guide alignment.</p>
   </section>
   <section class="v2-section" id="platforms">
     <h2>Short reads and long reads</h2>
@@ -34,11 +34,13 @@
       <li><abbr class="v2-term" data-term="ont">Oxford Nanopore (ONT)</abbr> decodes electrical current shifts across tiny pores for reads tens of kilobases or longer, with accuracy tied to chemistry and basecaller version.</li>
     </ul>
     <p><abbr class="v2-term" data-term="longreads">Long reads</abbr> span repeats and structural rearrangements directly. Labs summarize piece size with read <abbr class="v2-term" data-term="n50">N50</abbr> (half of all sequenced bases sit in reads at least N50 long) and match callers to each platform’s error profile. When modification tags are kept, PacBio and Nanopore runs also retain native DNA <abbr class="v2-term" data-term="methylation">methylation</abbr> marks that standard Illumina amplification erases.</p>
+    <figure class="v2-diagram" data-render="v2-diagram" data-diagram="short-vs-long-reads" data-annot-id="diagram-short-vs-long-reads"></figure>
   </section>
   <section class="v2-section" id="depth">
     <h2>What 30× depth looks like up close</h2>
     <p><abbr class="v2-term" data-term="depth">Depth</abbr> counts usable reads overlapping one base. A “30×” run averages 30 reads per site, while local depth waves from 25–40× in easy stretches down to zero in stubborn repeats after duplicates and multi-mapped reads are set aside.</p>
     <p>“Coverage” can mean average depth (38.2× on Gordon’s file) or the share of bases clearing a bar like 10×. Copy count shows right in those numbers: Reginald’s paired autosomes average ~31× while his single X and Y sit near 14–16×.</p>
+    <figure class="v2-diagram" data-render="v2-diagram" data-diagram="read-pileup" data-annot-id="diagram-read-pileup"></figure>
   </section>
   <section class="v2-section" id="quality">
     <h2>Quality scores from single letters up to genotypes</h2>

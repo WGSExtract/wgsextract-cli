@@ -37,10 +37,12 @@
       <li><code>./.</code> = uncalled due to missing or weak reads.</li>
     </ul>
     <p><abbr class="v2-term" data-term="zygosity">Zygosity</abbr> states whether two copies match or differ; <abbr class="v2-term" data-term="ploidy">ploidy</abbr> counts chromosome copies at that locus. Outside the shared X/Y pseudoautosomal tips, Reginald has one X and one Y, so calls there are haploid (<code>1</code> rather than <code>1/1</code>).</p>
+    <figure class="v2-diagram" data-render="v2-diagram" data-diagram="genotypes" data-annot-id="diagram-genotypes"></figure>
   </section>
   <section class="v2-section" id="missing">
     <h2>Why an unlisted site in a plain VCF stays unknown</h2>
     <p>If position 100 is absent from Helen’s variant-only VCF, she might be <code>0/0</code>, or depth there dropped to zero, or a noisy call failed filtering. Without her BAM (Binary Alignment Map), CRAM (Compressed Reference-oriented Alignment Map) or a reference-block <abbr class="v2-term" data-term="gvcf">gVCF</abbr> (Genomic VCF), nothing in her 148 MB file tells a clean reference call apart from a blind spot.</p>
+    <figure class="v2-diagram" data-render="v2-diagram" data-diagram="missing-not-reference" data-annot-id="diagram-missing-not-reference"></figure>
   </section>
   <section class="v2-section" id="confidence">
     <h2>Checking read support before trusting a headline label</h2>
