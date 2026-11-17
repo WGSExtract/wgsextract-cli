@@ -102,6 +102,8 @@
 "app.loading.title" = "Chargement..."  # i18n-source-hash:b04ba49f
 "app.refreshing.title" = "Actualisation..."  # i18n-source-hash:5b7bdb61
 "app.retryButton.title" = "Réessayer"  # i18n-source-hash:9f5cd8a2
+"app.section.expand.label" = "Développer la section"  # i18n-source-hash:f642051a
+"app.section.collapse.label" = "Réduire la section"  # i18n-source-hash:40c6fc64
 "app.error.loadWebUI.title" = "Impossible de charger l’interface web"  # i18n-source-hash:14731037
 "app.library.empty" = "Aucun élément de bibliothèque n’est défini."  # i18n-source-hash:e9b707e7
 "app.action.missingInputs.format" = "Manquant : %{inputs}"  # i18n-source-hash:1e25cc40

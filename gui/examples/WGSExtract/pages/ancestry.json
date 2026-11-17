@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "ancestry-inputs",
+      "collapsible": false,
       "title": "sections.ancestry.ancestry-inputs.title",
       "iconName": "ancestry-tree",
       "textIcon": "🌳",
@@ -16,7 +17,15 @@
           "kind": "path",
           "defaultDirectory": "{{dataset_library}}",
           "tooltip": "controls.ancestry.ancestry-inputs.bam_path.tooltip"
-        },
+        }
+      ]
+    },
+    {
+      "id": "haplogroup-analysis",
+      "title": "sections.ancestry.haplogroup-analysis.title",
+      "iconName": "ancestry-tree",
+      "textIcon": "🌳",
+      "controls": [
         {
           "id": "yleaf_pos",
           "label": "controls.ancestry.ancestry-inputs.yleaf_pos.label",
@@ -97,51 +106,6 @@
           "label": "controls.ancestry.ancestry-inputs.haplogrep_path.label",
           "kind": "path",
           "tooltip": "controls.ancestry.ancestry-inputs.haplogrep_path.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "y_str_panel",
-          "label": "controls.ancestry.v066.y-str-panel.label",
-          "kind": "dropdown",
-          "tooltip": "controls.ancestry.v066.y-str-panel.tooltip",
-          "options": [
-            {
-              "id": "",
-              "title": "options.ancestry.v066.y-str-panel.default.title"
-            },
-            {
-              "id": "Y-12",
-              "title": "options.ancestry.v066.y-str-panel.y12.title"
-            },
-            {
-              "id": "Y-25",
-              "title": "options.ancestry.v066.y-str-panel.y25.title"
-            },
-            {
-              "id": "Y-37",
-              "title": "options.ancestry.v066.y-str-panel.y37.title"
-            },
-            {
-              "id": "Y-67",
-              "title": "options.ancestry.v066.y-str-panel.y67.title"
-            },
-            {
-              "id": "Y-111",
-              "title": "options.ancestry.v066.y-str-panel.y111.title"
-            },
-            {
-              "id": "PPY23",
-              "title": "options.ancestry.v066.y-str-panel.ppy23.title"
-            },
-            {
-              "id": "YfilerPlus",
-              "title": "options.ancestry.v066.y-str-panel.yfiler.title"
-            },
-            {
-              "id": "all",
-              "title": "options.ancestry.v066.y-str-panel.all.title"
-            }
-          ],
           "advancedOnly": true
         },
         {
@@ -249,27 +213,6 @@
           "kind": "path",
           "pathType": "file",
           "tooltip": "controls.cli.yleaf_tree_file.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "ystr_min_fraction",
-          "label": "controls.cli.ystr_min_fraction.label",
-          "kind": "text",
-          "tooltip": "controls.cli.ystr_min_fraction.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "ystr_min_mapq",
-          "label": "controls.cli.ystr_min_mapq.label",
-          "kind": "text",
-          "tooltip": "controls.cli.ystr_min_mapq.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "ystr_min_reads",
-          "label": "controls.cli.ystr_min_reads.label",
-          "kind": "text",
-          "tooltip": "controls.cli.ystr_min_reads.tooltip",
           "advancedOnly": true
         },
         {
@@ -383,7 +326,84 @@
               ]
             ]
           }
+        }
+      ]
+    },
+    {
+      "id": "y-str",
+      "title": "sections.ancestry.y-str.title",
+      "iconName": "ancestry-tree",
+      "textIcon": "🌳",
+      "advancedOnly": true,
+      "controls": [
+        {
+          "id": "y_str_panel",
+          "label": "controls.ancestry.v066.y-str-panel.label",
+          "kind": "dropdown",
+          "tooltip": "controls.ancestry.v066.y-str-panel.tooltip",
+          "options": [
+            {
+              "id": "",
+              "title": "options.ancestry.v066.y-str-panel.default.title"
+            },
+            {
+              "id": "Y-12",
+              "title": "options.ancestry.v066.y-str-panel.y12.title"
+            },
+            {
+              "id": "Y-25",
+              "title": "options.ancestry.v066.y-str-panel.y25.title"
+            },
+            {
+              "id": "Y-37",
+              "title": "options.ancestry.v066.y-str-panel.y37.title"
+            },
+            {
+              "id": "Y-67",
+              "title": "options.ancestry.v066.y-str-panel.y67.title"
+            },
+            {
+              "id": "Y-111",
+              "title": "options.ancestry.v066.y-str-panel.y111.title"
+            },
+            {
+              "id": "PPY23",
+              "title": "options.ancestry.v066.y-str-panel.ppy23.title"
+            },
+            {
+              "id": "YfilerPlus",
+              "title": "options.ancestry.v066.y-str-panel.yfiler.title"
+            },
+            {
+              "id": "all",
+              "title": "options.ancestry.v066.y-str-panel.all.title"
+            }
+          ],
+          "advancedOnly": true
         },
+        {
+          "id": "ystr_min_fraction",
+          "label": "controls.cli.ystr_min_fraction.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_fraction.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ystr_min_mapq",
+          "label": "controls.cli.ystr_min_mapq.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_mapq.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "ystr_min_reads",
+          "label": "controls.cli.ystr_min_reads.label",
+          "kind": "text",
+          "tooltip": "controls.cli.ystr_min_reads.tooltip",
+          "advancedOnly": true
+        }
+      ],
+      "actions": [
         {
           "id": "run-y-str",
           "title": "actions.ancestry.v066.y-str.title",
@@ -426,8 +446,7 @@
                 "{{ystr_min_reads}}"
               ]
             ]
-          },
-          "advancedOnly": true
+          }
         }
       ]
     }

@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "inputs",
+      "collapsible": false,
       "title": "sections.info-bam.inputs.title",
       "iconName": "alignment-import",
       "textIcon": "📥",

@@ -1121,6 +1121,90 @@ class VcfSvParams(_CallerParams):
     qc_min_depth: float | None = depth_param()
 
 
+CALL_TYPES = ("snp", "indel", "sv", "cnv")
+
+
+def call_types(value: str) -> list[str]:
+    """``--types``' variant types, each once, in ``CALL_TYPES`` order."""
+    given = {t.strip().lower() for t in value.split(",")} - {""}
+    unknown = sorted(given - set(CALL_TYPES))
+    if unknown or not given:
+        raise UsageError(
+            f"--types takes a comma-separated list of {', '.join(CALL_TYPES)}"
+            + (f"; not {', '.join(unknown)}." if unknown else ".")
+        )
+    return [t for t in CALL_TYPES if t in given]
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfCallParams(_CallerParams):
+    """Call the chosen variant types in one run, each into the file its own
+    command writes: ``snps.vcf.gz`` (``vcf snp``), ``indels.vcf.gz``
+    (``vcf indel``), the SV caller's VCF (``vcf sv``) and ``cnv.vcf.gz``
+    (``vcf cnv``). With ``reference_evidence`` gvcf, SNPs and indels go into
+    ``bcftools.g.vcf.gz`` alone. ``merge`` joins the parts, by position, into
+    ``variants.vcf.gz`` (``variants.g.vcf.gz`` with the gVCF; output role
+    ``merged_variants``) and removes them."""
+
+    COMMAND = "vcf call"
+
+    types: str = param(
+        "snp,indel",
+        help="Comma-separated variant types to call: snp and indel (bcftools), "
+        "sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel.",
+        metavar="LIST",
+    )
+    merge: bool = param(
+        False,
+        help="Merge the called types into one variants.vcf.gz (+ .tbi), or "
+        "variants.g.vcf.gz with the gVCF, in place of each type's own VCF.",
+        action="store_true",
+    )
+    reference_evidence: str | None = param(
+        None,
+        help="gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz "
+        "(+ .tbi), with reference blocks, in place of snps.vcf.gz and "
+        "indels.vcf.gz; none: the variant VCFs. Default: config "
+        "reference_evidence, else none.",
+        choices=REFERENCE_EVIDENCE_MODES,
+        config_key="reference_evidence",
+    )
+    ploidy: str | None = param(
+        None, help="SNP and indel ploidy name or value, as for vcf snp."
+    )
+    cnv_ploidy: int | None = param(
+        None, help="CNV baseline ploidy, as vcf cnv's --ploidy (default: 2)."
+    )
+    sv_caller: str | None = param(
+        None,
+        help="SV caller (default: as vcf sv picks: sniffles for ONT or long "
+        "reads, pbsv/sniffles for PacBio, else delly).",
+        choices=SV_CALLERS,
+    )
+    pacbio: bool = param(
+        False, help="PacBio HiFi/CCS data, as for vcf sv.", action="store_true"
+    )
+    ont: bool = param(
+        False, help="Oxford Nanopore data, as for vcf sv.", action="store_true"
+    )
+    long_read: bool = param(
+        False, help="Long-read data, as for vcf sv.", action="store_true"
+    )
+    ccs: bool = param(
+        False, help="pbsv CCS/HiFi thresholds, as for vcf sv.", action="store_true"
+    )
+    tandem_repeats: Path | None = param(
+        None,
+        help="Tandem-repeat BED for pbsv or Sniffles, as for vcf sv.",
+        path="file",
+    )
+    qc_min_depth: float | None = depth_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        call_types(self.types)
+
+
 @dataclass(frozen=True, kw_only=True)
 class VcfFreebayesParams(_CallerParams):
     """Call small variants with FreeBayes into ``freebayes.vcf.gz``."""
@@ -1431,6 +1515,20 @@ def sv(
     from wgsextract_cli.commands.vcf.structural import run_sv
 
     return execute(params, run_sv, progress=progress, cancel=cancel, check=check)
+
+
+def call(
+    params: VcfCallParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Call the chosen types; each type's output carries its own role, and
+    ``merge`` adds ``merged_variants``."""
+    from wgsextract_cli.commands.vcf.call import run_call
+
+    return execute(params, run_call, progress=progress, cancel=cancel, check=check)
 
 
 def freebayes(

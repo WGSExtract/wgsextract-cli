@@ -3,6 +3,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `vcf call` calls several variant types in one run: `--types snp,indel,sv,cnv`
+  (any mix; default `snp,indel`) runs bcftools for SNPs and InDels and the
+  `vcf sv` / `vcf cnv` callers, each into the VCF its own command writes.
+  `--reference-evidence gvcf` writes SNPs and indels as one
+  `bcftools.g.vcf.gz` instead, in one pass. `--merge` joins the parts by
+  position into `variants.vcf.gz` (`variants.g.vcf.gz` with the gVCF, + `.tbi`)
+  and removes them. SV and CNV calling stay Linux and macOS only.
 - Python API: quick read-only calls (`info`, `info chip`, `sample show`,
   `ref status`, `ref library-list`, `example-genome list`, `deps check`) can
   run on several threads at once, each with its own result, progress

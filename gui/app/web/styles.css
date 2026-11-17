@@ -808,6 +808,41 @@ body.resizing-terminal * {
   margin-bottom: var(--space-3);
 }
 
+/* Advanced mode: the title row with its expand / collapse button on the right. */
+.section-header.collapsible {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.section-heading {
+  min-width: 0;
+}
+
+.card.collapsed .section-header {
+  margin-bottom: 0;
+}
+
+.section-toggle {
+  min-height: 26px;
+  inline-size: 30px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.section-toggle:hover,
+.section-toggle:focus-visible {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+}
+
 .section-header h3 {
   margin: 0;
   font-size: 0.96rem;
@@ -981,6 +1016,26 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: repeat(auto-fill, 5.5rem);
   gap: 4px 8px;
+}
+
+/* Inline layout: a group's options side by side, and consecutive inline groups on one row. */
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-5);
+}
+
+.option-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-4);
+}
+
+.option-inline label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .option-columns.wide {

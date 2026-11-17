@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "microarray-inputs",
+      "collapsible": false,
       "title": "sections.microarray.microarray-inputs.title",
       "subtitle": "sections.microarray.post-v063.builds.subtitle",
       "iconName": "microarray-config",
@@ -50,189 +51,60 @@
           "kind": "path",
           "tooltip": "controls.microarray.microarray-inputs.out_dir.tooltip",
           "advancedOnly": true
-        },
+        }
+      ]
+    },
+    {
+      "id": "chip",
+      "title": "sections.cli.chip.title",
+      "iconName": "chip",
+      "textIcon": "🔍",
+      "advancedOnly": true,
+      "controls": [
         {
-          "id": "microarray_min_gq",
-          "label": "controls.microarray.post-v063.min-gq.label",
-          "kind": "text",
-          "tooltip": "controls.microarray.post-v063.min-gq.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_min_dp",
-          "label": "controls.microarray.post-v063.min-dp.label",
-          "kind": "text",
-          "tooltip": "controls.microarray.post-v063.min-dp.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_strand_ambiguous",
-          "label": "controls.microarray.post-v063.strand.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "no-call",
-              "title": "controls.microarray.post-v063.strand.label"
-            }
-          ],
-          "tooltip": "controls.microarray.post-v063.strand.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_resolve_rsids",
-          "label": "controls.microarray.post-v063.rsids.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--resolve-rsids",
-              "title": "controls.microarray.post-v063.rsids.label"
-            }
-          ],
-          "tooltip": "controls.microarray.post-v063.rsids.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_absent_no_call",
-          "label": "controls.microarray.post-v063.absent.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--no-assume-hom-ref",
-              "title": "controls.microarray.post-v063.absent.label"
-            }
-          ],
-          "tooltip": "controls.microarray.post-v063.absent.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_exclude_filtered",
-          "label": "controls.microarray.post-v063.filtered.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--exclude-filtered",
-              "title": "controls.microarray.post-v063.filtered.label"
-            }
-          ],
-          "tooltip": "controls.microarray.post-v063.filtered.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_call_reasons",
-          "label": "controls.microarray.post-v063.reasons.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--call-reasons",
-              "title": "controls.microarray.post-v063.reasons.label"
-            }
-          ],
-          "tooltip": "controls.microarray.post-v063.reasons.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "aadr_sample_id",
-          "label": "controls.microarray.post-v063.aadr-sample.label",
-          "kind": "text",
-          "tooltip": "controls.microarray.post-v063.aadr-sample.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "aadr_sex",
-          "label": "controls.microarray.post-v063.aadr-sex.label",
-          "kind": "text",
-          "tooltip": "controls.microarray.post-v063.aadr-sex.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "indel_format",
-          "label": "controls.microarray.post-v063.indel-format.label",
-          "kind": "text",
-          "tooltip": "controls.microarray.post-v063.indel-format.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "indel_manifest",
-          "label": "controls.microarray.post-v063.indel-manifest.label",
-          "kind": "path",
-          "tooltip": "controls.microarray.post-v063.indel-manifest.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_sample",
-          "label": "controls.cli.microarray_sample.label",
-          "kind": "text",
-          "tooltip": "controls.cli.microarray_sample.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_region",
-          "label": "controls.cli.microarray_region.label",
-          "kind": "text",
-          "tooltip": "controls.cli.microarray_region.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_ploidy_file",
-          "label": "controls.cli.microarray_ploidy_file.label",
+          "id": "chip_file",
+          "label": "controls.cli.chip_file.label",
           "kind": "path",
           "pathType": "file",
-          "tooltip": "controls.cli.microarray_ploidy_file.tooltip",
+          "tooltip": "controls.cli.chip_file.tooltip",
           "advancedOnly": true
+        }
+      ],
+      "actions": [
+        {
+          "id": "info-chip",
+          "title": "actions.cli.info-chip.title",
+          "tooltip": "actions.cli.info-chip.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "chip",
+              "--input",
+              "{{chip_file}}"
+            ]
+          }
         },
         {
-          "id": "microarray_ref_vcf_tab",
-          "label": "controls.cli.microarray_ref_vcf_tab.label",
-          "kind": "path",
-          "pathType": "file",
-          "tooltip": "controls.cli.microarray_ref_vcf_tab.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_quirks",
-          "label": "controls.cli.microarray_quirks.label",
-          "kind": "dropdown",
-          "options": [
-            {
-              "id": "",
-              "title": "options.cli.default.title"
-            },
-            {
-              "id": "corrected",
-              "title": "options.cli.value.corrected.title"
-            },
-            {
-              "id": "vendor",
-              "title": "options.cli.value.vendor.title"
-            }
-          ],
-          "tooltip": "controls.cli.microarray_quirks.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "microarray_no_parallel",
-          "label": "controls.cli.microarray_no_parallel.label",
-          "kind": "checkboxGroup",
-          "options": [
-            {
-              "id": "--no-parallel",
-              "title": "controls.cli.microarray_no_parallel.label"
-            }
-          ],
-          "tooltip": "controls.cli.microarray_no_parallel.tooltip",
-          "advancedOnly": true
-        },
-        {
-          "id": "qc_min_depth",
-          "label": "controls.cli.qc_min_depth.label",
-          "kind": "text",
-          "tooltip": "controls.cli.qc_min_depth.tooltip",
-          "advancedOnly": true
+          "id": "info-chip-list",
+          "title": "actions.cli.info-chip-list.title",
+          "tooltip": "actions.cli.info-chip-list.tooltip",
+          "advancedOnly": true,
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "info",
+              "chip",
+              "--list"
+            ]
+          }
         }
       ]
     },
     {
       "id": "microarray-formats",
+      "collapsible": "open",
       "title": "sections.microarray.microarray-formats.title",
       "subtitle": "sections.microarray.post-v063.aadr-2m.subtitle",
       "iconName": "microarray-grid",
@@ -511,50 +383,190 @@
       ]
     },
     {
-      "id": "chip",
-      "title": "sections.cli.chip.title",
-      "iconName": "chip",
-      "textIcon": "🔍",
+      "id": "microarray-refinements",
+      "title": "sections.microarray.refinements.title",
+      "iconName": "microarray-config",
+      "textIcon": "⚙️",
+      "subsection": true,
       "advancedOnly": true,
       "controls": [
         {
-          "id": "chip_file",
-          "label": "controls.cli.chip_file.label",
-          "kind": "path",
-          "pathType": "file",
-          "tooltip": "controls.cli.chip_file.tooltip",
+          "id": "microarray_min_gq",
+          "label": "controls.microarray.post-v063.min-gq.label",
+          "kind": "text",
+          "tooltip": "controls.microarray.post-v063.min-gq.tooltip",
           "advancedOnly": true
-        }
-      ],
-      "actions": [
-        {
-          "id": "info-chip",
-          "title": "actions.cli.info-chip.title",
-          "tooltip": "actions.cli.info-chip.tooltip",
-          "advancedOnly": true,
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "chip",
-              "--input",
-              "{{chip_file}}"
-            ]
-          }
         },
         {
-          "id": "info-chip-list",
-          "title": "actions.cli.info-chip-list.title",
-          "tooltip": "actions.cli.info-chip-list.tooltip",
-          "advancedOnly": true,
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "info",
-              "chip",
-              "--list"
-            ]
-          }
+          "id": "microarray_min_dp",
+          "label": "controls.microarray.post-v063.min-dp.label",
+          "kind": "text",
+          "tooltip": "controls.microarray.post-v063.min-dp.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_strand_ambiguous",
+          "label": "controls.microarray.post-v063.strand.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "no-call",
+              "title": "controls.microarray.post-v063.strand.label"
+            }
+          ],
+          "tooltip": "controls.microarray.post-v063.strand.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_resolve_rsids",
+          "label": "controls.microarray.post-v063.rsids.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--resolve-rsids",
+              "title": "controls.microarray.post-v063.rsids.label"
+            }
+          ],
+          "tooltip": "controls.microarray.post-v063.rsids.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_absent_no_call",
+          "label": "controls.microarray.post-v063.absent.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-assume-hom-ref",
+              "title": "controls.microarray.post-v063.absent.label"
+            }
+          ],
+          "tooltip": "controls.microarray.post-v063.absent.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_exclude_filtered",
+          "label": "controls.microarray.post-v063.filtered.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--exclude-filtered",
+              "title": "controls.microarray.post-v063.filtered.label"
+            }
+          ],
+          "tooltip": "controls.microarray.post-v063.filtered.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_call_reasons",
+          "label": "controls.microarray.post-v063.reasons.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--call-reasons",
+              "title": "controls.microarray.post-v063.reasons.label"
+            }
+          ],
+          "tooltip": "controls.microarray.post-v063.reasons.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "aadr_sample_id",
+          "label": "controls.microarray.post-v063.aadr-sample.label",
+          "kind": "text",
+          "tooltip": "controls.microarray.post-v063.aadr-sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "aadr_sex",
+          "label": "controls.microarray.post-v063.aadr-sex.label",
+          "kind": "text",
+          "tooltip": "controls.microarray.post-v063.aadr-sex.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "indel_format",
+          "label": "controls.microarray.post-v063.indel-format.label",
+          "kind": "text",
+          "tooltip": "controls.microarray.post-v063.indel-format.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "indel_manifest",
+          "label": "controls.microarray.post-v063.indel-manifest.label",
+          "kind": "path",
+          "tooltip": "controls.microarray.post-v063.indel-manifest.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_sample",
+          "label": "controls.cli.microarray_sample.label",
+          "kind": "text",
+          "tooltip": "controls.cli.microarray_sample.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_region",
+          "label": "controls.cli.microarray_region.label",
+          "kind": "text",
+          "tooltip": "controls.cli.microarray_region.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_ploidy_file",
+          "label": "controls.cli.microarray_ploidy_file.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.microarray_ploidy_file.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_ref_vcf_tab",
+          "label": "controls.cli.microarray_ref_vcf_tab.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.microarray_ref_vcf_tab.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_quirks",
+          "label": "controls.cli.microarray_quirks.label",
+          "kind": "dropdown",
+          "options": [
+            {
+              "id": "",
+              "title": "options.cli.default.title"
+            },
+            {
+              "id": "corrected",
+              "title": "options.cli.value.corrected.title"
+            },
+            {
+              "id": "vendor",
+              "title": "options.cli.value.vendor.title"
+            }
+          ],
+          "tooltip": "controls.cli.microarray_quirks.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "microarray_no_parallel",
+          "label": "controls.cli.microarray_no_parallel.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--no-parallel",
+              "title": "controls.cli.microarray_no_parallel.label"
+            }
+          ],
+          "tooltip": "controls.cli.microarray_no_parallel.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "qc_min_depth",
+          "label": "controls.cli.qc_min_depth.label",
+          "kind": "text",
+          "tooltip": "controls.cli.qc_min_depth.tooltip",
+          "advancedOnly": true
         }
       ]
     }

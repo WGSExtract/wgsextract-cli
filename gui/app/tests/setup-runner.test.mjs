@@ -284,7 +284,7 @@ test("WGSExtract Windows config bootstrap includes the dataset and reference gen
     assert.equal(bootstrap.path, path.join(tempRoot, "config.toml"));
     assert.match(bootstrap.contents, new RegExp(`output_directory = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "output")))}"`));
     assert.match(bootstrap.contents, new RegExp(`reference_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "reference")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`dataset_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "datasets")))}"`));
+    assert.match(bootstrap.contents, new RegExp(`dataset_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "mygenomes")))}"`));
     assert.match(bootstrap.contents, new RegExp(`reference_genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "genomes")))}"`));
     assert.doesNotMatch(bootstrap.contents, /^genome_library/m);
   } finally {

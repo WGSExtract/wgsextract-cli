@@ -82,9 +82,9 @@ test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide 
 
   const context = { fieldValues: { bam_path: "/tmp/sample.bam" }, checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle" };
   const calling = sections.find((section) => section.id === "variant-calling");
-  const svCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-sv").command, context);
+  const callCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-call").command, context);
   const deepVariantCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-deepvariant").command, context);
-  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats/.test(svCommand), svCommand);
+  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats|--merge|--reference-evidence/.test(callCommand), callCommand);
   assert.ok(!/--ont|--model-type/.test(deepVariantCommand), deepVariantCommand);
 
   const methylation = sections.find((section) => section.id === "methylation");
@@ -229,10 +229,13 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const datasetPaths = datasets.sections.find((section) => section.id === "dataset-paths");
   assert.equal(datasetPaths.title, "Library Paths");
   const datasetLibraryControl = datasetPaths.controls.find((control) => control.id === "dataset_library");
-  assert.equal(datasetLibraryControl.label, "Dataset Library Path");
+  assert.equal(datasetLibraryControl.label, "My Genomes Library Path");
   assert.equal(datasetLibraryControl.kind, "path");
   const referenceGenomePaths = genomesPage.sections.find((section) => section.id === "reference-genome-paths");
-  assert.equal(referenceGenomePaths.advancedOnly, true);
+  // Library Paths show in Basic, on all three library pages.
+  for (const section of [libraryPaths, datasetPaths, referenceGenomePaths]) {
+    assert.equal(section.advancedOnly, undefined, section.id);
+  }
   assert.equal(referenceGenomePaths.controls[0].id, "reference_genome_library");
   assert.equal(referenceGenomePaths.controls[0].label, "Reference Genomes Library Path");
   const genomeTable = genomesPage.sections.find((section) => section.id === "genome-management").controls[0];
@@ -300,14 +303,10 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const variantCalling = bundle.manifest.pages
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "variant-calling");
-  const snpAction = variantCalling.actions.find((action) => action.id === "vcf-snp");
-  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
-  assert.deepEqual(snpAction.command.arguments.slice(0, 3), ["vcf", "snp", "--input"]);
-  assert.equal(snpAction.estimatedDurationMinutes, 34);
-  const indelAction = variantCalling.actions.find((action) => action.id === "vcf-indel");
-  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
-  assert.deepEqual(indelAction.command.arguments.slice(0, 3), ["vcf", "indel", "--input"]);
-  assert.equal(indelAction.estimatedDurationMinutes, 34);
+  const callAction = variantCalling.actions.find((action) => action.id === "vcf-call");
+  assert.equal(callAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(callAction.command.arguments.slice(0, 3), ["vcf", "call", "--input"]);
+  assert.equal(callAction.estimatedDurationMinutes, 68);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
   assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
   const microarrayAction = bundle.manifest.pages

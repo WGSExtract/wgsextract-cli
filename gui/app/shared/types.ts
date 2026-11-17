@@ -94,6 +94,8 @@ export type LabelTextKey =
     | "loadingTitle"
     | "refreshingTitle"
     | "retryButtonTitle"
+    | "sectionExpandLabel"
+    | "sectionCollapseLabel"
     | "loadWebUITitle"
     | "libraryEmptyTitle"
     | "actionMissingInputsFormat"
@@ -628,6 +630,10 @@ export interface WebUIState {
     dataSourcePayloads: Map<string, DataSourcePayload>;
     dataSourceErrors: Map<string, string>;
     loadingDataSources: Set<string>;
+    /** Collapsible sections the user opened or closed from their default, by "pageID/sectionID". */
+    toggledSections: Set<string>;
+    /** The Settings page's Setup steps: shown (true), hidden (false), or null to hide them once setup has run. */
+    setupExpanded: boolean | null;
     fileStateValues: Map<string, ValueMap>;
     loadingFileStates: Set<string>;
     actionPrechecks: Map<string, PrecheckResult>;

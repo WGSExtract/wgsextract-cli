@@ -145,6 +145,22 @@ def verify_platform_support(args: argparse.Namespace) -> None:
         tool = _WINDOWS_VCF_TOOLS.get(subcommand)
         if subcommand == "phylop" and _phylop_needs_bigwig(args):
             tool = "pyBigWig"
+        if subcommand == "call":
+            from wgsextract_cli.api.vcf import call_types
+
+            types = call_types(getattr(args, "types", None) or "snp,indel")
+            # SV and CNV are unsupported only because --types chose them.
+            chosen_by_option = True
+            if "sv" in types:
+                tool = getattr(args, "sv_caller", None) or (
+                    "pbsv/sniffles"
+                    if getattr(args, "pacbio", False)
+                    else "sniffles"
+                    if getattr(args, "ont", False) or getattr(args, "long_read", False)
+                    else "delly"
+                )
+            elif "cnv" in types:
+                tool = "delly"
         if subcommand == "sv":
             tool = getattr(args, "caller", None) or (
                 "pbsv/sniffles"

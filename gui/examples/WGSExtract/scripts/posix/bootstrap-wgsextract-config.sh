@@ -5,7 +5,7 @@ workspace="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(pwd)}"
 config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-$workspace/config.toml}"
 output_path="$workspace/output"
 reference_path="$workspace/reference"
-# New installs keep datasets in datasets/ and reference genomes in genomes/.
+# New installs keep My Genomes in mygenomes/ and reference genomes in genomes/.
 # An existing config keeps folders that hold files: its old genome_library stays
 # the dataset library, and genomes already in <reference_library>/genomes stay there.
 existing_value() {
@@ -17,7 +17,7 @@ has_files() {
 }
 old_genome_library="$(existing_value genome_library)"
 old_reference_library="$(existing_value reference_library)"
-dataset_library_path="$workspace/datasets"
+dataset_library_path="$workspace/mygenomes"
 if [ -n "$old_genome_library" ]; then
   if [ "${old_genome_library%/}" != "$workspace/genomes" ] || has_files "$old_genome_library"; then
     dataset_library_path="$old_genome_library"

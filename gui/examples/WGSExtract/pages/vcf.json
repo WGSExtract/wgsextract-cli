@@ -6,10 +6,18 @@
   "sections": [
     {
       "id": "vcf-inputs",
+      "collapsible": false,
       "title": "sections.vcf.vcf-inputs.title",
       "iconName": "inspect-variants",
       "textIcon": "🔎",
       "controls": [
+        {
+          "id": "vcf_path",
+          "label": "controls.vcf.vcf-inputs.vcf_path.label",
+          "kind": "path",
+          "defaultDirectory": "{{dataset_library}}",
+          "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
+        },
         {
           "id": "ref_path",
           "label": "controls.vcf.vcf-inputs.ref_path.label",
@@ -58,13 +66,6 @@
         ]
       },
       "controls": [
-        {
-          "id": "vcf_path",
-          "label": "controls.vcf.vcf-inputs.vcf_path.label",
-          "kind": "path",
-          "defaultDirectory": "{{dataset_library}}",
-          "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
-        },
         {
           "id": "vcf_region",
           "label": "controls.vcf.variant-calling.vcf_region.label",
@@ -999,6 +1000,7 @@
     {
       "id": "consensus",
       "title": "sections.cli.consensus.title",
+      "subtitle": "sections.cli.consensus.subtitle",
       "iconName": "fasta",
       "textIcon": "🧬",
       "advancedOnly": true,

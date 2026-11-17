@@ -305,8 +305,13 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
         yield target
 
 
-def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
-    """``vcf snp`` / ``vcf indel``: bcftools mpileup | call into the output folder."""
+def run_small_variants(
+    params: VcfSnpParams | VcfIndelParams, *, variants: bool = True
+) -> None:
+    """``vcf snp`` / ``vcf indel``: bcftools mpileup | call into the output folder.
+
+    Without ``variants`` (``vcf call`` asked only for the gVCF, which holds
+    SNPs and indels) the variant VCF isn't written, only the gVCF."""
     indels = isinstance(params, VcfIndelParams)
     task: Literal["snp", "indel"] = "indel" if indels else "snp"
     verify_dependencies(["bcftools", "tabix"])
@@ -349,7 +354,8 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     # for SNPs after QUAL>30 (#860, docs/variant-confidence.md).
     prior = ["-P", "0"] if prior is None else prior
     message = "vcf_calling_indels" if indels else "vcf_calling_snps"
-    logging.info(LOG_MESSAGES[message].format(output=out_vcf))
+    if variants:
+        logging.info(LOG_MESSAGES[message].format(output=out_vcf))
     ploidy = ploidy_args(
         params.ploidy,
         str(params.ploidy_file) if params.ploidy_file else None,
@@ -361,25 +367,26 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     with sex_samples_args(
         input_file, outdir, ploidy, region=params.region, reference=ref
     ) as sex_args:
-        with safe_output(out_vcf) as staged:
-            call_small_variants(
-                input_file,
-                ref,
-                staged,
-                threads=threads,
-                region=params.region,
-                profile=profile,
-                call_args=[*ploidy, *sex_args, *prior],
-                indels=indels,
-                contigs=contigs,
-                environment=environment,
+        if variants:
+            with safe_output(out_vcf) as staged:
+                call_small_variants(
+                    input_file,
+                    ref,
+                    staged,
+                    threads=threads,
+                    region=params.region,
+                    profile=profile,
+                    call_args=[*ploidy, *sex_args, *prior],
+                    indels=indels,
+                    contigs=contigs,
+                    environment=environment,
+                )
+            ensure_vcf_indexed(out_vcf)
+            record_variants(
+                out_vcf,
+                "indels" if indels else "snps",
+                warn_if_no_variants(out_vcf, ref, params.region),
             )
-        ensure_vcf_indexed(out_vcf)
-        record_variants(
-            out_vcf,
-            "indels" if indels else "snps",
-            warn_if_no_variants(out_vcf, ref, params.region),
-        )
         if params.reference_evidence == "gvcf":
             from .reference_evidence import write_gvcf
 
