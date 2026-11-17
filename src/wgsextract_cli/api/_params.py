@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import inspect
 import logging
 import os
 import re
@@ -474,7 +475,7 @@ def json_schema(cls: type[Params]) -> dict[str, Any]:
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": cls.__name__,
-        "description": (cls.__doc__ or "").strip().split("\n\n")[0],
+        "description": inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0],
         "type": "object",
         "properties": properties,
         "required": required,
