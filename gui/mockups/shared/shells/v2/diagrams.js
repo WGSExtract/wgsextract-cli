@@ -48,7 +48,7 @@
       node(s, "ellipse", { cx: 139, cy: 118, rx: 9, ry: 6, class: "dg-ring" });
       line(s, 164, 112, 190, 94);
       lines(s, 198, 83, ["Mitochondrion", "with circular", "mtDNA inside"]);
-      path(s, "M72 126 L72 174 L8 174 L8 237 L20 237 M15 233 L20 237 L15 241");
+      down(s, 72, 126, 186);
       text(s, 18, 207, "23 chromosome pairs · XY example", "dg-heading");
       for (var i = 0; i < 23; i++) {
         var x = 25 + (i % 12) * 28;
@@ -101,34 +101,38 @@
       lines(s, 18, 402, ["Each copy mixes earlier ancestors.", "The coloured blocks are illustrative."], "dg-muted");
     });
 
-  define("read-pileup", 470, "Depth varies from position to position",
-    "Eight short reads are aligned beneath a twelve-base reference. At the highlighted sixth position the reference is A: four reads have A and four have G, evidence consistent with an A/G heterozygous genotype, not proof on its own. Only one read reaches the last two positions, illustrating lower coverage nearby. Eight reads are shown for clarity, not 30. A reported 30 times mean depth is an average over a region, not a minimum at every base.",
+  define("read-pileup", 510, "Depth varies from position to position",
+    "Eight short reads are aligned beneath a twelve-base reference. At the highlighted sixth position the reference is A: four reads have A and four have G, evidence consistent with an A/G heterozygous genotype, not proof on its own. A second highlight marks the final T and A columns: only one read reaches these positions, illustrating low depth nearby. Separate arrows connect the highlighted columns to the genotype and depth labels. Eight reads are shown for clarity, not 30. A reported 30 times mean depth is an average over a region, not a minimum at every base.",
     "Half the reads here support G where the reference has A. Real calls also depend on base quality, mapping quality and other evidence.",
-    function (s) {
+    function (s, wideLayout) {
+      var first = wideLayout ? 64 : 28;
+      var step = wideLayout ? 52 : 26;
+      var het = first + 5 * step;
+      var edge = first + 10.5 * step;
       text(s, 18, 27, "A small window into aligned reads", "dg-heading");
       text(s, 18, 52, "8 reads shown · an illustrative window", "dg-muted");
-      rect(s, 146, 75, 24, 278, "dg-highlight");
+      rect(s, het - 12, 75, 24, 278, "dg-highlight");
+      rect(s, first + 10 * step - 12, 75, step + 24, 278, "dg-highlight");
       text(s, 18, 74, "Reference", "dg-muted");
       var reference = "ACTGCAATCGTA";
       function bases(y, start, end, alternate) {
         for (var i = start; i < end; i++) {
-          text(s, 28 + i * 26, y, alternate && i === 5 ? "G" : reference[i],
+          text(s, first + i * step, y, alternate && i === 5 ? "G" : reference[i],
             "dg-center dg-base" + (alternate && i === 5 ? " dg-alt" : ""));
         }
       }
       bases(101, 0, 12, false);
       text(s, 18, 131, "Reads", "dg-muted");
       [[0, 10], [1, 12], [0, 8], [2, 9], [1, 10], [3, 8], [2, 10], [0, 9]].forEach(function (range, i) {
-        rect(s, 17 + range[0] * 26, 142 + i * 26, (range[1] - range[0]) * 26 - 3, 23, "dg-read");
+        rect(s, first - 11 + range[0] * step, 142 + i * 26, (range[1] - range[0]) * step - 3, 23, "dg-read");
         bases(159 + i * 26, range[0], range[1], i % 2 === 0);
       });
-      down(s, 158, 358, 374);
-      line(s, 328, 179, 340, 179);
-      line(s, 340, 179, 340, 355);
-      line(s, 328, 355, 340, 355);
-      lines(s, 180, 395, ["About half the reads say G", "→ evidence for heterozygous A/G"], "dg-center dg-heading");
-      text(s, 18, 440, "Right edge: just 1 read", "dg-muted");
-      text(s, 18, 461, "30× mean depth can still contain gaps.", "dg-muted");
+      down(s, edge, 358, 374);
+      down(s, het, 358, wideLayout ? 374 : 434);
+      lines(s, wideLayout ? edge : 340, 395, ["Only 1 read covers here", "→ low depth"], wideLayout ? "dg-center" : "dg-end");
+      lines(s, wideLayout ? het : 180, wideLayout ? 395 : 455,
+        ["About half the reads say G", "→ evidence for heterozygous A/G"], "dg-center dg-heading");
+      text(s, 18, wideLayout ? 447 : 500, "30× mean depth can still contain gaps.", "dg-muted");
     });
 
   define("short-vs-long-reads", 405, "Long reads can bridge repeats",
@@ -304,6 +308,8 @@
   function wide(name, height, draw) {
     diagrams[name].wide = { height: height, draw: draw };
   }
+
+  wide("read-pileup", 460, function (s) { diagrams["read-pileup"].draw(s, true); });
 
   wide("file-journey", 340, function (s) {
     text(s, 18, 30, "30× short-read human genome", "dg-heading");
