@@ -50,6 +50,7 @@ from wgsextract_cli.core.sample_types import (
 )
 from wgsextract_cli.core.sample_types import (
     FactName,
+    ObservedPlatform,
     ObservedSex,
     OverrideChanges,
     Platform,
@@ -142,8 +143,9 @@ FACTS: dict[str, FactSpec] = {
         FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 4),
         FactSpec(
             "platform",
-            "Sequencing platform, from the read groups or read names.",
+            "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
             PLATFORMS,
+            2,
         ),
         FactSpec("build", "Reference build the file is aligned to."),
         FactSpec(
@@ -196,6 +198,7 @@ class Fact:
     version: int | None = None
     by: str | None = None
     at: str | None = None
+    statistics: dict[str, float] | None = None
 
     def describe(self) -> str:
         if self.source == "override":
@@ -230,6 +233,8 @@ class Fact:
             result["by"] = self.by
         if self.at is not None:
             result["at"] = self.at
+        if self.statistics is not None:
+            result["statistics"] = self.statistics
         return result
 
 
@@ -537,7 +542,7 @@ class SampleWorkspace:
         self,
         name: Literal["platform"],
         file: PathInput,
-        value: Platform | None,
+        value: ObservedPlatform | None,
         *,
         method: str,
         confidence: Confidence,
@@ -607,6 +612,7 @@ class SampleWorkspace:
         *,
         method: str,
         confidence: Confidence,
+        statistics: dict[str, float] | None = None,
     ) -> bool:
         fingerprint = file_fingerprint(file)
         if fingerprint is None or value is None:
@@ -620,6 +626,8 @@ class SampleWorkspace:
             "by": _by(),
             "at": _now(),
         }
+        if statistics is not None:
+            new["statistics"] = statistics
 
         def mutate(doc: WorkspaceState) -> bool:
             return doc.record(name, key, fingerprint, new)
@@ -804,7 +812,18 @@ def _detected_fact(
         version=version if isinstance(version, int) else None,
         by=_text(fact.get("by")),
         at=_text(fact.get("at")),
+        statistics=_statistics(fact.get("statistics")),
     )
+
+
+def _statistics(value: object) -> dict[str, float] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        key: float(item)
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, (int, float))
+    }
 
 
 def _text(value: object) -> str | None:
@@ -954,10 +973,11 @@ def record(
 def record(
     name: Literal["platform"],
     file: PathInput | None,
-    value: Platform | None,
+    value: ObservedPlatform | None,
     *,
     method: str,
     confidence: Confidence,
+    statistics: dict[str, float] | None = None,
 ) -> bool: ...
 
 
@@ -1012,6 +1032,7 @@ def record(
     *,
     method: str,
     confidence: Confidence,
+    statistics: dict[str, float] | None = None,
 ) -> bool:
     """Record a detected fact in ``file``'s workspace, if it has one, and warn
     if it contradicts the user's override."""
@@ -1019,7 +1040,7 @@ def record(
     if workspace is None or file is None or not _recording.get():
         return False
     recorded = workspace._record(
-        name, file, value, method=method, confidence=confidence
+        name, file, value, method=method, confidence=confidence, statistics=statistics
     )
     check_override(name, file, value, method)
     return recorded

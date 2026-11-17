@@ -37,11 +37,28 @@ _READ_FILE_SUFFIXES = (
 
 
 def resolve_platform(
-    platform: str | None, reads: str | None, input_ref: str | None = None
+    platform: str | None,
+    reads: str | None,
+    input_ref: str | None = None,
+    r2: str | None = None,
 ) -> str:
-    """Keep existing defaults except ONT and the existing Ultima RG case."""
+    """Use long-read defaults for ONT and PacBio FASTQ evidence."""
     if platform:
+        if reads and not _is_alignment_file(reads):
+            input_platform(reads, input_ref, override=platform)
+            if r2:
+                input_platform(r2, input_ref, override=platform)
         return platform
+    if r2:
+        first = resolve_platform(None, reads, input_ref)
+        second = resolve_platform(None, r2, input_ref)
+        if first != second and {first, second} & {"ont", "pacbio"}:
+            raise UsageError(
+                "FASTQ mates have conflicting platform evidence. Pass "
+                "--platform ont, --platform hifi or --platform clr only if "
+                "both files contain that kind of reads, or split the inputs."
+            )
+        return first
     detected = input_platform(reads, input_ref, strict=True)
     if reads and reads.lower().endswith((".bam", ".cram")) and Path(reads).is_file():
         if ultima.is_ultima_header(get_bam_header(reads, input_ref)):
@@ -49,9 +66,12 @@ def resolve_platform(
                 "%s has an Ultima read group: retaining Ultima defaults.", reads
             )
             return "ultima"
-    if detected == "ont":
+    if detected == "ont" or (
+        detected == "pacbio" and reads and not _is_alignment_file(reads)
+    ):
         logging.info(
-            "Detected ont reads: selecting platform-specific alignment defaults."
+            "Detected %s reads: selecting platform-specific alignment defaults.",
+            detected,
         )
         return detected
     if detected and detected != "illumina":

@@ -485,7 +485,7 @@ def run(params: RealignParams) -> None:
                 job.input, input_cram_opt or _input_cram_reference(job)
             )
     job.platform = detected or align_cmd.resolve_platform(
-        job.platform, job.r1 or job.input, input_ref
+        job.platform, job.r1 or job.input, input_ref, job.r2
     )
     if is_url(job.input) and not (align_cmd.is_long_read(job) and not job.r1):
         raise UsageError(

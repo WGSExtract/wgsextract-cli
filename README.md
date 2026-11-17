@@ -138,6 +138,12 @@ complete stream. Read names and output filenames still use the original inputs.
 Pass `--platform` for long-read streams; unlabelled streams use Illumina defaults
 without consuming their first read for platform detection.
 
+Native PacBio HiFi FASTQs select long-read HiFi/CCS defaults, like PacBio BAMs.
+For renamed FASTQs, bounded header, length and quality sampling distinguishes
+long reads from short reads. Ambiguous long reads require `--platform ont`,
+`--platform hifi` or `--platform clr`, never silently BWA/Illumina defaults;
+see [platform detection and recorded evidence](docs/ont.md).
+
 Persistent logging is off by default. Use a **new, dedicated** path:
 
 ```sh

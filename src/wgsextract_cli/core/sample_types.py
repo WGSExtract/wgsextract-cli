@@ -5,6 +5,7 @@ from typing import Literal, TypedDict, TypeGuard, get_args
 Sex = Literal["Male", "Female"]
 ObservedSex = Literal["Male", "Female", "Unknown"]
 Platform = Literal["illumina", "ont", "pacbio", "ultima", "dnbseq"]
+ObservedPlatform = Literal["illumina", "ont", "pacbio", "ultima", "dnbseq", "Unknown"]
 Confidence = Literal["high", "medium", "low"]
 Superpopulation = Literal["AFR", "AMR", "EAS", "EUR", "SAS"]
 FactName = Literal[

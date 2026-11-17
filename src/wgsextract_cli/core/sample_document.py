@@ -5,6 +5,7 @@ from typing import Annotated, TypedDict
 from .output_schema import Constraints, Shape
 from .sample_types import (
     Confidence,
+    ObservedPlatform,
     ObservedSex,
     Platform,
     SampleSchema,
@@ -18,7 +19,11 @@ Nonnegative = Annotated[float, Constraints(minimum=0)]
 Fraction = Annotated[float, Constraints(minimum=0, maximum=1)]
 
 
-class FactMetadata(TypedDict):
+class FactStatistics(TypedDict, total=False):
+    statistics: dict[str, float]
+
+
+class FactMetadata(FactStatistics):
     method: Annotated[str, Constraints(description="How it was detected.")]
     confidence: Confidence
     version: Annotated[
@@ -47,7 +52,7 @@ class ObservedSexFact(FactMetadata):
 
 
 class PlatformFact(FactMetadata):
-    value: Platform
+    value: ObservedPlatform
 
 
 class BuildFact(FactMetadata):

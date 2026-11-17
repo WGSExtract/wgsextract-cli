@@ -14,6 +14,7 @@ class FactRequired(TypedDict):
 
 
 class FactView(FactRequired, total=False):
+    statistics: dict[str, float]
     file: str
     fingerprint: str
     method: str
