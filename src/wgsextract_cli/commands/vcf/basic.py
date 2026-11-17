@@ -2,6 +2,7 @@ import argparse
 import gzip
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -25,6 +26,7 @@ from wgsextract_cli.core.alignment_metadata import get_bam_header
 from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
+    get_tool_version,
     log_dependency_info,
     verify_dependencies,
 )
@@ -42,6 +44,7 @@ from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.utils import (
+    MissingDependencyError,
     UsageError,
     WGSExtractError,
     get_resource_defaults,
@@ -312,6 +315,20 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
     input_file = str(params.input)
+    current_result().provenance.params["baq"] = bool(params.baq)
+    if params.baq:
+        version = get_tool_version("bcftools") or ""
+        match = re.search(r"(\d+)\.(\d+)", version)
+        if not match or tuple(map(int, match.groups())) < (1, 13):
+            raise MissingDependencyError(
+                "--baq requires bcftools 1.13 or newer for heuristic BAQ "
+                f"(detected: {version or 'unknown'}). Use --no-baq otherwise."
+            )
+    if params.baq and ultima.alignment_is_ultima(input_file):
+        raise UsageError(
+            "--baq is not supported for Ultima input: bcftools' Ultima "
+            "profile disables BAQ. Use --no-baq."
+        )
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     parallel = int(threads) > 1 if params.parallel is None else params.parallel
@@ -371,6 +388,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
                 profile=profile,
                 call_args=[*ploidy, *sex_args, *prior],
                 indels=indels,
+                baq=bool(params.baq),
                 contigs=contigs,
                 environment=environment,
             )
@@ -393,6 +411,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
                 ploidy_args=ploidy,
                 sex_args=sex_args,
                 prior_args=prior,
+                baq=bool(params.baq),
                 environment=environment,
             )
 

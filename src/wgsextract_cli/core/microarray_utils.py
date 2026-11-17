@@ -273,6 +273,7 @@ def liftover_hg38_to_hg19(
     Performs liftover from hg38 to hg19 using pyliftover; returns the sites'
     outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
     left out, so vendor files report them as no-calls.
+    MT stays in rCRS coordinates, matching hg38 and GRCh37 chip templates.
     Ported from legacy program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
@@ -301,7 +302,9 @@ def liftover_hg38_to_hg19(
             records.append((snp_id, result))
             coordinates.append((_chrom_for_liftover(chrom), position))
 
-    projections, counts = project_coordinates(coordinates, chain_file, reflib_dir)
+    projections, counts = project_coordinates(
+        coordinates, chain_file, reflib_dir, preserve_rcrs=True
+    )
     if counts.lifted < len(coordinates):
         logging.warning(
             f"Liftover left out {len(coordinates) - counts.lifted:,} sites: "

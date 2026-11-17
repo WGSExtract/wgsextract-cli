@@ -2,8 +2,10 @@
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Annotated, Any, TypedDict
 from urllib.parse import unquote
+
+from wgsextract_cli.core.output_schema import Constraints
 
 IDENTITY = "WGSE_CLINVAR_ID"
 STARS = "WGSE_CLINVAR_STARS"
@@ -14,7 +16,16 @@ COMPONENT_CONF = "WGSE_MNV_COMPONENT_CONF"
 COMPONENT_REASONS = "WGSE_MNV_COMPONENT_REASONS"
 
 
-def review_evidence(info: Mapping[str, object]) -> dict[str, object]:
+class ClinicalEvidenceDocument(TypedDict, total=False):
+    id: str | None
+    review_status: str | None
+    stars: Annotated[int | None, Constraints(minimum=0, maximum=4)]
+    review_tier: str
+    conflict: bool
+    conflict_evidence: str | None
+
+
+def review_evidence(info: Mapping[str, object]) -> ClinicalEvidenceDocument:
     status = str(info.get("CLNREVSTAT") or "")
     if "practice_guideline" in status:
         stars, tier = 4, "practice guideline"
@@ -32,14 +43,15 @@ def review_evidence(info: Mapping[str, object]) -> dict[str, object]:
     conflicting = "conflict" in str(info.get("CLNSIG") or "").lower() or (
         bool(conflict) and conflict != "."
     )
-    return {
-        "id": info.get(IDENTITY) or None,
-        "review_status": status or None,
-        "stars": stars if status and status != "." else None,
-        "review_tier": tier,
-        "conflict": conflicting,
-        "conflict_evidence": conflict or None,
-    }
+    identity = info.get(IDENTITY)
+    return ClinicalEvidenceDocument(
+        id=str(identity) if identity else None,
+        review_status=status or None,
+        stars=stars if status and status != "." else None,
+        review_tier=tier,
+        conflict=conflicting,
+        conflict_evidence=conflict or None,
+    )
 
 
 def nonredundant_calls(calls: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:

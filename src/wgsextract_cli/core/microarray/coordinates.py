@@ -116,7 +116,7 @@ def _write(path: Path, rows: list[Projection], counts: LiftoverCounts) -> None:
 
 
 def _project(
-    coordinates: Sequence[tuple[str, int]], chain: str
+    coordinates: Sequence[tuple[str, int]], chain: str, preserve_rcrs: bool
 ) -> tuple[list[Projection], LiftoverCounts]:
     lifter = LiftOver(chain)
     rows = []
@@ -124,6 +124,13 @@ def _project(
     # Positions that more than one source site may claim; none of them is lifted.
     clashing: set[tuple[str, int]] = set()
     for index, (chrom, position) in enumerate(coordinates):
+        # Chip targets and hg38 both use rCRS, not UCSC hg19's Yoruba chrM.
+        if preserve_rcrs and chrom == "chrM":
+            if 1 <= position <= 16569:
+                rows.append(Projection(index, chrom, position, False))
+            else:
+                reasons["unmapped"] += 1
+            continue
         try:
             hits = lifter.convert_coordinate(chrom, position - 1)
         except (ValueError, TypeError):
@@ -165,16 +172,19 @@ def project_coordinates(
     coordinates: Sequence[tuple[str, int]],
     chain: str,
     library: str | None = None,
+    *,
+    preserve_rcrs: bool = False,
 ) -> tuple[Iterator[Projection], LiftoverCounts]:
     root = microarray_cache_root(library)
     if root is None:
-        rows, counts = _project(coordinates, chain)
+        rows, counts = _project(coordinates, chain, preserve_rcrs)
         return iter(rows), counts
     chain_digest = hashlib.sha256()
     with Path(chain).open("rb") as source:
         while chunk := source.read(1024 * 1024):
             chain_digest.update(chunk)
     digest = hashlib.sha256(_MAGIC + chain_digest.digest())
+    digest.update(bytes([preserve_rcrs]))
     for chrom, position in coordinates:
         digest.update(f"{chrom}\t{position}\n".encode())
     directory = root / "hg19-coordinates"
@@ -188,12 +198,12 @@ def project_coordinates(
             stack.enter_context(build_lock(str(path) + ".lock"))
         except OSError as error:
             logging.warning("Microarray coordinate cache unavailable: %s", error)
-            rows, counts = _project(coordinates, chain)
+            rows, counts = _project(coordinates, chain, preserve_rcrs)
             return iter(rows), counts
         cached = _read(path, len(coordinates))
         if cached is not None:
             return cached
-        rows, counts = _project(coordinates, chain)
+        rows, counts = _project(coordinates, chain, preserve_rcrs)
         try:
             _write(path, rows, counts)
         except OSError as error:

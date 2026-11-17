@@ -32,6 +32,12 @@ on:
       skip-generic:
         type: boolean
         default: false
+      setup-checks:
+        type: boolean
+        default: true
+      move-modules:
+        type: string
+        default: "[]"
       tests:
         description: JSON affected test files, or all for safety runs.
         type: string
@@ -79,10 +85,10 @@ jobs:
           environments: ${{ inputs.environments }}
           writer: ${{ strategy.job-index == 0 }}
       - name: Test installer
-        if: inputs.os != 'windows'
+        if: inputs.os != 'windows' && inputs.setup-checks
         run: scripts/test_install_sh.sh
       - name: Validate installer arguments
-        if: inputs.os == 'windows' && strategy.job-index == 0
+        if: inputs.os == 'windows' && strategy.job-index == 0 && inputs.setup-checks
         shell: cmd
         run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
       - name: Verify Tools
@@ -96,6 +102,12 @@ jobs:
         run: |
           pixi run --no-install wgsextract lineage y-haplogroup --help > /dev/null
           pixi run -e vep --no-install vep --help > /dev/null
+      - name: Import moved modules and collect the full suite
+        if: github.event_name == 'pull_request' && inputs.move-modules != '[]'
+        shell: bash
+        env:
+          MOVE_MODULES: ${{ inputs.move-modules }}
+        run: pixi run python scripts/ci_check_moves.py --modules "$MOVE_MODULES"
       # UCSC is often unresolvable from runners (#667). Bootstrap keeps a chain
       # already in the library, so restore the newest cached one and keep it only
       # if it has the pinned SHA-256. A verified checksum has one shared key.
@@ -247,7 +259,7 @@ jobs:
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.setup-checks || inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
@@ -276,3 +288,4 @@ jobs:
             out/imputation-e2e.xml
             out/vep-rs-e2e.xml
             out/e2e-fake.xml
+            out/pure-move-collection.log

@@ -1236,6 +1236,16 @@ def _append(path: Path, line: str) -> None:
     path.write_text(path.read_text() + line + "\n")
 
 
+def copy_mutation_evidence(source: Path, destination: Path) -> None:
+    """Copy the whole results tree for mutation, excluding coordination files."""
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns("*.lock", "*.guard"),
+    )
+
+
 def cmd_mutate(args: argparse.Namespace) -> None:
     """Corrupt copies of a passing run; the oracle must fail every one."""
     meta = json.loads((args.results / "lab-run.json").read_text())
@@ -1253,7 +1263,7 @@ def cmd_mutate(args: argparse.Namespace) -> None:
     for name, mutate in mutations.items():
         copy = args.results.parent / f"mutant-{name}"
         shutil.rmtree(copy, ignore_errors=True)
-        shutil.copytree(args.results, copy, symlinks=True)
+        copy_mutation_evidence(args.results, copy)
         mutate(copy)
         print(f"\n--- mutation {name}")
         if judge(copy, meta["target"]):

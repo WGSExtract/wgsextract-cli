@@ -3,8 +3,10 @@ helpers that pick their inputs, ploidy and reference."""
 
 import argparse
 import gzip
+import json
 import logging
 import random
+import shlex
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,7 @@ from tests.htslib_helpers import (
     vcf_calls,
     write_fasta,
 )
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -69,6 +72,18 @@ def _call(cmd, sample, outdir, *extra):
     )  # fmt: skip
 
 
+def _mpileup_argv(vcf):
+    with gzip.open(vcf, "rt") as source:
+        command = next(
+            line.split("=", 1)[1]
+            for line in source
+            if line.startswith(
+                ("##bcftoolsCommand=mpileup ", "##bcftools_mpileupCommand=")
+            )
+        )
+    return shlex.split(command.split("; Date=", 1)[0])
+
+
 @needs_htslib
 @pytest.mark.parametrize(
     ("cmd", "out", "expected"),
@@ -81,6 +96,124 @@ def test_caller_finds_only_its_variant_type(sample, tmp_path, cmd, out, expected
     _call(cmd, sample, tmp_path)
     assert vcf_calls(tmp_path / out) == [expected]
     assert (tmp_path / f"{out}.tbi").is_file()
+
+
+@needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+def test_982_baq_opt_in_records_choice_and_preserves_default_calls(
+    sample, tmp_path, monkeypatch, kind
+):
+    monkeypatch.setitem(settings, "baq", False)
+    bodies = {}
+    cls = api.VcfSnpParams if kind == "snp" else api.VcfIndelParams
+    call = api.vcf.snp if kind == "snp" else api.vcf.indel
+    for mode in (None, False, True):
+        output = tmp_path / str(mode)
+        result = call(
+            cls(
+                input=Path(sample["bam"]),
+                ref=Path(sample["ref"]),
+                outdir=output,
+                ploidy="GRCh38",
+                threads=1,
+                baq=mode,
+                reference_evidence="gvcf",
+            )
+        )
+        assert result.provenance.params["baq"] is bool(mode)
+        vcf = output / f"{kind}s.vcf.gz"
+        bodies[mode] = run_command(
+            ["bcftools", "view", "-H", str(vcf)], capture_output=True
+        ).stdout
+        assert vcf_calls(vcf) == [
+            ("chr1", "500", "A", "G", "0/1")
+            if kind == "snp"
+            else ("chr1", "700", "CGT", "C", "0/1")
+        ]
+        for called in (vcf, output / "bcftools.g.vcf.gz"):
+            argv = _mpileup_argv(called)
+            # contract: heuristic BAQ is enabled only by omitting mpileup -B (#982).
+            assert ("-B" not in argv) is bool(mode)
+            assert "-D" not in argv and "-E" not in argv
+    assert bodies[None] == bodies[False]
+
+
+@needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+def test_982_cli_baq_overrides_persistent_choice(sample, tmp_path, monkeypatch, kind):
+    from wgsextract_cli.cli.dispatch import dispatch_command
+    from wgsextract_cli.cli.parser import build_parser, parse_args
+
+    for configured, flag in ((True, "--no-baq"), (False, "--baq")):
+        monkeypatch.setitem(settings, "baq", configured)
+        for extra in ((), (flag,)):
+            output = tmp_path / f"{configured}-{bool(extra)}"
+            args, explicit = parse_args(
+                *build_parser(),
+                [
+                    "vcf", kind, "--input", sample["bam"], "--ref", sample["ref"],
+                    "--outdir", str(output), "--ploidy", "GRCh38",
+                    "--threads", "1", *extra,
+                ],
+            )  # fmt: skip
+            dispatch_command(args, explicit)
+            argv = _mpileup_argv(output / f"{kind}s.vcf.gz")
+            expected = not configured if extra else configured
+            # contract: CLI/config BAQ selection must reach the real mpileup (#982).
+            assert ("-B" not in argv) is expected
+            manifest = json.loads((output / f"{kind}s.vcf.manifest.json").read_text())
+            assert manifest["provenance"]["params"]["baq"] is expected
+
+
+@needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+def test_982_ultima_profile_cannot_silently_disable_requested_baq(
+    sample, tmp_path, monkeypatch, kind
+):
+    header = run_command(
+        ["samtools", "view", "-H", sample["bam"]], capture_output=True
+    ).stdout
+    header_path = tmp_path / "ultima.sam"
+    header_path.write_text(header + "@RG\tID:ultima\tPL:ULTIMA\tSM:sample\n")
+    bam = tmp_path / "ultima.bam"
+    with bam.open("wb") as target:
+        run_command(
+            ["samtools", "reheader", str(header_path), sample["bam"]], stdout=target
+        )
+    run_command(["samtools", "index", str(bam)])
+    monkeypatch.setitem(settings, "baq", True)
+    output = tmp_path / "rejected"
+    with pytest.raises(WGSExtractError, match="Ultima.*disables BAQ"):
+        _call(
+            kind,
+            {"bam": str(bam), "ref": sample["ref"]},
+            output,
+            "--reference-evidence",
+            "gvcf",
+        )
+    assert not output.exists()
+    _call(kind, {"bam": str(bam), "ref": sample["ref"]}, tmp_path, "--no-baq")
+    argv = _mpileup_argv(tmp_path / f"{kind}s.vcf.gz")
+    # contract: rejecting the opt-in must not change Ultima's default profile.
+    assert argv[argv.index("-X") + 1] == "ultima" and "-B" in argv
+
+
+@needs_htslib
+@pytest.mark.parametrize("kind", ["snp", "indel"])
+@pytest.mark.parametrize("version", ["1.12", "unknown"])
+def test_982_heuristic_baq_refuses_old_or_unknown_bcftools(
+    sample, tmp_path, monkeypatch, kind, version
+):
+    from wgsextract_cli.core.utils import MissingDependencyError
+
+    # Boundary: the installed tool's reported version, not its command execution.
+    monkeypatch.setattr(basic, "get_tool_version", lambda tool: version)
+    output = tmp_path / "rejected"
+    with pytest.raises(MissingDependencyError, match="bcftools 1.13"):
+        _call(kind, sample, output, "--baq", "--reference-evidence", "gvcf")
+    assert not output.exists()
+    _call(kind, sample, tmp_path, "--no-baq")
+    assert vcf_calls(tmp_path / f"{kind}s.vcf.gz")
 
 
 @needs_htslib

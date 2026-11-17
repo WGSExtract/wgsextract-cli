@@ -89,6 +89,18 @@ class _SmallVariantParams(Params):
         "with one random stream per process, so the calls match a single stream.",
         action="boolean_optional",
     )
+    baq: bool | None = param(
+        None,
+        help="Enable heuristic base alignment quality (BAQ) in bcftools mpileup "
+        "(slower; may reduce low-depth recall). Default: config baq, else off.",
+        doc="Omit mpileup -B for both variant calls and optional reference "
+        "evidence. This is heuristic BAQ, not full BAQ (-D) or redo BAQ (-E). "
+        "Ultima input is rejected because its profile disables BAQ. "
+        "Requires bcftools 1.13 or newer. None uses config baq, else off. "
+        "See docs/variant-confidence.md.",
+        action="boolean_optional",
+        config_key="baq",
+    )
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
         "bcftools.g.vcf.gz", "a second, SNP+indel bcftools pass"
@@ -1270,7 +1282,7 @@ class VcfClair3Params(_CallerParams):
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~4x the time on a CPU, ~6x on a GPU"
+        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
     )
 
 
