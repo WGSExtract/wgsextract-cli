@@ -10,6 +10,20 @@
   background: var(--c-bg);
   color: var(--c-text);
   font-size: 14px;
+  caret-color: var(--c-primary);
+  scrollbar-color: var(--c-border-strong) transparent;
+}
+
+.v2-app :is(h1, h2, h3) {
+  text-wrap: balance;
+}
+
+.v2-app p {
+  text-wrap: pretty;
+}
+
+.v2-side {
+  scrollbar-color: rgb(255 255 255 / 0.2) transparent;
 }
 
 .v2-side {
@@ -71,6 +85,10 @@
   background: var(--v2-side-on);
   color: var(--v2-side-strong);
   font-weight: 600;
+}
+
+.v2-nav[aria-current="page"] .v2-nav__sub {
+  color: var(--v2-side-text);
 }
 
 .v2-nav .icon {
@@ -148,9 +166,8 @@
   border-radius: 50%;
   background: var(--c-surface-3);
   color: var(--c-text);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
 .v2-side .v2-avatar {

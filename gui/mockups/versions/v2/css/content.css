@@ -148,6 +148,12 @@
   border-top: 1px solid var(--c-border);
 }
 
+/* A padded sheet holds prose, not rows: no dividers between its paragraphs */
+.v2-sheet.v2-sheet__pad > * + * {
+  margin-top: 8px;
+  border-top: 0;
+}
+
 /* Library: a person, then their files indented under them */
 .v2-person {
   display: grid;

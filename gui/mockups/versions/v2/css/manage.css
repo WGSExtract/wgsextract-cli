@@ -95,7 +95,6 @@
 
 .v2-catalog a[aria-current="page"] {
   background: var(--c-primary-soft);
-  box-shadow: inset 3px 0 0 var(--c-primary);
   color: var(--c-primary-soft-text);
   font-weight: 600;
 }
@@ -236,7 +235,6 @@
 
 .v2-pair strong.v2-mono {
   font-size: 18px;
-  letter-spacing: 0.06em;
 }
 
 .v2-item__title .v2-status {

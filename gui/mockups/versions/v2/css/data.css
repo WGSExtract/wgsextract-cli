@@ -239,8 +239,9 @@
 
 .v2-line__kind::before {
   content: "";
-  width: 3px;
-  height: 16px;
+  flex: none;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
   background: var(--strand);
 }

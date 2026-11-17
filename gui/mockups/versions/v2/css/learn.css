@@ -16,7 +16,12 @@
 .v2-lesson p,
 .v2-lesson ul,
 .v2-lesson ol {
-  max-width: 72ch;
+  max-width: 62ch;
+}
+
+/* Long reading paragraphs: pretty wrapping turns them ragged in Chromium */
+.v2-lesson section p {
+  text-wrap: wrap;
 }
 
 .v2-lesson ul,
@@ -48,7 +53,10 @@
 }
 
 .v2-lesson-list a {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 12px;
+  align-items: baseline;
   padding: 14px 0;
   border-bottom: 1px solid var(--c-border);
   color: var(--c-text);
@@ -60,11 +68,37 @@
   text-decoration: underline;
 }
 
-.v2-lesson-list span {
-  display: block;
+.v2-lesson-list a > span {
+  grid-column: 1 / -1;
   margin-top: 3px;
   color: var(--c-text-2);
   font-size: 13px;
+}
+
+.v2-lesson-list a > small {
+  grid-row: 1;
+  grid-column: 2;
+  color: var(--c-text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-lesson-list__n {
+  display: inline-block;
+  min-width: 1.4em;
+  color: var(--c-text-3);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.v2-lesson__nav {
+  align-items: center;
+}
+
+.v2-lesson__nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .v2-lesson .v2-file-flow {
@@ -108,9 +142,18 @@
   color: var(--c-text-2);
 }
 
+.v2-glossary article {
+  margin-inline: -12px;
+  padding: 8px 12px;
+  border-radius: var(--v2-r);
+}
+
 .v2-glossary article:target {
-  border-left: 3px solid var(--c-primary);
-  padding-left: 14px;
+  background: var(--c-primary-soft);
+}
+
+.v2-glossary p {
+  max-width: 62ch;
 }
 
 .v2-glossary [hidden],

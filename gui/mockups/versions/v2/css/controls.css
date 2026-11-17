@@ -142,10 +142,9 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--c-border);
-  border-left: 3px solid var(--tone, var(--c-text-3));
+  border: 1px solid color-mix(in srgb, var(--tone, var(--c-text-3)) 35%, var(--c-border));
   border-radius: var(--v2-r);
-  background: var(--c-surface);
+  background: color-mix(in srgb, var(--tone, var(--c-text-3)) 6%, var(--c-surface));
 }
 
 .v2-notice > .icon {
@@ -299,6 +298,15 @@
 
 .v2-field:first-child {
   border-top: 0;
+}
+
+/* A row whose only control is a switch reads as a sentence with its toggle at the end */
+.v2-field:has(> .v2-field__control > .v2-switch:only-child) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.v2-field:has(> .v2-field__list) {
+  align-items: start;
 }
 
 .v2-field__label {
