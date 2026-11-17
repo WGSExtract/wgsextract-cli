@@ -29,7 +29,7 @@ from wgsextract_cli.api.qc import RelateParams
 from wgsextract_cli.commands.qc import _relate_vcf
 from wgsextract_cli.commands.vcf.basic import plain_reference
 from wgsextract_cli.core import sample_workspace, somalier_resources
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,

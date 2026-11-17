@@ -8,14 +8,14 @@ from functools import lru_cache
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.alignment.metadata import get_bam_header
-from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.fastq_platform import (
+from wgsextract_cli.core.alignment.fastq_platform import (
     LONG_READ_MIN_MEDIAN,
     FastqSampleLimit,
     fastq_platform,
     fastq_sequencer,
 )
+from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.remote_input import is_url, remote_file
 from wgsextract_cli.core.results import current_result, warn

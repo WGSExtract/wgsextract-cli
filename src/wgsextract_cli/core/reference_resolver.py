@@ -21,6 +21,10 @@ from wgsextract_cli.core.builds import is_hg38_build as is_hg38_build
 from wgsextract_cli.core.constants import REF_GENOME_FILENAMES as REF_GENOME_FILENAMES
 from wgsextract_cli.core.paths import PathInput as PathInput
 from wgsextract_cli.core.paths import expand_path as expand_path
+from wgsextract_cli.core.ref_library.models import (
+    identify_reference as identify_reference,
+)
+from wgsextract_cli.core.ref_library.models import sequence_lengths as sequence_lengths
 from wgsextract_cli.core.reference_assets import build_hint as build_hint
 from wgsextract_cli.core.reference_assets import fasta_build as fasta_build
 from wgsextract_cli.core.reference_assets import (
@@ -49,10 +53,6 @@ from wgsextract_cli.core.reference_assets import (
 from wgsextract_cli.core.reference_assets import (
     resolve_input_target_tab as resolve_input_target_tab,
 )
-from wgsextract_cli.core.reference_models import (
-    identify_reference as identify_reference,
-)
-from wgsextract_cli.core.reference_models import sequence_lengths as sequence_lengths
 
 from .ref_library.resolver import (
     _UNKNOWN_SIGNATURE as _UNKNOWN_SIGNATURE,

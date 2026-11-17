@@ -688,7 +688,7 @@ clients can validate them. CLI callers use
 `preflight_resources(lambda: estimate_resources(...))` instead.
 
 For alignments, callers can obtain `reads` using the existing bounded
-`core.read_counts.fastq_input_reads` or indexed
+`core.alignment.read_counts.fastq_input_reads` or indexed
 `core.warnings.indexed_read_count`. Omitting it leaves the D3 model's explicit
 680-million-read RAM fallback; disk uses input bytes and format (12 bytes/read
 for compact CRAM, 80 for BAM, 70 for FASTQ). A missing reference uses the human
