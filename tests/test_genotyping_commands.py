@@ -758,9 +758,13 @@ def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
     pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
     assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
     assert (
-        (tmp_path / "NA12878.cyrius.tsv").read_text().endswith("NA12878\t*1/*4\tPASS\n")
+        (tmp_path / "wgse" / "NA12878.cyrius.tsv")
+        .read_text()
+        .endswith("NA12878\t*1/*4\tPASS\n")
     )
-    manifest = json.loads((tmp_path / "NA12878.cyrius.tsv.manifest.json").read_text())
+    manifest = json.loads(
+        (tmp_path / "wgse" / "NA12878.cyrius.tsv.manifest.json").read_text()
+    )
     metrics = manifest["metrics"]
     assert metrics["cyp2d6_call_status"] == status
     assert metrics["cyp2d6_call_info"] == fields["Call_info"]

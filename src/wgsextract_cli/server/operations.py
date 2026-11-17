@@ -23,6 +23,7 @@ from wgsextract_cli.api._params import (
     Params,
     json_schema,
     param_fields,
+    with_config_defaults,
 )
 from wgsextract_cli.api._runtime import READ_ONLY_COMMANDS
 from wgsextract_cli.core.remote_input import is_url
@@ -97,6 +98,15 @@ class Operation:
         }
         schema["required"] = [k for k in schema["required"] if k in allowed]
         return schema
+
+    def request_values(self, params: Params) -> dict[str, Any]:
+        """Transport the checked values without host-only configuration fields."""
+        values = params.to_dict()
+        return {
+            item.name: values[item.name]
+            for item in self.fields()
+            if item.name not in params._config_default_fields or item.name == "outdir"
+        }
 
     def read_only_values(self) -> dict[str, Any]:
         """What a read-only server sets, so the operation saves nothing."""
@@ -375,7 +385,8 @@ class PathGuard:
         if not self._inside(self.pathmod.realpath(text), self._real_roots):
             raise refused
 
-    def check(self, params: Params) -> None:
+    def check(self, params: Params) -> Params:
+        params = with_config_defaults(params)
         if params.deletes_data() and not self.allow_destructive:
             raise RequestError(
                 403,
@@ -402,6 +413,7 @@ class PathGuard:
                     )
         for name, path in params.implied_paths():
             self.check_path(name, path)
+        return params
 
     def _check_text(self, name: str, text: str) -> None:
         """A text value that names a file when one exists there (a BED file

@@ -302,14 +302,13 @@ test("WGSExtract Windows config bootstrap keeps the user's folders in the users 
     assert.match(separate.contents, setting("mygenomes_library", path.join(users, "mygenomes")));
     assert.doesNotMatch(separate.contents, /^(reference_library|reference_genome_library|temp_directory)/m);
 
-    // An earlier release's datasets folder is renamed mygenomes and stays the library.
+    // Existing saved input paths remain valid during the workspace split.
     await mkdir(path.join(users, "datasets", "joe"), { recursive: true });
     await writeFile(path.join(users, "config.toml"), `dataset_library = "${tomlBasicStringValue(path.join(users, "datasets"))}"
 `);
     const upgraded = await bootstrap();
-    assert.match(upgraded.contents, setting("mygenomes_library", path.join(users, "mygenomes")));
-    assert.ok(existsSync(path.join(users, "mygenomes", "joe")));
-    assert.ok(!existsSync(path.join(users, "datasets")));
+    assert.match(upgraded.contents, setting("mygenomes_library", path.join(users, "datasets")));
+    assert.ok(existsSync(path.join(users, "datasets", "joe")));
   } finally {
     await processManager.terminateAllProcesses();
     await rm(tempRoot, { force: true, recursive: true });

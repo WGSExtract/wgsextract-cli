@@ -78,7 +78,7 @@ test("with no workspace (setup never ran) there is nothing to remove", { skip: p
   assert.deepEqual(result.results, []);
 });
 
-test("--remove-app-data deletes the app's data after the steps but not the workspace in it, and keeps it all if one failed", { skip: process.platform === "win32" }, async (t) => {
+test("--remove-app-data deletes the hidden bundle workspace after successful steps, and keeps it all if one failed", { skip: process.platform === "win32" }, async (t) => {
   const removed = await fixture(t, "#!/bin/sh\nexit 0\n");
   await setUp(removed);
   const appData = path.dirname(path.dirname(removed.workspace));
@@ -86,8 +86,8 @@ test("--remove-app-data deletes the app's data after the steps but not the works
 
   assert.equal((await runCli(removed, "--remove-app-data")).code, 0);
   await assert.rejects(stat(path.join(appData, "WebKitCache")), { code: "ENOENT" });
-  await stat(path.join(removed.workspace, "manifest.json"));
-  assert.deepEqual(JSON.parse(await readFile(removed.result, "utf8")).log, [`Removed ${appData}, except the workspace in it`]);
+  await assert.rejects(stat(removed.workspace), { code: "ENOENT" });
+  assert.ok(JSON.parse(await readFile(removed.result, "utf8")).log.includes(`Removed ${appData}`));
 
   const kept = await fixture(t, "#!/bin/sh\nexit 3\n");
   await setUp(kept);

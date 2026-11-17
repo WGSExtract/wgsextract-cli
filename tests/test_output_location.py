@@ -2,11 +2,14 @@
 of original lab files stays untouched (only indexes may be added there)."""
 
 from pathlib import Path
+from zipfile import ZipFile
 
 import pytest
 
 from wgsextract_cli.api import ExtractRegionParams
 from wgsextract_cli.api._params import with_config_defaults
+from wgsextract_cli.api.panel import PanelBedParams
+from wgsextract_cli.api.qc import QcAncestryParams, RelateParams
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.output_location import (
     default_output_directory,
@@ -61,3 +64,32 @@ def test_writing_a_primary_kind_into_the_lab_folder_warns(tmp_path):
         primary_overwrite_warning(lab / "wgse" / "x.vcf", [bam], lab / "wgse") is None
     )
     assert primary_overwrite_warning(lab / "HG002.vcf.gz", [bam], lab) is None
+
+
+def test_1087_auxiliary_text_and_sites_vcf_do_not_choose_output_folder(tmp_path):
+    gene_list = PanelBedParams(gene_file=tmp_path / "lists" / "genes.txt")
+    sketches = RelateParams(
+        inputs=(tmp_path / "sample.somalier",),
+        sites=tmp_path / "reference" / "sites.vcf.gz",
+    )
+    assert with_config_defaults(gene_list).outdir is None
+    assert with_config_defaults(sketches).outdir is None
+
+
+def test_1087_zipped_microarray_outputs_do_not_land_in_lab_folder(tmp_path):
+    archive = tmp_path / "genome.zip"
+    with ZipFile(archive, "w") as zipped:
+        zipped.writestr("genome.txt", "# rsid\tchromosome\tposition\tgenotype\n")
+    assert (
+        with_config_defaults(QcAncestryParams(input=archive)).outdir
+        == tmp_path / "wgse"
+    )
+    resource = tmp_path / "reference.zip"
+    with ZipFile(resource, "w") as zipped:
+        zipped.writestr("reference.fa", ">chr1\nACGT\n")
+    assert default_output_directory([resource]) is None
+    reports = tmp_path / "fastqc.zip"
+    with ZipFile(reports, "w") as zipped:
+        zipped.writestr("report/summary.txt", "PASS\tSummary\tsample.fastq\n")
+        zipped.writestr("report/fastqc_data.txt", "##FastQC\n")
+    assert default_output_directory([reports]) is None

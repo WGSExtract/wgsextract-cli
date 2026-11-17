@@ -37,7 +37,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # --- Path Configuration ---
 # Default input and output paths
 # input = "~/my_genome.bam"
-# outdir = "~/wgs-extract/output"  # the default: output/ in the users workspace
+# outdir = "~/wgs-extract/output"  # otherwise: wgse/ beside the lab input
 
 # Path to a specific reference genome FASTA
 # ref = "~/my_genome.fa"
@@ -742,10 +742,9 @@ def bootstrap_default_config(config_path: Path) -> None:
             .lower()
         )
         if choice == "y":
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            from wgsextract_cli.core.atomic_output import atomic_write
+            from wgsextract_cli.core.users_workspace import write_initial_config
 
-            atomic_write(config_path, DEFAULT_CONFIG.encode("utf-8"))
+            write_initial_config(config_path, DEFAULT_CONFIG)
             print(f"\n✅ Created default config at {config_path}")
             print("You can now edit this file to persist your settings.")
         else:

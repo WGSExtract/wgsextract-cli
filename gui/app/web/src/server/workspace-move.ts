@@ -1,7 +1,8 @@
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
 import path from "node:path";
-import { configEditorControls, parseFlatToml, serializeFlatToml } from "../../../shared/rendering.js";
-import type { BundleManifest, ControlSpec, ValueMap } from "../../../shared/types.js";
+import { configEditorControls } from "../../../shared/rendering.js";
+import { parse as parseToml, stringify as serializeToml } from "smol-toml";
+import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-paths.js";
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
@@ -57,7 +58,8 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     if (!control?.configFile || !spec?.moveContents) {
         throw new HttpError(400, `${setting.key} is not a folder the app can move.`);
     }
-    if (!folder || !path.isAbsolute(folder)) {
+    const expandedFolder = folder ? expandWorkspaceToken(folder, bundleRoot) : "";
+    if (!expandedFolder || !path.isAbsolute(expandedFolder)) {
         throw new HttpError(400, `The new folder must be an absolute path: ${folder ?? ""}`);
     }
     const settingsFile = (await configFiles(manifest, bundleRoot)).get(control.id);
@@ -66,10 +68,10 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     }
     const values = await readSettings(settingsFile);
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
-    const target = path.resolve(folder);
+    const target = path.resolve(expandedFolder);
     const save = async () => {
         const latest = await readSettings(settingsFile);
-        await writeFileAtomically(settingsFile, serializeFlatToml({ ...latest, [setting.key]: target }));
+        await writeFileAtomically(settingsFile, serializeToml({ ...latest, [setting.key]: target }));
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
         await save();
@@ -268,12 +270,12 @@ interface RewrittenFile {
     text: string;
 }
 
-async function readSettings(filePath: string): Promise<ValueMap> {
+async function readSettings(filePath: string): Promise<Record<string, unknown>> {
     const text = await readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return "";
     });
-    return parseFlatToml(text);
+    return parseToml(text);
 }
 
 async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
@@ -283,7 +285,7 @@ async function relocateSettingsFile(filePath: string, from: string, to: string, 
     });
     if (text != null) {
         rewritten.push({ filePath, text });
-        await writeFileAtomically(filePath, serializeFlatToml(relocateStrings(parseFlatToml(text), from, to) as ValueMap));
+        await writeFileAtomically(filePath, serializeToml(relocateStrings(parseToml(text), from, to)));
     }
 }
 

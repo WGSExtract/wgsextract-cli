@@ -26,7 +26,7 @@ from wgsextract_cli.core.settings_schema import (
 from wgsextract_cli.core.users_workspace import (
     claim_users_workspace,
     default_mygenomes_library,
-    renamed_legacy_mygenomes,
+    existing_mygenomes_library,
     users_workspace,
 )
 from wgsextract_cli.core.utils import WGSExtractError
@@ -218,10 +218,13 @@ def legacy_config_paths() -> list[Path]:
 def default_config_path() -> Path:
     """config.toml in the users workspace, unless an older install already
     keeps one where the CLI used to (it stays there)."""
+    workspace_config = users_workspace() / "config.toml"
+    if workspace_config.is_file():
+        return workspace_config
     for legacy in legacy_config_paths():
         if legacy.is_file():
             return legacy
-    return users_workspace() / "config.toml"
+    return workspace_config
 
 
 def get_config_path() -> Path:
@@ -504,22 +507,22 @@ def configured_mygenomes_library() -> str | None:
     """The mygenomes_library setting (one folder per person or sample), also
     read from its older names when a host fills settings itself."""
     for key in ("mygenomes_library", *_aliases_of("mygenomes_library")):
-        value = settings.get(key)
-        if value:
-            return str(value)
+        if key in settings:
+            value = settings[key]
+            return str(value) if value else None
     return None
 
 
 def mygenomes_library() -> str:
     """The My Genomes library: config mygenomes_library, else the one an older
-    install kept beside its default reference library (renamed from datasets/
-    to mygenomes/), else mygenomes/ in the users workspace."""
+    install kept beside its default reference library, else mygenomes/ in the
+    users workspace. Lookup never moves a folder containing selected inputs."""
     configured = configured_mygenomes_library()
     if configured:
         return configured
     from wgsextract_cli.core.runtime import repo_root
 
-    existing = renamed_legacy_mygenomes(repo_root())
+    existing = existing_mygenomes_library(repo_root())
     return str(existing or default_mygenomes_library())
 
 

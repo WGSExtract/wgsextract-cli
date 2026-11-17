@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
@@ -259,12 +260,17 @@ class JobManager:
     # Changes ---------------------------------------------------------------
 
     def submit(self, op: Operation, params: Mapping[str, Any]) -> Job:
+        effective = op.request_values(
+            with_config_defaults(params_from_json(op, params))
+        )
+        if self.default_outdir and "outdir" in effective and not params.get("outdir"):
+            effective["outdir"] = self.default_outdir
         job = Job(
             id=time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + secrets.token_hex(3),
             op=op.name,
             kind=op.kind,
             # Locks and workers see the folders the path checks approved.
-            params=expand_paths(op, params),
+            params=expand_paths(op, effective),
         )
         names = {f.name for f in op.fields()}
         # With no input to save beside, outputs would go to the working folder.

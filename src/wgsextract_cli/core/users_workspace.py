@@ -7,8 +7,13 @@ a CLI and an app on one computer share the settings file and its libraries.
 System data (reference library, reference genomes, temporary files) stays local
 to the CLI's own data folder unless config.toml says otherwise."""
 
+import json
 import logging
 from pathlib import Path
+
+from platformdirs import user_data_dir
+
+from wgsextract_cli.core.atomic_output import atomic_write
 
 FOLDER_NAME = "wgs-extract"
 # Marks the folder as one this program made, so the desktop app adopts it
@@ -22,7 +27,30 @@ LEGACY_MYGENOMES_FOLDER = "datasets"
 
 
 def users_workspace() -> Path:
-    """The default users workspace folder in the user's home."""
+    """Follow the desktop's location record, including pre-split moves."""
+    for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract"):
+        record = Path(user_data_dir(app, appauthor=False)) / "settings.json"
+        try:
+            settings = json.loads(record.read_text(encoding="utf-8"))
+            for key in (
+                "usersWorkspaces",
+                "bundleWorkspacesDirectory",
+                "defaultUsersWorkspaceRoots",
+                "defaultWorkspaceRoots",
+            ):
+                if key == "bundleWorkspacesDirectory":
+                    legacy = settings.get(key)
+                    if isinstance(legacy, str) and Path(legacy).is_absolute():
+                        return Path(legacy) / "wgs-extract"
+                    continue
+                entries = settings.get(key)
+                chosen = (
+                    entries.get("wgs-extract") if isinstance(entries, dict) else None
+                )
+                if isinstance(chosen, str) and Path(chosen).is_absolute():
+                    return Path(chosen)
+        except (OSError, ValueError, AttributeError) as error:
+            logging.debug("Cannot read users workspace record %s: %s", record, error)
     return Path.home() / FOLDER_NAME
 
 
@@ -45,22 +73,18 @@ def claim_users_workspace(folder: Path) -> None:
         logging.debug(f"Could not mark {folder} as the users workspace: {e}")
 
 
-def renamed_legacy_mygenomes(parent: Path) -> Path | None:
-    """``parent/mygenomes`` when it exists, after renaming an older
-    ``parent/datasets`` to it; None when neither exists. Used to keep an
-    existing install's My Genomes library where it is, under its new name."""
+def write_initial_config(config_path: Path, contents: str) -> None:
+    """Claim the default workspace before a CLI-first bootstrap populates it."""
+    if config_path.parent == users_workspace():
+        claim_users_workspace(config_path.parent)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(config_path, contents.encode("utf-8"))
+
+
+def existing_mygenomes_library(parent: Path) -> Path | None:
+    """Find an existing library without renaming selected input paths."""
     current = parent / MYGENOMES_FOLDER
     if current.is_dir():
         return current
     legacy = parent / LEGACY_MYGENOMES_FOLDER
-    if not legacy.is_dir():
-        return None
-    try:
-        legacy.rename(current)
-    except OSError as e:
-        logging.warning(
-            f"Could not rename {legacy} to {current} ({e}); using it as it is."
-        )
-        return legacy
-    logging.info(f"Renamed the My Genomes library {legacy} to {current}.")
-    return current
+    return legacy if legacy.is_dir() else current if current.is_dir() else None

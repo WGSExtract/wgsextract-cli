@@ -13,6 +13,7 @@ written in the lab's folder, unless the user points output_directory there."""
 from collections.abc import Iterable
 from os import PathLike, fspath
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from wgsextract_cli.core.paths import absolute_path, expand_path
 
@@ -37,6 +38,24 @@ def primary_rank(path: str | PathLike[str]) -> int | None:
     """The primary file kind's rank (0 = alignment ... 3 = microarray), or
     None for any other file (a reference FASTA, an index, a folder)."""
     name = Path(fspath(path)).name.lower()
+    if name.endswith(".zip"):
+        try:
+            with ZipFile(path) as archive:
+                members = [
+                    item
+                    for item in archive.infolist()
+                    if not item.is_dir()
+                    and not Path(item.filename).name.startswith(".")
+                    and "__MACOSX" not in item.filename
+                ]
+                if (
+                    len(members) == 1
+                    and Path(members[0].filename).suffix.lower() in _KINDS[3]
+                ):
+                    return 3
+        except (OSError, BadZipFile):
+            pass
+        return None
     for suffix in _COMPRESSED:
         if name.endswith(suffix):
             name = name[: -len(suffix)]

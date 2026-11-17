@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, realpath, rename, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { allControls, configEditorControls, parseFlatToml, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
+import { allControls, configEditorControls, persistsFieldValue, serializeFlatToml } from "../../../shared/rendering.js";
+import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
 import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath, bundleEnvironment } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
@@ -265,7 +266,7 @@ async function bootstrapConfigFilesNow(manifest: BundleManifest, bundleRoot: str
         const defaultURL = configPath(control, configFilePaths[control.id], bundleRoot);
         const mode = bootstrap.mode ?? "createIfMissing";
         const document = await bootstrapDocument(control, bundleRoot, defaultURL, bootstrap.script);
-        const defaults = parseFlatToml(document.contents);
+        const defaults = parseToml(document.contents);
         const existing = await readOptionalFlatToml(document.url);
         if (shouldSkipBootstrap(mode, existing, Object.keys(defaults))) {
             continue;
@@ -302,7 +303,7 @@ async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) 
         return;
     }
 }
-function shouldSkipBootstrap(mode: string, existing: ValueMap | null, defaultKeys: string[]) {
+function shouldSkipBootstrap(mode: string, existing: Record<string, unknown> | null, defaultKeys: string[]) {
     if (mode === "createIfMissing") {
         return existing != null;
     }
@@ -427,7 +428,7 @@ async function scriptContents(payload: LooseRecord, bundleRoot: string): Promise
     }
     return "";
 }
-async function bootstrapToml(mode: string, url: string, defaults: ValueMap) {
+async function bootstrapToml(mode: string, url: string, defaults: Record<string, unknown>) {
     const existing = await readOptionalFlatToml(url);
     if (mode === "createIfMissing" && existing != null) {
         return;
@@ -446,11 +447,11 @@ async function bootstrapToml(mode: string, url: string, defaults: ValueMap) {
     if (mode !== "createIfMissing" && mode !== "mergeMissing") {
         throw new Error(`Unsupported config bootstrap mode: ${mode}`);
     }
-    await writeFileAtomically(url, serializeFlatToml(next));
+    await writeFileAtomically(url, serializeToml(next));
 }
-async function readOptionalFlatToml(filePath: string): Promise<ValueMap | null> {
+async function readOptionalFlatToml(filePath: string): Promise<Record<string, unknown> | null> {
     try {
-        return parseFlatToml(await readFile(filePath, "utf8"));
+        return parseToml(await readFile(filePath, "utf8"));
     }
     catch (error) {
         if (errnoCode(error) === "ENOENT") {
@@ -466,7 +467,7 @@ export async function initialConfigValues(manifest: BundleManifest, configFilePa
         if (!control.configFile || !requestedPath)
             continue;
         try {
-            const fileValues = parseFlatToml(await readFile(configPath(control, requestedPath, bundleRoot), "utf8"));
+            const fileValues = parseToml(await readFile(configPath(control, requestedPath, bundleRoot), "utf8"));
             for (const setting of control.settings ?? []) {
                 const fileValue = fileValues[settingKey(setting)];
                 if (fileValue != null) {
@@ -554,9 +555,9 @@ export function configSettingBindings(manifest: BundleManifest, fieldID: string)
 export async function loadConfig(control: ControlSpec, requestedPath: string | undefined, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
     const warnings: string[] = [];
-    let values: ValueMap = {};
+    let values: Record<string, unknown> = {};
     try {
-        values = parseFlatToml(await readFile(filePath, "utf8"));
+        values = parseToml(await readFile(filePath, "utf8"));
     }
     catch (error) {
         if (errnoCode(error) !== "ENOENT") {
@@ -587,7 +588,12 @@ export async function saveConfig(control: ControlSpec, requestedPath: string | u
         // The CLI reads this file too, and knows only real paths.
         byKey[key] = setting.kind === "path" && typeof value === "string" ? expandWorkspaceToken(value, bundleRoot) : value;
     }
-    await writeFileAtomically(filePath, serializeFlatToml({ ...existing, ...byKey }));
+    // Remove former names only when the editor owns their canonical setting.
+    if (Object.hasOwn(byKey, "mygenomes_library")) {
+        delete existing.dataset_library;
+        delete existing.genome_library;
+    }
+    await writeFileAtomically(filePath, serializeToml({ ...existing, ...byKey }));
     return { path: filePath, keyCount: Object.keys(byKey).length };
 }
 

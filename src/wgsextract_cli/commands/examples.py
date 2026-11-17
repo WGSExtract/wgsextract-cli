@@ -284,6 +284,13 @@ def run_download(params: ExampleGenomeDownloadParams) -> None:
             plan.append(_print_plan(example, planned))
             continue
 
+        from wgsextract_cli.core.users_workspace import (
+            claim_users_workspace,
+            users_workspace,
+        )
+
+        if root == users_workspace() / "mygenomes":
+            claim_users_workspace(root.parent)
         example_dir.mkdir(parents=True, exist_ok=True)
         for source, destination, role, transfer_method in planned:
             checkpoint()

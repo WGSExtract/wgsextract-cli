@@ -763,7 +763,7 @@ test("PR #530 review: a section shown by a value from its own data source appear
 
 test("Basic mode clears an advanced-only setting, and changing a moveContents folder asks first", async () => {
   resetState();
-  const { clearAdvancedOnlySettingsInBasicMode, configSettingChanged } = await import("../dist/web/src/client/operations.js");
+  const { clearAdvancedOnlySettingsInBasicMode, configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
   const control = {
     id: "paths",
     kind: "configEditor",
@@ -797,6 +797,12 @@ test("Basic mode clears an advanced-only setting, and changing a moveContents fo
     await configSettingChanged("/fast/lib", control.settings[1], control);
     assert.deepEqual(state.workspaceMove?.setting, { controlID: "paths", key: "reference_library", from: "/lib" });
     assert.equal(state.configValues["paths.ref_path"], "/lib", "unchanged until the user answers");
+    state.workspaceMove = null;
+    state.fieldValues.reference_library = "/lib";
+    await fieldValueChanged("/other/library", { id: "reference_library", kind: "path" });
+    assert.equal(state.workspaceMove?.folder, "/other/library", "1087: bound folder controls ask too");
+    assert.equal(state.fieldValues.reference_library, "/lib", "Cancel retains the bound folder");
+    assert.equal(state.configValues["paths.ref_path"], "/lib");
   } finally {
     globalThis.fetch = originalFetch;
   }

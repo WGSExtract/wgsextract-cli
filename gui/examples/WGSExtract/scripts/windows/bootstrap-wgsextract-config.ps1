@@ -32,23 +32,14 @@ function Get-ExistingValue {
     return ""
 }
 
-# The My Genomes library, under any of its older names. One that is a workspace's
-# datasets\ folder is renamed mygenomes\, where it stays; an empty genomes\ one
-# (the oldest default) is dropped.
+# Existing libraries stay put: saved state may already name files inside them.
 $oldMyGenomes = Get-ExistingValue "mygenomes_library"
 if (-not $oldMyGenomes) { $oldMyGenomes = Get-ExistingValue "dataset_library" }
 if (-not $oldMyGenomes) { $oldMyGenomes = Get-ExistingValue "genome_library" }
 $myGenomesPath = Join-Path $users "mygenomes"
 if ($oldMyGenomes) {
-    $isDatasets = (Test-SamePath $oldMyGenomes (Join-Path $users "datasets")) -or (Test-SamePath $oldMyGenomes (Join-Path $bundle "datasets"))
     $isEmptyGenomes = ((Test-SamePath $oldMyGenomes (Join-Path $users "genomes")) -or (Test-SamePath $oldMyGenomes (Join-Path $bundle "genomes"))) -and -not (Test-HasFiles $oldMyGenomes)
-    if ($isDatasets) {
-        $renamed = Join-Path (Split-Path -Parent $oldMyGenomes.TrimEnd("\", "/")) "mygenomes"
-        if ((Test-Path -LiteralPath $oldMyGenomes -PathType Container) -and -not (Test-Path -LiteralPath $renamed)) {
-            try { Move-Item -LiteralPath $oldMyGenomes -Destination $renamed } catch { $renamed = $oldMyGenomes }
-        }
-        $myGenomesPath = $renamed
-    } elseif (-not $isEmptyGenomes) {
+    if (-not $isEmptyGenomes) {
         $myGenomesPath = $oldMyGenomes
     }
 }

@@ -393,12 +393,23 @@ def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
         else [
             getattr(params, item.name)
             for item in fields
-            if item.spec.path and not item.spec.writes
+            if item.name
+            in {"input", "inputs", "r1", "r2", "vcf_input", "vcf_inputs", "proband"}
+            and item.spec.path
+            and not item.spec.writes
         ]
     )
     for item in fields:
         key = item.spec.config_key
         if not key or item.name in keep or getattr(params, item.name) is not None:
+            continue
+        if (
+            key == "output_directory"
+            and params.COMMAND == "info"
+            and not getattr(params, "cache", True)
+            and not getattr(params, "detailed", False)
+            and not getattr(params, "table_format", None)
+        ):
             continue
         value = setting_or_default(key, inputs)
         if value is not None and item.spec.cli_type is not None:

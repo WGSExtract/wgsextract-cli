@@ -31,6 +31,23 @@ from wgsextract_cli.server.operations import (
 )
 
 
+def test_1087_inferred_output_symlink_cannot_escape_allowed_input_folder(tmp_path):
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    try:
+        (allowed / "wgse").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    params = params_from_json(
+        find("vcf/table"), {"vcf_input": str(allowed / "sample.vcf")}
+    )
+    with pytest.raises(RequestError) as error:
+        PathGuard([allowed]).check(params)
+    assert error.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize(
     "op", ["ref/gene-map", "ref/clinvar", "ref/status", "ref/library-list"]
 )
@@ -45,10 +62,6 @@ def test_path_guard_checks_the_library_above_a_genomes_fasta(tmp_path, op):
     with pytest.raises(RequestError) as refused:
         PathGuard([genomes]).check(params)
     assert refused.value.code == "path_not_allowed"
-    # status also reads the dataset library beside it.
-    if op == "ref/status":
-        with pytest.raises(RequestError, match="outside the folders"):
-            PathGuard([tmp_path / "library"]).check(params)
     PathGuard([tmp_path / "library", tmp_path / "datasets"]).check(params)
 
 

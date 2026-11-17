@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -190,7 +190,21 @@ async function releaseLegacyBundleWorkspace(usersRoot: string, bundleRoot: strin
     const state = path.join(usersRoot, bundleStateFileName);
     if (existsSync(state) && !existsSync(path.join(bundleRoot, bundleStateFileName))) {
         await mkdir(bundleRoot, { recursive: true });
-        await copyFile(state, path.join(bundleRoot, bundleStateFileName));
+        const saved: unknown = JSON.parse(await readFile(state, "utf8"));
+        await writeFile(path.join(bundleRoot, bundleStateFileName), `${JSON.stringify(migrateWorkspaceTokens(saved), null, 2)}\n`, "utf8");
+    }
+
+    function migrateWorkspaceTokens(value: unknown): unknown {
+        if (typeof value === "string") {
+            return value.replaceAll("{{bundleWorkspace}}", "{{usersWorkspace}}");
+        }
+        if (Array.isArray(value)) {
+            return value.map(migrateWorkspaceTokens);
+        }
+        if (value != null && typeof value === "object") {
+            return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, migrateWorkspaceTokens(item)]));
+        }
+        return value;
     }
     // A sync record can name folders of the user's too (a dev bundle's logs or temp): only the bundle's own go.
     const copied = (await syncedEntryNames(usersRoot)).filter((name) => bundleNames.has(name));

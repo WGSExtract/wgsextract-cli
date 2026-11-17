@@ -21,9 +21,7 @@ has_files() {
   [ -d "$1" ] && [ -n "$(ls -A "$1" 2>/dev/null)" ]
 }
 
-# The My Genomes library, under any of its older names. One that is a workspace's
-# datasets/ folder is renamed mygenomes/, where it stays; an empty genomes/ one
-# (the oldest default) is dropped.
+# Existing libraries stay put: saved state may already name files inside them.
 old_mygenomes="$(existing_value mygenomes_library)"
 [ -n "$old_mygenomes" ] || old_mygenomes="$(existing_value dataset_library)"
 [ -n "$old_mygenomes" ] || old_mygenomes="$(existing_value genome_library)"
@@ -31,13 +29,6 @@ mygenomes_path="$users/mygenomes"
 if [ -n "$old_mygenomes" ]; then
   old_mygenomes="${old_mygenomes%/}"
   case "$old_mygenomes" in
-    "$users/datasets" | "$bundle/datasets")
-      renamed="$(dirname "$old_mygenomes")/mygenomes"
-      if [ -d "$old_mygenomes" ] && [ ! -e "$renamed" ]; then
-        mv "$old_mygenomes" "$renamed" || renamed="$old_mygenomes"
-      fi
-      mygenomes_path="$renamed"
-      ;;
     "$users/genomes" | "$bundle/genomes")
       if has_files "$old_mygenomes"; then
         mygenomes_path="$old_mygenomes"

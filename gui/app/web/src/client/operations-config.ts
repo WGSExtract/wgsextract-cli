@@ -26,6 +26,12 @@ export async function loadConfig(control: ControlSpec) {
     }
 }
 export async function fieldValueChanged(value: string, control: ControlSpec) {
+    const movable = configSettingBindings(control.id).find((binding) => binding.setting.moveContents === true);
+    if (movable) {
+        await configSettingChanged(value, movable.setting, movable.control);
+        scheduleRender();
+        return;
+    }
     state.fieldValues[control.id] = value;
     await syncBoundConfigSettings(control.id, value, { removeFieldIDs: [control.id] });
 }

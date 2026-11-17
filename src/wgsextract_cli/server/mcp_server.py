@@ -16,6 +16,7 @@ import json
 import logging
 import threading
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from typing import Any, TextIO
 
 from wgsextract_cli import __version__
@@ -215,9 +216,10 @@ class McpTools:
         op = find_tool(name)
         if op is not None and self._offered(op):
             params = params_from_json(op, arguments, read_only=not self.allow_jobs)
-            self.guard.check(params)
             if not self.allow_jobs:
-                arguments = {**arguments, **op.read_only_values()}
+                params = replace(params, **op.read_only_values())
+            params = self.guard.check(params)
+            arguments = op.request_values(params)
             job = self.manager.submit(op, arguments)
             if op.kind != "query":
                 return job.view(), False

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { parse as parseToml } from "smol-toml";
 import { fileURLToPath } from "node:url";
 
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/web/src/server/bundle-uninstall-cli.js");
@@ -128,7 +129,7 @@ test("a users workspace the CLI made is shared, not passed over", async (t) => {
   const { source, users } = await fixture(t);
   await mkdir(path.join(users, "output"), { recursive: true });
   await writeFile(path.join(users, ".users-workspace"), "WGS Extract users workspace\n");
-  await writeFile(path.join(users, "config.toml"), "cpu_threads = 4\n");
+  await writeFile(path.join(users, "config.toml"), 'cpu_threads = 4\nserver_allowed_paths = ["/allowed", "/shared"]\n[dev]\nreal_genome_tests_enabled = true\n');
 
   const bundle = await prepareBundleWorkspace(manifest, source);
 
@@ -159,7 +160,7 @@ test("the home folder workspace of 0.8.5 to 0.8.7 becomes the users workspace, k
   await writeFile(path.join(users, ".workspace-sync.json"), JSON.stringify({ entries: [{ path: "manifest.json" }, { path: "pages" }, { path: path.join("pages", "main.json") }, { path: "logs" }] }));
   await mkdir(path.join(users, "logs"), { recursive: true });
   await writeFile(path.join(users, "logs", "run.log"), "kept");
-  await writeFile(path.join(users, "state.json"), JSON.stringify({ fieldValues: { bam: path.join(users, "datasets", "a.bam") } }));
+  await writeFile(path.join(users, "state.json"), JSON.stringify({ fieldValues: { bam: path.join(users, "datasets", "a.bam"), tokenBam: "{{bundleWorkspace}}/datasets/a.bam" } }));
   await mkdir(path.join(users, "reference"), { recursive: true });
   await writeFile(path.join(users, "reference", "hg38.fa"), "ACGT");
   await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(path.join(users, "reference"))}\n`);
@@ -175,7 +176,7 @@ test("the home folder workspace of 0.8.5 to 0.8.7 becomes the users workspace, k
   for (const name of ["manifest.json", "pages", "state.json", ".workspace-sync.json", ".bundle-workspace"]) {
     await assert.rejects(stat(path.join(users, name)), { code: "ENOENT" }, name);
   }
-  assert.deepEqual(JSON.parse(await readFile(path.join(bundle, "state.json"), "utf8")).fieldValues, { bam: path.join(users, "datasets", "a.bam") });
+  assert.deepEqual(JSON.parse(await readFile(path.join(bundle, "state.json"), "utf8")).fieldValues, { bam: path.join(users, "datasets", "a.bam"), tokenBam: "{{usersWorkspace}}/datasets/a.bam" });
   assert.equal(JSON.parse(await readFile(appSettingsPath(), "utf8")).unrelated, true);
 
   // Where 0.8.5 to 0.8.7 recorded a moved workspace, that folder is the users workspace.
@@ -250,7 +251,7 @@ test("changing one folder setting moves what is in it, and the settings inside i
   const reference = path.join(users, "reference");
   await mkdir(path.join(reference, "genomes"), { recursive: true });
   await writeFile(path.join(reference, "genomes", "hg38.fa"), "ACGT");
-  await writeFile(path.join(users, "config.toml"), "cpu_threads = 4\n");
+  await writeFile(path.join(users, "config.toml"), 'cpu_threads = 4\nserver_allowed_paths = ["/allowed", "/shared"]\n[dev]\nreal_genome_tests_enabled = true\n');
   await saveConfig(settingsControl, undefined, {
     output_directory: path.join(users, "output"),
     reference_library: reference,
@@ -258,8 +259,8 @@ test("changing one folder setting moves what is in it, and the settings inside i
     elsewhere: "",
   }, bundle);
 
-  const fast = path.join(root, "fast disk", "reference");
-  await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
+  const fast = path.join(users, "reference-new");
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: "{{usersWorkspace}}/reference-new", setting: { controlID: "paths", key: "reference_library" } });
 
   await assert.rejects(stat(reference), { code: "ENOENT" });
   assert.equal(await readFile(path.join(fast, "genomes", "hg38.fa"), "utf8"), "ACGT");
@@ -268,12 +269,31 @@ test("changing one folder setting moves what is in it, and the settings inside i
   assert.equal(settings.reference_genome_library, path.join(fast, "genomes"));
   assert.equal(settings.output_directory, path.join(users, "output"));
   assert.equal(settings.cpu_threads, 4, "a setting the editor doesn't show is kept");
+  const complete = parseToml(await readFile(path.join(users, "config.toml"), "utf8"));
+  assert.deepEqual(complete.server_allowed_paths, ["/allowed", "/shared"], "1087: save and move retain unowned arrays");
+  assert.deepEqual({ ...complete.dev }, { real_genome_tests_enabled: true }, "1087: save and move retain TOML tables");
 
   // A folder that doesn't exist yet only changes the setting.
   const output = path.join(root, "outputs");
   await move({ sourceRoot: source, bundleRoot: bundle, folder: output, setting: { controlID: "paths", key: "output_directory" } });
   assert.equal((await settingsIn(path.join(users, "config.toml"))).output_directory, output);
   await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: output, setting: { controlID: "paths", key: "elsewhere" } }), /not a folder the app can move/);
+});
+
+test("1087 loads an old My Genomes library key and respects a subsequently cleared canonical key", async (t) => {
+  const { source, bundle, users } = await fixture(t);
+  const { loadConfig } = await import("../dist/web/src/server/config-store.js");
+  await prepareBundleWorkspace(manifest, source);
+  const control = {
+    ...settingsControl,
+    settings: [{ id: "mygenomes", key: "mygenomes_library", kind: "path", value: "" }],
+  };
+  await writeFile(path.join(users, "config.toml"), 'dataset_library = "/saved/datasets"\n');
+  assert.equal((await loadConfig(control, undefined, bundle)).values.mygenomes_library, "/saved/datasets");
+  await saveConfig(control, undefined, { mygenomes_library: "" }, bundle);
+  const saved = parseToml(await readFile(path.join(users, "config.toml"), "utf8"));
+  assert.equal(saved.mygenomes_library, "");
+  assert.equal(saved.dataset_library, undefined);
 });
 
 test("folders that are unsafe to move to are refused and nothing changes", async (t) => {
