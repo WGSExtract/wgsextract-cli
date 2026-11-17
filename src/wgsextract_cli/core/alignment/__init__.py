@@ -11,7 +11,8 @@ compatibility copies for tools with older or reference-free CRAM decoders.
 ``read_counts`` bounds alignment/FASTQ sampling for resource estimates;
 ``sequencing`` identifies platforms and preserves platform-detection provenance.
 ``fastq_platform`` infers low-level platform evidence from a bounded FASTQ prefix.
-The retained ``core.sequencing`` and ``core.fastq_platform`` interfaces
+The retained ``core.alignment_metadata``, ``core.sequencing`` and
+``core.fastq_platform`` interfaces
 re-export the same implementations and caches for existing callers.
-Internal metadata, sampling and health callers use the package paths directly.
+Free internal metadata, sampling and health callers use the package paths directly.
 """
