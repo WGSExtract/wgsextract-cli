@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfFilterParams, VcfTrioParams
-from wgsextract_cli.core.alignment_health import warn_about_alignment
+from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependency_checks import (

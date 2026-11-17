@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools
-from wgsextract_cli.core import microarray_targets as mt
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.microarray import targets as mt
 
 
 def _templates(root: Path) -> Path:

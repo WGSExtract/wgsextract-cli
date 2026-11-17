@@ -16,11 +16,11 @@ from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.library_cache import short_key
 from wgsextract_cli.core.microarray.aadr import _MARKERS
 from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
+from wgsextract_cli.core.microarray.targets import TARGET_VERSION, _template_paths
 from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _resolve_templates_roots,
 )
-from wgsextract_cli.core.microarray_targets import TARGET_VERSION, _template_paths
 
 _VERSION = 1
 MarkerIDs = dict[tuple[str, int], str]

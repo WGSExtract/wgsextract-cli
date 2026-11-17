@@ -14,7 +14,7 @@ from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray.chm13 import load_chm13_catalogue
 from wgsextract_cli.core.microarray.site_map import SiteMap
-from wgsextract_cli.core.microarray_targets import ncbi36_chain
+from wgsextract_cli.core.microarray.targets import ncbi36_chain
 
 pytestmark = [
     pytest.mark.remote,

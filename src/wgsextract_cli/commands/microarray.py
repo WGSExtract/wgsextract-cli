@@ -14,7 +14,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli.registration.microarray import register as register
 from wgsextract_cli.core.aadr_resources import AADR_2M_FILENAME, require_aadr_2m
-from wgsextract_cli.core.alignment_health import warn_about_alignment
+from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.builds import (
     is_hg37_build,
     is_hg38_build,
@@ -53,15 +53,15 @@ from wgsextract_cli.core.microarray.quirks import (
     load_strand_quirks,
     quirks_mode,
 )
+from wgsextract_cli.core.microarray.targets import (
+    build_genome_wide_target,
+    is_genome_wide_target,
+    ncbi36_chain,
+)
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     _resolve_templates_roots,
     resolve_format_key,
-)
-from wgsextract_cli.core.microarray_targets import (
-    build_genome_wide_target,
-    is_genome_wide_target,
-    ncbi36_chain,
 )
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library

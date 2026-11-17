@@ -6,7 +6,7 @@ import zipfile
 import pytest
 
 from tests.smoke_utils import run_cli
-from wgsextract_cli.core import microarray_revisions as revisions
+from wgsextract_cli.core.microarray import revisions as revisions
 from wgsextract_cli.core.microarray.templates import _PACKAGED_TEMPLATES, template_rows
 from wgsextract_cli.core.utils import WGSExtractError
 

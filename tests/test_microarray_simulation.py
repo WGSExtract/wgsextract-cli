@@ -132,7 +132,7 @@ def library(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _synthetic_templates_only(monkeypatch):
-    from wgsextract_cli.core import microarray_targets
+    from wgsextract_cli.core.microarray import targets as microarray_targets
 
     def unexpected_download(url, _destination):
         pytest.fail(f"Synthetic microarray simulation attempted a download: {url}")
@@ -974,7 +974,7 @@ def test_library_default_runs_from_an_unguarded_spawn_script(tmp_path, library):
     script.write_text(
         "import logging, multiprocessing\n"
         "from wgsextract_cli import api\n"
-        "from wgsextract_cli.core import microarray_targets\n"
+        "from wgsextract_cli.core.microarray import targets as microarray_targets\n"
         "logging.getLogger().setLevel(logging.INFO)\n"
         "multiprocessing.set_start_method('spawn', force=True)\n"
         "microarray_targets._FORMATS = ['23andMe_V3', 'FTDNA_V2']\n"
