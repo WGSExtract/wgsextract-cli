@@ -1,0 +1,189 @@
+This file is from:
+
+    http://hgdownload.cse.ucsc.edu/goldenPath/hg38/phyloP100way/README.txt
+
+This directory contains conservation scoring by phyloP (phylogenetic p-values)
+from the PHAST package (http://compgen.bscb.cornell.edu/phast/) for multiple
+alignments of 99 vertebrate genomes to the human genome.
+
+Files in this directory are:
+
+    hg38.phyloP.100way.mod - phyloP tree model with branch lengths for all 100 species
+
+PhyloP scores in bigWig format files:
+    hg38.100way.phyloP100way.bw
+See also: http://genome.ucsc.edu/FAQ/FAQformat.html#format6.1
+   for bigWig format description
+
+PhyloP scores in fixed step wiggle format:
+    hg38.100way.phyloP100way/*.wigFix.gz - phyloP scores for all 100 species
+
+For a description of the fixed step wiggle data file format, see:
+http://genome.ucsc.edu/goldenPath/help/phastCons.html
+
+The phastCons data can be found at:
+http://hgdownload.cse.ucsc.edu/goldenPath/hg38/phastCons100way/
+
+The multiple alignments and methods description are at:
+http://hgdownload.cse.ucsc.edu/goldenPath/hg38/multiz100way/
+
+For more information about this data, see the track
+description for the Conservation track:
+    http://genome.ucsc.edu/cgi-bin/hgTrackUi?db=hg38&g=cons100way
+
+Assemblies used in these alignments:
+
+== Primate subset ==
+Human                    Homo sapiens                   Dec 2013  GRCh38/hg38                                   Reference species
+Chimp                    Pan troglodytes                Feb 2011  CSAC 2.1.4/panTro4                            Syntenic net        
+Gorilla                  Gorilla gorilla gorilla        May 2011  gorGor3.1/gorGor3                             Reciprocal best net 
+Orangutan                Pongo pygmaeus abelii          July 2007 WUGSC 2.0.2/ponAbe2                           Reciprocal best net 
+Gibbon                   Nomascus leucogenys            Oct 2012  GGSC Nleu3.0/nomLeu3                          Syntenic net        
+Rhesus                   Macaca mulatta                 Oct 2010  BGI CR_1.0/rheMac3                            Syntenic net        
+Crab-eating macaque      Macaca fascicularis            Jun 2013  Macaca_fascicularis_5.0/macFas5               Syntenic net        
+Baboon                   Papio hamadryas                Mar 2012  Baylor Panu_2.0/papAnu2                       Reciprocal best net 
+Green monkey             Chlorocebus sabaeus            Mar 2014  Chlorocebus_sabeus 1.1/chlSab2                Syntenic net        
+Marmoset                 Callithrix jacchus             Mar 2009  WUGSC 3.2/calJac3                             Syntenic net        
+Squirrel monkey          Saimiri boliviensis            Oct 2011  Broad/saiBol1                                 Syntenic net        
+Bushbaby                 Otolemur garnettii             Mar 2011  Broad/otoGar3                                 Syntenic net        
+
+== Euarchontoglires subset ==
+Chinese tree shrew       Tupaia chinensis               Jan 2013  TupChi_1.0/tupChi1                            Syntenic net        
+Squirrel                 Spermophilus tridecemlineatus  Nov 2011  Broad/speTri2                                 Syntenic net        
+Lesser Egyptian jerboa   Jaculus jaculus                May 2012  JacJac1.0/jacJac1                             Syntenic net        
+Prairie vole             Microtus ochrogaster           Oct 2012  MicOch1.0/micOch1                             Syntenic net        
+Chinese hamster          Cricetulus griseus             Jul 2013  C_griseus_v1.0/criGri1                        Syntenic net        
+Golden hamster           Mesocricetus auratus           Mar 2013  MesAur1.0/mesAur1                             Syntenic net        
+Mouse                    Mus musculus                   Dec 2011  GRCm38/mm10                                   Syntenic net        
+Rat                      Rattus norvegicus              Jul 2014  RGSC 6.0/rn6                                  Syntenic net        
+Naked mole-rat           Heterocephalus glaber          Jan 2012  Broad HetGla_female_1.0/hetGla2               Syntenic net        
+Guinea pig               Cavia porcellus                Feb 2008  Broad/cavPor3                                 Syntenic net        
+Chinchilla               Chinchilla lanigera            May 2012  ChiLan1.0/chiLan1                             Syntenic net        
+Brush-tailed rat         Octodon degus                  Apr 2012  OctDeg1.0/octDeg1                             Syntenic net        
+Rabbit                   Oryctolagus cuniculus          Apr 2009  Broad/oryCun2                                 Syntenic net        
+Pika                     Ochotona princeps              May 2012  OchPri3.0/ochPri3                             Syntenic net        
+
+== Laurasiatheria subset ==
+Pig                      Sus scrofa                     Aug 2011  SGSC Sscrofa10.2/susScr3                      Syntenic net        
+Alpaca                   Vicugna pacos                  Mar 2013  Vicugna_pacos-2.0.1/vicPac2                   Syntenic net        
+Bactrian camel           Camelus ferus                  Dec 2011  CB1/camFer1                                   Syntenic net        
+Dolphin                  Tursiops truncatus             Oct 2011  Baylor Ttru_1.4/turTru2                       Reciprocal best net 
+Killer whale             Orcinus orca                   Jan 2013  Oorc_1.1/orcOrc1                              Syntenic net        
+Tibetan antelope         Pantholops hodgsonii           May 2013  PHO1.0/panHod1                                Syntenic net        
+Cow                      Bos taurus                     Jun 2014  UMD_3.1.1/bosTau8                     Syntenic net        
+Sheep                    Ovis aries                     Aug 2012  ISGC Oar_v3.1/oviAri3                         Syntenic net        
+Domestic goat            Capra hircus                   May 2012  CHIR_1.0/capHir1                              Syntenic net        
+Horse                    Equus caballus                 Sep 2007  Broad/equCab2                                 Syntenic net        
+White rhinoceros         Ceratotherium simum            May 2012  CerSimSim1.0/cerSim1                          Syntenic net        
+Cat                      Felis catus                    Nov 2014  ICGSC Felis_catus 8.0/felCat8                 Syntenic net        
+Dog                      Canis lupus familiaris         Sep 2011  Broad CanFam3.1/canFam3                       Syntenic net        
+Ferret                   Mustela putorius furo          Apr 2011  MusPutFur1.0/musFur1                          Syntenic net        
+Panda                    Ailuropoda melanoleuca         Dec 2009  BGI-Shenzhen 1.0/ailMel1                      Syntenic net        
+Pacific walrus           Odobenus rosmarus divergens    Jan 2013  Oros_1.0/odoRosDiv1                           Syntenic net        
+Weddell seal             Leptonychotes weddellii        Mar 2013  LepWed1.0/lepWed1                             Reciprocal best net 
+Black flying-fox         Pteropus alecto                Aug 2012  ASM32557v1/pteAle1                            Syntenic net        
+Megabat                  Pteropus vampyrus              Jul 2008  Broad/pteVam1                                 Reciprocal best net 
+David's myotis bat       Myotis davidii                 Aug 2012  ASM32734v1/myoDav1                            Syntenic net        
+Microbat                 Myotis lucifugus               Jul 2010  Broad Institute Myoluc2.0/myoLuc2             Syntenic net        
+Big brown bat            Eptesicus fuscus               Jul 2012  EptFus1.0/eptFus1                             Syntenic net        
+Hedgehog                 Erinaceus europaeus            May 2012  EriEur2.0/eriEur2                             Syntenic net        
+Shrew                    Sorex araneus                  Aug 2008  Broad/sorAra2                                 Syntenic net        
+Star-nosed mole          Condylura cristata             Mar 2012  ConCri1.0/conCri1                             Syntenic net        
+
+== Afrotheria subset ==
+Elephant                 Loxodonta africana             Jul 2009  Broad/loxAfr3                                 Syntenic net        
+Cape elephant shrew      Elephantulus edwardii          Aug 2012  EleEdw1.0/eleEdw1                             Syntenic net        
+Manatee                  Trichechus manatus latirostris Oct 2011  Broad v1.0/triMan1                            Syntenic net        
+Cape golden mole         Chrysochloris asiatica         Aug 2012  ChrAsi1.0/chrAsi1                             Syntenic net        
+Tenrec                   Echinops telfairi              Nov 2012  Broad/echTel2                                 Syntenic net        
+Aardvark                 Orycteropus afer afer          May 2012  OryAfe1.0/oryAfe1                             Syntenic net        
+
+== Mammal subset ==
+Armadillo                Dasypus novemcinctus           Dec 2011  Baylor/dasNov3                                Syntenic net        
+Opossum                  Monodelphis domestica          Oct 2006  Broad/monDom5                                 Net                 
+Tasmanian devil          Sarcophilus harrisii           Feb 2011  WTSI Devil_ref v7.0/sarHar1                   Net                 
+Wallaby                  Macropus eugenii               Sep 2009  TWGS Meug_1.1/macEug2                         Reciprocal best net 
+Platypus                 Ornithorhynchus anatinus       Mar 2007  WUGSC 5.0.1/ornAna1                           Reciprocal best net 
+
+== Aves subset ==
+Saker falcon             Falco cherrug                  Feb 2013  F_cherrug_v1.0/falChe1                        Net                 
+Peregrine falcon         Falco peregrinus               Feb 2013  F_peregrinus_v1.0/falPer1                     Net                 
+Collared flycatcher      Ficedula albicollis            Jun 2013  FicAlb1.5/ficAlb2                             Net                 
+White-throated sparrow   Zonotrichia albicollis         Apr 2013  ASM38545v1/zonAlb1                            Net                 
+Medium ground finch      Geospiza fortis                Apr 2012  GeoFor_1.0/geoFor1                            Net                 
+Zebra finch              Taeniopygia guttata            Feb 2013  WashU taeGut324/taeGut2                       Net                 
+Tibetan ground jay       Pseudopodoces humilis          Jan 2013  PseHum1.0/pseHum1                             Net                 
+Budgerigar               Melopsittacus undulatus        Sep 2011  WUSTL v6.3/melUnd1                            Net                 
+Parrot                   Amazona vittata                Jan 2013  AV1/amaVit1                                   Net                 
+Scarlet macaw            Ara macao                      Jun 2013  SMACv1.1/araMac1                              Net                 
+Rock pigeon              Columba livia                  Feb 2013  Cliv_1.0/colLiv1                              Net                 
+Mallard duck             Anas platyrhynchos             Apr 2013  BGI_duck_1.0/anaPla1                          Net                 
+Chicken                  Gallus gallus                  Nov 2011  ICGSC Gallus_gallus-4.0/galGal4               Net                 
+Turkey                   Meleagris gallopavo            Dec 2009  TGC Turkey_2.01/melGal1                       Net                 
+
+== Sarcopterygii subset ==
+American alligator       Alligator mississippiensis     Aug 2012  allMis0.2/allMis1                             Net                 
+Green seaturtle          Chelonia mydas                 Mar 2013  CheMyd_1.0/cheMyd1                            Net                 
+Painted turtle           Chrysemys picta bellii         Mar 2014  v3.0.3/chrPic2                                Net                 
+Chinese softshell turtle Pelodiscus sinensis            Oct 2011  PelSin_1.0/pelSin1                            Net                 
+Spiny softshell turtle   Apalone spinifera              May 2013  ASM38561v1/apaSpi1                            Net                 
+Lizard                   Anolis carolinensis            May 2010  Broad AnoCar2.0/anoCar2                       Net                 
+X. tropicalis            Xenopus tropicalis             Sep 2012  JGI 7.0/xenTro7                               Net                 
+Coelacanth               Latimeria chalumnae            Aug 2011  Broad/latCha1                                 Net                 
+
+== Fish subset ==
+Tetraodon                Tetraodon nigroviridis         Mar 2007  Genoscope 8.0/tetNig2                         Net                 
+Fugu                     Takifugu rubripes              Oct 2011  FUGU5/fr3                                     Net                 
+Yellowbelly pufferfish   Takifugu flavidus              May 2013  version 1 of Takifugu flavidus genome/takFla1 Net                 
+Nile tilapia             Oreochromis niloticus          Jan 2011  Broad oreNil1.1/oreNil2                       Net                 
+Princess of Burundi      Neolamprologus brichardi       May 2011  NeoBri1.0/neoBri1                             Net                 
+Burton's mouthbreeder    Haplochromis burtoni           Oct 2011  AstBur1.0/hapBur1                             Net                 
+Zebra mbuna              Maylandia zebra                Mar 2012  MetZeb1.1/mayZeb1                             Net                 
+Pundamilia nyererei      Pundamilia nyererei            Oct 2011  PunNye1.0/punNye1                             Net                 
+Medaka                   Oryzias latipes                Oct 2005  NIG/UT MEDAKA1/oryLat2                        Net                 
+Southern platyfish       Xiphophorus maculatus          Jan 2012  Xiphophorus_maculatus-4.4.2/xipMac1           Net                 
+Stickleback              Gasterosteus aculeatus         Feb 2006  Broad/gasAcu1                                 Net                 
+Atlantic cod             Gadus morhua                   May 2010  Genofisk GadMor_May2010/gadMor1               Net                 
+Zebrafish                Danio rerio                    Sep 2014  Zv10/danRer10                                   Net                 
+Mexican tetra (cavefish) Astyanax mexicanus             Apr 2013  Astyanax_mexicanus-1.0.2/astMex1              Net                 
+Spotted gar              Lepisosteus oculatus           Dec 2011  LepOcu1/lepOcu1                               Net                 
+Lamprey                  Petromyzon marinus             Sep 2010  WUGSC 7.0/petMar2                             Net                 
+
+---------------------------------------------------------------
+To download a large file or multiple files from this directory, we recommend 
+that you use rsync or ftp rather than downloading the files via our website:
+
+   rsync -avz --progress \
+        rsync://hgdownload.cse.ucsc.edu/goldenPath/hg38/phyloP100way/ ./
+
+      OR
+
+    ftp hgdownload.cse.ucsc.edu 
+    user name: anonymous
+    password: <your email address>
+    go to the directory goldenPath/hg38/phyloP100way
+
+To download multiple files from the UNIX command line, use the "mget" command. 
+    mget <filename1> <filename2> ...
+    - or -
+    mget -a (to download all the files in the directory) 
+Use the "prompt" command to toggle the interactive mode if you do not want 
+to be prompted for each file that you download.
+
+---------------------------------------------------------------
+All the files in this directory are freely available for public use.
+For data use restrictions regarding the genome assemblies used in this
+annotation, see http://genome.ucsc.edu/goldenPath/credits.html.
+
+---------------------------------------------------------------
+References for phastCons and phyloP:
+
+Pollard KS, Hubisz MJ, Siepel A. Detection of non-neutral substitution rates
+on mammalian phylogenies. Genome Res. 2010 Jan;20(1):110-21.
+(http://genome.cshlp.org/content/early/2009/10/26/gr.097857.109.abstract)
+
+Siepel A, Bejerano G, Pedersen JS, Hinrichs AS, Hou M, Rosenbloom K, Clawson
+H, Spieth J, Hillier LW, Richards S, et al. Evolutionarily conserved elements
+in vertebrate, insect, worm, and yeast genomes. Genome Res. 2005
+Aug;15(8):1034-50.  (http://www.genome.org/cgi/doi/10.1101/gr.3715005)
+

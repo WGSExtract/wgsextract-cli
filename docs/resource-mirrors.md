@@ -62,8 +62,31 @@ Like the reference-genome publisher, **Mirror download resources** is a manual
 GitHub Actions workflow. Large payloads are streamed on CI, not a developer's
 laptop. Every asset is at most **1,900,000,000 bytes** (below GitHub's 2 GiB
 limit). Splitting is binary concatenation, not recompression or a scientific
-transformation. One part at a time is staged, uploaded, then deleted; no
-per-contig 72 GB scratch copy is needed.
+transformation. Each part uses a separate bounded HTTP Range request; a short
+connection resumes at its last received byte. The response is closed **before**
+uploading that part, so an upload cannot leave a long upstream connection idle.
+Sizes, Content-Range and source ETag/Last-Modified preconditions protect the
+snapshot; local part hashes are checked against GitHub's uploaded SHA-256/size
+before the final whole-file SHA-256 record is published.
+
+Normally only one part is staged, uploaded, then deleted: no per-contig 72 GB
+scratch copy is needed. If a host ignores Range, the publisher can stage a
+complete file **only up to 10 GiB**, with space for a part plus a 2 GiB free-disk
+reserve. Larger/non-fitting downloads fail clearly with `RANGE_REQUIRED`, not
+an unbounded runner-disk download.
+
+Audited licence/terms bytes are committed in `src/wgsextract_cli/assets/resource_terms/`, with
+source URLs, retrieval dates and SHA-256 in `sources.json`. Publication uses
+these verified snapshots without depending on live terms-page availability
+(including Creative Commons legalcode pages). A live fetch, when needed, uses
+the payload User-Agent and normalizes GitHub README links to raw content; HTTP
+errors can fall back to an available committed snapshot. New records retain
+the audit-snapshot provenance. Keep the explicit AlphaMissense relicensing
+explanation in the NOTICE as well as the original data header.
+
+The publishing step explicitly uses Bash with `pipefail`, so logging through
+`tee` cannot turn a Python failure into a successful job. Failure evidence is
+uploaded even when the job fails.
 
 1. After the publishing workflow reaches the default branch, dispatch it with
    release tag `download-resources-1`. Start with `gene-map-hg19,gene-map-hg38`
@@ -74,6 +97,9 @@ per-contig 72 GB scratch copy is needed.
    attribution notices and source-licence snapshots. Data/records are never
    overwritten. A failed transfer can rerun against the same snapshot; if an
    upstream file changes, choose a **new release tag**, not `--clobber`.
+   Completed, verified records are returned before any terms/payload fetch;
+   rerunning `download-resources-1` preserves the first dispatch's 11 completed
+   resources rather than rebuilding or overwriting them.
 3. Download the release's `*.record.json` assets into `out/mirror-records/`.
    Run `pixi run python scripts/mirror_download_resources.py activate
    --records out/mirror-records --tag download-resources-1`, inspect the pins,

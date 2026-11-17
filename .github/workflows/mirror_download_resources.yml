@@ -65,6 +65,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-pixi
       - name: Stream, hash and publish one resource
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.release_tag }}

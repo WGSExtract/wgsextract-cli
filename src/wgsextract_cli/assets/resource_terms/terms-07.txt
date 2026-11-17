@@ -1,0 +1,356 @@
+<!--
+Experimenting with layout and tidying banner
+Original Author: susanfairley (content branch)
+Changes to test branch: ranjits@ebi.ac.uk
+Date: 19 April 2021
+Changes: replace <div class="container"> with <div class="container-fluid">
+--> 
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>1000 Genomes Project summary | 1000 Genomes</title>
+  <link rel="canonical" href="/1000-genomes-summary/" />
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <link rel="shortcut icon" href="/sites/1000genomes.org/themes/custom/one_thousand_genomes/favicon.ico" type="image/x-icon" />
+
+  <link rel="stylesheet" href="/css/boilerplate-main.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap-theme.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/1.1.3/normalize.css">
+  <link rel="stylesheet" href="/css/main.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+  <script src="/js/external-links.js" defer></script>
+  
+  
+  
+  
+  <link rel="stylesheet" type="text/css" href="/vendor/cookieconsent.min.css" />
+<script src="/vendor/cookieconsent.min.js"></script>
+<script>
+window.addEventListener("load", function(){
+window.cookieconsent.initialise({
+  "cookie": {
+    "domain": ".internationalgenome.org",
+    "name": "data_notice_20180523"
+  },
+  "palette": {
+    "popup": {
+      "background": "#262626",
+      "text": "#ffffff"
+    },
+    "button": {
+      "background": "#DAA406",
+      "text": "#ffffff"
+    }
+  },
+  "position": "bottom-right",
+  "content": {
+    "message": "This website uses cookies and Google Analytics. By using this site you are agreeing to this.",
+    "dismiss": "I agree, dismiss this notice",
+    "link": "Learn more",
+    "href": "/IGSR_disclaimer"
+  }
+})});
+</script>
+
+
+
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-CZMMSVPEPC"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-CZMMSVPEPC');
+</script>
+
+
+  <script>
+  (function () {
+    // Only set a base if the page doesn't already define one (e.g. data-portal does).
+    if (document.querySelector('base')) return;
+    var b = document.createElement('base');
+    b.href = window.location.origin + '/';
+    var h = document.head || document.getElementsByTagName('head')[0];
+    h.insertBefore(b, h.firstChild);
+  })();
+  </script>
+
+</head>
+
+
+<body role="document">
+
+    <!--
+Experimenting with layout and tidying banner
+Original Author: susanfairley (content branch)
+Changes to test branch: ranjits@ebi.ac.uk
+Date: 19 April 2021
+Changes: replace <div class="container"> with <div class="container-fluid">
+--> 
+
+<header class="header clearfix" role="banner">
+
+<div class="top-banners">
+<div class="title-banner"><div class="title-banner-img"></div></div>
+
+<!--<div class="container">-->
+<div class="container-fluid">
+<div class="row">
+
+  <div class="col-md-12 col-sm-12 col-xs-12 top-banner-content">
+  <div class="top-banner-row"><div class="top-banner-inline"><h1 id="site-title"><a href="/" title="Home" rel="home">IGSR: The International Genome Sample Resource</a></h1></div></div>
+  <div class="top-banner-row"><div class="top-banner-inline"><h2 id="site-slogan">Supporting open human variation data</h2></div></div>
+  </div>
+</div></div>
+</div>
+
+<div class="nav-banner">
+<!--<div class="container">-->
+<div class="container-fluid">
+<div class="row">
+
+  <nav class="navbar">
+  
+  <div class="navbar-header">
+    <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-collapse" aria-expanded="false">
+      <span class="sr-only">Toggle navigation</span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </button>
+  </div>
+  
+  <div class="collapse navbar-collapse" id="navbar-collapse">
+    <ul class="nav navbar-nav">
+        <li ><a href="/home" title="Home">Home</a></li>
+        <li ><a href="/about" title="About">About</a></li>
+        <li ><a href="/data" title="Data">Data</a></li>
+        <li ><a href="/help" title="Help">Help</a></li>
+        <!--<li ><a href="/data-portal" title="Portal">Portal</a></li>
+        <li ><a href="/analysis" title="Analysis">Analysis</a></li>
+        <li ><a href="/contact" title="Contact">Contact</a></li>
+        <li ><a href="/1000-genomes-browsers" title="The 1000 Genomes Browser">Browser</a></li>
+        <li ><a href="/faq" title="FAQ">FAQ</a></li>-->
+    </ul>
+    
+
+    <form class="navbar-form navbar-right" role="search" action="/data-portal/search" method="get">
+    <div class="input-group center">
+    <div class="form-group">
+        <input type="text" class="form-control" placeholder="Search IGSR" name="q" id="search_id">
+    </div>
+    <span class="input-group-btn">
+    <button type="submit" class="btn btn-default"><span class="glyphicon glyphicon-search"></span></button>
+    </span>
+    </div>
+    </form>
+  
+  </div>
+  
+  </nav>
+
+
+</div>
+</div>
+</div>
+<!--
+Commented the code for display of banner on 31st March
+START OF IGSR-499 
+Description: Add a temporary banner to the IGSR website for 1-31st March 2021
+Author: Ranit S <ranjits@ebi.ac.uk>
+Date: 25 February 2021
+--> 
+<!-- <div class="col-md-12 ">  <!-- banner length -->
+<!-- minimise the space between nav-banner and IGSR-499 banner, and between  IGSR-499 banner and data section-->
+<!-- <div class="banner" style="text-align:center; position: relative;  top:-25px; background-color: white; margin-bottom: -40px">
+<div class="banner-content">
+    <hr style="height:1px; visibility:hidden;" /> <!-- add a white space above text -->
+    <!-- <h3 style="color:#79C7E7;font-weight: bold;">We need your help!</h3>
+    <p> If you’ve ever found our data helpful, please take our impact survey (15 min). 
+    <br>Your replies will help keep the data flowing to the scientific community. 
+    <br><a href="https://www.surveymonkey.co.uk/r/EMBL-EBI_Impact_DR"  class="btn btn-primary"  target="_blank">Take Survey</a> 
+    </p>
+    <hr style="height:1px; visibility:hidden;" /> <!-- add a white space below the button -->
+<!-- </div>
+</div>
+</div>-->
+<!--
+END of IGSR-499
+-->
+
+</header>
+
+<!--<div class="container">-->
+<div class="container-fluid">
+    <!--
+Experimenting with layout and tidying banner
+Original Author: susanfairley (content branch)
+Changes to test branch: ranjits@ebi.ac.uk
+Date: 19 April 2021
+Changes: Remove links seen at the right side of page
+
+<div class="col-md-3 col-md-push-9">
+  <h2>Links</h2>
+<div class="row"><div class="col-md-12 col-sm-5 col-xs-5">
+  <p><a href="/announcements">Announcements</a></p>
+  <p> <a href="/sample_collection_principles">IGSR Sample Collection Principles</a></p>
+  <p><a href="/1000-genomes-project-publications">1000 Genomes Project Publications</a></p>
+</div><div class="col-md-12 col-sm-3 col-xs-3">
+  <p><a href="/formats">File formats</a></p>
+  <p><a href="/tools">Software tools</a></p>
+</div><div class="col-md-12 col-sm-3 col-xs-3">
+  <p><a href="/data#download">Download data</a></p>
+  <p><a href="http://twitter.com/1000genomes">Twitter</a></p>
+  <p><a href="https://academic.oup.com/nar/article/doi/10.1093/nar/gkz836/5580898/">IGSR NAR publication</a></p>
+</div></div>
+
+</div>
+
+
+<div class="col-md-9 col-md-pull-3">
+<div class="row">-->
+
+<div class="col-md-12 section">
+    <h1 id="the-1000-genomes-project"><a name="1000G_PROJECT"></a>The 1000 Genomes Project</h1>
+
+<h3 id="overview-of-the-1000-genomes-project">Overview of the 1000 Genomes Project</h3>
+
+<p>The goal of the 1000 Genomes Project was to find common genetic variants with frequencies of at least 1% in the populations studied.</p>
+
+<p>The 1000 Genomes Project took advantage of developments in sequencing technology, which sharply reduced the cost of sequencing. It was the first project to sequence the genomes of a large number of people, to provide a comprehensive resource on human genetic variation. Data from the 1000 Genomes Project was quickly made available to the worldwide scientific community through freely accessible public databases.</p>
+
+<p>Sequencing remained too expensive to deeply sequence the many samples being studied in the project. However, any particular region of the genome generally contains a limited number of haplotypes. Data was combined across samples to allow efficient detection of most of the variants in a region. The project planned to sequence each sample to 4x genomic coverage; at this depth, sequencing can not discover all variants in each sample, but can allow the detection of most variants with frequencies as low as 1%. In the final phase of the project, data from 2,504 samples was combined to allow highly accurate assignment of the genotypes in each sample at all the variant sites the project discovered. The multi-sample approach combined with genotype imputation allowed the project to determine a sample’s genotype, even in variants not covered by sequencing reads in that sample.</p>
+
+<p>The contribution of the 1000 Genomes Project to genomics was summarised in <a href="http://www.nature.com/nature/journal/v526/n7571/full/526052a.html"><em>Nature</em></a> in the issue containing the final publications from the main project.</p>
+
+<h3 id="design-of-the-1000-genomes-project">Design of the 1000 Genomes Project</h3>
+
+<p>The Project was planned during a meeting at The Welcome Genome Campus in September 2007. You can read the original plan in the <a href="/sites/1000genomes.org/files/docs/1000Genomes-MeetingReport.pdf">meeting report</a>. Once underway, the project was conducted in four stages: a pilot phase and three phases of the main project. In the main project, phases one and three produced data, with phase two concentrating on technical development.</p>
+
+<h4 id="pilot-project">Pilot project</h4>
+
+<p>Three pilot studies provided data to inform the design of the full-scale project:</p>
+
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th style="text-align: center">Pilot</th>
+      <th style="text-align: center">Purpose</th>
+      <th style="text-align: center">Coverage</th>
+      <th style="text-align: center">Strategy</th>
+      <th style="text-align: center">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="text-align: center">1 - low coverage</td>
+      <td style="text-align: center">Assess strategy of sharing data across samples</td>
+      <td style="text-align: center">2-4X</td>
+      <td style="text-align: center">Whole-genome sequencing of 180 samples</td>
+      <td style="text-align: center">Sequencing completed October 2008</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">2 - trios</td>
+      <td style="text-align: center">Assess coverage and platforms and centres</td>
+      <td style="text-align: center">20-60X</td>
+      <td style="text-align: center">Whole-genome sequencing of 2 mother-father-adult child trios</td>
+      <td style="text-align: center">Sequencing completed October 2008</td>
+    </tr>
+    <tr>
+      <td style="text-align: center">3 - gene regions</td>
+      <td style="text-align: center">Assess methods for gene-region-capture</td>
+      <td style="text-align: center">50X</td>
+      <td style="text-align: center">1000 gene regions in 900 samples</td>
+      <td style="text-align: center">Sequencing completed June 2009</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Data from the pilot projects was analysed to determine whether the strategy of 4x coverage was adequate to meet the goals of the project.</p>
+
+<h4 id="main-project">Main project</h4>
+
+<p>Sequencing was carried out in phases one and three of the main project, with data releases and analysis corresponding to each. The final data freeze, associated with the third and final phase, took place on the 2nd May 2013. This data set (defined in the <a href="ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/phase3/20130502.phase3.analysis.sequence.index">20130502.sequence.index</a> file) represented the finalised data set upon which the phase three analysis was based and superseded previous data releases. During the course of the project, analysis methods were further developed and the phase three analysis replaces earlier versions.</p>
+
+<p>The final data set contains data for 2,504 individuals from 26 populations. Low coverage and exome sequence data are present for all of these individuals, 24 individuals were also sequenced to high coverage for validation purposes.</p>
+
+<p>Analyses were conducted, looking at both the short variations (up to 50 base pairs in length) and also structural variations. These analyses were published at the conclusion of the project in 2015. A list of our main publications can be seen below.</p>
+
+<h4 id="publications">Publications</h4>
+
+<ul>
+  <li>Pilot Analysis
+    <ul>
+      <li><a href="http://www.nature.com/nature/journal/v467/n7319/full/nature09534.html">A map of human genome variation from population-scale sequencing</a> <em>Nature 467, 1061–1073 (28 October 2010)</em></li>
+    </ul>
+  </li>
+  <li>Phase 1 Analysis
+    <ul>
+      <li><a href="http://www.nature.com/nature/journal/v491/n7422/full/nature11632.html">An integrated map of genetic variation from 1,092 human genomes</a> <em>Nature 491, 56–65 (01 November 2012)</em></li>
+    </ul>
+  </li>
+  <li>Phase 3 Analysis
+    <ul>
+      <li><a href="http://www.nature.com/nature/journal/v526/n7571/full/nature15393.html">A global reference for human genetic variation</a> <em>Nature 526, 68–74 (01 October 2015)</em></li>
+      <li><a href="http://www.nature.com/nature/journal/v526/n7571/full/nature15394.html">An integrated map of structural variation in 2,504 human genomes</a> <em>Nature 526, 75–81 (01 October 2015)</em></li>
+    </ul>
+  </li>
+</ul>
+
+<h3 id="g1k_data_reuse">1000 Genomes Project samples and data</h3>
+
+<p>The 1000 Genomes Project developed guidelines on ethical considerations for investigators doing sampling, outlined in the  <a href="/sites/1000genomes.org/files/docs/Informed%20Consent%20Background%20Document.pdf">Informed Consent Background Document</a> and the <a href="/sites/1000genomes.org/files/docs/Informed%20Consent%20Form%20Template.pdf">Informed Consent Form Template</a>. All collections included in the Project followed these ethical guidelines and model informed consent language. The 1000 Genomes Project Steering Committee, with input from the Project’s Samples and ELSI Group, made final decisions about which populations and sample sets to include in the Project.</p>
+
+<p>Data from the 1000 Genomes Project is available without embargo, following the final publications from the project. Use of the data should be cited in the usual way, with current details available <a href="/faq/how-do-i-cite-1000-genomes-project">in the FAQs</a>, where further details on using 1000 Genomes Project data can be found. Additional <a href="/IGSR_disclaimer">information on using data provided by IGSR</a> is available and should also be consulted.</p>
+
+<p>The available data from the 1000 Genomes Project can be explored <a href="/data">on our data page</a>, alongside other data in IGSR. Cell lines and DNA are available for all 1000 Genomes samples and can be obtained from the <a href="https://catalog.coriell.org">Coriell Institute</a>. A complete list of the populations available can be found on our <a href="/cell-lines-and-dna-coriell">Cell lines and DNA page</a></p>
+
+<p>The samples for the 1000 Genomes Project are anonymous and have no associated medical or phenotype data. The project holds self-reported ethnicity and gender. All participants declared themselves to be healthy at the time the samples were collected.</p>
+
+<p>Please email questions about any of the above to <a href="mailto:info@1000genomes.org">info@1000genomes.org</a>.</p>
+
+</div>
+
+
+
+<!--
+</div>
+</div>
+-->
+</div>
+
+      
+    <footer>
+<div class="footer container-fluid">
+<div class="row">
+<div class="col-md-12">
+  <p> &copy; EMBL-EBI 2008-2026</p>
+  <p>Site maintained by <a href="http://www.ebi.ac.uk/">EMBL-EBI</a> | <a href="/IGSR_disclaimer">Terms of Use, Privacy and Cookies</a></p>
+</div>
+<div class="col-md-12">
+  <p>To cite IGSR please use our <a href="https://academic.oup.com/nar/article/48/D1/D941/5580898">NAR publication</a></p>
+</div>
+<div class="col-xs-6">
+  <p class="text">The International Genome Sample Resource (IGSR) has been established at EMBL-EBI to continue supporting data generated by the 1000 Genomes Project, supplemented with new data and new analysis.
+</p>
+</div>
+</div>
+</div>
+</footer>
+
+
+</body>
+
+
+
+</html>

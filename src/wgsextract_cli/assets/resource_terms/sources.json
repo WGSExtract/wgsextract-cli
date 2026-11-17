@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "https://creativecommons.org/licenses/by/4.0/legalcode.txt": {
+      "source_url": "https://creativecommons.org/licenses/by/4.0/legalcode.txt",
+      "fetch_url": "https://creativecommons.org/licenses/by/4.0/legalcode.txt",
+      "retrieved_at": "2026-11-17T10:38:12.969938+00:00",
+      "file": "terms-00.txt",
+      "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411"
+    },
+    "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt": {
+      "source_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt",
+      "fetch_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt",
+      "retrieved_at": "2026-11-17T10:38:13.273082+00:00",
+      "file": "terms-01.txt",
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    },
+    "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt": {
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt",
+      "fetch_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt",
+      "retrieved_at": "2026-11-17T10:38:13.639958+00:00",
+      "file": "terms-02.txt",
+      "sha256": "c7caf5fbd92420c36d918d7d55663a64c9459454aa15713987027e9ff2524973"
+    },
+    "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phyloP100way/README.txt": {
+      "source_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phyloP100way/README.txt",
+      "fetch_url": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/phyloP100way/README.txt",
+      "retrieved_at": "2026-11-17T10:38:14.018602+00:00",
+      "file": "terms-03.txt",
+      "sha256": "dbe3039e46d4ae4806dd0ef74a3a90823c2a3ad4ea125f15223306353f953972"
+    },
+    "https://raw.githubusercontent.com/Ensembl/ensembl-webcode/release/116/htdocs/info/about/legal/disclaimer.html": {
+      "source_url": "https://raw.githubusercontent.com/Ensembl/ensembl-webcode/release/116/htdocs/info/about/legal/disclaimer.html",
+      "fetch_url": "https://raw.githubusercontent.com/Ensembl/ensembl-webcode/release/116/htdocs/info/about/legal/disclaimer.html",
+      "retrieved_at": "2026-11-17T10:38:14.540437+00:00",
+      "file": "terms-04.txt",
+      "sha256": "a5add3526fe29fdcfb2677c84cbf87d6a39b9ed550eb4243a6792e1133f2049e"
+    },
+    "https://raw.githubusercontent.com/broadinstitute/gnomad-browser/c65e857d580c9ba3a2a1a64eecb565e282bce8e3/browser/about/policies/terms.md": {
+      "source_url": "https://raw.githubusercontent.com/broadinstitute/gnomad-browser/c65e857d580c9ba3a2a1a64eecb565e282bce8e3/browser/about/policies/terms.md",
+      "fetch_url": "https://raw.githubusercontent.com/broadinstitute/gnomad-browser/c65e857d580c9ba3a2a1a64eecb565e282bce8e3/browser/about/policies/terms.md",
+      "retrieved_at": "2026-11-17T10:38:15.149089+00:00",
+      "file": "terms-05.txt",
+      "sha256": "d04bcf050eed4f4d78c571b59670d446bdae793c2d14d269dd6030ffba5e27ec"
+    },
+    "https://raw.githubusercontent.com/google-deepmind/alphamissense/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md": {
+      "source_url": "https://raw.githubusercontent.com/google-deepmind/alphamissense/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md",
+      "fetch_url": "https://raw.githubusercontent.com/google-deepmind/alphamissense/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md",
+      "retrieved_at": "2026-11-17T10:38:15.734138+00:00",
+      "file": "terms-06.txt",
+      "sha256": "55af68037f873fdfe3944a099ed5b008319aa6d476be29c68d2e3c68cb41e7d5"
+    },
+    "https://www.internationalgenome.org/1000-genomes-summary/": {
+      "source_url": "https://www.internationalgenome.org/1000-genomes-summary/",
+      "fetch_url": "https://www.internationalgenome.org/1000-genomes-summary/",
+      "retrieved_at": "2026-11-17T10:38:16.637038+00:00",
+      "file": "terms-07.txt",
+      "sha256": "3f2fd61d76957bfa5a745b03811da1963b11c2b4429b7661c8efffbfffd1c05f"
+    },
+    "https://www.ncbi.nlm.nih.gov/home/about/policies/": {
+      "source_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "fetch_url": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+      "retrieved_at": "2026-11-17T10:38:17.686408+00:00",
+      "file": "terms-08.txt",
+      "sha256": "c99a36bb9daa8c6d14dc505a11a860a8a9cca7a5c94bf5c3961542decf563dad"
+    },
+    "https://gnomad.broadinstitute.org/terms": {
+      "source_url": "https://raw.githubusercontent.com/broadinstitute/gnomad-browser/c65e857d580c9ba3a2a1a64eecb565e282bce8e3/browser/about/policies/terms.md",
+      "fetch_url": "https://raw.githubusercontent.com/broadinstitute/gnomad-browser/c65e857d580c9ba3a2a1a64eecb565e282bce8e3/browser/about/policies/terms.md",
+      "retrieved_at": "2026-11-17T10:38:15.149089+00:00",
+      "file": "terms-05.txt",
+      "sha256": "d04bcf050eed4f4d78c571b59670d446bdae793c2d14d269dd6030ffba5e27ec"
+    },
+    "https://github.com/google-deepmind/alphamissense/blob/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md#alphamissense-predictions-license": {
+      "source_url": "https://raw.githubusercontent.com/google-deepmind/alphamissense/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md",
+      "fetch_url": "https://raw.githubusercontent.com/google-deepmind/alphamissense/fe2dc845f93310abd6c1b0e8955d7a96c2144d66/README.md",
+      "retrieved_at": "2026-11-17T10:38:15.734138+00:00",
+      "file": "terms-06.txt",
+      "sha256": "55af68037f873fdfe3944a099ed5b008319aa6d476be29c68d2e3c68cb41e7d5"
+    }
+  }
+}
