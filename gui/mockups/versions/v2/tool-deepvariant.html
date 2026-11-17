@@ -20,64 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="deepvariant"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">DeepVariant</h2><code class="v2-cmd v2-dim v2-small">vcf/deepvariant</code></div>
-        <p class="v2-muted">Google’s deep-learning variant caller: the most accurate calls of SNPs and indels, and the slowest. It runs in a container.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Kind of data<small>Read from the file: Illumina whole genome</small><code class="v2-cmd">wes · ont · pacbio</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="dvkind" role="group" aria-label="Kind of data"><button type="button" value="wgs" aria-pressed="true">Whole genome</button><button type="button" value="wes">Exome</button><button type="button" value="ont">Nanopore</button><button type="button" value="pacbio">PacBio</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Region<small>Leave empty for the whole genome</small><code class="v2-cmd">region</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Region" placeholder="Whole genome, or chr20 or chr20:1-1000000" style="max-width: 320px"></div></div>
-          <div class="v2-field"><span class="v2-field__label">Matching sites too<small>Also write a gVCF, for merging with family</small><code class="v2-cmd">reference_evidence</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="evidence" role="group" aria-label="Reference evidence"><button type="button" value="none" aria-pressed="true">Variants only</button><button type="button" value="gvcf">Also a gVCF</button></div></div></div>
-        </div>
-      </div>
-
-      <details class="v2-more" data-annot-id="more">
-        <summary>More options</summary>
-        <div class="v2-more__body v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Use the GPU<small>No supported GPU on this Mac</small><code class="v2-cmd">gpu</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Use the GPU" disabled></label></div></div>
-          <div class="v2-field"><span class="v2-field__label">Start over<small>Ignore steps an earlier run finished</small><code class="v2-cmd">force</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Start over"></label></div></div>
-        </div>
-      </details>
-
-      <section class="v2-section" data-annot-id="preflight">
-        <h2>Before it starts</h2>
-        <div class="v2-sheet">
-          <div class="v2-item"><span class="v2-item__title">Memory</span><span class="v2-item__desc">Needs up to 28 GB; this Mac has 32 GB</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
-          <div class="v2-item"><span class="v2-item__title">Space on Genomes</span><span class="v2-item__desc">Needs about 60 GB of temporary files; 1.1 TB free</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
-          <div class="v2-item"><span class="v2-item__title">Docker</span><span class="v2-item__desc">Docker Desktop is running; image 1.8.0 is downloaded</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Found</span></div>
-        </div>
-        <div class="v2-notice" data-tone="info" role="status" data-annot-id="slow"><i data-icon="clock"></i><div class="v2-notice__text"><strong>This takes most of a day on this Mac</strong><span>About 14 hours on 12 cores. For quicker calls that are nearly as good for genealogy, use Call SNPs and indels.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="tool-call-variants.html">Call SNPs and indels</a></div></div>
-      </section>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract vcf deepvariant --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram \
-  --ref hs38 --threads 12</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 14 h · up to 28 GB memory · 0.4 GB</strong>
-      <span>Makes reginald-mcdonald.deepvariant.vcf.gz. Uses all 12 cores; other jobs wait.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-      <button class="v2-btn" type="button" data-toast="Dry run: lists the steps that would run; nothing is written">Dry run</button>
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: DeepVariant. See Jobs.">Start DeepVariant</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="deepvariant"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Call variants in which file?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Alex · NG1A2B3C4D.bam</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

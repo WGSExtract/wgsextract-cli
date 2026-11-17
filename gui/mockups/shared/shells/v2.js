@@ -7,13 +7,25 @@
   var h = WGSM.h;
   var V = "versions/v2/";
 
-  /* The library by person. Illustrative, like shared/data/genomes.js. */
-  var PEOPLE = [
-    { id: "reginald", name: "Reginald", note: "son", initials: "RM", state: "ok", href: V + "person.html" },
-    { id: "gordon", name: "Gordon", note: "father", initials: "GM", state: "busy", href: V + "person-gordon.html" },
-    { id: "helen", name: "Helen", note: "mother", initials: "HM", state: "ok", href: V + "person-helen.html" },
-    { id: "alex", name: "Alex", note: "2 files", initials: "AM", state: "attention", href: V + "person-alex.html" },
-  ];
+  /* The library by person, as named and kept in the demo state (v2/state.js) */
+  var PAGES = { reginald: "person.html", gordon: "person-gordon.html", helen: "person-helen.html", alex: "person-alex.html" };
+  var STATES = { reginald: "ok", gordon: "busy", helen: "ok", alex: "attention" };
+
+  function people() {
+    var S = WGSM.v2state;
+    var list = S.people().filter(function (p) {
+      return !p.removed;
+    }).map(function (p) {
+      var state = p.id === "alex" && S.flag("alex-fixed") ? "ok" : p.id === "gordon" && S.flag("realign-cancelled") ? "ok" : STATES[p.id];
+      return { id: p.id, name: S.first(p.name), note: p.id === "alex" && !p.note ? "2 files" : p.note, initials: S.initials(p.name), state: state, href: V + PAGES[p.id] };
+    });
+    var assigned = S.doc.assign;
+    if (assigned && assigned.name) {
+      list.push({ id: "new", name: S.first(assigned.name), note: "new", initials: S.initials(assigned.name), state: "attention", href: V + "home.html" });
+    }
+    return list;
+  }
+
   var RUNNING = { title: "Realigning Gordon to hs38", progress: 47, eta: "1 h 52 min left" };
   var PLACES = [
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
@@ -30,90 +42,6 @@
     { id: "tools", label: "Tools", icon: "sliders-horizontal", href: V + "tools.html" },
     { id: "settings", label: "More", icon: "menu", href: V + "settings.html", also: ["references", "phone", "states"] },
   ];
-
-  /* All tools: [group, [label, page, server operations it covers]] */
-  var CATALOG = [
-    ["Align and call", [
-      ["Realign", "tools.html", "realign"],
-      ["Align FASTQ", "tool-align.html", "align"],
-      ["Call SNPs and indels", "tool-call-variants.html", "vcf/snp vcf/indel"],
-      ["DeepVariant", "tool-deepvariant.html", "vcf/deepvariant"],
-      ["GATK HaplotypeCaller", "tool-gatk.html", "vcf/gatk"],
-      ["Structural variants", "tool-structural-variants.html", "vcf/sv"],
-      ["Phase variants", "tool-phase.html", "vcf/phase"],
-    ]],
-    ["Quality", [
-      ["Coverage per chromosome", "tool-coverage.html", "info/calculate-coverage"],
-      ["Read quality (FastQC)", "tool-read-quality.html", "qc/fastqc qc/fastp"],
-      ["Contamination", "tool-contamination.html", "qc/contamination"],
-      ["Relatedness", "tool-relatedness.html", "qc/relate"],
-      ["VCF quality", "tool-vcf-quality.html", "qc/vcf"],
-    ]],
-    ["Annotate", [
-      ["VEP", "tool-vep.html", "vep/run"],
-      ["ClinVar", "tool-clinvar.html", "vcf/clinvar"],
-      ["Variant table", "tool-variant-table.html", "vcf/table"],
-      ["Pharmacogenomics", "tool-pharmacogenomics.html", "vcf/pharmcat"],
-      ["HLA and CYP2D6 typing", "tool-typing.html", "typing/hla typing/cyp2d6"],
-    ]],
-    ["Extract", [
-      ["Region or gene", "tool-region.html", "extract/region extract/custom"],
-      ["Mitochondrial DNA", "tool-mtdna.html", "extract/mito-fasta"],
-      ["Y chromosome", "tool-y-chromosome.html", "extract/ydna-bam"],
-      ["Unmapped reads", "tool-unmapped.html", "extract/unmapped"],
-    ]],
-    ["Lineage", [
-      ["Y haplogroup", "tool-y-haplogroup.html", "lineage/y-haplogroup"],
-      ["mtDNA haplogroup", "tool-mt-haplogroup.html", "lineage/mt-haplogroup"],
-      ["Y-STR markers", "tool-y-str.html", "lineage/y-str"],
-      ["Ancestry proportions", "tool-ancestry-proportions.html", "qc/ancestry"],
-    ]],
-  ];
-
-  /* The page of the tool that runs a server operation, else All tools */
-  function toolPage(op) {
-    var page = "tools.html";
-    CATALOG.forEach(function (group) {
-      group[1].forEach(function (tool) {
-        if (tool[2].split(" ").indexOf(op) >= 0) page = tool[1];
-      });
-    });
-    return V + page;
-  }
-
-  /* <nav data-render="v2-catalog" data-current="vep">: the All tools list */
-  WGSM.render.blocks["v2-catalog"] = function (el, opts) {
-    var current = opts.current ? "tool-" + opts.current + ".html" : "tools.html";
-    var name = "";
-    CATALOG.forEach(function (group) {
-      group[1].forEach(function (tool) {
-        if (tool[1] === current) name = tool[0];
-      });
-    });
-    /* Narrow screens show only this row until it is opened */
-    el.appendChild(h("button.v2-btn.v2-catalog__toggle", { type: "button", "aria-expanded": "false", dataset: { v2CatalogToggle: "" } },
-      h("span.v2-grow", h("span.v2-muted", "Tool: "), name), "Change", WGSM.icon("chevron-down", "icon--sm")));
-    el.appendChild(h("input.v2-input", { type: "search", placeholder: "Filter tools", "aria-label": "Filter tools", dataset: { v2Filter: "" } }));
-    CATALOG.forEach(function (group) {
-      el.appendChild(h("h2", group[0]));
-      group[1].forEach(function (tool) {
-        el.appendChild(h("a", { href: href(V + tool[1]), "aria-current": tool[1] === current ? "page" : null, dataset: { ops: tool[2] } }, tool[0]));
-      });
-    });
-  };
-
-  function filterCatalog(box) {
-    var q = box.value.trim().toLowerCase();
-    var nav = box.closest(".v2-catalog");
-    WGSM.qsa("a", nav).forEach(function (a) {
-      a.hidden = !!q && (a.textContent + " " + a.dataset.ops).toLowerCase().indexOf(q) < 0;
-    });
-    WGSM.qsa("h2", nav).forEach(function (head) {
-      var any = false;
-      for (var n = head.nextElementSibling; n && n.tagName === "A"; n = n.nextElementSibling) any = any || !n.hidden;
-      head.hidden = !any;
-    });
-  }
 
   function href(path) {
     return WGSM.keepParams(WGSM.link(path));
@@ -151,13 +79,13 @@
       h("a.v2-brand", { href: href(V + "home.html") }, h("img", { src: WGSM.link("icons/logos/logo-a-helix-bracket.svg"), alt: "", width: 26, height: 26 }), "WGS Extract"),
       h("nav", { "aria-label": "Library" },
         link({ id: "home", label: "Library", icon: "library-big", href: V + "home.html" }),
-        PEOPLE.map(person),
+        people().map(person),
         link({ id: "add", label: "Add files", icon: "plus", href: V + "add.html" })
       ),
       h("div.v2-side__label", "On this computer"),
       h("nav", { "aria-label": "Work" }, PLACES.map(link)),
       h("div.v2-side__spacer"),
-      h(
+      WGSM.v2state.flag("realign-cancelled") ? null : h(
         "a.v2-sidejob",
         { href: href(V + "jobs.html"), dataset: { annotId: "sidebar-job" } },
         h("strong", RUNNING.title),
@@ -177,10 +105,37 @@
         ? h("a.v2-top__back", { href: href(V + parent[1]) }, WGSM.icon("chevron-left", "icon--sm"), parent[0])
         : h("img.v2-only-phone", { src: WGSM.link("icons/logos/logo-a-helix-bracket.svg"), alt: "WGS Extract", width: 28, height: 28 }),
       h("span.v2-top__grow"),
-      h("button.v2-search", { type: "button", "data-palette": "", title: "Search people, files and tools (⌘K)", dataset: { annotId: "search" } },
-        WGSM.icon("search", "icon--sm"), h("span.v2-hide-phone", "Search"), h("kbd.v2-hide-phone", "⌘K"), h("span.visually-hidden", "Search")),
-      h("span.v2-where.v2-hide-phone", { title: "Connected to the WGS Extract server on this computer", dataset: { annotId: "conn" } }, h("span.v2-pip", { dataset: { state: "ok" } }), "This Mac")
+      h("button.v2-search", { type: "button", "data-palette": "", title: "Search people, files and tools", dataset: { annotId: "search" } },
+        WGSM.icon("search", "icon--sm"), h("span.v2-hide-phone", "Search"), h("kbd.v2-hide-phone", M().os === "macos" ? "⌘K" : "Ctrl K"), h("span.visually-hidden", "Search")),
+      h("button.v2-where", { type: "button", "data-open": "#v2-mock", title: "Connected to the WGS Extract server on " + M().label + ". Mockup: click to pretend another computer", dataset: { annotId: "conn" } },
+        h("span.v2-pip", { dataset: { state: "ok" } }), h("span.v2-hide-phone", M().name))
     );
+  }
+
+  function M() {
+    return WGSM.v2machine.machine;
+  }
+
+  /* Review controls, not app UI: which computer the mockup pretends to be,
+   * the simulated clock and server (when present), and a reset */
+  function mockDialog() {
+    var profiles = WGSM.v2machine.profiles;
+    return h("dialog.dialog", { id: "v2-mock", "aria-labelledby": "v2-mock-title", dataset: { v2NoTerms: "" } },
+      h("div.dialog__header", h("h2.dialog__title", { id: "v2-mock-title" }, "Mockup settings")),
+      h("div.dialog__body",
+        h("p.v2-small.v2-muted", "Not part of the app. Pretend WGS Extract runs on another computer to see how pages, estimates and tools change."),
+        h("fieldset.v2-mock__machines", h("legend.v2-small", "Computer"), Object.keys(profiles).map(function (key) {
+          var pr = profiles[key];
+          return h("label.v2-choice",
+            h("input.v2-check", { type: "radio", name: "v2-machine", value: key, checked: key === M().key ? true : null }),
+            h("span.v2-choice__title", pr.label), h("span.v2-choice__aside", { "aria-hidden": "true" }, { macos: "macOS", linux: "Linux", windows: "Windows" }[pr.os]),
+            h("span.v2-choice__desc", pr.spec));
+        })),
+        h("div", { dataset: { v2MockSlot: "" } }),
+        h("button.v2-btn.v2-btn--sm.v2-btn--quiet", { type: "button", dataset: { v2Reset: "", toast: "The demo is back to how it started" } }, "Reset the demo: names, files, options")),
+      h("div.dialog__footer",
+        h("button.v2-btn", { type: "button", "data-close": "" }, "Cancel"),
+        h("button.v2-btn.v2-btn--primary", { type: "button", "data-close": "", dataset: { v2Machine: "" } }, "Use this computer")));
   }
 
   function tabbar() {
@@ -216,10 +171,11 @@
 
   WGSM.shell = {
     build: function (nodes) {
+      document.body.appendChild(mockDialog());
       return h("div.v2-app", { dataset: { annotId: "app" } }, sidebar(), topbar(), h("main.v2-main", { id: "main" }, nodes), tabbar());
     },
     palette: function () {
-      var people = PEOPLE.map(function (p) {
+      var folks = people().map(function (p) {
         return { label: p.name, sub: p.note, icon: "user", group: "People", href: p.href };
       });
       var go = [
@@ -229,14 +185,17 @@
         ["Add files", "info", "plus", "Do", V + "add.html"],
         ["Jobs", "", "jobs", "Go to", V + "jobs.html"],
         ["Reference data", "ref/library", "reference", "Go to", V + "references.html"],
+        ["Install tools", "deps/check", "wrench", "Go to", V + "install.html"],
         ["Settings", "", "settings", "Go to", V + "settings.html"],
       ].map(function (o) {
         return { label: o[0], sub: o[1], icon: o[2], group: o[3], href: o[4] };
       });
-      var tools = WGSM.data.ops.map(function (o) {
-        return { label: o[0], sub: o[1], icon: o[2], group: "Tools · " + o[3], href: toolPage(o[1]) };
+      var T = WGSM.v2tools;
+      var tools = T.order.map(function (slug) {
+        var def = T.defs[slug];
+        return { label: def.label, sub: def.op, icon: "sliders-horizontal", group: "Tools · " + def.group, href: V + T.pageOf(slug) };
       });
-      return people.concat(go, tools);
+      return folks.concat(go, tools);
     },
   };
 
@@ -247,15 +206,21 @@
       recount();
     });
     document.addEventListener("click", function (event) {
-      var toggle = event.target.closest("[data-v2-catalog-toggle]");
-      if (!toggle) return;
-      var open = toggle.getAttribute("aria-expanded") !== "true";
-      toggle.setAttribute("aria-expanded", String(open));
-      toggle.parentElement.toggleAttribute("data-open", open);
+      if (!event.target.closest("[data-v2-machine]")) return;
+      var pick = WGSM.qs('input[name="v2-machine"]:checked');
+      if (!pick || pick.value === M().key) return;
+      WGSM.v2machine.choose(pick.value);
+      location.reload();
     });
-    document.addEventListener("input", function (event) {
-      if (event.target.matches("[data-v2-filter]")) filterCatalog(event.target);
-    });
+    /* Order matters: saved state renames and restores options first, then
+     * the modules that read them start */
+    WGSM.v2state.apply();
+    WGSM.v2machine.localize();
+    WGSM.v2region.start();
+    WGSM.v2catalog.start();
+    WGSM.v2tools.start();
+    WGSM.v2terms.start();
+    WGSM.v2terms.wrap(WGSM.qs("#main"));
     recount();
   };
 })();

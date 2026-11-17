@@ -79,39 +79,73 @@
     },
   });
 
+  /* DeepVariant engines on this computer: [value, label, small] */
+  function dvEngines(c) {
+    var M = c.M;
+    if (M.os === "macos") {
+      return [["native", "Native", "wgse-deepvariant: no Docker, inference on the Metal GPU"], ["docker", "Google’s image", "In Docker, x86-64 emulated on Apple Silicon: much slower"]];
+    }
+    if (M.platform === "linux-arm64") return [["native", "Native", "The native CPU build for ARM64; WGS model only"]];
+    var list = [["native", "Native", "wgse-deepvariant: no Docker" + (M.nvidia ? ", inference on the NVIDIA GPU" : ", on the CPU")], ["docker", "Google’s image", "Google’s CPU image in Docker"]];
+    if (M.parabricks) list.push(["parabricks", "Parabricks", "NVIDIA Parabricks on the GPU, in Docker"]);
+    return list;
+  }
+
+  function dvThreadHours(c, engine) {
+    var M = c.M;
+    var depth = c.file.depth / 30;
+    if (engine === "parabricks") return null;
+    if (engine === "docker") return 60 * depth * (M.os === "macos" ? 3 : 1);
+    if (M.os === "macos") return 3.77 * 6 * (c.file.depth / 35);
+    if (M.platform === "linux-arm64") return null;
+    return (M.nvidia ? 12 : 28) * depth;
+  }
+
   T.define({
     slug: "deepvariant", label: "DeepVariant", op: "vcf/deepvariant", group: "Align and call", keywords: "google deep learning",
-    desc: "Google’s deep-learning variant caller: the most accurate SNP and indel calls, and slower than bcftools. On this Mac it runs natively, with inference on the GPU.",
-    accepts: READS, file: "reginald", button: "Start DeepVariant", dryRun: true,
+    desc: "Google’s deep-learning variant caller: the most accurate SNP and indel calls, and slower than bcftools.",
+    accepts: READS, file: "reginald", button: "Start DeepVariant", dryRun: true, requires: ["deepvariant"],
     fields: [
       f.seg("engine", "Engine", function (c) {
-        return c.v.engine === "native" ? "wgse-deepvariant: no Docker, inference on the Metal GPU" : "Google’s image in Docker: x86-64 emulated on this Mac, much slower";
-      }, "", [["native", "Native"], ["docker", "Google’s image"]], "native"),
+        var e = dvEngines(c).filter(function (x) {
+          return x[0] === c.v.engine;
+        })[0] || dvEngines(c)[0];
+        return e[2];
+      }, "", [["native", "Native"], ["docker", "Google’s image"], ["parabricks", "Parabricks"]], "native"),
       f.select("model", "Model", "Read from the file: Illumina whole genome", "model_type",
-        [["WGS", "Whole genome (WGS)"], ["WES", "Exome (WES)"], ["PACBIO", "PacBio HiFi"], ["HYBRID_PACBIO_ILLUMINA", "PacBio + Illumina"], ["ONT_R104", "Nanopore R10.4.1 (x86-64 only)"]], "WGS", { width: 280 }),
+        [["WGS", "Whole genome (WGS)"], ["WES", "Exome (WES)"], ["PACBIO", "PacBio HiFi"], ["HYBRID_PACBIO_ILLUMINA", "PacBio + Illumina"], ["ONT_R104", "Nanopore R10.4.1"]], "WGS", { width: 280 }),
       f.region(),
-      EVIDENCE("about 5% more time"),
+      EVIDENCE("about 5% more time (a quarter more with Parabricks)"),
     ],
     more: [
-      f.select("batch", "Inference batch", "Smaller uses less memory, the same calls", "batch_size", [["512", "512 (auto on Apple Silicon)"], ["1024", "1024"], ["256", "256"]], "512", { width: 240 }),
+      f.select("batch", "Inference batch", "Smaller uses less memory; the same calls", "batch_size", [["512", "512 (auto on Apple Silicon)"], ["1024", "1024 (upstream default)"], ["256", "256"]], "512", { width: 260 }),
       f.threads(),
       f.toggle("force", "Start over", "Ignore stages an earlier run finished", "force", false),
     ],
     run: function (c) {
+      var engines = dvEngines(c);
+      var engine = engines.some(function (e) {
+        return e[0] === c.v.engine;
+      }) ? c.v.engine : engines[0][0];
       var threads = c.v.threads || c.M.cores;
-      var native = c.v.engine === "native";
-      var threadHours = native ? (3.77 * 6) * (c.file.depth / 35) : 60 * (c.file.depth / 30) * 3;
-      var hours = threadHours * regionShare(c) / threads;
-      if (c.v.evidence === "gvcf") hours *= 1.05;
-      var mem = 1 + Number(c.v.batch) * 12 / 1024 + 1 + (native ? 0 : 4);
+      var th = dvThreadHours(c, engine);
+      var hours = th === null ? null : th * regionShare(c) / threads;
+      if (hours && c.v.evidence === "gvcf") hours *= 1.05;
+      var mem = engine === "parabricks" ? 25 : 1 + Number(c.v.batch) * 12 / 1024 + 1 + threads * (c.M.arch === "arm64" ? 2 : 1) * 0.5;
       var out = {
-        hours: hours, memGB: mem, disk: [[c.m.diskName(c.file), 17.3 * regionShare(c) + 0.4]],
-        checks: native ? [["wgse-deepvariant", "0.1.1 (DeepVariant 1.10.0), Metal", "ok", "Found"]] : [["Docker", "Docker Desktop is running", "ok", "Found"]],
-        command: opts(c, [base(c, "vcf deepvariant")], [["model", "--model-type", "WGS"], ["region", "--region", ""], ["evidence", "--reference-evidence", "none"], ["batch", "--batch-size", "512"], ["force", "--force", "flag"]]),
-        makes: "Makes " + c.file.stem + ".deepvariant.vcf.gz in " + c.name + "’s folder.", jobName: "DeepVariant for " + c.name, notes: [],
+        hours: hours, timeText: engine === "parabricks" ? "about a minute per chromosome the size of chr20" : "hours on a 30x genome",
+        memGB: mem, disk: [[c.m.diskName(c.file), 17.3 * regionShare(c) + 0.4]], notes: [],
+        checks: [["Engine", engines.filter(function (e) {
+          return e[0] === engine;
+        })[0][2], "ok", "Found"]],
+        command: opts(c, [base(c, "vcf deepvariant")], [["model", "--model-type", "WGS"], ["region", "--region", ""], ["evidence", "--reference-evidence", "none"], ["batch", "--batch-size", "512"], ["force", "--force", "flag"]])
+          .concat(engine === "parabricks" || (engine === "native" && c.M.nvidia) ? ["--gpu"] : []),
+        makes: "Makes " + c.file.stem + ".deepvariant.vcf.gz in " + c.name + "’s folder.", jobName: "DeepVariant for " + c.name,
       };
-      if (c.v.model === "ONT_R104") out.blocked = "The Nanopore model needs an x86-64 computer.";
-      if (!native) out.notes.push({ tone: "warn", icon: "clock", id: "docker", title: "Google’s image is x86-64", text: "On Apple Silicon Docker emulates it, several times slower than the native engine, which makes the same calls." });
+      if (engine !== c.v.engine) out.notes.push({ tone: "info", icon: "info", id: "engine", title: "Using " + engines[0][1], text: "The engine you picked isn’t available on this computer." });
+      if (c.v.model === "ONT_R104" && c.M.arch !== "x86-64") out.blocked = c.m.unavailable("dv-ont") || "The Nanopore model needs an x86-64 computer.";
+      if (c.v.model !== "WGS" && c.M.platform === "linux-arm64") out.blocked = c.m.unavailable("dv-models") + ".";
+      if (engine === "docker" && c.M.os === "macos") out.notes.push({ tone: "warn", icon: "clock", id: "docker", title: "Google’s image is x86-64", text: "On Apple Silicon Docker emulates it, several times slower than the native engine, which makes the same calls." });
       return out;
     },
   });
@@ -119,7 +153,7 @@
   T.define({
     slug: "gatk", label: "GATK HaplotypeCaller", op: "vcf/gatk", group: "Align and call", keywords: "broad java",
     desc: "The Broad Institute’s variant caller, which many labs use.",
-    accepts: READS, file: "reginald", button: "Start HaplotypeCaller", requires: ["gatk", "java"],
+    accepts: READS, file: "reginald", button: "Start HaplotypeCaller", requires: ["gatk"],
     fields: [
       f.region(), EVIDENCE("little extra time; the VCF is then genotyped from it"),
       f.toggle("scatter", "Split into intervals", "", "scatter", false, {

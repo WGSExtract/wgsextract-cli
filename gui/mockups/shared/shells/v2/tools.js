@@ -37,8 +37,8 @@
     show: function (label, small, flag, value) {
       return { type: "show", key: "_" + label, label: label, small: small, flag: flag, value: value };
     },
-    region: function () {
-      return f.text("region", "Region", "Leave empty for the whole genome", "region", "chr20 or chr20:1-1000000", { mono: true, width: 300 });
+    region: function (small) {
+      return { type: "region", key: "region", label: "Region", small: small || "", flag: "region", def: "" };
     },
     threads: function () {
       return f.number("threads", "CPU threads", function (c) {
@@ -132,6 +132,7 @@
     if (field.type === "text") {
       return h("input.v2-input" + (field.mono ? ".v2-input--mono" : ""), { type: "text", placeholder: field.placeholder || "", "aria-label": label, dataset: { v2Key: field.key }, style: { maxWidth: (field.width || 240) + "px" } });
     }
+    if (field.type === "region") return WGSM.v2region.build(field);
     return h("span.v2-small.v2-mono", { dataset: { v2Show: field.key } });
   }
 
@@ -234,14 +235,18 @@
 
   function update(root) {
     var def = defs[root.dataset.tool];
+    WGSM.v2region.refresh(root, context(def, root).file.build || "GRCh38");
     var ctx = context(def, root);
     var out = def.run(ctx) || {};
+    if (ctx.v.region && WGSM.v2region.parse(ctx.v.region).error) out.blocked = "Fix the region.";
     (def.requires || []).forEach(function (tool) {
       var why = ctx.no(tool);
       if (!why || out.blocked === why + ".") return;
       out.blocked = why + ".";
-      (out.notes = out.notes || []).unshift({ tone: "warn", icon: "triangle-alert", id: "unavailable", title: "Not on this computer", text: why + ". " + (tool === "java" ? "WGS Extract doesn’t install tools itself." : "Run it on a computer that has it, from this app or its phone access."),
-        action: tool === "java" ? { label: "How to install", href: "install.html" } : null });
+      var missing = /isn’t installed$/.test(why);
+      (out.notes = out.notes || []).unshift({ tone: "warn", icon: missing ? "wrench" : "triangle-alert", id: "unavailable", title: missing ? why : "Not on this computer",
+        text: missing ? "It’s an optional tool set. WGS Extract checks for tools but doesn’t install them: pixi install --locked -e " + ctx.m.env(tool) + "." : why + ". Run it on a computer that has it; this app can connect to one.",
+        action: missing ? { label: "How to install", href: "install.html" } : null });
     });
     if (!ctx.m.ready(ctx.file) && !out.blocked) {
       out.blocked = "Fix this file first.";
@@ -284,7 +289,7 @@
     el.dataset.tool = def.slug;
     var ctx = context(def, el);
     var input = def.noInput ? null : inputRow(ctx);
-    el.append(
+    WGSM.append(el, [
       h("section.v2-section", { dataset: { annotId: "tool-head" } },
         h("div.v2-section__head", h("h2.v2-h2--lg", def.label), h("code.v2-cmd.v2-dim.v2-small", def.op)),
         h("p.v2-muted", def.desc),
@@ -305,7 +310,7 @@
       h("section.v2-section", { dataset: { annotId: "preflight", v2Preflight: "" } },
         h("h2", "Before it starts"), h("div.v2-sheet", { dataset: { v2Checks: "" } }), h("div.v2-stack", { dataset: { v2Warnings: "" } })),
       def.extra ? html(h("div", { dataset: { annotId: "extra" } }), def.extra(ctx)) : null,
-      h("pre.v2-code.v2-cmd", { dataset: { annotId: "command", v2Command: "" } }));
+      h("pre.v2-code.v2-cmd", { dataset: { annotId: "command", v2Command: "" } })]);
     var page = el.closest(".v2-page");
     page.appendChild(h("div.v2-actionbar", { dataset: { annotId: "action" } },
       h("div.v2-actionbar__sum", { dataset: { v2Bar: "" } }, h("strong"), h("span")),

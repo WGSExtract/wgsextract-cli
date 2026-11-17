@@ -20,62 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="vep"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">VEP</h2><code class="v2-cmd v2-dim v2-small">vep/run</code></div>
-        <p class="v2-muted">Ensembl’s Variant Effect Predictor: for each variant, which gene and transcript it falls in and what it may do to the protein.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Helen</strong><span class="v2-dim">·</span><span class="v2-tag">VCF</span><span class="v2-file__name">helen-mcdonald.deepvariant.vcf.gz</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">What to add<small>Fast skips population frequencies and HGVS names; about twice as fast</small><code class="v2-cmd">preset</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="preset" role="group" aria-label="What to add"><button type="button" value="everything" aria-pressed="true">Everything</button><button type="button" value="fast">Fast</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Engine<small>vep-rs is the fast default; Ensembl’s own is the reference</small><code class="v2-cmd">engine</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="engine" role="group" aria-label="Engine"><button type="button" value="vep-rs" aria-pressed="true">vep-rs</button><button type="button" value="ensembl">Ensembl VEP</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Output<code class="v2-cmd">format</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="vepfmt" role="group" aria-label="Output format"><button type="button" value="vcf" aria-pressed="true">VCF</button><button type="button" value="tab">Table</button><button type="button" value="json">JSON</button></div></div></div>
-        </div>
-      </div>
-
-      <details class="v2-more" data-annot-id="more">
-        <summary>More options</summary>
-        <div class="v2-more__body v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Assembly<small>Read from the VCF</small><code class="v2-cmd">assembly</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Assembly" style="max-width: 220px"><option>GRCh38 (detected)</option><option>GRCh37</option><option>T2T-CHM13 v2.0</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Region<small>Leave empty for the whole genome</small><code class="v2-cmd">region</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Region" placeholder="Whole genome, or chr20 or chr20:1-1000000" style="max-width: 320px"></div></div>
-        </div>
-      </details>
-
-      <section class="v2-section" data-annot-id="preflight">
-        <h2>Before it starts</h2>
-        <div class="v2-sheet">
-          <div class="v2-item"><span class="v2-item__title">Space on Macintosh HD</span><span class="v2-item__desc">Needs about 31 GB for the cache, 0.6 GB for the result; 412 GB free</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
-        </div>
-        <div class="v2-notice" data-tone="warn" role="status" data-annot-id="cache"><i data-icon="download"></i><div class="v2-notice__text"><strong>The VEP cache isn’t installed</strong><span>vep-rs needs its GRCh38 cache: 26 GB to download, 31 GB on disk. Install it once from Reference data.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="references.html">Reference data</a></div></div>
-      </section>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract vep run --input {{bundleWorkspace}}/genomes/helen-mcdonald/helen-mcdonald.deepvariant.vcf.gz \
-  --engine vep-rs --preset everything --format vcf</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 50 min after the cache is installed</strong>
-      <span>Makes helen-mcdonald.vep.vcf.gz in Helen’s folder.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" disabled data-toast="Queued: VEP. See Jobs.">Annotate with VEP</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="vep"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Annotate which VCF?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Helen · helen-mcdonald.deepvariant.vcf.gz</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

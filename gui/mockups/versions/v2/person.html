@@ -117,14 +117,14 @@
   </div>
 </div>
 
-<dialog class="dialog" id="person-menu" aria-labelledby="pm-title">
+<dialog class="dialog" id="person-menu" data-v2-person="reginald" aria-labelledby="pm-title">
   <div class="dialog__header"><h2 class="dialog__title" id="pm-title">Reginald McDonald</h2></div>
   <div class="dialog__body">
-    <label class="v2-field__label">Name<input class="v2-input" type="text" value="Reginald McDonald"></label>
-    <label class="v2-field__label">Note<input class="v2-input" type="text" value="son"></label>
+    <label class="v2-field__label">Name<input class="v2-input" type="text" data-v2-field="name" value="Reginald McDonald"></label>
+    <label class="v2-field__label">Note<input class="v2-input" type="text" data-v2-field="note" value="son"></label>
     <p class="v2-small v2-muted">Removing a person takes them out of the library. Their genome files are never deleted; you choose whether to also remove the results WGS Extract made (38 MB).</p>
   </div>
-  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn v2-btn--primary" type="button" data-close>Done</button></div>
+  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-v2-remove data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn v2-btn--primary" type="button" data-close data-v2-save>Done</button></div>
 </dialog>
 </body>
 </html>

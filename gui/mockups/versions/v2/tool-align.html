@@ -20,68 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="align"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">Align FASTQ</h2><code class="v2-cmd v2-dim v2-small">align</code></div>
-        <p class="v2-muted">Places raw reads from a sequencer on a reference genome, making the BAM or CRAM that every other tool reads. The FASTQ files are kept.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Not assigned</strong><span class="v2-dim">·</span><span class="v2-tag">FASTQ</span><span class="v2-file__name">60820188474839_SA_L001_R1/R2_001.fastq.gz</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-<div class="v2-notice" data-tone="info" role="status" data-annot-id="owner"><i data-icon="user"></i><div class="v2-notice__text"><strong>These reads aren’t assigned to anyone yet</strong><span>Choose whose they are, so the new file joins that person and their results use it.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="home.html">Choose a person</a></div></div>
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Reference<small>The build the new file will use</small><code class="v2-cmd">ref</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Reference" style="max-width: 320px"><option>hs38 (GRCh38), installed</option><option>T2T-CHM13 v2.0, download 0.9 GB</option><option>hs37d5 (GRCh37), installed</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Sequencer<small>Read from the file names; change it if that’s wrong</small><code class="v2-cmd">platform</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Sequencer" style="max-width: 260px"><option>Illumina (detected)</option><option>DNBSEQ (MGI, BGI)</option><option>Ultima</option><option>PacBio HiFi</option><option>PacBio CLR</option><option>Oxford Nanopore</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Output<small>CRAM is about a third of the size</small><code class="v2-cmd">format</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="fmt" role="group" aria-label="Output format"><button type="button" value="BAM">BAM</button><button type="button" value="CRAM" aria-pressed="true">CRAM</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Sample name<small>Written into the file; sites and tools show it</small><code class="v2-cmd">sample</code></span><div class="v2-field__control"><input class="v2-input" type="text" aria-label="Sample name" value="60820188474839" style="max-width: 220px"></div></div>
-        </div>
-      </div>
-
-      <details class="v2-more" data-annot-id="more">
-        <summary>Aligner and resources</summary>
-        <div class="v2-more__body v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Aligner<small>Auto picks the fastest that fits in memory</small><code class="v2-cmd">aligner</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Aligner" style="max-width: 260px"><option>Auto: bwa-mem2</option><option>bwa</option><option>bwa-mem2</option><option>bwa-mem3</option><option>minimap2</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Faster preset<small>About twice as fast; alignments differ slightly from BWA’s</small><code class="v2-cmd">fast</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Faster preset"></label></div></div>
-          <div class="v2-field"><span class="v2-field__label">Output profile<small>Archive drops details only re-analysis needs</small><code class="v2-cmd">output_profile</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="profile" role="group" aria-label="Output profile"><button type="button" value="default" aria-pressed="true">Default</button><button type="button" value="archive">Archive</button><button type="button" value="calling">For calling</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">CPU threads<small>All 12 cores by default</small><code class="v2-cmd">threads</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="12" aria-label="CPU threads" style="max-width: 100px"></div></div>
-        </div>
-      </details>
-
-      <section class="v2-section" data-annot-id="preflight">
-        <h2>Before it starts</h2>
-        <div class="v2-sheet">
-          <div class="v2-item"><span class="v2-item__title">Memory</span><span class="v2-item__desc">Needs up to 18 GB; this Mac has 32 GB</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
-          <div class="v2-item"><span class="v2-item__title">Space on Genomes</span><span class="v2-item__desc">Needs about 38 GB; 1.1 TB free</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>OK</span></div>
-          <div class="v2-item"><span class="v2-item__title">bwa-mem2</span><span class="v2-item__desc">2.2.1, with the hs38 index</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Found</span></div>
-        </div>
-
-      </section>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract align --r1 ~/Downloads/60820188474839_SA_L001_R1_001.fastq.gz \
-  --r2 ~/Downloads/60820188474839_SA_L001_R2_001.fastq.gz \
-  --ref hs38 --format CRAM --sample 60820188474839 --outdir /Volumes/Genomes/</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 5 h · up to 18 GB memory · 38 GB on Genomes</strong>
-      <span>Makes 60820188474839.hs38.cram. Waits for Gordon’s realign (1 h 52 min).</span>
-    </div>
-    <div class="v2-actionbar__btns">
-      <button class="v2-btn" type="button" data-toast="Dry run: lists the steps that would run; nothing is written">Dry run</button>
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: Align FASTQ. See Jobs.">Start aligning</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="align"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Align which reads?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Not assigned · 60820188474839_SA_L001_R1/R2_001.fastq.gz</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

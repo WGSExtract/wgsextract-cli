@@ -132,7 +132,8 @@
     }, "format", [["BAM", "BAM"], ["CRAM", "CRAM"]], "CRAM"),
     f.select("aligner", "Aligner", function (c) {
       var p = plan(c);
-      if (p.blocked || p.needsIndex) return "Needs bwa-mem2’s index";
+      if (p.blocked) return p.blocked;
+      if (p.needsIndex) return "Needs bwa-mem2’s index";
       return "Runs " + p.aligner + (p.standIn ? ", standing in for " + p.standIn : "") + "; writes " + p.records + " records";
     }, "aligner", [["auto", "Auto"], ["bwa", "bwa"], ["bwa-mem2", "bwa-mem2"], ["bwa-mem3", "bwa-mem3"], ["minimap2", "minimap2"]], "auto"),
     f.toggle("fast", "Faster preset", "bwa-mem3’s speed preset: about twice as fast, but alignments differ from BWA’s", "fast", false, {
@@ -192,6 +193,7 @@
 
   function alignerNotes(c, p) {
     var notes = [];
+    if (p.blocked) notes.push({ tone: "warn", icon: "triangle-alert", id: "aligner", title: "Not on this computer", text: p.blocked + " Choose Auto, bwa or bwa-mem2." });
     if (p.needsIndex) {
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",
         text: "bwa-mem2 and bwa-mem3 read it. WGS Extract never builds it automatically: building needs about 90 GB of memory, so the published one is downloaded.",
@@ -266,16 +268,19 @@
       var onOut = size + (c.v.keep ? file.gb * 0.83 : 0) + (tmpDisk === outDisk ? spill : 0);
       out.disk.push([outDisk, onOut]);
       if (tmpDisk !== outDisk) out.disk.push([tmpDisk, spill]);
-      if (!c.flag("mem2-" + c.v.ref) && (p.needsIndex)) out.blocked = "Download bwa-mem2’s index first.";
-      if (p.blocked) out.blocked = p.blocked;
-      if (!refInstalled(c, c.v.ref)) out.blocked = "Download " + refLabel(c.v.ref) + " first.";
-      if (c.v.ref === file.ref) out.blocked = "This file is already on " + refLabel(c.v.ref) + ".";
-      if (c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled")) {
+      var running = c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled");
+      if (running) {
         out.notes.unshift({ tone: "info", icon: "realign", id: "running", title: "Already running: 47%, 1 h 52 min left",
           text: "Gordon’s realign to hs38 started at 08:15 with these settings.", action: { label: "See Jobs", href: "jobs.html" } });
-        out.blocked = "Already running.";
       }
-      if (!c.m.ready(file)) out.blocked = "Fix this file first: it has no index.";
+      /* The most fundamental reason first */
+      out.blocked = [
+        p.blocked,
+        c.v.ref === file.ref ? "This file is already on " + refLabel(c.v.ref) + "." : null,
+        !refInstalled(c, c.v.ref) ? "Download " + refLabel(c.v.ref) + " first." : null,
+        p.needsIndex ? "Download bwa-mem2’s index first." : null,
+        running ? "Already running." : null,
+      ].filter(Boolean)[0] || null;
       out.hours = p.aligner ? hoursFor(c, p, file) : null;
       out.timeText = p.timeText;
       out.memGB = p.mem;
@@ -310,9 +315,11 @@
       out.hours = p.aligner ? hoursFor(c, p, c.file) : null;
       out.timeText = p.timeText;
       out.memGB = p.mem;
-      if (p.needsIndex) out.blocked = "Download bwa-mem2’s index first.";
-      if (p.blocked) out.blocked = p.blocked;
-      if (!refInstalled(c, c.v.ref)) out.blocked = "Download " + refLabel(c.v.ref) + " first.";
+      out.blocked = [
+        p.blocked,
+        !refInstalled(c, c.v.ref) ? "Download " + refLabel(c.v.ref) + " first." : null,
+        p.needsIndex ? "Download bwa-mem2’s index first." : null,
+      ].filter(Boolean)[0] || null;
       var cmd = alignerCommand(c, "wgsextract align --r1 " + c.m.path(c.file, c.file.r1), p);
       cmd.splice(1, 0, "--r2 " + c.m.path(c.file, c.file.r2), "--ref " + c.v.ref + " --outdir " + c.m.native(c.M.genomesPath + "/"));
       if (c.v.sample) cmd.push("--sample " + c.v.sample);

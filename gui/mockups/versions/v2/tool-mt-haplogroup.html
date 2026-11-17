@@ -20,44 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="mt-haplogroup"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">mtDNA haplogroup</h2><code class="v2-cmd v2-dim v2-small">lineage/mt-haplogroup</code></div>
-        <p class="v2-muted">Places the maternal line on the mtDNA tree with HaploGrep 3.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-<div class="v2-notice" data-tone="ok" role="status" data-annot-id="done"><i data-icon="check"></i><div class="v2-notice__text"><strong>Found today: K1a1b1a</strong><span>Quality 0.94 of 1.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="ancestry.html">See the result</a></div></div>
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Tree<small>PhyloTree 17 Forensic Update by default</small><code class="v2-cmd">tree</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Tree" style="max-width: 320px"><option>PhyloTree 17 Forensic Update</option><option>PhyloTree 17</option><option>FamilyTreeDNA Mitotree (non-commercial use)</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Check for contamination<small>With haplocheck: a mix of two mtDNA types</small><code class="v2-cmd">contamination</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Check for contamination" checked></label></div></div>
-        </div>
-      </div>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract lineage mt-haplogroup --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram --contamination</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 2 min</strong>
-      <span>Replaces the result on Reginald’s page.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: mtDNA haplogroup. See Jobs.">Find again</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="mt-haplogroup"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Which file?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Helen · helen-mcdonald.deepvariant.vcf.gz</option><option>Alex · NG1A2B3C4D.bam</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

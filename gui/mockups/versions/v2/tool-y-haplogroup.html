@@ -20,51 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="y-haplogroup"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">Y haplogroup</h2><code class="v2-cmd v2-dim v2-small">lineage/y-haplogroup</code></div>
-        <p class="v2-muted">Places the paternal line on the Y-DNA tree from the SNPs on the Y chromosome.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-<div class="v2-notice" data-tone="ok" role="status" data-annot-id="done"><i data-icon="check"></i><div class="v2-notice__text"><strong>Found today: J-ZS241</strong><span>41 of 43 defining markers match. Running again is only useful with another tree.</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm v2-btn--quiet" href="ancestry.html">See the result</a></div></div>
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Tree<small>YFull is the most detailed</small><code class="v2-cmd">tree</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Tree" style="max-width: 260px"><option>YFull (pinned release)</option><option>YFull 10.01</option><option>FamilyTreeDNA</option><option>ISOGG</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Ancient DNA<small>Use marker tables for damaged, low-coverage samples</small><code class="v2-cmd">ancient</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Ancient DNA"></label></div></div>
-        </div>
-      </div>
-
-      <details class="v2-more" data-annot-id="more">
-        <summary>More options</summary>
-        <div class="v2-more__body v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Build<small>Read from the file</small><code class="v2-cmd">build</code></span><div class="v2-field__control"><select class="v2-select" aria-label="Build" style="max-width: 220px"><option>GRCh38 (detected)</option><option>GRCh37</option><option>T2T</option></select></div></div>
-        </div>
-      </details>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract lineage y-haplogroup --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram --tree yfull</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 3 min</strong>
-      <span>Replaces the result on Reginald’s page.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: Y haplogroup. See Jobs.">Find again</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="y-haplogroup"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Which file?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

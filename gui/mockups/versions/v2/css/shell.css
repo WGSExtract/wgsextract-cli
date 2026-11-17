@@ -263,8 +263,28 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 8px;
+  border: 1px dashed transparent;
+  border-radius: var(--v2-r);
+  background: none;
   color: var(--c-text-3);
+  font: inherit;
   font-size: 12px;
+  cursor: pointer;
+}
+
+/* A mockup control: dashed on hover, so it reads as review tooling */
+.v2-where:hover {
+  border-color: var(--c-border-strong);
+  color: var(--c-text);
+}
+
+.v2-mock__machines {
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
 }
 
 .v2-main {

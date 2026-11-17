@@ -24,14 +24,14 @@
     </div>
   </header>
 
-  <div class="v2-notice" data-tone="warn" role="status" data-annot-id="fix">
+  <div class="v2-notice" data-tone="warn" role="status" data-annot-id="fix" data-v2-if="!alex-fixed">
     <i data-icon="wrench"></i>
     <div class="v2-notice__text">
       <strong>The Nebula genome can’t be used yet</strong>
       <span>The BAM has no index, and its reference (hs38d1) isn’t installed. The fix downloads hs38d1 to your reference library and builds the index beside the BAM; the BAM itself isn’t changed.</span>
     </div>
     <div class="v2-notice__actions">
-      <button class="v2-btn v2-btn--primary v2-btn--sm" type="button" data-toast="Downloading hs38d1 and indexing Alex’s BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
+      <button class="v2-btn v2-btn--primary v2-btn--sm" type="button" data-v2-set="alex-fixed" data-toast="Downloading hs38d1 and indexing Alex’s BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
     </div>
   </div>
 
@@ -86,7 +86,7 @@
           </div>
           <div class="v2-sheet__pad v2-section" data-annot-id="file-bam">
             <div class="v2-row"><span class="v2-tag">BAM</span><span class="v2-file__name">NG1A2B3C4D.bam</span></div>
-            <span class="v2-status v2-small"><span class="v2-pip" data-state="attention"></span>Can’t be used yet · needs its index and reference</span>
+            <span class="v2-status v2-small" data-v2-if="!alex-fixed"><span class="v2-pip" data-state="attention"></span>Can’t be used yet · needs its index and reference</span><span class="v2-status v2-small" data-v2-if="alex-fixed" hidden><span class="v2-pip" data-state="ok"></span>Ready · indexed, and hs38d1 is installed</span>
             <code class="v2-cmd v2-dim v2-small">~/Downloads/NG1A2B3C4D.bam</code>
             <dl class="v2-kv">
               <div><dt>Kind</dt><dd>Whole genome <small>Nebula, 30×</small></dd></div>
@@ -114,14 +114,14 @@
   </div>
 </div>
 
-<dialog class="dialog" id="person-menu" aria-labelledby="pm-title">
+<dialog class="dialog" id="person-menu" data-v2-person="alex" aria-labelledby="pm-title">
   <div class="dialog__header"><h2 class="dialog__title" id="pm-title">Alex Moreno</h2></div>
   <div class="dialog__body">
-    <label class="v2-field__label">Name<input class="v2-input" type="text" value="Alex Moreno"></label>
-    <label class="v2-field__label">Note<input class="v2-input" type="text" placeholder="For example cousin"></label>
+    <label class="v2-field__label">Name<input class="v2-input" type="text" data-v2-field="name" value="Alex Moreno"></label>
+    <label class="v2-field__label">Note<input class="v2-input" type="text" data-v2-field="note" placeholder="For example cousin"></label>
     <p class="v2-small v2-muted">Removing a person takes them out of the library. Their genome files are never deleted; you choose whether to also remove the results WGS Extract made (6 MB).</p>
   </div>
-  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn" type="button" data-close>Done</button></div>
+  <div class="dialog__footer"><button class="v2-btn v2-btn--danger" type="button" data-close data-v2-remove data-toast="Removed from the library. The files were not touched.">Remove from library…</button><button class="v2-btn" type="button" data-close data-v2-save>Done</button></div>
 </dialog>
 </body>
 </html>

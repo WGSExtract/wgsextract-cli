@@ -31,7 +31,7 @@
           <div class="v2-step" data-state="running" style="--w: 4"><span>Align · 412 M of 876 M reads</span><span class="v2-bar"><span style="--v: 47%"></span></span></div>
           <div class="v2-step" style="--w: 1" title="Sort and index · waiting"><span>Sort and index</span><span class="v2-bar"><span style="--v: 0%"></span></span></div>
         </div>
-        <p class="v2-small v2-muted">Now matching each read to its place on hs38. Started 08:15. When it’s done, Gordon gets a new file, <span class="v2-mono">60820188479016.hs38.cram</span>, and the old BAM stays.</p>
+        <p class="v2-small v2-muted">Now matching each read to its place on hs38. Started 08:15. When it’s done, Gordon gets a new file, <span class="v2-mono">60820188479016_aligned.cram</span>, and the old BAM stays.</p>
         <details class="v2-more">
           <summary>Log</summary>
           <div class="v2-more__body v2-section">
@@ -42,7 +42,7 @@
 08:52:41 Step align: bwa-mem2 mem -t 12 hs38.fa (interleaved)
 09:56:10 align: 412,118,004 of 876,231,560 reads (47.0%)</pre>
             <pre class="v2-code v2-cmd">wgsextract realign --input /Volumes/Genomes/Gordon/60820188479016.bam \
-  --ref hs38 --output /Volumes/Genomes/Gordon/60820188479016.hs38.cram --threads 12</pre>
+  --ref hs38 --output /Volumes/Genomes/Gordon/60820188479016_aligned.cram --threads 12</pre>
           </div>
         </details>
         <div class="v2-row"><button class="v2-btn v2-btn--sm v2-btn--danger" type="button" data-open="#cancel-realign">Cancel</button></div>

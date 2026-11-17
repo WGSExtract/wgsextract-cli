@@ -20,70 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="relatedness"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">Relatedness</h2><code class="v2-cmd v2-dim v2-small">qc/relate</code></div>
-        <p class="v2-muted">Compares genomes to each other: parent and child, siblings, the same person twice, or unrelated.</p>
-        <div class="v2-small v2-muted" data-annot-id="input">A pair that should be related but isn’t is a likely sample swap.</div>
-      </section>
-
-      <form class="v2-section" id="people" data-annot-id="people">
-        <h2>Whose genomes?</h2>
-        <div class="v2-sheet">
-          <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">Reginald</span><span class="v2-choice__aside">CRAM</span><span class="v2-choice__desc">reginald-mcdonald.GRCh38.30x.cram</span></label>
-          <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">Gordon</span><span class="v2-choice__aside">BAM</span><span class="v2-choice__desc">60820188479016.bam · GRCh37 is fine; builds are matched</span></label>
-          <label class="v2-choice"><input class="v2-check" type="checkbox" checked><span class="v2-choice__title">Helen</span><span class="v2-choice__aside">VCF</span><span class="v2-choice__desc">helen-mcdonald.deepvariant.vcf.gz</span></label>
-          <label class="v2-choice"><input class="v2-check" type="checkbox"><span class="v2-choice__title">Alex</span><span class="v2-choice__aside">KIT</span><span class="v2-choice__desc">23andMe kit · too few markers here; fix Alex’s BAM to include them</span></label>
-        </div>
-      </form>
-
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Expected family<small>Say who is whose parent, and pairs that disagree are flagged</small><code class="v2-cmd">ped</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="ped" role="group" aria-label="Expected family"><button type="button" value="library" aria-pressed="true">From the library</button><button type="button" value="none">Don’t check</button><button type="button" value="file">PED file…</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Predict ancestry<small>A continental group per person, as a cross-check</small><code class="v2-cmd">ancestry</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Predict ancestry" checked></label></div></div>
-        </div>
-      </div>
-
-      <section class="v2-section" data-annot-id="preflight">
-        <h2>Before it starts</h2>
-        <div class="v2-sheet">
-          <div class="v2-item"><span class="v2-item__title">somalier</span><span class="v2-item__desc">0.2.19, sites for GRCh37 and GRCh38 installed</span><span class="v2-item__aside v2-status"><span class="v2-pip" data-state="ok"></span>Found</span></div>
-        </div>
-
-      </section>
-
-      <section class="v2-section" data-annot-id="last">
-        <h2>Last time</h2>
-        <div class="v2-sheet v2-scroll">
-          <table class="v2-table" aria-label="Relatedness from the last run">
-            <thead><tr><th>Pair</th><th>Found</th><th class="v2-num">Relatedness</th><th>Expected</th></tr></thead>
-            <tbody>
-              <tr><td class="v2-table__main">Reginald · Gordon</td><td>Parent and child</td><td class="v2-num">0.49</td><td><span class="v2-status"><span class="v2-pip" data-state="ok"></span>As expected</span></td></tr>
-              <tr><td class="v2-table__main">Reginald · Helen</td><td>Parent and child</td><td class="v2-num">0.51</td><td><span class="v2-status"><span class="v2-pip" data-state="ok"></span>As expected</span></td></tr>
-              <tr><td class="v2-table__main">Gordon · Helen</td><td>Unrelated</td><td class="v2-num">0.01</td><td><span class="v2-status"><span class="v2-pip" data-state="ok"></span>As expected</span></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="v2-section__note">Nov 13, from the same three files. 1.0 is the same person, 0.5 a parent, child or full sibling.</p>
-      </section>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract qc relate --ref hs38 --ped mcdonald.ped \
-  reginald-mcdonald.GRCh38.30x.cram 60820188479016.bam helen-mcdonald.deepvariant.vcf.gz</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong><span data-v2-count="#people">3</span> <span data-v2-plural="genome|genomes">genomes</span> · about 5 min</strong>
-      <span>Results appear on each person’s page under Family.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-v2-need="#people" data-toast="Queued: compare Reginald, Gordon and Helen. See Jobs.">Compare</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="relatedness"></div>
   </div>
 </div>
-
 </body>
 </html>

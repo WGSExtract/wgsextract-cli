@@ -9,17 +9,17 @@
 
   var PROFILES = {
     "mac-pro": { label: "MacBook Pro", spec: "Apple M2 Pro · 12 cores · 32 GB", os: "macos", arch: "arm64", cores: 12, bigCores: 8, ramGB: 32, gpu: "metal",
-      system: ["Macintosh HD", 412], genomes: ["Genomes", 1126, "/Volumes/Genomes"], java: false },
+      system: ["Macintosh HD", 412], genomes: ["Genomes", 1126, "/Volumes/Genomes"], missing: ["gatk", "pharmcat", "cyrius", "clair3", "modkit", "vep"] },
     "mac-air": { label: "MacBook Air", spec: "Apple M1 · 8 cores · 16 GB", os: "macos", arch: "arm64", cores: 8, bigCores: 4, ramGB: 16, gpu: "metal",
-      system: ["Macintosh HD", 180], genomes: ["Genomes", 1126, "/Volumes/Genomes"], java: false },
+      system: ["Macintosh HD", 180], genomes: ["Genomes", 1126, "/Volumes/Genomes"], missing: ["gatk", "pharmcat", "cyrius", "clair3", "modkit", "vep", "deepvariant", "t1k"] },
     "linux-gpu": { label: "Linux workstation", spec: "Ryzen 9 · 16 cores · 64 GB · RTX 3090 24 GB", os: "linux", arch: "x86-64", cores: 16, bigCores: 16, ramGB: 64, gpu: "nvidia", gpuGB: 24,
-      system: ["Home", 900], genomes: ["Genomes", 3600, "/mnt/genomes"], java: true },
+      system: ["Home", 900], genomes: ["Genomes", 3600, "/mnt/genomes"], missing: ["cyrius", "modkit"] },
     "linux-arm": { label: "Linux ARM64 server", spec: "Neoverse N2 · 16 cores · 64 GB", os: "linux", arch: "arm64", cores: 16, bigCores: 16, ramGB: 64, gpu: null,
-      system: ["Home", 600], genomes: ["Genomes", 2000, "/mnt/genomes"], java: true },
+      system: ["Home", 600], genomes: ["Genomes", 2000, "/mnt/genomes"], missing: ["clair3", "modkit", "vep"] },
     windows: { label: "Windows PC", spec: "Core i7 · 12 cores · 32 GB · RTX 4070 12 GB", os: "windows", arch: "x86-64", cores: 12, bigCores: 12, ramGB: 32, gpu: "nvidia", gpuGB: 12,
-      system: ["C:", 380], genomes: ["Genomes", 1800, "D:/Genomes"], java: true },
+      system: ["C:", 380], genomes: ["Genomes", 1800, "D:/Genomes"], missing: ["cyrius"] },
     "windows-laptop": { label: "Windows laptop", spec: "Core i5 · 8 cores · 16 GB", os: "windows", arch: "x86-64", cores: 8, bigCores: 8, ramGB: 16, gpu: null,
-      system: ["C:", 210], genomes: ["Genomes", 900, "D:/Genomes"], java: false },
+      system: ["C:", 210], genomes: ["Genomes", 900, "D:/Genomes"], missing: ["gatk", "pharmcat", "vep-rs"] },
   };
   var DEFAULT = "mac-pro";
 
@@ -86,15 +86,30 @@
     genomesDisk: P.genomes[0],
     genomesPath: P.genomes[2],
     downloads: P.os === "windows" ? "C:/Users/you/Downloads" : "~/Downloads",
-    tools: { java: P.java, docker: P.os !== "windows", cyrius: false, "wgse-mimalloc": P.os === "macos", modkit: false, clair3: false, longphase: false },
+    /* Optional Pixi tool sets (pixi.toml [environments]) not installed here */
+    missing: P.missing,
+    tools: { docker: P.os !== "windows", "wgse-mimalloc": P.os === "macos" },
   };
   MACHINE.disks[P.system[0]] = P.system[1];
   MACHINE.disks[P.genomes[0]] = P.genomes[1];
 
+  /* The optional Pixi environment each tool comes in (pixi.toml) */
+  var ENVS = {
+    gatk: ["gatk", "GATK (with Java)"], pharmcat: ["pharmcat", "PharmCAT (with Java)"], cyrius: ["cyrius", "Cyrius"],
+    clair3: ["clair3", "Clair3"], modkit: ["modkit", "modkit"], somalier: ["somalier", "somalier"],
+    verifybamid2: ["verifybamid2", "VerifyBamID2"], t1k: ["t1k", "T1K"], expansionhunter: ["expansionhunter", "ExpansionHunter"],
+    smn: ["smn", "SMNCopyNumberCaller"], freebayes: ["freebayes", "FreeBayes"], "vep-ensembl": ["vep", "Ensembl VEP"],
+    "vep-rs": ["vep-rs", "vep-rs"], deepvariant: ["deepvariant", "DeepVariant"], phasing: ["phasing", "WhatsHap and LongPhase"],
+    imputation: ["imputation", "GLIMPSE2 and Beagle"],
+  };
+
   function unavailable(name) {
-    var limits = LIMITS[platform] || LIMITS[P.os] || {};
-    if (limits[name]) return limits[name];
-    if (name === "java" && !MACHINE.tools.java) return "Java is missing";
+    var limits = LIMITS[platform] || {};
+    var mac = P.os === "macos" ? LIMITS.macos : {};
+    if (limits[name] || mac[name]) return limits[name] || mac[name];
+    var env = ENVS[name];
+    /* On Apple Silicon DeepVariant is the native wgse-deepvariant build */
+    if (env && P.missing.indexOf(env[0]) >= 0) return env[1] + " isn’t installed";
     return null;
   }
 
@@ -156,6 +171,10 @@
     machine: MACHINE,
     files: FILES,
     unavailable: unavailable,
+    /* The Pixi environment that provides a tool, for install hints */
+    env: function (name) {
+      return ENVS[name] ? ENVS[name][0] : null;
+    },
     owner: owner,
     duration: duration,
     gb: gb,

@@ -20,53 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="coverage"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">Coverage per chromosome</h2><code class="v2-cmd v2-dim v2-small">info/calculate-coverage</code></div>
-        <p class="v2-muted">Measures how many reads cover each place in the genome. Reginald’s page already shows the average per chromosome; this adds exact numbers, depth bands and targets.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Depth bands<small>How much of each chromosome has 0, 1–3, 4–7 and 8 or more reads</small><code class="v2-cmd">with_bins</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Depth bands" checked></label></div></div>
-          <div class="v2-field"><span class="v2-field__label">Region<small>Leave empty for the whole genome</small><code class="v2-cmd">region</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Region" placeholder="Whole genome, or chr20 or chr20:1-1000000" style="max-width: 320px"></div></div>
-          <div class="v2-field"><span class="v2-field__label">Targets<small>A BED of genes or a test panel: depth per target</small><code class="v2-cmd">by</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Targets BED" placeholder="None" style="max-width: 220px"></div></div>
-        </div>
-      </div>
-
-      <details class="v2-more" data-annot-id="more">
-        <summary>More options</summary>
-        <div class="v2-more__body v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Low-depth limit<small>With targets: list those below this depth</small><code class="v2-cmd">min_depth</code></span><div class="v2-field__control"><input class="v2-input" type="number" value="30" aria-label="Low-depth limit" style="max-width: 90px"></div></div>
-          <div class="v2-field"><span class="v2-field__label">Also save tables<code class="v2-cmd">format</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="covfmt" role="group" aria-label="Table format"><button type="button" value="none" aria-pressed="true">No</button><button type="button" value="tsv">TSV</button><button type="button" value="parquet">Parquet</button></div></div></div>
-        </div>
-      </details>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract info calculate-coverage --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram --with-bins</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 6 min</strong>
-      <span>The numbers appear on Reginald’s page and in Coverage under Files.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" data-toast="Queued: Coverage per chromosome. See Jobs.">Measure coverage</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="coverage"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Measure which file?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Alex · NG1A2B3C4D.bam</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>

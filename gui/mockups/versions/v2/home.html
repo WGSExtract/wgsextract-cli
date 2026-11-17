@@ -21,14 +21,14 @@
     </div>
   </header>
 
-  <div class="v2-notice" data-tone="warn" role="status" data-annot-id="attention">
+  <div class="v2-notice" data-tone="warn" role="status" data-annot-id="attention" data-v2-if="!alex-fixed">
     <i data-icon="wrench"></i>
     <div class="v2-notice__text">
       <strong>1 file can’t be used yet</strong>
       <span>Alex’s Nebula BAM has no index, and its reference (hs38d1) isn’t installed.</span>
     </div>
     <div class="v2-notice__actions">
-      <button class="v2-btn v2-btn--sm" type="button" data-toast="Downloading hs38d1 and indexing the BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
+      <button class="v2-btn v2-btn--sm" type="button" data-v2-set="alex-fixed" data-toast="Downloading hs38d1 and indexing the BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
       <a class="v2-btn v2-btn--sm v2-btn--quiet" href="person-alex.html">Details</a>
     </div>
   </div>
@@ -39,10 +39,10 @@
         <span></span><span></span><span>File</span><span>Build · reference</span><span class="v2-num">Depth</span><span class="v2-num">Size</span><span>State</span>
       </div>
 
-      <div class="v2-group" data-annot-id="p-reginald">
+      <div class="v2-group" data-annot-id="p-reginald" data-v2-group="reginald">
         <div class="v2-person">
           <span class="v2-avatar v2-avatar--md">RM</span>
-          <a class="v2-person__name" href="person.html">Reginald <small>son</small></a>
+          <a class="v2-person__name" href="person.html">Reginald <small data-v2-note="reginald">son</small></a>
           <div class="v2-person__found">
             <span class="v2-hap" data-line="y"><span class="v2-hap__label">Paternal</span> J-ZS241</span>
             <span class="v2-hap" data-line="mt"><span class="v2-hap__label">Maternal</span> K1a1b1a</span>
@@ -54,10 +54,10 @@
         </div>
       </div>
 
-      <div class="v2-group" data-annot-id="p-gordon">
+      <div class="v2-group" data-annot-id="p-gordon" data-v2-group="gordon">
         <div class="v2-person">
           <span class="v2-avatar v2-avatar--md">GM</span>
-          <a class="v2-person__name" href="person-gordon.html">Gordon <small>father</small></a>
+          <a class="v2-person__name" href="person-gordon.html">Gordon <small data-v2-note="gordon">father</small></a>
           <div class="v2-person__found">
             <span class="v2-hap" data-line="y"><span class="v2-hap__label">Paternal</span> J-ZS241</span>
             <span class="v2-hap" data-line="mt"><span class="v2-hap__label">Maternal</span> H1c</span>
@@ -71,14 +71,14 @@
         </div>
         <div class="v2-files">
           <div class="v2-file"><span></span><span class="v2-tag">BAM</span><span class="v2-file__name">60820188479016.bam</span><span>GRCh37 · hs37d5</span><span class="v2-num">38×</span><span class="v2-num">92.4 GB</span><span class="v2-status"><span class="v2-pip" data-state="ok"></span>Ready</span></div>
-          <div class="v2-file"><span></span><span class="v2-tag">CRAM</span><span class="v2-file__name">60820188479016.hs38.cram</span><span>GRCh38 · hs38</span><span class="v2-num">—</span><span class="v2-num">≈ 34 GB</span><span class="v2-status"><span class="v2-pip" data-state="busy"></span>Being made · 47%</span></div>
+          <div class="v2-file"><span></span><span class="v2-tag">CRAM</span><span class="v2-file__name">60820188479016_aligned.cram</span><span>GRCh38 · hs38</span><span class="v2-num">—</span><span class="v2-num">≈ 34 GB</span><span class="v2-status"><span class="v2-pip" data-state="busy"></span>Being made · 47%</span></div>
         </div>
       </div>
 
-      <div class="v2-group" data-annot-id="p-helen">
+      <div class="v2-group" data-annot-id="p-helen" data-v2-group="helen">
         <div class="v2-person">
           <span class="v2-avatar v2-avatar--md">HM</span>
-          <a class="v2-person__name" href="person-helen.html">Helen <small>mother</small></a>
+          <a class="v2-person__name" href="person-helen.html">Helen <small data-v2-note="helen">mother</small></a>
           <div class="v2-person__found">
             <span class="v2-hap" data-line="mt"><span class="v2-hap__label">Maternal</span> K1a1b1a</span>
           </div>
@@ -89,17 +89,17 @@
         </div>
       </div>
 
-      <div class="v2-group" data-annot-id="p-alex">
+      <div class="v2-group" data-annot-id="p-alex" data-v2-group="alex">
         <div class="v2-person">
           <span class="v2-avatar v2-avatar--md">AM</span>
           <a class="v2-person__name" href="person-alex.html">Alex</a>
           <div class="v2-person__found">
             <span class="v2-hap" data-line="mt"><span class="v2-hap__label">Maternal</span> U5b2a1a</span>
           </div>
-          <div class="v2-person__next"><a class="v2-btn v2-btn--sm" href="person-alex.html"><i data-icon="wrench"></i>Fix 1 file</a></div>
+          <div class="v2-person__next" data-v2-if="!alex-fixed"><a class="v2-btn v2-btn--sm" href="person-alex.html"><i data-icon="wrench"></i>Fix 1 file</a></div><div class="v2-person__next" data-v2-if="alex-fixed" hidden><a class="v2-btn v2-btn--sm" href="dna-test.html"><i data-icon="chip"></i>Make DNA-test files</a></div>
         </div>
         <div class="v2-files">
-          <div class="v2-file"><span></span><span class="v2-tag">BAM</span><span class="v2-file__name">NG1A2B3C4D.bam</span><span>GRCh38 · hs38d1 <span class="v2-tag" data-tone="warn">not installed</span></span><span class="v2-num">30×</span><span class="v2-num">71.2 GB</span><span class="v2-status"><span class="v2-pip" data-state="attention"></span>Needs index and reference</span></div>
+          <div class="v2-file"><span></span><span class="v2-tag">BAM</span><span class="v2-file__name">NG1A2B3C4D.bam</span><span>GRCh38 · hs38d1 <span class="v2-tag" data-tone="warn" data-v2-if="!alex-fixed">not installed</span></span><span class="v2-num">30×</span><span class="v2-num">71.2 GB</span><span class="v2-status" data-v2-if="!alex-fixed"><span class="v2-pip" data-state="attention"></span>Needs index and reference</span><span class="v2-status" data-v2-if="alex-fixed" hidden><span class="v2-pip" data-state="ok"></span>Ready</span></div>
           <div class="v2-file"><span></span><span class="v2-tag">KIT</span><span class="v2-file__name">genome_Alex_v5_Full_20241103.txt</span><span>GRCh37 · 23andMe v5</span><span class="v2-num">—</span><span class="v2-num">24.6 MB</span><span class="v2-status"><span class="v2-pip" data-state="ok"></span>Ready</span></div>
         </div>
       </div>
@@ -124,10 +124,10 @@
   <div class="dialog__header"><h2 class="dialog__title" id="assign-title">Whose reads are these?</h2></div>
   <div class="dialog__body">
     <p class="v2-muted">Files of the same person are kept together, so results and tasks use the best one.</p>
-    <select class="v2-select" aria-label="Person"><option>New person…</option><option>Reginald</option><option>Gordon</option><option>Helen</option><option>Alex</option></select>
+    <select class="v2-select" aria-label="Person"><option value="new">New person…</option><option value="reginald">Reginald</option><option value="gordon">Gordon</option><option value="helen">Helen</option><option value="alex">Alex</option></select>
     <input class="v2-input" type="text" placeholder="Name, for example Dana" aria-label="Name of the new person">
   </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close data-toast="Added to the library under the new person">Save</button></div>
+  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close data-v2-assign data-toast="Saved">Save</button></div>
 </dialog>
 </body>
 </html>

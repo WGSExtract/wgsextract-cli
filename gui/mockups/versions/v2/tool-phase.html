@@ -20,47 +20,8 @@
 
   <div class="v2-cols v2-cols--catalog">
     <nav class="v2-catalog" aria-label="Tools" data-annot-id="catalog" data-render="v2-catalog" data-current="phase"></nav>
-
-    <div class="v2-stack" data-annot-id="tool">
-      <section class="v2-section" data-annot-id="tool-head">
-        <div class="v2-section__head"><h2 class="v2-h2--lg">Phase variants</h2><code class="v2-cmd v2-dim v2-small">vcf/phase</code></div>
-        <p class="v2-muted">Works out which variants came together from the same parent, using reads that span more than one. Needs the person’s reads and a VCF of their variants.</p>
-        <div class="v2-row v2-row--wrap v2-small" data-annot-id="input"><span class="v2-muted">For</span><strong>Reginald</strong><span class="v2-dim">·</span><span class="v2-tag">CRAM</span><span class="v2-file__name">reginald-mcdonald.GRCh38.30x.cram</span><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-open="#pick">Change</button></div>
-      </section>
-<div class="v2-notice" data-tone="warn" role="status" data-annot-id="needs-vcf"><i data-icon="variant"></i><div class="v2-notice__text"><strong>Reginald has no VCF yet</strong><span>Phasing sorts existing variant calls into the two copies of each chromosome. Call variants first (about 2 h 40 min).</span></div><div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="tool-call-variants.html">Call variants</a></div></div>
-      <div class="v2-sheet" data-annot-id="options">
-        <div class="v2-sheet__pad v2-fields">
-          <div class="v2-field"><span class="v2-field__label">Variants<small>The VCF to phase</small><code class="v2-cmd">vcf_input</code></span><div class="v2-field__control"><select class="v2-select" aria-label="VCF to phase" style="max-width: 260px"><option>None yet for Reginald</option></select></div></div>
-          <div class="v2-field"><span class="v2-field__label">Phaser<small>LongPhase only works with long reads</small><code class="v2-cmd">phaser</code></span><div class="v2-field__control"><div class="v2-seg" data-seg="phaser" role="group" aria-label="Phaser"><button type="button" value="whatshap" aria-pressed="true">WhatsHap</button><button type="button" value="longphase">LongPhase</button></div></div></div>
-          <div class="v2-field"><span class="v2-field__label">Tag the reads<small>Also write a CRAM with each read marked by the copy it came from</small><code class="v2-cmd">haplotag</code></span><div class="v2-field__control"><label class="v2-switch"><input type="checkbox" role="switch" aria-label="Tag the reads"></label></div></div>
-          <div class="v2-field"><span class="v2-field__label">Region<small>Leave empty for the whole genome</small><code class="v2-cmd">region</code></span><div class="v2-field__control"><input class="v2-input v2-input--mono" type="text" aria-label="Region" placeholder="Whole genome, or chr20 or chr20:1-1000000" style="max-width: 320px"></div></div>
-        </div>
-      </div>
-
-      <pre class="v2-code v2-cmd" data-annot-id="command">wgsextract vcf phase --input {{bundleWorkspace}}/genomes/reginald-mcdonald/reginald-mcdonald.GRCh38.30x.cram \
-  --vcf-input reginald-mcdonald.snps.vcf.gz --phaser whatshap</pre>
-    </div>
-  </div>
-
-  <div class="v2-actionbar" data-annot-id="action">
-    <div class="v2-actionbar__sum">
-      <strong>About 3 h after variants are called</strong>
-      <span>Call variants for Reginald first.</span>
-    </div>
-    <div class="v2-actionbar__btns">
-
-      <button class="v2-btn v2-btn--primary v2-btn--lg" type="button" disabled data-toast="Queued: Phase variants. See Jobs.">Phase variants</button>
-    </div>
+    <div class="v2-stack" data-annot-id="tool" data-render="v2-tool" data-tool="phase"></div>
   </div>
 </div>
-
-<dialog class="dialog" id="pick" aria-labelledby="pick-title">
-  <div class="dialog__header"><h2 class="dialog__title" id="pick-title">Phase which file?</h2></div>
-  <div class="dialog__body">
-    <select class="v2-select" aria-label="Genome file"><option>Reginald · reginald-mcdonald.GRCh38.30x.cram</option><option>Gordon · 60820188479016.bam</option><option>Alex · NG1A2B3C4D.bam</option></select>
-    <p class="v2-small v2-muted">Only files this tool can read are listed.</p>
-  </div>
-  <div class="dialog__footer"><button class="v2-btn" type="button" data-close>Cancel</button><button class="v2-btn v2-btn--primary" type="button" data-close>Use this file</button></div>
-</dialog>
 </body>
 </html>
