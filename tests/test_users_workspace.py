@@ -158,6 +158,30 @@ def test_1087_blank_canonical_library_does_not_resurrect_stale_alias(new_install
     assert mygenomes_library() == str(Path.home() / "wgs-extract" / "mygenomes")
 
 
+@pytest.mark.parametrize("current_record_exists", [False, True])
+def test_1087_use_default_does_not_resurrect_a_stale_legacy_desktop_location(
+    new_install, tmp_path, monkeypatch, current_record_exists
+):
+    from wgsextract_cli.core.users_workspace import users_workspace
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.users_workspace.user_data_dir",
+        lambda app, **kwargs: str(tmp_path / app),
+    )
+    stale = tmp_path / "previous-workspace"
+    legacy = tmp_path / "dev.guiforcli.web.embed.wgsextract"
+    legacy.mkdir()
+    (legacy / "settings.json").write_text(
+        json.dumps({"usersWorkspaces": {"wgs-extract": str(stale)}})
+    )
+    if current_record_exists:
+        current = tmp_path / "WGSExtract-gui"
+        current.mkdir()
+        (current / "settings.json").write_text('{"usersWorkspaces": {}}')
+    expected = Path.home() / "wgs-extract" if current_record_exists else stale
+    assert users_workspace() == expected
+
+
 def test_1087_interactive_cli_bootstrap_marks_workspace_before_writing_config(
     new_install, monkeypatch
 ):

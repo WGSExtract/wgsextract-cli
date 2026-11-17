@@ -8,7 +8,7 @@ export { renderActions, renderPrecheckBanner } from "./view/actions.js";
 import { renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderSettingFolderMoveStatus, renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -125,6 +125,7 @@ export function renderPage(page: BundlePage) {
       <div class="sections">
         ${renderSections(page)}
       </div>
+      ${renderSettingFolderMoveDialog()}
     </article>
   `;
 }
@@ -555,7 +556,6 @@ export function renderConfigSetting(control: ControlSpec, setting: ConfigSetting
               <button type="button" class="secondary-button" data-config-path-prompt="${escapeAttribute(control.id)}:${escapeAttribute(setting.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
         : `<input id="${escapeAttribute(inputID)}" type="text" value="${escapeAttribute(value)}" placeholder="${escapeAttribute(setting.placeholder ?? "")}" ${common}>`}
     </div>
-    ${setting.kind === "path" ? renderSettingFolderMoveStatus(control.id, setting.key ?? setting.id) : ""}
   `;
 }
 

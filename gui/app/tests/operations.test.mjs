@@ -814,6 +814,16 @@ test("1087 Basic mode ignores advanced-only overrides without erasing shared set
     assert.equal(state.workspaceMove?.folder, "/other/library", "1087: bound folder controls ask too");
     assert.equal(state.fieldValues.reference_library, "/lib", "Cancel retains the bound folder");
     assert.equal(state.configValues["paths.ref_path"], "/lib");
+    const { renderPage } = await import("../dist/web/src/client/view.js");
+    const libraryPage = { id: "datasets", title: "My Genomes", sections: [{ id: "paths", controls: [{ id: "reference_library", kind: "path", label: "Library" }] }] };
+    for (const mode of ["basic", "advanced"]) {
+      state.uiMode = mode;
+      const html = renderPage(libraryPage);
+      assert.match(html, /role="dialog"/, "1087: a bound path's pending choice is visible on the initiating page");
+      for (const button of ["confirm", "setting-only", "cancel"]) {
+        assert.match(html, new RegExp(`data-workspace-location-${button}`));
+      }
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { spawn, spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseFlatToml } from "../dist/shared/rendering.js";
 
 const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, saveConfig, takeBundleStateWarning, writeFileAtomically } = await import("../dist/web/src/server/config-store.js");
@@ -15,6 +15,25 @@ async function tempDirectory(t) {
   t.after(() => rm(directory, { force: true, recursive: true }));
   return directory;
 }
+
+test("1087 packaged backend loads TOML without development node_modules", async (t) => {
+  const resources = await tempDirectory(t);
+  const tauriRoot = fileURLToPath(new URL("../web/packagers/tauri/", import.meta.url));
+  const config = JSON.parse(await readFile(path.join(tauriRoot, "tauri.conf.json"), "utf8"));
+  for (const [source, target] of Object.entries(config.bundle.resources)) {
+    if (target === "app/dist" || target.startsWith("app/node_modules/")) {
+      await cp(path.resolve(tauriRoot, source), path.join(resources, target), { recursive: true });
+    }
+  }
+  const moduleURL = (name) => pathToFileURL(path.join(resources, "app/dist/web/src/server", name)).href;
+  const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    const toml = await import(${JSON.stringify(moduleURL("config-toml.js"))});
+    assert.equal(toml.parseConfigToml("cpu_threads = 3").cpu_threads, 3);
+    await import(${JSON.stringify(moduleURL("workspace-move.js"))});
+  `], { cwd: resources, env: { ...process.env, NODE_PATH: "" }, encoding: "utf8" });
+  assert.equal(child.status, 0, child.stderr);
+});
 
 test("a truncated state.json is backed up and reported instead of silently reset", async (t) => {
   const bundleRoot = await tempDirectory(t);

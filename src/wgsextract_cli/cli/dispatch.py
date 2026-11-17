@@ -214,14 +214,17 @@ def _run_command(
     ):
         # Unset, outputs go to wgse/ beside the lab's primary input, never in
         # its folder (core/output_location.py).
+        from wgsextract_cli.api._cli import command_params
+        from wgsextract_cli.api._params import from_namespace, with_config_defaults
         from wgsextract_cli.core.config import output_directory, settings
-        from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
 
         command = str(getattr(args, "_command", None) or "")
-        inputs = [getattr(args, dest, None) for dest in (*INPUT_ARGS, "inputs")]
-        args.outdir = output_directory(
-            [] if command in BESIDE_INPUT_COMMANDS else inputs
-        )
+        cls = command_params(command)
+        if cls is not None:
+            params = with_config_defaults(from_namespace(cls, args), only={"outdir"})
+            args.outdir = getattr(params, "outdir", None)
+        else:
+            args.outdir = output_directory([])
         args._default_outdir = args.outdir is not None and not settings.get(
             "output_directory"
         )

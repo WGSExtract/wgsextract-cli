@@ -108,6 +108,8 @@ Releases 0.8.5 to 0.8.7 kept everything in `~/wgs-extract`. On its first start, 
 
 `WGSEXTRACT_GUI_USERS_WORKSPACE` and `WGSEXTRACT_GUI_CLI_INSTALL` are internal bundle-script inputs supplied by the app, not user configuration options. Persistent folder choices belong in Settings or `config.toml`.
 
+The desktop package includes production Node dependencies, including the TOML parser, beside `app/dist`; end users do not need npm or a development `node_modules` tree.
+
 On Windows, setup installs WGS Extract's tools (its Pixi environments) for the current Windows account in `%LOCALAPPDATA%\WGSExtractPixi`, outside the workspace. If they aren't there, the pages say so; run Setup again. This happens when setup ran under another account, or was started from an app that Windows keeps apart from the rest of AppData\Local, such as an MSIX-packaged app. It also happens when that folder was deleted.
 
 The app never takes over a folder of yours. If `~/wgs-extract` already exists and isn't a WGS Extract workspace (or is a file, or a folder the app can't read), the app uses `~/wgs-extract-2` instead, or the next free name. It records that folder in its `settings.json`, so the users workspace stays there. If the folder chosen in Settings holds such a folder, the app doesn't start. It reports the folder: move that folder away, or remove it from `usersWorkspaces` in the app's `settings.json` to go back to the default location.
@@ -115,6 +117,8 @@ The app never takes over a folder of yours. If `~/wgs-extract` already exists an
 To move the users workspace, for example to a larger or faster drive, choose a **Users Workspace Folder** under **Users Workspace Location** on the Settings page and click **Move**. Everything in it moves with it, and paths shown under `{{usersWorkspace}}` follow, while folders you set elsewhere stay where they are. Changing one folder under **Users Workspace Settings** (a library, the temporary or run log folder, or an Output Directory) asks whether to move what is in it too, so you can put each on the disk that suits it.
 
 A setting-folder move cannot move the users workspace, the bundle or its source, or a folder containing any settings editor's config file. Use **Users Workspace Location** to move the workspace as a whole; **Change Setting Only** never moves or deletes existing contents.
+
+Changing a bound library folder on My Genomes or Library opens the same Move / Change Setting Only / Cancel dialog on that page, in Basic and Advanced; it never requires opening the Settings editor.
 
 Uninstalling removes the bundle workspace with the app, but asks before deleting the users workspace, wherever it is, since its libraries may be shared. Folders the settings file names inside the app's data folder (an older install's libraries) are kept the same way. A silent Windows uninstall keeps them all. So does the quick-uninstall script published with each Windows release.
 

@@ -22,6 +22,7 @@ from tests.test_server import (
 from tests.test_server import (
     work as work,
 )
+from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.server.operations import (
     PathGuard,
@@ -46,6 +47,52 @@ def test_1087_inferred_output_symlink_cannot_escape_allowed_input_folder(tmp_pat
     with pytest.raises(RequestError) as error:
         PathGuard([allowed]).check(params)
     assert error.value.code == "path_not_allowed"
+
+
+def test_1087_zip_request_is_refused_before_any_file_open(tmp_path, monkeypatch):
+    guard = PathGuard([tmp_path])
+    params = params_from_json(find("info/chip"), {"input": "//host/share/sample.zip"})
+
+    def forbidden_open(*args, **kwargs):
+        raise AssertionError("an unvalidated request path was opened")
+
+    monkeypatch.setattr("io.open", forbidden_open)
+    with pytest.raises(RequestError) as error:
+        guard.check(params)
+    assert error.value.code == "path_not_allowed"
+
+
+def test_1087_host_only_defaults_are_not_subject_to_request_path_restrictions(
+    tmp_path, monkeypatch
+):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    host_tool = tmp_path / "host-tools" / "pharmcat"
+    monkeypatch.setitem(settings, "pharmcat_directory", str(host_tool))
+    monkeypatch.delitem(settings, "output_directory", raising=False)
+    op = find("vcf/pharmcat")
+
+    checked = PathGuard([allowed]).check(
+        params_from_json(op, {"vcf_input": str(allowed / "sample.vcf")})
+    )
+
+    assert checked.outdir == allowed / "wgse"
+    assert with_config_defaults(checked).pharmcat_dir == host_tool
+    assert "pharmcat_dir" not in op.request_values(checked)
+
+
+def test_1087_server_output_follows_the_vcf_override(tmp_path, monkeypatch):
+    monkeypatch.delitem(settings, "output_directory", raising=False)
+    checked = PathGuard([tmp_path]).check(
+        params_from_json(
+            find("vcf/table"),
+            {
+                "input": str(tmp_path / "old" / "sample.vcf"),
+                "vcf_input": str(tmp_path / "current" / "sample.vcf"),
+            },
+        )
+    )
+    assert checked.outdir == tmp_path / "current" / "wgse"
 
 
 @pytest.mark.parametrize(

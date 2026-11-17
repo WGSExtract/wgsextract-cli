@@ -39,10 +39,17 @@ export function renderWorkspaceLocationSection() {
       </div>`);
 }
 
-/** Below a path setting whose folder the user changed: whether to move what is in it. */
-export function renderSettingFolderMoveStatus(controlID: string, key: string) {
-    const setting = state.workspaceMove?.setting;
-    return setting && setting.controlID === controlID && setting.key === key ? renderWorkspaceMoveStatus() : "";
+/** Bound folder controls can live on any page, including in Basic mode. */
+export function renderSettingFolderMoveDialog() {
+    if (!state.workspaceMove?.setting) {
+        return "";
+    }
+    return `<div class="modal-backdrop" role="presentation">
+      <section class="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="setting-move-title">
+        <h3 id="setting-move-title">${escapeHTML(state.labels.workspaceLocationMoveTitle)}</h3>
+        ${renderWorkspaceMoveStatus()}
+      </section>
+    </div>`;
 }
 
 function renderWorkspaceMoveStatus() {

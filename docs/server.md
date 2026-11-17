@@ -82,6 +82,10 @@ you start yourself:
 - Parameters that name programs to run, such as `haplogrep_path`, or that
   hide paths inside other text, such as `indel_manifest`, can't be set by a
   request. They come from config.toml as usual.
+- Supplied paths are checked before output inference can inspect an input
+  archive. The effective output folder is then checked too, including its
+  real path. Other host-only config defaults stay trusted execution settings;
+  they do not become client-supplied paths.
 - `ref download`, which fetches any URL, and `ref bootstrap`, which saves
   config.toml, aren't offered.
 - Request bodies are limited to 1 MB and must be `application/json`. Unknown

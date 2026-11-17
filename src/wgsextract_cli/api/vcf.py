@@ -217,6 +217,8 @@ def _region_param(help: str = "Chromosomal region") -> Any:
 
 @dataclass(frozen=True, kw_only=True)
 class _VcfFileParams(Params):
+    VCF_INPUT_OVERRIDES_INPUT = True
+
     input: Path | None = optional_input_param(
         "The VCF to read when ``vcf_input`` is unset."
     )

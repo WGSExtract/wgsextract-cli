@@ -69,6 +69,27 @@ def test_fastp_single_end_writes_to_wgse_beside_its_input(tmp_path):
     assert (out / "sample_fastp.json").is_file()
 
 
+@needs_tools("fastp")
+def test_1087_cli_fastp_ignores_an_unread_global_input_when_placing_outputs(
+    tmp_path, capsys
+):
+    prior = tmp_path / "prior-kit"
+    prior.mkdir()
+    unused = prior / "sample.bam"
+    unused.write_bytes(b"not read by fastp")
+    current = tmp_path / "new-run"
+    current.mkdir()
+    r1 = _fastq(current / "sample.fq", NAMES, 1)
+    config = tmp_path / "config.toml"
+    config.write_text(f"input_path = {json.dumps(str(unused))}\ncpu_threads = 1\n")
+
+    main(["--config", str(config), "--json", "qc", "fastp", "--r1", r1])
+
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+    assert _names(current / "wgse" / "sample_fp_1.fastq.gz") == NAMES
+    assert not (prior / "wgse").exists()
+
+
 def test_fastp_requires_r1():
     with pytest.raises(WGSExtractError, match="--r1 is required"):
         run_wgsextract("qc", "fastp")

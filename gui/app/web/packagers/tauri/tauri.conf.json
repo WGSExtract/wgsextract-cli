@@ -22,6 +22,7 @@
     ],
     "resources": {
       "../../../dist": "app/dist",
+      "../../../node_modules/smol-toml": "app/node_modules/smol-toml",
       "../../index.html": "app/web/index.html",
       "../../styles.css": "app/web/styles.css",
       "../../vendor": "app/web/vendor",

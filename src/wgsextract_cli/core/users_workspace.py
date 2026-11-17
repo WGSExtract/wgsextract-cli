@@ -49,6 +49,7 @@ def users_workspace() -> Path:
                 )
                 if isinstance(chosen, str) and Path(chosen).is_absolute():
                     return Path(chosen)
+            return Path.home() / FOLDER_NAME
         except (OSError, ValueError, AttributeError) as error:
             logging.debug("Cannot read users workspace record %s: %s", record, error)
     return Path.home() / FOLDER_NAME

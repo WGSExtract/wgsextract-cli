@@ -386,7 +386,6 @@ class PathGuard:
             raise refused
 
     def check(self, params: Params) -> Params:
-        params = with_config_defaults(params)
         if params.deletes_data() and not self.allow_destructive:
             raise RequestError(
                 403,
@@ -394,6 +393,12 @@ class PathGuard:
                 f"{params.COMMAND} would delete data; the server does that only "
                 "when started with serve --allow-destructive.",
             )
+        self._check_paths(params)
+        params = with_config_defaults(params, only={"outdir"})
+        self._check_paths(params)
+        return params
+
+    def _check_paths(self, params: Params) -> None:
         for item in param_fields(type(params)):
             value = getattr(params, item.name)
             for path in value if isinstance(value, tuple) else (value,):
@@ -413,7 +418,6 @@ class PathGuard:
                     )
         for name, path in params.implied_paths():
             self.check_path(name, path)
-        return params
 
     def _check_text(self, name: str, text: str) -> None:
         """A text value that names a file when one exists there (a BED file

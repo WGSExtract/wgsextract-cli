@@ -318,6 +318,39 @@ def test_forced_example_download_bypasses_cache_read_and_publication(
     assert cached.read_bytes() == b"stale cached content"
 
 
+def test_1087_example_download_marks_a_symlinked_default_workspace(
+    server, tmp_path, monkeypatch
+):
+    from wgsextract_cli import api
+    from wgsextract_cli.commands import examples
+    from wgsextract_cli.core.users_workspace import SENTINEL_NAME
+
+    real_home = tmp_path / "real-home"
+    real_home.mkdir()
+    linked_home = tmp_path / "linked-home"
+    try:
+        linked_home.symlink_to(real_home, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    for key in ("HOME", "USERPROFILE"):
+        monkeypatch.setenv(key, str(linked_home))
+    for key in ("XDG_DATA_HOME", "LOCALAPPDATA"):
+        monkeypatch.setenv(key, str(tmp_path / "app-data"))
+    monkeypatch.setattr(examples, "HTTPS_ROOT", server.base)
+    workspace = linked_home / "wgs-extract"
+
+    result = api.examples.download(
+        api.ExampleGenomeDownloadParams(
+            example_ids=("phase3-chrmt-vcf",),
+            target_root=workspace / "mygenomes",
+        )
+    )
+
+    assert result.status == "ok"
+    assert (workspace / SENTINEL_NAME).is_file()
+    assert any((workspace / "mygenomes").rglob("*.vcf.gz"))
+
+
 def test_aspera_switch_discards_sparse_segmented_state(tmp_path, monkeypatch):
     from wgsextract_cli.commands import examples
 

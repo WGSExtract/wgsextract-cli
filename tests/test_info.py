@@ -418,6 +418,27 @@ def test_coverage_commands_against_real_samtools(tiny_bam, tmp_path):
     ) == {"2": "~0 %"}
 
 
+def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
+    tiny_bam, tmp_path, capsys
+):
+    config = tmp_path / "config.toml"
+    config.write_text("")
+    main(
+        [
+            "--config",
+            str(config),
+            "--json",
+            "info",
+            "--input",
+            str(tiny_bam),
+            "--no-cache",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert not (tmp_path / "wgse").exists()
+
+
 def _stat(name, length, mapped):
     return {"name": name, "length": length, "mapped": mapped, "unmapped": 0}
 

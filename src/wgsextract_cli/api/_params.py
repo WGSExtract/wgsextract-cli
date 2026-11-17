@@ -246,6 +246,7 @@ class Params:
     SAVES_IN_WORKING_FOLDER: ClassVar[bool] = False
     ATOMIC_WRITES: ClassVar[frozenset[str]] = frozenset()
     _config_default_fields: ClassVar[frozenset[str]] = frozenset()
+    VCF_INPUT_OVERRIDES_INPUT: ClassVar[bool] = False
 
     def explicitly_set(self, name: str) -> bool:
         """Whether a nonempty value came from the caller, not config defaults."""
@@ -377,9 +378,14 @@ def param_fields(cls: type[Params]) -> tuple[ParamField, ...]:
     return result
 
 
-def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
+def with_config_defaults(
+    params: P,
+    keep: Collection[str] = (),
+    *,
+    only: Collection[str] | None = None,
+) -> P:
     """Fill ``None`` fields that have a ``config_key`` from config.toml, except
-    the fields named in ``keep``."""
+    the fields named in ``keep``. ``only`` limits which defaults are filled."""
     from wgsextract_cli.core.config import setting_or_default
 
     updates: dict[str, Any] = {}
@@ -389,7 +395,7 @@ def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
 
     inputs = (
         []
-        if params.COMMAND in BESIDE_INPUT_COMMANDS
+        if params.COMMAND in BESIDE_INPUT_COMMANDS or params.SAVES_IN_WORKING_FOLDER
         else [
             getattr(params, item.name)
             for item in fields
@@ -397,11 +403,21 @@ def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
             in {"input", "inputs", "r1", "r2", "vcf_input", "vcf_inputs", "proband"}
             and item.spec.path
             and not item.spec.writes
+            and not (
+                item.name == "input"
+                and params.VCF_INPUT_OVERRIDES_INPUT
+                and getattr(params, "vcf_input", None) is not None
+            )
         ]
     )
     for item in fields:
         key = item.spec.config_key
-        if not key or item.name in keep or getattr(params, item.name) is not None:
+        if (
+            not key
+            or item.name in keep
+            or (only is not None and item.name not in only)
+            or getattr(params, item.name) is not None
+        ):
             continue
         if (
             key == "output_directory"

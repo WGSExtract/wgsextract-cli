@@ -56,7 +56,12 @@ def test_caller_region_beds_cannot_escape_serve_allow(tmp_path, op, filename):
 def test_path_guard_refuses_file_operands_in_expressions():
     # PR #452 review: bcftools reads `@FILE` in an expression, past the guard.
     guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
-    allowed = {"vcf_input": r"C:\data\in.vcf.gz", "expr": "QUAL>30"}
+    # Keep this expression test independent of the host's output-path flavour.
+    allowed = {
+        "vcf_input": r"C:\data\in.vcf.gz",
+        "outdir": r"C:\data\wgse",
+        "expr": "QUAL>30",
+    }
     guard.check(params_from_json(find("vcf/filter"), allowed))
     for expr in ("ID=@/outside/ids.txt", r"ID!=@\\host\share\ids"):
         with pytest.raises(RequestError, match="@FILE") as refused:

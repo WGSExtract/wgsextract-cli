@@ -135,6 +135,7 @@ class QcVcfParams(Params):
     latter wins."""
 
     COMMAND = "qc vcf"
+    VCF_INPUT_OVERRIDES_INPUT = True
 
     input: Path | None = optional_input_param("VCF file.")
     vcf_input: Path | None = param(

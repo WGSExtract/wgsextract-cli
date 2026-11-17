@@ -8,8 +8,10 @@ import pytest
 
 from wgsextract_cli.api import ExtractRegionParams
 from wgsextract_cli.api._params import with_config_defaults
+from wgsextract_cli.api.analyze import AnalyzeComprehensiveParams
 from wgsextract_cli.api.panel import PanelBedParams
 from wgsextract_cli.api.qc import QcAncestryParams, RelateParams
+from wgsextract_cli.api.vcf import VcfPhaseParams, VcfTableParams
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.output_location import (
     default_output_directory,
@@ -74,6 +76,25 @@ def test_1087_auxiliary_text_and_sites_vcf_do_not_choose_output_folder(tmp_path)
     )
     assert with_config_defaults(gene_list).outdir is None
     assert with_config_defaults(sketches).outdir is None
+
+
+def test_1087_vcf_override_places_outputs_beside_the_file_actually_read(tmp_path):
+    old = tmp_path / "old" / "sample.vcf"
+    current = tmp_path / "current" / "sample.vcf"
+    assert (
+        with_config_defaults(VcfTableParams(input=old, vcf_input=current)).outdir
+        == current.parent / "wgse"
+    )
+    reads = tmp_path / "reads" / "sample.bam"
+    assert (
+        with_config_defaults(VcfPhaseParams(input=reads, vcf_input=current)).outdir
+        == reads.parent / "wgse"
+    )
+
+
+def test_1087_working_folder_workflows_keep_their_declared_output_default(tmp_path):
+    params = AnalyzeComprehensiveParams(input=tmp_path / "lab" / "sample.bam")
+    assert with_config_defaults(params).outdir is None
 
 
 def test_1087_zipped_microarray_outputs_do_not_land_in_lab_folder(tmp_path):
