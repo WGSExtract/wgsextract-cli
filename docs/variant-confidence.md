@@ -185,6 +185,13 @@ Unsupported reference is passed as a no-call, never silently promoted to
 Absent definitions stay absent in the matcher input, distinct from explicit
 no-calls. The existing opt-in `--absent-to-ref` may infer those sites as
 reference in PharmCAT, but their sidecar evidence remains absent/low.
+When the input VCF's caller published a gVCF beside it
+([reference-evidence.md](reference-evidence.md)), a definition the VCF
+doesn't list is decided by the gVCF instead: reference where every base of
+its span is callable reference, else a no-call whose `PGX_STATE` is the
+weakest base's state (`uncovered`, `low_quality_reference`, `filtered`,
+`no_call`, `variant`, `excluded_by_policy` or `not_assessed`), so
+`--absent-to-ref` no longer applies to it.
 
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample

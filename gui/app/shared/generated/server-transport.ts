@@ -97,4 +97,5 @@ export interface VariantPage {
     path: string;
     rows: (Record<string, unknown>)[];
     next_cursor: string | null;
+    disclaimer?: string;
 }

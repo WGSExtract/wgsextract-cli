@@ -2,8 +2,10 @@
 ##contig=<ID=chr1,length=100>
 ##INFO=<ID=END,Number=1,Type=Integer,Description="Reference block end">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
-chr1	10	.	A	G	50	PASS	.	GT	0/1
-chr1	20	.	C	T	50	PASS	.	GT	0/0
-chr1	40	.	G	A	50	PASS	.	GT	./.
-chr1	60	.	A	<NON_REF>	50	PASS	END=80	GT	0/0
+chr1	10	.	A	G	50	PASS	.	GT:GQ:DP	0/1:50:30
+chr1	20	.	C	T	50	PASS	.	GT:GQ:DP	0/0:50:30
+chr1	40	.	G	A	50	PASS	.	GT:GQ:DP	./.:0:30
+chr1	60	.	A	<NON_REF>	50	PASS	END=80	GT:GQ:DP	0/0:50:30

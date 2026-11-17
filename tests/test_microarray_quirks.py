@@ -5,7 +5,7 @@ changes a call."""
 import pytest
 
 from tests.microarray_helpers import microarray_params
-from wgsextract_cli.core import microarray_quirks as quirks
+from wgsextract_cli.core.microarray import quirks
 from wgsextract_cli.core.microarray_utils import convert_to_vendor_format
 from wgsextract_cli.core.utils import WGSExtractError
 

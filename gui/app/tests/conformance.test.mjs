@@ -4,7 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
-import { conditionMatches, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
+import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
@@ -98,6 +98,26 @@ test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide 
   }
   assert.equal(isSectionVisible(calling, context), true);
   assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
+});
+
+test("#629: ACMG classes run only once research use is ticked and confirmed", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const sections = bundle.manifest.pages.flatMap((page) => page.sections ?? []);
+  const annotations = sections.find((section) => section.id === "more-annotations");
+  const action = annotations.actions.find((candidate) => candidate.id === "vcf-acmg");
+  const context = (checked) => ({
+    fieldValues: { vcf_path: "/tmp/sample_vep.vcf.gz" },
+    checkedOptions: checked ? { acmg_research: "--research-acmg" } : {},
+    configValues: {}, rowValues: {}, bundleRootPath: "/bundle",
+  });
+
+  assert.match(disabledReason(action, context(false)) ?? "", /research use only, not a diagnosis/);
+  assert.equal(disabledReason(action, context(true)), undefined);
+  assert.match(action.confirm.message, /not a diagnosis/);
+  assert.match(displayCommand(action.command, context(true)), /vcf acmg --vcf-input \/tmp\/sample_vep\.vcf\.gz --research-acmg/);
+  assert.doesNotMatch(displayCommand(action.command, context(false)), /--research-acmg/);
+  assert.equal(isActionVisible(action, context(true)), currentSetupPlatform() !== "windows");
 });
 
 test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async (t) => {

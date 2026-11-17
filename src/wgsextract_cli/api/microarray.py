@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.messages import CLI_HELP
-from wgsextract_cli.core.microarray_quirks import MODES
+from wgsextract_cli.core.microarray.quirks import MODES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -26,7 +26,7 @@ from ._shared import (
 
 def _check_formats(formats: str) -> None:
     """Refuse unknown names: each becomes part of template and output paths."""
-    from wgsextract_cli.core.microarray_aadr import aadr_panel
+    from wgsextract_cli.core.microarray.aadr import aadr_panel
     from wgsextract_cli.core.microarray_utils import resolve_format_key
 
     for item in formats.split(","):

@@ -24,7 +24,6 @@ from wgsextract_cli.commands import (
 )
 from wgsextract_cli.core import (
     config,
-    microarray_quirks,
     mimalloc,
     native_aligners,
     native_deepvariant,
@@ -32,6 +31,7 @@ from wgsextract_cli.core import (
     process_registry,
     resource_policy,
 )
+from wgsextract_cli.core.microarray import quirks as microarray_quirks
 from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import WGSExtractError
 

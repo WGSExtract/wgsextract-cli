@@ -22,7 +22,7 @@ from wgsextract_cli.core.imputed_vcf import (
     describe,
     imputation_info,
 )
-from wgsextract_cli.core.microarray_quality import quality_policy
+from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index

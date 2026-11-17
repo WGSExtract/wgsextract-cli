@@ -14,8 +14,8 @@ from pathlib import Path
 
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.library_cache import short_key
+from wgsextract_cli.core.microarray.aadr import _MARKERS
 from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
-from wgsextract_cli.core.microarray_aadr import _MARKERS
 from wgsextract_cli.core.microarray_targets import TARGET_VERSION, _template_paths
 from wgsextract_cli.core.microarray_utils import (
     _PACKAGED_TEMPLATES,

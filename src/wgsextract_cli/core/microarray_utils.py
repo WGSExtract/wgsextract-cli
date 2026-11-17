@@ -563,7 +563,7 @@ def convert_to_vendor_format(
     Calls are written on the forward strand (quirks="corrected"); "vendor"
     writes the markers the vendor reported on the reverse strand that way.
     """
-    from wgsextract_cli.core.microarray_quirks import vendor_strand_flips
+    from wgsextract_cli.core.microarray.quirks import vendor_strand_flips
 
     flips = vendor_strand_flips(format_name) if quirks == "vendor" else frozenset()
     flipped = 0
