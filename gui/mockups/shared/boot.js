@@ -40,7 +40,9 @@
   /* A shell's own modules, loaded before it (shared/shells/<shell>/) */
   var SHELL_MODULES = {
     v2: ["state", "machine", "glossary-data", "glossary", "region", "tools", "tools-align", "tools-call", "tools-quality",
-      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog", "install"],
+      "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "catalog", "install",
+      "api-core", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-server",
+      "api-clock", "api-bind", "api-jobs-cards", "api-jobs"],
   };
   if (shell && shell !== "none") {
     var at = SCRIPTS.indexOf("shared/chrome.js");

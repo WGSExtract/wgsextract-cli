@@ -58,7 +58,7 @@
     var net = seg("Network speed", NETWORK, clock.network, function (x) {
       clock.setNetwork(x);
     });
-    var url = h("input.v2-input.v2-input--mono", { type: "url", placeholder: "http://127.0.0.1:8766", "aria-label": "Shared mock server address", value: api.baseUrl() });
+    var url = h("input.v2-input.v2-input--mono", { type: "url", placeholder: "http://127.0.0.1:8767", "aria-label": "Shared mock server address", value: api.baseUrl() });
     var where = h("p.v2-small.v2-muted");
     var shared = h("div.v2-row.v2-row--wrap", url, h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
       connect("shared", url.value);
@@ -78,7 +78,7 @@
 
     function connect(m, address) {
       if (m === "shared" && !/^https?:\/\/./.test(address || "")) {
-        WGSM.toast("Type the server’s address, like http://127.0.0.1:8766", "circle-alert");
+        WGSM.toast("Type the server’s address, like http://127.0.0.1:8767", "circle-alert");
         return;
       }
       api.setMode(m, address).then(function (r) {

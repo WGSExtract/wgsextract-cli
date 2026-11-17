@@ -3,9 +3,9 @@
  * (shared/shells/v2/api-*.js), over HTTP, with its state in a JSON file so
  * several reviewers see the same jobs. Node 18+, built-in modules only.
  *
- *   node gui/mockups/mock-server/server.mjs --host 0.0.0.0 --port 8766
+ *   node gui/mockups/mock-server/server.mjs --host 0.0.0.0 --port 8767
  *
- * Open a mockup page with ?api=http://HOST:8766 (or from serve.py on port
+ * Open a mockup page with ?api=http://HOST:8767 (or from serve.py on port
  * 8765, which finds it on its own). See gui/mockups/MOCK_API.md. */
 import fs from "node:fs";
 import http from "node:http";
@@ -17,17 +17,17 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MOCKUPS = path.resolve(HERE, "..");
 const SHELL = path.join(MOCKUPS, "shared/shells/v2");
 const CORE = ["api-core", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin"];
-const USAGE = `Usage: server.mjs [--host 127.0.0.1] [--port 8766] [--state FILE] [--speed N]
+const USAGE = `Usage: server.mjs [--host 127.0.0.1] [--port 8767] [--state FILE] [--speed N]
 
   --host    address to listen on (0.0.0.0 for other computers)
-  --port    port (default 8766; pages served on 8765 look for it there)
+  --port    port (default 8767; pages served on 8765 look for it there)
   --state   JSON file for the shared state (default gui/mockups/out/mock-server/state.json)
   --speed   simulated seconds per real second (default: as saved, else 60)
 
 Clear the shared state: POST /v1/mock/reset, or stop the server and delete the file.`;
 
 function parseArgs(argv) {
-  const opts = { host: "127.0.0.1", port: 8766, state: path.join(MOCKUPS, "out/mock-server/state.json"), speed: null };
+  const opts = { host: "127.0.0.1", port: 8767, state: path.join(MOCKUPS, "out/mock-server/state.json"), speed: null };
   for (let i = 0; i < argv.length; i++) {
     const [flag, inline] = argv[i].split("=", 2);
     const value = () => (inline !== undefined ? inline : argv[++i]);

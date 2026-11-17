@@ -28,7 +28,7 @@
       <span>Alex’s Nebula BAM has no <abbr class="v2-term" data-term="index">index</abbr>, and its <abbr class="v2-term" data-term="reference">reference</abbr> (hs38d1) isn’t installed.</span>
     </div>
     <div class="v2-notice__actions">
-      <button class="v2-btn v2-btn--sm" type="button" data-v2-set="alex-fixed" data-toast="Downloading hs38d1 and indexing the BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
+      <button class="v2-btn v2-btn--sm" type="button" data-v2-download="alex-fixed" data-v2-label="0.9 GB" data-toast="Downloading hs38d1 and indexing the BAM. See Jobs.">Download 0.9 GB and fix · 9 min</button>
       <a class="v2-btn v2-btn--sm v2-btn--quiet" href="person-alex.html">Details</a>
     </div>
   </div>
@@ -63,15 +63,16 @@
             <span class="v2-hap" data-line="mt"><span class="v2-hap__label">Maternal</span> H1c</span>
           </div>
           <div class="v2-person__next">
-            <a class="v2-progress" href="jobs.html" style="text-decoration: none">
-              <span>Realigning to hs38 · 1 h 52 min left</span>
-              <span class="v2-bar" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Realigning to hs38"><span style="--v: 47%"></span></span>
+            <a class="v2-progress" href="jobs.html" style="text-decoration: none" data-v2-job="realign:gordon" data-v2-job-when="active">
+              <span>Realigning to hs38 · <span data-v2-job-text="eta">1 h 52 min left</span></span>
+              <span class="v2-bar" role="progressbar" aria-valuenow="47" aria-valuemin="0" aria-valuemax="100" aria-label="Realigning to hs38" data-v2-job-bar><span style="--v: 47%"></span></span>
             </a>
+            <span data-v2-job="realign:gordon"><a class="v2-btn v2-btn--sm" href="dna-test.html" data-v2-job-when="done" hidden><i data-icon="chip"></i>Make DNA-test files</a><a class="v2-btn v2-btn--sm v2-btn--quiet" href="tools.html" data-v2-job-when="stopped" hidden>Realign stopped · run again</a></span>
           </div>
         </div>
         <div class="v2-files">
           <div class="v2-file"><span></span><span class="v2-tag">BAM</span><span class="v2-file__name">60820188479016.bam</span><span><abbr class="v2-term" data-term="grch37">GRCh37</abbr> · hs37d5</span><span class="v2-num">38×</span><span class="v2-num">92.4 GB</span><span class="v2-status"><span class="v2-pip" data-state="ok"></span>Ready</span></div>
-          <div class="v2-file"><span></span><span class="v2-tag">CRAM</span><span class="v2-file__name">60820188479016_aligned.cram</span><span>GRCh38 · hs38</span><span class="v2-num">—</span><span class="v2-num">≈ 34 GB</span><span class="v2-status"><span class="v2-pip" data-state="busy"></span>Being made · 47%</span></div>
+          <div class="v2-file"><span></span><span class="v2-tag">CRAM</span><span class="v2-file__name">60820188479016_aligned.cram</span><span>GRCh38 · hs38</span><span class="v2-num">—</span><span class="v2-num">≈ 34 GB</span><span data-v2-job="realign:gordon"><span class="v2-status" data-v2-job-when="active"><span class="v2-pip" data-state="busy"></span>Being made · <span data-v2-job-text="percent">47%</span></span><span class="v2-status" data-v2-job-when="done" hidden><span class="v2-pip" data-state="ok"></span>Ready</span><span class="v2-status" data-v2-job-when="stopped" hidden><span class="v2-pip" data-state="attention"></span>Not made</span></span></div>
         </div>
       </div>
 

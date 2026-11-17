@@ -83,7 +83,8 @@
     WGSM.qsa("[data-v2-job-bar]", scope).forEach(function (el) {
       bar(el, job);
     });
-    WGSM.qsa("[data-v2-job-when]", scope).forEach(function (el) {
+    /* The scope itself may say when it shows */
+    WGSM.qsa("[data-v2-job-when]", scope).concat(scope.matches("[data-v2-job-when]") ? [scope] : []).forEach(function (el) {
       el.hidden = !shows(job, el.dataset.v2JobWhen);
     });
   }

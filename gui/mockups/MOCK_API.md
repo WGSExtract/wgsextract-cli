@@ -40,12 +40,12 @@ same two files against a stub and keeps its state in a file.
 ### Run the shared server
 
 ```sh
-node gui/mockups/mock-server/server.mjs --host 0.0.0.0 --port 8766
+node gui/mockups/mock-server/server.mjs --host 0.0.0.0 --port 8767
 just mockups-api --host 0.0.0.0     # the same
 ```
 
 Node 18 or newer, no packages. Options: `--host` (default `127.0.0.1`;
-`0.0.0.0` lets other computers in), `--port` (default 8766), `--state FILE`
+`0.0.0.0` lets other computers in), `--port` (default 8767), `--state FILE`
 (default `gui/mockups/out/mock-server/state.json`, ignored by git) and
 `--speed N` (simulated seconds per real second). It answers `/v1/*` only,
 with CORS open to any origin (including `Authorization`, `Content-Type`
@@ -53,13 +53,13 @@ and Chrome's private-network preflight), so pages on GitHub Pages or
 `serve.py` can call it. It needs no token: don't expose it beyond people you
 trust with the demo.
 
-Point a page at it with `?api=http://HOST:8766`; the choice is remembered
+Point a page at it with `?api=http://HOST:8767`; the choice is remembered
 in that browser (`?api=browser` goes back). A page served by `serve.py` on
-port 8765 tries `http://<same host>:8766/v1/health` for 0.8 s and uses the
+port 8765 tries `http://<same host>:8767/v1/health` for 0.8 s and uses the
 server if it answers `"mock": true`. The settings control does the same.
 
 **Clear the shared state:** "Clear the shared mock state" in the control,
-`curl -X POST http://HOST:8766/v1/mock/reset`, or stop the server and
+`curl -X POST http://HOST:8767/v1/mock/reset`, or stop the server and
 delete the state file. Everything returns to the seed, clock included.
 
 ### Swap in the real server
@@ -81,7 +81,7 @@ WGSM.v2api.del("/v1/jobs/" + id);         // cancel
 WGSM.v2api.patch("/v1/library/people/helen", { note: "mum" });
 WGSM.v2api.on(({ mode, now }) => …);       // about once a second; returns unsubscribe
 WGSM.v2api.mode();                         // "browser" | "shared"
-WGSM.v2api.setMode("shared", "http://127.0.0.1:8766");  // -> {ok, mock, message}
+WGSM.v2api.setMode("shared", "http://127.0.0.1:8767");  // -> {ok, mock, message}
 WGSM.v2api.reset();                        // this browser's, or the shared state
 WGSM.v2clock.now(); .speed(); .setSpeed(600); .network(); .setNetwork(1e8);
 WGSM.v2clock.format(ms) /* "09:58" */; .when(ms) /* "Today 06:14" */; .dur(ms) /* "1 h 52 min" */

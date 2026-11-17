@@ -270,7 +270,7 @@
       var onOut = size + (c.v.keep ? file.gb * 0.83 : 0) + (tmpDisk === outDisk ? spill : 0);
       out.disk.push([outDisk, onOut]);
       if (tmpDisk !== outDisk) out.disk.push([tmpDisk, spill]);
-      var running = c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled");
+      var running = c.fileKey === "gordon" && c.v.ref === "hs38" && !c.flag("realign-cancelled") && !c.flag("realign-done");
       if (running) {
         out.notes.unshift({ tone: "info", icon: "realign", id: "running", title: "Already running: 47%, 1 h 52 min left",
           text: "Gordon’s realign to hs38 started at 08:15 with these settings.", action: { label: "See Jobs", href: "jobs.html" } });

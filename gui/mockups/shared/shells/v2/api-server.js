@@ -10,7 +10,7 @@
  *
  * Shared mode is chosen by ?api=<base URL> (remembered; ?api=browser goes
  * back), by setMode(), or found on its own when the page is served on port
- * 8765 and a mock server answers on 8766 of the same host.
+ * 8765 and a mock server answers on 8767 of the same host.
  *
  *   request(method, path, body) -> Promise<{status, body}>; get/post/patch/del
  *   on(fn)    fn({mode, now}) about once a second (real), while open
@@ -151,7 +151,7 @@
       return Promise.resolve();
     }
     if (saved !== "browser" && location.port === "8765" && /^https?:$/.test(location.protocol)) {
-      var guess = location.protocol + "//" + location.hostname + ":8766";
+      var guess = location.protocol + "//" + location.hostname + ":8767";
       return probe(guess).then(function (ok) {
         useMode(ok ? "shared" : "browser", guess);
       });

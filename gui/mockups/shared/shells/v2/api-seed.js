@@ -128,7 +128,7 @@
           mock: { label: "Call SNPs for Alex" } }),
       make("realign", { input: files.gordon.path, ref: "hs38", outdir: files.gordon.path.replace(/\/[^/]*$/, "/"), threads: 12 },
         { created: at(8, 14, 40), started: at(8, 15), status: "running",
-          mock: { label: "Realign Gordon to hs38", person: "gordon", hours: 213.2 / 60, tempGB: 41, outputs: [{ path: files.gordon.path.replace(/\.bam$/, ".hs38.cram"), gb: 34, kind: "cram", library: true }] } }),
+          mock: { label: "Realign Gordon to hs38", person: "gordon", hours: 213.2 / 60, tempGB: 41, flags: ["realign-done"], outputs: [{ path: files.gordon.path.replace(/\.bam$/, "_aligned.cram"), gb: 34, kind: "cram", library: true }] } }),
       make("lineage/y-str", { input: files.reginald.path },
         { created: at(9, 31), status: "queued", mock: { label: "Y-STR markers for Reginald" } }),
     ];

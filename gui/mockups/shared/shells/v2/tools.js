@@ -191,7 +191,7 @@
     if (n.action) {
       action = n.action.href
         ? h("a.v2-btn.v2-btn--sm", { href: WGSM.keepParams(n.action.href) }, n.action.label)
-        : h("button.v2-btn.v2-btn--sm", { type: "button", dataset: { v2Set: n.action.set, toast: n.action.toast || "" } }, n.action.label);
+        : h("button.v2-btn.v2-btn--sm", { type: "button", dataset: { v2Download: n.action.set, v2Label: n.action.label, toast: n.action.toast || "" } }, n.action.label);
     }
     return h("div.v2-notice", { role: "status", dataset: { tone: n.tone || "info", annotId: n.id || "notice" } },
       WGSM.icon(n.icon || "info"),
@@ -326,6 +326,53 @@
         h("button.v2-btn.v2-btn--primary.v2-btn--lg", { type: "button", dataset: { v2Go: "" } }, def.button || "Start"))));
   };
 
+  /* A download or fix becomes a job on the (mock) server; its flag is set
+   * when the job succeeds. [op, params, GB] by flag */
+  function downloadJob(flag, label) {
+    var M = WGSM.v2machine;
+    var gb = Number((/([\d.]+) GB/.exec(label || "") || [])[1]) || 1;
+    var rest = flag.replace(/^[^-]+-/, "");
+    if (/^mem2-/.test(flag)) return ["ref/index", { ref: rest, aligner: "bwa-mem2", download: true }, gb, "Download bwa-mem2’s index for " + rest];
+    if (/^ref-/.test(flag)) return ["ref/library", { ref: rest }, gb, "Download reference " + rest];
+    if (flag === "panel-1kg") return ["ref/imputation", {}, gb, "Download the 1000 Genomes panel"];
+    if (/^vepcache-/.test(flag)) return ["vep/download", { engine: rest }, gb, "Download the VEP cache (" + rest + ")"];
+    if (/^pgs-/.test(flag)) return ["score/pgs", { trait: rest, download_only: true }, 0.05, "Download the " + rest + " scoring file"];
+    if (flag === "alex-fixed") return ["bam/index", { input: M.path(M.files.alex) }, 0.9, "Fix Alex’s BAM: download hs38d1 and index it"];
+    if (/^data-/.test(flag)) return ["ref/" + rest, {}, gb, "Download " + rest];
+    return ["ref/library", { name: flag }, gb, "Download " + flag];
+  }
+
+  function startDownload(flag, label) {
+    var job = downloadJob(flag, label);
+    return WGSM.v2api.post("/v1/ops/" + job[0], Object.assign({}, job[1], { _mock: { label: job[3], gb: job[2], flags: [flag] } }));
+  }
+
+  /* hours for the mock server's clock, from the estimate or its words */
+  function runHours(out) {
+    if (typeof out.hours === "number") return out.hours;
+    var t = out.timeText || "";
+    return /seconds/.test(t) ? 0.01 : /tens of minutes/.test(t) ? 0.5 : /minute/.test(t) ? 0.15 : 3;
+  }
+
+  function startJob(root) {
+    var def = defs[root.dataset.tool];
+    var ctx = context(def, root);
+    var out = def.run(ctx) || {};
+    var params = { input: ctx.m.path(ctx.file), outdir: ctx.m.outdir(ctx.file) };
+    Object.keys(ctx.v).forEach(function (k) {
+      var value = ctx.v[k];
+      if (value !== "" && value !== false && value !== null && !(Array.isArray(value) && !value.length)) params[k] = value;
+    });
+    var disk = (out.disk || [])[0];
+    return WGSM.v2api.post("/v1/ops/" + def.op.split(" · ")[0], Object.assign(params, { _mock: {
+      label: out.jobName || def.label + " for " + ctx.name,
+      person: ctx.file.person,
+      hours: runHours(out),
+      memGB: out.memGB,
+      outputs: disk ? [{ path: ctx.m.outdir(ctx.file) + ctx.file.stem + "." + def.slug, gb: disk[1], disk: disk[0] }] : [],
+    } }));
+  }
+
   function refresh() {
     WGSM.qsa("[data-tool]").forEach(update);
   }
@@ -337,8 +384,13 @@
     order: order,
     pageOf: pageOf,
     refresh: refresh,
+    startDownload: startDownload,
     /* Wire live updates; called after saved options are restored */
     start: function () {
+      document.addEventListener("click", function (event) {
+        var dl = event.target.closest("[data-v2-download]");
+        if (dl && !document.body.classList.contains("an-mode")) startDownload(dl.dataset.v2Download, dl.dataset.v2Label || dl.textContent);
+      });
       if (!WGSM.qs("[data-tool]")) return;
       refresh();
       ["change", "input"].forEach(function (type) {
@@ -347,6 +399,8 @@
         });
       });
       document.addEventListener("click", function (event) {
+        var go = event.target.closest("[data-v2-go]");
+        if (go && !go.disabled) startJob(WGSM.qs("[data-tool]"));
         var use = event.target.closest("[data-v2-use-pick]");
         if (use) {
           WGSM.v2state.pick(WGSM.qs('[data-v2-pick="' + use.dataset.v2UsePick + '"]').value);

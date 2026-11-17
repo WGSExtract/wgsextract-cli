@@ -16,7 +16,7 @@
     var list = S.people().filter(function (p) {
       return !p.removed;
     }).map(function (p) {
-      var state = p.id === "alex" && S.flag("alex-fixed") ? "ok" : p.id === "gordon" && S.flag("realign-cancelled") ? "ok" : STATES[p.id];
+      var state = p.id === "alex" && S.flag("alex-fixed") ? "ok" : p.id === "gordon" && (S.flag("realign-cancelled") || S.flag("realign-done")) ? "ok" : STATES[p.id];
       return { id: p.id, name: S.first(p.name), note: p.id === "alex" && !p.note ? "2 files" : p.note, initials: S.initials(p.name), state: state, href: V + PAGES[p.id] };
     });
     var assigned = S.doc.assign;
@@ -26,7 +26,6 @@
     return list;
   }
 
-  var RUNNING = { title: "Realigning Gordon to hs38", progress: 47, eta: "1 h 52 min left" };
   var PLACES = [
     { id: "jobs", label: "Jobs", icon: "jobs", href: V + "jobs.html", count: "4", also: ["result"] },
     { id: "tools", label: "All tools", icon: "sliders-horizontal", href: V + "tools.html" },
@@ -85,12 +84,13 @@
       h("div.v2-side__label", "On this computer"),
       h("nav", { "aria-label": "Work" }, PLACES.map(link)),
       h("div.v2-side__spacer"),
-      WGSM.v2state.flag("realign-cancelled") ? null : h(
+      /* Whichever job is running, from the (mock) server; hidden when none */
+      h(
         "a.v2-sidejob",
-        { href: href(V + "jobs.html"), dataset: { annotId: "sidebar-job" } },
-        h("strong", RUNNING.title),
-        h("div.v2-bar", { role: "progressbar", "aria-valuenow": RUNNING.progress, "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": RUNNING.title }, h("span", { style: { "--v": RUNNING.progress + "%" } })),
-        h("span", RUNNING.progress + "% · " + RUNNING.eta)
+        { href: href(V + "jobs.html"), hidden: true, dataset: { annotId: "sidebar-job", v2Job: "running", v2JobWhen: "running" } },
+        h("strong", { dataset: { v2JobText: "label" } }, "Running"),
+        h("div.v2-bar", { role: "progressbar", "aria-valuemin": 0, "aria-valuemax": 100, "aria-label": "Progress", dataset: { v2JobBar: "" } }, h("span", { style: { "--v": "0%" } })),
+        h("span", { dataset: { v2JobText: "" } })
       ),
       h("nav", { "aria-label": "App" }, FOOT.map(link))
     );
@@ -171,8 +171,8 @@
 
   WGSM.shell = {
     build: function (nodes) {
-      document.body.appendChild(mockDialog());
-      return h("div.v2-app", { dataset: { annotId: "app" } }, sidebar(), topbar(), h("main.v2-main", { id: "main" }, nodes), tabbar());
+      /* shared/ui.js moves dialogs into the viewport frame */
+      return h("div.v2-app", { dataset: { annotId: "app" } }, sidebar(), topbar(), h("main.v2-main", { id: "main" }, nodes), tabbar(), mockDialog());
     },
     palette: function () {
       var folks = people().map(function (p) {
@@ -220,6 +220,7 @@
     WGSM.v2catalog.start();
     WGSM.v2tools.start();
     WGSM.v2terms.start();
+    WGSM.qs("[data-v2-mock-slot]").appendChild(WGSM.v2clock.control());
     WGSM.v2terms.wrap(WGSM.qs("#main"));
     recount();
   };
