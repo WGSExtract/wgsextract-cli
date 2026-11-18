@@ -211,7 +211,9 @@ takes its strongest state against reference. ClinVar sites that are neither
 `variant` nor `callable_reference` (nor `excluded_by_policy`) raise a
 `reference_evidence_unassessed_sites` warning with the count per state: the
 sample may carry a variant there that was not called. The labels themselves
-are unchanged, and without a gVCF nothing is added.
+are unchanged, and without a gVCF nothing is added. An unchanged `analyze`
+rerun retains these details and warnings when it reuses its discovery step;
+adding, replacing or removing the companion reruns that step.
 
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample

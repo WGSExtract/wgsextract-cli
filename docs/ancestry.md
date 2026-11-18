@@ -69,6 +69,7 @@ is hom-ref only where the gVCF calls it `callable_reference`; elsewhere
 (uncovered, low quality, filtered, no-call, not assessed) it stays missing,
 whether or not the VCF is a whole genome. The manifest counts the missing
 sites in each state as `ancestry_missing_sites_<state>`.
+An indexed `--ref` supplies contig lengths omitted from the gVCF header.
 
 `--build` gives the input's build when its header doesn't tell it.
 

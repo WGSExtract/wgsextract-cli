@@ -250,7 +250,8 @@ def test_863_partial_variants_only_vcf_uses_its_gvcf_for_reference_sites(
     hom_ref = int((sample["genotypes"][:2400] == 0).sum())
     assert result.metrics["ancestry_missing_sites_callable_reference"] == hom_ref
     assert result.metrics["ancestry_missing_sites_uncovered"] == 600
-    _close_to_truth(_k7(tmp_path / "calls" / "snps.ancestry.tsv"), 0.1)
+    table = next(o.path for o in result.outputs if o.role == "ancestry_table")
+    _close_to_truth(_k7(Path(table)), 0.1)
 
     # Without the gVCF the same VCF is refused, as before.
     for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):

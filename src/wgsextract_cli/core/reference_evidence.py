@@ -685,7 +685,7 @@ def readable(gvcf: str, sample: str | None, work: Path) -> str | None:
     doesn't hold ``sample``."""
     samples = run_command(
         ["bcftools", "query", "-l", gvcf], capture_output=True
-    ).stdout.split()
+    ).stdout.splitlines()
     if not samples or (sample is not None and sample not in samples):
         return None
     indexed = gvcf.endswith((".gz", ".bgz")) and any(
@@ -693,7 +693,7 @@ def readable(gvcf: str, sample: str | None, work: Path) -> str | None:
     )
     if (sample is None or samples[0] == sample) and len(samples) == 1 and indexed:
         return gvcf
-    copy = str(work / f"evidence.{sample or samples[0]}.g.vcf.gz")
+    copy = str(work / "evidence.g.vcf.gz")
     run_command(["bcftools", "view", "--no-version", "-s", sample or samples[0],
                  "-Oz", "-o", copy, gvcf])  # fmt: skip
     run_command(["bcftools", "index", "-t", copy])

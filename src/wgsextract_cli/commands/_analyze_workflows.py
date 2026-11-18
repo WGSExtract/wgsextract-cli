@@ -94,6 +94,11 @@ def _captured(handle: StepRun) -> Iterator[None]:
     result = current_result()
     before = {record.path for record in result.outputs}
     metrics = dict(result.metrics)
+    confidence = (result.details or {}).get("confidence", [])
+    assert isinstance(confidence, list)
+    confidence_before = len(confidence)
+    warnings_before = len(result.warnings)
+    inputs_before = {record.path for record in result.inputs}
     token = _RUNNING.set(handle)
     try:
         yield
@@ -111,6 +116,17 @@ def _captured(handle: StepRun) -> Iterator[None]:
         name: value for name, value in result.metrics.items()
         if metrics.get(name, object()) != value
     }  # fmt: skip
+    confidence = (result.details or {}).get("confidence", [])
+    assert isinstance(confidence, list)
+    handle.metrics["result_confidence"] = confidence[confidence_before:]
+    handle.metrics["result_warnings"] = [
+        dataclasses.asdict(warning) for warning in result.warnings[warnings_before:]
+    ]
+    handle.metrics["result_inputs"] = [
+        {"path": record.path, "role": record.role}
+        for record in result.inputs
+        if record.path not in inputs_before
+    ]
 
 
 def _replay(journal: StepJournal, decision: Decision) -> None:
@@ -125,6 +141,19 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
                 metrics=_scalars(item.get("result_metrics")),
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
+    confidence = decision.metrics.get("result_confidence")
+    if confidence:
+        details = dict(result.details or {})
+        previous = details.get("confidence", [])
+        assert isinstance(previous, list)
+        details["confidence"] = [*previous, *confidence]
+        result.set_details(details)
+    for warning in decision.metrics.get("result_warnings", []):
+        result.warn(
+            warning["code"], warning["message"], **_scalars(warning.get("details"))
+        )
+    for record in decision.metrics.get("result_inputs", []):
+        result.add_input(journal.resolve(record["path"]), record["role"])
 
 
 def run_step(

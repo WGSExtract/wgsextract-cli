@@ -488,14 +488,21 @@ def test_863_analyze_reports_the_gvcf_state_of_clinvar_pathogenic_sites(
         + state_directory_setting(tmp_path)
     )
     out = tmp_path / "out"
-    main(["--config", str(config), "analyze", "comprehensive", "--vcf-inputs",
-          str(tmp_path / "snps.vcf.gz"), "--ref", ref, "--outdir", str(out),
-          "--threads", "1"])  # fmt: skip
-    manifest = next(
-        json.loads(p.read_text())
-        for p in out.glob("*.manifest.json")
-        if "confidence" in (json.loads(p.read_text()).get("details") or {})
-    )
+    args = [
+        "--config", str(config), "analyze", "comprehensive", "--vcf-inputs",
+        str(tmp_path / "snps.vcf.gz"), "--ref", ref, "--outdir", str(out),
+        "--threads", "1",
+    ]  # fmt: skip
+
+    def run() -> dict:
+        main(args)
+        return next(
+            json.loads(p.read_text())
+            for p in out.glob("*.manifest.json")
+            if "confidence" in (json.loads(p.read_text()).get("details") or {})
+        )
+
+    manifest = run()
     summary = next(
         c
         for c in manifest["details"]["confidence"]
@@ -506,4 +513,20 @@ def test_863_analyze_reports_the_gvcf_state_of_clinvar_pathogenic_sites(
     assert checked["calls"] == {"sites": 1, "states": {"variant": 1}}
     assert "reference_evidence_unassessed_sites" in {
         w["code"] for w in manifest["warnings"]
+    }
+    # Issue #863 review: skipping discovery must not drop its confidence
+    # details or coverage-gap warning from the next result manifest.
+    cached = run()
+    assert cached["details"]["confidence"] == manifest["details"]["confidence"]
+    assert "reference_evidence_unassessed_sites" in {
+        w["code"] for w in cached["warnings"]
+    }
+    assert any(i["role"] == ROLE for i in cached["inputs"])
+
+    # Removing the companion must invalidate the cached evidence report.
+    (tmp_path / "bcftools.g.vcf.gz.tbi").unlink()
+    without = run()
+    assert all("reference_evidence" not in c for c in without["details"]["confidence"])
+    assert "reference_evidence_unassessed_sites" not in {
+        w["code"] for w in without["warnings"]
     }

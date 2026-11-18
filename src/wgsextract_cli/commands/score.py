@@ -308,6 +308,7 @@ class _Calibration:
                 build="hg38",
                 confident=confident,
                 evidence=gvcf,
+                reference_fasta=str(params.ref) if params.ref else None,
             )
             self.evidence = genotypes.reference_evidence
             self.pcs, self.pca_sites = pca_projection(genotypes, ancestry)

@@ -57,7 +57,9 @@ from wgsextract_cli.core.reference_assets import (
     input_stem,
 )
 from wgsextract_cli.core.reference_resolver import (
+    ReferenceLibrary,
     header_contig_lengths,
+    read_fai_lengths,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
@@ -238,7 +240,7 @@ def _alignment_genotypes(
 def _vcf_sample(vcf: str, wanted: str | None) -> str:
     names = run_command(
         ["bcftools", "query", "-l", vcf], capture_output=True
-    ).stdout.split()
+    ).stdout.splitlines()
     if wanted:
         if wanted not in names:
             raise WGSExtractError(
@@ -281,7 +283,17 @@ def _vcf_genotypes(
             reference_evidence=gvcf,
         )
     genotypes = vcf_genotypes(
-        vcf, reference, work, sample=sample, build=_given_build(params), evidence=read
+        vcf,
+        reference,
+        work,
+        sample=sample,
+        build=_given_build(params),
+        evidence=read,
+        reference_fasta=(
+            ReferenceLibrary(params.ref, None, input_path=vcf).fasta
+            if read is not None and params.ref
+            else None
+        ),
     )
     if read is not None and gvcf != vcf:
         current_result().add_input(gvcf, reference_evidence.ROLE)
@@ -297,6 +309,7 @@ def vcf_genotypes(
     build: str | None = None,
     confident: IntervalIndex | None = None,
     evidence: str | None = None,
+    reference_fasta: str | None = None,
 ) -> Genotypes:
     """A VCF sample's genotypes at the reference sites (also used by `score
     pgs` for its PCA projection). With ``evidence``, an indexed gVCF whose
@@ -353,6 +366,10 @@ def vcf_genotypes(
             if dosage is None:
                 unknown.add(i)
                 continue
+            if evidence is not None and dosage == 0:
+                # Even an explicit 0/0 with a concrete ALT can be uncovered
+                # or low quality; the gVCF classifier decides reference.
+                continue
             passing += 1
             ref_only += dosage == 0
             called[i] = dosage
@@ -370,7 +387,18 @@ def vcf_genotypes(
                 or confident.contains(str(int(sites.chrom[i])), int(sites.pos[i]))
             )
         ]
-        source = reference_evidence.ReferenceEvidence(evidence)
+        known = {
+            alias: length
+            for contig, length in (
+                read_fai_lengths(reference_fasta) if reference_fasta else {}
+            ).items()
+            for alias in (
+                contig,
+                contig.removeprefix("chr"),
+                f"chr{contig.removeprefix('chr')}",
+            )
+        }
+        source = reference_evidence.ReferenceEvidence(evidence, known)
         located = _index(
             ((_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i])), i)
             for i in absent
