@@ -76,6 +76,8 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   after multiallelic merging and allele simplification, before GT/GQ/QUAL/
   FILTER. Haploid gVCF reference likelihoods use log10(Phet) = -999 before
   normalization and GQ binning, and reference blocks split at PAR boundaries.
+  Empty-read partitions still emit zero-depth reference evidence rather than
+  leaving gaps; ambiguous reference bases remain omitted, as in Google's gVCF.
   GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
   The build runs native likelihood and PAR-edge regressions; the smoke test
   checks staged flag propagation, retained PAR heterozygotes and gVCF coverage.

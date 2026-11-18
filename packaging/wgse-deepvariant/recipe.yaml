@@ -12,7 +12,7 @@ source:
   - path: ../../LICENSE
 
 build:
-  number: 0
+  number: 1
   # cuda129: call_variants on an NVIDIA GPU (CUDA 12.9, any recent driver) or
   # the CPU; cpu: the CPU only, without CUDA's libraries.
   string: ${{ target_platform | replace('-', '') }}_${{ onnxruntime_variant }}_wgse_${{ build_number }}

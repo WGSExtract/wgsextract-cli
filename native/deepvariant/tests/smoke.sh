@@ -19,11 +19,11 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-# Two 30 kb contigs; 30x of 2x150 bp pairs; a het and a hom-alt SNP every 3 kb.
+# Three 30 kb contigs; two at 30x, one without reads.
 awk "$seeded_random"'BEGIN {
     seed(647)
     split("A C G T", base, " ")
-    contigs = 2; n = 30000; read = 150; insert = 400; depth = 30
+    contigs = 3; n = 30000; read = 150; insert = 400; depth = 30
     printf "@HD\tVN:1.6\tSO:unsorted\n" > "reads.sam"
     for (c = 1; c <= contigs; c++) printf "@SQ\tSN:chr%d\tLN:%d\n", c, n > "reads.sam"
     printf "@RG\tID:rg\tSM:smoke\n" > "reads.sam"
@@ -35,6 +35,7 @@ awk "$seeded_random"'BEGIN {
         print ">chr" c > "reference.fa"
         line = ""
         for (i = 1; i <= n; i++) { line = line ref[i]; if (i % 60 == 0) { print line > "reference.fa"; line = "" } }
+        if (c == 3) continue
         for (i = 3000; i < n - 1000; i += 3000) {
             alt[i] = ref[i] == "A" ? "G" : "A"
             hom[i] = (i / 3000) % 2 == 0
@@ -141,7 +142,8 @@ gzip -dc haploid.g.vcf.gz | awk -F '\t' '
         seen[$1]++
     }
     END { exit (bad || last["chr1"] != 30000 || last["chr2"] != 30000 ||
-                !seen["chr1"] || !seen["chr2"]) }'
+                last["chr3"] != 30000 || !seen["chr1"] || !seen["chr2"] ||
+                !seen["chr3"]) }'
 echo "smoke: haploid non-PAR calls, retained PAR/diploid hets, gap-free gVCF"
 
 [ -f "$weights/ont_r104.dvw" ] || exit 0

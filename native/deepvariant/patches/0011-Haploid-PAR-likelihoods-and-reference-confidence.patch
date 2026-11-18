@@ -41,7 +41,7 @@ index 28f7bbaa..02e2ecb1 100644
      if (phase_vcf) {
        pp_args.push_back(
 diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
-index ada09e1d..a7766fd0 100644
+index ada09e1d..96698cc7 100644
 --- a/deepvariant/native/make_examples_main.cc
 +++ b/deepvariant/native/make_examples_main.cc
 @@ -128,6 +128,10 @@ ABSL_FLAG(std::string, reads, "", "BAM/CRAM file with aligned reads.");
@@ -70,7 +70,26 @@ index ada09e1d..a7766fd0 100644
 
    const std::string reads_path = absl::GetFlag(FLAGS_reads);
    const std::string ref_path = absl::GetFlag(FLAGS_ref);
-@@ -2350,7 +2362,7 @@ int RunMakeExamples(int argc, char** argv) {
+@@ -2202,7 +2214,8 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+
+     LOG(INFO) << "  read " << reads.size() << " reads from BAM";
+-    if (reads.empty()) continue;
++    // Empty partitions still contribute zero-depth gVCF reference evidence.
++    if (reads.empty() && !gvcf_writer) continue;
+
+     // RNA-seq: split reads on N (SKIP) CIGAR ops into per-exon sub-reads
+     // before candidate discovery / realignment / pileup. Mirrors upstream
+@@ -2221,7 +2234,7 @@ int RunMakeExamples(int argc, char** argv) {
+     // tracking see the realigned reads (matches upstream's flow).
+     DV_SIGNPOST_INTERVAL_BEGIN(Realigner, region_str.c_str());
+     std::vector<nucleus::genomics::v1::Read> working_reads;
+-    if (absl::GetFlag(FLAGS_realigner_enabled)) {
++    if (absl::GetFlag(FLAGS_realigner_enabled) && !reads.empty()) {
+       // Pre-scan AlleleCounter for the WindowSelector. Upstream
+       // (realigner/window_selector.py:_candidates_from_reads) builds
+       // a *dedicated* AlleleCounter with WindowSelector-specific
+@@ -2350,7 +2363,7 @@ int RunMakeExamples(int argc, char** argv) {
            absl::GetFlag(FLAGS_p_error),
            absl::GetFlag(FLAGS_gvcf_gq_binsize),
            /*max_gq=*/50,
