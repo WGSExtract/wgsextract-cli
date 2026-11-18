@@ -336,7 +336,7 @@ class TestResourceDefaults(unittest.TestCase):
 
 class TestSamtoolsCommands(unittest.TestCase):
     def test_sambamba_memory_parser_accepts_suffixes_and_decimals(self):
-        from wgsextract_cli.core import samtools_commands
+        from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
 
         with (
             patch.object(samtools_commands, "get_tool_path", return_value="sambamba"),
@@ -357,7 +357,7 @@ class TestSamtoolsCommands(unittest.TestCase):
         self.assertEqual(mb_cmd[mb_cmd.index("-m") + 1], "1024M")
 
     def test_sam_input_sort_never_uses_sambamba(self):
-        from wgsextract_cli.core import samtools_commands
+        from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
 
         with (
             patch.object(samtools_commands, "get_tool_path", return_value="sambamba"),

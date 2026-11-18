@@ -10,9 +10,9 @@ import os
 import subprocess
 
 from wgsextract_cli.core.alignment.cram_counts import cram_container_totals
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import popen, run_command
 
 # Fewer variants than this can legitimately miss every annotation (a chrM VCF

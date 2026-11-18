@@ -16,7 +16,7 @@ from typing import NamedTuple
 
 import psutil
 
-from wgsextract_cli.core import bwa_index
+from wgsextract_cli.core.alignment import bwa_index as bwa_index
 from wgsextract_cli.core.alignment.memory import (
     available_memory,
     estimate_mapping_memory,

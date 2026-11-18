@@ -139,7 +139,7 @@ def unpaired_sample(
     of a CRAM's unplaced containers when reading ``*`` (#655); a sample of
     the rest is as good, so this doesn't work around it.
     """
-    from wgsextract_cli.core.samtools_commands import alignment_index
+    from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 
     view = ["samtools", "view", "-F", "0x900", *(cram_opt or []), str(path)]
     records = unpaired = 0

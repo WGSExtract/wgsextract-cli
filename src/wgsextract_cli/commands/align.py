@@ -59,6 +59,11 @@ from wgsextract_cli.core.alignment.profiles import (
 from wgsextract_cli.core.alignment.read_counts import (
     fastq_input_statistics as fastq_input_statistics,
 )
+from wgsextract_cli.core.alignment.samtools_commands import parse_memory as parse_memory
+from wgsextract_cli.core.alignment.samtools_commands import (
+    regular_files_bytes as regular_files_bytes,
+)
+from wgsextract_cli.core.alignment.samtools_commands import sort_memory as sort_memory
 from wgsextract_cli.core.atomic_output import atomic_output_mode as atomic_output_mode
 from wgsextract_cli.core.atomic_output import (
     atomic_outputs_enabled as atomic_outputs_enabled,
@@ -118,11 +123,6 @@ from wgsextract_cli.core.resource_estimates import (
 from wgsextract_cli.core.resource_policy import stage_thread_plan as stage_thread_plan
 from wgsextract_cli.core.results import current_result as current_result
 from wgsextract_cli.core.results import warn as warn
-from wgsextract_cli.core.samtools_commands import parse_memory as parse_memory
-from wgsextract_cli.core.samtools_commands import (
-    regular_files_bytes as regular_files_bytes,
-)
-from wgsextract_cli.core.samtools_commands import sort_memory as sort_memory
 from wgsextract_cli.core.staged_alignment import workspace_path as workspace_path
 from wgsextract_cli.core.temp_directory import (
     configured_temp_directory as configured_temp_directory,

@@ -19,13 +19,13 @@ from bisect import bisect_left
 from pathlib import Path
 
 from wgsextract_cli.core.alignment.metadata import get_bam_header
-from wgsextract_cli.core.paths import PathInput
-from wgsextract_cli.core.ref_library.assets import read_fai_lengths
-from wgsextract_cli.core.region_selection import Intervals, selected_intervals
-from wgsextract_cli.core.samtools_commands import (
+from wgsextract_cli.core.alignment.samtools_commands import (
     alignment_index,
     get_sam_index_cmd,
 )
+from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.warnings import GB, check_free_space, get_free_space_needed
 

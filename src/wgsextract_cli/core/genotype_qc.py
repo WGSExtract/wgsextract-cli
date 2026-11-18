@@ -21,12 +21,12 @@ from wgsextract_cli.core.alignment.cram_counts import (
     cram_container_totals,
     multi_ref_contigs,
 )
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
 from wgsextract_cli.core.microarray.templates import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 

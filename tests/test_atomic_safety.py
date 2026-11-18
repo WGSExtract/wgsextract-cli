@@ -16,7 +16,8 @@ import pytest
 
 from tests.fake_tools import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam
-from wgsextract_cli.core import bwa_index, config
+from wgsextract_cli.core import config
+from wgsextract_cli.core.alignment import bwa_index as bwa_index
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.file_lock import build_lock, exclusive_lock

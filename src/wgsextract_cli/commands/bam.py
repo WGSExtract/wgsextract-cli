@@ -18,6 +18,11 @@ from wgsextract_cli.api.bam import (
     _InputParams,
 )
 from wgsextract_cli.cli.registration.bam import register as register
+from wgsextract_cli.core.alignment.samtools_commands import (
+    alignment_index,
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -31,11 +36,6 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import (
-    alignment_index,
-    regular_files_bytes,
-    sort_memory,
-)
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     WGSExtractError,

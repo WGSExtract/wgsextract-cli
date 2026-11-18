@@ -10,6 +10,11 @@ from wgsextract_cli.core.alignment.memory import (
     least_mapping_memory,
     reference_bases,
 )
+from wgsextract_cli.core.alignment.samtools_commands import (
+    parse_memory,
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.chunked_alignment import (
     ChunkPlan,
     chunked_disk,
@@ -31,11 +36,6 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.resource_policy import stage_thread_plan
-from wgsextract_cli.core.samtools_commands import (
-    parse_memory,
-    regular_files_bytes,
-    sort_memory,
-)
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.warnings import get_free_space_needed
 

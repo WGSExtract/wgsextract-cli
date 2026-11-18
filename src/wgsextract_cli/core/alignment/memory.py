@@ -20,13 +20,13 @@ from typing import Any, NamedTuple
 
 import psutil
 
-from wgsextract_cli.core.paths import append_suffix
-from wgsextract_cli.core.ref_library.assets import read_fai_lengths
-from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import (
+from wgsextract_cli.core.alignment.samtools_commands import (
     DECODED_BYTES_PER_INPUT_BYTE,
     parse_memory,
 )
+from wgsextract_cli.core.paths import append_suffix
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError
 
 _GIB = 1024**3

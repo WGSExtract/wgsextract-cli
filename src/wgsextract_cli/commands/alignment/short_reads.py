@@ -18,6 +18,7 @@ from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     estimate_mapping_memory,
 )
+from wgsextract_cli.core.alignment.samtools_commands import parse_memory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.native_aligners import (
@@ -36,9 +37,6 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.resource_policy import stage_thread_plan
-from wgsextract_cli.core.samtools_commands import (
-    parse_memory,
-)
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,

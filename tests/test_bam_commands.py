@@ -16,9 +16,10 @@ import pytest
 
 from tests.htslib_helpers import needs_htslib, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli.commands import bam as bam_module
-from wgsextract_cli.core import results, samtools_commands
+from wgsextract_cli.core import results
+from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
+from wgsextract_cli.core.alignment.samtools_commands import _use_sambamba
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.samtools_commands import _use_sambamba
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import calculate_bam_md5, get_file_version
 

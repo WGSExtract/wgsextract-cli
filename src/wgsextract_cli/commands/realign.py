@@ -64,6 +64,11 @@ from wgsextract_cli.core.alignment.read_counts import (
     fastq_input_statistics as fastq_input_statistics,
 )
 from wgsextract_cli.core.alignment.read_counts import unpaired_sample as unpaired_sample
+from wgsextract_cli.core.alignment.samtools_commands import parse_memory as parse_memory
+from wgsextract_cli.core.alignment.samtools_commands import (
+    regular_files_bytes as regular_files_bytes,
+)
+from wgsextract_cli.core.alignment.samtools_commands import sort_memory as sort_memory
 from wgsextract_cli.core.alignment.sequencing import input_platform as input_platform
 from wgsextract_cli.core.alignment.sequencing import pacbio_platform as pacbio_platform
 from wgsextract_cli.core.alignment.sequencing import (
@@ -124,11 +129,6 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.resource_policy import stage_thread_plan as stage_thread_plan
 from wgsextract_cli.core.results import current_result as current_result
-from wgsextract_cli.core.samtools_commands import parse_memory as parse_memory
-from wgsextract_cli.core.samtools_commands import (
-    regular_files_bytes as regular_files_bytes,
-)
-from wgsextract_cli.core.samtools_commands import sort_memory as sort_memory
 from wgsextract_cli.core.steps import Decision as Decision
 from wgsextract_cli.core.steps import Step as Step
 from wgsextract_cli.core.steps import StepJournal as StepJournal

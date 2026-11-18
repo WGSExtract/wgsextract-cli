@@ -157,7 +157,7 @@ class _AlignSetup(NamedTuple):
 
 
 def ensure_bwa_index(ref: str) -> None:
-    from wgsextract_cli.core.bwa_index import ensure_index
+    from wgsextract_cli.core.alignment.bwa_index import ensure_index
 
     try:
         ensure_index(ref, runner=run_command)
