@@ -87,6 +87,10 @@ def test_1093_bcftools_reports_parts_on_the_temporary_volume(
 
 
 @needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Native Clair3 is unsupported on Windows; this POSIX staging fixture mocks a Linux host.",
+)
 @pytest.mark.parametrize("fake_clair3", ["2.0.3"], indirect=True)
 @pytest.mark.parametrize("short_scratch", [False, True])
 def test_1093_clair3_checks_tensors_and_staged_cram_on_the_tmp_volume(

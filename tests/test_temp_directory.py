@@ -437,9 +437,9 @@ def test_move_file_publishes_from_a_tmp_dir_on_another_volume(
         real = os.replace
 
         def across(source, destination):
-            # OS boundary: a rename between two volumes fails with EXDEV.
+            # OS boundary: Windows' ERROR_NOT_SAME_DEVICE (17) maps to EXDEV.
             if Path(source).parent != Path(destination).parent:
-                raise OSError(errno.EXDEV, "Invalid cross-device link")
+                raise OSError(errno.EXDEV, "Invalid cross-device link", str(source), 17)
             real(source, destination)
 
         monkeypatch.setattr(temp_directory.os, "replace", across)
@@ -466,9 +466,9 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
         real = os.link
 
         def across(source, destination):
-            # OS boundary: a hard link between two volumes fails with EXDEV.
+            # OS boundary: Windows' ERROR_NOT_SAME_DEVICE (17) maps to EXDEV.
             if Path(source).parent != Path(destination).parent:
-                raise OSError(errno.EXDEV, "Invalid cross-device link")
+                raise OSError(errno.EXDEV, "Invalid cross-device link", str(source), 17)
             real(source, destination)
 
         monkeypatch.setattr(temp_directory.os, "link", across)

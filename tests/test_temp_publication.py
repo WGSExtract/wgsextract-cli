@@ -94,7 +94,8 @@ def test_1093_failed_cross_volume_copy_leaves_original_output_and_no_partial(
         raise failure
 
     monkeypatch.setattr(os, "replace", cross_volume)
-    monkeypatch.setattr(shutil, "copyfile", interrupted_copy)
+    # Windows copy2 uses CopyFile2 directly, bypassing shutil.copyfile.
+    monkeypatch.setattr(shutil, "copy2", interrupted_copy)
     with pytest.raises(type(failure)):
         move_file(source, final)
     assert source.read_bytes() == b"finished new output"
