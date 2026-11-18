@@ -39,6 +39,7 @@ MINIMUM_VERSION = {"darwin": (0, 1, 1), "linux": (0, 2, 0)}
 # The first build whose make_examples matches Google's for a model's reads:
 # 0.3.0 phases ONT reads as Google's does (#739).
 MODEL_MINIMUM_VERSION = {"ONT_R104": (0, 3, 0)}
+HAPLOID_MINIMUM_VERSION = (0, 4, 0)
 WEIGHTS_SETTING = "deepvariant_weights"
 ENGINE_SETTING = "deepvariant_native"
 ENGINE_CHOICES = ("auto", "off")
@@ -117,6 +118,16 @@ class NativeDeepVariant:
     model_type: str = "WGS"
     # Linux: whether its ONNX Runtime has CUDA (the cuda129 package, not cpu).
     cuda: bool = False
+
+    def require_haploid(self) -> None:
+        """Refuse builds lacking likelihood recalibration and PAR-aware gVCF."""
+        if tuple(map(int, self.version.split("."))) < HAPLOID_MINIMUM_VERSION:
+            raise WGSExtractError(
+                f"wgse-deepvariant {self.version} does not support this sex/PAR "
+                "ploidy policy. Install wgse-deepvariant 0.4.0 or later for "
+                "haploid chrX/Y/MT and diploid PAR calling, or set "
+                'deepvariant_native = "off" in config.toml to use Google\'s image.'
+            )
 
     def _checked(self) -> Path:
         assert self.weights is not None, "weights not checked yet"

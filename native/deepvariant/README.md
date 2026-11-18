@@ -68,6 +68,28 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0010** (0.3.1) writes a PL value for every genotype of the gVCF's variant
   records, those with the `<*>` allele included, as Google's does: 0.3.0 left
   them out, so `A T,<*>` had 3 values instead of 6 (#999).
+- **0011** (0.4.0) implements Google's haploid/PAR likelihood recalibration
+  and reference confidence (#1103). `run`, `make_examples` and
+  `postprocess_variants` accept `--haploid_contigs` (comma- or space-separated)
+  and `--par_regions_bed` (zero-based half-open BED, plain or gzip).
+  Heterozygous probability mass is zeroed and the remaining mass normalized
+  after multiallelic merging and allele simplification, before GT/GQ/QUAL/
+  FILTER. Haploid gVCF reference likelihoods use log10(Phet) = -999 before
+  normalization and GQ binning, and reference blocks split at PAR boundaries.
+  GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
+  The build runs native likelihood and PAR-edge regressions; the smoke test
+  checks staged flag propagation, retained PAR heterozygotes and gVCF coverage.
+
+The haploid contract follows Google DeepVariant **v1.10.0**:
+[`postprocess_variants.py`, lines 1070–1092](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1070-L1092)
+(probability adjustment), [1197–1204](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1197-L1204)
+and [1300–1307](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1300-L1307)
+(biallelic and multiallelic calls), and
+[`variant_caller.py`, lines 220–257](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L220-L257)
+and [323–334](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L323-L334)
+(haploid reference confidence and base-wise PAR membership). Variant PAR
+membership uses overlap of the simplified variant; reference confidence uses
+the individual reference base, as upstream does.
 
 ## Same results as Google's image
 

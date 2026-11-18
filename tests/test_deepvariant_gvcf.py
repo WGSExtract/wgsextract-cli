@@ -106,10 +106,14 @@ def test_a_missing_gvcf_is_written_again_by_a_rerun_863(dv):
     assert dv.deepvariant.stages() == []
 
 
-def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv):
+@pytest.mark.parametrize("engine", ["image", "native-0.4.0"])
+def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv, request, engine):
     """Issue #863: ploidy-0 intervals (a woman's chrY) are left out of
     calling, so the gVCF has no records there; its provenance must say they
     were excluded, or they would read as bases nobody could read."""
+    if engine == "native-0.4.0":
+        dv = request.getfixturevalue("linux_native")
+        dv.deepvariant.set_native_version("0.4.0")
     dv.sample = woman_sample(dv)
     gvcf = call_with_evidence(dv)[ROLE]
 

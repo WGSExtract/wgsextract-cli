@@ -594,12 +594,12 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     out_gvcf = str(Path(outdir, GVCF_NAME)) if gvcf else None
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
-    from .caller_ploidy import calling_ploidy, require_diploid, write_intervals
+    from .caller_ploidy import calling_ploidy, write_intervals
 
     ploidy = calling_ploidy(input_file, ref, caller.lib, outdir, region, commas=False)
     called_region = region
-    if native:
-        require_diploid(ploidy, "wgse-deepvariant")
+    if native and any(i.ploidy != 2 for i in ploidy):
+        native.require_haploid()
     if not any(i.ploidy for i in ploidy):
         raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
     if any(i.ploidy == 0 for i in ploidy):
@@ -682,10 +682,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 region, checkpoint, batch_size, postprocess, int(threads),
                 str(work / GVCF_NAME) if gvcf else None,
             )  # fmt: skip
-            if haploid:
-                dv_args += ["--haploid_contigs", ",".join(haploid)]
-                if par is not None:
-                    dv_args += ["--par_regions_bed", host_path(par)]
+        if haploid:
+            dv_args += ["--haploid_contigs", ",".join(haploid)]
+            if par is not None:
+                dv_args += ["--par_regions_bed", par if native else host_path(par)]
 
         def preflight(fresh: bool) -> None:
             """State the host requirement; refuse a shortfall only when

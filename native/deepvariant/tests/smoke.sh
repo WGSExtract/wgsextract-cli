@@ -107,6 +107,43 @@ if ! cmp -s calls.body staged.body; then
 fi
 echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; the staged commands agree"
 
+# #1103: staged execution must carry PAR/haploid policy to both reference
+# confidence generation and final calling, without changing diploid chr2.
+printf 'chr1\t0\t9000\n' > par.bed
+"$binary" run --model_type=WGS --ref=reference.fa --reads=reads.bam \
+    --checkpoint="$weights/wgs.dvw" --small_model_path="$weights/wgs_small_weights" \
+    --output_vcf=haploid.vcf.gz --output_gvcf=haploid.g.vcf.gz \
+    --haploid_contigs=chr1 --par_regions_bed=par.bed \
+    --intermediate_results_dir=haploid --num_shards=2 \
+    --dry_run=true > haploid-plan.txt
+awk '/^\*\*\*\*\* Running the command:\*\*\*\*\*$/ { getline; print }' haploid-plan.txt > haploid-stages.sh
+test "$(wc -l < haploid-stages.sh)" -eq 3
+mkdir -p haploid
+sh -e haploid-stages.sh > haploid.log 2>&1 || { tail -20 haploid.log; exit 1; }
+gzip -dc haploid.vcf.gz | awk -F '\t' '
+    !/^#/ {
+        split($10, f, ":"); gt = f[1]; gsub(/\|/, "/", gt)
+        if ($1 == "chr1" && $2 > 9000 && gt ~ /^[0-9]+\/[0-9]+$/) {
+            split(gt, a, "/")
+            if (a[1] != a[2]) bad++
+        }
+        if ($1 == "chr1" && $2 == 3000 && gt == "0/1" && $7 == "PASS") par++
+        if ($1 == "chr2" && $2 == 3000 && gt == "0/1" && $7 == "PASS") diploid++
+    }
+    END { exit (bad || par != 1 || diploid != 1) }'
+gzip -dc haploid.g.vcf.gz | awk -F '\t' '
+    !/^#/ {
+        end = $2 + length($4) - 1
+        n = split($8, info, ";")
+        for (i = 1; i <= n; i++) if (info[i] ~ /^END=/) end = substr(info[i], 5) + 0
+        if ($2 != last[$1] + 1) bad++
+        last[$1] = end
+        seen[$1]++
+    }
+    END { exit (bad || last["chr1"] != 30000 || last["chr2"] != 30000 ||
+                !seen["chr1"] || !seen["chr2"]) }'
+echo "smoke: haploid non-PAR calls, retained PAR/diploid hets, gap-free gVCF"
+
 [ -f "$weights/ont_r104.dvw" ] || exit 0
 # 60x of 8 kb reads (30x at the outer SNPs), long enough to join the het SNPs
 # 6 kb apart, from the same genome's two haplotypes; the het SNPs are

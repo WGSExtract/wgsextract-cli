@@ -988,16 +988,20 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    ploidy = "".join(
+        f" '--{flag}={opts[flag]}'" for flag in ("haploid_contigs", "par_regions_bed")
+        if flag in opts
+    )
     for flag in ("inference_backend", "cpu_threads"):
         if flag in opts:
             batch += f" --{flag}={opts[flag]}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
-        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
+        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}{ploidy}",
         f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
         f"--checkpoint={opts['checkpoint']}{batch}",
         f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
-        f"--output_vcf_outfile={opts['output_vcf']}"
+        f"--output_vcf_outfile={opts['output_vcf']}{ploidy}"
         + (f" --gvcf_outfile={opts['output_gvcf']}" if "output_gvcf" in opts else ""),
     ]
     print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
