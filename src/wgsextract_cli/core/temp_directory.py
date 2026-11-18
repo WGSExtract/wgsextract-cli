@@ -89,7 +89,8 @@ def input_scratch_directory(fallback: PathInput | None = None) -> str:
         return configured
     workspace = _inputs.get()
     parent = fallback or (workspace.fallback if workspace else None)
-    key = str(absolute_path(parent)) if parent else None
+    parent = absolute_path(expand_path(parent)) if parent else None
+    key = str(parent) if parent else None
     directories = workspace.directories if workspace else _process_scratch
     if key not in directories:
         if workspace:

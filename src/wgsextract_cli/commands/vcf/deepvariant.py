@@ -19,6 +19,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     stage_cram30,
 )
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings as settings
 from wgsextract_cli.core.containers import (
     docker_info,
@@ -414,11 +415,11 @@ def _pbrun_deepvariant(
             raise WGSExtractError(
                 "Parabricks DeepVariant didn't write both its VCF and gVCF."
             )
-        for suffix in ("", ".tbi"):
-            if Path(f"{variants}{suffix}").exists():
-                move_file(f"{variants}{suffix}", out_vcf + suffix)
-            elif suffix:
-                Path(out_vcf + suffix).unlink(missing_ok=True)
+        with atomic_output(out_vcf) as staged:
+            move_file(variants, staged)
+            if Path(f"{variants}.tbi").is_file():
+                move_file(f"{variants}.tbi", staged + ".tbi")
+            ensure_vcf_indexed(staged)
     ensure_vcf_indexed(out_vcf)
     if record:
         record_variants(

@@ -14,6 +14,7 @@ from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import (
     build_from_path,
     canonical_build,
@@ -406,12 +407,14 @@ def _run_vep_on_input(
 
             if params.format == "vcf":
                 run_command(["tabix", "-f", "-p", "vcf", vep_output])
-                move_file(vep_output + ".tbi", final_output + ".tbi")
+            with atomic_output(final_output) as staged:
+                move_file(vep_output, staged)
+                if params.format == "vcf":
+                    move_file(vep_output + ".tbi", staged + ".tbi")
             # VEP's report files go beside the output.
             for suffix in ("_summary.html", "_warnings.txt"):
                 if Path(vep_output + suffix).exists():
                     move_file(vep_output + suffix, output_file + suffix)
-            move_file(vep_output, final_output)
     except (OSError, subprocess.SubprocessError, WGSExtractError, ValueError) as e:
         checkpoint()  # a cancelled run stops here, not at the next input
         logging.error(f"VEP failed for {current_input}: {e}")

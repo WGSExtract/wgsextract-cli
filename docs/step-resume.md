@@ -118,6 +118,10 @@ killed mid-step therefore never leaves a step, or a file, that looks done.
 The rerun removes the half-written temporary files, and any output the
 killed step left, then redoes the step.
 
+Ensembl VEP and Parabricks DeepVariant stage each completed VCF together
+with its matching index before replacing either final file. A failed or
+interrupted cross-volume copy preserves the previous readable VCF/index pair.
+
 DeepVariant is the exception that keeps partial work. Until the VCF is
 final, its stages work in `.deepvariant.work` in the output folder. A
 `make_examples` run that was interrupted keeps its finished shards: GNU

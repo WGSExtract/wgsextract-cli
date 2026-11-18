@@ -69,12 +69,10 @@ def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
     resource = dataset(ann, lib)
     if not resource:
         return []
-    flag = {"cadd": "--snv-file", "alphamissense": "--am-file"}.get(
-        ann, f"--{ann}-file"
-    )
+    flag = "--am-file" if ann == "alphamissense" else f"--{ann}-file"
     args = [flag, resource]
     if ann == "cadd" and lib.cadd_indel_file:
-        args += ["--indel-file", lib.cadd_indel_file]
+        args += ["--cadd-indel-file", lib.cadd_indel_file]
     return args
 
 

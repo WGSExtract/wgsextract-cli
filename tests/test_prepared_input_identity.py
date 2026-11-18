@@ -11,10 +11,16 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools, write_fasta
+from tests.smoke_utils import isolate_home
 from tests.test_pharmcat import SNPS, _release, _view
 from tests.test_pharmcat import _vcf as pharmcat_vcf
 from tests.test_pharmcat import pharmcat_env as pharmcat_env
-from tests.test_temp_directory import _files_seen_under, _tree, _wgsextract
+from tests.test_temp_directory import (
+    _files_seen_under,
+    _python_writes,
+    _tree,
+    _wgsextract,
+)
 from tests.test_trio_vcfs import _vcf
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf.annotation_helpers import prepare_tabix_annotation
@@ -22,6 +28,40 @@ from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.utils import run_command
 
 pytestmark = needs_tools("bcftools", "bgzip", "tabix", "samtools")
+
+
+@pytest.mark.parametrize("literal_exists", [False, True])
+def test_1093_api_annotation_expands_tilde_before_creating_input_scratch(
+    tmp_path, monkeypatch, literal_exists
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    isolate_home(monkeypatch, home)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delitem(settings, "temp_directory", raising=False)
+    literal = (tmp_path / "~" / "out").resolve()
+    if literal_exists:
+        literal.mkdir(parents=True)
+    source = _plain_vcf(tmp_path / "lab" / "sample.vcf")
+    resource = _plain_vcf(tmp_path / "resources" / "gnomad.vcf", frequency=True)
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 1000})
+    with _python_writes(monkeypatch) as written:
+        result = api.vcf.gnomad(
+            api.VcfGnomadParams(
+                vcf_input=source, gnomad_file=resource, ref=ref, outdir=Path("~/out"),
+                threads=1,
+            )
+        )  # fmt: skip
+    expected = (home / "out").resolve()
+    assert result.status == "ok"
+    assert (expected / "gnomad_annotated.vcf.gz").is_file()
+    assert any(
+        path.is_relative_to(expected) and path.name.endswith(".vcf.gz.tmp")
+        for path in written
+    )
+    assert not any(path.is_relative_to(literal) for path in written)
+    assert not literal.exists() or list(literal.iterdir()) == []
+    assert not any(path.name.startswith(".wgse") for path in expected.iterdir())
 
 
 def test_1093_pharmcat_reports_keep_the_supplied_plain_symlink_basename(

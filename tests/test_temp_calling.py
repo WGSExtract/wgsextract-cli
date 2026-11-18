@@ -18,12 +18,73 @@ from tests.htslib_helpers import (
 from tests.test_clair3 import DORADO_RG, as_cram, make_model
 from tests.test_clair3 import fake_clair3 as fake_clair3
 from tests.test_clair3 import linux_x86 as linux_x86
+from tests.test_gatk_scatter import gatk as gatk
 from tests.test_parabricks import gpu as gpu
 from tests.test_parabricks import linux as linux
 from tests.test_parabricks import posix_only
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.resource_estimates import estimate_resources
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("short", [None, "output", "scratch"])
+def test_1093_gatk_evidence_work_and_published_gvcf_use_their_actual_volumes(
+    tmp_path, monkeypatch, caplog, request, short
+):
+    sample = snp_sample(tmp_path)
+    output, scratch, java = (tmp_path / name for name in ("out", "scratch", "java"))
+    for folder in (output, scratch, java):
+        folder.mkdir()
+    volumes = Volumes(monkeypatch)
+    volumes.free[output] = 0 if short == "output" else 0.04
+    volumes.free[scratch] = 0 if short == "scratch" else 0.08
+    volumes.free[java] = 0.01
+
+    def estimate(staging):
+        return estimate_resources(
+            "gatk", input_paths=[sample.bam], output_dir=str(output),
+            reference=sample.ref, reads=10_971_483, reference_evidence=True,
+            temp_dir=str(java), gatk_staging_dir=staging,
+        )  # fmt: skip
+
+    rows = {
+        row.paths[0]: row
+        for row in estimate(str(scratch)).resources
+        if row.resource == "disk"
+    }
+    assert rows[str(output)].status == ("LOW" if short == "output" else "OK")
+    assert rows[str(scratch)].status == ("LOW" if short == "scratch" else "OK")
+    assert (
+        rows[str(scratch)].components["reference_evidence"]
+        > rows[str(output)].components["reference_evidence"]
+    )
+    assert "reference_evidence" not in rows[str(java)].components
+    if short is not None:
+        return
+    fallback = next(row for row in estimate(None).resources if str(output) in row.paths)
+    assert fallback.components["reference_evidence"] == (
+        rows[str(output)].components["reference_evidence"]
+        + rows[str(scratch)].components["reference_evidence"]
+    )
+    request.getfixturevalue("gatk")
+    monkeypatch.setitem(settings, "temp_directory", str(scratch))
+    caplog.set_level(logging.INFO)
+    result = api.vcf.gatk(
+        api.VcfGatkParams(
+            input=sample.bam, ref=sample.ref, outdir=output, threads=1,
+            region="chr1:1-3000", reference_evidence="gvcf",
+        )
+    )  # fmt: skip
+    assert result.status == "ok"
+    assert (output / "gatk.g.vcf.gz").is_file()
+    reports = [
+        record.message
+        for record in caplog.records
+        if record.message.startswith("Preflight disk")
+    ]
+    assert any(str(scratch) in message for message in reports)
+    assert list(scratch.iterdir()) == []
 
 
 @needs_tools("samtools", "bcftools", "tabix")
