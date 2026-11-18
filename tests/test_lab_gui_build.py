@@ -1,3 +1,4 @@
+import re
 import shutil
 import subprocess
 import sys
@@ -9,6 +10,27 @@ import pytest
 from scripts.installlab import app_source
 
 LAB_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts" / "installlab"
+
+
+def test_801_pinned_contract_checkout_matches_resolved_installer_revision() -> None:
+    workflow = LAB_SCRIPTS.parents[1] / ".github" / "workflows" / "install_lab.yml"
+    text = workflow.read_text()
+    for name in ("linux-app", "macos-app", "windows-app", "windows-judge"):
+        job = re.split(r"\n  \S", text.split(f"\n  {name}:\n", 1)[1], maxsplit=1)[0]
+        steps = job.split("      - ")
+        checkout = next(
+            step for step in steps if "\n          path: out/app-contract\n" in step
+        )
+        # contract: downloaded app and plan/judge must share the trusted source
+        # resolved by app-source, never a guest artifact's suggested revision.
+        assert "repository: ${{ needs.app-source.outputs.repo }}" in checkout
+        assert "ref: ${{ needs.app-source.outputs.revision }}" in checkout
+        assert "persist-credentials: false" in checkout
+        if name != "windows-judge":
+            assert "if: matrix.cli == 'pinned'" in checkout
+        assert "--app-contract out/app-contract" in job or (
+            '"--app-contract", "out/app-contract"' in job
+        )
 
 
 @pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
@@ -59,12 +81,8 @@ def test_cache_poisoning_rejects_untrusted_app_runs(monkeypatch, changes):
 
 
 @pytest.mark.parametrize("annotated", [False, True])
-@pytest.mark.parametrize(
-    "repository", ["WGSExtract/wgsextract-cli", "WGSExtract/gui-for-cli"]
-)
-def test_cache_poisoning_pins_published_release_sources(
-    monkeypatch, annotated, repository
-):
+def test_cache_poisoning_pins_published_release_sources(monkeypatch, annotated):
+    repository = "WGSExtract/wgsextract-cli"
     revision = "a" * 40
     commit = {"type": "commit", "sha": revision}
     responses = {
@@ -79,6 +97,16 @@ def test_cache_poisoning_pins_published_release_sources(
     }
     monkeypatch.setattr(app_source, "github_json", responses.__getitem__)
     assert app_source.resolve_revision(repository, "", "v1.0", "c" * 40) == revision
+
+
+def test_801_legacy_release_is_rejected_before_selecting_an_app_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        app_source, "github_json", lambda endpoint: pytest.fail("queried legacy source")
+    )
+    with pytest.raises(ValueError, match="Legacy app releases.*unsupported"):
+        app_source.resolve_revision("WGSExtract/gui-for-cli", "", "v0.4.4", "a" * 40)
 
 
 def test_cache_poisoning_refuses_unpublished_app_sources(monkeypatch):
