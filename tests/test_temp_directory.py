@@ -1,4 +1,6 @@
+import builtins
 import errno
+import io
 import json
 import os
 import random
@@ -34,6 +36,29 @@ def _wgsextract(capsys, *argv: str) -> dict:
     except SystemExit:
         pass
     return json.loads(capsys.readouterr().out)
+
+
+@contextmanager
+def _python_writes(monkeypatch) -> Iterator[set[Path]]:
+    """Observe successful Python write opens synchronously: short-lived
+    scratch files can disappear before a directory-polling thread runs."""
+    paths: set[Path] = set()
+
+    def observe(open_file):
+        def opened(file, mode="r", *args, **kwargs):
+            stream = open_file(file, mode, *args, **kwargs)
+            if isinstance(file, (str, os.PathLike)) and any(
+                flag in mode for flag in "wax+"
+            ):
+                paths.add(Path(file).resolve())
+            return stream
+
+        return opened
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", observe(builtins.open))
+        patch.setattr(io, "open", observe(io.open))
+        yield paths
 
 
 @contextmanager

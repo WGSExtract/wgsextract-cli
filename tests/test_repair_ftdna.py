@@ -187,10 +187,11 @@ def test_repair_vcf_cleans_filter_column_so_bcftools_reads_it(tmp_path, suffix):
 
 
 @pytest.mark.parametrize("configured_temp", [False, True])
+@pytest.mark.parametrize("aliased", [False, True], ids=["direct", "symlink"])
 def test_1093_repair_vcf_keeps_its_bcf_working_copy_off_system_temp(
-    tmp_path, capsys, configured_temp
+    tmp_path, capsys, monkeypatch, configured_temp, aliased
 ):
-    from tests.test_temp_directory import _files_seen_under, _wgsextract
+    from tests.test_temp_directory import _python_writes, _wgsextract
 
     plain = tmp_path / "kit.vcf"
     plain.write_text(_VCF.replace("Low Qual;q<10", "LowQual"))
@@ -199,9 +200,18 @@ def test_1093_repair_vcf_keeps_its_bcf_working_copy_off_system_temp(
     out = tmp_path / "fixed" / "kit.vcf"
     scratch = tmp_path / "scratch"
     scratch.mkdir()
+    out.parent.mkdir()
+    if aliased:
+        for folder in (scratch, out.parent):
+            actual = folder.with_name(folder.name + "-actual")
+            folder.rename(actual)
+            try:
+                folder.symlink_to(actual, target_is_directory=True)
+            except OSError as error:
+                pytest.skip(f"Symlinks unavailable: {error}")
     options = ["--tmp-dir", str(scratch)] if configured_temp else []
     selected = scratch if configured_temp else out.parent
-    with _files_seen_under(selected) as seen:
+    with _python_writes(monkeypatch) as written:
         result = _wgsextract(
             capsys,
             "repair",
@@ -214,8 +224,13 @@ def test_1093_repair_vcf_keeps_its_bcf_working_copy_off_system_temp(
         )
     assert result["status"] == "ok", result["error"]
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual 2 1"]
-    assert any(
-        name.endswith(".vcf") and len(Path(name).parts) > 1 for name in seen[selected]
+    relative = [
+        path.relative_to(selected.resolve())
+        for path in written
+        if path.is_relative_to(selected.resolve())
+    ]
+    assert any(path.suffix == ".vcf" and len(path.parts) > 1 for path in relative), (
+        sorted(map(str, written))
     )
     assert not any(p.name.startswith(".wgse") for p in out.parent.iterdir())
     assert list(scratch.iterdir()) == []
