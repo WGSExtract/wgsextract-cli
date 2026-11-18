@@ -14,146 +14,147 @@
 </head>
 <body data-page-id="v2-viewer" data-shell="v2" data-nav="viewer" data-title="Genome viewer">
 <div class="v2-page v2-page--wide" data-annot-id="page" data-v2-viewer>
-  <header class="v2-head" data-annot-id="header">
-    <div class="v2-head__text">
-      <h1>Genome viewer</h1>
-      <p class="v2-head__sub">See the <abbr class="v2-term" data-term="reads">reads</abbr> behind a result. Pick a spot to look at, or type a gene, an <abbr class="v2-term" data-term="rsid">rsID</abbr> or a position.</p>
-    </div>
+  <header class="v2-viewer__bar" data-annot-id="viewer-bar">
+    <button class="v2-btn v2-viewer__side v2-hide-phone" type="button" data-v2-viewer-side aria-pressed="false" aria-label="Hide sidebar" title="Hide the app sidebar to give the viewer more room"><i data-icon="panel-left"></i></button>
+    <h1 class="v2-viewer__title">Genome viewer</h1>
+    <label class="v2-viewer__spot" data-annot-id="viewer-spots">
+      <span class="visually-hidden">Place to look at</span>
+      <select class="v2-select" data-v2-spot-select>
+        <option value="intro">How to read it</option>
+        <optgroup label="Health">
+          <option value="apoe">APOE — one copy of ε4</option>
+          <option value="hfe">HFE C282Y — iron overload carrier</option>
+          <option value="mthfr">MTHFR — a common variant</option>
+          <option value="brca1">BRCA1 — a benign change</option>
+          <option value="lct">LCT — milk digestion</option>
+        </optgroup>
+        <optgroup label="Lineage">
+          <option value="y">Y M304 — father to son</option>
+          <option value="mt">mtDNA K or H — mother to children</option>
+        </optgroup>
+        <optgroup label="Family">
+          <option value="denovo">A new variant — Reginald only</option>
+          <option value="smalldel">Small deletion — from Helen</option>
+          <option value="bigdel">Large deletion — from Gordon</option>
+        </optgroup>
+        <optgroup label="Don’t be fooled">
+          <option value="artifact">Strand artifact — looks real, isn’t</option>
+          <option value="smn">SMN1 — reads that could map twice</option>
+        </optgroup>
+        <option value="" hidden>A place you searched for</option>
+      </select>
+    </label>
+    <fieldset class="v2-viewer__who">
+      <legend class="visually-hidden">Show tracks for</legend>
+      <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="reginald" checked><span data-v2-name="reginald">Reginald</span></label>
+      <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="gordon"><span data-v2-name="gordon">Gordon</span></label>
+      <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="helen"><span data-v2-name="helen">Helen</span></label>
+      <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="alex"><span data-v2-name="alex">Alex</span></label>
+    </fieldset>
+    <form class="v2-viewer__search" role="search" data-v2-viewer-search>
+      <label class="visually-hidden" for="v2-viewer-q">Gene, rsID or position</label>
+      <input class="v2-input" id="v2-viewer-q" type="search" placeholder="APOE, rs429358 or chr19:44908684" autocomplete="off" spellcheck="false">
+      <button class="v2-btn" type="submit">Go</button>
+    </form>
   </header>
 
   <div class="v2-viewer" data-annot-id="viewer">
-    <nav class="v2-viewer__spots" aria-label="Places worth a look" data-annot-id="viewer-spots">
-      <p class="v2-viewer__group">Health</p>
-      <button type="button" data-v2-spot="apoe"><strong>APOE</strong><span>One copy of ε4</span></button>
-      <button type="button" data-v2-spot="hfe"><strong>HFE C282Y</strong><span>Iron overload carrier</span></button>
-      <button type="button" data-v2-spot="mthfr"><strong>MTHFR</strong><span>A common variant</span></button>
-      <button type="button" data-v2-spot="brca1"><strong>BRCA1</strong><span>A benign change</span></button>
-      <button type="button" data-v2-spot="lct"><strong>LCT</strong><span>Milk digestion</span></button>
-      <p class="v2-viewer__group">Lineage</p>
-      <button type="button" data-v2-spot="y"><strong>Y: M304</strong><span>Father to son</span></button>
-      <button type="button" data-v2-spot="mt"><strong>mtDNA: K or H</strong><span>Mother to children</span></button>
-      <p class="v2-viewer__group">Family</p>
-      <button type="button" data-v2-spot="denovo"><strong>A new variant</strong><span>Reginald only</span></button>
-      <button type="button" data-v2-spot="smalldel"><strong>Small deletion</strong><span>From Helen</span></button>
-      <button type="button" data-v2-spot="bigdel"><strong>Large deletion</strong><span>From Gordon</span></button>
-      <p class="v2-viewer__group">Don’t be fooled</p>
-      <button type="button" data-v2-spot="artifact"><strong>Strand artifact</strong><span>Looks real, isn’t</span></button>
-      <button type="button" data-v2-spot="smn"><strong>SMN1</strong><span>Reads that could map twice</span></button>
-    </nav>
-
-    <div class="v2-viewer__main">
-      <div class="v2-viewer__bar" data-annot-id="viewer-bar">
-        <fieldset class="v2-viewer__who">
-          <legend class="visually-hidden">Show tracks for</legend>
-          <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="reginald" checked><span data-v2-name="reginald">Reginald</span></label>
-          <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="gordon"><span data-v2-name="gordon">Gordon</span></label>
-          <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="helen"><span data-v2-name="helen">Helen</span></label>
-          <label class="v2-row"><input class="v2-check" type="checkbox" data-v2-track="alex"><span data-v2-name="alex">Alex</span></label>
-        </fieldset>
-        <form class="v2-viewer__search" role="search" data-v2-viewer-search>
-          <label class="visually-hidden" for="v2-viewer-q">Gene, rsID or position</label>
-          <input class="v2-input" id="v2-viewer-q" type="search" placeholder="APOE, rs429358 or chr19:44908684" autocomplete="off" spellcheck="false">
-          <button class="v2-btn" type="submit">Go</button>
-        </form>
-      </div>
-
-      <p class="v2-viewer__msg" role="status" aria-live="polite" data-v2-viewer-msg hidden></p>
-
-      <div class="v2-notice" data-tone="warn" role="status" data-v2-viewer-gate="gordon" hidden>
-        <i data-icon="clock"></i>
-        <div class="v2-notice__text"><strong>Gordon’s reads aren’t on this map yet</strong><span>His <abbr class="v2-term" data-term="bam">BAM</abbr> is aligned to <abbr class="v2-term" data-term="grch37">GRCh37</abbr>, where every position is numbered differently. The GRCh38 copy is being made now; his track appears here when it finishes.</span></div>
-        <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="jobs.html">See the job</a></div>
-      </div>
-      <div class="v2-notice" data-tone="warn" role="status" data-v2-viewer-gate="alex" hidden>
-        <i data-icon="triangle-alert"></i>
-        <div class="v2-notice__text"><strong>Alex’s BAM has no index</strong><span>An <abbr class="v2-term" data-term="index">index</abbr> lets the viewer jump to a spot without reading the whole 64 GB file. Making one takes about 20 minutes.</span></div>
-        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-v2-download="alex-fixed" data-v2-label="Index Alex’s BAM">Make the index</button></div>
-      </div>
-      <div class="v2-notice" data-tone="info" role="status" data-v2-viewer-gate="helen" hidden>
-        <i data-icon="info"></i>
-        <div class="v2-notice__text"><strong>Helen has calls, not reads</strong><span>Her lab sent only a <abbr class="v2-term" data-term="vcf">VCF</abbr>, so her track shows a mark where she differs from the reference and nothing else. A blank there doesn’t always mean she matches the reference; <a class="v2-link" href="learn-variants.html#missing">see why</a>.</span></div>
-      </div>
-      <div class="v2-notice" data-tone="bad" role="alert" data-v2-viewer-gate="noref" hidden>
-        <i data-icon="reference"></i>
-        <div class="v2-notice__text"><strong>These CRAMs need the hs38 reference</strong><span>A <abbr class="v2-term" data-term="cram">CRAM</abbr> stores only how reads differ from the reference, so it can’t be drawn until hs38 is installed. Helen’s VCF still shows.</span></div>
-        <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="references.html">Reference data</a></div>
-      </div>
-      <div class="v2-notice" data-tone="bad" role="alert" data-v2-viewer-gate="error" hidden>
-        <i data-icon="triangle-alert"></i>
-        <div class="v2-notice__text"><strong>The viewer couldn’t open a file</strong><span data-v2-viewer-error></span></div>
-        <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-v2-viewer-retry>Try again</button></div>
-      </div>
-
-      <div class="v2-viewer__igv" data-annot-id="viewer-igv" data-v2-viewer-igv aria-label="Genome viewer: reads and calls" role="region">
-        <p class="v2-viewer__loading" data-v2-viewer-loading>Loading the viewer…</p>
-      </div>
-
-      <section class="v2-viewer__note" aria-live="polite" data-annot-id="viewer-note">
-        <div data-v2-spot-note="intro">
-          <h2>How to read it</h2>
-          <p>The coloured strip at the top is the <abbr class="v2-term" data-term="reference">reference</abbr> sequence, one colour per base. Under each person’s name is a grey graph of <abbr class="v2-term" data-term="depth">depth</abbr>, how many reads cover each base; a coloured bar in it marks a position where many reads disagree with the reference. Below that, each grey bar is one read, and a coloured mark on a read is a base that differs from the reference.</p>
-          <p>Scroll or drag to move, and use + and − to zoom. Click a read for its details. More in <a class="v2-link" href="learn-sequencing.html#diagram-read-pileup">Reads and depth</a>.</p>
-        </div>
-        <div data-v2-spot-note="apoe" hidden>
-          <h2>APOE: one copy of ε4</h2>
-          <p>At rs429358 about half of Reginald’s reads show a C where the reference has T. Half means one copy: he is <abbr class="v2-term" data-term="zygosity">heterozygous</abbr>. Together with the reference base at the neighbouring rs7412, that C makes an ε4 <abbr class="v2-term" data-term="allele">allele</abbr>. Helen’s VCF has the same call, so this copy came from her.</p>
-          <p>One ε4 copy raises the average risk of late-onset Alzheimer’s disease. It doesn’t mean someone will get it. Read <a class="v2-link" href="learn-health.html#clinvar">how risk variants are rated</a> before deciding to look at results like this.</p>
-        </div>
-        <div data-v2-spot-note="hfe" hidden>
-          <h2>HFE C282Y: one copy</h2>
-          <p>Reginald and Gordon each carry one A at rs1800562. Two copies cause most cases of hereditary haemochromatosis, where the body stores too much iron. One copy makes them carriers, which is common in people of northern European descent and usually harmless.</p>
-          <p>Compare the colours: the A is green in roughly half the reads, which is what one copy looks like.</p>
-        </div>
-        <div data-v2-spot-note="mthfr" hidden>
-          <h2>MTHFR C677T</h2>
-          <p>Turn on Alex: every one of her reads has the A, so she has two copies (<abbr class="v2-term" data-term="zygosity">homozygous</abbr>). Reginald, Gordon and Helen have one. About one person in ten has two copies. Labs and supplement sellers make much of it, but current guidelines advise against testing for it.</p>
-        </div>
-        <div data-v2-spot-note="brca1" hidden>
-          <h2>BRCA1: a change that’s harmless</h2>
-          <p>BRCA1 is a cancer gene, and seeing a <abbr class="v2-term" data-term="variant">variant</abbr> in it can be alarming. This one, rs1799966, is listed as <abbr class="v2-term" data-term="pathogenic">benign</abbr> in <abbr class="v2-term" data-term="clinvar">ClinVar</abbr>: about one person in three carries it. Being in an important gene says nothing on its own about whether a variant causes harm.</p>
-        </div>
-        <div data-v2-spot-note="lct" hidden>
-          <h2>LCT: digesting milk as an adult</h2>
-          <p>The A at rs4988235, upstream of the lactase gene in MCM6, keeps lactase switched on after childhood. Gordon has two copies; Reginald and Alex have one. One copy is usually enough to digest milk.</p>
-        </div>
-        <div data-v2-spot-note="y" hidden>
-          <h2>Y chromosome: M304</h2>
-          <p>Every one of Reginald’s and Gordon’s reads has C at M304, a marker that defines the J <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr>. The Y passes from father to son, so they match. Men have one Y, so there’s no half-and-half here, and depth is half that of the other chromosomes.</p>
-          <p>Helen and Alex have no Y chromosome, so their tracks are empty. Their lineage is read from <abbr class="v2-term" data-term="mtdna">mtDNA</abbr> instead. See <a class="v2-link" href="ancestry.html">Reginald’s paternal line</a>.</p>
-        </div>
-        <div data-v2-spot-note="mt" hidden>
-          <h2>mtDNA: K1a1b1a or H1c</h2>
-          <p>At 16224 and 16311 Reginald’s reads show C, two of the markers that place him in K. Turn on Gordon: no change at those spots. Gordon is H1c, and his mitochondria aren’t passed to his children. Reginald’s came from Helen, whose VCF has the same calls.</p>
-          <p>Depth is far higher here than elsewhere because each cell holds hundreds of copies of mtDNA. More in <a class="v2-link" href="learn-ancestry.html#lineage">Lineage</a>.</p>
-        </div>
-        <div data-v2-spot-note="denovo" hidden>
-          <h2>A variant neither parent has</h2>
-          <p>Reginald has an A here in about half his reads. Gordon’s reads all show the reference G, and his depth is good, so he truly doesn’t have it. Helen’s VCF is blank, but a VCF only lists differences, so blank could mean “reference” or “not checked”. A <abbr class="v2-term" data-term="denovo">de novo</abbr> call needs both parents’ reads to be sure.</p>
-          <p>Everyone carries around 60 new variants. Most are harmless. The <a class="v2-link" href="tool-trio.html">trio tool</a> finds them.</p>
-        </div>
-        <div data-v2-spot-note="smalldel" hidden>
-          <h2>A 4-base deletion</h2>
-          <p>Some of Reginald’s reads have a black line where four bases (GGCT) are missing. Helen’s VCF has the same <abbr class="v2-term" data-term="indel">deletion</abbr>, and Gordon’s reads don’t, so it came from her.</p>
-        </div>
-        <div data-v2-spot-note="bigdel" hidden>
-          <h2>A 1,200-base deletion</h2>
-          <p>Depth drops to about half across 1.2 kb in Reginald and Gordon. Reads that cross the edge are cut off where the missing stretch begins (soft-clipped, shown as coloured ends), and pairs that straddle it are coloured because they sit further apart than usual. One copy of chr20 is missing this stretch. A deletion this size doesn’t show up in a normal variant call; it needs a <abbr class="v2-term" data-term="cnv">CNV</abbr> or <abbr class="v2-term" data-term="sv">SV</abbr> caller.</p>
-        </div>
-        <div data-v2-spot-note="artifact" hidden>
-          <h2>An artifact: it’s all on one strand</h2>
-          <p>Reads are now coloured by direction, one per row: pink reads run forward, blue ones in reverse. The T appears only on reverse reads, with low base quality (faded letters). A real variant appears on reads of both directions. The variant caller skipped this one, which is right. See <a class="v2-link" href="learn-variants.html#confidence">How sure a call is</a>.</p>
-        </div>
-        <div data-v2-spot-note="smn" hidden>
-          <h2>SMN1: reads that fit two places</h2>
-          <p>SMN1 has a near-identical copy, SMN2, nearby. Reads here could belong to either, so the aligner gives them <abbr class="v2-term" data-term="mapq">MAPQ</abbr> 0 and they appear hollow. The scattered mismatches are SMN2 reads parked on SMN1. Variant callers ignore these reads, so ordinary calls here are unreliable. Use the <a class="v2-link" href="tool-cnv.html">copy-number tool</a> for <abbr class="v2-term" data-term="smn">SMN</abbr> instead.</p>
-        </div>
-        <div data-v2-spot-note="outside" hidden>
-          <h2>Outside the demo data</h2>
-          <p>This preview carries reads only for the spots on the left. In the app, any position in the genome works.</p>
-        </div>
-      </section>
-        <p class="v2-viewer__demo" data-annot-id="viewer-demo"><strong>Demo data.</strong> Simulated reads on 11 short stretches of <abbr class="v2-term" data-term="grch38">GRCh38</abbr>, 1.4 MB in all. In the app, the viewer reads the whole <abbr class="v2-term" data-term="cram">CRAM</abbr>, <abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="vcf">VCF</abbr> from your disk a few hundred kilobytes at a time, and nothing is uploaded. Built on <a class="v2-link" href="https://github.com/igvteam/igv.js" rel="noopener">igv.js</a>, the web version of <abbr class="v2-term" data-term="igv">IGV</abbr>.</p>
+    <div class="v2-viewer__igv" data-annot-id="viewer-igv" data-v2-viewer-igv aria-label="Genome viewer: reads and calls" role="region">
+      <p class="v2-viewer__loading" data-v2-viewer-loading>Loading the viewer…</p>
     </div>
+
+    <p class="v2-viewer__msg" role="status" aria-live="polite" data-v2-viewer-msg hidden></p>
+
+    <div class="v2-notice" data-tone="warn" role="status" data-v2-viewer-gate="gordon" hidden>
+      <i data-icon="clock"></i>
+      <div class="v2-notice__text"><strong>Gordon’s reads aren’t on this map yet</strong><span>His <abbr class="v2-term" data-term="bam">BAM</abbr> is aligned to <abbr class="v2-term" data-term="grch37">GRCh37</abbr>, where every position is numbered differently. The GRCh38 copy is being made now; his track appears here when it finishes.</span></div>
+      <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="jobs.html">See the job</a></div>
+    </div>
+    <div class="v2-notice" data-tone="warn" role="status" data-v2-viewer-gate="alex" hidden>
+      <i data-icon="triangle-alert"></i>
+      <div class="v2-notice__text"><strong>Alex’s BAM has no index</strong><span>An <abbr class="v2-term" data-term="index">index</abbr> lets the viewer jump to a spot without reading the whole 64 GB file. Making one takes about 20 minutes.</span></div>
+      <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-v2-download="alex-fixed" data-v2-label="Index Alex’s BAM">Make the index</button></div>
+    </div>
+    <div class="v2-notice" data-tone="info" role="status" data-v2-viewer-gate="helen" hidden>
+      <i data-icon="info"></i>
+      <div class="v2-notice__text"><strong>Helen has calls, not reads</strong><span>Her lab sent only a <abbr class="v2-term" data-term="vcf">VCF</abbr>, so her track shows a mark where she differs from the reference and nothing else. A blank there doesn’t always mean she matches the reference; <a class="v2-link" href="learn-variants.html#missing">see why</a>.</span></div>
+    </div>
+    <div class="v2-notice" data-tone="bad" role="alert" data-v2-viewer-gate="noref" hidden>
+      <i data-icon="reference"></i>
+      <div class="v2-notice__text"><strong>These CRAMs need the hs38 reference</strong><span>A <abbr class="v2-term" data-term="cram">CRAM</abbr> stores only how reads differ from the reference, so it can’t be drawn until hs38 is installed. Helen’s VCF still shows.</span></div>
+      <div class="v2-notice__actions"><a class="v2-btn v2-btn--sm" href="references.html">Reference data</a></div>
+    </div>
+    <div class="v2-notice" data-tone="bad" role="alert" data-v2-viewer-gate="error" hidden>
+      <i data-icon="triangle-alert"></i>
+      <div class="v2-notice__text"><strong>The viewer couldn’t open a file</strong><span data-v2-viewer-error></span></div>
+      <div class="v2-notice__actions"><button class="v2-btn v2-btn--sm" type="button" data-v2-viewer-retry>Try again</button></div>
+    </div>
+
+    <section class="v2-viewer__note" aria-live="polite" data-annot-id="viewer-note">
+      <div data-v2-spot-note="intro">
+        <h2>How to read it</h2>
+        <p>The coloured strip at the top is the <abbr class="v2-term" data-term="reference">reference</abbr> sequence, one colour per base. Under each person’s name is a grey graph of <abbr class="v2-term" data-term="depth">depth</abbr>, how many reads cover each base; a coloured bar in it marks a position where many reads disagree with the reference. Below that, each grey bar is one read, and a coloured mark on a read is a base that differs from the reference.</p>
+        <p>Scroll or drag to move, and use + and − to zoom. Click a read for its details. More in <a class="v2-link" href="learn-sequencing.html#diagram-read-pileup">Reads and depth</a>.</p>
+      </div>
+      <div data-v2-spot-note="apoe" hidden>
+        <h2>APOE: one copy of ε4</h2>
+        <p>At rs429358 about half of Reginald’s reads show a C where the reference has T. Half means one copy: he is <abbr class="v2-term" data-term="zygosity">heterozygous</abbr>. Together with the reference base at the neighbouring rs7412, that C makes an ε4 <abbr class="v2-term" data-term="allele">allele</abbr>. Helen’s VCF has the same call, so this copy came from her.</p>
+        <p>One ε4 copy raises the average risk of late-onset Alzheimer’s disease. It doesn’t mean someone will get it. Read <a class="v2-link" href="learn-health.html#clinvar">how risk variants are rated</a> before deciding to look at results like this.</p>
+      </div>
+      <div data-v2-spot-note="hfe" hidden>
+        <h2>HFE C282Y: one copy</h2>
+        <p>Reginald and Gordon each carry one A at rs1800562. Two copies cause most cases of hereditary haemochromatosis, where the body stores too much iron. One copy makes them carriers, which is common in people of northern European descent and usually harmless.</p>
+        <p>Compare the colours: the A is green in roughly half the reads, which is what one copy looks like.</p>
+      </div>
+      <div data-v2-spot-note="mthfr" hidden>
+        <h2>MTHFR C677T</h2>
+        <p>Turn on Alex: every one of her reads has the A, so she has two copies (<abbr class="v2-term" data-term="zygosity">homozygous</abbr>). Reginald, Gordon and Helen have one. About one person in ten has two copies. Labs and supplement sellers make much of it, but current guidelines advise against testing for it.</p>
+      </div>
+      <div data-v2-spot-note="brca1" hidden>
+        <h2>BRCA1: a change that’s harmless</h2>
+        <p>BRCA1 is a cancer gene, and seeing a <abbr class="v2-term" data-term="variant">variant</abbr> in it can be alarming. This one, rs1799966, is listed as <abbr class="v2-term" data-term="pathogenic">benign</abbr> in <abbr class="v2-term" data-term="clinvar">ClinVar</abbr>: about one person in three carries it. Being in an important gene says nothing on its own about whether a variant causes harm.</p>
+      </div>
+      <div data-v2-spot-note="lct" hidden>
+        <h2>LCT: digesting milk as an adult</h2>
+        <p>The A at rs4988235, upstream of the lactase gene in MCM6, keeps lactase switched on after childhood. Gordon has two copies; Reginald and Alex have one. One copy is usually enough to digest milk.</p>
+      </div>
+      <div data-v2-spot-note="y" hidden>
+        <h2>Y chromosome: M304</h2>
+        <p>Every one of Reginald’s and Gordon’s reads has C at M304, a marker that defines the J <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr>. The Y passes from father to son, so they match. Men have one Y, so there’s no half-and-half here, and depth is half that of the other chromosomes.</p>
+        <p>Helen and Alex have no Y chromosome, so their tracks are empty. Their lineage is read from <abbr class="v2-term" data-term="mtdna">mtDNA</abbr> instead. See <a class="v2-link" href="ancestry.html">Reginald’s paternal line</a>.</p>
+      </div>
+      <div data-v2-spot-note="mt" hidden>
+        <h2>mtDNA: K1a1b1a or H1c</h2>
+        <p>At 16224 and 16311 Reginald’s reads show C, two of the markers that place him in K. Turn on Gordon: no change at those spots. Gordon is H1c, and his mitochondria aren’t passed to his children. Reginald’s came from Helen, whose VCF has the same calls.</p>
+        <p>Depth is far higher here than elsewhere because each cell holds hundreds of copies of mtDNA. More in <a class="v2-link" href="learn-ancestry.html#lineage">Lineage</a>.</p>
+      </div>
+      <div data-v2-spot-note="denovo" hidden>
+        <h2>A variant neither parent has</h2>
+        <p>Reginald has an A here in about half his reads. Gordon’s reads all show the reference G, and his depth is good, so he truly doesn’t have it. Helen’s VCF is blank, but a VCF only lists differences, so blank could mean “reference” or “not checked”. A <abbr class="v2-term" data-term="denovo">de novo</abbr> call needs both parents’ reads to be sure.</p>
+        <p>Everyone carries around 60 new variants. Most are harmless. The <a class="v2-link" href="tool-trio.html">trio tool</a> finds them.</p>
+      </div>
+      <div data-v2-spot-note="smalldel" hidden>
+        <h2>A 4-base deletion</h2>
+        <p>Some of Reginald’s reads have a black line where four bases (GGCT) are missing. Helen’s VCF has the same <abbr class="v2-term" data-term="indel">deletion</abbr>, and Gordon’s reads don’t, so it came from her.</p>
+      </div>
+      <div data-v2-spot-note="bigdel" hidden>
+        <h2>A 1,200-base deletion</h2>
+        <p>Depth drops to about half across 1.2 kb in Reginald and Gordon. Reads that cross the edge are cut off where the missing stretch begins (soft-clipped, shown as coloured ends), and pairs that straddle it are coloured because they sit further apart than usual. One copy of chr20 is missing this stretch. A deletion this size doesn’t show up in a normal variant call; it needs a <abbr class="v2-term" data-term="cnv">CNV</abbr> or <abbr class="v2-term" data-term="sv">SV</abbr> caller.</p>
+      </div>
+      <div data-v2-spot-note="artifact" hidden>
+        <h2>An artifact: it’s all on one strand</h2>
+        <p>Reads are now coloured by direction, one per row: pink reads run forward, blue ones in reverse. The T appears only on reverse reads, with low base quality (faded letters). A real variant appears on reads of both directions. The variant caller skipped this one, which is right. See <a class="v2-link" href="learn-variants.html#confidence">How sure a call is</a>.</p>
+      </div>
+      <div data-v2-spot-note="smn" hidden>
+        <h2>SMN1: reads that fit two places</h2>
+        <p>SMN1 has a near-identical copy, SMN2, nearby. Reads here could belong to either, so the aligner gives them <abbr class="v2-term" data-term="mapq">MAPQ</abbr> 0 and they appear hollow. The scattered mismatches are SMN2 reads parked on SMN1. Variant callers ignore these reads, so ordinary calls here are unreliable. Use the <a class="v2-link" href="tool-cnv.html">copy-number tool</a> for <abbr class="v2-term" data-term="smn">SMN</abbr> instead.</p>
+      </div>
+      <div data-v2-spot-note="outside" hidden>
+        <h2>Outside the demo data</h2>
+        <p>This preview carries reads only for the places in the list above. In the app, any position in the genome works.</p>
+      </div>
+    </section>
+    <p class="v2-viewer__demo" data-annot-id="viewer-demo"><strong>Demo data.</strong> Simulated reads on 11 short stretches of <abbr class="v2-term" data-term="grch38">GRCh38</abbr>, 1.4 MB in all. In the app, the viewer reads the whole <abbr class="v2-term" data-term="cram">CRAM</abbr>, <abbr class="v2-term" data-term="bam">BAM</abbr> or <abbr class="v2-term" data-term="vcf">VCF</abbr> from your disk a few hundred kilobytes at a time, and nothing is uploaded. Built on <a class="v2-link" href="https://github.com/igvteam/igv.js" rel="noopener">igv.js</a>, the web version of <abbr class="v2-term" data-term="igv">IGV</abbr>.</p>
   </div>
 </div>
 </body>

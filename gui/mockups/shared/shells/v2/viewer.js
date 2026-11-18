@@ -182,6 +182,28 @@
     });
   }
 
+  /* The dropdown names the current spot, or "A place you searched for" ("") */
+  function pick(id) {
+    WGSM.qs("[data-v2-spot-select]", root).value = id;
+  }
+
+  /* Hiding the app sidebar gives igv.js the width; the choice lasts for the session */
+  var SIDE_KEY = "wgsm-v2-viewer-side";
+
+  function side(hidden) {
+    var app = root.closest(".v2-app");
+    var button = WGSM.qs("[data-v2-viewer-side]", root);
+    if (app) app.dataset.side = hidden ? "hidden" : "shown";
+    button.setAttribute("aria-pressed", hidden ? "true" : "false");
+    button.setAttribute("aria-label", hidden ? "Show sidebar" : "Hide sidebar");
+    button.title = hidden ? "Show the app sidebar again" : "Hide the app sidebar to give the viewer more room";
+    try {
+      sessionStorage.setItem(SIDE_KEY, hidden ? "hidden" : "shown");
+    } catch (e) {
+      /* storage off: the toggle still works for this page */
+    }
+  }
+
   function note(id) {
     WGSM.qsa("[data-v2-spot-note]", root).forEach(function (el) {
       el.hidden = el.dataset.v2SpotNote !== id;
@@ -192,9 +214,7 @@
     var s = SPOTS[id];
     if (!s) return;
     spot = id;
-    WGSM.qsa("[data-v2-spot]", root).forEach(function (b) {
-      b.setAttribute("aria-current", b.dataset.v2Spot === id ? "true" : "false");
-    });
+    pick(id);
     (s.people || []).forEach(function (p) {
       if (opts && opts.keepPeople) return;
       on[p] = true;
@@ -255,6 +275,7 @@
       return;
     }
     var locus = hit.chrom + ":" + hit.start + "-" + hit.end;
+    pick("");
     if (!inWindow(hit.chrom, hit.start, hit.end)) {
       note("outside");
       message(locus + " is outside the demo data.");
@@ -357,19 +378,32 @@
     names();
     checkboxes();
     note(spot);
-    WGSM.qsa("[data-v2-spot]", root).forEach(function (b) {
-      b.setAttribute("aria-current", b.dataset.v2Spot === spot ? "true" : "false");
-    });
+    pick(WGSM.params.get("locus") && !WGSM.params.get("spot") ? "" : spot);
+    var stored = null;
+    try {
+      stored = sessionStorage.getItem(SIDE_KEY);
+    } catch (e) {
+      stored = null;
+    }
+    side(stored === "hidden");
 
     root.addEventListener("click", function (event) {
-      var b = event.target.closest("[data-v2-spot]");
-      if (b) select(b.dataset.v2Spot);
+      if (event.target.closest("[data-v2-viewer-side]")) {
+        var app = root.closest(".v2-app");
+        side(!(app && app.dataset.side === "hidden"));
+        /* igv.js sizes its canvas once; tell it the width changed */
+        if (browser) window.dispatchEvent(new Event("resize"));
+      }
       if (event.target.closest("[data-v2-viewer-retry]")) {
         if (browser) sync(true);
         else create();
       }
     });
     root.addEventListener("change", function (event) {
+      if (event.target.matches("[data-v2-spot-select]")) {
+        if (event.target.value) select(event.target.value);
+        return;
+      }
       var box = event.target.closest("[data-v2-track]");
       if (!box) return;
       on[box.dataset.v2Track] = box.checked;
