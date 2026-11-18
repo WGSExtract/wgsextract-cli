@@ -4,8 +4,11 @@ Open **Genome viewer** in the WGS Extract sidebar to inspect local reads and
 variants with the bundled igv.js. There is no separate IGV installation, upload,
 online reference lookup or CDN connection.
 
-1. In **Local reference FASTA and index**, select the uncompressed `.fa`, `.fasta`
-   or `.fna` and its matching `.fai` together from your installed reference library.
+1. In **Local reference FASTA and index**, select the installed `.fa`, `.fasta`
+   or `.fna` and its matching `.fai` together. BGZF-compressed references
+   (`.fa.gz`, `.fasta.gz`, `.fna.gz`) require both `.fai` and `.gzi` indexes,
+   named after the complete filename (for example `reference.fa.gz.gzi`).
+   If `.gzi` is missing, index the BGZF reference first, then select all three files.
    If missing, return to **Reference Genomes** and install the matching reference
    using its explicit download flow. The viewer never downloads it for you.
    CRAM requires the **exact** reference used for alignment, not just the same
@@ -14,7 +17,8 @@ online reference lookup or CDN connection.
    together:
    - BAM with `sample.bam.bai`, `sample.bai` or `sample.bam.csi`;
    - CRAM with `sample.cram.crai` or `sample.crai`;
-   - bgzip-compressed VCF/gVCF with its `.tbi` or `.csi`.
+   - bgzip-compressed VCF/gVCF (`.vcf.gz`, `.g.vcf.gz`, `.gvcf.gz`, or the
+     equivalent `.bgz` suffixes) with its `.tbi` or `.csi`.
 3. Enter a chromosome and **1-based, inclusive** interval, such as
    `chr20:1000-2000`, then choose **Open local files**.
 4. Drag to pan, use the zoom buttons to inspect bases, or click a read or variant
@@ -40,6 +44,8 @@ Reference selection is manual; automatic header-based reference matching,
 installed gene/rsID lookups, variant/finding/region deep links, BED and coverage
 tracks, and authenticated remote range serving remain follow-up work. Context
 menus and external links inside igv are disabled, including BLAT.
+Read and coverage popups never query ClinVar or other online services. File
+fields, including VCF INFO values, are shown as text, never interpreted as HTML.
 
 For an unexpected variant, inspect reads in this built-in viewer rather than
 installing desktop IGV. The interpretation guidance in lessons still applies:

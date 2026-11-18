@@ -77,9 +77,9 @@ export async function verifyViewerJobs(browser, fixtures, output) {
     const frame = page.frameLocator(".genome-viewer-shell iframe");
     await frame.getByRole("heading", { name: "Genome viewer", exact: true }).waitFor();
     assert.equal(page.url(), url, "Opening the viewer must not navigate away from the action stream.");
-    await frame.locator('[name="reference"]').setInputFiles(["reference.fa", "reference.fa.fai"].map((name) => path.join(fixtures, name)));
+    await frame.locator('[name="reference"]').setInputFiles(["reference.fa.gz", "reference.fa.gz.fai", "reference.fa.gz.gzi"].map((name) => path.join(fixtures, name)));
     await frame.locator('[name="tracks"]').setInputFiles(["reads.bam", "reads.bam.bai", "variants.vcf.gz", "variants.vcf.gz.tbi"].map((name) => path.join(fixtures, name)));
-    await frame.locator('[data-files] [name="locus"]').fill("chr20:1200-1450");
+    await frame.locator('[data-files] [name="locus"]').fill("chr20:10001200-10001450");
     await frame.getByRole("button", { name: "Open local files", exact: true }).click();
     await frame.locator("[data-viewer-status]").filter({ hasText: "Local tracks loaded" }).waitFor();
     const result = await completed;

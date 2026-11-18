@@ -2,9 +2,11 @@ import { localViewerFiles, localViewerLocus, ViewerFileError, type LocalTrack, t
 import type { StringMap } from "../../../shared/types.js";
 import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
+import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genome-viewer-privacy.js";
 
 interface IgvBrowser {
-    loadTrack(track: LocalTrack): Promise<unknown>;
+    loadTrack(track: LocalTrack): Promise<IgvLocalTrack | undefined>;
+    on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
     zoomIn(): void;
     zoomOut(): void;
@@ -44,11 +46,11 @@ try {
       </header>
       <form data-files class="viewer-files">
         <label>${escapeHTML(text("reference"))}
-          <input type="file" name="reference" multiple accept=".fa,.fasta,.fna,.fai" aria-describedby="reference-help">
+          <input type="file" name="reference" multiple accept=".fa,.fasta,.fna,.gz,.fai,.gzi" aria-describedby="reference-help">
         </label>
         <p id="reference-help">${escapeHTML(text("referenceHelp"))}</p>
         <label>${escapeHTML(text("tracks"))}
-          <input type="file" name="tracks" multiple accept=".bam,.cram,.gz,.bai,.csi,.crai,.tbi" aria-describedby="tracks-help">
+          <input type="file" name="tracks" multiple accept=".bam,.cram,.gz,.bgz,.bai,.csi,.crai,.tbi" aria-describedby="tracks-help">
         </label>
         <p id="tracks-help">${escapeHTML(text("tracksHelp"))}</p>
         <label>${escapeHTML(text("locus"))}
@@ -138,14 +140,17 @@ async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, hos
             showIdeogram: false,
             showSVGButton: false,
         });
+        browser.on("trackclick", localPopupHTML);
         if (!await browser.search(locus)) {
             dispose();
             throw new ViewerFileError("locusNotFound");
         }
         for (const track of files.tracks) {
-            if (!await browser.loadTrack(track)) {
+            const loaded = await browser.loadTrack(track);
+            if (!loaded) {
                 throw new Error("Track could not be loaded.");
             }
+            disablePopupLookups(loaded);
         }
         required<HTMLInputElement>('[data-locus] [name="locus"]').value = locus;
         navigation.hidden = false;

@@ -22,12 +22,31 @@ test("#1090: tracks require matching indexes, including alternate BAM and CRAM n
     ["sample.vcf.gz", "sample.vcf.gz.tbi"],
     ["sample.g.vcf.gz", "sample.g.vcf.gz.csi"],
     ["sample.gvcf.gz", "sample.gvcf.gz.tbi"],
+    ["sample.vcf.bgz", "sample.vcf.bgz.tbi"],
+    ["sample.gvcf.bgz", "sample.gvcf.bgz.csi"],
+    ["sample.g.vcf.bgz", "sample.g.vcf.bgz.tbi"],
   ]) {
     assert.throws(() => localViewerFiles(reference, [file(data), file("other.bai")]), problem("indexMissing"));
     const result = localViewerFiles(reference, [file(data), file(index)]);
     assert.equal(result.tracks.length, 1);
     assert.equal(result.tracks[0].url.name, data);
   }
+});
+
+test("#1102: installed BGZF references require both indexes before CRAM decoding", () => {
+  const tracks = [file("sample.cram"), file("sample.cram.crai")];
+  for (const suffix of ["fa.gz", "fasta.gz", "fna.gz"]) {
+    const fasta = file(`reference.${suffix}`);
+    const fai = file(`${fasta.name}.fai`);
+    const gzi = file(`${fasta.name}.gzi`);
+    assert.throws(() => localViewerFiles([fasta, fai], tracks), problem("referenceCompressedIndexMissing"));
+    assert.throws(() => localViewerFiles([fasta, gzi], tracks), problem("referenceIndexMissing"));
+    const result = localViewerFiles([fasta, fai, gzi], tracks);
+    assert.equal(result.reference.fastaURL, fasta);
+    assert.equal(result.reference.indexURL, fai);
+    assert.equal(result.reference.compressedIndexURL, gzi);
+  }
+  assert.equal(localViewerFiles(reference, tracks).reference.compressedIndexURL, undefined);
 });
 
 test("#1090: unindexed, remote and ambiguous selections cannot cause full-file or network fallback", () => {

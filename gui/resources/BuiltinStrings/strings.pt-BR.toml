@@ -186,7 +186,7 @@
 "viewer.back" = "Voltar ao WGS Extract"  # i18n-source-hash:78623ef3
 "viewer.privacy" = "Inspecione leituras e variantes neste computador. Nada é enviado; não são usadas referências nem buscas on-line."  # i18n-source-hash:350a8494
 "viewer.reference" = "FASTA de referência local e índice"  # i18n-source-hash:2844ca6e
-"viewer.referenceHelp" = "Selecione o FASTA não compactado e seu .fai na biblioteca de referências instalada. CRAM exige a referência exata usada no alinhamento. Se ela não estiver instalada, instale-a primeiro em Genomas de referência."  # i18n-source-hash:026f6910
+"viewer.referenceHelp" = "Selecione o FASTA instalado e seu .fai. FASTA BGZF (.fa.gz, .fasta.gz, .fna.gz) também exige seu .gzi. CRAM exige a referência exata do alinhamento. Se faltar, instale-a em Genomas de referência."  # i18n-source-hash:0eea9b08
 "viewer.tracks" = "Leituras, variantes e seus índices"  # i18n-source-hash:c369f330
 "viewer.tracksHelp" = "Selecione juntos BAM + BAI/CSI, CRAM + CRAI ou VCF/gVCF bgzip + TBI/CSI. É possível selecionar várias trilhas. Os arquivos são lidos em blocos indexados, sem cópia nem envio."  # i18n-source-hash:67de1573
 "viewer.locus" = "Posição (base 1, inclusiva)"  # i18n-source-hash:a84836d0
@@ -198,7 +198,8 @@
 "viewer.loading" = "Abrindo arquivos locais…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Trilhas locais carregadas. Arraste para navegar, amplie para ver bases individuais ou clique em uma leitura ou variante para ver detalhes."  # i18n-source-hash:f136d021
 "viewer.limits" = "Esta primeira versão aceita arquivos locais indexados BAM, CRAM e VCF/gVCF. Escolha a referência manualmente; a correspondência automática, a busca por gene/rsID e outros formatos ainda não estão disponíveis. Menus de contexto e links externos estão desativados. Sair desta página fecha os arquivos."  # i18n-source-hash:b4cdd445
-"viewer.referenceMissing" = "Referência não instalada ou não selecionada. Instale a referência correspondente em Genomas de referência e selecione aqui seu FASTA não compactado e .fai. Nada será baixado automaticamente."  # i18n-source-hash:7aea4298
+"viewer.referenceMissing" = "Referência não instalada ou não selecionada. Instale a referência correspondente em Genomas de referência e selecione seu FASTA e .fai, além de .gzi para FASTA BGZF. Nada será baixado automaticamente."  # i18n-source-hash:094f8319
+"viewer.referenceCompressedIndexMissing" = "Selecione o índice .gzi junto com %{file} e seu .fai. Se faltar, indexe primeiro a referência BGZF e selecione os três arquivos."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Selecione o índice .fai junto com %{file}. Indexe a referência primeiro se necessário."  # i18n-source-hash:a39bb059
 "viewer.tracksMissing" = "Selecione um arquivo BAM, CRAM ou VCF/gVCF bgzip com seu índice."  # i18n-source-hash:2e568b39
 "viewer.indexMissing" = "Índice ausente para %{file}. Selecione também seu BAI/CSI, CRAI ou TBI/CSI correspondente. Crie um índice primeiro se necessário."  # i18n-source-hash:f6375924

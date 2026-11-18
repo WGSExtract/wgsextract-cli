@@ -1,4 +1,4 @@
-export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound";
+export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound";
 
 export class ViewerFileError extends Error {
     constructor(readonly code: ViewerProblem, readonly fileName = "") {
@@ -16,14 +16,14 @@ export interface LocalTrack {
 }
 
 export interface LocalViewerFiles {
-    reference: { id: string; name: string; fastaURL: File; indexURL: File; wholeGenomeView: false };
+    reference: { id: string; name: string; fastaURL: File; indexURL: File; compressedIndexURL?: File; wholeGenomeView: false };
     tracks: LocalTrack[];
 }
 
 /** Only explicit File objects reach igv: no inferred URLs, remote lookups, or whole-file reads. */
 export function localViewerFiles(referenceFiles: File[], trackFiles: File[]): LocalViewerFiles {
     const references = uniqueFiles(referenceFiles);
-    const fasta = referenceFiles.filter((file) => /\.(fa|fasta|fna)$/i.test(file.name));
+    const fasta = referenceFiles.filter((file) => /\.(fa|fasta|fna)(\.gz)?$/i.test(file.name));
     const reference = fasta[0];
     if (!reference) {
         throw new ViewerFileError("referenceMissing");
@@ -35,6 +35,10 @@ export function localViewerFiles(referenceFiles: File[], trackFiles: File[]): Lo
     if (!fai) {
         throw new ViewerFileError("referenceIndexMissing", reference.name);
     }
+    const compressedIndexURL = references.get(`${reference.name.toLowerCase()}.gzi`);
+    if (/\.gz$/i.test(reference.name) && !compressedIndexURL) {
+        throw new ViewerFileError("referenceCompressedIndexMissing", reference.name);
+    }
     const files = uniqueFiles(trackFiles);
     const tracks: LocalTrack[] = [];
     for (const file of trackFiles) {
@@ -42,7 +46,7 @@ export function localViewerFiles(referenceFiles: File[], trackFiles: File[]): Lo
         if (/\.(bai|csi|crai|tbi)$/.test(name)) {
             continue;
         }
-        const format = name.endsWith(".bam") ? "bam" : name.endsWith(".cram") ? "cram" : /\.g?vcf\.gz$/.test(name) ? "vcf" : null;
+        const format = name.endsWith(".bam") ? "bam" : name.endsWith(".cram") ? "cram" : /\.(g\.?vcf|vcf)\.(gz|bgz)$/.test(name) ? "vcf" : null;
         if (!format) {
             throw new ViewerFileError("unsupportedFile", file.name);
         }
@@ -68,7 +72,7 @@ export function localViewerFiles(referenceFiles: File[], trackFiles: File[]): Lo
         throw new ViewerFileError("tracksMissing");
     }
     return {
-        reference: { id: "local", name: reference.name, fastaURL: reference, indexURL: fai, wholeGenomeView: false },
+        reference: { id: "local", name: reference.name, fastaURL: reference, indexURL: fai, ...(/\.gz$/i.test(reference.name) && compressedIndexURL ? { compressedIndexURL } : {}), wholeGenomeView: false },
         tracks,
     };
 }

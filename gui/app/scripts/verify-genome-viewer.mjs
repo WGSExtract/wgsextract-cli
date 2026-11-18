@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
 import { verifyViewerJobs } from "./verify-viewer-jobs.mjs";
+import { observeViewer, prepareAdversarialVCF, verifyViewerPopups } from "./verify-viewer-popups.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -11,22 +12,25 @@ const { values } = parseArgs({
     fixtures: { type: "string" },
     out: { type: "string" },
     chromium: { type: "string" },
+    bcftools: { type: "string" },
   },
 });
 if (!values.url || !values.fixtures || !values.out) {
-  throw new Error("Usage: node scripts/verify-genome-viewer.mjs --url URL --fixtures DIR --out DIR [--chromium PATH]");
+  throw new Error("Usage: node scripts/verify-genome-viewer.mjs --url URL --fixtures DIR --out DIR [--chromium PATH] [--bcftools PATH]");
 }
 const url = new URL(values.url);
 assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(url.hostname), "Verification must use a loopback app server.");
 const fixtures = path.resolve(values.fixtures);
 const output = path.resolve(values.out);
 await mkdir(output, { recursive: true });
+prepareAdversarialVCF(fixtures, values.bcftools ?? "bcftools");
 const browser = await chromium.launch({ ...(values.chromium ? { executablePath: values.chromium } : {}), headless: true });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
 const page = await context.newPage();
 const externalRequests = [];
 const consoleMessages = [];
 const requests = [];
+const popupProofs = {};
 try {
   await context.route("**/*", (route) => {
     if (new URL(route.request().url()).origin !== url.origin) {
@@ -38,6 +42,7 @@ try {
   page.on("console", (message) => consoleMessages.push({ type: message.type(), text: message.text() }));
   page.on("pageerror", (error) => consoleMessages.push({ type: "pageerror", text: error.message }));
   page.on("request", (request) => requests.push({ url: request.url(), method: request.method(), body: request.postData() }));
+  await observeViewer(page);
   await page.addInitScript(() => {
     window.viewerFileReads = [];
     window.viewerPolicyViolations = [];
@@ -53,12 +58,18 @@ try {
   });
   await page.goto(new URL("/viewer?locale=en&genome=hg38&file=https://example.com/never.bam", url).href);
   const status = page.locator("[data-viewer-status]");
-  await page.locator('[data-files] [name="locus"]').fill("chr20:1200-1450");
+  await page.locator('[data-files] [name="locus"]').fill("chr20:10001200-10001450");
   await page.getByRole("button", { name: "Open local files", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "Reference not installed" }).waitFor();
   await page.screenshot({ path: path.join(output, "viewer-missing-reference.png"), fullPage: true });
 
-  await page.locator('[name="reference"]').setInputFiles(["reference.fa", "reference.fa.fai"].map((name) => path.join(fixtures, name)));
+  const reference = ["reference.fa.gz", "reference.fa.gz.fai", "reference.fa.gz.gzi"];
+  await page.locator('[name="reference"]').setInputFiles(reference.slice(0, 2).map((name) => path.join(fixtures, name)));
+  await page.locator('[name="tracks"]').setInputFiles(["reads.bam", "reads.bam.bai"].map((name) => path.join(fixtures, name)));
+  await page.getByRole("button", { name: "Open local files", exact: true }).click();
+  await page.getByRole("alert").filter({ hasText: "Select the .gzi index" }).waitFor();
+  await page.screenshot({ path: path.join(output, "viewer-missing-gzi.png"), fullPage: true });
+  await page.locator('[name="reference"]').setInputFiles(reference.map((name) => path.join(fixtures, name)));
   const variants = ["variants.vcf.gz", "variants.vcf.gz.tbi"];
   for (const [label, tracks] of [
     ["bam", ["reads.bam", "reads.bam.bai", ...variants]],
@@ -82,13 +93,16 @@ try {
     }).length);
     assert.ok(drawnCanvases >= 3, `${label}: reads, coverage and ruler should be rendered.`);
     await page.screenshot({ path: path.join(output, `viewer-${label}.png`), fullPage: true });
+    if (label !== "large-bam") {
+      popupProofs[label] = await verifyViewerPopups(page, fixtures, output, label);
+    }
     await page.locator('[data-locus] [name="locus"]').fill("rs429358");
     await page.getByRole("button", { name: "Go", exact: true }).click();
     await status.filter({ hasText: "Gene and rsID search are not available" }).waitFor();
     await page.locator('[data-locus] [name="locus"]').fill("chrMissing:1-100");
     await page.getByRole("button", { name: "Go", exact: true }).click();
     await status.filter({ hasText: "Position not found in the selected reference" }).waitFor();
-    await page.locator('[data-locus] [name="locus"]').fill("chr20:2400-2700");
+    await page.locator('[data-locus] [name="locus"]').fill("chr20:10002400-10002700");
     await page.getByRole("button", { name: "Go", exact: true }).click();
     await status.filter({ hasText: "Local tracks loaded" }).waitFor();
     await page.locator("[data-igv] canvas").first().click({ button: "right" });
@@ -101,12 +115,13 @@ try {
   const largeReads = reads.filter((read) => read.name === "large.bam");
   assert.ok(largeReads.length > 0, "Record actual file slicing for the large BAM.");
   const largeBytes = largeReads.reduce((sum, read) => sum + read.bytes, 0);
-  assert.ok(largeBytes < 2 * 1024 * 1024, `A locus must not read the 4 GiB BAM whole: read ${largeBytes} bytes.`);
+  // Long HG002 ONT alignments overlap this interval; total indexed reads must stay below 0.2% of the sparse BAM.
+  assert.ok(largeBytes < 8 * 1024 * 1024, `A locus must not read the 4 GiB BAM whole: read ${largeBytes} bytes.`);
   assert.deepEqual(externalRequests, [], "No request may leave the app origin.");
   assert.deepEqual(await page.evaluate(() => window.viewerPolicyViolations), [], "No attempted outside connection may be hidden by CSP.");
   assert.deepEqual(requests.filter((request) => request.method !== "GET"), [], "No sample data may be uploaded.");
   assert.deepEqual(consoleMessages.filter((message) => ["error", "pageerror"].includes(message.type)), [], "Read actual browser console errors.");
-  await writeFile(path.join(output, "viewer-browser-proof.json"), JSON.stringify({ externalRequests, requests, consoleMessages, largeBytes, reads }, null, 2));
+  await writeFile(path.join(output, "viewer-browser-proof.json"), JSON.stringify({ externalRequests, requests, consoleMessages, largeBytes, reads, popupProofs }, null, 2));
   await verifyViewerJobs(browser, fixtures, output);
   console.log(`BAM, CRAM, VCF and 4 GiB sparse-BAM checks passed; large BAM read ${largeBytes} bytes; no external requests or console errors.`);
 } catch (error) {
