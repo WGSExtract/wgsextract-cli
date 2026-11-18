@@ -692,8 +692,8 @@ class TempSpace:
         copy: int = 0,
         recheck: bool = False,
     ) -> None:
-        """Report the peak beside the output, and the ``copy`` of the reads
-        to write beside it, with Clair3's host requirement, and refuse a run
+        """Report the peak in temporary work, and the ``copy`` of the reads
+        to write there, with Clair3's host requirement, and refuse a run
         that wouldn't fit (#811, #690): it fails hours in otherwise. A
         ``recheck`` (once that copy is written) says nothing more unless the
         disk is now short."""
@@ -723,7 +723,7 @@ class TempSpace:
         check_host_requirement(
             requirement,
             enforce=enforce,
-            disk_advice="Free up space, choose an --outdir on a bigger disk or "
+            disk_advice="Free up space, choose a --tmp-dir on a bigger disk or "
             "call a smaller --region.",
             memory_advice="Lower --threads.",
         )
@@ -850,7 +850,7 @@ def _run_clair3(
                 if stage and needs_cram30(input_file)
                 else 0
             )
-            space.check(outdir, threads, enforce=not params.no_preflight, copy=copy)
+            space.check(work, threads, enforce=not params.no_preflight, copy=copy)
         reads = input_file
         if stage:
             staging = Path(work, "reads")
@@ -862,7 +862,7 @@ def _run_clair3(
             if space and reads != input_file:
                 # Its estimate was a guess; the copy is now on the disk.
                 space.check(
-                    outdir, threads, enforce=not params.no_preflight, recheck=True
+                    work, threads, enforce=not params.no_preflight, recheck=True
                 )
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.

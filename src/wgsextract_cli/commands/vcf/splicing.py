@@ -57,6 +57,7 @@ def run_spliceai(params: VcfSpliceaiParams) -> None:
         "SpliceAI",
         threads=params.threads,
         reference=lib.fasta,
+        annotation_source=spliceai_file,
     )
     record_annotated(ann_out)
     logging.info(LOG_MESSAGES["vcf_spliceai_done"].format(output=ann_out))
@@ -85,6 +86,7 @@ def run_alphamissense(params: VcfAlphamissenseParams) -> None:
             "AlphaMissense",
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=am_file,
         )
     else:
         # TSV: CHROM POS REF ALT genome uniprot_id transcript_id protein_variant
@@ -104,6 +106,7 @@ def run_alphamissense(params: VcfAlphamissenseParams) -> None:
             ],
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=am_file,
         )
 
     run_min_score_filter(
@@ -145,6 +148,7 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
             "PharmGKB",
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=pharmgkb_file,
         )
     else:
         # The table `ref pharmgkb` builds: #CHROM, POS, REF, ALT, PHARMGKB.
@@ -172,6 +176,7 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
             ],
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=pharmgkb_file,
         )
     record_annotated(ann_out)
     logging.info(f"PharmGKB annotation complete: {ann_out}")

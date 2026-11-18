@@ -186,14 +186,39 @@ def test_repair_vcf_cleans_filter_column_so_bcftools_reads_it(tmp_path, suffix):
     assert out.read_text().splitlines()[:7] == _VCF.splitlines()[:7]
 
 
-def test_repair_vcf_converts_bcf_input(tmp_path):
+@pytest.mark.parametrize("configured_temp", [False, True])
+def test_1093_repair_vcf_keeps_its_bcf_working_copy_off_system_temp(
+    tmp_path, capsys, configured_temp
+):
+    from tests.test_temp_directory import _files_seen_under, _wgsextract
+
     plain = tmp_path / "kit.vcf"
     plain.write_text(_VCF.replace("Low Qual;q<10", "LowQual"))
     bcf = tmp_path / "kit.bcf"
     _tool("bcftools", "view", "-Ob", "-o", str(bcf), str(plain))
     out = tmp_path / "fixed" / "kit.vcf"
-    run_wgsextract("repair", "ftdna-vcf", "--input", str(bcf), "--output", str(out))
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    options = ["--tmp-dir", str(scratch)] if configured_temp else []
+    selected = scratch if configured_temp else out.parent
+    with _files_seen_under(selected) as seen:
+        result = _wgsextract(
+            capsys,
+            "repair",
+            "ftdna-vcf",
+            "--input",
+            str(bcf),
+            "--output",
+            str(out),
+            *options,
+        )
+    assert result["status"] == "ok", result["error"]
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual 2 1"]
+    assert any(
+        name.endswith(".vcf") and len(Path(name).parts) > 1 for name in seen[selected]
+    )
+    assert not any(p.name.startswith(".wgse") for p in out.parent.iterdir())
+    assert list(scratch.iterdir()) == []
 
 
 def test_repair_vcf_leaves_short_lines_and_headers_alone(tmp_path):

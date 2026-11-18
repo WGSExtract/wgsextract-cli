@@ -31,7 +31,7 @@ from wgsextract_cli.core.alignment.sequencing import (
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.temp_directory import scratch_parent
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import get_bam_header
 
@@ -234,7 +234,7 @@ def run_smn(params: TypingSmnParams) -> None:
             for suffix in staged:
                 Path(aln.outdir, stale + suffix).unlink(missing_ok=True)
         for suffix, path in staged.items():
-            shutil.move(str(path), str(Path(aln.outdir, name + suffix)))
+            move_file(path, Path(aln.outdir, name + suffix))
 
     result = current_result()
     result.set_reference(aln.reference)

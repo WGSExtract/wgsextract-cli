@@ -9,7 +9,7 @@ import tempfile
 import uuid
 from collections.abc import Iterator
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
@@ -67,23 +67,40 @@ def scratch_directory(fallback: PathInput, prefix: str) -> Iterator[str]:
         yield work
 
 
-_process_scratch: list[str] = []
+@dataclass
+class _InputWorkspace:
+    fallback: PathInput | None
+    directories: dict[str | None, str] = field(default_factory=dict)
+    cleanup: contextlib.ExitStack = field(default_factory=contextlib.ExitStack)
 
 
-def input_scratch_directory() -> str:
-    """A folder for a working copy made from an input when the caller has no
-    output directory to fall back on (a plain VCF bgzipped so it can be
-    indexed), so nothing is written beside the user's input. The run's
-    Temporary Workload directory, else one folder in the system's temporary
-    directory, removed when the process exits."""
+_inputs: ContextVar[_InputWorkspace | None] = ContextVar(
+    "input_workspace", default=None
+)
+_process_scratch: dict[str | None, str] = {}
+
+
+def input_scratch_directory(fallback: PathInput | None = None) -> str:
+    """Keep prepared inputs in temporary work, else a cleaned hidden output
+    subfolder. Only callers without an output/work folder use system temp;
+    standalone preparation outside a run is cleaned at process exit."""
     configured = configured_temp_directory()
     if configured:
         return configured
-    if not _process_scratch:
-        directory = tempfile.mkdtemp(prefix="wgse_inputs_")
-        atexit.register(shutil.rmtree, directory, ignore_errors=True)
-        _process_scratch.append(directory)
-    return _process_scratch[0]
+    workspace = _inputs.get()
+    parent = fallback or (workspace.fallback if workspace else None)
+    key = str(absolute_path(parent)) if parent else None
+    directories = workspace.directories if workspace else _process_scratch
+    if key not in directories:
+        if workspace:
+            directory = workspace.cleanup.enter_context(
+                tempfile.TemporaryDirectory(dir=parent, prefix=".wgse_inputs_")
+            )
+        else:
+            directory = tempfile.mkdtemp(dir=parent, prefix=".wgse_inputs_")
+            atexit.register(shutil.rmtree, directory, ignore_errors=True)
+        directories[key] = directory
+    return directories[key]
 
 
 def move_file(source: PathInput, destination: PathInput) -> None:
@@ -100,7 +117,7 @@ def move_file(source: PathInput, destination: PathInput) -> None:
     final = Path(destination)
     staged = final.with_name(f".{final.name}.{uuid.uuid4().hex}.partial")
     try:
-        shutil.copyfile(source, staged)
+        shutil.copy2(source, staged)
         os.replace(staged, final)
     finally:
         staged.unlink(missing_ok=True)
@@ -120,14 +137,27 @@ def link_new_file(source: PathInput, destination: PathInput) -> None:
     final = Path(destination)
     staged = final.with_name(f".{final.name}.{uuid.uuid4().hex}.partial")
     try:
-        shutil.copyfile(source, staged)
+        shutil.copy2(source, staged)
         os.link(staged, final)
     finally:
         staged.unlink(missing_ok=True)
 
 
 @contextlib.contextmanager
-def run_temporary_directory(override: PathInput | None = None) -> Iterator[None]:
+def run_temporary_directory(
+    override: PathInput | None = None, *, fallback: PathInput | None = None
+) -> Iterator[None]:
+    inputs = _InputWorkspace(fallback)
+    token = _inputs.set(inputs)
+    try:
+        with inputs.cleanup, _run_workspace(override):
+            yield
+    finally:
+        _inputs.reset(token)
+
+
+@contextlib.contextmanager
+def _run_workspace(override: PathInput | None) -> Iterator[None]:
     parent = (
         str(absolute_path(expand_path(override)))
         if override

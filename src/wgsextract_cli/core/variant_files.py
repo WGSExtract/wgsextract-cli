@@ -91,7 +91,9 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
         logging.warning(f"Couldn't refresh the index of {vcf_path}; using it as is.")
 
 
-def ensure_vcf_prepared(vcf_path: PathInput | None) -> str:
+def ensure_vcf_prepared(
+    vcf_path: PathInput | None, workdir: PathInput | None = None
+) -> str:
     """Ensure VCF is bgzipped and indexed, returns path to compressed file.
     A bgzipped VCF is indexed in place (a .tbi beside it); a plain one is
     bgzipped into the run's temporary work (see input_scratch_directory)."""
@@ -111,9 +113,9 @@ def ensure_vcf_prepared(vcf_path: PathInput | None) -> str:
 
     source = Path(vcf_path).resolve()
     key = hashlib.sha256(str(source).encode("utf-8", "surrogateescape")).hexdigest()
-    copies = Path(input_scratch_directory(), f"vcf-{key[:16]}")
+    copies = Path(input_scratch_directory(workdir), f"vcf-{key[:16]}")
     copies.mkdir(exist_ok=True)
-    gz_path = copies / f"{source.name}.gz"
+    gz_path = copies / f"{Path(vcf_path).name}.gz"
     if gz_path.exists() and gz_path.stat().st_mtime > Path(vcf_path).stat().st_mtime:
         ensure_vcf_indexed(gz_path)
         return str(gz_path)

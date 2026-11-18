@@ -910,7 +910,7 @@ def estimate_resources(
                 # Per-contig parts coexist with the merged gVCF until it's published.
                 demands += [
                     (output_dir, "reference_evidence", gvcf),
-                    (output_dir, "reference_evidence_parts", gvcf),
+                    (temp_dir or output_dir, "reference_evidence_parts", gvcf),
                 ]
             notes.append(
                 "bcftools compressed VCF disk uses the HG002 30x envelope "
@@ -946,9 +946,7 @@ def estimate_resources(
         (output_dir, "output", output),
         (output_dir, "indexes", indexes),
         (
-            output_dir
-            if operation in _BCFTOOLS_VCF_BYTES_PER_READ
-            else temp_dir or output_dir,
+            temp_dir or output_dir,
             "temporary",
             temporary,
         ),

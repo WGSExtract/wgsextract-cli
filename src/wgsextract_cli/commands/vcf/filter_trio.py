@@ -274,14 +274,14 @@ def _is_gvcf(vcf: str) -> bool:
     )
 
 
-def _gvcf_merge_args(params: VcfTrioParams, vcfs: list[str]) -> list[str]:
+def _gvcf_merge_args(params: VcfTrioParams, vcfs: list[str], proband: str) -> list[str]:
     """`--gvcf <ref>` when an input is a gVCF: bcftools then fills each sample's
     reference block in at the other samples' sites. Without it, a parent's
     block that doesn't start at the child's site reads as missing, and the de
     novo list fills with variants the parent was checked for."""
     if not any(_is_gvcf(v) for v in vcfs):
         return []
-    ref = ReferenceLibrary(params.ref, None, input_path=vcfs[0]).fasta
+    ref = ReferenceLibrary(params.ref, None, input_path=proband).fasta
     if not ref:
         warn(
             "gvcf_reference_missing",
@@ -341,7 +341,7 @@ def run_trio(params: VcfTrioParams) -> None:
                 )
     p_idx, m_idx, f_idx = trio_sample_indices(p_vcf, m_vcf, f_vcf)
     region_args = ["-r", params.region] if params.region else []
-    gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf])
+    gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf], proband)
 
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_trio_"

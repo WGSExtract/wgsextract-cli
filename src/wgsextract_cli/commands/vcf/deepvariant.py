@@ -4,7 +4,6 @@ The existing command module retains its helper import paths as explicit aliases.
 """
 
 import logging
-import os
 import platform
 import subprocess
 import sys
@@ -46,6 +45,7 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.steps import StepJournal, resume_policy
+from wgsextract_cli.core.temp_directory import move_file
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
@@ -416,7 +416,7 @@ def _pbrun_deepvariant(
             )
         for suffix in ("", ".tbi"):
             if Path(f"{variants}{suffix}").exists():
-                os.replace(f"{variants}{suffix}", out_vcf + suffix)
+                move_file(f"{variants}{suffix}", out_vcf + suffix)
             elif suffix:
                 Path(out_vcf + suffix).unlink(missing_ok=True)
     ensure_vcf_indexed(out_vcf)

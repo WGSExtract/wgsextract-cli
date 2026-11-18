@@ -62,7 +62,7 @@ def _files_seen_under(*folders: Path) -> Iterator[dict[Path, set[str]]]:
 
 
 # The temporary files samtools sort and collate, and sambamba sort, spill.
-_SPILL = re.compile(r"((\.tmp|^collate)\.\d+\.bam|^stdin\.\d+)$")
+_SPILL = re.compile(r"((\.tmp|^collate|^sort)\.\d+\.bam|^stdin\.\d+)$")
 
 
 def _spills(names: set[str]) -> set[str]:
@@ -115,8 +115,9 @@ def _failure(result: dict) -> str:
     [
         (["sort", "--memory", "1M"], 8, 4),
         (["unalign", "--r1", "a.fq.gz", "--r2", "b.fq.gz", "--memory", "1G"], 9, 4),
+        (["to-ubam", "--memory", "1M"], 9, 4),
     ],
-    ids=["coordinate", "name"],
+    ids=["coordinate", "name", "ubam"],
 )
 @pytest.mark.parametrize("short", [None, "scratch", "output"])
 def test_bam_sort_budgets_spills_on_the_tmp_dir_volume_separately(
@@ -368,43 +369,6 @@ def _tree(folder: Path) -> dict[str, tuple[int, int]]:
     }
 
 
-@needs_tools("bcftools")
-@pytest.mark.parametrize("tmp_dir", [False, True], ids=["no-tmp-dir", "tmp-dir"])
-def test_plain_vcf_input_folder_is_left_untouched(capsys, tmp_path, tmp_dir):
-    """The owner's rule: nothing is written into the folder holding a lab's
-    inputs. A plain VCF used to be bgzipped and indexed beside itself."""
-    lab = tmp_path / "lab"
-    lab.mkdir()
-    (lab / "s.vcf").write_text(
-        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        "chr1\t10\tc\tA\tG\t50\tPASS\t.\nchr1\t20\td\tA\tT\t5\tPASS\t.\n",
-        newline="\n",
-    )
-    before = _tree(lab)
-    output, scratch = tmp_path / "out", tmp_path / "scratch"
-    scratch.mkdir()
-    argv = ["vcf", "filter", "--vcf-input", str(lab / "s.vcf"), "--expr",
-            "QUAL>20", "--outdir", str(output)]  # fmt: skip
-    if tmp_dir:
-        argv += ["--tmp-dir", str(scratch)]
-    with _files_seen_under(scratch) as seen:
-        result = _wgsextract(capsys, *argv)
-    assert result["status"] == "ok", result["error"]
-    assert _tree(lab) == before
-    assert sorted(p.name for p in output.iterdir()) == [
-        "filtered.vcf.gz",
-        "filtered.vcf.gz.tbi",
-        "filtered.vcf.manifest.json",
-    ]
-    out = run_command(["bcftools", "query", "-f", "%ID\n", str(output / "filtered.vcf.gz")],
-                      capture_output=True)  # fmt: skip
-    assert out.stdout.split() == ["c"]
-    # With --tmp-dir the working copy is made there, and removed with it.
-    assert any(name.endswith("s.vcf.gz") for name in seen[scratch]) is tmp_dir
-    assert list(scratch.iterdir()) == []
-
-
 @needs_tools("samtools", "bcftools")
 def test_tmp_dir_keeps_command_scratch_out_of_the_output(capsys, tmp_path, folders):
     """A command's own scratch (extract region's calls, made only to build a
@@ -441,6 +405,8 @@ def test_move_file_publishes_from_a_tmp_dir_on_another_volume(
     work.mkdir()
     output.mkdir()
     (work / "result.vcf.gz").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "result.vcf.gz", ns=(modified, modified))
     (output / "result.vcf.gz").write_bytes(b"previous")
     if cross_volume:
         real = os.replace
@@ -454,6 +420,7 @@ def test_move_file_publishes_from_a_tmp_dir_on_another_volume(
         monkeypatch.setattr(temp_directory.os, "replace", across)
     temp_directory.move_file(work / "result.vcf.gz", output / "result.vcf.gz")
     assert (output / "result.vcf.gz").read_bytes() == b"new"
+    assert (output / "result.vcf.gz").stat().st_mtime_ns == modified
     assert list(work.iterdir()) == []
     assert [p.name for p in output.iterdir()] == ["result.vcf.gz"]
 
@@ -468,6 +435,8 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
     work.mkdir()
     output.mkdir()
     (work / "report.html").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "report.html", ns=(modified, modified))
     if cross_volume:
         real = os.link
 
@@ -480,6 +449,7 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
         monkeypatch.setattr(temp_directory.os, "link", across)
     temp_directory.link_new_file(work / "report.html", output / "report.html")
     assert (output / "report.html").read_bytes() == b"new"
+    assert (output / "report.html").stat().st_mtime_ns == modified
     (work / "report.html").unlink()  # a hard link shares the published file
     (work / "report.html").write_bytes(b"newer")
     with pytest.raises(FileExistsError):

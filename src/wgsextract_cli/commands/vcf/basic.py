@@ -346,6 +346,7 @@ def run_small_variants(
             task,
             input_paths=[input_file],
             output_dir=outdir,
+            temp_dir=scratch_parent(outdir),
             reference=ref,
             threads=threads,
             reads=(
@@ -505,6 +506,7 @@ def run_annotate(params: VcfAnnotateParams) -> None:
 
     verify_paths_exist({"--input": input_file, "--ann-vcf": ann_vcf})
     cols = params.cols or _annotation_columns(ann_vcf)
+    current_result().add_input(ann_vcf, "annotation")
 
     input_vcf = ensure_vcf_prepared(input_file)
     ann_vcf = ensure_vcf_prepared(ann_vcf)
@@ -528,7 +530,6 @@ def run_annotate(params: VcfAnnotateParams) -> None:
         ensure_vcf_indexed(out_vcf)
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Annotation failed: {e}") from e
-    current_result().add_input(ann_vcf, "annotation")
     record_variants(out_vcf, "annotated", vcf_record_count(out_vcf))
 
 

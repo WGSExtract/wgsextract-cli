@@ -68,6 +68,13 @@ all temporary work in the `--tmp-dir` workspace (or, without one, a hidden
 folder in the output folder removed when the command ends), and nothing is
 written beside an input except an index it needs.
 
+Plain VCFs and annotation tables are compressed into that temporary work,
+not beside their source files. Without a configured temporary directory,
+prepared copies use a hidden output subfolder cleaned when the run finishes,
+including on failure or cancellation. Only standalone preparation without an
+output/work folder falls back to system temporary storage. Persistent output
+names and provenance still describe the original inputs, including symlinks.
+
 A step's inputs include the data it reads, not just the sample: the
 reference FASTA, region BED files, DeepVariant checkpoint files and
 installed annotation data (a new ClinVar or gnomAD release reruns
