@@ -60,6 +60,21 @@ regenerated. Use `--force-extract`,
 `--force-step extract`, or `--force` to explicitly regenerate the pair.
 Temporary FASTQs are removed after the resumed alignment succeeds.
 
+Without `--tmp-dir`, `realign` keeps its FASTQs in the output folder between
+steps, since they are also usable inputs (`align --r1 --r2`). They stay there
+when a later step fails, so a rerun skips `extract`, and are removed once the
+alignment succeeds. `--keep-fastq` keeps them as results. Other commands keep
+all temporary work in the `--tmp-dir` workspace (or, without one, a hidden
+folder in the output folder removed when the command ends), and nothing is
+written beside an input except an index it needs.
+
+Plain VCFs and annotation tables are compressed into that temporary work,
+not beside their source files. Without a configured temporary directory,
+prepared copies use a hidden output subfolder cleaned when the run finishes,
+including on failure or cancellation. Only standalone preparation without an
+output/work folder falls back to system temporary storage. Persistent output
+names and provenance still describe the original inputs, including symlinks.
+
 A step's inputs include the data it reads, not just the sample: the
 reference FASTA, region BED files, DeepVariant checkpoint files and
 installed annotation data (a new ClinVar or gnomAD release reruns
@@ -102,6 +117,10 @@ under temporary names and renamed into place when they are complete. A run
 killed mid-step therefore never leaves a step, or a file, that looks done.
 The rerun removes the half-written temporary files, and any output the
 killed step left, then redoes the step.
+
+Ensembl VEP and Parabricks DeepVariant stage each completed VCF together
+with its matching index before replacing either final file. A failed or
+interrupted cross-volume copy preserves the previous readable VCF/index pair.
 
 DeepVariant is the exception that keeps partial work. Until the VCF is
 final, its stages work in `.deepvariant.work` in the output folder. A

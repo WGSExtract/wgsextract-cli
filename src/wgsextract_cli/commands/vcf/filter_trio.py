@@ -18,6 +18,7 @@ from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import n_count_paths, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -130,7 +131,9 @@ def run_filter(params: VcfFilterParams) -> None:
             "choose another --outdir."
         )
     logging.info(LOG_MESSAGES["vcf_filtering"].format(input=input_vcf, output=out_vcf))
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_filter_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_filter_"
+    ) as work:
         exclude_args = []
         if params.exclude_near_gaps:
             gaps_bed = str(Path(work, "gaps.bed"))
@@ -271,14 +274,14 @@ def _is_gvcf(vcf: str) -> bool:
     )
 
 
-def _gvcf_merge_args(params: VcfTrioParams, vcfs: list[str]) -> list[str]:
+def _gvcf_merge_args(params: VcfTrioParams, vcfs: list[str], proband: str) -> list[str]:
     """`--gvcf <ref>` when an input is a gVCF: bcftools then fills each sample's
     reference block in at the other samples' sites. Without it, a parent's
     block that doesn't start at the child's site reads as missing, and the de
     novo list fills with variants the parent was checked for."""
     if not any(_is_gvcf(v) for v in vcfs):
         return []
-    ref = ReferenceLibrary(params.ref, None, input_path=vcfs[0]).fasta
+    ref = ReferenceLibrary(params.ref, None, input_path=proband).fasta
     if not ref:
         warn(
             "gvcf_reference_missing",
@@ -338,9 +341,11 @@ def run_trio(params: VcfTrioParams) -> None:
                 )
     p_idx, m_idx, f_idx = trio_sample_indices(p_vcf, m_vcf, f_vcf)
     region_args = ["-r", params.region] if params.region else []
-    gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf])
+    gvcf_args = _gvcf_merge_args(params, [p_vcf, m_vcf, f_vcf], proband)
 
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_trio_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_trio_"
+    ) as work:
         # gVCF merging fetches reference bases even on parent-only contigs.
         target_chroms = (
             list(read_fai_lengths(gvcf_args[1])) if gvcf_args else []
@@ -500,7 +505,9 @@ def _trio_from_alignments(
     current_result().set_reference(lib.fasta, lib.build)
     current_result().add_output(joint, "trio_joint")
     min_depth = params.min_depth or DEFAULT_MIN_DEPTH
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_trio_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_trio_"
+    ) as work:
         split = split_multiallelic(joint, str(Path(work, "split.vcf.gz")))
         for mode in modes:
             _filter_joint_trio(mode, split, outdir, min_depth)

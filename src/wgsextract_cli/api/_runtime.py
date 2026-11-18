@@ -372,7 +372,7 @@ def _run(
             created = _prepare(params, result)
             with (
                 atomic_output_mode(bool(settings.get("atomic_outputs", False))),
-                run_temporary_directory(None),
+                run_temporary_directory(None, fallback=getattr(params, "outdir", None)),
                 execution_context.bound(allow_downloads=_allows_downloads(params)),
             ):
                 impl(params)

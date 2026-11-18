@@ -18,6 +18,7 @@ from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import MicroarrayQuality, quality_policy
 from wgsextract_cli.core.microarray.templates import GenotypeTally, sort_alleles
 from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -85,7 +86,7 @@ def _reference_alleles(
     """Fetch the reference base of every target SNP in one samtools pass."""
     fasta_chroms = _fasta_chromosomes(ref_fasta)
     region_to_target: dict[str, tuple[str, str]] = {}
-    fd, region_file = tempfile.mkstemp(suffix=".regions", dir=outdir)
+    fd, region_file = tempfile.mkstemp(suffix=".regions", dir=scratch_parent(outdir))
     try:
         with os.fdopen(fd, "w", newline="\n") as f_reg, _open_text(ref_vcf_tab) as f_in:
             for line in f_in:
@@ -408,7 +409,7 @@ def _target_lines(params: MicroarrayParams, targets: str, outdir: str) -> Iterat
 def _read_evidence(
     params: MicroarrayParams, targets: str, outdir: str, ref_fasta: str
 ) -> dict[tuple[str, str], str]:
-    fd, bed = tempfile.mkstemp(suffix=".call-reasons.bed", dir=outdir)
+    fd, bed = tempfile.mkstemp(suffix=".call-reasons.bed", dir=scratch_parent(outdir))
     evidence: dict[tuple[str, str], str] = {}
     try:
         with os.fdopen(fd, "w", newline="\n") as destination:
@@ -486,7 +487,7 @@ def _write_reason_report(
                     reason = evidence.get(key, "no_reads")
                 destination.write(f"{rsid}\t{key[0]}\t{pos}\t{genotype}\t{reason}\n")
                 counts[reason] = counts.get(reason, 0) + 1
-        Path(staged).replace(report)
+        move_file(staged, report)
         current_result().add_metrics(
             **{f"call_reason_{reason}": count for reason, count in counts.items()}
         )
@@ -535,7 +536,7 @@ def _write_microarray_combined_kit(
                     params=params,
                     reasons=reasons,
                 )
-        Path(tmp_txt).replace(combined_kit_txt)
+        move_file(tmp_txt, combined_kit_txt)
         if reasons is not None:
             _write_reason_report(
                 combined_kit_txt,

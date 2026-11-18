@@ -16,6 +16,7 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.aadr_resources import require_aadr_2m
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.microarray.targets import _write_target, hg19_to_hg38_chain
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 AADR_FORMATS = {
@@ -159,7 +160,9 @@ def build_aadr_target(
         if coordinate:
             chrom, pos, _inverted = coordinate
             markers.setdefault(("chr" + chrom, pos), marker.snp_id)
-    fd, target = tempfile.mkstemp(prefix="AADR_targets_", suffix=".tab.gz", dir=outdir)
+    fd, target = tempfile.mkstemp(
+        prefix="AADR_targets_", suffix=".tab.gz", dir=scratch_parent(outdir)
+    )
     os.close(fd)
     try:
         _write_target(markers, target)
@@ -283,7 +286,7 @@ def write_aadr_outputs(
         staged[".fam"].write_text(f"0 {sample_id} 0 0 {sex_code} -9\n", newline="\n")
         staged[".ind"].write_text(f"{sample_id}\t{sex}\tUnknown\n", newline="\n")
         for suffix, path in staged.items():
-            path.replace(output_prefix + suffix)
+            move_file(path, output_prefix + suffix)
     finally:
         for path in staged.values():
             path.unlink(missing_ok=True)

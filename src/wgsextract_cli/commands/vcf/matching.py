@@ -622,6 +622,7 @@ def normalized_inputs(
     columns: str = "",
     headers: Sequence[str] = (),
     snv_table: bool = False,
+    resource_source: str | None = None,
 ) -> tuple[str, str, str]:
     normalized_query = _normalize(
         query, reference, str(Path(work, "query.vcf.gz")), work, False
@@ -664,7 +665,10 @@ def normalized_inputs(
         build()
         if snv_table and not is_vcf
         else normalized_resource(
-            source, reference, work, [columns, list(headers), clinical], build
+            resource_source or source,
+            reference,
+            [columns, list(headers), clinical],
+            build,
         )
     )
     if clinical:

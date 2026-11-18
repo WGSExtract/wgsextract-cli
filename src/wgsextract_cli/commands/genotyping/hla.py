@@ -27,6 +27,7 @@ from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.read_scope import may_follow
 from wgsextract_cli.core.ref_library.resolver import library_roots
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .common import Alignment, env_tool, open_alignment, write_bed, write_outside_calls
@@ -245,7 +246,9 @@ def run_hla(params: TypingHlaParams, *, debug: bool = False) -> None:
         "_allele.tsv": f"{aln.stem}.t1k_allele.tsv",
         "_allele.vcf": f"{aln.stem}.t1k_allele.vcf",
     }
-    with tempfile.TemporaryDirectory(dir=aln.outdir, prefix=".wgse_hla_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(aln.outdir), prefix=".wgse_hla_"
+    ) as work:
         r1, r2 = extract_reads(aln, work)
         logging.info("Genotyping HLA genes with T1K...")
         try:
@@ -260,7 +263,7 @@ def run_hla(params: TypingHlaParams, *, debug: bool = False) -> None:
         for suffix, name in outputs.items():
             source = str(Path(work, "t1k" + suffix))
             if Path(source).exists():
-                shutil.move(source, str(Path(aln.outdir, name)))
+                move_file(source, str(Path(aln.outdir, name)))
 
     genotype_tsv = str(Path(aln.outdir, outputs["_genotype.tsv"]))
     if not Path(genotype_tsv).is_file():

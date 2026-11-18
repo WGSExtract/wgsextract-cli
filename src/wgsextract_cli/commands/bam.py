@@ -36,7 +36,10 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.temp_directory import configured_temp_directory
+from wgsextract_cli.core.temp_directory import (
+    configured_temp_directory,
+    input_scratch_directory,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_sam_index_cmd,
@@ -285,7 +288,9 @@ def run_unsort(params: BamUnsortParams) -> None:
             header = run_command(
                 ["samtools", "view", "-H", *cram_opt, input_path], capture_output=True
             ).stdout
-            with tempfile.TemporaryDirectory() as tempdir:
+            with tempfile.TemporaryDirectory(
+                dir=input_scratch_directory(outdir)
+            ) as tempdir:
                 newhead = str(Path(tempdir, "newhead.sam"))
                 with open(newhead, "w", newline="\n") as f:
                     f.write(header.replace("SO:coordinate", "SO:unsorted"))

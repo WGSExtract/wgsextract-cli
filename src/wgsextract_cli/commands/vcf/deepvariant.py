@@ -4,7 +4,6 @@ The existing command module retains its helper import paths as explicit aliases.
 """
 
 import logging
-import os
 import platform
 import subprocess
 import sys
@@ -20,6 +19,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     stage_cram30,
 )
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings as settings
 from wgsextract_cli.core.containers import (
     docker_info,
@@ -46,6 +46,7 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.steps import StepJournal, resume_policy
+from wgsextract_cli.core.temp_directory import move_file
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
@@ -414,11 +415,11 @@ def _pbrun_deepvariant(
             raise WGSExtractError(
                 "Parabricks DeepVariant didn't write both its VCF and gVCF."
             )
-        for suffix in ("", ".tbi"):
-            if Path(f"{variants}{suffix}").exists():
-                os.replace(f"{variants}{suffix}", out_vcf + suffix)
-            elif suffix:
-                Path(out_vcf + suffix).unlink(missing_ok=True)
+        with atomic_output(out_vcf) as staged:
+            move_file(variants, staged)
+            if Path(f"{variants}.tbi").is_file():
+                move_file(f"{variants}.tbi", staged + ".tbi")
+            ensure_vcf_indexed(staged)
     ensure_vcf_indexed(out_vcf)
     if record:
         record_variants(

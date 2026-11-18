@@ -51,6 +51,7 @@ from wgsextract_cli.core.reference_resolver import (
     header_contig_lengths,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -479,7 +480,9 @@ def run_ancestry(params: QcAncestryParams) -> None:
     outdir = Path(expand_path(params.outdir or absolute_path(path).parent))
     outdir.mkdir(parents=True, exist_ok=True)
     result = current_result()
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_ancestry_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_ancestry_"
+    ) as tmp:
         work = Path(tmp)
         if kind == "alignment":
             genotypes, source, fasta = _alignment_genotypes(params, reference, work)

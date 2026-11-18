@@ -31,7 +31,7 @@ from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
-from wgsextract_cli.core.temp_directory import configured_temp_directory
+from wgsextract_cli.core.temp_directory import configured_temp_directory, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -95,7 +95,7 @@ def _gatk_region_args(region: str | None, outdir: str) -> tuple[list[str], str |
         return ["-L", java_local_path(region)], None
     # A new file, never one a link at a fixed name points to.
     fd, intervals = tempfile.mkstemp(
-        dir=outdir, prefix=".gatk_region_", suffix=".intervals"
+        dir=scratch_parent(outdir), prefix=".gatk_region_", suffix=".intervals"
     )
     # One interval per line: a comma-separated --region is several.
     lines = "".join(f"{r}\n" for r in region_items(region, commas=True))
@@ -191,7 +191,9 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
     # FreeBayes needs an uncompressed reference.
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_fb_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_fb_"
+        ) as work,
     ):
         # Regions as a BED: freebayes reads -r as 0-based (so chr1:1000-1050
         # lost position 1000).

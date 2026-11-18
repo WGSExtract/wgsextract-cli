@@ -8,7 +8,7 @@
 {"flags":["--ref"],"dest":"ref","type":"string","help":"Path to the reference genome FASTA."},
 {"flags":["--threads","-t"],"dest":"threads","type":"string","help":"CPU threads to use: a positive integer, or 'auto' (default)."},
 {"flags":["--memory","-m"],"dest":"memory","type":"string","help":"Memory per thread, e.g. '2G' (sorts: at most half the RAM in all)."},
-{"flags":["--tmp-dir"],"dest":"tmp_dir","type":"string","help":"Use an existing writable directory for sort spills, GATK and realign staging (overrides temp_directory)."},
+{"flags":["--tmp-dir"],"dest":"tmp_dir","type":"string","help":"Use an existing writable directory for every temporary file this run makes: sort spills, staging and scratch (overrides temp_directory)."},
 {"flags":["--json"],"dest":"json","type":"flag","help":"Print the result manifest (wgsextract.result/1) as JSON on stdout instead of human-readable output; logs stay on stderr."},
 {"flags":["--quiet"],"dest":"quiet","type":"flag","help":"Suppress all informational logs."},
 {"flags":["--debug"],"dest":"debug","type":"flag","help":"Enable verbose debug logging."},

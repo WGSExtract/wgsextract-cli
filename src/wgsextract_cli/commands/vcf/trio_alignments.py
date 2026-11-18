@@ -21,6 +21,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import append_suffix
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
@@ -164,7 +165,9 @@ def joint_trio_vcf(
     if not regions:
         raise WGSExtractError(f"No chromosomes 1-22 or X found in {alignments[0]}.")
     workdir = str(Path(out_vcf).parent)
-    with tempfile.TemporaryDirectory(dir=workdir, prefix=".wgse_trio_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(workdir), prefix=".wgse_trio_"
+    ) as work:
         # Name samples by file: WGS Extract v4 wrote SM:WGSE in every alignment,
         # and bcftools would merge same-named samples into one.
         read_groups = str(Path(work, "read_groups.txt"))

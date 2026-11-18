@@ -44,6 +44,7 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -429,7 +430,9 @@ def run_phase(params: VcfPhaseParams) -> None:
 
     out_vcf = str(Path(outdir, "phased.vcf.gz"))
     logging.info(f"Phasing {sample} in {vcf} with {phaser} into {out_vcf}")
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_phase_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_phase_"
+    ) as work:
         prepared = str(Path(work, "input.vcf.gz"))
         prepare_vcf(vcf, sample, region, prepared)
         with safe_output(out_vcf) as staged:
@@ -499,7 +502,9 @@ def haplotag(
     output = str(Path(outdir, f"haplotagged{suffix}"))
     regions = [r.strip() for r in (region or "").split(",") if r.strip()]
     logging.info(f"Tagging reads by haplotype with {phaser} into {output}")
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_haplotag_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_haplotag_"
+    ) as work:
         # GT and PS only: LongPhase 2.1 takes a FORMAT field such as GIAB's IPS
         # for PS and aborts. Every read contig is declared, as WhatsHap fails on
         # a contig the VCF lacks (a chr20-only VCF with whole-genome reads); its
@@ -555,7 +560,7 @@ def haplotag(
         if suffix == ".cram":
             restore_cram_paths(staged, real_paths(links, paths), work)
         with safe_output(output) as final:
-            Path(staged).replace(final)
+            move_file(staged, final)
     run_command(["samtools", "index", output])
     current_result().add_output(output, "haplotagged_alignments")
 

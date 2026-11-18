@@ -54,6 +54,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -357,7 +358,7 @@ def _publish(items: list[Input], sketch_dir: Path) -> list[tuple[str, Input, Pat
     sketch_dir.mkdir(parents=True, exist_ok=True)
     for _name, item, sketch, target in planned:
         if item.kind != "sketch":
-            os.replace(sketch, target)
+            move_file(sketch, target)
         elif absolute_path(sketch) != absolute_path(target):
             shutil.copyfile(sketch, target)
     return [(name, item, target) for name, item, _sketch, target in planned]
@@ -759,7 +760,9 @@ def run_relate(params: RelateParams) -> None:
     result.add_input(sites, "sites")
     result.add_input(ped, "pedigree")
     items = _read_inputs(paths)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_somalier_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_somalier_"
+    ) as tmp:
         work = Path(tmp)
         _sketch_inputs(items, params, reflib, work, threads)
         _warn_partial_vcfs(items)
@@ -776,10 +779,10 @@ def run_relate(params: RelateParams) -> None:
             sketches = [sketch for *_rest, sketch in published]
             predictions = _ancestry(labels, labelled, sketches, work)
         reports = [outdir / "relate.html"]
-        os.replace(work / "relate.html", reports[0])
+        move_file(work / "relate.html", reports[0])
         if predictions:
             reports.append(outdir / "relate.ancestry.html")
-            os.replace(work / "ancestry.somalier-ancestry.html", reports[1])
+            move_file(work / "ancestry.somalier-ancestry.html", reports[1])
 
     ped_sexes = {
         row[1]: {"1": "Male", "2": "Female"}.get(row[4]) for row in ped_rows or []

@@ -15,6 +15,7 @@ from wgsextract_cli.core.ref_library.resolver import (
     ReferenceLibrary,
     header_contig_lengths,
 )
+from wgsextract_cli.core.temp_directory import input_scratch_directory
 
 from .utils import (
     MissingDependencyError,
@@ -90,8 +91,12 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
         logging.warning(f"Couldn't refresh the index of {vcf_path}; using it as is.")
 
 
-def ensure_vcf_prepared(vcf_path: PathInput | None) -> str:
-    """Ensure VCF is bgzipped and indexed, returns path to compressed file."""
+def ensure_vcf_prepared(
+    vcf_path: PathInput | None, workdir: PathInput | None = None
+) -> str:
+    """Ensure VCF is bgzipped and indexed, returns path to compressed file.
+    A bgzipped VCF is indexed in place (a .tbi beside it); a plain one is
+    bgzipped into the run's temporary work (see input_scratch_directory)."""
     if not vcf_path:
         raise UsageError("VCF input path is required.")
     vcf_path = fspath(vcf_path)
@@ -104,8 +109,13 @@ def ensure_vcf_prepared(vcf_path: PathInput | None) -> str:
         ensure_vcf_indexed(vcf_path)
         return vcf_path
 
-    # Need to bgzip
-    gz_path = append_suffix(vcf_path, ".gz")
+    # Need to bgzip: a working copy, never written beside the user's input.
+
+    source = Path(vcf_path).resolve()
+    key = hashlib.sha256(str(source).encode("utf-8", "surrogateescape")).hexdigest()
+    copies = Path(input_scratch_directory(workdir), f"vcf-{key[:16]}")
+    copies.mkdir(exist_ok=True)
+    gz_path = copies / f"{Path(vcf_path).name}.gz"
     if gz_path.exists() and gz_path.stat().st_mtime > Path(vcf_path).stat().st_mtime:
         ensure_vcf_indexed(gz_path)
         return str(gz_path)
@@ -250,7 +260,7 @@ def normalize_vcf_chromosomes(
     """
     Ensure VCF chromosome naming (chr1 vs 1) matches the targets.
     Returns path to a temporary normalized VCF (in ``workdir``, default the
-    input's directory) if changes were needed.
+    run's temporary work, never the input's folder) if changes were needed.
     """
     if not vcf_path:
         raise WGSExtractError(
@@ -268,7 +278,7 @@ def normalize_vcf_chromosomes(
         return vcf_path
 
     fd, map_file = tempfile.mkstemp(
-        suffix=".txt", dir=workdir or str(Path(vcf_path).parent)
+        suffix=".txt", dir=workdir or input_scratch_directory()
     )
     with os.fdopen(fd, "w", newline="\n") as f:
         f.write("\n".join(f"{source} {target}" for source, target in mapping))
@@ -277,7 +287,7 @@ def normalize_vcf_chromosomes(
     # Free the name again so bcftools creates the file with the usual umask
     # permissions rather than mkstemp's 0600, which a final output would keep.
     fd_out, norm_vcf = tempfile.mkstemp(
-        suffix=".vcf.gz", dir=workdir or str(Path(vcf_path).parent)
+        suffix=".vcf.gz", dir=workdir or input_scratch_directory()
     )
     os.close(fd_out)
     Path(norm_vcf).unlink()

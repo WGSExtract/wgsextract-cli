@@ -23,6 +23,7 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 
@@ -71,7 +72,7 @@ def run_pgs(params: ScorePgsParams) -> None:
     calibration, reference_problem = _calibration(scoring, params)
     report("pgs", "Indexing observed calls on disk")
     with (
-        tempfile.TemporaryDirectory(prefix=".pgs-", dir=outdir) as work,
+        tempfile.TemporaryDirectory(prefix=".pgs-", dir=scratch_parent(outdir)) as work,
         ExitStack() as handles,
     ):
         reference = pgs.Reference(params.ref, params.build) if params.ref else None

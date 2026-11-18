@@ -26,6 +26,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -563,7 +564,9 @@ def run_merge(params: BamMergeParams) -> None:
     out_format = "CRAM" if params.cram else "BAM"
     ref_opts = ["--reference", ref] if ref else []
     logging.info(f"Merging {len(paths)} files into {out_file}...")
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".merge-") as scratch:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".merge-"
+    ) as scratch:
         try:
             merged = _merged_header(samtools, inputs, flags, scratch)
             header = _with_sample(merged, sample, platform)

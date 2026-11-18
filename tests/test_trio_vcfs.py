@@ -255,8 +255,9 @@ def test_trio_needs_all_three_and_samples(tmp_path):
             "vcf", "trio", "--proband", child, "--mother", str(sites_only),
             "--father", child, "--outdir", str(tmp_path / "out"),
         )  # fmt: skip
-    # The plain VCF was bgzipped and indexed beside itself to be read.
-    assert Path(f"{sites_only}.gz.tbi").exists()
+    # The plain VCF is bgzipped to be read, but never beside itself: the
+    # folder holding a user's inputs is not written.
+    assert not list(tmp_path.glob("sites.vcf.*"))
 
 
 def test_trio_reports_high_impact_counts_when_annotated(tmp_path, caplog):
@@ -573,10 +574,17 @@ def test_838_inconclusive_output_cannot_overwrite_a_trio_input(tmp_path, alias):
     else:
         os.link(files[1], output)
     before = [Path(path).read_bytes() for path in files]
+    if alias == "prepared":
+        # A plain VCF's bgzipped copy is made in temporary work, not beside
+        # it, so the output named like that copy overwrites no input.
+        _run_trio(files, tmp_path)
+        assert [Path(path).read_bytes() for path in files] == before
+        assert _ids(output) == ["candidate"]
+        return
     with pytest.raises(WGSExtractError, match="overwrite its input"):
         _run_trio(files, tmp_path)
     assert [Path(path).read_bytes() for path in files] == before
-    assert _ids(files[0] if alias != "prepared" else output) == ["candidate"]
+    assert _ids(files[0]) == ["candidate"]
     assert not (tmp_path / "trio_denovo.vcf.gz").exists()
 
 

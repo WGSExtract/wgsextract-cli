@@ -33,10 +33,12 @@ JSON), alongside `OLD_MULTIALLELIC` provenance. Originals are not rewritten.
 Shared VCF and allele-table annotation uses this normalization when a
 reference is resolved.
 
-Complete normalized resources are reused in the output folder's
-`.wgse_normalized_resources/` cache, keyed to the resource, FASTA/index file
-identities, conversion schema and bcftools version. Changed inputs invalidate
-the cache. Canonical CADD SNV, REVEL and AlphaMissense tables instead use tabix
+Complete normalized resources are reused in WGS Extract's persistent cache,
+`~/.cache/wgsextract/normalized-resources/` (under `XDG_CACHE_HOME` when set).
+The key uses the original resource, FASTA/index file identities, conversion
+schema and bcftools version, not a run's temporary copies. Changed inputs
+invalidate the cache; temporary-work cleanup does not remove it. Canonical
+CADD SNV, REVEL and AlphaMissense tables instead use tabix
 lookups at the normalized query's SNV positions, avoiding whole-table scans;
 selected resource records still undergo REF validation. Composition indexes
 only query records overlapping candidate MNV spans.

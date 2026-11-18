@@ -71,7 +71,8 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     # Transfer CLNSIG (significance), CLNDN (disease name) and, when the
     # ClinVar file has it, GENEINFO. The input's own GENEINFO is dropped, so
     # any left names ClinVar's genes.
-    clinvar_vcf = ensure_vcf_prepared(clinvar_vcf)
+    clinvar_source = clinvar_vcf
+    clinvar_vcf = ensure_vcf_prepared(clinvar_source)
     input_vcf = ensure_vcf_prepared(input_file)
     header = _vcf_header(clinvar_vcf)
     input_header = _vcf_header(input_vcf)
@@ -90,6 +91,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         "ClinVar",
         threads=params.threads,
         reference=lib.fasta,
+        annotation_source=clinvar_source,
         compose_mnvs=True,
         compose_thresholds=variant_confidence.thresholds_from(params),
         remove=tuple(
@@ -204,6 +206,7 @@ def run_revel(params: VcfRevelParams) -> None:
             "REVEL",
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=revel_file,
         )
     else:
         # Annovar REVEL TSV: #Chr, Start, End, Ref, Alt, REVEL
@@ -217,6 +220,7 @@ def run_revel(params: VcfRevelParams) -> None:
             ['##INFO=<ID=REVEL,Number=1,Type=Float,Description="REVEL score">'],
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=revel_file,
         )
 
     run_min_score_filter(

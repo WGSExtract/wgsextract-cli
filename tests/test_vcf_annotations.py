@@ -212,7 +212,7 @@ def test_pharmgkb_vcf_resource_annotates_by_allele(tmp_path):
         "chr1\t300\trs3\tG\tA\t.\t.\tPHARMGKB=rs3|VKORC1|1A|Dosage|warfarin\n"
     )
     outdir = tmp_path / "out"
-    # A plain VCF is bgzipped and indexed beside itself first.
+    # A plain VCF is bgzipped and indexed first, in temporary work.
     run_wgsextract("vcf", "pharmgkb", "--input", sample, "--pharmgkb-file",
                    str(pharmgkb), "--outdir", str(outdir))  # fmt: skip
     assert _query(outdir / "pharmgkb_annotated.vcf.gz", "%ID:%PHARMGKB\n") == [
@@ -221,7 +221,8 @@ def test_pharmgkb_vcf_resource_annotates_by_allele(tmp_path):
         "block:.",
         "del:.",
     ]
-    assert Path(f"{pharmgkb}.gz.tbi").is_file()
+    # Not beside itself: the folder holding the user's files is not written.
+    assert not list(tmp_path.glob("pharmgkb.vcf.*"))
 
 
 # --- ClinVar / REVEL (vcf/clinvar_revel.py) ---------------------------------------
@@ -327,30 +328,6 @@ def test_phylop_table_and_vcf_score_by_position(tmp_path):
 # --- shared machinery (vcf/annotation_helpers.py) --------------------------------
 
 
-@needs_bcftools
-def test_plain_table_is_bgzipped_once_and_reindexed_when_newer(tmp_path):
-    from wgsextract_cli.commands.vcf.annotation_helpers import prepare_tabix_annotation
-
-    plain = tmp_path / "revel.tsv"
-    plain.write_text(f"{REVEL_HEADER}\n1\t100\t100\tC\tT\t0.5\n")
-    prepared = prepare_tabix_annotation(str(plain), "REVEL")
-    assert prepared == f"{plain}.gz"
-    assert gzip.open(prepared, "rt").read().endswith("0.5\n")
-    first = Path(prepared).stat().st_mtime_ns
-
-    # Unchanged: neither recompressed nor reindexed.
-    assert prepare_tabix_annotation(str(plain), "REVEL") == prepared
-    assert Path(prepared).stat().st_mtime_ns == first
-
-    # The source edited later: compressed and indexed again.
-    plain.write_text(f"{REVEL_HEADER}\n1\t100\t100\tC\tT\t0.75\n")
-    os.utime(plain, ns=(first + 10**9, first + 10**9))
-    prepare_tabix_annotation(str(plain), "REVEL")
-    assert gzip.open(prepared, "rt").read().endswith("0.75\n")
-    index = Path(f"{prepared}.tbi")
-    assert index.stat().st_mtime_ns > Path(prepared).stat().st_mtime_ns - 1
-
-
 def test_plain_gzip_table_is_rejected_with_a_recompress_hint(tmp_path):
     from wgsextract_cli.commands.vcf.annotation_helpers import prepare_tabix_annotation
 
@@ -446,7 +423,10 @@ def test_gerp_scores_gvcf_and_multiallelic_variant_records(tmp_path):
 
 
 @needs_bcftools
-def test_chain_annotate_runs_each_installed_step_on_the_last_output(tmp_path):
+@pytest.mark.parametrize("reference_location", ["library", "adjacent", "manifest"])
+def test_chain_annotate_runs_each_installed_step_on_the_last_output(
+    tmp_path, reference_location
+):
     library = tmp_path / "lib" / "ref"
     library.mkdir(parents=True)
     _vcf(library / "clinvar_hg38.vcf.gz",
@@ -457,7 +437,21 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
     outdir = tmp_path / "out"
     # gerp isn't installed: skipped with a warning, not a failure.
-    reference_for_vcf(tmp_path / "lib" / "genomes" / "hg38.fa.gz", sample)
+    reference = {
+        "library": tmp_path / "lib" / "genomes" / "hg38.fa.gz",
+        "adjacent": Path(sample).parent / "hg38.fa.gz",
+        "manifest": tmp_path / "reference" / "hg38.fa.gz",
+    }[reference_location]
+    reference_for_vcf(reference, sample)
+    if reference_location != "library":
+        plain = Path(sample).with_suffix("")
+        with gzip.open(sample, "rb") as stream:
+            plain.write_bytes(stream.read())
+        sample = str(plain)
+    if reference_location == "manifest":
+        (Path(sample).parent / "manifest.json").write_text(
+            json.dumps({"files": {"ref": str(reference)}})
+        )
     run_wgsextract("vcf", "chain-annotate", "--input", sample, "--ref",
                    str(tmp_path / "lib"), "--outdir", str(outdir),
                    "--annotations", "clinvar, gerp ,REVEL")  # fmt: skip
@@ -484,10 +478,7 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         def __init__(self, *_a, **_k):
             pass
 
-    commands = []
-
     def silent_step(cmd, **_kwargs):
-        commands.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, "", "wrote nothing\n")
 
     # A native path: --ref is a path, so "/lib" would become "\\lib" on Windows.
@@ -496,13 +487,11 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         patch.object(chain, "verify_dependencies"),
         patch.object(chain, "get_tool_path", return_value="bcftools"),
         patch.object(chain, "ReferenceLibrary", Lib),
-        patch.object(chain, "ensure_vcf_prepared", side_effect=lambda p: p),
         patch.object(chain, "run_command", side_effect=silent_step),
         pytest.raises(WGSExtractError, match="'clinvar' did not produce"),
     ):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
-    assert commands[0][-2:] == ["--ref", lib]
     assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
     assert os.listdir(tmp_path / "wgse") == ["chain_step_1_clinvar"]
 

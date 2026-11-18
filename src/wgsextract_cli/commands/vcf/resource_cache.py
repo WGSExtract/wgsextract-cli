@@ -7,13 +7,15 @@ from dataclasses import asdict
 from pathlib import Path
 
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file
 from wgsextract_cli.core.utils import run_command
 
 
 def normalized_resource(
-    source: str, reference: str, work: str, options: object, build: Callable[[], str]
+    source: str, reference: str, options: object, build: Callable[[], str]
 ) -> str:
     identity = []
     for name in (source, reference, reference + ".fai"):
@@ -26,7 +28,7 @@ def normalized_resource(
     key = hashlib.sha256(
         json.dumps([3, identity, version, options], sort_keys=True).encode()
     ).hexdigest()
-    cache = Path(work).parent / ".wgse_normalized_resources" / key
+    cache = wgsextract_cache_root() / "normalized-resources" / key
     cache.mkdir(parents=True, exist_ok=True)
     output, metadata = cache / "resource.vcf.gz", cache / "ready.json"
     with exclusive_lock(cache / "build", timeout=3600):
@@ -44,13 +46,13 @@ def normalized_resource(
                 return str(output)
         before = len(current_result().warnings)
         built = Path(build())
-        built.replace(output)
+        move_file(built, output)
         files = [output]
         for suffix in (".tbi", ".csi"):
             index = Path(str(built) + suffix)
             if index.is_file():
                 final = Path(str(output) + suffix)
-                index.replace(final)
+                move_file(index, final)
                 files.append(final)
         with atomic_output(metadata, retire_indexes=False) as staged:
             Path(staged).write_text(

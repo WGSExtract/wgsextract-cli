@@ -284,5 +284,8 @@ def _run_handler(args: argparse.Namespace) -> None:
             if getattr(args, "command", None) in READ_ONLY_COMMANDS:
                 args.func(args)
             else:
-                with run_temporary_directory(getattr(args, "tmp_dir", None)):
+                with run_temporary_directory(
+                    getattr(args, "tmp_dir", None),
+                    fallback=getattr(args, "outdir", None),
+                ):
                     args.func(args)
