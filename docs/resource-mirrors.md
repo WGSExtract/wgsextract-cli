@@ -58,6 +58,11 @@ download dependencies automatically.
 
 ## Publishing and activating a snapshot
 
+The `download-resources-1` snapshot is activated for all **41 approved
+resources**, with **517 pinned parts** totaling **928,055,212,641 bytes**.
+The 30 upstream-only or already-hosted entries retain their existing download
+behavior and redistribution decisions.
+
 Like the reference-genome publisher, **Mirror download resources** is a manual
 GitHub Actions workflow. Large payloads are streamed on CI, not a developer's
 laptop. Every asset is at most **1,900,000,000 bytes** (below GitHub's 2 GiB
@@ -108,9 +113,10 @@ uploaded even when the job fails.
 3. Download the release's `*.record.json` assets into `out/mirror-records/`.
    Run `pixi run python scripts/mirror_download_resources.py activate
    --records out/mirror-records --tag download-resources-1`, inspect the pins,
-   and submit the updated JSON catalog in a follow-up PR. Until then these
-   unpublished entries deliberately retain upstream behavior.
-4. Run the mirror behavior and remote-resource checks before activating pins.
+   and submit the updated JSON catalog in a follow-up PR. Entries without
+   activated pins deliberately retain upstream behavior.
+4. Run the mirror behavior and remote-resource checks against the updated
+   catalog before merging the activation PR.
    Keep the issue open until the approved assets have been published and their
    pins activated. Do not claim that merging the publisher alone mirrors data.
 
