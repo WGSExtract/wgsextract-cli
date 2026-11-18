@@ -90,7 +90,7 @@ def test_bam_reads_give_the_proportions_and_record_a_fact(tmp_path, sample):
     bam = reads_bam(sample, folder / "s.bam", depth=10)
     result = _run(sample, bam)
     assert result.exit_code == 0, result.error
-    table = folder / "s.ancestry.tsv"
+    table = folder / "wgse" / "s.ancestry.tsv"
     k7 = _k7(table)
     _close_to_truth(k7, 0.05)
     value, low, high = k7["Component 1 of 7"]
@@ -122,8 +122,8 @@ def test_bam_reads_give_the_proportions_and_record_a_fact(tmp_path, sample):
 def test_low_coverage_widens_the_intervals_without_bias(tmp_path, sample):
     deep = _run(sample, reads_bam(sample, tmp_path / "deep.bam", depth=10))
     shallow = _run(sample, reads_bam(sample, tmp_path / "shallow.bam", depth=2))
-    k_deep = _k7(tmp_path / "deep.ancestry.tsv")
-    k_shallow = _k7(tmp_path / "shallow.ancestry.tsv")
+    k_deep = _k7(tmp_path / "wgse" / "deep.ancestry.tsv")
+    k_shallow = _k7(tmp_path / "wgse" / "shallow.ancestry.tsv")
     assert deep.exit_code == shallow.exit_code == 0
     _close_to_truth(k_shallow, 0.1)
     name = "Component 1 of 7"
@@ -138,7 +138,7 @@ def test_all_sites_vcf_and_microarray_file(tmp_path, sample):
     vcf = calls_vcf(sample, tmp_path / "s.vcf.gz", variants_only=False)
     result = _run(sample, vcf)
     assert result.exit_code == 0, result.error
-    _close_to_truth(_k7(tmp_path / "s.ancestry.tsv"), 0.05)
+    _close_to_truth(_k7(tmp_path / "wgse" / "s.ancestry.tsv"), 0.05)
     # #617: the PCA projection polygenic scores use, from every site.
     assert result.metrics["ancestry_pca_sites_fraction"] == 1.0
     assert "ancestry_pc1" in result.metrics
@@ -148,7 +148,7 @@ def test_all_sites_vcf_and_microarray_file(tmp_path, sample):
     result = _run(sample, raw, build=None, ref=sample["reflib"])
     assert result.exit_code == 0, result.error
     assert result.metrics["ancestry_build"] == "hg38"
-    _close_to_truth(_k7(tmp_path / "kit.ancestry.tsv"), 0.05)
+    _close_to_truth(_k7(tmp_path / "wgse" / "kit.ancestry.tsv"), 0.05)
 
 
 @needs_htslib

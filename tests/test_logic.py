@@ -80,19 +80,24 @@ class TestExamplesDownload(unittest.TestCase):
             else:
                 settings["genome_library"] = old_value
 
-    def test_default_target_root_is_repo_datasets(self):
+    def test_default_target_root_is_the_users_workspace_mygenomes(self):
         from wgsextract_cli.commands import _examples_catalog as examples
         from wgsextract_cli.core.config import settings
 
         saved = {
             k: settings.pop(k)
-            for k in ("genome_library", "dataset_library")
+            for k in ("genome_library", "dataset_library", "mygenomes_library")
             if k in settings
         }
         try:
-            self.assertEqual(
-                examples._target_root(None), examples.runtime.repo_root() / "datasets"
-            )
+            with patch(
+                "wgsextract_cli.core.runtime.repo_root",
+                return_value=Path(self.test_dir),
+            ):
+                self.assertEqual(
+                    examples._target_root(None),
+                    (Path.home() / "wgs-extract" / "mygenomes").resolve(),
+                )
         finally:
             settings.update(saved)
 

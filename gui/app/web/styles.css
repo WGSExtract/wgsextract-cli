@@ -854,6 +854,38 @@ body.resizing-terminal * {
   line-height: 1.4;
 }
 
+/* A card that starts closed: its title is the toggle, with a chevron that turns when it opens. */
+.collapsible-card > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-card > summary::before {
+  content: "▸";
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.collapsible-card[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.collapsible-card > summary > p {
+  flex-basis: 100%;
+}
+
+.collapsible-card:not([open]) > summary {
+  margin-bottom: 0;
+}
+
 .controls {
   display: grid;
   gap: var(--space-3);
@@ -2099,4 +2131,10 @@ tbody tr + tr {
 .workspace-location-confirm {
   display: grid;
   gap: 8px;
+}
+
+/* Its buttons sit side by side at their own widths, not in the input row's grid. */
+.workspace-location-confirm .input-button-row {
+  display: flex;
+  flex-wrap: wrap;
 }

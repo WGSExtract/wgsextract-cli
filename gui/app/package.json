@@ -30,5 +30,8 @@
   "overrides": {
     "tar": "^7.5.22",
     "postcss": "^8.5.31"
+  },
+  "dependencies": {
+    "smol-toml": "^1.6.0"
   }
 }

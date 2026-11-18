@@ -1,6 +1,7 @@
 import type { ResultDocument, ResultFile, ResultNotice, ResultScalar } from "../../../shared/result-document.js";
 import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
+import { workspaceRoots } from "./model.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
 
@@ -34,7 +35,7 @@ export function renderResultSummary(document: ResultDocument | undefined): strin
         <h4>${escapeHTML(labels.resultOutputsTitle ?? "Output files")}</h4>
         <ul class="result-outputs">${document.outputs.map(renderOutput).join("")}</ul>` : ""}
       ${document.manifestPath ? `
-        <p class="result-manifest">${escapeHTML(labels.resultManifestLabel ?? "Result manifest")}: <span class="result-path" title="${escapeAttribute(document.manifestPath)}">${escapeHTML(displayWorkspacePath(document.manifestPath, state.bundleRootPath))}</span> ${pathButtons(document.manifestPath)}</p>` : ""}
+        <p class="result-manifest">${escapeHTML(labels.resultManifestLabel ?? "Result manifest")}: <span class="result-path" title="${escapeAttribute(document.manifestPath)}">${escapeHTML(displayWorkspacePath(document.manifestPath, workspaceRoots()))}</span> ${pathButtons(document.manifestPath)}</p>` : ""}
       <details class="result-document">
         <summary>${escapeHTML(labels.resultDocumentTitle ?? "Full result (JSON)")}</summary>
         <pre>${escapeHTML(JSON.stringify(document.raw, null, 2))}</pre>
@@ -66,7 +67,7 @@ function renderOutput(output: ResultFile): string {
     return `
       <li>
         <span class="result-role">${escapeHTML(output.role || output.kind)}</span>
-        <span class="result-path" title="${escapeAttribute(output.path)}">${escapeHTML(displayWorkspacePath(output.path, state.bundleRootPath))}</span>${size}
+        <span class="result-path" title="${escapeAttribute(output.path)}">${escapeHTML(displayWorkspacePath(output.path, workspaceRoots()))}</span>${size}
         ${output.exists ? pathButtons(output.path) : ""}
       </li>`;
 }

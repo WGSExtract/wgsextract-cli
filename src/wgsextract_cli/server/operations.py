@@ -23,6 +23,7 @@ from wgsextract_cli.api._params import (
     Params,
     json_schema,
     param_fields,
+    with_config_defaults,
 )
 from wgsextract_cli.api._runtime import READ_ONLY_COMMANDS
 from wgsextract_cli.core.remote_input import is_url
@@ -97,6 +98,15 @@ class Operation:
         }
         schema["required"] = [k for k in schema["required"] if k in allowed]
         return schema
+
+    def request_values(self, params: Params) -> dict[str, Any]:
+        """Transport the checked values without host-only configuration fields."""
+        values = params.to_dict()
+        return {
+            item.name: values[item.name]
+            for item in self.fields()
+            if item.name not in params._config_default_fields or item.name == "outdir"
+        }
 
     def read_only_values(self) -> dict[str, Any]:
         """What a read-only server sets, so the operation saves nothing."""
@@ -180,6 +190,9 @@ def params_from_json(op: Operation, data: object, *, read_only: bool = False) ->
     if not isinstance(data, Mapping):
         raise RequestError(400, "usage", "The parameters must be a JSON object.")
     fields = {f.name: f for f in param_fields(op.params)}
+    # A request may still use a field's former name.
+    former = {old: f.name for f in fields.values() for old in f.spec.former_names}
+    data = {former.get(str(key), str(key)): value for key, value in data.items()}
     missing = [f.name for f in op.fields() if f.required and f.name not in data]
     if missing:
         raise RequestError(
@@ -372,7 +385,7 @@ class PathGuard:
         if not self._inside(self.pathmod.realpath(text), self._real_roots):
             raise refused
 
-    def check(self, params: Params) -> None:
+    def check(self, params: Params) -> Params:
         if params.deletes_data() and not self.allow_destructive:
             raise RequestError(
                 403,
@@ -380,6 +393,12 @@ class PathGuard:
                 f"{params.COMMAND} would delete data; the server does that only "
                 "when started with serve --allow-destructive.",
             )
+        self._check_paths(params)
+        params = with_config_defaults(params, only={"outdir"})
+        self._check_paths(params)
+        return params
+
+    def _check_paths(self, params: Params) -> None:
         for item in param_fields(type(params)):
             value = getattr(params, item.name)
             for path in value if isinstance(value, tuple) else (value,):

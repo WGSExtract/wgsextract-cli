@@ -19,7 +19,7 @@ def test_repair_vcf_file_mode_writes_repaired_vcf(tmp_path):
     assert "DP1" in output.read_text(encoding="utf-8")
 
 
-def test_repair_vcf_file_mode_defaults_to_input_directory(tmp_path):
+def test_repair_vcf_file_mode_defaults_to_wgse_beside_the_input(tmp_path):
     input_vcf = tmp_path / "ftdna.vcf"
     input_vcf.write_text(
         "##fileformat=VCFv4.2\n"
@@ -30,7 +30,9 @@ def test_repair_vcf_file_mode_defaults_to_input_directory(tmp_path):
 
     result = api.repair.ftdna_vcf(api.RepairFtdnaVcfParams(input=input_vcf))
 
-    assert "DP1" in (tmp_path / "ftdna_repaired.vcf").read_text(encoding="utf-8")
+    assert "DP1" in (tmp_path / "wgse" / "ftdna_repaired.vcf").read_text(
+        encoding="utf-8"
+    )
     assert result.metrics["repaired_records"] == 1
 
 

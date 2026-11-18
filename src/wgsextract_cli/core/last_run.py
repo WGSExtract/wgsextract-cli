@@ -30,7 +30,7 @@ UNRECORDED_SUBCOMMANDS = frozenset({"ref needs"})
 
 def state_directory() -> Path:
     """The ``state_directory`` setting, else ``state`` in the data folder (beside
-    reference/ and datasets/, so uninstalling removes it)."""
+    reference/, so uninstalling removes it)."""
     from wgsextract_cli.core.config import ensure_settings_loaded, settings
 
     ensure_settings_loaded()

@@ -546,7 +546,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract example-genome list --tag {_PACBIO_TAG}",
     ),
     "example-genome download": _h(
-        "Into <dataset_library>/test-1000genomes/<example id>/, with a genome "
+        "Into <mygenomes_library>/test-1000genomes/<example id>/, with a genome "
         "config file.",
         f"wgsextract example-genome download {_STARTER_EXAMPLE}",
         f"wgsextract example-genome download {_STARTER_EXAMPLE} --dry-run",

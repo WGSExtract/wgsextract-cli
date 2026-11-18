@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
-import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
+import type { BundleManifest } from "../../../shared/types.js";
 import { writeFileAtomically } from "./config-store.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
@@ -16,7 +15,7 @@ export function isWorkspaceSentinel(contents: string | null) {
     return contents === workspaceSentinelContents || contents === legacyWorkspaceSentinelContents;
 }
 
-/** App-wide settings. They live beside the app's data, not in the workspace, since they say where the workspace is. */
+/** App-wide settings. They live beside the app's data, not in a workspace, since they say where the users workspace is. */
 export function appSettingsPath() {
     return path.join(appSupportDirectory(), "settings.json");
 }
@@ -25,9 +24,9 @@ export function appSettingsPath() {
 export const legacyAppDataName = "dev.guiforcli.web.embed.wgsextract";
 
 /**
- * Brings the app-wide settings (where the workspace is) over from the data folder the app used up to 0.8.6,
- * then removes that folder. One that still holds a workspace (from releases before workspaces moved to the
- * home folder) is left in place. Only for the app's own data folder, not one a test or dev run names.
+ * Brings the app-wide settings over from the data folder the app used up to 0.8.6, then removes that
+ * folder. One that still holds a workspace is left in place. Only for the app's own data folder, not
+ * one a test or dev run names.
  */
 export async function migrateLegacyAppData() {
     // The desktop app names its data folder explicitly too, so compare the name rather than whether one is set.
@@ -56,25 +55,17 @@ export async function migrateLegacyAppData() {
     }
 }
 
-/** Where a bundle that declares no defaultWorkspace keeps its workspace, and where every bundle's used to be. */
+/** Where every bundle keeps its {{bundleWorkspace}}: in the app's data folder, out of the user's sight. */
 export function appDataWorkspacesDirectory() {
     return path.join(appSupportDirectory(), "BundleWorkspaces");
 }
 
-/** A bundle may only suggest one visible folder directly in the user's home; it never picks an arbitrary path. */
-export function defaultWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">) {
-    const declared = manifest.defaultWorkspace?.trim();
-    if (!declared) {
-        return workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
-    }
-    const match = /^~\/([A-Za-z0-9_][A-Za-z0-9_.-]*)$/.exec(declared);
-    if (!match?.[1]) {
-        throw new Error(`defaultWorkspace must name one visible folder in the home folder, like ~/my-app: ${declared}`);
-    }
-    return path.join(homedir(), match[1]);
+/** The bundle's {{bundleWorkspace}}. The app decides where it is; the user never moves it. */
+export function bundleWorkspaceRoot(manifest: Pick<BundleManifest, "id">) {
+    return workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
 }
 
-async function readAppSettings(): Promise<Record<string, unknown>> {
+export async function readAppSettings(): Promise<Record<string, unknown>> {
     try {
         const parsed: unknown = JSON.parse(await readFile(appSettingsPath(), "utf8"));
         return parsed != null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
@@ -87,68 +78,29 @@ async function readAppSettings(): Promise<Record<string, unknown>> {
     }
 }
 
-async function configuredWorkspacesDirectory() {
-    const value = (await readAppSettings()).bundleWorkspacesDirectory;
+/** Saves the app-wide settings. The only record of where a moved users workspace is: never left half-written. */
+export async function writeAppSettings(settings: Record<string, unknown>) {
+    await mkdir(appSupportDirectory(), { recursive: true });
+    await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+/** One bundle's entry of a map in the app settings, keyed by bundle ID. */
+export function bundleSetting(settings: Record<string, unknown>, key: string, manifest: Pick<BundleManifest, "id">): string | null {
+    const map = settings[key];
+    const value = map != null && typeof map === "object" ? (map as Record<string, unknown>)[safePathComponent(manifest.id)] : undefined;
     return typeof value === "string" && path.isAbsolute(value) ? value : null;
 }
 
-/** The folder used instead of the bundle's default when a folder of the user's already had that name (see claimWorkspaceRoot). */
-async function recordedDefaultWorkspaceRoot(manifest: Pick<BundleManifest, "id">) {
-    const roots = (await readAppSettings()).defaultWorkspaceRoots;
-    const value = roots != null && typeof roots === "object" ? (roots as Record<string, unknown>)[safePathComponent(manifest.id)] : undefined;
-    return typeof value === "string" && path.isAbsolute(value) ? value : null;
-}
-
-/** Where the workspace goes when no folder is chosen: the bundle's default, or the folder used instead of it. */
-export async function effectiveDefaultWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">) {
-    return (await recordedDefaultWorkspaceRoot(manifest)) ?? defaultWorkspaceRoot(manifest);
-}
-
-/** The bundle's workspace: in the folder saved in the app's settings, else the default. */
-export async function resolveWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<string> {
-    const configured = await configuredWorkspacesDirectory();
-    return configured ? workspaceRootIn(configured, manifest.id) : effectiveDefaultWorkspaceRoot(manifest);
-}
-
-const maxDefaultWorkspaceSuffix = 100;
-
-/**
- * The workspace to prepare. When the bundle's default folder in the home folder is already someone else's
- * (a file, an unreadable folder, or non-empty and not a workspace, also when only its letter case differs on a case-insensitive disk), the
- * first free "<name>-2", "<name>-3", ... is used instead and recorded, so it stays the default from then on.
- * The user's folder is never adopted. A folder the user chose must be usable, or this fails saying what to do.
- */
-export async function claimWorkspaceRoot(manifest: Pick<BundleManifest, "id" | "defaultWorkspace">): Promise<string> {
-    const configured = await configuredWorkspacesDirectory();
-    if (configured) {
-        const root = workspaceRootIn(configured, manifest.id);
-        if (!(await isAdoptableWorkspaceRoot(root))) {
-            throw new Error(`The workspaces folder chosen in Settings holds something that is not this app's workspace, or that can't be read: ${root}. Move that folder away, or remove "bundleWorkspacesDirectory" from ${appSettingsPath()} to use the default location.`);
-        }
-        return root;
+/** Sets (or, with null, removes) one bundle's entry of a map in the app settings. */
+export function withBundleSetting(settings: Record<string, unknown>, key: string, manifest: Pick<BundleManifest, "id">, value: string | null) {
+    const map = settings[key] != null && typeof settings[key] === "object" ? { ...(settings[key] as Record<string, unknown>) } : {};
+    if (value == null) {
+        delete map[safePathComponent(manifest.id)];
     }
-    const recorded = await recordedDefaultWorkspaceRoot(manifest);
-    const declared = defaultWorkspaceRoot(manifest);
-    const root = recorded ?? declared;
-    if (await isAdoptableWorkspaceRoot(root)) {
-        return root;
+    else {
+        map[safePathComponent(manifest.id)] = value;
     }
-    // Only the bundle's suggested folder in the home folder may give way to another name.
-    if (recorded || !manifest.defaultWorkspace?.trim()) {
-        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${root}`);
-    }
-    for (let suffix = 2; suffix <= maxDefaultWorkspaceSuffix; suffix++) {
-        const candidate = `${declared}-${suffix}`;
-        if (await isAdoptableWorkspaceRoot(candidate)) {
-            const settings = await readAppSettings();
-            const roots = settings.defaultWorkspaceRoots != null && typeof settings.defaultWorkspaceRoots === "object" ? settings.defaultWorkspaceRoots as Record<string, unknown> : {};
-            settings.defaultWorkspaceRoots = { ...roots, [safePathComponent(manifest.id)]: candidate };
-            await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
-            console.error(`${declared} is not this app's workspace, so the workspace is kept in ${candidate} instead.`);
-            return candidate;
-        }
-    }
-    throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${declared}`);
+    return { ...settings, [key]: map };
 }
 
 export function workspaceRootIn(directory: string, bundleID: unknown) {
@@ -160,52 +112,18 @@ export function workspaceRootIn(directory: string, bundleID: unknown) {
  * if it is empty or already a workspace; someone else's folder of that name is never adopted.
  */
 export async function assertAdoptableWorkspaceRoot(workspaceRoot: string) {
-    if (!(await isAdoptableWorkspaceRoot(workspaceRoot))) {
-        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${workspaceRoot}`);
-    }
-}
-
-// A file, or a folder this user can't read, under the name is someone else's: never adoptable.
-const unusableWorkspaceRootCodes = new Set(["ENOTDIR", "EACCES", "EPERM"]);
-
-async function isAdoptableWorkspaceRoot(workspaceRoot: string) {
     const entries = await readdir(workspaceRoot).catch((error: unknown) => {
-        const code = errnoCode(error);
-        if (code === "ENOENT") {
+        if (errnoCode(error) === "ENOENT") {
             return [];
-        }
-        if (code && unusableWorkspaceRootCodes.has(code)) {
-            return null;
         }
         throw error;
     });
-    return entries != null && (entries.length === 0 || await isManagedWorkspace(workspaceRoot));
+    if (entries.length > 0 && !(await isManagedWorkspace(workspaceRoot))) {
+        throw new Error(`Refusing to use non-empty folder that is not a bundle workspace: ${workspaceRoot}`);
+    }
 }
 
 export async function isManagedWorkspace(workspaceRoot: string) {
     const sentinel = await readFile(path.join(workspaceRoot, workspaceSentinelFileName), "utf8").catch(() => null);
     return isWorkspaceSentinel(sentinel);
-}
-
-export async function workspaceLocationInfo(manifest: BundleManifest, workspaceRoot: string): Promise<WorkspaceLocationInfo> {
-    const defaultRoot = await effectiveDefaultWorkspaceRoot(manifest);
-    return {
-        workspaceRoot,
-        defaultDirectory: path.dirname(defaultRoot),
-        configuredDirectory: await configuredWorkspacesDirectory(),
-        usingDefault: path.relative(defaultRoot, workspaceRoot) === "",
-    };
-}
-
-/** Records the folder holding the workspace, or clears it when null. Moving the workspace there is workspace-move's. */
-export async function saveWorkspacesDirectory(directory: string | null) {
-    const settings = await readAppSettings();
-    if (directory == null) {
-        delete settings.bundleWorkspacesDirectory;
-    }
-    else {
-        settings.bundleWorkspacesDirectory = directory;
-    }
-    // The only record of a moved workspace: never left half-written.
-    await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
 }

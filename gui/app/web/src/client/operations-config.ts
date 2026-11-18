@@ -5,6 +5,7 @@ import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
 import { persistBundleState, type PersistBundleStateOptions } from "./operations-state.js";
+import { askToMoveSettingFolder } from "./workspace-location.js";
 import type { ConfigLoadResponse, ConfigSaveResponse, ConfigSetting, ControlSpec } from "../../../shared/types.js";
 
 export async function loadInitialConfigs() {
@@ -25,6 +26,12 @@ export async function loadConfig(control: ControlSpec) {
     }
 }
 export async function fieldValueChanged(value: string, control: ControlSpec) {
+    const movable = configSettingBindings(control.id).find((binding) => binding.setting.moveContents === true);
+    if (movable) {
+        await configSettingChanged(value, movable.setting, movable.control);
+        scheduleRender();
+        return;
+    }
     state.fieldValues[control.id] = value;
     await syncBoundConfigSettings(control.id, value, { removeFieldIDs: [control.id] });
 }
@@ -59,6 +66,15 @@ async function syncBoundConfigSettings(controlID: string, value: string, removeP
     await persistBundleState(removePersistedState);
 }
 export async function configSettingChanged(value: string, setting: ConfigSetting, control: ControlSpec) {
+    const current = String(state.configValues[configValueKey(control, setting)] ?? "");
+    if (setting.moveContents === true && current.trim() && value.trim() && current !== value) {
+        // The folder's contents may move with it: the user decides, and until then the setting keeps its value.
+        askToMoveSettingFolder(control.id, setting.key ?? setting.id, current, value, () => saveSetting(value, setting, control));
+        return;
+    }
+    await saveSetting(value, setting, control);
+}
+async function saveSetting(value: string, setting: ConfigSetting, control: ControlSpec) {
     state.configValues[configValueKey(control, setting)] = value;
     const fieldKey = boundFieldKey(setting);
     if (fieldKey) {
@@ -71,7 +87,7 @@ export async function configSettingChanged(value: string, setting: ConfigSetting
 }
 export async function saveConfig(control: ControlSpec, reportSuccess = false) {
     try {
-        const values = Object.fromEntries((control.settings ?? []).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
+        const values = Object.fromEntries((control.settings ?? []).filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
         const result = await api<ConfigSaveResponse>("/api/config/save", {
             method: "POST",
             body: { controlID: control.id, path: state.configFilePaths[control.id], values },

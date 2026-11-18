@@ -221,7 +221,7 @@ test("conformance bundle applies requested localization overlays in TypeScript",
   assert.equal(bundle.manifest.summary, "Ejercita semánticas comunes de ejecución de paquetes.");
 });
 
-test("WGSExtract exposes dataset and reference genome library controls in TypeScript", async (t) => {
+test("WGSExtract exposes My Genomes and reference genome library controls in TypeScript", async (t) => {
   const copy = await exampleBundleCopy(t);
   const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const library = bundle.manifest.pages.find((page) => page.id === "library");
@@ -248,9 +248,9 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(pageOrder.indexOf("annotate") < pageOrder.indexOf("workflows"), "Annotate sits above Workflows");
   const datasetPaths = datasets.sections.find((section) => section.id === "dataset-paths");
   assert.equal(datasetPaths.title, "Library Paths");
-  const datasetLibraryControl = datasetPaths.controls.find((control) => control.id === "dataset_library");
-  assert.equal(datasetLibraryControl.label, "My Genomes Library Path");
-  assert.equal(datasetLibraryControl.kind, "path");
+  const myGenomesControl = datasetPaths.controls.find((control) => control.id === "mygenomes_library");
+  assert.equal(myGenomesControl.label, "My Genomes Library Path");
+  assert.equal(myGenomesControl.kind, "path");
   const referenceGenomePaths = genomesPage.sections.find((section) => section.id === "reference-genome-paths");
   // Library Paths show in Basic, on all three library pages.
   for (const section of [libraryPaths, datasetPaths, referenceGenomePaths]) {
@@ -265,7 +265,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(databaseTools, "databases and tools section exists");
   assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
   assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
-  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]]);
+  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
   assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
@@ -280,7 +280,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
-  const libraryArguments = [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]];
+  const libraryArguments = [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]];
   assert.deepEqual(downloadAction.command.arguments, ["ref", "test-genome", "--install"]);
   assert.deepEqual(downloadAction.command.optionalArguments, libraryArguments);
   const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
@@ -295,9 +295,11 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(installStep.toolVersionFile, "scripts/wgsextract-release-tag.txt");
   assert.equal(bundle.manifest.setup.initialInstallSizeGB, 6);
 
-  const settings = settingsPage.sections[0].controls[0];
-  const datasetLibrarySetting = settings.settings.find((setting) => setting.id === "dataset_library");
-  assert.equal(datasetLibrarySetting.key, "dataset_library");
+  const settings = settingsPage.sections.find((section) => section.id === "settings-paths").controls[0];
+  assert.equal(settings.configFile.path, "{{usersWorkspace}}/config.toml");
+  const myGenomesSetting = settings.settings.find((setting) => setting.id === "mygenomes_library");
+  assert.equal(myGenomesSetting.key, "mygenomes_library");
+  assert.ok(!settings.settings.some((setting) => setting.key === "dataset_library"));
   assert.ok(!settings.settings.some((setting) => setting.key === "genome_library"));
   const referenceGenomeSetting = settings.settings.find((setting) => setting.id === "reference_genome_library");
   assert.equal(referenceGenomeSetting.key, "reference_genome_library");
@@ -305,7 +307,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const bamPath = bundle.manifest.pages
     .find((page) => page.id === "info-bam")
     .sections[0].controls.find((control) => control.id === "bam_path");
-  assert.equal(bamPath.defaultDirectory, "{{dataset_library}}");
+  assert.equal(bamPath.defaultDirectory, "{{mygenomes_library}}");
   const fastqAlign = bundle.manifest.pages
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "fastq-align")
@@ -328,7 +330,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.deepEqual(callAction.command.arguments.slice(0, 3), ["vcf", "call", "--input"]);
   assert.equal(callAction.estimatedDurationMinutes, 68);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
-  assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
+  assert.equal(defaultVcfPath.defaultDirectory, "{{mygenomes_library}}");
   const microarrayAction = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-formats")

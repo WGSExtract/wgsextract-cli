@@ -529,6 +529,15 @@ class CommandResult:
                     metrics=dict(metrics or {}),
                 )
             )
+            inputs = [record.path for record in self.inputs]
+        from wgsextract_cli.core.output_location import primary_overwrite_warning
+
+        notice = primary_overwrite_warning(
+            absolute, inputs, self.provenance.params.get("outdir")
+        )
+        if notice:
+            logging.warning(notice)
+            self.warn("primary_overwrite", notice, path=absolute)
 
     def add_metrics(self, **metrics: Scalar) -> None:
         with self._lock:

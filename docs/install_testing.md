@@ -105,6 +105,11 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+Explicit config removal includes the owned default visible users workspace's config
+and, only when otherwise empty, its ownership marker and directory. Workspaces
+containing libraries or other user data remain intact; the oracle does not
+ignore leftover workspace config files.
+
 The CLI workloads and app test plan explicitly declare HG00096's known male
 sex through `sample set` before running the analyses. This rebased mini genome
 has no informative chrX assay, so coverage-based inference correctly returns
@@ -257,7 +262,8 @@ the standard user Lab User:
    bundle and the app's workspace.
 5. Uninstall is Settings > Apps > Uninstall: the registered UninstallString
    opens the uninstaller's wizard, where UI Automation ticks "Delete the
-   application data" and clicks Uninstall and Close, so the controls used are
+   application data", clicks Uninstall, explicitly answers Yes to the separate
+   users-workspace deletion question, and clicks Close, so the controls used are
    the wizard's real ones. The machine must then match the baseline,
    including the registry (Apps entries, user `Path`), the Start menu and
    `%LOCALAPPDATA%`.

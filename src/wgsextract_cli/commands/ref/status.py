@@ -18,7 +18,7 @@ from wgsextract_cli.core import (
     somalier_resources,
 )
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
-from wgsextract_cli.core.config import dataset_library, settings
+from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
@@ -75,15 +75,14 @@ def build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         return _build_ref_status(params)
 
 
-def dataset_library_for(ref: Path | None, datasets: Path | None) -> Path:
-    """``datasets``, else config dataset_library, else ``datasets`` beside the
-    reference library ``ref`` names (``_resolve_reference_library``)."""
-    return Path(_resolve_dataset_library(datasets, _resolve_reference_library(ref)))
+def mygenomes_library_for(library: Path | None) -> Path:
+    """``library``, else config mygenomes_library, else its default."""
+    return Path(_resolve_mygenomes_library(library))
 
 
 def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     reflib = _resolve_reference_library(params.ref)
-    datasets = _resolve_dataset_library(params.dataset_library, reflib)
+    datasets = _resolve_mygenomes_library(params.mygenomes_library)
     input_path = fspath(params.input) if params.input else None
     annotation_vcf = fspath(params.annotation_vcf) if params.annotation_vcf else ""
     lib = ReferenceLibrary(reflib, input_path=input_path)
@@ -112,7 +111,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "path": reference_genomes_dir(reflib),
             "exists": Path(reference_genomes_dir(reflib)).is_dir(),
         },
-        "datasetLibrary": {
+        "mygenomesLibrary": {
             "path": datasets,
             "exists": Path(datasets).is_dir(),
         },
@@ -432,11 +431,8 @@ def _library_of(ref: str | os.PathLike[str]) -> str | None:
     return None
 
 
-def _resolve_dataset_library(datasets: Path | None, reflib: str) -> str:
-    library = datasets or dataset_library()
-    if library:
-        return str(absolute_path(str(library)))
-    return str(Path(reflib).parent / "datasets")
+def _resolve_mygenomes_library(library: Path | None) -> str:
+    return str(absolute_path(str(library or mygenomes_library())))
 
 
 def _ploidy_status(reflib: str) -> dict[str, Any]:

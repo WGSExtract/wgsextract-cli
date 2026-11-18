@@ -35,8 +35,8 @@
             "{{ref_path}}"
           ],
           [
-            "--dataset-library",
-            "{{dataset_library}}"
+            "--mygenomes-library",
+            "{{mygenomes_library}}"
           ]
         ]
       },

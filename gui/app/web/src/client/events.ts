@@ -15,6 +15,7 @@ import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob, rese
 import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-visibility.js";
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
+import { bindCollapsibleSections } from "./view/collapsible.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec, PathPickResponse } from "../../../shared/types.js";
 import { normalizeUIMode } from "../../../shared/ui-mode.js";
@@ -108,6 +109,7 @@ export function bindEvents(bootstrap: Bootstrap) {
         await openBundleWorkspace();
     });
     bindWorkspaceLocationEvents(app);
+    bindCollapsibleSections(app);
     app.querySelector("[data-load-bundle]")?.addEventListener("click", async () => {
         await loadBundleFromPicker(bootstrap);
     });

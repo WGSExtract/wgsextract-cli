@@ -485,7 +485,16 @@ def test_to_cram_of_a_cram_refuses_to_overwrite_it(genome, tmp_path, no_remote_r
     cram = _cram(genome, tmp_path)
     before = cram.read_bytes()
     with pytest.raises(WGSExtractError, match="overwrite the input"):
-        _bam("to-cram", "--input", str(cram), "--ref", genome["ref"])
+        # Only an output folder the user points at the input's own folder could.
+        _bam(
+            "to-cram",
+            "--input",
+            str(cram),
+            "--ref",
+            genome["ref"],
+            "-o",
+            str(cram.parent),
+        )
     assert cram.read_bytes() == before
 
 
@@ -493,7 +502,7 @@ def test_to_bam_of_a_bam_refuses_to_overwrite_it(genome, tmp_path):
     bam = _copy(genome, tmp_path, ".bai")
     before = bam.read_bytes()
     with pytest.raises(WGSExtractError, match="overwrite the input"):
-        _bam("to-bam", "--input", str(bam))
+        _bam("to-bam", "--input", str(bam), "-o", str(bam.parent))
     assert bam.read_bytes() == before
 
 

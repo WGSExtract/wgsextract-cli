@@ -860,7 +860,7 @@ def test_repair_bam_streams_through_real_samtools(tmp_path):
 
     api.repair.ftdna_bam(api.RepairFtdnaBamParams(input=source))
 
-    output = tmp_path / "ftdna_repaired.bam"
+    output = tmp_path / "wgse" / "ftdna_repaired.bam"
     view = subprocess.run(
         [shutil.which("samtools") or get_tool_path("samtools"), "view", str(output)],
         check=True,

@@ -23,6 +23,12 @@ from wgsextract_cli.core.settings_schema import (
     Settings,
     check_values,
 )
+from wgsextract_cli.core.users_workspace import (
+    claim_users_workspace,
+    default_mygenomes_library,
+    existing_mygenomes_library,
+    users_workspace,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 # For Python < 3.11, use tomli
@@ -67,8 +73,9 @@ CONFIG_ALIASES = {
     "outdir": "output_directory",
     "ref": "reference_fasta",
     "reflib": "reference_library",
-    "genome_library": "dataset_library",
-    "genomes": "dataset_library",
+    "dataset_library": "mygenomes_library",
+    "genome_library": "mygenomes_library",
+    "genomes": "mygenomes_library",
     "threads": "cpu_threads",
     "memory": "memory_limit",
     "haplogrep_path": "haplogrep_executable",
@@ -200,18 +207,28 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     return args
 
 
+def legacy_config_paths() -> list[Path]:
+    """Where config.toml was kept before it moved to the users workspace."""
+    paths = [get_config_dir() / "config.toml"]
+    if sys.platform == "darwin":
+        paths.insert(0, Path.home() / ".config" / APP_NAME / "config.toml")
+    return paths
+
+
+def default_config_path() -> Path:
+    """config.toml in the users workspace, unless an older install already
+    keeps one where the CLI used to (it stays there)."""
+    workspace_config = users_workspace() / "config.toml"
+    for legacy in legacy_config_paths():
+        if legacy.is_file():
+            return legacy
+    return workspace_config
+
+
 def get_config_path() -> Path:
     """Get the path to the config.toml file."""
     selected = _state().path
-    if selected is not None:
-        return selected
-    # Priority for macOS: Use ~/.config/wgsextract/ if ~/.config exists
-    if sys.platform == "darwin":
-        dot_config = Path.home() / ".config"
-        if dot_config.is_dir():
-            return dot_config / APP_NAME / "config.toml"
-
-    return get_config_dir() / "config.toml"
+    return selected if selected is not None else default_config_path()
 
 
 def read_toml(path: Path) -> dict[str, Any]:
@@ -227,6 +244,19 @@ def load_config() -> dict[str, Any]:
 
     # Load from config.toml
     config_path = get_config_path()
+    workspace_config = users_workspace() / "config.toml"
+    if (
+        _state().path is None
+        and config_path.is_file()
+        and workspace_config.is_file()
+        and config_path.resolve() != workspace_config.resolve()
+    ):
+        logging.warning(
+            "Multiple configuration files exist: using existing CLI config %s; "
+            "ignoring workspace config %s. Use --config PATH to choose explicitly.",
+            config_path,
+            workspace_config,
+        )
     if config_path.exists():
         try:
             config = read_toml(config_path)
@@ -454,6 +484,8 @@ def save_config(updates: dict[str, Any]) -> None:
             current_config[key] = _normalize_path_setting(value)
 
     _validate_config_types(current_config, config_path)
+    if config_path == users_workspace() / "config.toml":
+        claim_users_workspace(config_path.parent)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(config_path, tomli_w.dumps(current_config).encode("utf-8"))
     reload_settings()
@@ -482,8 +514,51 @@ def configured_paths() -> list[object]:
     return values
 
 
-def dataset_library() -> str | None:
-    """The dataset_library setting (one folder per person or sample), also read
-    from the old genome_library key when a host fills settings itself."""
-    value = settings.get("dataset_library") or settings.get("genome_library")
-    return str(value) if value else None
+def configured_mygenomes_library() -> str | None:
+    """The mygenomes_library setting (one folder per person or sample), also
+    read from its older names when a host fills settings itself."""
+    for key in ("mygenomes_library", *_aliases_of("mygenomes_library")):
+        if key in settings:
+            value = settings[key]
+            return str(value) if value else None
+    return None
+
+
+def mygenomes_library() -> str:
+    """The My Genomes library: config mygenomes_library, else the one an older
+    install kept beside its default reference library, else mygenomes/ in the
+    users workspace. Lookup never moves a folder containing selected inputs."""
+    configured = configured_mygenomes_library()
+    if configured:
+        return configured
+    from wgsextract_cli.core.runtime import repo_root
+
+    existing = existing_mygenomes_library(repo_root())
+    return str(existing or default_mygenomes_library())
+
+
+def output_directory(inputs: Iterable[object] = ()) -> str | None:
+    """config output_directory, else the wgse/ folder beside the primary
+    input among ``inputs`` (core/output_location.py); None when neither."""
+    configured = settings.get("output_directory")
+    if configured:
+        return str(configured)
+    from wgsextract_cli.core.output_location import default_output_directory
+
+    default = default_output_directory(inputs)
+    return str(default) if default else None
+
+
+def setting_or_default(key: str, inputs: Iterable[object] = ()) -> object | None:
+    """``key``'s setting, with the defaults that depend on where things are
+    when unset: the output folder (beside the primary input among ``inputs``)
+    and the My Genomes library."""
+    if key == "output_directory":
+        return output_directory(inputs)
+    if key == "mygenomes_library":
+        return mygenomes_library()
+    return settings.get(key)
+
+
+def _aliases_of(key: str) -> list[str]:
+    return [alias for alias, canonical in CONFIG_ALIASES.items() if canonical == key]

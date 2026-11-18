@@ -11,7 +11,7 @@ import os
 import re
 import types
 import typing
-from collections.abc import Callable, Collection, Iterator
+from collections.abc import Callable, Collection, Iterator, Mapping
 from dataclasses import MISSING, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
@@ -60,7 +60,8 @@ class ParamSpec:
     a tuple one takes one or more values, as does an option whose type is a
     variable-length tuple (``tuple[Path, ...]``). ``group`` (title, description) puts
     the option in that section of the command's help. ``hidden_flags`` are
-    old spellings of the option the CLI still accepts but its help leaves out.
+    old spellings of the option the CLI still accepts but its help leaves out,
+    and ``former_names`` old names of the field a server request may still use.
     """
 
     help: str | None = None
@@ -88,6 +89,7 @@ class ParamSpec:
     group: tuple[str, str | None] | None = None
     hidden_flags: tuple[str, ...] = ()
     url: bool = False
+    former_names: tuple[str, ...] = ()
 
     @property
     def description(self) -> str:
@@ -123,6 +125,7 @@ def param(
     group: tuple[str, str | None] | None = None,
     hidden_flags: tuple[str, ...] = (),
     url: bool = False,
+    former_names: tuple[str, ...] = (),
 ) -> Any:
     """Declare a Params field; omit ``default`` for a required one.
 
@@ -157,6 +160,7 @@ def param(
         group=group,
         hidden_flags=hidden_flags,
         url=url,
+        former_names=former_names,
     )
     return dataclasses.field(default=default, metadata={_SPEC: spec})
 
@@ -242,6 +246,7 @@ class Params:
     SAVES_IN_WORKING_FOLDER: ClassVar[bool] = False
     ATOMIC_WRITES: ClassVar[frozenset[str]] = frozenset()
     _config_default_fields: ClassVar[frozenset[str]] = frozenset()
+    VCF_INPUT_OVERRIDES_INPUT: ClassVar[bool] = False
 
     def explicitly_set(self, name: str) -> bool:
         """Whether a nonempty value came from the caller, not config defaults."""
@@ -373,17 +378,77 @@ def param_fields(cls: type[Params]) -> tuple[ParamField, ...]:
     return result
 
 
-def with_config_defaults(params: P, keep: Collection[str] = ()) -> P:
+def output_directory_default(
+    cls: type[Params], values: Mapping[str, Any]
+) -> str | None:
+    """Resolve outputs from a command's contract without constructing it.
+
+    CLI modes can accept stdin or select a sub-operation before its required
+    API fields exist, so output inference must not validate those fields.
+    """
+    from wgsextract_cli.core.config import output_directory
+    from wgsextract_cli.core.output_location import BESIDE_INPUT_COMMANDS
+
+    if (
+        cls.COMMAND == "info"
+        and not values.get("cache", True)
+        and not values.get("detailed", False)
+        and not values.get("table_format")
+    ):
+        return None
+    inputs = (
+        []
+        if cls.COMMAND in BESIDE_INPUT_COMMANDS or cls.SAVES_IN_WORKING_FOLDER
+        else [
+            values.get(item.name)
+            for item in param_fields(cls)
+            if item.name
+            in {"input", "inputs", "r1", "r2", "vcf_input", "vcf_inputs", "proband"}
+            and item.spec.path
+            and not item.spec.writes
+            and not (
+                cls.COMMAND == "vcf trio"
+                and values.get("proband") is not None
+                and item.name in {"input", "vcf_input"}
+            )
+            and not (
+                item.name == "input"
+                and cls.VCF_INPUT_OVERRIDES_INPUT
+                and values.get("vcf_input") is not None
+            )
+        ]
+    )
+    return output_directory(inputs)
+
+
+def with_config_defaults(
+    params: P,
+    keep: Collection[str] = (),
+    *,
+    only: Collection[str] | None = None,
+) -> P:
     """Fill ``None`` fields that have a ``config_key`` from config.toml, except
-    the fields named in ``keep``."""
-    from wgsextract_cli.core.config import settings
+    the fields named in ``keep``. ``only`` limits which defaults are filled."""
+    from wgsextract_cli.core.config import setting_or_default
 
     updates: dict[str, Any] = {}
-    for item in param_fields(type(params)):
+    fields = param_fields(type(params))
+    for item in fields:
         key = item.spec.config_key
-        if not key or item.name in keep or getattr(params, item.name) is not None:
+        if (
+            not key
+            or item.name in keep
+            or (only is not None and item.name not in only)
+            or getattr(params, item.name) is not None
+        ):
             continue
-        value = settings.get(key)
+        value = (
+            output_directory_default(
+                type(params), {f.name: getattr(params, f.name) for f in fields}
+            )
+            if key == "output_directory"
+            else setting_or_default(key)
+        )
         if value is not None and item.spec.cli_type is not None:
             try:
                 value = item.spec.cli_type(str(value))

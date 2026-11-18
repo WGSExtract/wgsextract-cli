@@ -18,8 +18,8 @@
     "iconName": { "type": "string" },
     "iconPath": { "type": "string" },
     "textIcon": { "$ref": "#/$defs/textIcon" },
-    "defaultWorkspace": {
-      "description": "One visible folder directly in the user's home for the bundle's workspace, for bundles whose workspace holds large data the user manages. Without it, the workspace is in the app's data folder. The user can move it from the Settings page.",
+    "defaultUsersWorkspace": {
+      "description": "One visible folder directly in the user's home for {{usersWorkspace}}: the bundle's settings file and the folders the user manages, which grow large. Without it, {{usersWorkspace}} is the app's hidden {{bundleWorkspace}}. The user can move it from the Settings page.",
       "type": "string",
       "pattern": "^~/[A-Za-z0-9_][A-Za-z0-9_.-]*$"
     },

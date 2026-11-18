@@ -677,7 +677,7 @@ def test_example_download_says_how_to_select_it_with_genome(
         assignment = hint.removeprefix(" after setting ").removesuffix(
             " in config.toml"
         )
-        assert tomllib.loads(assignment) == {"dataset_library": str(root.resolve())}
+        assert tomllib.loads(assignment) == {"mygenomes_library": str(root.resolve())}
 
 
 @pytest.mark.parametrize(

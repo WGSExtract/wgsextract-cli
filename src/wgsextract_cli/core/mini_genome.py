@@ -120,6 +120,13 @@ def install(datasets: Path) -> bool:
 
 
 def _verified_archive(datasets: Path) -> Path:
+    from wgsextract_cli.core.users_workspace import (
+        claim_users_workspace,
+        default_mygenomes_library,
+    )
+
+    if datasets == default_mygenomes_library():
+        claim_users_workspace(datasets.parent)
     zip_path = archive(datasets)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     if zip_path.is_file() and _sha256(zip_path) == SHA256:

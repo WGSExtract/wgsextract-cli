@@ -4,7 +4,7 @@
 "global_options":[
 {"flags":["--input","-i"],"dest":"input","type":"string","help":"Path to the input BAM/CRAM, FASTQ, or VCF file."},
 {"flags":["--outdir","-o"],"dest":"outdir","type":"string","help":"Destination directory for outputs."},
-{"flags":["--genome"],"dest":"genome","type":"string","help":"Genome ID: a folder in dataset_library, such as joe or test-1000genomes/<id>."},
+{"flags":["--genome"],"dest":"genome","type":"string","help":"Genome ID: a folder in the My Genomes library, such as joe or test-1000genomes/<id>."},
 {"flags":["--ref"],"dest":"ref","type":"string","help":"Path to the reference genome FASTA."},
 {"flags":["--threads","-t"],"dest":"threads","type":"string","help":"CPU threads to use: a positive integer, or 'auto' (default)."},
 {"flags":["--memory","-m"],"dest":"memory","type":"string","help":"Memory per thread, e.g. '2G' (sorts: at most half the RAM in all)."},
@@ -67,8 +67,8 @@
 {"path":"ref count-ns","tier":"setup","summary":"Calculate the percentage of 'N' (unknown) bases in a genome.","key_flags":[]},
 {"path":"ref verify","tier":"setup","summary":"Ensure your reference genome file isn't corrupted and has all the necessary companion files (indexes, dicts).","key_flags":[]},
 {"path":"ref library","tier":"setup","summary":"Opens the interactive reference manager to help you organize and download genomic data.","key_flags":["--install","--list","--remote-sizes","--delete"]},
-{"path":"ref status","tier":"setup","summary":"Report reference library asset status.","key_flags":["--dataset-library","--annotation-vcf","--values"]},
-{"path":"ref test-genome","tier":"setup","summary":"Report, install (--install) or delete (--delete) the small hg19 test genome in the dataset library.","key_flags":["--dataset-library","--install","--delete"]},
+{"path":"ref status","tier":"setup","summary":"Report reference library asset status.","key_flags":["--mygenomes-library","--annotation-vcf","--values"]},
+{"path":"ref test-genome","tier":"setup","summary":"Report, install (--install) or delete (--delete) the small hg19 test genome in the dataset library.","key_flags":["--mygenomes-library","--install","--delete"]},
 {"path":"ref needs","tier":"setup","summary":"Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.","key_flags":["--report-json"]},
 {"path":"ref gene-map","tier":"setup","summary":"Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).","key_flags":["--delete"]},
 {"path":"ref clinvar","tier":"setup","summary":"Download official ClinVar VCF for hg19 and hg38.","key_flags":[]},
@@ -151,7 +151,7 @@
 "topics":[
 {"name":"references","summary":"Reference genomes: what they are, where they come from."},
 {"name":"builds","summary":"Genome builds (hg19, hg38, T2T) and moving between them."},
-{"name":"dataset-library","summary":"Keep each person's files in a folder; select it with --genome."},
+{"name":"mygenomes-library","summary":"Keep each person's files in a folder; select it with --genome."},
 {"name":"coverage","summary":"Coverage and depth, and the low-depth warnings."},
 {"name":"exit-codes","summary":"What wgsextract's exit codes mean."},
 {"name":"manifests","summary":"The result manifest each run writes, and --json."},

@@ -491,7 +491,7 @@ def test_trio_on_a_vcf_only_genome_is_the_genomes_report_vcf(tmp_path, capsys):
     genome = tmp_path / "genomes" / "child"
     genome.mkdir(parents=True)
     config = tmp_path / "config.toml"
-    config.write_text(f"dataset_library = {json.dumps(str(genome.parent))}\n")
+    config.write_text(f"mygenomes_library = {json.dumps(str(genome.parent))}\n")
     _write_vcf(genome / "child.vcf.gz", body, sample="S", header=gq)
     mom, dad = (
         _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)

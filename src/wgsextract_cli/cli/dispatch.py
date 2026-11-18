@@ -10,6 +10,7 @@ from wgsextract_cli.core import execution_context, live_status
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
+from wgsextract_cli.core.output_location import remove_if_empty
 from wgsextract_cli.core.ref_library.lookup import local_reference_lookup
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
@@ -104,6 +105,7 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
                 _index_output(args, manifest, result)
         except OSError as e:
             logging.warning(f"Could not write the result manifest: {e}")
+        remove_if_empty(getattr(args, "_created_outdir", None))
         record_last_run(result, log_tail=list(tail.lines), log_file=active_log_path())
         if result_file := getattr(args, "_result_file", None):
             try:
@@ -205,6 +207,35 @@ def _run_command(
     args: argparse.Namespace, explicit_dests: set[str], result: CommandResult
 ) -> None:
     # --genome fills in input/outdir; preflight failures keep the snapshot.
+    if (
+        hasattr(args, "outdir")
+        and args.outdir is None
+        and "outdir" not in explicit_dests
+    ):
+        # Unset, outputs go to wgse/ beside the lab's primary input, never in
+        # its folder (core/output_location.py).
+        from wgsextract_cli.api._cli import command_params
+        from wgsextract_cli.api._params import (
+            output_directory_default,
+            param_fields,
+        )
+        from wgsextract_cli.core.config import output_directory, settings
+
+        command = str(getattr(args, "_command", None) or "")
+        cls = command_params(command)
+        if cls is not None and any(item.name == "outdir" for item in param_fields(cls)):
+            values = {
+                item.name: value
+                if (value := getattr(args, item.dest, None)) is not None
+                else item.default
+                for item in param_fields(cls)
+            }
+            args.outdir = output_directory_default(cls, values)
+        else:
+            args.outdir = output_directory([])
+        args._default_outdir = args.outdir is not None and not settings.get(
+            "output_directory"
+        )
     result.provenance.params = params_from_args(args)
     for dest, role in INPUT_ARGS.items():
         value = getattr(args, dest, None)
@@ -226,12 +257,21 @@ def _run_command(
         from wgsextract_cli.core.alignment.input import validate_alignment_input
 
         validate_alignment_input(input_path)
+    from wgsextract_cli.core.output_location import make_output_folder
+
     if (
         args.outdir
         and not status
         and getattr(args, "command", None) not in READ_ONLY_COMMANDS
     ):
-        Path(args.outdir).mkdir(parents=True, exist_ok=True)
+        created = make_output_folder(args.outdir)
+        if getattr(args, "_default_outdir", False):
+            # Removed after the run, and its manifest, if left empty.
+            args._created_outdir = created
+    _run_handler(args)
+
+
+def _run_handler(args: argparse.Namespace) -> None:
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 
     with keep_awake(

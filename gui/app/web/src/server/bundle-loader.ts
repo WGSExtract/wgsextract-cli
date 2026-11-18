@@ -7,6 +7,7 @@ import { localizeManifest, localizationLabels, mergeTables, parseTomlStrings, pa
 import type { BundleManifest, BundlePage, ExitCodeReference, LocalizedOption, SetupStep, StringMap } from "../../../shared/types.js";
 import { bootstrapConfigFiles, initialCheckedOptions, initialConfigFilePaths, initialConfigValues, initialFieldValues, loadBundleState, takeBundleStateWarning, } from "./config-store.js";
 import { isSafePageFileName } from "./paths.js";
+import { usersWorkspaceFor } from "./users-workspace.js";
 import { validatePlatformScriptSets } from "./platform-scripts.js";
 import { validateManifest } from "./manifest-validator.js";
 import { bundleArchiveFormat, extractBundleArchive } from "./bundle-archive.js";
@@ -277,6 +278,7 @@ export async function loadLocalizedBundle(locale: string | undefined, repoRoot: 
         localizationOptions: localizedOptions,
         usingSystemDefaultLocale: !locale && !bundleState.localizationCode,
         bundleRootPath: bundleRoot,
+        usersWorkspacePath: usersWorkspaceFor(bundleRoot),
         sourceRootPath: sourceBundleRoot,
         lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot),
         bundleState,

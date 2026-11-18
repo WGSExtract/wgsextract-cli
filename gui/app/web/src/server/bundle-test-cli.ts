@@ -26,6 +26,7 @@ type BundleTestArgs = {
     report?: string;
     runSetup: boolean;
     workspace?: string;
+    usersWorkspace?: string;
 };
 
 async function main() {
@@ -53,6 +54,7 @@ async function main() {
         report = await runBundleTest(await resolveBundleSourceRoot(args.bundle), plan, {
             dryRun: args.dryRun,
             ...(args.workspace ? { workspaceURL: path.resolve(args.workspace) } : {}),
+            ...(args.usersWorkspace ? { usersWorkspaceURL: path.resolve(args.usersWorkspace) } : {}),
             progressHandler: (event) => {
                 if (event.type === "message") {
                     logWriter.line(event.text);
@@ -133,6 +135,9 @@ function parseBundleTestArgs(argv: string[]): BundleTestArgs {
         else if (arg === "--workspace") {
             parsed.workspace = readValue(arg, ++index);
         }
+        else if (arg === "--users-workspace") {
+            parsed.usersWorkspace = readValue(arg, ++index);
+        }
         else if (arg === "--dry-run") {
             parsed.dryRun = true;
         }
@@ -209,6 +214,8 @@ Options:
   --report <path>          Write the JSON report to this path.
   --log <path>             Write the live bundle test console log to this path.
   --workspace <path>       Use this bundle workspace directory for the test run.
+  --users-workspace <path> Use this users workspace directory (default: the bundle workspace when
+                           --workspace is given, else the app's).
   --dry-run                Render setup and action commands without executing them.
   --run-setup              Run bundle setup before any --action steps.
   --action <id>            Action id to run. Repeat for multiple actions.

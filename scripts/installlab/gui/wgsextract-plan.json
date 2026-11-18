@@ -2,14 +2,14 @@
   "name": "install lab - WGS Extract GUI on the HG00096 mini genome",
   "inputs": {
     "fieldValues": {
-      "bam_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
-      "ref_path": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "ref_fasta": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "realign_ref": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
-      "fastq_r1": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
-      "fastq_r2": "{{bundleWorkspace}}/datasets/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
+      "bam_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini.bam",
+      "ref_path": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "ref_fasta": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "realign_ref": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/hg19-mini.fa.gz",
+      "fastq_r1": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R1.fastq.gz",
+      "fastq_r2": "{{usersWorkspace}}/mygenomes/wgsextract-benchmark-hg19-mini/HG00096.hg19-mini_R2.fastq.gz",
       "fastq_output_format": "BAM",
-      "dataset_library": "{{bundleWorkspace}}/datasets",
+      "mygenomes_library": "{{usersWorkspace}}/mygenomes",
       "haplogrep_path": "haplogrep3"
     },
     "checkedOptions": {
@@ -50,14 +50,14 @@
         "code": "hs38",
         "final": "hs38.fa.gz",
         "name": "hs38 (Nebula)",
-        "ref": "{{bundleWorkspace}}/genomes/hs38.fa.gz",
+        "ref": "{{usersWorkspace}}/genomes/hs38.fa.gz",
         "source": "GitHub",
         "status": "missing"
       },
       "timeoutSeconds": 3600,
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       }
     },
@@ -69,7 +69,7 @@
       "controlID": "ref_fasta",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       },
       "requiredOutput": [
@@ -85,7 +85,7 @@
       "controlID": "realign_ref",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       },
       "requiredOutput": [
@@ -101,7 +101,7 @@
       "controlID": "ref_fasta",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       },
       "requiredOutput": [
@@ -118,7 +118,7 @@
       "settingID": "ref_fasta",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       },
       "requiredOutput": [
@@ -134,7 +134,7 @@
       "controlID": "reference_genomes",
       "inputs": {
         "fieldValues": {
-          "ref_path": "{{bundleWorkspace}}/reference"
+          "ref_path": "{{usersWorkspace}}/reference"
         }
       },
       "requiredOutput": [

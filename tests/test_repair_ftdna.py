@@ -19,6 +19,7 @@ from wgsextract_cli.commands import repair
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.main import main
 
 pytestmark = needs_htslib
 
@@ -138,17 +139,19 @@ def test_repair_bam_requires_existing_input(tmp_path):
         run_wgsextract("repair", "ftdna-bam", "--input", str(tmp_path / "x.bam"))
 
 
-def test_repair_streams_stdin_to_stdout_without_input(monkeypatch):
+def test_1087_repair_cli_streams_stdin_to_stdout_without_input(monkeypatch, tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text("")
     sam = "@SQ\tSN:chrY\tLN:300\nA B C\t4\t*\t0\t0\t*\t*\t0\t0\tAC\tII\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(sam))
     monkeypatch.setattr(sys, "stdout", out := io.StringIO())
-    run_wgsextract("repair", "ftdna-bam")
+    main(["--config", str(config), "repair", "ftdna-bam"])
     assert out.getvalue() == sam.replace("A B C", "A:B:C")
 
     vcf = "##x=a b\n#CHROM\tPOS\nchr1\t5\t.\tA\tG\t9\tLow Qual\t.\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(vcf))
     monkeypatch.setattr(sys, "stdout", out := io.StringIO())
-    run_wgsextract("repair", "ftdna-vcf")
+    main(["--config", str(config), "repair", "ftdna-vcf"])
     assert out.getvalue() == vcf.replace("Low Qual", "LowQual")
 
 
@@ -178,7 +181,7 @@ def test_repair_vcf_cleans_filter_column_so_bcftools_reads_it(tmp_path, suffix):
     if suffix == ".vcf.gz":
         src = Path(bgzip_index(src))
     run_wgsextract("repair", "ftdna-vcf", "--input", str(src))
-    out = tmp_path / "kit_repaired.vcf"
+    out = tmp_path / "wgse" / "kit_repaired.vcf"
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual;q10 2 1"]
     assert out.read_text().splitlines()[:7] == _VCF.splitlines()[:7]
 
@@ -231,4 +234,4 @@ def test_repair_cram_finds_the_reference_beside_it(tmp_path, monkeypatch):
     (tmp_path / "library").mkdir()
     monkeypatch.setitem(settings, "reference_library", str(tmp_path / "library"))
     run_wgsextract("repair", "ftdna-bam", "--input", cram)
-    assert _records(str(kit / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"
+    assert _records(str(kit / "wgse" / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"

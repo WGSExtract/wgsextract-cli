@@ -1,12 +1,16 @@
 $ErrorActionPreference = "Stop"
 
-$workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
-$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
-$outputPath = Join-Path $workspace "output"
-$referencePath = Join-Path $workspace "reference"
-# New installs keep My Genomes in mygenomes\ and reference genomes in genomes\.
-# An existing config keeps folders that hold files: its old genome_library stays
-# the dataset library, and genomes already in <reference_library>\genomes stay there.
+# The settings file and the folders the user manages live in the users workspace
+# (%USERPROFILE%\wgs-extract); what only the app needs (run logs) in its hidden bundle workspace.
+$bundle = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { (Get-Location).Path }
+$users = if ($env:WGSEXTRACT_GUI_USERS_WORKSPACE) { $env:WGSEXTRACT_GUI_USERS_WORKSPACE } else { $bundle }
+$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $users "config.toml" }
+# bundled: the app installed the CLI, so its large system folders (reference data,
+# reference genomes, temporary files) go in the users workspace too, where the user
+# can see and move them. separate: a CLI installed on its own (on a server, say)
+# keeps them where it does by default, local to it, so they are left unset.
+$cliInstall = if ($env:WGSEXTRACT_GUI_CLI_INSTALL) { $env:WGSEXTRACT_GUI_CLI_INSTALL } else { "bundled" }
+
 function Test-HasFiles {
     param([string]$Path)
     return (Test-Path -LiteralPath $Path -PathType Container) -and [bool](Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1)
@@ -16,6 +20,7 @@ function Test-SamePath {
     $full = { param($p) [System.IO.Path]::GetFullPath($p).TrimEnd("\", "/") }
     return [string]::Equals((& $full $A), (& $full $B), [System.StringComparison]::OrdinalIgnoreCase)
 }
+# An existing config keeps every folder it names; only missing settings are added.
 function Get-ExistingValue {
     param([string]$Key)
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { return "" }
@@ -26,38 +31,62 @@ function Get-ExistingValue {
     }
     return ""
 }
-$oldGenomeLibrary = Get-ExistingValue "genome_library"
-$oldReferenceLibrary = Get-ExistingValue "reference_library"
-$oldDefaultGenomes = Join-Path $workspace "genomes"
-$datasetLibraryPath = Join-Path $workspace "mygenomes"
-if ($oldGenomeLibrary -and (-not (Test-SamePath $oldGenomeLibrary $oldDefaultGenomes) -or (Test-HasFiles $oldGenomeLibrary))) {
-    $datasetLibraryPath = $oldGenomeLibrary
+
+# Existing libraries stay put: saved state may already name files inside them.
+$oldMyGenomes = Get-ExistingValue "mygenomes_library"
+if (-not $oldMyGenomes) { $oldMyGenomes = Get-ExistingValue "dataset_library" }
+if (-not $oldMyGenomes) { $oldMyGenomes = Get-ExistingValue "genome_library" }
+$myGenomesPath = Join-Path $users "mygenomes"
+if ($oldMyGenomes) {
+    $isEmptyGenomes = ((Test-SamePath $oldMyGenomes (Join-Path $users "genomes")) -or (Test-SamePath $oldMyGenomes (Join-Path $bundle "genomes"))) -and -not (Test-HasFiles $oldMyGenomes)
+    if (-not $isEmptyGenomes) {
+        $myGenomesPath = $oldMyGenomes
+    }
 }
-$referenceGenomeLibraryPath = $oldDefaultGenomes
+
+$oldReferenceLibrary = Get-ExistingValue "reference_library"
+$referenceGenomeLibraryPath = Join-Path $users "genomes"
 if ($oldReferenceLibrary -and (Test-HasFiles (Join-Path $oldReferenceLibrary "genomes"))) {
     $referenceGenomeLibraryPath = Join-Path $oldReferenceLibrary "genomes"
-} elseif (Test-SamePath $datasetLibraryPath $oldDefaultGenomes) {
-    # genomes\ already holds datasets.
-    $referenceGenomeLibraryPath = Join-Path $(if ($oldReferenceLibrary) { $oldReferenceLibrary } else { $referencePath }) "genomes"
+} elseif (Test-SamePath $myGenomesPath (Join-Path $users "genomes")) {
+    # genomes\ already holds the user's genomes.
+    $referenceGenomeLibraryPath = Join-Path $(if ($oldReferenceLibrary) { $oldReferenceLibrary } else { Join-Path $users "reference" }) "genomes"
 }
-$tempPath = Join-Path $workspace "temp"
-$logPath = Join-Path $workspace "logs"
-# The CLI requires its temporary directory to exist already.
-New-Item -ItemType Directory -Force -Path $tempPath, $logPath | Out-Null
 
 function ConvertTo-TomlBasicString {
     param([string]$Value)
     return $Value.Replace("\", "\\").Replace('"', '\"')
 }
+$contents = [System.Text.StringBuilder]::new()
+function Add-Setting {
+    param([string]$Key, [string]$Value)
+    [void]$contents.Append("$Key = `"$(ConvertTo-TomlBasicString $Value)`"`n")
+}
+# A folder setting the config doesn't have yet. The CLI requires its temporary and
+# log folders to exist already.
+function Add-FolderSetting {
+    param([string]$Key, [string]$Path)
+    if (-not (Get-ExistingValue $Key) -and ($Key -eq "temp_directory" -or $Key -eq "log_dir")) {
+        New-Item -ItemType Directory -Force -Path $Path | Out-Null
+    }
+    Add-Setting $Key $Path
+}
 
-$tomlOutputPath = ConvertTo-TomlBasicString $outputPath
-$tomlReferencePath = ConvertTo-TomlBasicString $referencePath
-$tomlReferenceGenomeLibraryPath = ConvertTo-TomlBasicString $referenceGenomeLibraryPath
-$tomlDatasetLibraryPath = ConvertTo-TomlBasicString $datasetLibraryPath
-$tomlTempPath = ConvertTo-TomlBasicString $tempPath
-$tomlLogPath = ConvertTo-TomlBasicString $logPath
+# Unset: each command writes to a wgse folder beside its input files from the lab,
+# whose own folder stays untouched. Only Advanced mode may point it elsewhere.
+Add-Setting "output_directory" ""
+Add-FolderSetting "mygenomes_library" $myGenomesPath
+if ($cliInstall -eq "bundled") {
+    Add-FolderSetting "reference_library" (Join-Path $users "reference")
+    Add-FolderSetting "reference_genome_library" $referenceGenomeLibraryPath
+    Add-FolderSetting "temp_directory" (Join-Path $users "temp")
+}
+Add-FolderSetting "log_dir" (Join-Path $bundle "logs")
+foreach ($key in "reference_fasta", "default_input_vcf", "mother_vcf_path", "father_vcf_path", "haplogrep_executable") {
+    Add-Setting $key ""
+}
 
 [ordered]@{
     path = $configPath
-    contents = "output_directory = `"$tomlOutputPath`"`nreference_library = `"$tomlReferencePath`"`nreference_genome_library = `"$tomlReferenceGenomeLibraryPath`"`ndataset_library = `"$tomlDatasetLibraryPath`"`ntemp_directory = `"$tomlTempPath`"`nlog_dir = `"$tomlLogPath`"`nreference_fasta = `"`"`ndefault_input_vcf = `"`"`nmother_vcf_path = `"`"`nfather_vcf_path = `"`"`nhaplogrep_executable = `"`"`n"
+    contents = $contents.ToString()
 } | ConvertTo-Json -Compress

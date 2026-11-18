@@ -64,6 +64,40 @@ def test_jobs_writing_to_one_folder_run_one_at_a_time(
             JobManager(tmp_path / "state" / "jobs", config_path=None)
 
 
+def test_1087_inferred_and_explicit_wgse_outputs_share_a_job_lock(
+    tmp_path, work, fake_data, slow_coverage
+):
+    bam, ref = fake_data
+    params = {"input": str(bam), "ref": str(ref)}
+    with _serve(tmp_path, [work, FAKE_DIR], max_jobs=2) as client:
+        status, first = client.request("POST", "/ops/info/calculate-coverage", params)
+        assert status == 202, first
+        status, second = client.request(
+            "POST",
+            "/ops/info/calculate-coverage",
+            {**params, "outdir": str(bam.parent / "wgse")},
+        )
+        assert status == 202, second
+        assert (first["status"], second["status"]) == ("running", "queued")
+
+
+def test_1087_server_transport_keeps_explicit_bam_over_configured_archive_profile(
+    tmp_path, monkeypatch
+):
+    from wgsextract_cli.api._params import with_config_defaults
+    from wgsextract_cli.commands.alignment.common import AlignJob
+    from wgsextract_cli.core.config import settings
+
+    monkeypatch.setitem(settings, "output_profile", "archive")
+    op = find("align")
+    params = params_from_json(
+        op, {"r1": str(tmp_path / "reads.fastq"), "format": "BAM"}
+    )
+    checked = PathGuard([tmp_path]).check(params)
+    worker = with_config_defaults(params_from_json(op, op.request_values(checked)))
+    assert AlignJob.of(worker).format == "BAM"
+
+
 @pytest.mark.parametrize(
     ("op", "into_work"),
     [
@@ -455,7 +489,7 @@ def test_a_trio_saving_beside_its_proband_waits_for_that_folder(
     # its child ran alongside a job writing the same folder.
     bam, ref = fake_data
     with _serve(tmp_path, [work, FAKE_DIR], max_jobs=2) as client:
-        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work)}
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "wgse")}
         first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
         family = {r: str(work / f"{r}.vcf.gz") for r in ("proband", "mother", "father")}
         status, trio = client.request("POST", "/ops/vcf/trio", family)
@@ -492,7 +526,7 @@ def test_a_phase_job_saving_beside_its_reads_waits_for_that_folder(
     calls = calls_dir / "calls.vcf.gz"
     calls.write_bytes(b"")
     with _serve(tmp_path, [work, calls_dir, FAKE_DIR], max_jobs=2) as client:
-        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work)}
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "wgse")}
         first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
         status, phase = client.request(
             "POST",

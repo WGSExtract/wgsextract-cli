@@ -4,8 +4,8 @@
     "fieldValues": {
       "bam_path": "",
       "ref_fasta": "",
-      "ref_path": "{{bundleWorkspace}}/reference",
-      "out_dir": "{{bundleWorkspace}}/output/aadr-2m",
+      "ref_path": "{{usersWorkspace}}/reference",
+      "out_dir": "{{usersWorkspace}}/output/aadr-2m",
       "aadr_sample_id": "research_sample",
       "aadr_sex": "U"
     },

@@ -616,8 +616,8 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", bam, "--ref", str(ref),
     )  # fmt: skip
-    bam_prediction = (tmp_path / "yleaf/hg_prediction.hg").read_text()
-    assert _y_rows(tmp_path, "fmf") == []
+    bam_prediction = (tmp_path / "wgse" / "yleaf/hg_prediction.hg").read_text()
+    assert _y_rows(tmp_path / "wgse", "fmf") == []
 
     from wgsextract_cli.core.utils import run_command
 
@@ -627,8 +627,8 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", cram, "--ref", str(ref),
     )  # fmt: skip
-    assert (tmp_path / "yleaf/hg_prediction.hg").read_text() == bam_prediction
-    assert _y_rows(tmp_path, "fmf") == []
+    assert (tmp_path / "wgse" / "yleaf/hg_prediction.hg").read_text() == bam_prediction
+    assert _y_rows(tmp_path / "wgse", "fmf") == []
 
 
 def test_y_haplogroup_from_cram_without_a_reference_fails(

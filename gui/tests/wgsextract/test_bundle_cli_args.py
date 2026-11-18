@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,10 @@ NON_CLI_SCRIPTS = {
 }
 
 FAKE_PIXI = """#!/bin/sh
+if [ "$1" = "run" ] && [ "$2" = "--no-install" ] && [ "$3" = "--frozen" ] && [ "$4" = "python" ]; then
+    shift 4
+    exec __PYTHON__ "$@"
+fi
 for arg in "$@"; do printf '%s\\0' "$arg"; done > "$(dirname "$0")/../calls"
 """
 
@@ -145,9 +150,21 @@ class BundleSandbox:
         (metadata / "pixi").write_text("{}")
         pixi = runtime / ".pixi" / "bin" / "pixi"
         pixi.parent.mkdir(parents=True)
-        pixi.write_text(FAKE_PIXI)
+        pixi.write_text(FAKE_PIXI.replace("__PYTHON__", shlex.quote(sys.executable)))
         pixi.chmod(0o755)
         self.calls = runtime / ".pixi" / "calls"
+        # The shared bootstrap runs in Pixi's Python and calls the CLI's public
+        # entrypoint; keep that runtime boundary fake, while executing the helper.
+        package = runtime / "app" / "wgsextract_cli"
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "main.py").write_text(
+            "from pathlib import Path\n"
+            "def main(args):\n"
+            f"    Path({str(self.calls)!r}).write_bytes("
+            "b'\\0'.join(arg.encode() for arg in ['run', '--no-install', '--frozen', 'wgsextract', *args]) + b'\\0')\n"
+        )
+        self.fake_pythonpath = str(runtime / "app")
         self.values = self._representative_values()
 
     def _file(self, relative: str) -> str:
@@ -382,6 +399,7 @@ class BundleSandbox:
             "HOME": str(self.root),
             "WGSEXTRACT_GUI_BUNDLE_WORKSPACE": str(self.bundle),
             "WGSEXTRACT_GUI_APP_DATA": str(self.app_data),
+            "PYTHONPATH": self.fake_pythonpath,
         }
         result = subprocess.run(
             ["/bin/sh", str(self.bundle / "scripts" / "posix" / script), *args],
