@@ -6,8 +6,10 @@ import pytest
 
 from tests.disk_volumes import GIB
 from tests.htslib_helpers import (
+    run_wgsextract,
     vcf_calls,
 )
+from tests.test_caller_ploidy import sex_par as sex_par
 from tests.test_deepvariant import (
     STAGES,
     call,
@@ -53,9 +55,11 @@ from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
     State,
+    parse_provenance,
 )
 from wgsextract_cli.core.utils import (
     WGSExtractError,
+    run_command,
 )
 
 
@@ -107,8 +111,8 @@ def test_a_missing_gvcf_is_written_again_by_a_rerun_863(dv):
 
 
 @pytest.mark.parametrize("engine", ["image", "native-0.4.0"])
-def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv, request, engine):
-    """Issue #863: ploidy-0 intervals (a woman's chrY) are left out of
+def test_1103_a_womans_chry_has_no_raw_records_and_is_excluded(dv, request, engine):
+    """Issues #1103/#863: ploidy-0 intervals (a woman's chrY) are left out of
     calling, so the gVCF has no records there; its provenance must say they
     were excluded, or they would read as bases nobody could read."""
     if engine == "native-0.4.0":
@@ -119,8 +123,49 @@ def test_a_womans_chry_is_excluded_by_policy_not_uncovered_863(dv, request, engi
 
     assert gvcf.metrics["sex"] == "F"
     assert gvcf.metrics["ploidy_zero"] == "chrY:1-3000"
+    records = run_command(
+        ["bcftools", "view", "-H", gvcf.path], capture_output=True
+    ).stdout
+    assert not any(line.startswith("chrY\t") for line in records.splitlines())
     assert evidence_state(gvcf.path, "chrY", 1500) is State.EXCLUDED_BY_POLICY
     assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+
+
+@pytest.mark.parametrize("with_gvcf", [False, True])
+def test_1103_bounded_native_call_publishes_full_par_and_ploidy_policy(
+    linux_native,
+    sex_par,
+    with_gvcf,
+):
+    """#1103: a deletion can reach PAR beyond the requested calling slice."""
+    dv = linux_native
+    dv.deepvariant.set_native_version("0.4.0")
+    dv.sample = sex_par
+    dv.sample.ref = str(sex_par.ref)
+    run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
+    boundary = sex_par.boundary
+    call(
+        dv,
+        "--model-type",
+        "WGS",
+        "--region",
+        f"chrX:{boundary - 50}-{boundary}",
+        *(["--reference-evidence", "gvcf"] if with_gvcf else []),
+    )
+    (bed,) = (dv.out / ".deepvariant.policy").glob("par-*.bed")
+    # contract: PAR membership tests the full simplified deletion, beyond selection.
+    assert bed.read_text() == f"chrX\t{boundary}\t{boundary + 2000}\n"
+    names = ["deepvariant.vcf.gz"]
+    if with_gvcf:
+        names.append("deepvariant.g.vcf.gz")
+    for name in names:
+        header = run_command(
+            ["bcftools", "view", "-h", str(dv.out / name)], capture_output=True
+        ).stdout
+        policy = next(p for row in header.splitlines() if (p := parse_provenance(row)))
+        assert policy.record_ploidy("chrX", boundary, boundary) == 1
+        assert policy.record_ploidy("chrX", boundary, boundary + 1) == 2
+        assert policy.record_ploidy("chrX", boundary + 1, boundary + 1) == 2
 
 
 def test_a_rerun_over_more_excluded_bases_rewrites_the_gvcf_provenance_863(dv):

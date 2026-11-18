@@ -86,6 +86,11 @@ for non-diploid policies. Like Google's pipeline it accepts PAR intervals
 directly, preserving one resumable run; its reference blocks split at PAR
 boundaries and use haploid likelihoods outside PAR. Haploid GT and PL retain
 Google's diploid encoding, with heterozygous likelihoods suppressed.
+The readers use the published ploidy intervals, not GT length, for haploid
+depth thresholds; PAR remains diploid. The variant-only VCF carries the same
+policy under `##wgsePloidyPolicy` (not a reference-evidence declaration).
+PAR BEDs describe the full policy on the selected haploid contigs, even for
+a bounded selection, so deletions reaching into PAR keep diploid treatment.
 `wgse-deepvariant`'s diploid gVCF agrees
 with Google's in every field the states read; before 0.3.1 its variant
 records lacked the PL values of genotypes with `<*>` (#999).

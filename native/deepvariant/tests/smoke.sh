@@ -129,9 +129,10 @@ gzip -dc haploid.vcf.gz | awk -F '\t' '
             if (a[1] != a[2]) bad++
         }
         if ($1 == "chr1" && $2 == 3000 && gt == "0/1" && $7 == "PASS") par++
+        if ($1 == "chr1" && $2 == 12000 && gt == "1/1" && $7 == "PASS") haploid++
         if ($1 == "chr2" && $2 == 3000 && gt == "0/1" && $7 == "PASS") diploid++
     }
-    END { exit (bad || par != 1 || diploid != 1) }'
+    END { exit (bad || haploid != 1 || par != 1 || diploid != 1) }'
 gzip -dc haploid.g.vcf.gz | awk -F '\t' '
     !/^#/ {
         end = $2 + length($4) - 1

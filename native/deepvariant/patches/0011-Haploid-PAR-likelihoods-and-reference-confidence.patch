@@ -2,6 +2,7 @@ Subject: [PATCH] Match Google 1.10 haploid/PAR likelihoods and gVCF confidence (
 
 Google v1.10.0 postprocess_variants.py:1070-1092,1197-1204,1300-1307
 zero and renormalize heterozygous mass after merging and simplifying.
+variant_caller.py:76-102,215-218 rescales counts to <=100 with ceil(ref ratio).
 variant_caller.py:220-257,323-334 uses log10(Phet)=-999 before
 normalization and GQ binning. GT and PL remain diploid-encoded, as upstream.
 
@@ -152,7 +153,7 @@ diff --git a/deepvariant/native/gvcf_emit.cc b/deepvariant/native/gvcf_emit.cc
 index ed178f06..a8e6e0e5 100644
 --- a/deepvariant/native/gvcf_emit.cc
 +++ b/deepvariant/native/gvcf_emit.cc
-@@ -45,7 +45,7 @@ int Log10PtrueToPhred(double log10_p_ref, int max_gq) {
+@@ -45,7 +45,13 @@ int Log10PtrueToPhred(double log10_p_ref, int max_gq) {
 
  // Compute reference-confidence likelihoods + GQ for one site, given ref/total
  // read counts and per-base error rate. Returns log10 probs in [ref, het, alt].
@@ -160,8 +161,14 @@ index ed178f06..a8e6e0e5 100644
 +void ReferenceConfidence(int n_ref, int n_total, double p_error, bool haploid,
                            double* log10_p_ref, double* log10_p_het,
                            double* log10_p_alt) {
++  // Google v1.10.0 variant_caller.py:76-102,215-218 (cache limit 100).
++  // Only likelihood inputs are scaled; block MIN_DP/MED_DP keep raw counts.
++  if (n_total > 100) {
++    n_ref = static_cast<int>(std::ceil((n_ref / (1.0 * n_total)) * 100));
++    n_total = 100;
++  }
    if (n_total <= 0) {
-@@ -61,6 +61,7 @@ void ReferenceConfidence(int n_ref, int n_total, double p_error,
+@@ -61,6 +67,7 @@ void ReferenceConfidence(int n_ref, int n_total, double p_error,
      *log10_p_het = -n_total * std::log10(2.0);
      *log10_p_alt = n_ref * logp + n_alts * log1p;
    }
@@ -169,7 +176,7 @@ index ed178f06..a8e6e0e5 100644
    NormalizeLog10Probs(log10_p_ref, log10_p_het, log10_p_alt);
  }
 
-@@ -86,6 +87,7 @@ struct SiteEntry {
+@@ -86,6 +93,7 @@ struct SiteEntry {
    int raw_gq;
    double log10_probs[3];
    bool gl_is_valid;  // true if max(log10_probs) == log10_probs[0]
@@ -177,7 +184,7 @@ index ed178f06..a8e6e0e5 100644
  };
 
  bool IsCanonicalDnaBase(const std::string& s) {
-@@ -98,7 +100,8 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+@@ -98,7 +106,8 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
      const std::vector<learning::genomics::deepvariant::AlleleCountSummary>&
          summaries,
      const std::string& sample_name,
@@ -187,7 +194,7 @@ index ed178f06..a8e6e0e5 100644
    std::vector<nucleus::genomics::v1::Variant> out;
    if (summaries.empty()) return out;
 
-@@ -115,8 +118,9 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+@@ -115,8 +124,9 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
        // Skip non-canonical (N, IUPAC) — upstream does the same.
        continue;
      }
@@ -198,7 +205,7 @@ index ed178f06..a8e6e0e5 100644
                           &e.log10_probs[2]);
      e.raw_gq = Log10PtrueToPhred(e.log10_probs[0], max_gq);
      e.quantized_gq = QuantizeGq(e.raw_gq, gq_resolution);
-@@ -136,6 +140,7 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+@@ -136,6 +146,7 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
      while (j < entries.size() &&
             entries[j].quantized_gq == first.quantized_gq &&
             entries[j].gl_is_valid == first.gl_is_valid &&
@@ -358,7 +365,7 @@ new file mode 100644
 index 00000000..f4c13104
 --- /dev/null
 +++ b/deepvariant/native/ploidy_test.cc
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,94 @@
 +#include "deepvariant/native/gvcf_emit.h"
 +#include "deepvariant/native/ploidy.h"
 +
@@ -429,6 +436,27 @@ index 00000000..f4c13104
 +          haploid.info().at("GQ").values(0).int_value() == 3 &&
 +          diploid.info().at("GQ").values(0).int_value() == 1,
 +          "#1103: retain depth and compute haploid GQ before binning");
++  counts.resize(1);
++  counts[0].set_ref_supporting_read_count(600);
++  counts[0].set_total_read_count(1000);
++  const auto high_depth = deepvariant::MakeGvcfRows(
++      counts, "test", 0.001, 5, 50, true, policy);
++  const auto& high_call = high_depth.at(0).calls(0);
++  Require(high_call.genotype(0) == 0 && high_call.genotype(1) == 0 &&
++          high_call.info().at("GQ").values(0).int_value() == 50,
++          "#1103: high-depth haploid reference must not become NoCall GQ 0");
++  Require(high_call.info().at("MIN_DP").values(0).int_value() == 1000 &&
++          high_call.info().at("MED_DP").values(0).int_value() == 1000,
++          "#1103: reference-confidence rescaling must preserve raw depth");
++  counts[0].set_ref_supporting_read_count(60);
++  counts[0].set_total_read_count(100);
++  const auto scaled = deepvariant::MakeGvcfRows(
++      counts, "test", 0.001, 5, 50, true, policy);
++  for (int i = 0; i < 3; ++i) {
++    Require(high_call.genotype_likelihood(i) ==
++            scaled.at(0).calls(0).genotype_likelihood(i),
++            "#1103: high-depth likelihoods must equal the upstream 100-read cap");
++  }
 +  std::remove(argv[1]);
 +  std::cout << "haploid/PAR likelihood and gVCF regressions passed\n";
 +}

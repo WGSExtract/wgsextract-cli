@@ -76,6 +76,8 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   after multiallelic merging and allele simplification, before GT/GQ/QUAL/
   FILTER. Haploid gVCF reference likelihoods use log10(Phet) = -999 before
   normalization and GQ binning, and reference blocks split at PAR boundaries.
+  Likelihood inputs are rescaled to at most 100 reads (rounding reference
+  counts up), while MIN_DP/MED_DP retain the original depths.
   Empty-read partitions still emit zero-depth reference evidence rather than
   leaving gaps; ambiguous reference bases remain omitted, as in Google's gVCF.
   GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
@@ -91,7 +93,11 @@ and [1300–1307](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant
 and [323–334](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L323-L334)
 (haploid reference confidence and base-wise PAR membership). Variant PAR
 membership uses overlap of the simplified variant; reference confidence uses
-the individual reference base, as upstream does.
+the individual reference base, as upstream does. Its cached reference confidence
+rescales counts at [76–102](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L76-L102)
+and [215–218](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L215-L218),
+with the default 100-read cache limit set by
+[`very_sensitive_caller.py`, lines 46–50](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/very_sensitive_caller.py#L46-L50).
 
 ## Same results as Google's image
 

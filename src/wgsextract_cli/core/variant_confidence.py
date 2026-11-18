@@ -37,6 +37,10 @@ from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.variant_confidence_header import detect_caller as detect_caller
+from wgsextract_cli.core.variant_confidence_header import (
+    mapping_quality_kind as mapping_quality_kind,
+)
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 SCHEME = "wgsextract.confidence/1"
@@ -163,60 +167,6 @@ GQ_HELP = (
 )
 
 
-_CALLER_MARKERS = (
-    (
-        "mutect2",
-        re.compile(r'^##source="?Mutect2\b', re.I),
-    ),
-    ("deepvariant", re.compile(r"^##DeepVariant_version", re.I)),
-    ("dragen", re.compile(r"^##(DRAGENCommandLine|source=DRAGEN)", re.I)),
-    ("clair3", re.compile(r"^##source=Clair3|^##clair3", re.I)),
-    (
-        "gatk",
-        re.compile(
-            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs))", re.I
-        ),
-    ),  # fmt: skip
-    ("freebayes", re.compile(r"^##source=freeBayes", re.I)),
-    ("strelka", re.compile(r"^##source=strelka", re.I)),
-    ("bcftools", re.compile(r"^##bcftools_callCommand")),
-)
-
-
-def mapping_quality_kind(header_lines: Iterable[str]) -> str:
-    """ "mean" when the header declares INFO/MQ as an average, else "rms"."""
-    for line in header_lines:
-        if line.startswith("##INFO=<ID=MQ,"):
-            text = line.lower()
-            rms = "rms" in text or "root mean square" in text
-            if not rms and ("average" in text or "mean" in text):
-                return "mean"
-    return "rms"
-
-
-def detect_caller(header_lines: Iterable[str]) -> str:
-    """The variant caller named in a VCF header, or "unknown"."""
-    lines = list(header_lines)
-    for line in lines:
-        if line.lower().startswith("##gatkcommandline=<") and line.endswith(">"):
-            # Consume quoted values whole, so text such as ",ID=Mutect2"
-            # inside CommandLine is not mistaken for an attribute.
-            attributes = re.findall(
-                r'(?:^|,)\s*([^=,]+)=(?:"((?:\\.|[^"\\])*)"|([^,]*))',
-                line.partition("<")[2][:-1],
-            )
-            if any(
-                key.strip().lower() == "id"
-                and (quoted or plain).strip().lower() == "mutect2"
-                for key, quoted, plain in attributes
-            ):
-                return "mutect2"
-    for caller, marker in _CALLER_MARKERS:
-        if any(marker.match(line) for line in lines):
-            return caller
-    return "unknown"
-
-
 def _confidence_policy(caller: str) -> str:
     return "unsupported_somatic" if caller == "mutect2" else "germline"
 
@@ -333,6 +283,7 @@ def classify(
     samples: int = 1,
     contaminated: bool = False,
     reference: bool = False,
+    ploidy: int | None = None,
 ) -> CallConfidence | None:
     """The confidence of ALT number ``alt`` (1-based), or None when the sample
     doesn't carry it."""
@@ -341,7 +292,9 @@ def classify(
     if not copies and not no_call:
         return None
     zygosity = (
-        "haploid" if len(alleles) == 1 else ("hom" if copies == len(alleles) else "het")
+        "haploid"
+        if (ploidy if ploidy is not None else len(alleles)) == 1
+        else ("hom" if copies == len(alleles) else "het")
     )
     kind = "snv" if len(ref) == len(alt_allele) == 1 else "indel"
     low: list[str] = []
@@ -626,12 +579,16 @@ def label_records(
     ``summary_columns`` are INFO keys copied into each finding; region_names
     are (chrom, start0, end, name) intervals naming a finding's ``gene``.
     """
+    from wgsextract_cli.core.reference_evidence import parse_provenance
+
+    provenance = None
     header: list[str] = []
     summary: ConfidenceSummary | None = None
     mq_kind = "rms"
     for line in lines:
         line = line.rstrip("\r\n")
         if line.startswith("##"):
+            provenance = parse_provenance(line) or provenance
             if not _OWN_HEADER.match(line):
                 header.append(line)
             continue
@@ -710,6 +667,18 @@ def label_records(
                     samples=max(len(fields) - 9, 1),
                     contaminated=contamination is not None,
                     reference=reference_record,
+                    ploidy=(
+                        provenance.record_ploidy(
+                            fields[0],
+                            int(fields[1]),
+                            int(
+                                _number(info.get("END"))
+                                or (int(fields[1]) + len(fields[3]) - 1)
+                            ),
+                        )
+                        if provenance
+                        else None
+                    ),
                 )
             )
             if reference_record and index > 1:

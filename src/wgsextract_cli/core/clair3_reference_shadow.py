@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 from wgsextract_cli.core.reference_evidence_records import (
@@ -91,6 +91,7 @@ def classified_records(
     model: str,
     thresholds: Thresholds,
     deletion_shadow: bool,
+    record_ploidy: Callable[[str, int, int], int | None] | None = None,
 ) -> Iterator[Classified]:
     """Each record's bases (contig, start, end) and state. With
     ``deletion_shadow`` (Clair3), reference bases directly after a no-call or
@@ -103,7 +104,14 @@ def classified_records(
                 fields[0],
                 int(fields[1]),
                 _record_end(fields),
-                record_state(fields, model, thresholds),
+                record_state(
+                    fields,
+                    model,
+                    thresholds,
+                    record_ploidy(fields[0], int(fields[1]), _record_end(fields))
+                    if record_ploidy
+                    else None,
+                ),
             )
         return
     references = (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
@@ -119,7 +127,12 @@ def classified_records(
             anchor_end, anchor_depth, shadow = 0, 0, False
         while pending is not None and (pending[0], int(pending[1])) == (contig, cursor):
             end = _record_end(pending)
-            state = record_state(pending, model, thresholds)
+            state = record_state(
+                pending,
+                model,
+                thresholds,
+                record_ploidy(contig, cursor, end) if record_ploidy else None,
+            )
             info = _info(pending[7])
             depth = (
                 reference_depth(
