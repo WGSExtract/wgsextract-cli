@@ -23,7 +23,8 @@ import { applySecurityHeaders, guardRequest } from "./request-guard.js";
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
-import { workspaceLocationInfo } from "./workspace-location.js";
+import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
+import type { WorkspaceMoveTarget } from "./workspace-move.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -52,7 +53,8 @@ export interface RequestHandlerContext {
         load: (locale?: string, preferredLocales?: string[]) => Promise<LocalizedBundle>;
     };
     loadBundle: (requestedSource: string) => Promise<LooseRecord>;
-    moveWorkspace: (directory: string | null, emit: EmitEvent, signal: AbortSignal) => Promise<void>;
+    /** Moves the users workspace, or one setting's folder, and loads the bundle again. */
+    moveWorkspace: (target: WorkspaceMoveTarget, emit: EmitEvent, signal: AbortSignal) => Promise<void>;
     /** The workspace manifest; actions, data sources, and settings files are only ever resolved from it. */
     manifest: BundleManifest;
     maxBodyBytes: number;
@@ -175,13 +177,16 @@ export function createRequestHandler(context: RequestHandlerContext) {
         }),
         "/api/workspace-location/move": async (request, response) => {
             const body = await readBody(request, context);
-            const directory = optionalString(body, "directory")?.trim() || null;
+            const folder = optionalString(body, "folder")?.trim() || null;
+            const controlID = optionalString(body, "controlID");
+            const key = optionalString(body, "key");
+            const target: WorkspaceMoveTarget = { folder, ...(controlID && key ? { setting: { controlID, key } } : {}) };
             await streamNDJSON(
                 response,
                 async (emit, signal) => {
                     workspaceMoving = true;
                     try {
-                        await context.moveWorkspace(directory, emit, signal);
+                        await context.moveWorkspace(target, emit, signal);
                     }
                     finally {
                         workspaceMoving = false;
@@ -270,7 +275,7 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
         const loaded = await context.localizedBundleLoader.load(locale, preferredLocales(request.headers["accept-language"]));
         const body = {
             ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
-            workspaceLocation: await workspaceLocationInfo(context.manifest, context.bundleRoot),
+            workspaceLocation: await usersWorkspaceLocationInfo(context.manifest, usersWorkspaceFor(context.bundleRoot)),
         };
         json(response, context.enableDevReload ? { ...body, devReload: true } : body);
         return;

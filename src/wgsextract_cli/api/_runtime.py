@@ -192,7 +192,64 @@ def run_inline(
 
     ``explicit`` names fields the user set, which config must not override even
     when their value is None (``--threads auto``)."""
-    impl(with_config_defaults(params, keep=explicit))
+    from wgsextract_cli.core.config import settings
+    from wgsextract_cli.core.output_location import remove_if_empty
+
+    filled = with_config_defaults(params, keep=explicit)
+    outdir = getattr(filled, "outdir", None)
+    # The command creates its default output folder; a run that leaves it
+    # empty (it failed, or wrote nothing) doesn't leave an empty wgse/ behind.
+    # A folder the user named stays, even empty.
+    default = getattr(params, "outdir", None) is None and not settings.get(
+        "output_directory"
+    )
+    fresh = (
+        Path(outdir).expanduser()
+        if default and outdir and not Path(outdir).expanduser().exists()
+        else None
+    )
+    try:
+        with execution_context.bound(allow_downloads=_allows_downloads(filled)):
+            impl(filled)
+    finally:
+        remove_if_empty(fresh)
+
+
+def _allows_downloads(params: Params) -> bool:
+    return (
+        params.COMMAND
+        in {
+            "ref aadr",
+            "ref somalier",
+            "ref imputation",
+            "ref ancestry",
+            "ref gnomad-sv",
+            "ref ybrowse",
+            "ref download",
+            "ref library",
+            "ref test-genome",
+            "ref gene-map",
+            "ref clinvar",
+            "ref revel",
+            "ref phylop",
+            "ref gnomad",
+            "ref spliceai",
+            "ref alphamissense",
+            "ref pharmgkb",
+            "ref cadd",
+            "ref gerp",
+            "ref acmg-data",
+            "ref bootstrap",
+            "ref microarray-targets",
+            "vep download",
+            "example-genome download",
+        }
+        or (
+            params.COMMAND == "benchmark"
+            and getattr(params, "dataset", "fake") in {"real", "real-1x", "real-30x"}
+        )
+        or bool(getattr(params, "download", False))
+    )
 
 
 def use_config(path: str | os.PathLike[str] | None = None) -> None:
@@ -243,12 +300,15 @@ def execute(
     """
     read_only = _runs_concurrently(params)
     with contextlib.nullcontext() if read_only else _LOCK:
-        result, error = _run(params, impl, progress, cancel, read_only)
+        result, error, created = _run(params, impl, progress, cancel, read_only)
         if write_manifest:
             try:
                 result.write_manifest()
             except OSError as e:
                 logging.warning(f"Could not write the result manifest: {e}")
+        from wgsextract_cli.core.output_location import remove_if_empty
+
+        remove_if_empty(created)
     if check and result.exit_code:
         raise CommandFailed(result) from error
     return result
@@ -260,8 +320,9 @@ def _run(
     progress: ProgressCallback | None,
     cancel: CancelToken | None,
     read_only: bool,
-) -> tuple[CommandResult, BaseException | None]:
-    """Run ``impl`` in a context of its own; the result and what failed it."""
+) -> tuple[CommandResult, BaseException | None, Path | None]:
+    """Run ``impl`` in a context of its own; the result, what failed it, and
+    the default output folder it created (to remove if the run left it empty)."""
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import (
         ensure_settings_loaded,
@@ -269,7 +330,7 @@ def _run(
         snapshot_config,
     )
     from wgsextract_cli.core.process_registry import proc_registry
-    from wgsextract_cli.core.reference_lookup import local_reference_lookup
+    from wgsextract_cli.core.ref_library.lookup import local_reference_lookup
     from wgsextract_cli.core.temp_directory import run_temporary_directory
 
     # A read-only call, running beside others, reads the configuration as it
@@ -296,18 +357,23 @@ def _run(
         ),
         local_reference_lookup(),
     ):
+        default_outdir = getattr(params, "outdir", None) is None and not settings.get(
+            "output_directory"
+        )
         params = with_config_defaults(params)
         result.provenance.params = redact_params(params.to_dict())
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
         )
+        created = None
         try:
             checkpoint()
             report("start", params.COMMAND, 0.0)
-            _prepare(params, result)
+            created = _prepare(params, result)
             with (
                 atomic_output_mode(bool(settings.get("atomic_outputs", False))),
-                run_temporary_directory(None),
+                run_temporary_directory(None, fallback=getattr(params, "outdir", None)),
+                execution_context.bound(allow_downloads=_allows_downloads(params)),
             ):
                 impl(params)
             checkpoint()
@@ -327,16 +393,16 @@ def _run(
                 unregister()
             proc_registry.accept_new(scope)
     result.finalize(probe_tools=True)
-    return result, error
+    return result, error, created if default_outdir else None
 
 
-def _prepare(params: Params, result: CommandResult) -> None:
+def _prepare(params: Params, result: CommandResult) -> Path | None:
     """What dispatch does before a command: record and check the input, make
     the output folder."""
     from wgsextract_cli.cli.dispatch import checks_alignment_input, reports_status
 
     if reports_status(params):
-        return
+        return None
     params.preflight()
     input_path = getattr(params, "input", None)
     if isinstance(input_path, str) and is_url(input_path):
@@ -349,9 +415,12 @@ def _prepare(params: Params, result: CommandResult) -> None:
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(
             params.COMMAND
         ):
-            from wgsextract_cli.core.alignment_input import validate_alignment_input
+            from wgsextract_cli.core.alignment.input import validate_alignment_input
 
             validate_alignment_input(input_path)
     outdir = getattr(params, "outdir", None)
     if isinstance(outdir, Path):
-        outdir.expanduser().mkdir(parents=True, exist_ok=True)
+        from wgsextract_cli.core.output_location import make_output_folder
+
+        return make_output_folder(outdir)
+    return None

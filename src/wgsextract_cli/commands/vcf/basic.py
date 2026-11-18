@@ -2,6 +2,7 @@ import argparse
 import gzip
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -20,11 +21,12 @@ from wgsextract_cli.api.vcf import (
     _VcfFileParams,
 )
 from wgsextract_cli.core import read_scope, ultima
-from wgsextract_cli.core.alignment_health import warn_about_alignment
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.health import warn_about_alignment
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
+    get_tool_version,
     log_dependency_info,
     verify_dependencies,
 )
@@ -41,7 +43,9 @@ from wgsextract_cli.core.resource_estimates import (
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
+    MissingDependencyError,
     UsageError,
     WGSExtractError,
     get_resource_defaults,
@@ -291,7 +295,9 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
         if Path(sibling + ".fai").is_file():
             yield sibling
             return
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_ref_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_ref_"
+    ) as tmp:
         target = str(Path(tmp, Path(sibling).name))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:
@@ -305,13 +311,32 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
         yield target
 
 
-def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
-    """``vcf snp`` / ``vcf indel``: bcftools mpileup | call into the output folder."""
+def run_small_variants(
+    params: VcfSnpParams | VcfIndelParams, *, variants: bool = True
+) -> None:
+    """``vcf snp`` / ``vcf indel``: bcftools mpileup | call into the output folder.
+
+    Without ``variants`` (``vcf call`` asked only for the gVCF, which holds
+    SNPs and indels) the variant VCF isn't written, only the gVCF."""
     indels = isinstance(params, VcfIndelParams)
     task: Literal["snp", "indel"] = "indel" if indels else "snp"
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
     input_file = str(params.input)
+    current_result().provenance.params["baq"] = bool(params.baq)
+    if params.baq:
+        version = get_tool_version("bcftools") or ""
+        match = re.search(r"(\d+)\.(\d+)", version)
+        if not match or tuple(map(int, match.groups())) < (1, 13):
+            raise MissingDependencyError(
+                "--baq requires bcftools 1.13 or newer for heuristic BAQ "
+                f"(detected: {version or 'unknown'}). Use --no-baq otherwise."
+            )
+    if params.baq and ultima.alignment_is_ultima(input_file):
+        raise UsageError(
+            "--baq is not supported for Ultima input: bcftools' Ultima "
+            "profile disables BAQ. Use --no-baq."
+        )
     setup = setup_caller(params)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
     parallel = int(threads) > 1 if params.parallel is None else params.parallel
@@ -321,6 +346,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
             task,
             input_paths=[input_file],
             output_dir=outdir,
+            temp_dir=scratch_parent(outdir),
             reference=ref,
             threads=threads,
             reads=(
@@ -349,7 +375,8 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     # for SNPs after QUAL>30 (#860, docs/variant-confidence.md).
     prior = ["-P", "0"] if prior is None else prior
     message = "vcf_calling_indels" if indels else "vcf_calling_snps"
-    logging.info(LOG_MESSAGES[message].format(output=out_vcf))
+    if variants:
+        logging.info(LOG_MESSAGES[message].format(output=out_vcf))
     ploidy = ploidy_args(
         params.ploidy,
         str(params.ploidy_file) if params.ploidy_file else None,
@@ -361,25 +388,27 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
     with sex_samples_args(
         input_file, outdir, ploidy, region=params.region, reference=ref
     ) as sex_args:
-        with safe_output(out_vcf) as staged:
-            call_small_variants(
-                input_file,
-                ref,
-                staged,
-                threads=threads,
-                region=params.region,
-                profile=profile,
-                call_args=[*ploidy, *sex_args, *prior],
-                indels=indels,
-                contigs=contigs,
-                environment=environment,
+        if variants:
+            with safe_output(out_vcf) as staged:
+                call_small_variants(
+                    input_file,
+                    ref,
+                    staged,
+                    threads=threads,
+                    region=params.region,
+                    profile=profile,
+                    call_args=[*ploidy, *sex_args, *prior],
+                    indels=indels,
+                    baq=bool(params.baq),
+                    contigs=contigs,
+                    environment=environment,
+                )
+            ensure_vcf_indexed(out_vcf)
+            record_variants(
+                out_vcf,
+                "indels" if indels else "snps",
+                warn_if_no_variants(out_vcf, ref, params.region),
             )
-        ensure_vcf_indexed(out_vcf)
-        record_variants(
-            out_vcf,
-            "indels" if indels else "snps",
-            warn_if_no_variants(out_vcf, ref, params.region),
-        )
         if params.reference_evidence == "gvcf":
             from .reference_evidence import write_gvcf
 
@@ -393,6 +422,7 @@ def run_small_variants(params: VcfSnpParams | VcfIndelParams) -> None:
                 ploidy_args=ploidy,
                 sex_args=sex_args,
                 prior_args=prior,
+                baq=bool(params.baq),
                 environment=environment,
             )
 
@@ -476,6 +506,7 @@ def run_annotate(params: VcfAnnotateParams) -> None:
 
     verify_paths_exist({"--input": input_file, "--ann-vcf": ann_vcf})
     cols = params.cols or _annotation_columns(ann_vcf)
+    current_result().add_input(ann_vcf, "annotation")
 
     input_vcf = ensure_vcf_prepared(input_file)
     ann_vcf = ensure_vcf_prepared(ann_vcf)
@@ -499,7 +530,6 @@ def run_annotate(params: VcfAnnotateParams) -> None:
         ensure_vcf_indexed(out_vcf)
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Annotation failed: {e}") from e
-    current_result().add_input(ann_vcf, "annotation")
     record_variants(out_vcf, "annotated", vcf_record_count(out_vcf))
 
 

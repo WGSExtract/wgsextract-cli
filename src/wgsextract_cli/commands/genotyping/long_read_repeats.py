@@ -21,6 +21,7 @@ from pathlib import Path
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from .common import Alignment, RepeatCall, env_tool
@@ -161,7 +162,9 @@ def run_longtr(
     output = f"{prefix}.vcf.gz"
     label = aln.stem.replace(",", "_")  # LongTR splits these at commas.
     workers = max(1, min(int(aln.threads), len(chroms)))
-    with tempfile.TemporaryDirectory(prefix=".longtr_", dir=aln.outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix=".longtr_", dir=scratch_parent(aln.outdir)
+    ) as work:
         regions = Path(work, "regions.bed")
         regions.write_text("".join(f"{row}\n" for row in rows), newline="\n")
         # One path per line: --bams splits at commas.
@@ -255,7 +258,9 @@ def run_strkit(
     (STRkit recommends that for HiFi only)."""
     strkit = env_tool("strkit", "strkit")
     vcf, report = f"{prefix}.vcf", f"{prefix}.strkit.json"
-    with tempfile.TemporaryDirectory(prefix=".strkit_", dir=aln.outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix=".strkit_", dir=scratch_parent(aln.outdir)
+    ) as work:
         loci = Path(work, "loci.bed")
         loci.write_text("".join(f"{row}\n" for row in rows), newline="\n")
         logging.info("Sizing repeat expansions with STRkit...")

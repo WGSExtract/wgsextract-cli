@@ -21,11 +21,17 @@ from wgsextract_cli.commands._microarray_combined import (
     record_kit,
     record_microarray_run,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genotype_qc import warn_about_genotypes
 from wgsextract_cli.core.library_cache import microarray_cache_root
 from wgsextract_cli.core.microarray import chm13_cache as microarray_chm13_cache
+from wgsextract_cli.core.microarray.aadr import (
+    _chrom_name,
+    aadr_markers,
+    aadr_panel,
+    write_aadr_outputs,
+)
 from wgsextract_cli.core.microarray.chm13 import (
     CHM13Catalogue,
     load_chm13_catalogue,
@@ -43,17 +49,11 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     vendor_no_calls,
 )
 from wgsextract_cli.core.microarray.identity import identity_policy
+from wgsextract_cli.core.microarray.quality import quality_policy
+from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
-from wgsextract_cli.core.microarray_aadr import (
-    _chrom_name,
-    aadr_markers,
-    aadr_panel,
-    write_aadr_outputs,
-)
-from wgsextract_cli.core.microarray_quality import quality_policy
-from wgsextract_cli.core.microarray_quirks import quirks_mode
-from wgsextract_cli.core.microarray_targets import collect_template_markers
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.targets import collect_template_markers
+from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     convert_to_vendor_format,
     get_template_format,

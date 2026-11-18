@@ -15,7 +15,7 @@ import pytest
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
 from wgsextract_cli.core.microarray.coordinates import project_coordinates
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,
 )
@@ -73,6 +73,29 @@ def test_23andme_writes_the_header_then_the_template_markers_in_order(tmp_path):
     assert out == head + (
         "rsMT\tMT\t7000\tC\nrs2\t1\t2000\tCT\nrsGone\t1\t9999\t--\nrsY\tY\t6000\tT\n"
     )
+
+
+def test_issue_1043_correction_edits_take_effect_in_the_same_api_process(
+    tmp_path, monkeypatch
+):
+    from wgsextract_cli.core.microarray import templates as microarray_utils
+
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    corrections = assets / "corrections.tsv"
+    corrections.write_text("23andMe_V3\trs1\t1\t1000\t1000\n")
+    # Filesystem boundary: use an isolated package-resource directory.
+    monkeypatch.setattr(microarray_utils, "_PACKAGED_TEMPLATES", assets)
+    root = _templates(tmp_path / "lib", "23andMe_V3.txt", "# kit\n", "rs1\t1\t1000\n")
+    source = _kit(
+        tmp_path / "kit.txt", [("rs1", "1", "1000", "AA"), ("rs2", "1", "2000", "CC")]
+    )
+    out = tmp_path / "out.txt"
+    convert_to_vendor_format("23andMe_V3", source, str(out), str(root))
+    assert out.read_text().splitlines()[-1] == "rs1\t1\t1000\tAA"
+    corrections.write_text("23andMe_V3\trs1\t1\t1000\t2000\n")
+    convert_to_vendor_format("23andMe_V3", source, str(out), str(root))
+    assert out.read_text().splitlines()[-1] == "rs1\t1\t2000\tCC"
 
 
 def test_ancestry_splits_alleles_into_columns_and_writes_no_calls_as_zero(tmp_path):
@@ -372,7 +395,8 @@ def test_liftover_maps_block_edges_one_based(tmp_path):
     assert lifted == [["rsLast", "1", "1100", "AC"]]
 
 
-def test_legacy_hg38_mt_keeps_yoruba_chain_coordinates_and_gaps(tmp_path):
+@pytest.mark.parametrize("chrom", ["MT", "M", "chrM", "chrMT"])
+def test_issue_1042_hg38_mt_keeps_rcrs_coordinates_and_gap_sites(tmp_path, chrom):
     chain = _chain(
         tmp_path / "c.chain",
         "chain 1 chrM 16569 + 0 1000 chrM 16571 + 2 1002 1\n1000",
@@ -380,11 +404,52 @@ def test_legacy_hg38_mt_keeps_yoruba_chain_coordinates_and_gaps(tmp_path):
 
     lifted = _lift(
         tmp_path,
-        [("rsMT", "MT", "500", "CC"), ("rsGap", "MT", "1200", "AA")],
+        [("rsMT", chrom, "500", "CC"), ("rsGap", chrom, "1200", "AA")],
         chain,
     )
 
-    assert lifted == [["rsMT", "MT", "502", "CC"]]
+    assert lifted == [
+        ["rsMT", "MT", "500", "CC"],
+        ["rsGap", "MT", "1200", "AA"],
+    ]
+
+
+def test_issue_1042_public_mt_markers_survive_real_chain_cold_and_warm(tmp_path):
+    # UCSC hg38ToHg19.over.chain.gz chrM entry (downloaded 2026-11-16),
+    # SHA256 of full download: 14a712e8e147d9fc8e9d87d51977b46f6f8ddb93efbe5d0843d86b6205f587b1.
+    chain = str(Path(__file__).parent / "fixtures" / "hg38ToHg19.chrM.chain")
+    rows = [("rs2853515", "MT", "73", "GG"), ("rs3937033", "MT", "16519", "CC")]
+    root = _templates(
+        tmp_path / "lib",
+        "23andMe_V3.txt",
+        "# public markers\n",
+        "rs2853515\tMT\t73\nrs3937033\tMT\t16519\n",
+    )
+    for _ in range(2):
+        lifted = _lift(tmp_path, rows, chain, reflib_dir=str(root))
+        assert lifted == [list(row) for row in rows]
+        kit = _kit(tmp_path / "kit.txt", lifted)
+        out = tmp_path / "vendor.txt"
+        convert_to_vendor_format("23andMe_V3", kit, str(out), str(root))
+        assert out.read_text().splitlines()[1:] == [
+            "rs2853515\tMT\t73\tG",
+            "rs3937033\tMT\t16519\tC",
+        ]
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_issue_1042_invalid_rcrs_coordinates_are_not_exported(tmp_path, cached):
+    chain = _chain(tmp_path / "c.chain", *TWO_BLOCKS)
+    rows = [("bad", "MT", str(position), "AA") for position in (-1, 0, 16570)] + [
+        ("last", "MT", "16569", "CC")
+    ]
+    for _ in range(2):
+        assert _lift(
+            tmp_path,
+            rows,
+            chain,
+            reflib_dir=str(tmp_path / "cache") if cached else None,
+        ) == [["last", "MT", "16569", "CC"]]
 
 
 def test_liftover_complements_genotypes_in_inverted_regions(tmp_path):

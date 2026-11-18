@@ -30,6 +30,7 @@ from typing import IO
 
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, read_scope
+from wgsextract_cli.core.acmg import DISCLAIMER
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -38,6 +39,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -64,13 +66,6 @@ from .basic import vcf_input_handler
 
 ACMG_ANNOTATED = "acmg_annotated.vcf.gz"
 ACMG_SUMMARY = "acmg_summary.json"
-DISCLAIMER = (
-    "Research use only; not a diagnosis. These ACMG/AMP classes are computed "
-    "automatically by fastVEP from public databases, without the clinical, "
-    "family and functional evidence (PS3/BS3, PS4, PP1, PP4) a classification "
-    "needs, and a VUS can mean that nothing was checked. Don't act on them "
-    "without a clinical genetics professional."
-)
 # The order `vcf table` picks a transcript in (pick_csq), so fastVEP's one row
 # per allele is the table's transcript for all but a few records.
 PICK_ORDER = "mane_select,canonical,biotype,rank"
@@ -624,7 +619,9 @@ def run_acmg(params: VcfAcmgParams) -> None:
     ]
     env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
     logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_acmg_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_acmg_"
+    ) as work:
         partial = str(Path(work, ACMG_ANNOTATED))
         run = _FastVep(command, strip, env)
         try:
@@ -657,7 +654,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
             run.check()
         finally:
             run.close()
-        Path(partial).replace(out_vcf)
+        move_file(partial, out_vcf)
     for index in (out_vcf + ".tbi", out_vcf + ".csi"):
         Path(index).unlink(missing_ok=True)
     ensure_vcf_indexed(out_vcf)

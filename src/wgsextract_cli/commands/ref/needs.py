@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.reference_needs import MissingReference, missing_references
+from wgsextract_cli.core.ref_library.needs import MissingReference, missing_references
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 

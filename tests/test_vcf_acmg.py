@@ -276,10 +276,16 @@ def test_acmg_refuses_databases_of_another_assembly(tmp_path):
 
 
 @needs_fastvep
-def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(tmp_path):
+@pytest.mark.parametrize("explicit_outdir", [True, False])
+def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(
+    tmp_path, explicit_outdir
+):
     # Review of #988: the classified VCF replaced an input of the same name.
     inputs = _inputs(tmp_path)
-    named = tmp_path / "acmg_annotated.vcf.gz"
+    # Force a real collision, including the default for inputs already in wgse/.
+    destination = tmp_path if explicit_outdir else tmp_path / "wgse"
+    destination.mkdir(exist_ok=True)
+    named = destination / "acmg_annotated.vcf.gz"
     inputs["input"].rename(named)
     Path(f"{inputs['input']}.tbi").rename(f"{named}.tbi")
     before = named.read_bytes()
@@ -289,9 +295,34 @@ def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(tmp_path):
         input=named,
         ref=inputs["ref"],
         gff3=inputs["gff3"],
+        outdir=destination if explicit_outdir else None,
     )
     result = api.vcf.acmg(params, check=False)
     assert result.error is not None and "would overwrite" in result.error.message
+    assert named.read_bytes() == before
+
+
+@needs_fastvep
+def test_1087_acmg_default_output_preserves_same_named_lab_input(tmp_path):
+    inputs = _inputs(tmp_path)
+    named = tmp_path / "acmg_annotated.vcf.gz"
+    inputs["input"].rename(named)
+    Path(f"{inputs['input']}.tbi").rename(f"{named}.tbi")
+    before = named.read_bytes()
+
+    result = api.vcf.acmg(
+        VcfAcmgParams(
+            research_acmg=True,
+            sa_dir=_sa_dir(tmp_path),
+            input=named,
+            ref=inputs["ref"],
+            gff3=inputs["gff3"],
+        )
+    )
+
+    annotated = Path(next(o.path for o in result.outputs if o.role == "annotated_vcf"))
+    assert annotated == tmp_path / "wgse" / named.name
+    assert any(info.get("ACMG_CLASS") for info in _acmg(annotated).values())
     assert named.read_bytes() == before
 
 

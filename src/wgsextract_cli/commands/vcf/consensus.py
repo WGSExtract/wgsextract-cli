@@ -12,11 +12,10 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem
-from wgsextract_cli.core.reference_resolver import (
-    ReferenceLibrary,
-)
+from wgsextract_cli.core.ref_library.assets import input_stem
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_defaults,
@@ -393,7 +392,9 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
     # preparing inputs leaves an earlier result intact.
     writing = False
     try:
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_consensus_") as w:
+        with tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_consensus_"
+        ) as w:
             vcf = _prepare_vcf(input_vcf, contigs, region, sample, gvcf, threads, w)
             vcf = _match_ambiguous_ref_bases(vcf, ref, threads, w)
             if uncalled == "n":

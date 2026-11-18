@@ -24,7 +24,7 @@ from wgsextract_cli.commands.benchmark.chip import (
     score_chip,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.microarray_utils import get_template_format
+from wgsextract_cli.core.microarray.templates import get_template_format
 from wgsextract_cli.core.utils import run_command
 
 pytestmark = [
@@ -136,7 +136,7 @@ def test_kit_from_hg00096_matches_its_omni_chip(tmp_path: Path) -> None:
     )
     outdir = tmp_path / "kit"
     _run(
-        [*cli, "--config", str(config), "microarray", "--formats"]
+        [*cli, "--config", str(config), "microarray", "--download", "--formats"]
         + [
             ",".join(
                 name.lower().replace("23andme_snps_api", "23andme_api")

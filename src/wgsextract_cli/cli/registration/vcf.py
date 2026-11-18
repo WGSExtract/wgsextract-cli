@@ -10,6 +10,7 @@ from wgsextract_cli.api.vcf import (
     VcfAlphamissenseParams,
     VcfAnnotateParams,
     VcfCaddParams,
+    VcfCallParams,
     VcfChainAnnotateParams,
     VcfClair3Params,
     VcfClinvarParams,
@@ -53,6 +54,7 @@ cmd_clair3 = command_handler("wgsextract_cli.commands.vcf.clair3", "cmd_clair3")
 cmd_clinvar = command_handler(
     "wgsextract_cli.commands.vcf.clinvar_revel", "cmd_clinvar"
 )
+cmd_call = command_handler("wgsextract_cli.commands.vcf.call", "cmd_call")
 cmd_cnv = command_handler("wgsextract_cli.commands.vcf.structural", "cmd_cnv")
 cmd_deepvariant = command_handler(
     "wgsextract_cli.commands.vcf.deepvariant", "cmd_deepvariant"
@@ -115,6 +117,11 @@ def register(
     )
     add_arguments(indel_parser, VcfIndelParams)
     indel_parser.set_defaults(func=cmd_indel)
+    call_parser = vcf_subs.add_parser(
+        "call", parents=[base_parser], help=CLI_HELP["cmd_call"]
+    )
+    add_arguments(call_parser, VcfCallParams)
+    call_parser.set_defaults(func=cmd_call)
     _add_vcf_command(
         vcf_subs,
         base_parser,

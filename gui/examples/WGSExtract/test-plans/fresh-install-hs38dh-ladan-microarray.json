@@ -3,11 +3,12 @@
   "inputs": {
     "fieldValues": {
       "bam_path": "${GFC_TEST_LADAN_CRAM}",
-      "dataset_library": "${GFC_TEST_GENOME_LIBRARY}",
-      "out_dir": "{{bundleWorkspace}}/output/ladan-microarray",
-      "ref_path": "{{bundleWorkspace}}/reference"
+      "mygenomes_library": "${GFC_TEST_GENOME_LIBRARY}",
+      "out_dir": "{{usersWorkspace}}/output/ladan-microarray",
+      "ref_path": "{{usersWorkspace}}/reference"
     },
     "checkedOptions": {
+      "microarray_download": ["--download"],
       "microarray_formats": [
         "all"
       ]

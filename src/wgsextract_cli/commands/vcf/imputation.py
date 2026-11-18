@@ -22,7 +22,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfImputeParams
 from wgsextract_cli.core import imputation_panel
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -35,15 +35,16 @@ from wgsextract_cli.core.imputation_panel import (
 from wgsextract_cli.core.imputed_vcf import HEADER_KEY
 from wgsextract_cli.core.imputed_vcf import LOW_CONFIDENCE_FILTER as LOW_CONFIDENCE
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
-from wgsextract_cli.core.reference_assets import reference_library_of
-from wgsextract_cli.core.reference_models import sequence_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import reference_library_of
+from wgsextract_cli.core.ref_library.models import sequence_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_imputation,
     preflight_resources,
 )
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index, parse_memory
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -442,7 +443,9 @@ def run_impute(params: VcfImputeParams) -> None:
         )
     )
     logging.info(f"Imputing {', '.join(chroms)} with {tool} into {out_vcf}")
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_impute_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_impute_"
+    ) as tmp:
         work = Path(tmp)
         if reads_mode:
             parts, metrics = _glimpse(params, panels, threads, outdir, work)

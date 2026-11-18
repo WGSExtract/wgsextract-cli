@@ -9,6 +9,8 @@ runtime/
 reference_bootstrap/
 reference/
 genomes/
+mygenomes/
+datasets/
 /state/
 .tmp_home/
 *.log
@@ -33,6 +35,7 @@ genomes/
 !tests/fixtures/vep_rs/*
 !tests/fixtures/pharmcat_hg002/*
 !tests/fixtures/acmg/*
+!tests/fixtures/pgs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -7,7 +7,7 @@ import re
 from collections.abc import Mapping
 
 from wgsextract_cli.core.microarray.indel_probes import _manifest_stream
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_for_format,
     get_template_format,
     template_rows,

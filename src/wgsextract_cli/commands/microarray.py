@@ -2,7 +2,6 @@ import contextlib
 import functools
 import logging
 import re
-import shutil
 import subprocess
 import tempfile
 import time
@@ -14,7 +13,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli.registration.microarray import register as register
 from wgsextract_cli.core.aadr_resources import AADR_2M_FILENAME, require_aadr_2m
-from wgsextract_cli.core.alignment_health import warn_about_alignment
+from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.builds import (
     is_hg37_build,
     is_hg38_build,
@@ -32,14 +31,8 @@ from wgsextract_cli.core.genotype_qc import (
     warn_low_depth,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
-from wgsextract_cli.core.microarray.indels import (
-    IndelCalls,
-    call_manifest_indels,
-    indel_manifest_bindings,
-    prepare_indel_vcf,
-)
-from wgsextract_cli.core.microarray_aadr import (
+from wgsextract_cli.core.microarray.aadr import (
+    aadr_chain,
     aadr_lifter,
     aadr_panel,
     aadr_vcf_nocalls,
@@ -47,17 +40,24 @@ from wgsextract_cli.core.microarray_aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
-from wgsextract_cli.core.microarray_quality import quality_policy
-from wgsextract_cli.core.microarray_quirks import (
+from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
+from wgsextract_cli.core.microarray.indels import (
+    IndelCalls,
+    call_manifest_indels,
+    indel_manifest_bindings,
+    prepare_indel_vcf,
+)
+from wgsextract_cli.core.microarray.quality import quality_policy
+from wgsextract_cli.core.microarray.quirks import (
     load_strand_quirks,
     quirks_mode,
 )
-from wgsextract_cli.core.microarray_targets import (
+from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
     is_genome_wide_target,
     ncbi36_chain,
 )
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     _resolve_templates_roots,
     resolve_format_key,
@@ -74,6 +74,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -182,7 +183,7 @@ def _convert_microarray_outputs(
 ) -> dict[str, GenotypeTally]:
     """Write the requested outputs (``formats``, default all of
     ``params.formats``); return each vendor file's autosomal tally."""
-    from wgsextract_cli.core.microarray_utils import (
+    from wgsextract_cli.core.microarray.templates import (
         convert_to_vendor_format,
         get_template_format,
         liftover_hg38_to_hg19,
@@ -373,11 +374,14 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     ref_fasta = lib.fasta
     ref_vcf_tab = str(params.ref_vcf_tab) if params.ref_vcf_tab else lib.ref_vcf_tab
+    if params.ref_vcf_tab and not Path(params.ref_vcf_tab).is_file():
+        raise WGSExtractError(f"--ref-vcf-tab not found: {params.ref_vcf_tab}")
     ploidy_file = str(params.ploidy_file) if params.ploidy_file else lib.ploidy_file
     requested = params.formats.split(",")
     aadr_panels = [panel for key in requested if (panel := aadr_panel(key))]
     legacy_requested = any(aadr_panel(key) is None for key in requested)
     lifter = None
+    aadr_chain_file = None
     if aadr_panels:
         validate_aadr_sample_id(params.aadr_sample_id)
         if "2m" in aadr_panels:
@@ -387,12 +391,18 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     "projection is not supported."
                 )
             require_aadr_2m(lib.resource_root("aadr/" + AADR_2M_FILENAME))
-            lifter = aadr_lifter(
-                lib.build,
-                outdir,
-                lib.resource_root(_HG19_TO_HG38),
-                allow_download=False,
-            )
+        aadr_chain_file = aadr_chain(
+            lib.build,
+            outdir,
+            lib.resource_root(_HG19_TO_HG38),
+            allow_download="2m" not in aadr_panels,
+        )
+        lifter = aadr_lifter(
+            lib.build,
+            outdir,
+            lib.resource_root(_HG19_TO_HG38),
+            allow_download="2m" not in aadr_panels,
+        )
 
     logging.debug(f"Resolved Reference FASTA: {ref_fasta}")
     logging.debug(f"Resolved Target SNP Tab: {ref_vcf_tab}")
@@ -495,6 +505,42 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     # Reuse what an earlier run made from these same inputs (see
     # _microarray_reuse); regenerate only what changed or is missing.
+    if not ref_vcf_tab and not aadr_panels:
+        raise WGSExtractError(
+            "--ref-vcf-tab is required and could not be auto-resolved."
+        )
+    if ref_vcf_tab and not Path(ref_vcf_tab).is_file():
+        raise WGSExtractError(f"--ref-vcf-tab not found: {ref_vcf_tab}")
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    region_args = ["-r", params.region] if params.region else []
+    input_chroms = None
+    if params.region and not is_vcf:
+        try:
+            input_chroms = _alignment_chromosomes(input_path, ref_fasta)
+            region_args = _normalize_region_args_for_input(region_args, input_chroms)
+        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+            raise WGSExtractError(f"Microarray target normalization failed: {e}") from e
+    if ploidy_file:
+        ploidy_args = ["--ploidy-file", ploidy_file]
+    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
+        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
+    else:
+        warn(
+            "build_unknown",
+            f"Unknown reference build {lib.build!r}; calling all chromosomes diploid.",
+            build=lib.build,
+        )
+        ploidy_args = ["--ploidy", "2"]
+    # Resolve declarations and evidence before deciding outputs are fresh.
+    sex_args = cleanup.enter_context(
+        sex_samples_args(
+            input_path,
+            outdir,
+            ploidy_args,
+            region=region_args[1] if region_args else None,
+            reference=ref_fasta,
+        )
+    )
     inputs = reuse.run_inputs(
         params,
         input_path=input_path,
@@ -505,10 +551,27 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         liftover_chain=lib.liftover_chain,
         sample=vcf_sample,
         aadr_panels=aadr_panels,
+        aadr_chain=aadr_chain_file,
     )
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
+    from wgsextract_cli.core.microarray.resource_identity import resource_identity
+    from wgsextract_cli.core.microarray.templates import (
+        get_template_format,
+        template_resource_paths,
+    )
+
+    for key, item in unit_formats.items():
+        if not aadr_panel(item):
+            units[key].extra["templates"] = [
+                resource_identity(path)
+                for path in template_resource_paths(
+                    _template_search_roots(ref_fasta, lib), key
+                )
+            ]
+            if (fmt := get_template_format(key)) and fmt.get("ncbi36"):
+                units[key].extra["ncbi36_chain"] = resource_identity(_ncbi36_chain(lib))
     for unit in units.values():
         reuse.check(unit, inputs)
     stale = [key for key, unit in units.items() if not unit.fresh]
@@ -560,10 +623,6 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         Path(outdir).mkdir(parents=True, exist_ok=True)
         calling_outdir = tempfile.mkdtemp(prefix="AADR_", dir=outdir)
         try:
-            if "2m" not in aadr_panels:
-                lifter = aadr_lifter(
-                    lib.build, calling_outdir, lib.resource_root(_HG19_TO_HG38)
-                )
             legacy_panels = [panel for panel in aadr_panels if panel != "2m"]
             if "2m" in aadr_panels and is_vcf and (legacy_panels or legacy_requested):
                 legacy_workdir = str(Path(calling_outdir, "legacy"))
@@ -623,71 +682,39 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             ),
         )
 
-    region_args = ["-r", params.region] if params.region else []
-    input_chroms = None
-    if params.region and not is_vcf:
-        # Custom ploidy rows must be matched against the same chromosome name
-        # used for calling, including a chr20 <-> 20 input alias.
-        try:
-            input_chroms = _alignment_chromosomes(input_path, ref_fasta)
-            region_args = _normalize_region_args_for_input(region_args, input_chroms)
-        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-            raise WGSExtractError(f"Microarray target normalization failed: {e}") from e
-
-    # Without a ploidy file, use the build's predefined ploidy; for an unknown
-    # build fall back to all-diploid (never haploid autosomes).
-    if ploidy_file:
-        ploidy_args = ["--ploidy-file", ploidy_file]
-    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
-    else:
-        warn(
-            "build_unknown",
-            f"Unknown reference build {lib.build!r}; calling all chromosomes diploid.",
-            build=lib.build,
-        )
-        ploidy_args = ["--ploidy", "2"]
-
     start_vcf = time.time()
     indel_calls = None
 
-    with sex_samples_args(
-        input_path,
-        outdir,
-        ploidy_args,
-        region=region_args[1] if region_args else None,
-        reference=ref_fasta,
-    ) as sex_args:
-        out_vcf, ref_vcf_tab = _prepare_microarray_vcf(
+    out_vcf, ref_vcf_tab = _prepare_microarray_vcf(
+        params=calling_params,
+        outdir=calling_outdir,
+        base_name=base_name,
+        is_vcf=is_vcf,
+        ref_vcf_tab=ref_vcf_tab,
+        region_args=region_args,
+        ploidy_args=ploidy_args + sex_args,
+        ref_fasta=ref_fasta,
+        threads=threads,
+        start_vcf=start_vcf,
+        out_vcf=out_vcf,
+        input_chroms=input_chroms,
+        # An indel run's calling input is already the selected sample.
+        sample=None if calling_params is not params else vcf_sample,
+        gvcf=gvcf,
+    )
+    record_kept(combined_vcf, outdir, "combined_vcf")
+    if out_vcf != combined_vcf:
+        record_kept(out_vcf, outdir, "annotated_vcf")
+    if indel_bindings:
+        indel_calls = call_manifest_indels(
+            indel_bindings,
+            _template_search_roots(ref_fasta, lib),
             params=calling_params,
-            outdir=calling_outdir,
-            base_name=base_name,
-            is_vcf=is_vcf,
-            ref_vcf_tab=ref_vcf_tab,
-            region_args=region_args,
+            lib=lib,
+            outdir=outdir,
             ploidy_args=ploidy_args + sex_args,
-            ref_fasta=ref_fasta,
             threads=threads,
-            start_vcf=start_vcf,
-            out_vcf=out_vcf,
-            input_chroms=input_chroms,
-            # An indel run's calling input is already the selected sample.
-            sample=None if calling_params is not params else vcf_sample,
-            gvcf=gvcf,
         )
-        record_kept(combined_vcf, outdir, "combined_vcf")
-        if out_vcf != combined_vcf:
-            record_kept(out_vcf, outdir, "annotated_vcf")
-        if indel_bindings:
-            indel_calls = call_manifest_indels(
-                indel_bindings,
-                _template_search_roots(ref_fasta, lib),
-                params=calling_params,
-                lib=lib,
-                outdir=outdir,
-                ploidy_args=ploidy_args + sex_args,
-                threads=threads,
-            )
     combined_kit_txt = _write_microarray_combined_kit(
         params=params,
         outdir=calling_outdir,
@@ -764,7 +791,7 @@ def _output_units(
     generates each vendor or AADR unit. The combined unit exists when the run
     keeps something of its own: the combined kit (not kept beside AADR files,
     which are called in a scratch directory) or the genotype table."""
-    from wgsextract_cli.core.microarray_utils import get_template_format
+    from wgsextract_cli.core.microarray.templates import get_template_format
 
     units: dict[str, reuse.Unit] = {}
     formats: dict[str, str] = {}
@@ -932,8 +959,7 @@ def _sample_vcf(
     """One sample of a multi-sample VCF, as an indexed VCF in a scratch
     directory under ``outdir`` that ``cleanup`` removes."""
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    workdir = tempfile.mkdtemp(prefix="Sample_", dir=outdir)
-    cleanup.callback(shutil.rmtree, workdir, ignore_errors=True)
+    workdir = cleanup.enter_context(scratch_directory(outdir, "Sample_"))
     subset = str(Path(workdir, "sample.vcf.gz"))
     try:
         run_command(

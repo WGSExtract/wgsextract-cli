@@ -14,12 +14,13 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfTableParams
+from wgsextract_cli.core import acmg
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import (
     current_result,
     human_output,
@@ -236,10 +237,11 @@ def run_table(params: VcfTableParams) -> None:
     input_vcf = require_vcf_input(params)
     if not Path(input_vcf).is_file():
         raise UsageError(f"VCF not found: {input_vcf}")
-    if params.region:
-        input_vcf = _indexed_input(input_vcf)  # -r needs an index
     outdir = str(absolute_path(params.outdir or Path(input_vcf).parent))
     Path(outdir).mkdir(parents=True, exist_ok=True)
+    source = input_vcf
+    if params.region:
+        input_vcf = _indexed_input(input_vcf)  # -r needs an index
     samples, sample = _select_sample(input_vcf, params.sample)
     pharmcat = _pharmcat_calls(
         os.fspath(params.pharmcat_json) if params.pharmcat_json else None
@@ -248,7 +250,7 @@ def run_table(params: VcfTableParams) -> None:
     if params.pharmcat_json:
         result.add_input(params.pharmcat_json, "pharmcat_phenotype")
 
-    stem = str(Path(outdir, table_stem(input_vcf)))
+    stem = str(Path(outdir, table_stem(source)))
     out_table = table_path(stem, params.table_format)
     sqlite_path = None if params.no_sqlite else stem + ".sqlite"
 
@@ -265,17 +267,19 @@ def run_table(params: VcfTableParams) -> None:
         header = stream.header
         build = _reference_build(header)
         annotations = ",".join(header.annotations)
+        research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
         keeps_metadata = sqlite_path is not None or params.table_format == "parquet"
         metadata = provenance(
-            [input_vcf],
+            [source],
             reference_build=build or "",
             sorted_by="the VCF's record order (chrom, pos)",
-            source_sha256=(_sha256(input_vcf) or "") if keeps_metadata else None,
+            source_sha256=(_sha256(source) or "") if keeps_metadata else None,
             sample=sample or "",
             region=params.region or "",
             annotations=annotations,
             carried_only=str(not params.all_alleles).lower(),
+            acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
         rows = _write_tables(
             stream,
@@ -310,6 +314,8 @@ def run_table(params: VcfTableParams) -> None:
             "with 'wgsextract vep run' and 'wgsextract vcf clinvar'.",
             path=input_vcf,
         )
+    if research_acmg:
+        warn("acmg_research_only", acmg.DISCLAIMER, path=input_vcf)
     if rows == 0:
         warn("no_variants", f"No variants to tabulate in {input_vcf}.", path=input_vcf)
     found = f" ({annotations})" if annotations else ""

@@ -165,7 +165,7 @@ def test_info_records_what_later_commands_read(seqs, folder):
     assert facts["sex"]["by"].endswith(" info")
 
     # Without info's own cache, the sex comes from the workspace alone.
-    Path(f"{bam}.wgse_info.json").unlink()
+    (folder / "wgse" / "s.bam.wgse_info.json").unlink()
     assert metrics.sample_sex(bam) == "Male"
     first = genotype_qc.target_depths(bam, str(folder))
     with patch.object(genotype_qc, "_counted_depths", side_effect=AssertionError):

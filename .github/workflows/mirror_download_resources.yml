@@ -1,0 +1,83 @@
+name: Mirror download resources
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable snapshot tag (download-resources-*); never overwrite data.
+        required: true
+        default: download-resources-1
+      resources:
+        description: Comma-separated audited IDs; empty selects all approved resources.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror-download-resources-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      resources: ${{ steps.plan.outputs.resources }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+      - name: Validate selection and create the data release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          ONLY: ${{ inputs.resources }}
+        run: |
+          mkdir -p out/mirror
+          selected=$(pixi run python scripts/mirror_download_resources.py plan --only "$ONLY")
+          echo "resources=$selected" >> "$GITHUB_OUTPUT"
+          pixi run python -c 'from scripts.mirror_download_resources import validate_tag; import sys; validate_tag(sys.argv[1])' "$TAG"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Download resources $TAG" --prerelease --latest=false \
+              --notes "Audited byte-identical resource snapshots. Each *.record.json pins the complete file and ordered <=1.9 GB parts; accompanying NOTICE, LICENCE and LEGALCODE files retain source terms and attribution. See docs/resource-mirrors.md. Refs #1046 (download resource mirrors)."
+
+  publish:
+    needs: plan
+    if: needs.plan.outputs.resources != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        resource: ${{ fromJSON(needs.plan.outputs.resources) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+      - name: Stream, hash and publish one resource
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          RESOURCE: ${{ matrix.resource }}
+        run: |
+          mkdir -p out/mirror
+          pixi run python scripts/mirror_download_resources.py publish "$RESOURCE" \
+            --tag "$TAG" --out out/mirror 2>&1 | tee out/mirror/publish.log
+      - name: Retain publication evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mirror-${{ matrix.resource }}
+          path: out/mirror/
+          if-no-files-found: warn

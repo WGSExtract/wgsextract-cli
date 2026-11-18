@@ -167,7 +167,7 @@ else
     step update install_cli
 fi
 step update_kept_data cat "$INSTALL_DIR/app/reference/lab-marker"
-step post_update_mt "$WGSE" lineage mt-haplogroup --input "$DATA/HG00096.hg19-mini.bam" \
+step post_update_mt "$WGSE" lineage mt-haplogroup --download --input "$DATA/HG00096.hg19-mini.bam" \
     --ref "$DATA/hg19-mini.fa.gz" --outdir "$R/post_update_mt"
 # The workload's library is configured; drop the tree it downloaded into the
 # evidence again (a cache, with this user's private lock), as workload.sh does.

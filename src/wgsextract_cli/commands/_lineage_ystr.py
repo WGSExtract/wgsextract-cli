@@ -9,8 +9,8 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import calculate_bam_md5, verify_paths_exist

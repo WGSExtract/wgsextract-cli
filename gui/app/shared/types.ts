@@ -57,6 +57,8 @@ export type LabelTextKey =
     | "workspaceLocationMoveConfirm"
     | "workspaceLocationMovingFormat"
     | "workspaceLocationCancelTitle"
+    | "workspaceLocationFolderMoveConfirm"
+    | "workspaceLocationSettingOnlyTitle"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"
@@ -94,6 +96,8 @@ export type LabelTextKey =
     | "loadingTitle"
     | "refreshingTitle"
     | "retryButtonTitle"
+    | "sectionExpandLabel"
+    | "sectionCollapseLabel"
     | "loadWebUITitle"
     | "libraryEmptyTitle"
     | "actionMissingInputsFormat"
@@ -169,6 +173,8 @@ export interface ConfigSetting {
     kind?: string;
     placeholder?: string;
     tooltip?: string;
+    /** A path setting whose folder's contents move with it when the user picks another folder. */
+    moveContents?: boolean;
     [key: string]: unknown;
 }
 
@@ -331,6 +337,8 @@ export interface PageSection {
     actions?: ActionSpec[];
     dataSource?: LooseRecord;
     visibleWhen?: ConditionSpec[];
+    /** Starts closed, showing only its title, until the user opens it. */
+    collapsed?: boolean;
     [key: string]: unknown;
 }
 
@@ -361,8 +369,11 @@ export interface SetupSpec {
 }
 
 export interface BundleManifest {
-    /** A visible folder directly in the user's home for the workspace, like ~/my-app. Without it, the app's data folder. */
-    defaultWorkspace?: string;
+    /**
+     * A visible folder directly in the user's home for {{usersWorkspace}}, like ~/my-app: the settings file and the
+     * folders the user manages, which they may move. Without it, {{usersWorkspace}} is the hidden {{bundleWorkspace}}.
+     */
+    defaultUsersWorkspace?: string;
     id?: string;
     displayName?: string;
     iconPath?: string;
@@ -385,6 +396,7 @@ export interface CommandContext {
     fileStateValues?: ValueMap;
     placeholderLabels?: Labels;
     bundleRootPath?: string;
+    usersWorkspacePath?: string;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
     [key: string]: unknown;
@@ -510,6 +522,7 @@ export interface ManifestResponse {
     appVersion?: string;
     workspaceLocation?: WorkspaceLocationInfo;
     bundleRootPath: string;
+    usersWorkspacePath?: string;
     sourceRootPath: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
     fieldValues?: ValueMap;
@@ -613,13 +626,17 @@ export interface WebUIState {
     webUIFont: string;
     uiMode: UIMode;
     bundleRootPath: string;
+    usersWorkspacePath: string;
     homePath?: string;
     lastResultDocumentPaths: LastResultDocumentPaths;
     sourceRootPath: string;
     appVersion: string;
     workspaceLocation: WorkspaceLocationInfo | null;
     workspaceLocationDraft: string | null;
-    workspaceMove: { directory: string | null; running: boolean; percent: number } | null;
+    /** A move of the users workspace (`folder` null for its default location) or, with `setting`, of one setting's folder. */
+    workspaceMove: { folder: string | null; setting?: { controlID: string; key: string; from: string } | undefined; running: boolean; percent: number } | null;
+    /** Collapsible sections the user opened (all start closed). */
+    openSections: Set<string>;
     activePageID: string;
     fieldValues: ValueMap;
     checkedOptions: Record<string, Set<string>>;
@@ -628,6 +645,10 @@ export interface WebUIState {
     dataSourcePayloads: Map<string, DataSourcePayload>;
     dataSourceErrors: Map<string, string>;
     loadingDataSources: Set<string>;
+    /** Collapsible sections the user opened or closed from their default, by "pageID/sectionID". */
+    toggledSections: Set<string>;
+    /** The Settings page's Setup steps: shown (true), hidden (false), or null to hide them once setup has run. */
+    setupExpanded: boolean | null;
     fileStateValues: Map<string, ValueMap>;
     loadingFileStates: Set<string>;
     actionPrechecks: Map<string, PrecheckResult>;
@@ -662,9 +683,9 @@ export interface WebUIState {
 }
 
 /** Where this bundle's workspace is, and where it can be moved to. */
+/** Where {{usersWorkspace}} is, and where it goes by default. */
 export interface WorkspaceLocationInfo {
     workspaceRoot: string;
-    defaultDirectory: string;
-    configuredDirectory: string | null;
+    defaultRoot: string;
     usingDefault: boolean;
 }

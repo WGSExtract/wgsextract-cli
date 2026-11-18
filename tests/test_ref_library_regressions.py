@@ -10,7 +10,7 @@ import pytest
 
 from wgsextract_cli import api
 from wgsextract_cli.commands.ref import core_commands
-from wgsextract_cli.core import genome_library, reference_ncount, reference_resolver
+from wgsextract_cli.core import genome_library
 from wgsextract_cli.core.gene_map import (
     GeneMap,
     _merge_gene_range,
@@ -19,13 +19,15 @@ from wgsextract_cli.core.gene_map import (
     resolve_gene_map_reflib,
 )
 from wgsextract_cli.core.ref_library import downloads
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library import ncount as reference_ncount
+from wgsextract_cli.core.ref_library import resolver as reference_resolver
+from wgsextract_cli.core.ref_library.assets import (
     fasta_signature,
     n_count_paths,
     reference_dict_path,
 )
-from wgsextract_cli.core.reference_processing import extract_archive_keep_existing
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.processing import extract_archive_keep_existing
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -549,7 +551,7 @@ def test_microarray_target_prefers_all_snps_tab_over_ysnp_vcf(
 
 
 def test_target_tab_never_uses_another_builds_file(tmp_path):
-    from wgsextract_cli.core.reference_assets import find_reference_target_tab
+    from wgsextract_cli.core.ref_library.assets import find_reference_target_tab
 
     microarray = tmp_path / "microarray"
     microarray.mkdir()
@@ -565,7 +567,7 @@ def test_target_tab_never_uses_another_builds_file(tmp_path):
 
 
 def test_fasta_inside_library_genomes_dir_uses_library_root(tmp_path):
-    from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+    from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
     genomes = tmp_path / "genomes"
     genomes.mkdir()

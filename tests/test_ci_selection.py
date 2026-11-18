@@ -23,8 +23,39 @@ from scripts.ci_test_dependencies import ROOT
 @pytest.mark.parametrize(
     "path",
     [
+        "src/wgsextract_cli/core/report_documents.py",
+        "scripts/gen_report_schema.py",
+        "src/wgsextract_cli/core/personal_report/overview.py",
+        "src/wgsextract_cli/core/gene_lists.py",
+        "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
+    ],
+)
+def test_929_report_contract_inputs_select_committed_freshness(path: str) -> None:
+    selected = select_tests([path])
+    assert selected == "all" or "tests/test_report_documents.py" in selected
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/wgsextract_cli/core/results.py",
+        "src/wgsextract_cli/core/result_schema.py",
+        "scripts/gen_output_schemas.py",
+        "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
+    ],
+)
+def test_929_result_contract_changes_select_freshness(path: str) -> None:
+    selected = select_tests([path])
+    assert selected == "all" or "tests/test_result_documents.py" in selected
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
         "scripts/server_transport_typescript.py",
         "gui/app/shared/generated/server-transport.ts",
+        "gui/app/shared/generated/result-records.ts",
+        "gui/app/shared/generated/report-records.ts",
     ],
 )
 def test_989_transport_changes_select_committed_contract_freshness(path: str) -> None:

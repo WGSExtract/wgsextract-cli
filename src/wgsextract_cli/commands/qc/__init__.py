@@ -12,7 +12,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.reference_assets import reference_genomes_dir
+from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 from wgsextract_cli.core.results import current_result
 
 from .fake_data import (

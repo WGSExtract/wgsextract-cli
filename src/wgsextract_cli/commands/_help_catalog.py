@@ -249,6 +249,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "cnv.vcf.gz (+ .tbi).",
         "wgsextract vcf cnv --input sample.cram",
     ),
+    "vcf call": _h(
+        "Each type's own VCF (snps.vcf.gz, indels.vcf.gz, the SV caller's VCF, "
+        "cnv.vcf.gz), with --reference-evidence gvcf one bcftools.g.vcf.gz for "
+        "SNPs and indels instead; --merge replaces them with variants.vcf.gz "
+        "(variants.g.vcf.gz with the gVCF) (+ .tbi).",
+        "wgsextract vcf call --input sample.cram --types snp,indel --merge",
+        "wgsextract vcf call --input sample.cram --types snp,indel,sv,cnv",
+    ),
     # vcf: annotation, filtering and analysis
     "vcf annotate": _h(
         "annotated.vcf.gz (+ .tbi).",
@@ -538,7 +546,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         f"wgsextract example-genome list --tag {_PACBIO_TAG}",
     ),
     "example-genome download": _h(
-        "Into <dataset_library>/test-1000genomes/<example id>/, with a genome "
+        "Into <mygenomes_library>/test-1000genomes/<example id>/, with a genome "
         "config file.",
         f"wgsextract example-genome download {_STARTER_EXAMPLE}",
         f"wgsextract example-genome download {_STARTER_EXAMPLE} --dry-run",

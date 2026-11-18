@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.messages import CLI_HELP
-from wgsextract_cli.core.microarray_quirks import MODES
+from wgsextract_cli.core.microarray.quirks import MODES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
-from ._params import Params, param
+from ._network import DownloadParams
+from ._params import param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
     depth_param,
@@ -26,8 +27,8 @@ from ._shared import (
 
 def _check_formats(formats: str) -> None:
     """Refuse unknown names: each becomes part of template and output paths."""
-    from wgsextract_cli.core.microarray_aadr import aadr_panel
-    from wgsextract_cli.core.microarray_utils import resolve_format_key
+    from wgsextract_cli.core.microarray.aadr import aadr_panel
+    from wgsextract_cli.core.microarray.templates import resolve_format_key
 
     for item in formats.split(","):
         if aadr_panel(item) is None:
@@ -44,12 +45,13 @@ def _formats_type(text: str) -> str:
 
 
 @dataclass(frozen=True, kw_only=True)
-class MicroarrayParams(Params):
+class MicroarrayParams(DownloadParams):
     """Generate a combined 23andMe-style kit and the selected vendor or AADR
     formats from a BAM, CRAM or VCF.
 
     Fields left at ``None`` fall back to config.toml (``microarray_*``
-    settings) and then to the documented default.
+    settings) and then to the documented default. Missing public liftOver
+    chains require ``download``; lifting sample coordinates stays local.
     """
 
     COMMAND = "microarray"

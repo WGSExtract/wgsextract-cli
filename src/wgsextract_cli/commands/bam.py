@@ -18,6 +18,11 @@ from wgsextract_cli.api.bam import (
     _InputParams,
 )
 from wgsextract_cli.cli.registration.bam import register as register
+from wgsextract_cli.core.alignment.samtools_commands import (
+    alignment_index,
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -25,18 +30,16 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import (
-    alignment_index,
-    regular_files_bytes,
-    sort_memory,
+from wgsextract_cli.core.temp_directory import (
+    configured_temp_directory,
+    input_scratch_directory,
 )
-from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_sam_index_cmd,
@@ -285,7 +288,9 @@ def run_unsort(params: BamUnsortParams) -> None:
             header = run_command(
                 ["samtools", "view", "-H", *cram_opt, input_path], capture_output=True
             ).stdout
-            with tempfile.TemporaryDirectory() as tempdir:
+            with tempfile.TemporaryDirectory(
+                dir=input_scratch_directory(outdir)
+            ) as tempdir:
                 newhead = str(Path(tempdir, "newhead.sam"))
                 with open(newhead, "w", newline="\n") as f:
                     f.write(header.replace("SO:coordinate", "SO:unsorted"))

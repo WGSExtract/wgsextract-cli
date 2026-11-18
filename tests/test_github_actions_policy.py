@@ -1,50 +1,99 @@
-import ast
-import json
-import re
-from fnmatch import fnmatchcase
-from pathlib import Path
-from typing import cast
+import ast as ast
+import json as json
+import os as os
+import re as re
+import shlex as shlex
+import shutil as shutil
+import subprocess as subprocess
+import sys as sys
+import textwrap as textwrap
+from fnmatch import fnmatchcase as fnmatchcase
+from pathlib import Path as Path
+from typing import cast as cast
 
-import pytest
+import pytest as pytest
 
 from scripts import validate_github_actions as policy
-from scripts.ci_changes import routes
+from scripts.check_remote_resources import live_test_targets as live_test_targets
+from scripts.ci_changes import routes as routes
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or shutil.which("bash") is None, reason="Ubuntu publisher shell"
+)
+def test_1046_failed_publisher_is_not_hidden_by_tee(tmp_path: Path) -> None:
+    root = WORKFLOWS.parents[1]
+    source = (WORKFLOWS / "mirror_download_resources.yml").read_text()
+    step = source.split("- name: Stream, hash and publish one resource\n", 1)[1].split(
+        "- name:", 1
+    )[0]
+    body = textwrap.dedent(step.split("run: |\n", 1)[1])
+    script = tmp_path / "publish-step.sh"
+    script.write_text(body)
+    binary = tmp_path / "bin"
+    binary.mkdir()
+    pixi = binary / "pixi"
+    pixi.write_text(f'#!/bin/sh\nshift 2\nexec {shlex.quote(sys.executable)} "$@"\n')
+    pixi.chmod(0o755)
+    (tmp_path / "scripts").symlink_to(root / "scripts", target_is_directory=True)
+    env = os.environ | {
+        "PATH": f"{binary}{os.pathsep}{os.environ['PATH']}",
+        "PYTHONPATH": str(root / "src"),
+        "RESOURCE": "spliceai-hg38",
+        "TAG": "download-resources-test",
+    }
+    # Match Actions: explicit bash adds pipefail; its default bash only adds -e.
+    flags = (
+        ["-o", "pipefail"] if re.search(r"^\s+shell:\s+bash\s*$", step, re.M) else []
+    )
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e", *flags, str(script)],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "upstream-only" in (tmp_path / "out/mirror/publish.log").read_text()
 
 
 @pytest.mark.parametrize(
-    "workflow",
+    ("paths", "spliceai", "gene_lists"),
     [
-        "ubuntu_ci.yml",
-        "macos_ci.yml",
-        "windows_ci.yml",
-        "linux_arm64.yml",
+        (["src/wgsextract_cli/core/annotation_resources.py"], True, False),
+        (["src/wgsextract_cli/core/gene_lists.py"], False, True),
+        (["src/wgsextract_cli/assets/report/gene_lists.json"], False, True),
+        (
+            [
+                "src/wgsextract_cli/core/annotation_resources.py",
+                "src/wgsextract_cli/assets/report/gene_lists.json",
+            ],
+            True,
+            True,
+        ),
+        (["src/wgsextract_cli/core/constants.py"], False, False),
     ],
 )
-def test_906_selected_tests_survive_shared_workflow_boundary(workflow: str) -> None:
-    source = (policy.ROOT / ".github/workflows" / workflow).read_text()
-    # CI contract: the shared suite must receive both PR selection and smoke mode.
-    assert "uses: ./.github/workflows/os_tests.yml" in source
-    assert "tests: ${{ inputs.tests || 'all' }}" in source
-    assert "smoke-only: ${{ inputs.smoke-only == true }}" in source
+def test_1046_changed_resource_paths_retain_live_pr_behavior_checks(
+    paths: list[str], spliceai: bool, gene_lists: bool
+) -> None:
+    targets = live_test_targets(paths)
+    assert ("tests/test_remote_resources.py" in targets) is spliceai
+    assert (
+        any("test_built_in_gene_list_downloads" in target for target in targets)
+        is gene_lists
+    )
+    source = (WORKFLOWS / "remote_resources.yml").read_text()
+    step = source.split(
+        "- name: Check changed live SpliceAI and gene-list behavior\n", 1
+    )[1]
+    step = step.split("- name:", 1)[0]
+    # CI contract: changed-URL filtering must not remove behavioral PR tests.
+    assert "if: github.event_name == 'pull_request'" in step
+    assert '--live-tests-base "$BASE_SHA"' in step
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-
-
-def test_923_fork_code_cannot_write_certification_outputs() -> None:
-    source = (WORKFLOWS / "pr_ci.yml").read_text()
-    before_route = source.split("      - name: Route the complete PR diff", 1)[0]
-    trusted, verifier = before_route.split(
-        "      - name: Read writer certifications using only base code", 1
-    )
-    # CI trust contract: checkout base code and run it before any head checkout.
-    assert "ref: ${{ github.event.pull_request.base.sha }}" in trusted
-    assert "path: .certification-base" in trusted
-    step = verifier.split("      - uses: actions/checkout@", 1)[0]
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in step
-    assert "working-directory: .certification-base" in step
-    assert "python3 -I scripts/ci_certifications.py" in step
-    assert "else\n" in step and "retaining all hosted checks" in step
 
 
 def top_level_conjuncts(expression: str) -> list[str]:
@@ -133,191 +182,6 @@ def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
         return str(value(tree.body))
 
     return re.sub(r"\$\{\{(.*?)\}\}", render, group)
-
-
-@pytest.mark.parametrize(
-    "workflow", sorted(WORKFLOWS.glob("*.yml")), ids=lambda p: p.name
-)
-def test_936_late_draft_payload_cannot_supersede_readiness(workflow: Path) -> None:
-    if all(
-        event_path_filters(workflow, event) is None
-        for event in ("pull_request", "pull_request_target")
-    ):
-        pytest.skip("No PR trigger; draft payload cannot supersede readiness")
-    concurrency = workflow_concurrency(workflow)
-    if concurrency.get("cancel-in-progress", "false") == "false":
-        pytest.skip("No cancelling workflow concurrency")
-    ready = draft_concurrency_group(workflow, draft=False, action="ready_for_review")
-    delayed = draft_concurrency_group(workflow, draft=True, action="synchronize")
-    assert delayed != ready, workflow.name
-    assert draft_concurrency_group(workflow, draft=False, action="synchronize") == ready
-    assert (
-        draft_concurrency_group(workflow, draft=True, action="converted_to_draft")
-        == ready
-    )
-
-
-@pytest.mark.parametrize("indent", ["  ", "    "])
-@pytest.mark.parametrize(
-    "trigger",
-    [
-        "on:\n  pull_request:\n    types: [synchronize, ready_for_review]\n",
-        "on:\n    pull_request: {types: [synchronize, ready_for_review]}\n",
-        "on: {pull_request: {types: [synchronize, ready_for_review]}}\n",
-    ],
-)
-def test_936_draft_race_regression_accepts_yaml_formatting(
-    tmp_path: Path, indent: str, trigger: str
-) -> None:
-    workflow = tmp_path / "workflow.yml"
-    workflow.write_text(
-        trigger
-        + "concurrency:\n"
-        + f"{indent}group: pr-${{{{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}}}\n"
-        + f"{indent}cancel-in-progress: true\n"
-        + "jobs:\n  run:\n    steps:\n      - env:\n          group: not-workflow-concurrency\n"
-    )
-    assert event_path_filters(workflow, "pull_request") is not None
-    assert draft_concurrency_group(workflow, draft=True, action="synchronize") != (
-        draft_concurrency_group(workflow, draft=False, action="ready_for_review")
-    )
-
-
-@pytest.mark.parametrize(
-    "workflow", sorted(WORKFLOWS.glob("*.y*ml")), ids=lambda p: p.name
-)
-def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
-    workflow: Path,
-) -> None:
-    """Check scheduler gates, including reusable callers and failure summaries."""
-    text = workflow.read_text()
-    events = list(
-        re.finditer(
-            r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",
-            text,
-            re.MULTILINE,
-        )
-    )
-    if not events:
-        return
-    for event in events:
-        types = re.search(r"^    types: \[([^]]+)\]", event[2], re.MULTILINE)
-        assert types and "ready_for_review" in types[1], workflow.name
-
-    # The indentation is the Actions mapping structure, not step-level `if`s.
-    jobs = re.split(r"^  ([\w-]+):\s*\n", text.split("\njobs:\n", 1)[1], flags=re.M)
-    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
-        match = re.search(r"^    if: (.*(?:\n      .*)*)", body, re.MULTILINE)
-        expression = match[1] if match else ""
-        if expression.startswith((">-", "|")):
-            expression = " ".join(expression.splitlines()[1:])
-        atoms = top_level_conjuncts(expression)
-        draft_blocked = any(
-            atom
-            in {
-                "github.event.pull_request.draft != true",
-                "github.event.pull_request.draft == false",
-                "!github.event.pull_request.draft",
-            }
-            for atom in atoms
-        )
-        non_pr_only = any(
-            re.fullmatch(
-                r"github\.event_name == '(?:workflow_dispatch|workflow_run|schedule|push|merge_group)'",
-                atom,
-            )
-            for atom in atoms
-        )
-        assert draft_blocked or non_pr_only, (
-            f"{workflow.name}: {name} can run on drafts"
-        )
-
-
-@pytest.mark.parametrize("job_name", ["workflow-smoke", "test"])
-def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix(
-    job_name: str,
-) -> None:
-    workflow = (WORKFLOWS / "os_tests.yml").read_text()
-    job = re.split(
-        r"^  [\w-]+:\s*$",
-        workflow.split(f"\n  {job_name}:\n", 1)[1],
-        maxsplit=1,
-        flags=re.MULTILINE,
-    )[0]
-    condition = re.search(r"^    if: (.*)", job, re.MULTILINE)
-    assert condition
-    assert "github.event.pull_request.draft != true" in top_level_conjuncts(
-        condition[1]
-    )
-
-
-def test_910_setup_push_trigger_does_not_allocate_runners_for_draft_branches() -> None:
-    setup = (WORKFLOWS / "copilot-setup-steps.yml").read_text()
-    push = re.search(r"^  push:\n((?:    .*\n)*)", setup, re.MULTILINE)
-    assert push
-    branches = re.search(r"branches: \[([^]]+)\]", push[1])
-    assert branches
-    patterns = [pattern.strip().strip("'\"") for pattern in branches[1].split(",")]
-    assert any(fnmatchcase("main", pattern) for pattern in patterns)
-    assert not any(fnmatchcase("ci/draft-pr", pattern) for pattern in patterns)
-
-
-@pytest.mark.parametrize("action", ["labeled", "unlabeled"])
-def test_954_label_events_cannot_shadow_the_required_suite(action: str) -> None:
-    assert "pr_ci.yml" not in triggered_workflows(
-        [".github/workflows/pr_ci.yml"], "pull_request", action=action
-    )
-
-
-def test_954_late_skipped_draft_cannot_satisfy_pending_ready_required() -> None:
-    workflow = (WORKFLOWS / "pr_ci.yml").read_text()
-    required = workflow.split("\n  required:\n", 1)[1]
-    name = re.search(r"^    name: (.+)$", required, re.MULTILINE)
-    assert name
-    condition = re.fullmatch(
-        r"\$\{\{ github.event.pull_request.draft && '([^']+)' \|\| '([^']+)' \}\}",
-        name[1],
-    )
-    assert condition, "Draft and ready suites must use distinct merge-check names"
-    draft_name, ready_name = condition.groups()
-    checks = [
-        (ready_name, "pending"),
-        (draft_name, "skipped"),
-    ]
-    # A skipped check is accepted by GitHub; it must not replace real validation.
-    matching = [state for check_name, state in checks if check_name == "required"]
-    assert matching == ["pending"]
-    # GitHub can leave a skipped job's expression unrendered; that is safe too.
-    assert name[1] != "required"
-
-
-@pytest.mark.parametrize("job", ["required", "ready-gate"])
-def test_876_summary_gates_stop_when_the_workflow_is_cancelled(job: str) -> None:
-    workflow = (policy.ROOT / ".github/workflows/pr_ci.yml").read_text()
-    block = workflow.split(f"\n  {job}:\n", 1)[1].split("\n  required:", 1)[0]
-    condition = block.split("    if:", 1)[1].split("    runs-on:", 1)[0]
-    # CI contract: !cancelled() overrides implicit success() without keeping
-    # gates alive on workflow cancellation like always() does.
-    assert "!cancelled()" in condition
-    assert "always()" not in condition
-    assert "success()" not in condition
-
-
-def test_949_required_waits_for_area_gate_without_a_dependency_cycle() -> None:
-    workflow = (WORKFLOWS / "pr_ci.yml").read_text()
-    area, required = workflow.split("\n  ready-gate:\n", 1)[1].split(
-        "\n  required:\n", 1
-    )
-    area_needs = re.search(r"^    needs: \[([^]]+)\]", area, re.MULTILINE)
-    required_needs = re.search(r"^    needs: \[([^]]+)\]", required, re.MULTILINE)
-    assert area_needs and required_needs
-    # CI contract: branch protection must wait for the real area verdict.
-    assert "ready-gate" in required_needs[1].split(", ")
-    assert "required" not in area_needs[1].split(", ")
-    assert {"macos", "windows", "arm64", "smoke", "install"} <= set(
-        area_needs[1].split(", ")
-    )
-    assert "EVENT_NAME: ${{ github.event_name }}" in required
 
 
 def write_workflow(root: Path, uses: str) -> None:
@@ -728,189 +592,3 @@ def triggered_workflows(
             continue
         selected.add(workflow.name)
     return selected
-
-
-@pytest.mark.parametrize("action", ["synchronize", "ready_for_review"])
-@pytest.mark.parametrize(
-    ("path", "expected"),
-    [
-        ("src/wgsextract_cli/core/microarray/__init__.py", True),
-        ("src/wgsextract_cli/core/microarray/coordinates.py", True),
-        ("src/wgsextract_cli/core/microarray/chm13_calls.py", True),
-        ("src/wgsextract_cli/core/microarray/identity.py", True),
-        ("src/wgsextract_cli/core/microarray/nested/probes.py", True),
-        ("src/wgsextract_cli/core/microarray_targets.py", True),
-        ("src/wgsextract_cli/core/microarray/README.md", False),
-    ],
-)
-def test_826_package_moves_preserve_real_chip_concordance_trigger(
-    path: str, expected: bool, action: str
-) -> None:
-    selected = triggered_workflows([path], "pull_request", action=action)
-    assert ("remote_resources.yml" in selected) is expected
-
-
-def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation() -> (
-    None
-):
-    assert triggered_workflows(["README.md"], "pull_request") == {"pr_ci.yml"}
-    assert triggered_workflows(
-        ["README.md"], "pull_request", action="ready_for_review"
-    ) == {"pr_ci.yml"}
-
-
-@pytest.mark.parametrize(
-    "paths",
-    [
-        ["README.md"],
-        ["docs/developer_setup.md", "native/README.md"],
-        [".github/copilot-instructions.md", "gui/AGENTS.md"],
-        ["docs/nested/new-prose.md"],
-        ["native/deepvariant/README.md", "gui/app/README.md", "packaging/README.md"],
-    ],
-)
-def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> None:
-    triggered = triggered_workflows(paths)
-    assert triggered == {"gitleaks.yml"}
-
-
-def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
-    triggered = triggered_workflows(["site_src/new-guide.md"])
-    assert triggered == {"gitleaks.yml", "pages.yml"}
-
-
-@pytest.mark.parametrize(
-    "reference",
-    [
-        "docs/api.md",
-        "docs/commands.md",
-        "site_src/cli.md",
-        "site_src/index.md",
-        "site_src/install.md",
-        "gui/site_src/index.md",
-        "gui/docs/distribution.md",
-        "gui/docs/CHANGELOG.md",
-    ],
-)
-def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
-    reference: str,
-) -> None:
-    triggered = triggered_workflows([reference])
-    assert not triggered & (HEAVY_PUSH_WORKFLOWS | AREA_PUSH_WORKFLOWS)
-    assert "gitleaks.yml" in triggered
-    assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
-    assert not routes([reference])["cli"]
-
-
-@pytest.mark.parametrize(
-    "code", ["src/wgsextract_cli/main.py", ".github/workflows/pr_ci.yml", "pixi.toml"]
-)
-def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
-    triggered = triggered_workflows(["README.md", code])
-    assert HEAVY_PUSH_WORKFLOWS | {"gitleaks.yml"} <= triggered
-    assert "os_tests.yml" not in triggered
-
-
-def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:
-    patterns = ["**", "!**/*.md", "docs/api.md", "!docs/private/**"]
-    assert github_paths_select(["docs/api.md"], patterns)
-    assert not github_paths_select(["README.md", ".github/policy.md"], patterns)
-    assert not github_paths_select(["docs/private/script.py"], patterns)
-    assert github_paths_select(["README.md", "scripts/check.py"], patterns)
-    assert not github_glob_matches("docs/nested/api.md", "docs/*.md")
-
-
-def test_filter_reader_keeps_push_and_pr_paths_separate(tmp_path: Path) -> None:
-    workflow = tmp_path / "filters.yml"
-    workflow.write_text(
-        "name: filters\non:\n"
-        "  push:\n"
-        "    branches: [main] # main only\n"
-        "    paths:\n"
-        '      - "**"\n'
-        '      - "!**/*.md"\n'
-        '      - "docs/api.md"\n'
-        "  pull_request:\n"
-        "    types: [opened, synchronize, ready_for_review]\n"
-        "    paths-ignore:\n"
-        '      - "**/*.md"\n'
-        "jobs:\n  test:\n    paths: [unrelated]\n"
-    )
-    push = event_path_filters(workflow, "push")
-    pr = event_path_filters(workflow, "pull_request")
-    assert push is not None and pr is not None
-    assert github_paths_select(["docs/api.md"], push["paths"])
-    assert not github_paths_select(["README.md"], push["paths"])
-    assert any(github_glob_matches("docs/api.md", path) for path in pr["paths-ignore"])
-    assert event_path_filters(workflow, "merge_group") is None
-
-
-@pytest.mark.parametrize(
-    "events",
-    [
-        "on: {push: {paths: ['**', '!**/*.md']}, pull_request: null}\n",
-        "on:\n    push: {paths: ['**', '!**/*.md']}\n",
-        "on:\n    push:\n        paths:\n            - '**'\n            - '!**/*.md'\n",
-        "on:\n    push:\n        paths:\n        - '**'\n        - '!**/*.md'\n",
-    ],
-)
-def test_review_911_filter_reader_accepts_flow_and_relative_indentation(
-    tmp_path: Path, events: str
-) -> None:
-    workflow = tmp_path / "flow.yml"
-    workflow.write_text(f"name: formatting regression\n{events}jobs: {{}}\n")
-    push = event_path_filters(workflow, "push")
-    assert push is not None
-    assert not github_paths_select(["docs/api.md"], push["paths"])
-    assert github_paths_select(["src/main.py"], push["paths"])
-
-
-@pytest.mark.parametrize("events", ["on: push\n", "on: [push, workflow_dispatch]\n"])
-def test_review_911_inline_events_keep_unfiltered_pushes(
-    tmp_path: Path, events: str
-) -> None:
-    workflow = tmp_path / "inline.yml"
-    workflow.write_text(events)
-    assert event_path_filters(workflow, "push") == {}
-    assert event_path_filters(workflow, "pull_request") is None
-
-
-@pytest.mark.parametrize(
-    "paths",
-    [
-        ["README.md", "docs/developer_setup.md"],
-        ["native/README.md", "packaging/windows/new-guide.md"],
-        ["gui/app/README.md", "gui/tools/packaging/README.md"],
-        [".github/actions/setup-gui/README.md", ".github/workflows/new-guide.md"],
-        ["site_src/new-guide.md", "gui/site_src/new-guide.md"],
-    ],
-)
-def test_docs_fast_path_909_pr_prose_runs_only_area_checks(paths: list[str]) -> None:
-    assert triggered_workflows(paths, "pull_request") == {"pr_ci.yml"}
-    selected = routes(paths)
-    assert selected["docs"] == any(
-        path.startswith(("site_src/", "gui/site_src/")) for path in paths
-    )
-    assert not any(selected[area] for area in ("cli", "native", "install"))
-
-
-@pytest.mark.parametrize(
-    "reference", ["docs/api.md", "docs/commands.md", "site_src/cli.md"]
-)
-def test_docs_fast_path_909_pr_generated_docs_keep_freshness_checks(
-    reference: str,
-) -> None:
-    assert "pr_ci.yml" in triggered_workflows([reference], "pull_request")
-    assert routes([reference])["docs"]
-
-
-def test_docs_fast_path_909_pr_code_still_runs_external_workflows() -> None:
-    assert {
-        "codeql.yml",
-        "gui-ci.yml",
-        "gui-dev-setup.yml",
-        "gui-distribution.yml",
-        "gui-tauri-installer.yml",
-    } <= triggered_workflows(
-        ["README.md", "gui/app/web/packagers/tauri/src/main.rs"], "pull_request"
-    )

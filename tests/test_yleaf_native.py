@@ -245,7 +245,7 @@ def test_smoke_cache_gate_needs_only_selected_build_and_shared_tables(
     tmp_path, monkeypatch
 ):
     from tests.smoke_utils import yleaf_tables_cached
-    from wgsextract_cli.core import reference_assets
+    from wgsextract_cli.core.ref_library import assets as reference_assets
 
     root = tmp_path / "yleaf/v4.1.6"
     monkeypatch.setattr(

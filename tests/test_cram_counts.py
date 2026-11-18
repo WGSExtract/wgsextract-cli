@@ -8,7 +8,7 @@ import pytest
 
 from tests.htslib_helpers import needs_htslib, sam_to_bam, write_fasta
 from wgsextract_cli.commands.info.metrics import parse_idxstats
-from wgsextract_cli.core.cram_counts import (
+from wgsextract_cli.core.alignment.cram_counts import (
     MULTI_REF,
     cram_container_totals,
     cram_read_counts,

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from tests.htslib_helpers import needs_tools, sam_to_bam
 from wgsextract_cli.commands.align import alt_contigs, ensure_bwa_alt_file
-from wgsextract_cli.core.alt_mapping import (
+from wgsextract_cli.core.alignment.alt_mapping import (
     PROBE_ALT_CONTIG,
     alt_unaware,
     alt_unaware_message,

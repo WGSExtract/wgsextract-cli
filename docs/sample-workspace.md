@@ -66,7 +66,18 @@ at = "2026-11-04T22:31:02+00:00"
 - `[detected."<file>"]`: what commands detected from each file. The file is
   named relative to the workspace, or absolute if it lies elsewhere. Each fact
   has its value, the method that found it, a confidence (`high`, `medium`,
-  `low`), the detector's version, the command and the time.
+  `low`), the detector's version, the command and the time. Platform facts
+  inferred from FASTQ samples also carry a `statistics` table: sampled read
+  and byte counts, median/N50 length, mean/max Q and p90/p10 length spread. These
+  statistics contain no read names, sequences or header tag values.
+  An inconclusive FASTQ sample is recorded as detected `Unknown` (low
+  confidence), not an override choice. Its evidence is retained when you
+  choose `--platform`; an ambiguous long-read sample still requires that
+  explicit choice on subsequent runs.
+  FASTQ platform facts also include an `evidence_fingerprint` of the bounded
+  sampled prefix, checked in addition to the generic file fingerprint. Edits
+  anywhere in that prefix invalidate the detection, including same-size edits
+  outside the generic fingerprint's three windows.
 - `fingerprint`: the file's [content fingerprint](result-manifest.md) when its
   facts were detected. If the file is replaced or changed (for example by
   `realign` into the same name), its facts no longer match and are detected
@@ -78,7 +89,7 @@ at = "2026-11-04T22:31:02+00:00"
 | Fact | Detected by | Used by |
 | :--- | :--- | :--- |
 | `sex` | `info --detailed`, or sampled non-PAR/autosomal depth on first use | `lineage y-haplogroup`, `extract ydna`, chrX/chrY ploidy in `vcf snp`/`indel`, `microarray` and `vep`, `typing str`, `vcf trio` (proband) |
-| `platform` | read-group `PL` tag, else the first read name | `vcf snp`, `vcf deepvariant`, `vcf sv`, `methylation`, `align` |
+| `platform` | read-group `PL` tag, else the first read name or a bounded FASTQ header/length/quality sample (see [platform detection](ont.md)) | `vcf snp`, `vcf deepvariant`, `vcf sv`, `methylation`, `align` |
 | `build` | header contig MD5s or lengths | reference resolution for every command |
 | `target_depths` | `info --detailed`, else a read count on first use | the low-depth warning of `vcf snp`/`indel`, `microarray` and `lineage` |
 | `read_length`, `mean_coverage` | `info` | `target_depths`; shown by `sample show` |

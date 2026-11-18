@@ -6,27 +6,32 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfFreebayesParams, VcfGatkParams
 from wgsextract_cli.core import ultima
+from wgsextract_cli.core.alignment.cram_staging import (
+    cram_version,
+    htsjdk_cram_index,
+    needs_cram30,
+)
 from wgsextract_cli.core.atomic_output import safe_output
-from wgsextract_cli.core.cram_staging import needs_cram30
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
-from wgsextract_cli.core.reference_assets import read_fai_lengths, reference_dict_path
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths, reference_dict_path
 from wgsextract_cli.core.region_selection import is_region_file, region_items
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
-from wgsextract_cli.core.temp_directory import configured_temp_directory
+from wgsextract_cli.core.temp_directory import configured_temp_directory, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -90,7 +95,7 @@ def _gatk_region_args(region: str | None, outdir: str) -> tuple[list[str], str |
         return ["-L", java_local_path(region)], None
     # A new file, never one a link at a fixed name points to.
     fd, intervals = tempfile.mkstemp(
-        dir=outdir, prefix=".gatk_region_", suffix=".intervals"
+        dir=scratch_parent(outdir), prefix=".gatk_region_", suffix=".intervals"
     )
     # One interval per line: a comma-separated --region is several.
     lines = "".join(f"{r}\n" for r in region_items(region, commas=True))
@@ -142,6 +147,35 @@ def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
             f.write(f"{contig}\t{first}\t{last}\n")
 
 
+def _gatk_cram_hint(input_file: str, stderr: object) -> str | None:
+    """A hint for GATK failing on CRAM input: CRAM 3.1 needs GATK 4.7, and
+    otherwise htsjdk's own CRAM error, when its output names one."""
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(errors="replace")
+    # The message of htsjdk's exception, e.g. "...CRAMException: <message>".
+    error = next(
+        (
+            match.group(1).strip()
+            for line in str(stderr or "").splitlines()
+            if "cram" in line.lower()
+            and (match := re.search(r"[\w.]*(?:Exception|Error): (.+)", line))
+        ),
+        None,
+    )
+    version = cram_version(input_file) if Path(input_file).is_file() else None
+    if version is not None and version >= (3, 1):
+        return (
+            f"Hint: GATK before 4.7 can't read CRAM {version[0]}.{version[1]}"
+            f"{f' ({error})' if error else ''}. Upgrade GATK or convert to BAM."
+        )
+    if version is not None and error:
+        return (
+            f"Hint: GATK (htsjdk) couldn't read the CRAM: {error}. "
+            "Converting it to BAM may help."
+        )
+    return None
+
+
 def run_freebayes(params: VcfFreebayesParams) -> None:
     """``vcf freebayes``: FreeBayes into ``freebayes.vcf.gz``."""
     verify_dependencies(["freebayes", "bcftools", "tabix", "samtools"])
@@ -157,7 +191,9 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
     # FreeBayes needs an uncompressed reference.
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_fb_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_fb_"
+        ) as work,
     ):
         # Regions as a BED: freebayes reads -r as 0-based (so chr1:1000-1050
         # lost position 1000).
@@ -250,13 +286,32 @@ def run_gatk(params: VcfGatkParams) -> None:
             evidence.GATK_BANDS,
             evidence.GATK_MIN_MAPPING_QUALITY,
         )
-    call_partitioned(
-        params,
-        setup_caller(params),
-        "gatk",
-        partial(_run_gatk, stage_region=params.region is not None),
-        gvcf,
-    )
+    setup = setup_caller(params)
+    with ExitStack() as stack:
+        read_index = None
+        # A --region is cut to a BAM by samtools first; GATK reads the CRAM
+        # itself, through its .crai, only without one.
+        if not params.gpu and params.region is None and Path(params.input).is_file():
+            work = stack.enter_context(
+                tempfile.TemporaryDirectory(
+                    dir=configured_temp_directory() or setup.outdir,
+                    prefix=".wgse_gatk_index_",
+                )
+            )
+            read_index = htsjdk_cram_index(
+                str(params.input), work, setup.threads, tool="GATK"
+            )
+        call_partitioned(
+            params,
+            setup,
+            "gatk",
+            partial(
+                _run_gatk,
+                stage_region=params.region is not None,
+                read_index=read_index,
+            ),
+            gvcf,
+        )
 
 
 def _run_gatk(
@@ -267,11 +322,13 @@ def _run_gatk(
     gvcf: str | None = None,
     *,
     stage_region: bool = True,
+    read_index: str | None = None,
 ) -> None:
     """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks.
 
     With ``gvcf``, HaplotypeCaller writes its gVCF there (-ERC GVCF, GQ
-    bands GATK_BANDS) and GenotypeGVCFs genotypes it into the VCF."""
+    bands GATK_BANDS) and GenotypeGVCFs genotypes it into the VCF.
+    ``read_index`` replaces the CRAM's own index when GATK reads it as is."""
     require_native_tool("gatk")
     scatter = params.scatter
     if params.gpu:
@@ -353,7 +410,7 @@ def _run_gatk(
 
     logging.info(LOG_MESSAGES["vcf_calling_gatk"].format(output=out_vcf))
     region_args, region_file = _gatk_region_args(region, outdir)
-    gatk_input = input_file
+    gatk_input: str | None = None
     temp_gatk_input = None
     gatk_tmp = _gatk_tmp_dir()
 
@@ -361,6 +418,9 @@ def _run_gatk(
         gatk_input, temp_gatk_input = _prepare_gatk_input(
             input_file, region if stage_region else None, ref, outdir
         )
+        reads = ["-I", java_local_path(gatk_input)]
+        if read_index and gatk_input == input_file:
+            reads += ["--read-index", java_local_path(read_index)]
         if shards:
             with tempfile.TemporaryDirectory(
                 dir=configured_temp_directory() or outdir, prefix=".wgse_gatk_scatter_"
@@ -372,8 +432,7 @@ def _run_gatk(
                             "HaplotypeCaller",
                             "-R",
                             java_local_path(ref),
-                            "-I",
-                            java_local_path(gatk_input),
+                            *reads,
                             *flow_args,
                             "--sample-ploidy",
                             str(sample_ploidy),
@@ -395,8 +454,7 @@ def _run_gatk(
                 "HaplotypeCaller",
                 "-R",
                 java_local_path(ref),
-                "-I",
-                java_local_path(gatk_input),
+                *reads,
                 "-O",
                 java_local_path(gvcf or out_vcf),
                 "--tmp-dir",
@@ -441,11 +499,9 @@ def _run_gatk(
             )
     except subprocess.CalledProcessError as e:
         logging.error(f"GATK failed: {e}")
-        if input_file.lower().endswith(".cram"):
-            logging.error(
-                "Hint: Older GATK versions do not support CRAM version 3.1. "
-                "If this failed with a CRAM error, please convert to BAM or upgrade GATK."
-            )
+        # Only GATK's own errors on what it read; not samtools' cutting a region.
+        if gatk_input and (hint := _gatk_cram_hint(gatk_input, e.stderr)):
+            logging.error(hint)
         raise WGSExtractError("GATK failed.") from e
     finally:
         _cleanup_gatk_temp_input(temp_gatk_input)

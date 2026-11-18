@@ -10,7 +10,8 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from http.server import ThreadingHTTPServer
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
@@ -50,11 +51,37 @@ def bare_repo(tmp_path: Path) -> Path:
     (mockups / "review.html").write_text(
         '<body data-page-id="custom-page">Custom</body>'
     )
+    (mockups / "shared/data/igv").mkdir(parents=True)
+    (mockups / "shared/data/igv/demo.cram").write_text("CRAM demo")
+    (mockups / "shared/data/igv/genes.bed").write_text("chr1\t0\t10\tGENE")
     git(source, "add", ".")
     git(source, "commit", "-m", "idea")
     bare = tmp_path / "repo.git"
     git(tmp_path, "clone", "--bare", str(source), str(bare))
     return bare
+
+
+@pytest.fixture
+def offline_remote() -> Iterator[tuple[str, threading.Event]]:
+    failed = threading.Event()
+
+    class Unavailable(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_error(HTTPStatus.SERVICE_UNAVAILABLE)
+            failed.set()
+
+        def log_message(self, format: str, *args: Any) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Unavailable)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/unreachable.git", failed
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 @contextmanager
@@ -118,6 +145,9 @@ def test_776_shared_notes_roundtrip_and_restart(
         assert "Idea X" in read(base, "/preview/x/")
         assert "mockups/x" in read(base, "/preview/")
         assert "All notes" in read(base, "/notes.html")
+        # The genome viewer's demo files are served like they're published
+        assert read(base, "/preview/x/shared/data/igv/demo.cram") == "CRAM demo"
+        assert "GENE" in read(base, "/preview/x/shared/data/igv/genes.bed")
         for path in ("/serve.py", "/preview/x/serve.py", "/preview/x/leak.txt"):
             with pytest.raises(HTTPError) as error:
                 read(base, path)
@@ -382,8 +412,13 @@ def test_776_online_backup_can_restore_notes(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("cache", ["manifest", "scan", "empty"])
 def test_776_offline_start_keeps_notes_available_and_retries(
-    tmp_path: Path, bare_repo: Path, cache: str
+    tmp_path: Path,
+    bare_repo: Path,
+    cache: str,
+    offline_remote: tuple[str, threading.Event],
 ) -> None:
+    """Issue #1037: recovery must not depend on OS TCP-refusal timing."""
+    remote_url, failed = offline_remote
     db_args = ("--db", str(tmp_path / "notes.db"))
     args = (*db_args, "--repo", str(bare_repo), "--refresh-minutes", "0.01")
     source = bare_repo.parent / "source"
@@ -419,9 +454,10 @@ def test_776_offline_start_keeps_notes_available_and_retries(
         "remote",
         "set-url",
         "origin",
-        "http://127.0.0.1:1/unreachable.git",
+        remote_url,
     )
     with running(tmp_path, *args, wait_for_pages=False) as base:
+        assert failed.wait(timeout=10), "server never attempted the offline fetch"
         assert request(base, "/api/notes")["notes"][0]["text"] == "Available offline"
         assert "All notes" in read(base, "/notes.html")
         if cache != "empty":

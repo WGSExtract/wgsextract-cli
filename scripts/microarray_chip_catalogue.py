@@ -31,7 +31,7 @@ import zlib
 from pathlib import Path
 from typing import Any, TextIO
 
-from wgsextract_cli.core.microarray_revisions import (
+from wgsextract_cli.core.microarray.revisions import (
     _COLUMN_LABELS,
     CATALOGUE,
     Fingerprint,
@@ -42,7 +42,7 @@ from wgsextract_cli.core.microarray_revisions import (
     fingerprint,
     parse_raw_export,
 )
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_for_format,
     get_template_format,
     template_rows,
@@ -354,7 +354,7 @@ def _closest_template(
 
 
 def _relation(name: str, relation: str, added: int, removed: int) -> dict[str, Any]:
-    from wgsextract_cli.core.microarray_utils import FORMAT_ALIASES
+    from wgsextract_cli.core.microarray.templates import FORMAT_ALIASES
 
     keys = sorted(k for k, v in FORMAT_ALIASES.items() if v == name)
     return {
@@ -381,7 +381,7 @@ def survey(workdir: Path, roots: list[str], names: list[str]) -> None:
     for digest, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         first = members[0]
         sketch = re.sub(r"\s", "", first["sketch"])
-        from wgsextract_cli.core.microarray_revisions import decode_sketch
+        from wgsextract_cli.core.microarray.revisions import decode_sketch
 
         near = sorted(
             (

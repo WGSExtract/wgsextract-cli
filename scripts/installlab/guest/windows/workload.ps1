@@ -31,8 +31,8 @@ W "info" @("info", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "
 W "info_cram" @("info", "--input", $CRAM, "--ref", $REF, "--outdir", (Join-Path $Out "info_cram"))
 W "mt_bam" @("extract", "mt-bam", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "mt_bam"))
 W "mito_vcf" @("extract", "mito-vcf", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "mito_vcf"))
-W "mt_haplo" @("lineage", "mt-haplogroup", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "mt_haplo"))
-W "y_haplo" @("lineage", "y-haplogroup", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "y_haplo"))
+W "mt_haplo" @("lineage", "mt-haplogroup", "--download", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "mt_haplo"))
+W "y_haplo" @("lineage", "y-haplogroup", "--download", "--input", $BAM, "--ref", $REF, "--outdir", (Join-Path $Out "y_haplo"))
 # Evidence includes predictions, not the downloaded reference-table cache.
 foreach ($Cache in @("reference/yleaf", "reference/haplogrep3")) {
     $CachePath = Join-Path $Out $Cache

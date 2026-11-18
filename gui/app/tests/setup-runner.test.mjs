@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chmod, cp, mkdir, mkdtemp, readFile, realpath, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,15 @@ import { exampleBundleCopy } from "./example-bundle.mjs";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { forgetSetupWithMissingTools, runInitialSetupIfNeeded, runSetup, runSetupStep, runUninstall } from "../dist/web/src/server/setup-runner.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
+
+async function installRuntimeMarker(appDir) {
+  const metadata = path.join(appDir, ".pixi", "envs", "default", "conda-meta");
+  await mkdir(metadata, { recursive: true });
+  await writeFile(path.join(metadata, "pixi"), "{}");
+  const bin = path.join(path.dirname(appDir), "bin");
+  await mkdir(bin, { recursive: true });
+  await writeFile(path.join(bin, "wgsextract.cmd"), "@echo off\r\n");
+}
 
 test("normalizes setup platform aliases", () => {
   assert.equal(currentSetupPlatform("darwin"), "macos");
@@ -255,7 +265,7 @@ test("WGSExtract keeps platform scripts out of the shared script root", async ()
   assert.deepEqual(rootScripts.filter((script) => platformScripts.has(script)).sort(), []);
 });
 
-test("WGSExtract Windows config bootstrap includes the dataset and reference genome library defaults", async (t) => {
+test("WGSExtract Windows config bootstrap keeps the user's folders in the users workspace, run logs in the bundle workspace", async (t) => {
   if (process.platform !== "win32") {
     t.skip("Windows config bootstrap behavior is platform-specific.");
     return;
@@ -264,33 +274,43 @@ test("WGSExtract Windows config bootstrap includes the dataset and reference gen
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const script = path.join(repoRoot, "examples", "WGSExtract", "scripts", "windows", "bootstrap-wgsextract-config.ps1");
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-config-"));
-  const previousWorkspace = process.env.WGSEXTRACT_GUI_BUNDLE_WORKSPACE;
-  const previousConfigPath = process.env.WGSEXTRACT_GUI_CONFIG_PATH;
+  const bundle = path.join(tempRoot, "bundle");
+  const users = path.join(tempRoot, "users");
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+  const bootstrap = async (extra = {}) => {
+    const env = { ...process.env, WGSEXTRACT_GUI_BUNDLE_WORKSPACE: bundle, WGSEXTRACT_GUI_USERS_WORKSPACE: users, ...extra };
+    delete env.WGSEXTRACT_GUI_CONFIG_PATH;
+    const result = await processManager.runProcess("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], { env });
+    assert.equal(result.exitCode, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const setting = (key, folder) => new RegExp(`^${key} = "${escapeRegExp(tomlBasicStringValue(folder))}"$`, "m");
 
   try {
-    process.env.WGSEXTRACT_GUI_BUNDLE_WORKSPACE = tempRoot;
-    delete process.env.WGSEXTRACT_GUI_CONFIG_PATH;
-    const result = await processManager.runProcess("powershell.exe", [
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      script,
-    ], { env: process.env });
-    assert.equal(result.exitCode, 0, result.stderr);
-    const bootstrap = JSON.parse(result.stdout);
+    const fresh = await bootstrap();
+    assert.equal(fresh.path, path.join(users, "config.toml"));
+    // Unset: outputs go to a wgse folder beside each command's input files.
+    assert.match(fresh.contents, /^output_directory = ""$/m);
+    for (const [key, folder] of [["mygenomes_library", "mygenomes"], ["reference_library", "reference"], ["reference_genome_library", "genomes"], ["temp_directory", "temp"]]) {
+      assert.match(fresh.contents, setting(key, path.join(users, folder)));
+    }
+    assert.match(fresh.contents, setting("log_dir", path.join(bundle, "logs")));
+    assert.doesNotMatch(fresh.contents, /^(dataset_library|genome_library)/m);
 
-    assert.equal(bootstrap.path, path.join(tempRoot, "config.toml"));
-    assert.match(bootstrap.contents, new RegExp(`output_directory = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "output")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`reference_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "reference")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`dataset_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "datasets")))}"`));
-    assert.match(bootstrap.contents, new RegExp(`reference_genome_library = "${escapeRegExp(tomlBasicStringValue(path.join(tempRoot, "genomes")))}"`));
-    assert.doesNotMatch(bootstrap.contents, /^genome_library/m);
+    // A separately installed CLI (a server's) keeps its system folders where it does by default.
+    const separate = await bootstrap({ WGSEXTRACT_GUI_CLI_INSTALL: "separate" });
+    assert.match(separate.contents, setting("mygenomes_library", path.join(users, "mygenomes")));
+    assert.doesNotMatch(separate.contents, /^(reference_library|reference_genome_library|temp_directory)/m);
+
+    // Existing saved input paths remain valid during the workspace split.
+    await mkdir(path.join(users, "datasets", "joe"), { recursive: true });
+    await writeFile(path.join(users, "config.toml"), `dataset_library = "${tomlBasicStringValue(path.join(users, "datasets"))}"
+`);
+    const upgraded = await bootstrap();
+    assert.match(upgraded.contents, setting("mygenomes_library", path.join(users, "datasets")));
+    assert.ok(existsSync(path.join(users, "datasets", "joe")));
   } finally {
     await processManager.terminateAllProcesses();
-    setOrDeleteEnv("WGSEXTRACT_GUI_BUNDLE_WORKSPACE", previousWorkspace);
-    setOrDeleteEnv("WGSEXTRACT_GUI_CONFIG_PATH", previousConfigPath);
     await rm(tempRoot, { force: true, recursive: true });
   }
 });
@@ -316,7 +336,7 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await mkdir(outDir, { recursive: true });
     await writeFile(vcfInput, "original-vcf\n");
     await writeFile(bamInput, "original-bam\n");
@@ -371,8 +391,8 @@ test("WGSExtract Windows repair actions forward to CLI file mode", async (t) => 
     assert.equal(bamResult.exitCode, 0, bamResult.stderr);
 
     const calls = await readFile(path.join(tempRoot, "calls.log"), "utf8");
-    assert.match(calls, new RegExp(`PIXI\\|run\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-vcf\\|--input\\|${escapeRegExp(vcfInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
-    assert.match(calls, new RegExp(`PIXI\\|run\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-bam\\|--input\\|${escapeRegExp(bamInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
+    assert.match(calls, new RegExp(`PIXI\\|run\\|--no-install\\|--frozen\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-vcf\\|--input\\|${escapeRegExp(vcfInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
+    assert.match(calls, new RegExp(`PIXI\\|run\\|--no-install\\|--frozen\\|wgsextract\\|--config\\|${escapeRegExp(configPath)}\\|repair\\|ftdna-bam\\|--input\\|${escapeRegExp(bamInput)}\\|--outdir\\|${escapeRegExp(outDir)}\\|STDIN=`));
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -401,7 +421,7 @@ test("WGSExtract Windows runtime wrapper does not wait for stdin unless requeste
 
   try {
     await cp(sourceScripts, scriptsRoot, { recursive: true });
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, [
       "@echo off",
       `>> "${path.join(tempRoot, "calls.log")}" echo PIXI^|%*`,
@@ -420,7 +440,7 @@ test("WGSExtract Windows runtime wrapper does not wait for stdin unless requeste
 
     assert.equal(result.exitCode, 0, result.stderr);
     const calls = await readFile(path.join(tempRoot, "calls.log"), "utf8");
-    assert.match(calls, /PIXI\|run wgsextract ref list/);
+    assert.match(calls, /PIXI\|run --no-install --frozen wgsextract ref list/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -541,7 +561,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   try {
     await cp(sourceBundleRoot, bundleRoot, { recursive: true });
     await rm(path.join(bundleRoot, "reference"), { force: true, recursive: true });
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, "#!/bin/sh\necho fake pixi \"$@\"\nexit 0\n");
     await chmod(fakePixi, 0o755);
     process.env.PIXI = fakePixi;
@@ -558,7 +578,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\/posix\/bootstrap-reference-library\.sh/);
-    assert.match(result.stdout, /fake pixi run wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -585,7 +605,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
   const processManager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
 
   try {
-    await mkdir(appDir, { recursive: true });
+    await installRuntimeMarker(appDir);
     await writeFile(fakePixi, [
       "@echo off",
       "echo fake pixi %*",
@@ -608,7 +628,7 @@ test("runs WGSExtract platform setup scripts from nested script folders", async 
 
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\\windows\\bootstrap-reference-library\.ps1/);
-    assert.match(result.stdout, /fake pixi run wgsextract --config .*WGSExtract[\\/]config\.toml ref bootstrap --ref /);
+    assert.match(result.stdout, /fake pixi run --no-install --frozen python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);
@@ -636,7 +656,7 @@ test("WGSExtract Windows bootstrap runs ref bootstrap", async (t) => {
   try {
     await mkdir(scriptRoot, { recursive: true });
     await cp(sourceScript, script);
-    await writeFile(path.join(scriptRoot, "run-wgsextract.ps1"), [
+    await writeFile(path.join(scriptRoot, "run-wgsextract-env.ps1"), [
       "Write-Output \"fake wgsextract $($args -join ' ')\"",
       "exit 0",
       "",
@@ -654,7 +674,7 @@ test("WGSExtract Windows bootstrap runs ref bootstrap", async (t) => {
     ], { env: process.env });
 
     assert.equal(result.exitCode, 0, result.stderr);
-    assert.match(result.stdout, /fake wgsextract ref bootstrap --ref /);
+    assert.match(result.stdout, /fake wgsextract python .*bootstrap_reference_library\.py/);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("WGSEXTRACT_REFERENCE_LIBRARY", previousReferenceLibrary);

@@ -52,6 +52,7 @@ above works.
 | `pharmgkb_level`, `pharmgkb_drugs` | text | Best PharmGKB level of evidence (1A, 1B, 2A, 2B, 3, 4) and the drugs, from `vcf pharmgkb`. |
 | `pharmcat_diplotype`, `pharmcat_phenotype` | text | PharmCAT's call for the row's gene, with `--pharmcat-json <stem>.phenotype.json` from `vcf pharmcat`. |
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
+| `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
 
 The TSV has a header row and leaves missing values empty. The SQLite database
@@ -60,6 +61,19 @@ meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
 row count and command line). It is indexed on `gene`, `rsid` and
 `(chrom, pos)`.
+
+A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
+where its readers look: the `acmg_*` column descriptions, the metadata key
+`acmg_disclaimer` (SQLite `metadata`, the Parquet footer), the result
+manifest's warning `acmg_research_only` and the server's `query_variants`
+pages that return `acmg_*` values (`disclaimer`). The TSV has only its header row, so
+read the classes with that disclaimer in mind:
+
+```sql
+-- Research use only: automated P/LP calls, with the criteria behind them
+SELECT gene, hgvs_p, zygosity, acmg_class, acmg_criteria, acmg_transcript
+FROM variants WHERE acmg_class IN ('P', 'LP') ORDER BY gene;
+```
 
 **Which transcript.** VEP annotates every transcript a variant touches. The
 table keeps one per allele, as VEP's `--pick` would: the one VEP flagged

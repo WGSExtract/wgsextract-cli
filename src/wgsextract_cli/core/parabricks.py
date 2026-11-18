@@ -14,7 +14,7 @@ from pathlib import Path
 
 import psutil
 
-from wgsextract_cli.core import alignment_memory
+from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
     docker,

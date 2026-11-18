@@ -163,7 +163,16 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
     if manifest and os.path.dirname(pixi_cmd):
         # A relative path (from PIXI_EXE or PATH) must still resolve from there.
         pixi_cmd = os.path.abspath(pixi_cmd)
-    command = [pixi_cmd, "list", *manifest, "-e", env, "--no-install", "--json"]
+    command = [
+        pixi_cmd,
+        "list",
+        *manifest,
+        "-e",
+        env,
+        "--no-install",
+        "--frozen",
+        "--json",
+    ]
     try:
         if manifest:
             with tempfile.TemporaryDirectory(prefix="wgse-pixi-") as empty:
@@ -185,7 +194,16 @@ def _join_command(command: list[str]) -> str:
 
 def _pixi_run_command(pixi_cmd: str, env: str, args: list[str]) -> str:
     return _join_command(
-        [pixi_cmd, "run", "--no-install", *_pixi_manifest_args(), "-e", env, *args]
+        [
+            pixi_cmd,
+            "run",
+            "--no-install",
+            "--frozen",
+            *_pixi_manifest_args(),
+            "-e",
+            env,
+            *args,
+        ]
     )
 
 
@@ -314,6 +332,7 @@ def _probe_environment_with_pixi(
                 *_pixi_manifest_args(),
                 # Never install or update an environment just to probe it.
                 "--no-install",
+                "--frozen",
                 "-e",
                 env,
                 "python",

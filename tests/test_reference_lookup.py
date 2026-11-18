@@ -21,7 +21,7 @@ from tests.htslib_helpers import needs_htslib, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.core import containers
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.reference_lookup import local_ref_path
+from wgsextract_cli.core.ref_library.lookup import local_ref_path
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 

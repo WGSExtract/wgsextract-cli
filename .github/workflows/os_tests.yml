@@ -21,12 +21,10 @@ on:
         type: string
         required: true
       matrix:
-        description: JSON list of {tier, shard, label}; the first entry seeds shared main caches.
+        description: Single all-tier job; the first/only entry seeds shared main caches.
         type: string
         default: >-
-          [{"tier": "core", "shard": "0/2", "label": "core-1"},
-           {"tier": "core", "shard": "1/2", "label": "core-2"},
-           {"tier": "integration", "shard": "all", "label": "integration"}]
+          [{"tier": "all", "shard": "all", "label": "all"}]
       reference:
         description: Install the hs38 reference library the reference-backed tests read.
         type: boolean
@@ -34,6 +32,12 @@ on:
       skip-generic:
         type: boolean
         default: false
+      setup-checks:
+        type: boolean
+        default: true
+      move-modules:
+        type: string
+        default: "[]"
       tests:
         description: JSON affected test files, or all for safety runs.
         type: string
@@ -74,17 +78,17 @@ jobs:
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
         run: test "$(uname -m)" = aarch64
-      # The first matrix entry (core-1) is the one main-branch cache writer.
+      # The single all-tier entry is the main-branch cache writer.
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ inputs.environments }}
           writer: ${{ strategy.job-index == 0 }}
       - name: Test installer
-        if: inputs.os != 'windows'
+        if: inputs.os != 'windows' && inputs.setup-checks
         run: scripts/test_install_sh.sh
       - name: Validate installer arguments
-        if: inputs.os == 'windows' && strategy.job-index == 0
+        if: inputs.os == 'windows' && strategy.job-index == 0 && inputs.setup-checks
         shell: cmd
         run: install_windows.bat --dry-run --msys2-root C:\msys64 --skip-pacman-setup
       - name: Verify Tools
@@ -98,13 +102,19 @@ jobs:
         run: |
           pixi run --no-install wgsextract lineage y-haplogroup --help > /dev/null
           pixi run -e vep --no-install vep --help > /dev/null
+      - name: Import moved modules and collect the full suite
+        if: github.event_name == 'pull_request' && inputs.move-modules != '[]'
+        shell: bash
+        env:
+          MOVE_MODULES: ${{ inputs.move-modules }}
+        run: pixi run python scripts/ci_check_moves.py --modules "$MOVE_MODULES"
       # UCSC is often unresolvable from runners (#667). Bootstrap keeps a chain
       # already in the library, so restore the newest cached one and keep it only
       # if it has the pinned SHA-256. A verified checksum has one shared key.
       - name: Pinned hg19ToHg38 chain checksum
         if: inputs.reference
         id: chain
-        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray_targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
+        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray.targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
       - name: Restore the hg19ToHg38 liftOver chain
         if: inputs.reference
         id: chain-cache
@@ -173,7 +183,7 @@ jobs:
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           if (Test-Path .pixi/envs/imputation) {
@@ -182,7 +192,7 @@ jobs:
           pixi install --locked -e imputation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
@@ -249,11 +259,11 @@ jobs:
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
       - name: Check the app's bundle commands parse with this CLI
-        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
+        if: inputs.os == 'ubuntu' && strategy.job-index == 0 && (inputs.setup-checks || inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_cli_parser.py'))
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
-        if: inputs.os == 'windows' && matrix.tier == 'integration' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
+        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
         shell: pwsh
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
@@ -265,7 +275,7 @@ jobs:
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
-        if: matrix.tier != 'core' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
+        if: inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_')
         run: pixi run test-e2e-fake --junitxml=out/e2e-fake.xml
       - name: Publish test timings and non-gating coverage
         if: always()
@@ -278,3 +288,4 @@ jobs:
             out/imputation-e2e.xml
             out/vep-rs-e2e.xml
             out/e2e-fake.xml
+            out/pure-move-collection.log

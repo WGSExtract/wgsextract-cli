@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 
 def _params(outdir: Path, **options: object) -> api.ScorePgsParams:
     return api.ScorePgsParams(
-        input=FIXTURES / "sample.vcf",
+        input=FIXTURES / "variants.vcf",
         build="GRCh38",
         scoring_file=FIXTURES / "additive.txt",
         outdir=outdir,
@@ -85,10 +85,131 @@ def test_617_confident_bed_does_not_override_explicit_no_call(tmp_path: Path) ->
 
 
 def test_617_reference_block_only_covers_its_interval(tmp_path: Path) -> None:
-    result = api.score.pgs(_params(tmp_path, ref=_reference(tmp_path)))
+    gvcf = FIXTURES / "sample.vcf"
+    params = replace(_params(tmp_path), input=gvcf, ref=_reference(tmp_path))
+    result = api.score.pgs(params)
     assert result.metrics["score_sum"] == pytest.approx(1.2)
-    assert result.details["match_counts"]["reference_block"] == 1
-    assert result.details["match_counts"]["missing"] == 2
+    assert result.details["match_counts"]["callable_reference"] == 1
+    # A gVCF that doesn't list a base read nothing there (#863).
+    assert result.details["match_counts"]["uncovered"] == 2
+
+
+def test_863_gvcf_blocks_need_quality_and_reads_to_be_hom_ref(tmp_path: Path) -> None:
+    """Issue #863: a `<NON_REF>` block with no GQ or depth, or a DeepVariant
+    `<*>` block that no read covered (MIN_DP 0), was counted as homozygous
+    reference; neither says the bases were read well."""
+    lines = (FIXTURES / "sample.vcf").read_text().splitlines()
+    lines[-1] = "chr1\t60\t.\tA\t<NON_REF>\t.\tPASS\tEND=75\tGT\t0/0"
+    lines.append("chr1\t76\t.\tA\t<*>\t.\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:0:0")
+    gvcf = tmp_path / "blocks.g.vcf"
+    gvcf.write_text("\n".join(lines) + "\n")
+    scoring = tmp_path / "score.txt"
+    scoring.write_text(
+        "#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n"
+        "1\t70\tA\tC\t1\n1\t90\tA\tC\t1\n"
+    )
+    result = api.score.pgs(
+        replace(_params(tmp_path), input=gvcf, scoring_file=scoring,
+                ref=_reference(tmp_path))
+    )  # fmt: skip
+    assert result.metrics["variants_matched"] == 0
+    assert result.details["match_counts"] == {
+        "low_quality_reference": 1,
+        "uncovered": 1,
+    }
+
+
+def _gvcf_score(
+    tmp_path: Path, header: list[str], records: list[str], sample: str = "SAMPLE"
+) -> api.Result:
+    """Score sites chr1:20 (reference C) and chr2:5 on a gVCF of chr1."""
+    lines = (FIXTURES / "sample.vcf").read_text().splitlines()
+    declarations = [
+        line
+        for line in lines
+        if line.startswith("##") and not line.startswith(("##fileformat=", "##contig="))
+    ]
+    columns = next(line for line in lines if line.startswith("#CHROM")).split("\t")
+    gvcf = tmp_path / "input.g.vcf"
+    gvcf.write_text(
+        "\n".join([*header, *declarations, "\t".join([*columns[:9], sample])] + records)
+        + "\n"
+    )
+    scoring = tmp_path / "score.txt"
+    scoring.write_text(
+        "#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n"
+        "1\t20\tC\tT\t1\n2\t5\tA\tC\t1\n"
+    )
+    ref = tmp_path / "reference.fa"
+    ref.write_text(">chr1\n" + "C" * 100 + "\n>chr2\n" + "A" * 100 + "\n")
+    subprocess.run(["samtools", "faidx", str(ref)], check=True)
+    return api.score.pgs(
+        replace(_params(tmp_path), input=gvcf, scoring_file=scoring, ref=ref)
+    )
+
+
+GOOD_REFERENCE = "chr1\t1\t.\tC\t<*>\t.\tPASS\tEND=100\tGT:GQ:DP:MIN_DP\t0/0:50:30:30"
+
+
+def test_863_gvcf_sample_named_with_a_space_keeps_its_reference_evidence(
+    tmp_path: Path,
+) -> None:
+    """Issue #863 review: a sample name with a space was split into two
+    names, so its own gVCF was taken for another sample's and ignored."""
+    result = _gvcf_score(
+        tmp_path,
+        ["##fileformat=VCFv4.2", "##contig=<ID=chr1,length=100>"],
+        [GOOD_REFERENCE],
+        sample="HG002 child",
+    )
+    assert "pgs_reference_evidence_other_sample" not in {
+        w.code for w in result.warnings
+    }
+    assert result.details["match_counts"]["callable_reference"] == 1
+    # The chr2 site, off the gVCF, is counted too.
+    assert result.details["reference_evidence"]["site_states"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+
+
+def test_863_contig_declared_without_length_is_assessed_from_the_ref(
+    tmp_path: Path,
+) -> None:
+    """Issue #863 review: a gVCF declaring ``##contig=<ID=chr1>`` without a
+    length had every site not assessed, even with --ref; and a scored site on
+    a contig the gVCF lacks was left out of the reported site states."""
+    result = _gvcf_score(
+        tmp_path, ["##fileformat=VCFv4.2", "##contig=<ID=chr1>"], [GOOD_REFERENCE]
+    )
+    assert result.details["match_counts"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+    assert result.details["reference_evidence"]["site_states"] == {
+        "callable_reference": 1,
+        "not_assessed": 1,
+    }
+
+
+def test_863_gvcf_of_single_base_records_known_by_its_header(tmp_path: Path) -> None:
+    """Issue #863 review: a gVCF of only single-base ``ALT=.`` reference
+    records wasn't recognised, so a 0/0 read by 3 reads scored as a call."""
+    from wgsextract_cli.core.reference_evidence import DEPTH_ONLY, Provenance
+
+    result = _gvcf_score(
+        tmp_path,
+        [
+            "##fileformat=VCFv4.2",
+            Provenance("bcftools", "1.21", DEPTH_ONLY).header(),
+            "##contig=<ID=chr1,length=100>",
+        ],
+        ["chr1\t20\t.\tC\t.\t.\tPASS\t.\tGT:GQ:DP\t0/0:50:3"],
+    )
+    assert result.details["match_counts"]["low_quality_reference"] == 1
+    assert result.metrics["variants_matched"] == 0
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -164,9 +285,8 @@ def test_617_palindromic_strand_is_not_inferred_from_matching_alleles(
     assert "pgs_ambiguous_strand_assumed" in {w.code for w in kept.warnings}
 
 
-@pytest.mark.parametrize("with_bed", [False, True])
 def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
-    tmp_path: Path, with_bed: bool
+    tmp_path: Path,
 ) -> None:
     source = (FIXTURES / "sample.vcf").read_text().splitlines()
     lines = []
@@ -177,7 +297,7 @@ def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
             )
         elif not line.startswith("#"):
             fields = line.split("\t")
-            fields[8] = "GT:FT"
+            fields[8] += ":FT"
             fields[9] += ":LowGQ" if fields[1] in ("10", "60") else ":PASS"
             line = "\t".join(fields)
         lines.append(line)
@@ -190,12 +310,13 @@ def test_617_sample_filters_exclude_genotypes_and_reference_blocks(
             _params(tmp_path),
             input=vcf,
             ref=_reference(tmp_path),
-            confident_bed=bed if with_bed else None,
+            confident_bed=bed,
         )
     )
-    assert result.metrics["score_sum"] == pytest.approx(2.0 if with_bed else 0.5)
-    assert result.details["match_counts"]["filtered"] == 1
-    assert result.details["match_counts"]["overlapping_nonreference"] == 1
+    # The BED can't make the bases this gVCF never read reference (#863).
+    assert result.metrics["score_sum"] == pytest.approx(0.5)
+    assert result.details["match_counts"]["filtered"] == 2
+    assert result.details["match_counts"]["uncovered"] == 1
 
 
 def test_617_confident_bed_uses_configured_reference(tmp_path: Path) -> None:
@@ -257,12 +378,27 @@ def test_617_download_retries_and_records_catalog_licence(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         )
     )
     assert result.details["license"] == "Test licence"
     assert result.details["pgs_id"] == pgs_id
     assert result.metrics["score_sum"] == pytest.approx(1.0)
     assert "pgs_uncurated_score" in {w.code for w in result.warnings}
+
+    def offline(*args, **kwargs):
+        pytest.fail("#1052: cached PGS scoring must not refresh without --download")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    cached = api.score.pgs(
+        api.ScorePgsParams(
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            pgs_id=pgs_id,
+            outdir=tmp_path,
+        )
+    )
+    assert cached.metrics["score_sum"] == pytest.approx(result.metrics["score_sum"])
 
 
 @pytest.mark.parametrize(
@@ -310,7 +446,11 @@ def test_864_bmi_alias_warns_of_its_scores_author_licence(
     monkeypatch.setattr(urllib.request, "urlopen", response)
     result = api.score.pgs(
         api.ScorePgsParams(
-            input=FIXTURES / "sample.vcf", build="GRCh38", trait="bmi", outdir=tmp_path
+            input=FIXTURES / "sample.vcf",
+            build="GRCh38",
+            trait="bmi",
+            outdir=tmp_path,
+            download=True,
         )
     )
     warned = [w for w in result.warnings if w.code == "pgs_license_restricted"]
@@ -406,6 +546,7 @@ def test_617_truncated_catalog_download_retries_before_scoring(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         )
     )
     assert requests[bad_url] == 2
@@ -450,6 +591,7 @@ def test_617_bad_catalog_download_never_replaces_a_good_cached_copy(
             build="GRCh38",
             pgs_id=pgs_id,
             outdir=tmp_path,
+            download=True,
         ),
         check=False,
     )
@@ -963,7 +1105,7 @@ def test_617_pr925_reference_download_failure_is_its_own_status(
     monkeypatch.setattr(
         "wgsextract_cli.core.pgs_reference.download_file", lambda *a, **k: False
     )
-    result = _calibrated(world, tmp_path / "out")
+    result = _calibrated(world, tmp_path / "out", download=True)
     assert result.exit_code == 0, result.error
     assert result.details["percentile"] is None
     assert result.details["percentile_status"] == "reference_unavailable"

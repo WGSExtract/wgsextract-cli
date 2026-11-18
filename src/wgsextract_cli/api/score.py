@@ -16,13 +16,14 @@ from typing import Literal
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
-from ._params import Params, param
+from ._network import DownloadParams
+from ._params import param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import input_param, outdir_param
 
 
 @dataclass(frozen=True, kw_only=True)
-class ScorePgsParams(Params):
+class ScorePgsParams(DownloadParams):
     """Score one sample's VCF on the specified build. Explicit calls and
     reference blocks are supported; a variants-only VCF needs a matching
     confident BED and reference FASTA to infer absent reference calls.

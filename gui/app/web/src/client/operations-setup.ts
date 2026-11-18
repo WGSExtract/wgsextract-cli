@@ -34,6 +34,8 @@ export async function runSetup() {
     state.activeTerminalID = setupID;
     clearSetupElapsedTimer();
     state.setupRun = { status: "running", results: [], currentStepID: null, currentStepStartedAt: null, currentStepElapsedMs: 0 };
+    // A new run's outcome decides whether its steps show, not an earlier run's manual toggle.
+    state.setupExpanded = null;
     // Closing the setup tab (or cancelling) aborts the stream, which stops the server-side setup run.
     const controller = new AbortController();
     runningSetup = controller;

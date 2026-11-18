@@ -118,8 +118,8 @@ def _sha256(path: Path) -> str:
 
 
 def build(final: str, out: Path) -> dict[str, Any]:
-    from wgsextract_cli.core.reference_assets import reference_genomes_dir
-    from wgsextract_cli.core.reference_processing import download_and_process_genome
+    from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
+    from wgsextract_cli.core.ref_library.processing import download_and_process_genome
 
     sources = _upstream(final)
     if not sources:

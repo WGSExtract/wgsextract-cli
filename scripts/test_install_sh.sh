@@ -44,10 +44,15 @@ case "${1:-}" in
         printf 'pixi 0.0.0-test\n'
         ;;
     install)
+        mkdir -p .pixi/envs/default/conda-meta
+        printf '{}\n' > .pixi/envs/default/conda-meta/pixi
         exit 0
         ;;
     run)
         shift
+        while [ "${1:-}" = "--no-install" ] || [ "${1:-}" = "--frozen" ]; do
+            shift
+        done
         if [ "${1:-}" = "--manifest-path" ]; then
             test -f "${2:-}" || { printf 'missing manifest: %s\n' "${2:-}" >&2; exit 3; }
             shift 2

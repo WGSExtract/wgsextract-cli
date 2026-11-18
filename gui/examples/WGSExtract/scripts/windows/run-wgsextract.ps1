@@ -67,11 +67,11 @@ if ($args.Count -gt 0 -and [string]$args[0] -eq "microarray" -and $microarrayRef
 
 # Refusals above exit 2, the CLI's usage-error code, so the app shows them next to the form.
 
-# The bundle's settings file is this runtime's config.toml, so what the CLI saves
-# (ref bootstrap's reference_library, for one) stays in the workspace instead of
-# the user's own CLI config, and leaves with the app.
+# The bundle's settings file, in the users workspace, is this runtime's config.toml,
+# so what the CLI saves (ref bootstrap's reference_library, for one) goes there.
 $workspace = if ($env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE) { $env:WGSEXTRACT_GUI_BUNDLE_WORKSPACE } else { Split-Path -Parent (Split-Path -Parent $scriptDir) }
-$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $workspace "config.toml" }
+$usersWorkspace = if ($env:WGSEXTRACT_GUI_USERS_WORKSPACE) { $env:WGSEXTRACT_GUI_USERS_WORKSPACE } else { $workspace }
+$configPath = if ($env:WGSEXTRACT_GUI_CONFIG_PATH) { $env:WGSEXTRACT_GUI_CONFIG_PATH } else { Join-Path $usersWorkspace "config.toml" }
 if ($env:WGSEXTRACT_FORWARD_STDIN -eq "1") {
     $input | & $runtime wgsextract --config $configPath @args
 } else {

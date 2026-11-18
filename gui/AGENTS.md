@@ -63,10 +63,12 @@ benchmarks) live on the `old-experimental` branch; do not reintroduce them here.
 
 ## App Behavior
 
-- The app's own settings live in platform-standard Application Support paths.
-- The user's data does not. Everything that can grow large or that the user manages (settings file, outputs, libraries, temporary files, logs) defaults to a visible, non-dot folder in the user's home, `~/wgs-extract`, known as `{{bundleWorkspace}}`. The app is normally installed for one user on a desktop, who may want to move it all at once to a bigger or faster disk from Settings, or point a single folder elsewhere.
-- Paths inside the workspace are shown in the GUI as `{{bundleWorkspace}}/...`, so moving it doesn't appear to change them. Settings files keep real paths, because the CLI reads them too.
-- Uninstall never deletes `{{bundleWorkspace}}` without asking, wherever it is. The Reference and Genome Libraries in it may be shared.
+- The app's own settings and data live in platform-standard Application Support paths. That includes `{{bundleWorkspace}}`: the app's hidden copy of the bundle, its saved state and the run logs. The app decides where it is; the user never moves it, and only opens it (Open Bundle Workspace).
+- The user's data does not. The settings file (`config.toml`) and the folders the user manages default to a visible, non-dot folder in the user's home, `~/wgs-extract` (`%USERPROFILE%\wgs-extract`), known as `{{usersWorkspace}}` (manifest `defaultUsersWorkspace`). It holds the My Genomes library, and, when the app installed the CLI, the reference data and reference genome libraries and the temporary folder too. A CLI installed on its own (a server's) keeps those local to it. The user may move the whole users workspace to a bigger or faster disk from Settings, or point a single folder elsewhere; either way what is in it moves with it.
+- A standalone CLI uses the same `~/wgs-extract` (its `config.toml`, `mygenomes/`), so a CLI and the app on one computer share them.
+- Outputs default to a `wgse` folder beside each command's input BAM, CRAM, FASTQ, VCF or microarray file from the lab (in that order, when it reads several), or beside an input already in a `wgse` folder; the lab's own folder is treated as immutable, gaining only the indexes that must sit beside their files. Only Advanced mode can set an Output Directory GUI override. Basic mode ignores `advancedOnly` GUI overrides without changing their saved values or the shared CLI config; CLI-configured defaults still apply.
+- Paths inside a workspace are shown in the GUI as `{{usersWorkspace}}/...` or `{{bundleWorkspace}}/...`, so moving it doesn't appear to change them. Settings files keep real paths, because the CLI reads them too.
+- Uninstall deletes `{{bundleWorkspace}}` with the app, but never `{{usersWorkspace}}` (or a folder the settings file names in the app's data folder) without asking. The libraries in it may be shared.
 - Redact keys, tokens, and secrets in displayed configuration.
 - Behavior must work the same on Windows, macOS, and Linux; platform-specific script folders in bundles are the extension point.
 

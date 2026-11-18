@@ -96,6 +96,16 @@ is passed only to those child commands and does not change the sample's
 declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 `real-1x`/`real-30x` runs retain build-specific ploidy.
 
+### VCF API specifications
+
+`api/vcf.py` remains the public import and dispatch facade. Its parameter
+declarations live in `api/vcf_specs/`: shared field helpers, calling, file
+operations and annotations. Update the responsible specification module when
+adding fields, and retain its explicit facade export. Parameter types keep
+their physical source modules for introspection; facade aliases keep pre-split
+pickle lookups working. Facade declaration order keeps the generated API
+reference stable without duplicating parameter descriptions beside their handlers.
+
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
@@ -210,9 +220,85 @@ text, `runs.py` loads local run records and discovers sensitive names, and
 assembles reports and fits GitHub links; existing `core.issue_report` and
 `api.support` imports remain unchanged.
 
+### Alignment pipeline
+
+The `commands/align.py` command retains orchestration and existing job/helper
+imports. Its `alignment/` package separates shared jobs/reference primitives
+(`common.py`), native BWA/memory planning (`short_reads.py`), read/reference
+preflight (`preparation.py`), Parabricks dispatch (`gpu.py`) and Ultima,
+minimap2 and pbmm2 execution (`backends.py`). Existing read-source, read-group,
+selection and output helpers remain in the same package.
+
+### Realignment pipeline
+
+The `commands/realign.py` command retains orchestration and existing job/helper
+imports. Its `realignment/` package separates job/input qualification and FASTQ
+discovery (`preparation.py`), memory/disk/time planning (`resources.py`), journaled
+alignment/index publication (`mapping.py`), single-pass/chunked long-read execution
+(`long_reads.py`) and extraction/streaming/resumption (`steps.py`). The resumable
+workflow bodies remain intact; helper dependencies flow through these layers
+without importing the realign facade.
+
+### DeepVariant pipeline
+
+The `commands/vcf/deepvariant.py` command keeps orchestration and its existing
+helper import paths. Its `deepvariant_pipeline/` package separates model/image
+selection (`models.py`), host/postprocess resource planning (`resources.py`) and
+resumable stage execution (`stages.py`).
+
+### Python module size ratchet
+
+`pixi run lint` checks Python files under `src/`, `tests/` and `scripts/`.
+New modules must stay at or below 800 physical lines. The desktop app (`gui/`)
+keeps its own policy; generated run outputs, scratch work and environments are
+not scanned.
+
+Existing oversized files have fixed, reviewable ceilings in
+`scripts/python_size_baseline.json`; exceeding one fails with
+`python_size_exceeded`. Split responsibilities rather than add or raise an
+exemption. The initial ceilings include the bounded positive growth already
+present in pinned, open pre-policy PRs, so introducing the guard does not break
+those in-flight changes.
+
+After shortening, splitting or deleting an outlier, run
+`pixi run python scripts/check_python_size.py --refresh` and commit the reduced
+baseline. Refresh only lowers/removes existing ceilings: it cannot grandfather
+a new megafile or increase a budget, and refuses to write while a new/growing
+module violates its ceiling. Removed files require their obsolete entries to be
+removed (`python_size_stale_baseline`); remove only that entry if other budgets
+still reserve in-flight work. Global refresh also removes exemptions for files
+reduced to 800 lines or less.
+Wait for reserved pre-policy versions to land before globally refreshing their
+budgets; individual ceilings may be edited downward in the meantime.
+
+The same guard runs in pre-commit, PR/main lint and exact-head generic
+certification. It uses no network, extra dependencies or environment settings.
+For a separate checkout, use the run-specific `--root`/`--baseline` arguments.
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
+
+Large DeepVariant, native-aligner, realign, personal-report and server/path suites
+are divided into focused `test_<family>_<topic>.py` modules.
+Their original `test_<family>.py` modules
+keep shared helpers and function-scoped fixtures, so existing imports and fixture
+behavior remain stable. New integration modules must retain their CI tier.
+Imported fixture aliases preserve autouse behavior too: report siblings retain
+`served_lists` so their gene-list downloads stay isolated behind the fake network.
+Modules using the shared `out/fake_30x` fixtures also retain a direct
+`ensure_fake_data` import: the loadgroup scheduler uses it to keep shared-data
+generation on one worker, even when the fixture itself is imported.
+The standalone `test_server_shared_data.py` guard names its source inputs with
+explicit repository-relative paths, so affected-test selection runs it whenever
+those consumer modules change.
+Its companion `test_server_shared_data_routing.py` checks that selection and runs
+when the worker guard changes; both guards stay outside the CI-only test list.
+
+CI routing and workflow-policy tests also have focused landing/required-gate and
+readiness/path-filter siblings. Original modules retain shared helper owners;
+all siblings stay in the CI-only and documentation selections, so splitting
+tests never removes their checks from readiness or certification.
 
 - **Assert observable behaviour.** That means:
   - output files and their content

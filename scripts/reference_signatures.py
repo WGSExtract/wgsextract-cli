@@ -24,7 +24,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from wgsextract_cli.core.reference_assets import sequence_signature
+from wgsextract_cli.core.ref_library.assets import sequence_signature
 
 CATALOG = (
     Path(__file__).resolve().parents[1]

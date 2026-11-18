@@ -1,16 +1,17 @@
-"""reference_genome_library holds only reference genomes; dataset_library holds
-the user's datasets, and the old genome_library key still names it."""
+"""reference_genome_library holds only reference genomes; mygenomes_library
+holds the user's genomes, and its older names (dataset_library,
+genome_library) still name it."""
 
 from pathlib import Path
 
 from wgsextract_cli.core import config
-from wgsextract_cli.core.config import dataset_library, settings
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.config import mygenomes_library, settings
+from wgsextract_cli.core.ref_library.assets import (
     library_of_genomes_dir,
     reference_genomes_dir,
     reference_library_of,
 )
-from wgsextract_cli.core.reference_resolver import library_roots
+from wgsextract_cli.core.ref_library.resolver import library_roots
 
 
 def test_without_the_setting_genomes_stay_inside_the_library(tmp_path):
@@ -38,17 +39,19 @@ def test_the_configured_library_keeps_its_genomes_in_their_own_folder(tmp_path):
     assert reference_genomes_dir(other) == str(other / "genomes")
 
 
-def test_dataset_library_reads_the_old_key(tmp_path, monkeypatch):
-    settings.pop("dataset_library", None)
+def test_mygenomes_library_reads_its_older_names(tmp_path):
+    settings.pop("mygenomes_library", None)
     settings["genome_library"] = str(tmp_path / "people")
-    assert dataset_library() == str(tmp_path / "people")
+    assert mygenomes_library() == str(tmp_path / "people")
     settings["dataset_library"] = str(tmp_path / "datasets")
-    assert dataset_library() == str(tmp_path / "datasets")
+    assert mygenomes_library() == str(tmp_path / "datasets")
+    settings["mygenomes_library"] = str(tmp_path / "mygenomes")
+    assert mygenomes_library() == str(tmp_path / "mygenomes")
 
 
-def test_config_file_genome_library_loads_as_dataset_library(tmp_path, monkeypatch):
+def test_config_file_older_names_load_as_mygenomes_library(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text(f'genome_library = "{Path(tmp_path, "people").as_posix()}"\n')
     monkeypatch.setattr(config, "get_config_path", lambda: path)
     loaded = config.load_config()
-    assert Path(loaded["dataset_library"]) == tmp_path / "people"
+    assert Path(loaded["mygenomes_library"]) == tmp_path / "people"

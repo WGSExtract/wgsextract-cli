@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import (
@@ -22,10 +22,11 @@ from wgsextract_cli.core.imputed_vcf import (
     describe,
     imputation_info,
 )
-from wgsextract_cli.core.microarray_quality import quality_policy
+from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -330,7 +331,7 @@ def _recall_deep_contigs(
         with open(merged, "w", newline="\n") as destination:
             destination.writelines([*header, *by_chrom[chrom], *records[tail:]])
         run_command(["bgzip", "-f", merged])
-        Path(merged + ".gz").replace(chunks[chrom])
+        move_file(merged + ".gz", chunks[chrom])
 
 
 # Reference-block ALTs: GATK, DeepVariant/bcftools, DRAGEN.
@@ -363,11 +364,15 @@ def _expand_gvcf_targets(
     unobserved alleles such as <NON_REF> trimmed. Targets no record covers stay
     absent, i.e. uncalled. Only target positions are expanded: a whole-genome
     gVCF's blocks span billions of bases."""
+    from wgsextract_cli.core.reference_evidence import reference_depth
+
     targets = _target_positions(ref_vcf_tab)
     fasta_chroms = _fasta_chromosomes(ref_fasta)
     fasta_names: dict[str, str | None] = {}
     expanded = 0
-    with tempfile.TemporaryDirectory(prefix="gVCF_", dir=outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix="gVCF_", dir=scratch_parent(outdir)
+    ) as work:
         overlapping = Path(work, "overlapping.vcf")
         records = Path(work, "records.vcf")
         regions = Path(work, "regions.txt")
@@ -421,17 +426,23 @@ def _expand_gvcf_targets(
                 # MIN_DP is a block-wide lower bound; DP may describe only
                 # its first base and must not certify every interior target.
                 formats = fields[8].split(":")
-                if "MIN_DP" in formats:
-                    minimum = formats.index("MIN_DP")
-                    depth = formats.index("DP") if "DP" in formats else len(formats)
-                    if depth == len(formats):
-                        formats.append("DP")
-                        fields[8] = ":".join(formats)
-                    for sample in range(9, len(fields)):
-                        values = fields[sample].split(":")
-                        values += ["."] * (len(formats) - len(values))
-                        values[depth] = values[minimum]
-                        fields[sample] = ":".join(values)
+                depth = formats.index("DP") if "DP" in formats else len(formats)
+                if depth == len(formats):
+                    formats.append("DP")
+                    fields[8] = ":".join(formats)
+                block_info = dict(
+                    item.partition("=")[::2] for item in fields[7].split(";")
+                )
+                for sample in range(9, len(fields)):
+                    values = fields[sample].split(":")
+                    values += ["."] * (len(formats) - len(values))
+                    minimum = reference_depth(
+                        block_info,
+                        dict(zip(formats, values, strict=True)),
+                        block=True,
+                    )
+                    values[depth] = str(minimum) if minimum is not None else "."
+                    fields[sample] = ":".join(values)
                 inside = targets.get(fields[0], array("l"))
                 variants = called.get(fields[0], set())
                 first = bisect_left(inside, int(fields[1]))
@@ -594,7 +605,7 @@ def _prepare_microarray_vcf(
             f"Calling {len(contigs)} chromosomes in parallel with {workers} workers..."
         )
         with tempfile.TemporaryDirectory(
-            prefix="chrom_chunks_", dir=outdir
+            prefix="chrom_chunks_", dir=scratch_parent(outdir)
         ) as chrom_tmp_dir:
             chrom_snps = split_snps_by_chrom(ref_vcf_tab, chrom_tmp_dir)
             # Workers only drive bcftools, so threads suffice and library

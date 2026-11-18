@@ -16,9 +16,10 @@ from wgsextract_cli.cli.registration.repair import register as register
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import input_stem
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
+from wgsextract_cli.core.temp_directory import input_scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -140,7 +141,11 @@ def repair_vcf_file(params: RepairFtdnaVcfParams) -> None:
 def _repair_vcf_to(input_path: str, output_path: str) -> tuple[int, int]:
     if input_path.lower().endswith(".bcf"):
         with tempfile.NamedTemporaryFile(
-            mode="w+", suffix=".vcf", delete=False, encoding="utf-8"
+            mode="w+",
+            suffix=".vcf",
+            delete=False,
+            encoding="utf-8",
+            dir=input_scratch_directory(Path(output_path).parent),
         ) as tmp_vcf:
             tmp_path = tmp_vcf.name
         try:

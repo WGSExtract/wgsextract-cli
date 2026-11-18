@@ -105,6 +105,11 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
    both on Linux, updating from the latest release.
 5. `uninstall.sh --yes --remove-config --remove-pixi`, then the final snapshot.
 
+Explicit config removal includes the owned default visible users workspace's config
+and, only when otherwise empty, its ownership marker and directory. Workspaces
+containing libraries or other user data remain intact; the oracle does not
+ignore leftover workspace config files.
+
 The CLI workloads and app test plan explicitly declare HG00096's known male
 sex through `sample set` before running the analyses. This rebased mini genome
 has no informative chrX assay, so coverage-based inference correctly returns
@@ -257,7 +262,8 @@ the standard user Lab User:
    bundle and the app's workspace.
 5. Uninstall is Settings > Apps > Uninstall: the registered UninstallString
    opens the uninstaller's wizard, where UI Automation ticks "Delete the
-   application data" and clicks Uninstall and Close, so the controls used are
+   application data", clicks Uninstall, explicitly answers Yes to the separate
+   users-workspace deletion question, and clicks Close, so the controls used are
    the wizard's real ones. The machine must then match the baseline,
    including the registry (Apps entries, user `Path`), the Start menu and
    `%LOCALAPPDATA%`.
@@ -438,7 +444,19 @@ builds the app unsigned from this commit for Linux, macOS arm64 and Windows
 still requires the platform's signature check to refuse it. A plan step the app
 lacks fails as "the test plan expects action X, which this app version doesn't
 have". Nightly `pinned` jobs also test the release with the CLI release it pins,
-exactly as on a user's machine. A sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
+exactly as on a user's machine. They check out the same immutable release
+revision used to select the installer and use its Install Lab plan and app
+step/report expectations, not the current tree's action names or workspace
+tokens. The judge and mutation checks use that trusted checkout too, never a
+plan or oracle from collected evidence. All scientific output checks and
+clean-machine/state checks remain those of the current tree. Locally, select
+such a checkout with `lab.py --app-contract <release-checkout> run ...` (or
+`judge ...` / `mutate ...`); the checkout must contain
+`scripts/installlab/gui_oracle.py` and its `gui/wgsextract-plan.json`.
+Legacy app-only releases from `WGSExtract/gui-for-cli` (for example `v0.4.4`)
+have no version-bound Install Lab contract and are rejected during app-source
+resolution. Select a published release from `WGSExtract/wgsextract-cli` instead.
+A sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
 breaks.
 

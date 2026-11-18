@@ -688,7 +688,7 @@ clients can validate them. CLI callers use
 `preflight_resources(lambda: estimate_resources(...))` instead.
 
 For alignments, callers can obtain `reads` using the existing bounded
-`core.read_counts.fastq_input_reads` or indexed
+`core.alignment.read_counts.fastq_input_reads` or indexed
 `core.warnings.indexed_read_count`. Omitting it leaves the D3 model's explicit
 680-million-read RAM fallback; disk uses input bytes and format (12 bytes/read
 for compact CRAM, 80 for BAM, 70 for FASTQ). A missing reference uses the human
@@ -807,13 +807,15 @@ filesystem for reference-index storage.
   storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
   GATK scattering additionally charges retained shard VCFs and their indexes to
-  the **output volume**, where they coexist with the gathered output; JVM
-  temporary storage remains a separate demand on the system temporary volume.
+  caller staging (`--tmp-dir` when configured, otherwise the output volume).
+  JVM temporary storage has its own demand (`--tmp-dir`, otherwise system temp).
   With `--reference-evidence gvcf` the gVCF (GQ bands 10,20,30,60) is
   budgeted at 3% of the input's BAM-equivalent bytes (its read count, so a
   CRAM of the same reads gets the same budget), three times over for its
   partition parts, gathered copy and published file (2.6% of the BAM
-  measured on HG002 chr20, #863); GenotypeGVCFs runs after HaplotypeCaller, within its memory.
+  measured on HG002 chr20, #863). One copy is charged to the output volume
+  and the other two to caller staging, combined when they share a filesystem.
+  GenotypeGVCFs runs after HaplotypeCaller, within its memory.
 - Sort RAM is threads × `--memory` plus 25% and 256 MiB overhead; conversion
   allows 64 MiB per codec thread plus 256 MiB overhead. bcftools allows 1 GiB per
   active contig worker plus 256 MiB. With more than one thread, contigs

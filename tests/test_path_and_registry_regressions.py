@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../s
 
 from wgsextract_cli.core.dependencies import get_jar_dir
 from wgsextract_cli.core.process_registry import proc_registry
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import popen
 from wgsextract_cli.core.variant_files import verify_paths_exist
 

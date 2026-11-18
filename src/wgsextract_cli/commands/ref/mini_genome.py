@@ -5,16 +5,17 @@ import argparse
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefTestGenomeParams
-from wgsextract_cli.core import library_removal, mini_genome, read_scope
+from wgsextract_cli.core import mini_genome, read_scope
 from wgsextract_cli.core.download_progress import format_bytes
+from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.utils import WGSExtractError
 
-from .status import dataset_library_for
+from .status import mygenomes_library_for
 
 
 def run_test_genome(params: RefTestGenomeParams) -> None:
-    datasets = dataset_library_for(params.ref, params.dataset_library)
+    datasets = mygenomes_library_for(params.mygenomes_library)
     extra: dict[str, object] = {}
     if params.install or params.delete:
         if not read_scope.may_follow(datasets):

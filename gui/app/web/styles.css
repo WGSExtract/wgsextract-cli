@@ -808,6 +808,41 @@ body.resizing-terminal * {
   margin-bottom: var(--space-3);
 }
 
+/* Advanced mode: the title row with its expand / collapse button on the right. */
+.section-header.collapsible {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.section-heading {
+  min-width: 0;
+}
+
+.card.collapsed .section-header {
+  margin-bottom: 0;
+}
+
+.section-toggle {
+  min-height: 26px;
+  inline-size: 30px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.section-toggle:hover,
+.section-toggle:focus-visible {
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+}
+
 .section-header h3 {
   margin: 0;
   font-size: 0.96rem;
@@ -817,6 +852,38 @@ body.resizing-terminal * {
 .section-header p {
   margin: var(--space-1) 0 0;
   line-height: 1.4;
+}
+
+/* A card that starts closed: its title is the toggle, with a chevron that turns when it opens. */
+.collapsible-card > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-card > summary::before {
+  content: "▸";
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.collapsible-card[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.collapsible-card > summary > p {
+  flex-basis: 100%;
+}
+
+.collapsible-card:not([open]) > summary {
+  margin-bottom: 0;
 }
 
 .controls {
@@ -981,6 +1048,26 @@ input[type="checkbox"] {
   display: grid;
   grid-template-columns: repeat(auto-fill, 5.5rem);
   gap: 4px 8px;
+}
+
+/* Inline layout: a group's options side by side, and consecutive inline groups on one row. */
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-5);
+}
+
+.option-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--space-4);
+}
+
+.option-inline label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .option-columns.wide {
@@ -2044,4 +2131,10 @@ tbody tr + tr {
 .workspace-location-confirm {
   display: grid;
   gap: 8px;
+}
+
+/* Its buttons sit side by side at their own widths, not in the input row's grid. */
+.workspace-location-confirm .input-button-row {
+  display: flex;
+  flex-wrap: wrap;
 }

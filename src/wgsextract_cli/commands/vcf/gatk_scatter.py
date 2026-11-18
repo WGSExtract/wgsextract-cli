@@ -12,11 +12,11 @@ from threading import Event
 
 import psutil
 
-from wgsextract_cli.core.alignment_memory import available_memory
+from wgsextract_cli.core.alignment.memory import available_memory
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.progress import Heartbeat
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.resource_estimates import GATK_WORKER_BYTES
 from wgsextract_cli.core.run_log import active_run_log
 from wgsextract_cli.core.temp_directory import configured_temp_directory

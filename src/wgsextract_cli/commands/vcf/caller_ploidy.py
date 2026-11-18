@@ -9,15 +9,16 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TypeVar
 
-from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
+from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGatkParams
 from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.builds import canonical_build, ploidy_for_build
-from wgsextract_cli.core.reference_assets import read_fai_lengths, sequence_dictionary
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths, sequence_dictionary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -163,7 +164,7 @@ def calling_ploidy(
     if library.ploidy_file:
         text = Path(library.ploidy_file).read_text()
     elif canonical_build(library.build) in {"hg19", "hg38"}:
-        from wgsextract_cli.core.reference_processing import _ploidy_content
+        from wgsextract_cli.core.ref_library.processing import _ploidy_content
 
         assert library.build is not None
         text = _ploidy_content(ploidy_for_build(library.build))
@@ -188,7 +189,7 @@ def calling_ploidy(
     male, female = _policy(rows, selected, "M"), _policy(rows, selected, "F")
     if male == female:
         return female
-    sex = sample_sex(alignment, directory)
+    sex = sample_sex(alignment, directory, reference=reference)
     if sex is not None and sex not in {"Male", "Female"}:
         warn(
             "caller_sex_unknown",
@@ -242,7 +243,7 @@ def require_diploid(intervals: list[PloidyInterval], caller: str) -> None:
         )
 
 
-P = TypeVar("P", VcfClair3Params, VcfGatkParams)
+P = TypeVar("P", VcfClair3Params, VcfDeepvariantParams, VcfGatkParams)
 
 
 @dataclass(frozen=True)
@@ -262,11 +263,14 @@ def call_partitioned(
     name: str,
     run: Callable[[P, int, CallerSetup | None, bool, str | None], None],
     gvcf: GvcfEngine | None = None,
+    *,
+    gpu_ploidy: bool = False,
 ) -> None:
     """Run haploid and diploid jobs separately, then gather in reference order.
 
     ``run`` writes the VCF, and with ``gvcf`` the caller's raw gVCF at the
-    path it is given. Each partition's gVCF is cut at its edges, gathered and
+    path it is given. ``gpu_ploidy``: ``run`` calls a haploid partition on
+    the GPU too. Each partition's gVCF is cut at its edges, gathered and
     published as ``<name>.g.vcf.gz`` with its provenance."""
     from wgsextract_cli.commands.vcf.basic import record_variants
     from wgsextract_cli.core.atomic_output import safe_output
@@ -316,7 +320,7 @@ def call_partitioned(
             run(params, 2, setup, True, None)
             return
         with tempfile.TemporaryDirectory(
-            dir=setup.outdir, prefix=".wgse_gvcf_"
+            dir=scratch_parent(setup.outdir), prefix=".wgse_gvcf_"
         ) as work:
             raw, cut = Path(work, "raw.g.vcf.gz"), Path(work, "cut.g.vcf.gz")
             run(params, 2, setup, True, str(raw))
@@ -324,14 +328,14 @@ def call_partitioned(
             publish_gvcf(str(cut), out_gvcf, provenance)
         record_gvcf(out_gvcf)
         return
-    if params.gpu:
+    if params.gpu and not gpu_ploidy:
         require_diploid(intervals, f"{name} --gpu")
     if getattr(params, "scatter", False):
         raise WGSExtractError(
             "GATK --scatter does not support sex/PAR ploidy partitions."
         )
     if name == "gatk" and params.region is None:
-        from wgsextract_cli.core.cram_staging import cram_version
+        from wgsextract_cli.core.alignment.cram_staging import cram_version
 
         version = cram_version(str(params.input))
         if version is not None and version >= (3, 1):
@@ -344,7 +348,9 @@ def call_partitioned(
     verify_dependencies(["bcftools", "tabix", *(["samtools"] if gvcf else [])])
     output = str(Path(setup.outdir, f"{name}.vcf.gz"))
     called = [i for i in intervals if i.ploidy]
-    with tempfile.TemporaryDirectory(dir=setup.outdir, prefix=".ploidy_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(setup.outdir), prefix=".ploidy_"
+    ) as work:
         parts: list[str] = []
         evidence: list[str] = []
         for ploidy in sorted(active):

@@ -18,11 +18,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.alignment.profiles import (
+    OUTPUT_PROFILES,
+    output_profile_options,
+)
+from wgsextract_cli.core.alignment.samtools_commands import indexed_output, parse_memory
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES, output_profile_options
 from wgsextract_cli.core.results import current_result, fingerprint, warn
-from wgsextract_cli.core.samtools_commands import indexed_output, parse_memory
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 

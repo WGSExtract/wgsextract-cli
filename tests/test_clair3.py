@@ -398,11 +398,6 @@ def test_clair3_links_go_in_the_configured_temp_directory(
     assert run["opts"]["bam_fn"].startswith(str(chosen))
     assert vcf_calls(tmp_path / "out" / "clair3.vcf.gz") == reads.calls[:1]
 
-    monkeypatch.setitem(clair3.settings, "temp_directory", str(spaced))
-    with pytest.raises(WGSExtractError, match="temp_directory"):
-        run_wgsextract(*args, "--input", reads.bam, "--outdir", str(tmp_path / "o2"))
-    assert len(fake_clair3.runs()) == 1
-
     plain = snp_sample(tmp_path, DORADO_RG)
     run_wgsextract(
         "vcf", "clair3", "--ref", plain.ref, "--model", str(model),
@@ -410,6 +405,11 @@ def test_clair3_links_go_in_the_configured_temp_directory(
         "--outdir", str(tmp_path / "o3"),
     )  # fmt: skip
     assert vcf_calls(tmp_path / "o3" / "clair3.vcf.gz") == plain.calls[:1]
+
+    monkeypatch.setitem(clair3.settings, "temp_directory", str(spaced))
+    with pytest.raises(WGSExtractError, match="temp_directory"):
+        run_wgsextract(*args, "--input", reads.bam, "--outdir", str(tmp_path / "o2"))
+    assert len(fake_clair3.runs()) == 2
 
 
 @needs_tools("samtools", "bcftools", "tabix")

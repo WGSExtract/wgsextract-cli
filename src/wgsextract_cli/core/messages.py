@@ -54,6 +54,7 @@ CLI_HELP = {
     "cmd_snp": "Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard ancestry analysis and finding simple point mutations.",
     "cmd_indel": "Call Small Insertions and Deletions (InDels) using bcftools. Used to find small gaps or extra bases in the DNA sequence.",
     "cmd_sv": "Call Structural Variants (SVs) using Delly for short reads, Sniffles for Nanopore (ONT, auto-detected) or other long reads, or pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).",
+    "cmd_call": "Call several variant types in one run: SNPs and InDels (bcftools), SVs and CNVs, each into its own VCF, and with --merge also into one combined VCF.",
     "cmd_cnv": "Call Copy Number Variants (CNVs) using Delly. Detects large regions of DNA that have been duplicated or deleted, affecting gene dosage. (Not tested on macOS.)",
     "cmd_freebayes": "A Bayesian genetic variant detector. Excellent for finding small variants in complex regions or when you have variable sequencing depth.",
     "cmd_gatk": "Industry-standard GATK HaplotypeCaller. Best for high-accuracy clinical-grade SNP and InDel calling using local de novo assembly.",

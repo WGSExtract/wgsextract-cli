@@ -9,14 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.builds import build_from_chr1_length
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_tool
-from wgsextract_cli.core.reference_assets import input_stem
-from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.ref_library.assets import input_stem
+from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
     MissingDependencyError,

@@ -222,6 +222,7 @@ validate_install_marker() {
 }
 
 config_paths() {
+    printf '%s\n' "$HOME/wgs-extract/config.toml"
     case "$(uname -s)" in
         Darwin)
             if [ -n "${XDG_CONFIG_HOME:-}" ]; then
@@ -238,6 +239,23 @@ config_paths() {
         *)
             ;;
     esac
+}
+
+remove_empty_users_workspace_marker() {
+    workspace_dir="$1"
+    [ "$workspace_dir" = "$HOME/wgs-extract" ] || return 0
+    workspace_marker="$workspace_dir/.users-workspace"
+    [ -f "$workspace_marker" ] && [ ! -L "$workspace_marker" ] || return 0
+    [ "$(cat "$workspace_marker")" = "WGS Extract users workspace" ] || return 0
+    for workspace_entry in "$workspace_dir"/* "$workspace_dir"/.[!.]* "$workspace_dir"/..?*; do
+        [ -e "$workspace_entry" ] || [ -L "$workspace_entry" ] || continue
+        [ "$workspace_entry" = "$workspace_marker" ] || return 0
+    done
+    remove_file "$workspace_marker"
+    if ! rmdir "$workspace_dir" 2>/dev/null; then
+        # A concurrent writer may have populated it: keep its ownership marker.
+        (set -C; printf '%s\n' "WGS Extract users workspace" > "$workspace_marker") 2>/dev/null || true
+    fi
 }
 
 is_created_profile() {
@@ -550,7 +568,18 @@ remove_dir "$INSTALL_DIR"
 
 if [ "$REMOVE_CONFIG" = "1" ]; then
     config_paths | while IFS= read -r config_path; do
+        if [ "$config_path" = "$HOME/wgs-extract/config.toml" ]; then
+            if has_symlink_component "$(dirname "$config_path")"; then
+                fail "Refusing to remove users workspace config through a symlink: $config_path"
+            fi
+            users_marker="$HOME/wgs-extract/.users-workspace"
+            if [ ! -f "$users_marker" ] || [ -L "$users_marker" ] || [ "$(cat "$users_marker")" != "WGS Extract users workspace" ]; then
+                log "Keeping config in an unmarked users workspace: $config_path"
+                continue
+            fi
+        fi
         remove_file "$config_path"
+        remove_empty_users_workspace_marker "$(dirname "$config_path")"
         remove_empty_dir "$(dirname "$config_path")"
     done
     # Config parents that only exist because of this install (recorded by install.sh).

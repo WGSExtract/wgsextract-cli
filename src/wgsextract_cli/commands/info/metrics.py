@@ -12,14 +12,14 @@ from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import (
     N_ADJUST,
     SEQUENCERS,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import n_count_paths
+from wgsextract_cli.core.ref_library.assets import n_count_paths
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.sequencing import platform_from_metadata
@@ -441,7 +441,7 @@ def cached_info(
     for folder in (
         outdir,
         str(absolute_path(input_path).parent),
-        settings.get("output_directory"),
+        output_directory([input_path]),
     ):
         cache = str(Path(folder, name)) if folder else ""
         try:
@@ -543,7 +543,7 @@ def _detect_sex(
     else:
         logging.info("Checking chrX/chrY coverage to infer the sample's sex...")
         try:
-            from wgsextract_cli.core.reference_models import sequence_lengths
+            from wgsextract_cli.core.ref_library.models import sequence_lengths
 
             header = run_command(
                 ["samtools", "view", "-H", input_path], capture_output=True

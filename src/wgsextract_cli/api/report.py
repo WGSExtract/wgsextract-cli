@@ -4,7 +4,8 @@ The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
 gene list) and the microarray export. It runs no analysis; its only network
-use is downloading a built-in gene list once into the reference library::
+use, only with ``download`` permission, is fetching a missing built-in gene
+list into the reference library::
 
     res = api.report.build(api.ReportParams(workspace=Path("HG002")))
     report = res.details          # the wgsextract.report/1 document
@@ -25,7 +26,8 @@ from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
-from ._params import Params, param
+from ._network import DownloadParams
+from ._params import param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, outdir_param
 
@@ -43,7 +45,7 @@ def _workspace_param() -> Any:
 
 
 @dataclass(frozen=True, kw_only=True)
-class ReportParams(Params):
+class ReportParams(DownloadParams):
     """Summarise a sample's results as <sample>_personal_report.html, .md and .json
     plus a findings table, from the result manifests in its folder."""
 
@@ -75,8 +77,8 @@ class ReportParams(Params):
     gene_list: str | None = param(
         None,
         help="Genes for the ClinVar section: a built-in list "
-        f"({', '.join(gene_lists.builtin_ids())}; downloaded once into the "
-        "reference library), or a TSV (column gene; optional hg19_/hg38_ or "
+        f"({', '.join(gene_lists.builtin_ids())}; missing lists need --download), "
+        "or a TSV (column gene; optional hg19_/hg38_ or "
         "build-free chrom, start, end spans) or BED file (gene symbol in column "
         f"4) (default: config report_gene_list, else {gene_lists.default_id()})",
         metavar="LIST",

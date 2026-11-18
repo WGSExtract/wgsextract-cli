@@ -1,6 +1,8 @@
 """Reference evidence (#863): ``--reference-evidence gvcf`` and the classifier."""
 
+import json
 import random
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,7 +14,9 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
+from tests.test_pharmcat import FAKE_PIPELINE
 from wgsextract_cli import api
+from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
@@ -82,6 +86,68 @@ def _state_at(spans: list[Span], contig: str, position: int) -> State:
     return next(
         s.state for s in spans if s.contig == contig and s.start <= position <= s.end
     )
+
+
+@needs_htslib
+def test_issue_1044_real_gatk_block_loses_depth_evidence_when_min_dp_is_removed(
+    tmp_path: Path,
+) -> None:
+    # First HaplotypeCaller block of public GATK NA12878 chr20 test data:
+    # expected.CEUTrio.HiSeq.WGS.b37.NA12878.calls.20.10100000-10150000.g.vcf
+    # SHA256 03c9560d6c38fe6f5b00a439657a5d05a832f50308fa7fa7fb258cf93fa79005.
+    plain = tmp_path / "gatk.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("chr1,length=300", "20,length=63025520")
+        + "20\t10100000\t.\tC\t<NON_REF>\t.\t.\tEND=10100467"
+        "\tGT:DP:GQ:MIN_DP\t0/0:68:99:56\n"
+    )
+    original = bgzip_index(plain)
+    stripped = tmp_path / "without-minimum.g.vcf.gz"
+    run_command(
+        [
+            "bcftools",
+            "annotate",
+            "-x",
+            "FORMAT/MIN_DP",
+            "-Oz",
+            "-o",
+            str(stripped),
+            original,
+        ]
+    )
+    run_command(["tabix", "-p", "vcf", str(stripped)])
+    region = [("20", 10100000, 10100467)]
+    assert list(ReferenceEvidence(original).spans(THRESHOLDS, region)) == [
+        Span("20", 10100000, 10100467, State.CALLABLE_REFERENCE)
+    ]
+    assert list(ReferenceEvidence(str(stripped)).spans(THRESHOLDS, region)) == [
+        Span("20", 10100000, 10100467, State.LOW_QUALITY_REFERENCE)
+    ]
+
+
+@needs_htslib
+def test_issue_1044_clipped_single_base_block_does_not_inherit_start_dp(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf
+
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 300})
+    plain = tmp_path / "block.g.vcf"
+    plain.write_text(
+        _DV_HEADER
+        + "chr1\t1\t.\tA\t<*>\t.\tPASS\tEND=100\tGT:DP:GQ\t0/0:30:60\n"
+        + "chr1\t150\t.\tA\t.\t.\tPASS\t.\tGT:DP:GQ\t0/0:30:60\n"
+    )
+    source = bgzip_index(plain)
+    clipped = tmp_path / "clipped.g.vcf.gz"
+    clip_gvcf(source, [PloidyInterval("chr1", 49, 50, 2)], str(ref), str(clipped))
+    assert list(
+        ReferenceEvidence(str(clipped)).spans(THRESHOLDS, [("chr1", 50, 50)])
+    ) == [Span("chr1", 50, 50, State.LOW_QUALITY_REFERENCE)]
+    assert list(ReferenceEvidence(source).spans(THRESHOLDS, [("chr1", 150, 150)])) == [
+        Span("chr1", 150, 150, State.CALLABLE_REFERENCE)
+    ]
 
 
 @needs_htslib
@@ -164,14 +230,22 @@ def test_gq_gvcf_blocks_read_by_genotype_quality_and_minimum_depth(
 
 
 @needs_htslib
-def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(tmp_path: Path) -> None:
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(
+    tmp_path: Path, split: bool
+) -> None:
     """Issue #1028 review: another tool's Clair3 gVCF (``##source=Clair3``)
     gets the missed-deletion rule too, and a call overlapping a demoted
     block keeps its own state rather than reading as low quality."""
     rows = [
         "chr1\t10\t.\tA\t<*>\t0\tPASS\tEND=10\tGT:GQ:MIN_DP\t./.:0:40",
-        "chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20",
+        f"chr1\t11\t.\tA\t<*>\t0\tPASS\tEND={16 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
         "chr1\t15\t.\tA\tC\t30\tPASS\t.\tGT:GQ:DP\t0/1:30:20",
+        *(
+            ["chr1\t17\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
         "chr1\t31\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:40",
     ]
     plain = tmp_path / "clair3.g.vcf"
@@ -190,3 +264,289 @@ def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(tmp_path: Path) -> 
         Span("chr1", 16, 20, State.LOW_QUALITY_REFERENCE),
         Span("chr1", 21, 40, State.CALLABLE_REFERENCE),
     ]
+
+
+@needs_htslib
+def test_clair3_long_anchor_chain_point_query_matches_full_region_1028(
+    tmp_path: Path,
+) -> None:
+    rows = ["chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60"]
+    rows += [
+        f"chr1\t{pos}\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20"
+        for pos in range(101, 131)
+    ]
+    rows += ["chr1\t131\t.\tA\t<*>\t0\tPASS\tEND=150\tGT:GQ:MIN_DP\t0/0:50:20"]
+    plain = tmp_path / "chain.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 130, State.NO_CALL),
+        Span("chr1", 131, 140, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 141, 150, State.CALLABLE_REFERENCE),
+    ]
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 150)])) == expected
+    for pos in (131, 140, 141):
+        assert list(evidence.spans(THRESHOLDS, [("chr1", pos, pos)])) == [
+            Span("chr1", pos, pos, _state_at(expected, "chr1", pos))
+        ]
+    assert list(
+        evidence.spans(
+            THRESHOLDS, [("chr1", 60, 60), ("chr1", 131, 131), ("chr1", 260, 260)]
+        )
+    ) == [
+        Span("chr1", 60, 60, State.UNCOVERED),
+        Span("chr1", 131, 131, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 260, 260, State.UNCOVERED),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_anchor_demotes_preceding_reference_block_tail_1028(
+    tmp_path: Path,
+    split: bool,
+) -> None:
+    rows = [
+        f"chr1\t1\t.\tA\t<*>\t0\tPASS\tEND={9 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40",
+        *(
+            ["chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
+    ]
+    plain = tmp_path / "overlap.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 1, 30)])) == [
+        Span("chr1", 1, 9, State.CALLABLE_REFERENCE),
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_separated_anchors_do_not_inherit_depth_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "separated.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=109\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + "chr1\t110\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:30\n"
+        + "chr1\t111\t.\tA\t<*>\t0\tPASS\tEND=130\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 130)])) == [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 109, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 110, 110, State.NO_CALL),
+        Span("chr1", 111, 130, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_nested_anchor_preserves_furthest_end_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "nested.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t10\t.\tAAAA\tA\t0\tRefCall\t.\tGT:GQ:DP\t0/1:0:60\n"
+        + "chr1\t12\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20\n"
+        + "chr1\t14\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 30)])) == [
+        Span("chr1", 10, 13, State.FILTERED),
+        Span("chr1", 14, 23, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 24, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("recovery", [False, True])
+def test_clair3_deletion_shadow_stops_at_gap_or_depth_recovery_1028(
+    tmp_path: Path, recovery: bool
+) -> None:
+    plain = tmp_path / "interrupted.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=103\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + (
+            "chr1\t104\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t0/0:50:42\n"
+            if recovery
+            else ""
+        )
+        + "chr1\t105\t.\tA\t<*>\t0\tPASS\tEND=110\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 103, State.LOW_QUALITY_REFERENCE),
+    ]
+    expected += (
+        [Span("chr1", 104, 110, State.CALLABLE_REFERENCE)]
+        if recovery
+        else [
+            Span("chr1", 104, 104, State.UNCOVERED),
+            Span("chr1", 105, 110, State.CALLABLE_REFERENCE),
+        ]
+    )
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 110)])) == expected
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 105, 105)])) == [
+        Span("chr1", 105, 105, State.CALLABLE_REFERENCE)
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    "engine", ["deepvariant", "gatk", "bcftools", "parabricks-deepvariant"]
+)
+def test_other_engines_do_not_inherit_clair3_deletion_rule_1028(
+    tmp_path: Path,
+    engine: str,
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    plain = tmp_path / "other.g.vcf"
+    provenance = Provenance(engine, "test", "gq").header()
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", f"{provenance}\n##contig=", 1)
+        + "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40\n"
+        + "chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    assert list(
+        ReferenceEvidence(bgzip_index(plain)).spans(THRESHOLDS, [("chr1", 10, 30)])
+    ) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+def _seq(ref: str) -> str:
+    return "".join(Path(ref).read_text().split(">chrY")[0].splitlines()[1:])
+
+
+@needs_htslib
+def test_863_pgs_counts_callable_reference_but_never_uncovered_sites(
+    woman: tuple[str, str], tmp_path: Path
+) -> None:
+    """Issue #863: `score pgs` on a variant-only VCF reads the gVCF its caller
+    published beside it, so a site the reads covered well is homozygous
+    reference while a coverage gap or MAPQ-0 stretch stays missing."""
+    _, ref = woman
+    _snp(woman, tmp_path, "gvcf")
+    seq = _seq(ref)
+    scoring = tmp_path / "score.txt"
+    rows = "".join(
+        f"20\t{pos}\t{seq[pos - 1]}\t{'C' if seq[pos - 1] in 'AT' else 'A'}\t1\n"
+        for pos in (300, 1200, 1700)
+    )
+    scoring.write_text(
+        "#genome_build=GRCh38\n"
+        "chr_name\tchr_position\teffect_allele\tother_allele\teffect_weight\n" + rows
+    )
+
+    def score() -> api.Result:
+        return api.score.pgs(
+            api.ScorePgsParams(
+                input=tmp_path / "snps.vcf.gz", build="GRCh38", scoring_file=scoring,
+                ref=Path(ref), outdir=tmp_path / "pgs",
+            )
+        )  # fmt: skip
+
+    with_gvcf = score()
+    assert with_gvcf.details["match_counts"] == {
+        "callable_reference": 1,
+        "uncovered": 1,
+        "low_quality_reference": 1,
+    }
+    assert with_gvcf.metrics["score_sum"] == 2
+    assert any(i.role == ROLE for i in with_gvcf.inputs)
+
+    # Issue #863 review: a manifest without fingerprints can't vouch that its
+    # gVCF belongs to this VCF, so it isn't used.
+    manifests = list(tmp_path.glob("*.manifest.json"))
+    for manifest in manifests:
+        document = json.loads(manifest.read_text())
+        for output in document["outputs"]:
+            output.pop("fingerprint", None)
+        manifest.write_text(json.dumps(document))
+    assert manifests
+    assert score().details["reference_evidence"] is None
+
+    # Without the gVCF the same VCF scores as before: absent sites are missing.
+    for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):
+        (tmp_path / name).unlink()
+    without = score()
+    assert without.details["match_counts"] == {"missing": 3}
+    assert without.details["reference_evidence"] is None
+
+
+@needs_htslib
+def test_863_pharmcat_fills_absent_sites_only_where_the_gvcf_read_reference(
+    woman: tuple[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issue #863: PharmCAT definition sites a variant-only VCF doesn't list
+    are reference only where the caller's gVCF read them well; a coverage gap
+    or MAPQ-0 stretch is a no-call, so --absent-to-ref can't make it 0/0."""
+    monkeypatch.setattr(pharmcat, "pixi_env_tool", lambda _tool: sys.executable)
+    _, ref = woman
+    _snp(woman, tmp_path, "gvcf")
+    seq = _seq(ref)
+    release = tmp_path / "pharmcat"
+    release.mkdir()
+    (release / "pharmcat_pipeline").write_text(FAKE_PIPELINE)
+    (release / "pharmcat.jar").write_text("")
+    (release / "pharmcat_regions.bed").write_text("chr20\t250\t1750\tPX=CYP2C19\n")
+    (release / "pharmcat_positions.vcf").write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr20,length=3000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(
+            f"chr20\t{pos}\t.\t{seq[pos - 1]}\t{'C' if seq[pos - 1] != 'C' else 'G'}"
+            "\t.\tPASS\t.\n"
+            for pos in (300, 1200, 1700)
+        )
+    )
+    plain = write_fasta(release / "reference.fna", {"chr20": seq})
+    with open(release / pharmcat.REFERENCE_FASTA, "wb") as stream:
+        run_command(["bgzip", "-c", str(plain)], stdout=stream)
+    run_command(["samtools", "faidx", str(release / pharmcat.REFERENCE_FASTA)])
+
+    def run() -> tuple[dict[int, str], dict[str, str]]:
+        result = api.vcf.pharmcat(
+            api.VcfPharmcatParams(
+                vcf_input=tmp_path / "snps.vcf.gz", pharmcat_dir=release,
+                outdir=tmp_path / "pgx", absent_to_ref=True,
+            )
+        )  # fmt: skip
+        seen = {
+            int(f[1]): f[9]
+            for f in map(str.split, _records(release / "seen.vcf.gz"))
+            if f[1] in ("300", "1200", "1700")
+        }
+        summary = next(
+            c for c in result.details["confidence"] if c["role"] == "pgx_calls"
+        )
+        states = {str(f["pos"]): f["PGX_STATE"] for f in summary["findings"]}
+        return seen, states
+
+    seen, states = run()
+    assert seen == {300: "0/0", 1200: "./.", 1700: "./."}
+    assert (states["300"], states["1200"], states["1700"]) == (
+        "reference", "uncovered", "low_quality_reference",
+    )  # fmt: skip
+
+    # Without the gVCF, as before: the sites are absent, left to PharmCAT.
+    for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):
+        (tmp_path / name).unlink()
+    seen, _ = run()
+    assert seen == {}

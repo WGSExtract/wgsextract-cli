@@ -13,6 +13,12 @@ from ._params import Params, fixed_length, from_namespace, param_fields
 from ._runtime import run_inline
 
 P = TypeVar("P", bound=Params)
+_COMMAND_PARAMS: dict[str, type[Params]] = {}
+
+
+def command_params(command: str) -> type[Params] | None:
+    """The typed contract registered for this CLI command."""
+    return _COMMAND_PARAMS.get(command)
 
 
 def add_arguments(
@@ -26,6 +32,7 @@ def add_arguments(
     """
     from wgsextract_cli.core.config import settings
 
+    _COMMAND_PARAMS[cls.COMMAND] = cls
     groups: dict[str, argparse._MutuallyExclusiveGroup] = {}
     sections: dict[str, argparse._ArgumentGroup] = {}
     for item in param_fields(cls):

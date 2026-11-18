@@ -3,8 +3,43 @@
 `align` and `realign` detect ONT from `@RG PL:ONT` or UUID read names in
 BAM/CRAM/FASTQ (including gzipped FASTQ). Read groups take precedence; mixed
 platforms are not assigned one platform. An explicit `--platform` overrides
-detection. Unknown input still defaults to Illumina. SRA-renamed FASTQs without
-platform metadata need `--platform ont`.
+detection.
+
+For FASTQs with inconclusive names (including SRA-renamed reads), detection
+samples at most 4096 reads, 4 MiB compressed and 16 MiB decoded, including
+gzip/BGZF files. A median length below 1 kb keeps the previous short-read
+defaults, including renamed 301 bp Illumina and 400/600 bp Ion Torrent reads.
+FASTQ and compression are recognized by content, not filename; wrapped
+sequence and quality lines are supported. Named pipes are left untouched until
+alignment stages them. Longer reads use ONT header tags (`runid=`, `ch=`, `start_time=`,
+`basecall_model_version_id=`), or PacBio consensus tags (`rq=` of at least
+0.99; otherwise `np=` of at least 2). Conflicting tags are not resolved by
+guessing. Without tags, a HiFi-like quality profile (mean Q30 or higher,
+at least 90% of bases Q30+, some qualities above ONT's Q50 cap) selects PacBio
+HiFi. A short-read tail does not disqualify an otherwise high-quality HiFi
+sample. These are conservative heuristics,
+not instrument identification: low-quality ONT and PacBio CLR can overlap.
+Ambiguous long reads are refused: pass `--platform ont`, `--platform hifi`
+or `--platform clr`. Both paired FASTQs are checked; conflicting evidence is
+refused. Explicit `--platform` still wins.
+For known short-read data above the conservative 1 kb cutoff,
+choose `--platform illumina` explicitly.
+
+The sample workspace's platform fact records the method, confidence and sampled
+statistics (median and N50 length, mean/max Q, p90/p10 length spread and sample size).
+The result manifest includes the same evidence under
+`provenance.params.platform_detection`. Samples are cached per file revision;
+replacing a FASTQ invalidates its evidence. BAM/CRAM detection is unchanged.
+FASTQ facts also hash the entire bounded input prefix used for detection, so
+same-size edits outside the usual first/middle/last-MiB fingerprint windows
+invalidate the cached evidence.
+An override is recorded separately as `effective_platform`; it never erases
+the detected method or statistics, including inconclusive (`Unknown`) samples.
+Native read-name evidence is independent of parsing the sequence/quality sample,
+so empty or malformed sample records cannot erase a recognized ONT UUID.
+Conclusive names do not require a length/quality sample.
+Zero-length records are excluded from sampled statistics; full FASTQ validation
+still reports invalid input before mapping.
 
 A BAM/CRAM whose read groups name several platforms (ONT and Illumina reads
 merged, say) is reported by `info` (the `Platforms` line, `platforms` in the
@@ -17,8 +52,10 @@ or `--pacbio`), `vcf sv` (`--caller`, `--ont` or `--pacbio`) and `typing str`
 warn `mixed_platforms` and carry on. Or split the reads by read group with `samtools split` and process
 each platform separately.
 
-Only ONT gains new automatic alignment defaults, and `realign` of single-end
-PacBio BAM/CRAM. Revio/PacBio-, Ultima- and MGI-named FASTQs, paired
+ONT and PacBio FASTQs gain automatic long-read alignment defaults, as does
+`realign` of single-end PacBio BAM/CRAM. Native PacBio `m84…/…/ccs` names
+select HiFi/CCS (`map-hifi` with minimap2), not CLR; `align` may use pbmm2
+when installed, just as for PacBio BAM input. Ultima- and MGI-named FASTQs, paired
 `PL:PACBIO` and `PL:DNBSEQ` BAMs retain the previous Illumina alignment
 defaults unless `--platform` is explicit. The pre-existing
 BAM/CRAM `PL:ULTIMA` automatic path is unchanged. Other detected platforms

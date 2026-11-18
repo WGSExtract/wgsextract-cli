@@ -325,6 +325,28 @@ wgse-deepvariant run --model_type=WGS --ref=ref.fa --reads=sample.bam \
   --output_vcf=sample.vcf.gz --intermediate_results_dir=work --num_shards=8
 ```
 
+## CRAM input through the CLI
+
+`wgsextract vcf deepvariant --input sample.cram --ref reference.fa` supplies
+the native reader with a temporary, local MD5 cache of the supplied FASTA.
+This avoids relying on the CRAM header's `UR` (which may name a missing file
+on the machine that made it): native 0.3.1 does not use `--ref` for CRAM
+decoding and can otherwise silently write an empty VCF (#1061).
+The CLI checks matching contigs' `M5` checksums before starting the reader.
+
+This applies to both CPU and CUDA calling, with existing native binaries;
+no native rebuild or weights download is needed. The standalone
+`wgse-deepvariant` command does not get the CLI's cache.
+The cache uses approximately one byte per reference base (about 3.2 GB for
+hs38DH), not a copy of the alignment, and is streamed with bounded memory.
+It is removed after make_examples, including on failure. After an abrupt
+termination, the next non-dry run reclaims abandoned caches under the journal
+lock, after checking that no old tools are still running, before disk preflight.
+Planning, BAM input
+and resuming already-finished make_examples do not build it. Nothing is
+downloaded, and inherited reference-server/cache settings are not used by
+the native reader.
+
 ## Weights
 
 The weights are Google's DeepVariant 1.10.0 WGS and ONT_R104 models and

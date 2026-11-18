@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.results import MANIFEST_SUFFIX, SCHEMA_ID
 
 FILE_PREFIX = "wgsextract_"

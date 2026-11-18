@@ -1,4 +1,5 @@
-import { workspaceToken } from "../../../shared/workspace-paths.js";
+import { bundleWorkspaceToken, usersWorkspaceToken } from "../../../shared/workspace-paths.js";
+import { usersWorkspaceFor } from "./users-workspace.js";
 import { realpathSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import path from "node:path";
@@ -66,13 +67,15 @@ export function appSupportDirectory() {
     return path.join(applicationSupportDirectory(), appSupportContainerName());
 }
 /**
- * What every bundle script is told about where it runs: the workspace, with the user's files, and the
- * app's data folder ({{appData}}), where setup installs the CLI runtime, apart from the user's files.
+ * What every bundle script is told about where it runs: the bundle workspace (its hidden copy of the bundle),
+ * the users workspace (the user's settings file and folders) and the app's data folder ({{appData}}), where
+ * setup installs the CLI runtime.
  */
 export function bundleEnvironment(bundleRoot: string): Record<string, string> {
     return {
         WGSEXTRACT_GUI_BUNDLE_ROOT: bundleRoot,
         WGSEXTRACT_GUI_BUNDLE_WORKSPACE: bundleRoot,
+        WGSEXTRACT_GUI_USERS_WORKSPACE: usersWorkspaceFor(bundleRoot),
         WGSEXTRACT_GUI_APP_DATA: appSupportDirectory(),
     };
 }
@@ -122,6 +125,7 @@ export function expandPathTokens(value: unknown, bundleRoot: string, configPathV
     let expanded = String(value);
     expanded = replacePathToken(expanded, "{{bundleRoot}}", tokens.bundleRoot);
     expanded = replacePathToken(expanded, "{{bundleWorkspace}}", tokens.bundleWorkspace);
+    expanded = replacePathToken(expanded, "{{usersWorkspace}}", tokens.usersWorkspace);
     expanded = expanded.replaceAll("{{bundleWorkspaceFileURL}}", tokens.bundleWorkspaceFileURL);
     expanded = expanded.replaceAll("{{bundleRootBasename}}", tokens.bundleRootBasename);
     expanded = replacePathToken(expanded, "{{home}}", tokens.home);
@@ -134,9 +138,9 @@ export function expandPathTokens(value: unknown, bundleRoot: string, configPathV
     expanded = replacePathToken(expanded, "{{configDir}}", tokens.configDir);
     return expandEnvironmentVariables(expanded.replace(/^~(?=\/|$)/, tokens.home));
 }
-/** Turns a value the GUI shows relative to {{bundleWorkspace}} back into the path it stands for. */
+/** Turns a value the GUI shows relative to {{bundleWorkspace}} or {{usersWorkspace}} back into the path it stands for. */
 export function expandWorkspaceToken(value: string, bundleRoot: string): string {
-    return replacePathToken(value, workspaceToken, bundleRoot);
+    return replacePathToken(replacePathToken(value, bundleWorkspaceToken, bundleRoot), usersWorkspaceToken, usersWorkspaceFor(bundleRoot));
 }
 function expandWorkspaceTokens(values: ValueMap, bundleRoot: string): ValueMap {
     return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, typeof value === "string" ? expandWorkspaceToken(value, bundleRoot) : value]));
@@ -148,6 +152,7 @@ export function pathTokenValues(bundleRoot: string, configPathValue = "") {
     return {
         bundleRoot,
         bundleWorkspace: bundleRoot,
+        usersWorkspace: usersWorkspaceFor(bundleRoot),
         bundleWorkspaceFileURL: pathToFileURL(bundleRoot).href,
         bundleRootBasename: path.basename(bundleRoot),
         home,
@@ -271,6 +276,7 @@ export function normalizeContext(context: CommandContext = {}, bundleRoot: strin
         configValues: expandWorkspaceTokens(context.configValues ?? {}, bundleRoot),
         rowValues: expandWorkspaceTokens(context.rowValues ?? {}, bundleRoot),
         bundleRootPath: bundleRoot,
+        usersWorkspacePath: usersWorkspaceFor(bundleRoot),
         homePath: homedir(),
     };
 }

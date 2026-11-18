@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     import numpy as np
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 FOLDER = "pgs"
@@ -306,7 +306,7 @@ def normal_percentile(z: float) -> float:
 
 
 def library_for(ref: str | None) -> str:
-    from wgsextract_cli.core.reference_resolver import library_roots
+    from wgsextract_cli.core.ref_library.resolver import library_roots
 
     return resolve_reference_library(library_roots(ref).resource_root(FOLDER))
 
@@ -341,6 +341,9 @@ def load(
     """The verified reference, downloaded first when missing."""
     file = path(reflib)
     if not (file.is_file() and _sha256(file) == SHA256):
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download(f"PGS calibration reference {NAME}")
         file.parent.mkdir(parents=True, exist_ok=True)
         if not download_file(
             URL,

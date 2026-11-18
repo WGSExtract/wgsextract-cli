@@ -6,6 +6,16 @@ Commands describe each run in a JSON document that follows the versioned schema
 command read and wrote, what it measured and warned about, and how it ran. Use
 it instead of parsing log text or guessing output file names.
 
+The bundled schema is generated from the actual writer dataclasses in
+`core/results.py`, through `core/result_schema.py`. Run
+`scripts/gen_output_schemas.py` (or `just regen`) to update it; `--check` detects
+drift. Defaulted and nullable fields remain required because the writer emits
+them. This generation does not add runtime validation or change tolerant readers.
+The same dataclass graph generates the complete TypeScript writer contract in
+`gui/app/shared/generated/result-records.ts` through `scripts/gen_server_contracts.py`.
+The GUI's normalized presentation types derive shared fields from it, but its
+parser still treats external/compact documents as unvalidated input.
+
 - **Manifest file.** A command that writes outputs also writes
   `<output>.manifest.json` next to them, atomically. The name is the first
   output file's name with any compression suffix (`.gz`, `.bgz`, `.zst`,
@@ -142,6 +152,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
 | `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `primary_overwrite` | any | An output of a lab primary kind (BAM, CRAM, FASTQ, VCF, microarray file) was written into the folder of an input, outside the output folder, where it could replace a file from the lab (`path`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
 | `dict_missing` | `ref verify` | The reference has no sequence dictionary. |

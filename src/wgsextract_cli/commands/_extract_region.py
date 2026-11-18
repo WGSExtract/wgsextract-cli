@@ -9,12 +9,13 @@ from pathlib import Path
 
 from wgsextract_cli.api.extract import ExtractRegionParams
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.output_checks import warn_if_no_variants
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
 
@@ -103,7 +104,9 @@ def run_region(params: ExtractRegionParams) -> None:
             cleanup_files(
                 on_failure=outputs, preserve_outputs=atomic_outputs_enabled()
             ),
-            tempfile.TemporaryDirectory(dir=base.outdir, prefix=".region_") as work,
+            tempfile.TemporaryDirectory(
+                dir=scratch_parent(base.outdir), prefix=".region_"
+            ) as work,
         ):
             if params.bam:
                 _write_bam(base, input_path, out_bam, contigs, target, params.poz)

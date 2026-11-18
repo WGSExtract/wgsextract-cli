@@ -1,8 +1,8 @@
 """`basecall`: Nanopore POD5 signal to an unaligned BAM with ONT's Dorado.
 
 Dorado is an optional tool that users install from ONT's releases; it is
-checked, never installed. Dorado picks the model for the run's chemistry and
-downloads it into the models folder (the wgsextract cache by default). The
+checked, never installed. With --download, Dorado picks the model for the run's
+chemistry and downloads it into the models folder (the wgsextract cache by default). The
 unaligned BAM keeps Dorado's read tags, MM/ML base modifications included,
 and `align --r1` takes it as Nanopore reads.
 """
@@ -24,6 +24,7 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.tool_catalog import INSTALL_HINTS
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -245,6 +246,14 @@ def run_basecall(params: BasecallParams) -> None:
     model_folder = check_model(params.model)
     model = str(Path(params.model).expanduser()) if model_folder else params.model
     pod5_files(source)
+    if not model_folder or codes:
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download(
+            "Dorado models (a model name/modification can send POD5 chemistry "
+            "metadata and model identifiers to Oxford Nanopore); use --model "
+            "with a local model directory and no --modified-bases to stay offline"
+        )
     device = resolve_device(params.device)
     verify_dependencies(["samtools"])
     dorado, version = resolve_dorado(params.dorado_path)
@@ -272,7 +281,9 @@ def run_basecall(params: BasecallParams) -> None:
         f"{', ' + ', '.join(codes) if codes else ''}) on {device}; models in "
         f"{models_dir}."
     )
-    with tempfile.TemporaryDirectory(prefix=".wgse_basecall_", dir=outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix=".wgse_basecall_", dir=scratch_parent(outdir)
+    ) as work:
         read_ids = str(params.read_ids) if params.read_ids else None
         if params.regions_bed and params.alignment:
             alignment = str(Path(params.alignment).expanduser())

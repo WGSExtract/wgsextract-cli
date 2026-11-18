@@ -82,6 +82,10 @@ you start yourself:
 - Parameters that name programs to run, such as `haplogrep_path`, or that
   hide paths inside other text, such as `indel_manifest`, can't be set by a
   request. They come from config.toml as usual.
+- Supplied paths are checked before output inference can inspect an input
+  archive. The effective output folder is then checked too, including its
+  real path. Other host-only config defaults stay trusted execution settings;
+  they do not become client-supplied paths.
 - `ref download`, which fetches any URL, and `ref bootstrap`, which saves
   config.toml, aren't offered.
 - Request bodies are limited to 1 MB and must be `application/json`. Unknown
@@ -154,6 +158,22 @@ The server answers three read-only lookups itself, without a job, over HTTP
 `read_manifest`, `query_variants`, `report_section`). Their paths must be in
 an allowed folder.
 
+Manifest and report readers check the document identifier and the object
+containers they use, not the complete writer schema. Returned field values remain
+opaque rather than being coerced or cast to canonical writer models.
+Canonical result/report writer records are generated separately for clients in
+`gui/app/shared/generated/result-records.ts` and `report-records.ts`; those
+complete contracts must not be substituted for compact or unvalidated loaded
+documents in server responses.
+Manifest lookups preserve unknown fields and their values, except that
+`provenance` is omitted unless `full=1`. Report responses project a header with
+the report file's `path` plus `generated`, `sample` and `disclaimer`; other
+top-level report fields are omitted, even when requesting a section.
+Without `section`, each section is projected to only `status` and `summary`.
+With `section`, all fields of the selected section, including unknown extension
+fields, are merged into that projected header (section fields win on key
+collisions).
+
 - **Variants.** `path` is a [`vcf table`](variant-table.md) output:
   `*_variants.sqlite`, `.tsv` or `.parquet` (needs pyarrow). The filters
   combine: `gene` (symbol), `rsid` (one rsID), `region` (`chr1`,
@@ -165,8 +185,10 @@ an allowed folder.
   `cursor` for the next page. The SQLite database is fastest: it uses its
   gene and position indexes, and starts a page at its cursor. A TSV or
   Parquet table is read from the start for every page, so use SQLite for
-  paging through large tables. Boolean query parameters take `true`/`false`,
-  `yes`/`no` or `1`/`0`.
+  paging through large tables. A page whose rows have automated ACMG classes
+  (`acmg_*` columns, from [`vcf acmg`](acmg.md)) also has `disclaimer`: they
+  are research only, not a diagnosis. Boolean query parameters take
+  `true`/`false`, `yes`/`no` or `1`/`0`.
 - **Report.** `path` is a sample folder, whose newest
   `*_personal_report.json` is read, or the report JSON itself (run the
   `report` operation first). Without `section`, the answer lists each

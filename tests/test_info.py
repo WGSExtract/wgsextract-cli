@@ -38,7 +38,7 @@ def info_env(tmp_path, monkeypatch):
     sample = tmp_path / "sample.bam"
     sample.write_bytes(b"not really a bam")
     monkeypatch.setattr(
-        "wgsextract_cli.core.alignment_input.validate_alignment_input",
+        "wgsextract_cli.core.alignment.input.validate_alignment_input",
         lambda _path: None,
     )
     mocks = {
@@ -224,7 +224,7 @@ def test_info_errors_exit_nonzero(tmp_path, info_env, monkeypatch):
 def test_global_options_before_subcommand_are_preserved(tmp_path):
     with (
         patch("wgsextract_cli.commands.info.runner.run") as mock_run,
-        patch("wgsextract_cli.core.alignment_input.validate_alignment_input"),
+        patch("wgsextract_cli.core.alignment.input.validate_alignment_input"),
     ):
         _run_cli(
             "--input", "sample.bam", "--outdir", str(tmp_path), "--ref", "ref", "info"
@@ -416,6 +416,27 @@ def test_coverage_commands_against_real_samtools(tiny_bam, tmp_path):
     assert render.run_sampled_coverage(
         str(tiny_bam), None, idx_stats, str(tmp_path / "c2.json"), "chr2"
     ) == {"2": "~0 %"}
+
+
+def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
+    tiny_bam, tmp_path, capsys
+):
+    config = tmp_path / "config.toml"
+    config.write_text("")
+    main(
+        [
+            "--config",
+            str(config),
+            "--json",
+            "info",
+            "--input",
+            str(tiny_bam),
+            "--no-cache",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert not (tmp_path / "wgse").exists()
 
 
 def _stat(name, length, mapped):

@@ -8,7 +8,6 @@ import platform
 import re
 import subprocess
 import sys
-import tempfile
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from functools import lru_cache, partial
@@ -16,7 +15,12 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfClair3Params
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.cram_staging import (
+    needs_cram30,
+    stage_cram30,
+    staging_bytes,
+)
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -25,7 +29,6 @@ from wgsextract_cli.core.containers import (
     require_image,
     run_container,
 )
-from wgsextract_cli.core.cram_staging import needs_cram30, stage_cram30, staging_bytes
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -45,7 +48,7 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.parabricks import gpu_memory, verify_gpu_docker
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.resource_estimates import (
     CLAIR3_GVCF_TIME_FACTOR,
@@ -64,6 +67,7 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.tool_catalog import clair3_host_supported
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -688,8 +692,8 @@ class TempSpace:
         copy: int = 0,
         recheck: bool = False,
     ) -> None:
-        """Report the peak beside the output, and the ``copy`` of the reads
-        to write beside it, with Clair3's host requirement, and refuse a run
+        """Report the peak in temporary work, and the ``copy`` of the reads
+        to write there, with Clair3's host requirement, and refuse a run
         that wouldn't fit (#811, #690): it fails hours in otherwise. A
         ``recheck`` (once that copy is written) says nothing more unless the
         disk is now short."""
@@ -719,7 +723,7 @@ class TempSpace:
         check_host_requirement(
             requirement,
             enforce=enforce,
-            disk_advice="Free up space, choose an --outdir on a bigger disk or "
+            disk_advice="Free up space, choose a --tmp-dir on a bigger disk or "
             "call a smaller --region.",
             memory_advice="Lower --threads.",
         )
@@ -769,11 +773,20 @@ def run_clair3(params: VcfClair3Params) -> None:
         evidence = GvcfEngine(
             "clair3", version, min_mapping_quality=CLAIR3_MIN_MAPPING_QUALITY
         )
+        factor = CLAIR3_GVCF_TIME_FACTOR["clair3-gpu" if gpu else "clair3"]
         warn(
             "clair3_gvcf_cost",
             "Clair3 writes its gVCF from a slower pileup: expect about "
-            f"{CLAIR3_GVCF_TIME_FACTOR['clair3-gpu' if gpu else 'clair3']:g}x "
-            "the calling time (--reference-evidence none skips it).",
+            f"{factor:g}x the calling time (--reference-evidence none skips it)."
+            + (
+                " In one 5 Mb measurement (HG002 ONT chr20:10-15 Mb, 4 threads, "
+                "RTX 3090) the CPU was faster with the gVCF (179 s against "
+                "452 s); larger runs were not measured."
+                if gpu
+                else ""
+            ),
+            time_factor=factor,
+            gpu=bool(gpu),
         )
     call_partitioned(
         params,
@@ -813,7 +826,7 @@ def _run_clair3(
     logging.info(LOG_MESSAGES["vcf_calling_clair3"].format(output=out_vcf))
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_clair3_") as work,
+        scratch_directory(outdir, ".wgse_clair3_") as work,
     ):
         bed, intervals = None, None
         if region:
@@ -837,7 +850,7 @@ def _run_clair3(
                 if stage and needs_cram30(input_file)
                 else 0
             )
-            space.check(outdir, threads, enforce=not params.no_preflight, copy=copy)
+            space.check(work, threads, enforce=not params.no_preflight, copy=copy)
         reads = input_file
         if stage:
             staging = Path(work, "reads")
@@ -849,7 +862,7 @@ def _run_clair3(
             if space and reads != input_file:
                 # Its estimate was a guess; the copy is now on the disk.
                 space.check(
-                    outdir, threads, enforce=not params.no_preflight, recheck=True
+                    work, threads, enforce=not params.no_preflight, recheck=True
                 )
         output = str(Path(work, "clair3"))
         # Absolute, so the header's paths can be told apart and restored.

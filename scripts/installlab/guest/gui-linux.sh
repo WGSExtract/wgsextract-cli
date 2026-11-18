@@ -29,10 +29,14 @@ APP_BIN="/usr/bin/wgsextract-gui"
 # with the CLI runtime, in APP_DATA. The lab passes both.
 APP_ID="dev.guiforcli.web.embed.wgsextract"
 APP_DATA="$HOME/.local/share/WGSExtract-gui"
-# Apps since PR #531 keep the workspace in the home folder; released apps
-# before it keep it in their app data (OLD_WORKSPACE). app_actions uses the
+# Apps since the users workspace split keep the bundle workspace in APP_DATA and
+# the user's settings and folders in USERS_WORKSPACE; 0.8.5 to 0.8.7 kept both in
+# the home folder (WORKSPACE); released apps before them in their app data
+# (OLD_WORKSPACE). app_actions uses the
 # one setup made.
-WORKSPACE="$HOME/wgs-extract"
+USERS_WORKSPACE="$HOME/wgs-extract"
+WORKSPACE="$USERS_WORKSPACE"
+USERS_ARGS=""
 OLD_WORKSPACE="$HOME/.local/share/$APP_ID/BundleWorkspaces/wgs-extract"
 # A desktop session's runtime folder (logind's /run/user/<uid>), where dconf
 # keeps its runtime state; without one it falls back to ~/.cache/dconf.
@@ -95,7 +99,10 @@ EOF
 }
 
 app_actions() {
-    if [ ! -e "$WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
+    if [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$APP_DATA/BundleWorkspaces/wgs-extract/.bundle-workspace" ]; then
+        WORKSPACE="$APP_DATA/BundleWorkspaces/wgs-extract"
+        USERS_ARGS="--users-workspace"
+    elif [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
         WORKSPACE="$OLD_WORKSPACE"
     fi
     runner="$APP_DIR/app/dist/web/src/server/bundle-test-cli.js"
@@ -105,7 +112,7 @@ app_actions() {
     fi
     GUI_FOR_CLI_APP_SUPPORT_NAME="$APP_ID" "$APP_DIR/node/bin/node" \
         "$runner" \
-        --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" \
+        --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" ${USERS_ARGS:+"$USERS_ARGS" "$USERS_WORKSPACE"} \
         --report "$R/bundle-report.json" --log "$R/bundle-test.log" \
         "$APP_DIR/examples/EmbeddedBundle"
     rc=$?
@@ -113,7 +120,7 @@ app_actions() {
         cp -R "$WORKSPACE/lab-output/." "$R/workload/"
     fi
     mkdir -p "$R/workload/info"
-    find "$WORKSPACE/output" "$WORKSPACE/datasets" -name '*.wgse_info.json' \
+    find "$USERS_WORKSPACE/output" "$USERS_WORKSPACE/mygenomes" "$WORKSPACE/output" "$WORKSPACE/datasets" "$WORKSPACE/genomes" -name '*.wgse_info.json' \
         -exec cp {} "$R/workload/info/" \; 2>/dev/null
     return $rc
 }

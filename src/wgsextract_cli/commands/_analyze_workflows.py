@@ -19,6 +19,10 @@ from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, StepRun
+from wgsextract_cli.core.temp_directory import (
+    configured_temp_directory,
+    scratch_parent,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -358,7 +362,10 @@ def _stage_dir(outdir: Path | None) -> Iterator[str]:
     one a killed run left is removed when that step reruns."""
     running = _RUNNING.get()
     if running is None or outdir is None:
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse-step-") as temp:
+        with tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir) if outdir else configured_temp_directory(),
+            prefix=".wgse-step-",
+        ) as temp:
             yield temp
         return
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", running.decision.step.name)

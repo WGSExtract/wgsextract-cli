@@ -151,7 +151,7 @@ class ReviewFiles(SimpleHTTPRequestHandler):
         if (
             ".." in rel.parts
             or any(p.startswith(".") for p in rel.parts)
-            or target.suffix not in previews.STATIC
+            or target.suffix not in previews.STATIC | previews.GENOME_DATA
             or not target.resolve().is_relative_to(root.resolve())
         ):
             return str(HERE / ".missing")

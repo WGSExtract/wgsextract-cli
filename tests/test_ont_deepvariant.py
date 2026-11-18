@@ -6,6 +6,7 @@ from wgsextract_cli.api import VcfDeepvariantParams
 from wgsextract_cli.api._params import from_namespace
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.commands.vcf import deepvariant
+from wgsextract_cli.commands.vcf.deepvariant_pipeline import models
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -42,7 +43,7 @@ def test_model_uses_shared_resolver_with_decoding_reference(monkeypatch, caplog)
         calls.append((alignment, ref))
         return "ont"
 
-    monkeypatch.setattr(deepvariant, "input_platform", detect)
+    monkeypatch.setattr(models, "input_platform", detect)
     with caplog.at_level("INFO"):
         assert (
             deepvariant._model_type(_params(input=Path("reads.cram")), "ref.fa")
@@ -80,7 +81,7 @@ def test_contradictory_ont_selectors_are_refused(selection):
     ],
 )
 def test_r9_warning_uses_basecaller_metadata_only(monkeypatch, caplog, header, warning):
-    monkeypatch.setattr(deepvariant, "get_bam_header", lambda *_: header)
+    monkeypatch.setattr(models, "get_bam_header", lambda *_: header)
     deepvariant._warn_ont_chemistry("reads.bam", "ref.fa")
     assert ("chemistry is unsupported" in caplog.text) is warning
 

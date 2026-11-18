@@ -55,11 +55,12 @@ its reads with 'realign' (--ref names the build to move to):
   wgsextract realign --input sample_hg19.bam --ref hs38.fa
 """,
     ),
-    "dataset-library": HelpTopic(
+    "mygenomes-library": HelpTopic(
         "Keep each person's files in a folder; select it with --genome.",
         """\
-Set 'dataset_library' (formerly genome_library) in config.toml to a folder
-with one subfolder per person or sample. The subfolder name (or a nested
+The My Genomes library (config.toml mygenomes_library, formerly
+dataset_library; default: mygenomes/ in the users workspace, ~/wgs-extract)
+holds one subfolder per person or sample. The subfolder name (or a nested
 path such as 'family/joe') is the genome ID. With --genome ID, commands
 find their inputs in that folder and write their outputs there unless
 --outdir is given. If the folder holds several BAM/CRAM files, VCFs or

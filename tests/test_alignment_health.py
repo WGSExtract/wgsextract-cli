@@ -4,8 +4,8 @@ from pathlib import Path
 
 from tests.htslib_helpers import needs_htslib, sam_to_bam
 from wgsextract_cli.commands.info.render import render_info
-from wgsextract_cli.core import alignment_health as health_module
-from wgsextract_cli.core.alignment_health import alignment_health, warn_about_alignment
+from wgsextract_cli.core.alignment import health as health_module
+from wgsextract_cli.core.alignment.health import alignment_health, warn_about_alignment
 
 
 def _bam(tmp_path: Path, n: int, dup_every: int = 0, length: int = 100) -> str:

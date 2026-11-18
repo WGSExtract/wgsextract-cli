@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 from wgsextract_cli.main import main
 
@@ -103,6 +103,7 @@ class TestMicroarrayRealData:
             "--input",
             self.isolated_input,
             "microarray",
+            "--download",
             "--formats",
             ",".join(formats_to_test),
         ]

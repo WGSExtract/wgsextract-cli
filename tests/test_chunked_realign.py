@@ -22,8 +22,8 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from tests.http_server import serving
 from wgsextract_cli.core.alignment import splice as alignment_splice
+from wgsextract_cli.core.alignment.cram_staging import cram_version
 from wgsextract_cli.core.chunked_alignment import ChunkPlan, chunked_disk
-from wgsextract_cli.core.cram_staging import cram_version
 from wgsextract_cli.core.resource_estimates import GIB
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -843,7 +843,7 @@ def test_a_resumed_chunked_realign_keeps_chunks_when_the_gpu_comes_back(
     a GPU that was busy when the run was killed and is free when it resumes
     (or the reverse) must not discard the finished chunks."""
     from tests.fake_tools import python_tool
-    from wgsextract_cli.commands import align
+    from wgsextract_cli.commands.alignment import backends
     from wgsextract_cli.core import native_aligners
 
     monkeypatch.setattr(
@@ -854,7 +854,7 @@ def test_a_resumed_chunked_realign_keeps_chunks_when_the_gpu_comes_back(
     # #768: on a busy CI runner the GPU backend's extra 1 GiB didn't fit the
     # RAM then free, so the resume rightly ran on the CPU. Fix free RAM so the
     # test checks chunk reuse, not the runner's load.
-    monkeypatch.setattr(align, "available_memory", lambda: 64 * GIB)
+    monkeypatch.setattr(backends, "available_memory", lambda: 64 * GIB)
     bindir = tmp_path / "bin"
     monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
     die, log = tmp_path / "die", tmp_path / "mappings.log"

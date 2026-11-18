@@ -5,8 +5,8 @@ from pathlib import Path
 
 from wgsextract_cli.core.annotation_resources import CancelEvent
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.ref_library.assets import library_of_genomes_dir
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import library_of_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
 
 # Official UCSC RefGene database URLs

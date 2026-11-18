@@ -5,6 +5,7 @@ from importlib.resources import files
 from pathlib import Path
 
 from wgsextract_cli.core.builds import build_from_chr1_length
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError
 
 _Y_BUILDS = {59_373_566: "hg19", 57_227_415: "hg38"}
@@ -22,7 +23,9 @@ def poz_bed(contigs: dict[str, int], chromosome: str, outdir: str) -> Iterator[s
             "Unknown, inconsistent or T2T Y assemblies need an independently "
             "validated BED; use extract custom --region <bed>."
         )
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".poz_") as directory:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".poz_"
+    ) as directory:
         path = Path(directory, "targets.bed")
         rows = [
             line.split("\t")

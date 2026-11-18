@@ -13,6 +13,7 @@ from wgsextract_cli.api import VcfDeepvariantParams
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands._bam_ubam import read_group_from_name
 from wgsextract_cli.commands.align import AlignJob
+from wgsextract_cli.commands.alignment import backends
 from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core import native_support, paths, ultima
 from wgsextract_cli.core.utils import WGSExtractError
@@ -32,9 +33,9 @@ def test_flow_markduplicates_windows_argv_uses_native_local_paths(monkeypatch):
 
     commands = []
     monkeypatch.setattr(paths, "sys", Namespace(platform="win32"))
-    monkeypatch.setattr(align, "get_tool_path", lambda _: "gatk")
-    monkeypatch.setattr(align, "run_pipeline", lambda *_a, **_k: None)
-    for module in (align, alignment_output):
+    monkeypatch.setattr(backends, "get_tool_path", lambda _: "gatk")
+    monkeypatch.setattr(backends, "run_pipeline", lambda *_a, **_k: None)
+    for module in (backends, alignment_output):
         monkeypatch.setattr(module, "run_command", lambda cmd: commands.append(cmd))
     monkeypatch.setattr(
         alignment_output, "get_sam_index_cmd", lambda *_a, **_k: ["samtools", "index"]
@@ -247,7 +248,7 @@ def test_align_ultima_bam_carries_flow_tags_through_bwa(tmp_path):
     assert int(fields[1]) & 0x10 and fields[9] == seq
     assert _tag(out, "tp") == f"tp:B:c,{','.join(reversed(tp.split(',')))}"
     assert _tag(out, "t0") == f"t0:Z:{t0[::-1]}"
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
 
     header = get_bam_header(tmp_path / "o" / "ug_aligned.bam")
     assert "FO:TGCATGCA" in header and "tp:reference" in header

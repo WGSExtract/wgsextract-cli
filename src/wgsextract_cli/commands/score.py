@@ -10,12 +10,21 @@ from typing import Any
 from wgsextract_cli.api._runtime import cancel_event, report
 from wgsextract_cli.api.score import ScorePgsParams
 from wgsextract_cli.cli.registration.score import register as register
-from wgsextract_cli.core import ancestry_reference, pgs, pgs_plink, pgs_reference
+from wgsextract_cli.core import (
+    ancestry_reference,
+    pgs,
+    pgs_plink,
+    pgs_reference,
+    variant_confidence,
+)
+from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.temp_directory import scratch_parent
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 
 def run_pgs(params: ScorePgsParams) -> None:
@@ -63,7 +72,7 @@ def run_pgs(params: ScorePgsParams) -> None:
     calibration, reference_problem = _calibration(scoring, params)
     report("pgs", "Indexing observed calls on disk")
     with (
-        tempfile.TemporaryDirectory(prefix=".pgs-", dir=outdir) as work,
+        tempfile.TemporaryDirectory(prefix=".pgs-", dir=scratch_parent(outdir)) as work,
         ExitStack() as handles,
     ):
         reference = pgs.Reference(params.ref, params.build) if params.ref else None
@@ -74,6 +83,7 @@ def run_pgs(params: ScorePgsParams) -> None:
             params.input, Path(work) / "calls.sqlite", params.sample, params.build
         )
         handles.callback(genotypes.close)
+        states = _reference_evidence(params, scoring, genotypes, reference, Path(work))
         report("pgs", "Matching alleles and summing effect dosages")
         data = pgs.score(
             scoring,
@@ -84,7 +94,9 @@ def run_pgs(params: ScorePgsParams) -> None:
             matched_file=matched_file,
             keep_ambiguous=bool(params.keep_ambiguous),
             calibration=calibration.accumulator if calibration else None,
+            states=states[0] if states else None,
         )
+        data["reference_evidence"] = states[0].describe(states[1]) if states else None
         if calibration is not None and data["match_rate"] >= data["minimum_match_rate"]:
             report("pgs", "Projecting the sample onto the ancestry PCA")
             calibration.project(params, genotypes.sample, Path(work), confident)
@@ -196,6 +208,66 @@ def run_pgs(params: ScorePgsParams) -> None:
     human_output(f"Licence: {data['license']}\nCitation: {data['citation']}")
 
 
+def _reference_evidence(
+    params: ScorePgsParams,
+    scoring: pgs.ScoringFile,
+    genotypes: pgs.Genotypes,
+    reference: pgs.Reference | None,
+    work: Path,
+) -> tuple[pgs.EvidenceStates, str] | None:
+    """The reference evidence for the scored sites, and where it came from:
+    the input itself when it is a gVCF, else the gVCF the caller published
+    beside the input VCF (found through its result manifest)."""
+    if genotypes.is_gvcf:
+        gvcf, origin = str(params.input), "input"
+    else:
+        found = evidence.companion(params.input)
+        if found is None:
+            return None
+        gvcf, origin = found, "manifest"
+    samples = run_command(
+        ["bcftools", "query", "-l", gvcf], capture_output=True
+    ).stdout.splitlines()
+    if genotypes.sample not in samples:
+        warn(
+            "pgs_reference_evidence_other_sample",
+            "The gVCF beside the input holds another sample; it was not used.",
+            reference_evidence=gvcf,
+        )
+        return None
+    indexed = gvcf.endswith((".gz", ".bgz")) and any(
+        Path(gvcf + suffix).is_file() for suffix in (".tbi", ".csi")
+    )
+    if len(samples) > 1 or not indexed:
+        # The classifier reads the first sample of an indexed gVCF.
+        copy = str(work / "evidence.g.vcf.gz")
+        run_command(["bcftools", "view", "--no-version", "-s", genotypes.sample,
+                     "-Oz", "-o", copy, gvcf])  # fmt: skip
+        run_command(["bcftools", "index", "-t", copy])
+        gvcf_read = copy
+    else:
+        gvcf_read = gvcf
+    if origin == "manifest":
+        current_result().add_input(gvcf, evidence.ROLE)
+    if params.ref is None:
+        warn(
+            "pgs_reference_evidence_without_ref",
+            "Without --ref, sites the gVCF calls callable reference but the "
+            "VCF doesn't list can't be checked against the scoring alleles "
+            "and stay missing.",
+        )
+    report("pgs", "Reading reference evidence (gVCF) at the scored sites")
+    states = pgs.EvidenceStates(
+        gvcf_read,
+        genotypes.db,
+        ((v.chrom, v.pos) for v in scoring.variants() if v.supported),
+        variant_confidence.thresholds_from(None),
+        reference,
+    )
+    states.path = gvcf
+    return states, origin
+
+
 class _Calibration:
     """The reference distributions of a calibrated score, the sample's
     calibrated sum (accumulated while scoring) and its ancestry PCs."""
@@ -242,6 +314,8 @@ class _Calibration:
             self.training_regions = self.reference.training_regions(
                 ancestry.pca()["region"].astype(str)
             )
+        except DownloadRequired:
+            raise
         except WGSExtractError as exc:
             self.problem = f"No ancestry projection of this input: {exc}"
 
@@ -259,6 +333,8 @@ def _calibration(
             pgs_reference.library_for(str(params.ref) if params.ref else None),
             cancel=cancel_event(),
         )
+    except DownloadRequired:
+        raise
     except WGSExtractError as exc:
         return None, str(exc)
     return _Calibration(reference, pgs_id), None

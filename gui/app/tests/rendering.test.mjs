@@ -255,6 +255,13 @@ test("renders setup status for settings bundles with and without setup steps", a
   assert.match(html, /Setup completed/);
   assert.match(html, /Rerun Setup/);
   assert.match(html, /bi-play-fill/);
+  // Once setup has run its steps start hidden behind the expand arrow.
+  assert.match(html, /setup-status-card collapsed/);
+  assert.match(html, /data-setup-toggle aria-expanded="false"/);
+  assert.doesNotMatch(html, /setup-step-list/);
+  state.setupExpanded = true;
+  html = renderSetupStatusSection();
+  assert.match(html, /data-setup-toggle aria-expanded="true"/);
   assert.match(html, /1m 2s/);
   assert.match(html, /0\.9s/);
   assert.equal((html.match(/OK/g) ?? []).length, 2);
@@ -808,4 +815,56 @@ test("rows-layout category and group headings show the tooltips their options gi
   html = renderCheckboxGroup({ id: "formats", kind: "checkboxGroup", label: "Formats", options });
   assert.match(html, /<h4>AADR<span class="tooltip"[^>]*data-tooltip="Each is a superset\.">i<\/span><\/h4>/);
   assert.match(html, /<h4>23andMe<\/h4>/);
+});
+
+test("unmarked sections collapse only in Advanced, \"open\" ones starting open; toggles flip the default", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { isSectionCollapsible, isSectionExpanded } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState());
+  const page = { id: "p", title: "P" };
+  const plain = { id: "plain", title: "Plain" };
+  const inputs = { id: "inputs", title: "Inputs", collapsible: false };
+  const open = { id: "open", title: "Open", collapsible: "open" };
+
+  state.uiMode = "basic";
+  assert.equal(isSectionCollapsible(plain), false);
+  assert.equal(isSectionCollapsible(open), false);
+  assert.equal(isSectionExpanded(page, open), true);
+
+  state.uiMode = "advanced";
+  assert.equal(isSectionCollapsible(open), true);
+  assert.equal(isSectionExpanded(page, plain), false);
+  assert.equal(isSectionExpanded(page, inputs), true);
+  assert.equal(isSectionExpanded(page, open), true);
+  state.toggledSections.add("p/plain");
+  state.toggledSections.add("p/open");
+  assert.equal(isSectionExpanded(page, plain), true);
+  assert.equal(isSectionExpanded(page, open), false);
+});
+
+test("workspace split's collapsed settings sections reopen with the shared section toggle", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderSection } = await import("../dist/web/src/client/view.js");
+  const section = {
+    id: "dependency-checks", title: "Dependency Checks", collapsed: true,
+    controls: [{ id: "probe", kind: "text", label: "Probe setting" }],
+  };
+  const page = { id: "settings", title: "Settings", sections: [section] };
+  Object.assign(state, createInitialState(), { labels: {}, manifest: { id: "demo", pages: [page] } });
+
+  state.uiMode = "basic";
+  const closed = renderSection(section, page);
+  assert.match(closed, /aria-expanded="false"/);
+  assert.doesNotMatch(closed, /Probe setting/);
+  state.toggledSections.add("settings/dependency-checks");
+  for (const mode of ["basic", "advanced"]) {
+    state.uiMode = mode;
+    const opened = renderSection(section, page);
+    assert.match(opened, /aria-expanded="true"/);
+    assert.match(opened, /Probe setting/);
+  }
 });

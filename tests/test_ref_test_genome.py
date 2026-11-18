@@ -58,7 +58,7 @@ def published(monkeypatch):
 
 def _run(capsys, datasets: Path, *flags: str) -> dict:
     try:
-        main(["--json", "ref", "test-genome", "--dataset-library", str(datasets),
+        main(["--json", "ref", "test-genome", "--mygenomes-library", str(datasets),
               *flags])  # fmt: skip
     except SystemExit:
         pass
@@ -135,7 +135,7 @@ def test_issue_801_download_satisfies_app_required_output(
         if step.get("actionID") == "test-dataset-download"
     )
 
-    main(["ref", "test-genome", "--install", "--dataset-library", str(datasets)])
+    main(["ref", "test-genome", "--install", "--mygenomes-library", str(datasets)])
 
     output = capsys.readouterr().out
     assert all(text in output for text in download["requiredOutput"])
@@ -205,6 +205,6 @@ def test_issue_960_refused_zip_can_be_deleted_and_replaced(
 def test_install_and_delete_together_is_a_usage_error(tmp_path, capsys):
     with pytest.raises(SystemExit) as exit_info:
         main(["ref", "test-genome", "--install", "--delete",
-              "--dataset-library", str(tmp_path)])  # fmt: skip
+              "--mygenomes-library", str(tmp_path)])  # fmt: skip
     assert exit_info.value.code == 2
     assert os.listdir(tmp_path) == []

@@ -1,0 +1,486 @@
+from __future__ import annotations
+
+import filecmp
+import logging
+import os
+import shutil
+import subprocess
+import tarfile
+import tempfile
+from collections.abc import Callable, Mapping
+from pathlib import Path, PurePosixPath
+
+from wgsextract_cli.core.annotation_resources import (
+    GNOMAD_URLS,
+    CancelEvent,
+    ProgressCallback,
+)
+from wgsextract_cli.core.bgzf import ensure_bgzf
+from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.ref_library.assets import (
+    GENOME_SIDECARS,
+    n_count_paths,
+    read_fai_lengths,
+    reference_dict_path,
+    reference_genomes_dir,
+    verify_sequence_signature,
+)
+from wgsextract_cli.core.ref_library.catalog import get_genome_status
+from wgsextract_cli.core.ref_library.downloads import (
+    download_file,
+    verify_download_sha256,
+)
+from wgsextract_cli.core.utils import (
+    WGSExtractError,
+    popen,
+    run_command,
+    wait_with_cancel,
+)
+
+
+def _ploidy_template(x_par: tuple[int, int, int], y_len: int) -> str:
+    """bcftools' own GRCh37/GRCh38 definitions (`bcftools call --ploidy X?`),
+    for both contig namings: male chrX haploid outside the PARs."""
+    par1_end, x_start, x_end = x_par
+    lines = []
+    for x, y, mt in (("X", "Y", "MT"), ("chrX", "chrY", "chrM")):
+        lines += [
+            f"{x} 1 {par1_end} M 1", f"{x} {x_start} {x_end} M 1",
+            f"{y} 1 {y_len} M 1", f"{y} 1 {y_len} F 0",
+            f"{mt} 1 16569 M 1", f"{mt} 1 16569 F 1",
+        ]  # fmt: skip
+    return "\n".join([*lines, "* * * M 2", "* * * F 2", ""])
+
+
+_PLOIDY_TEMPLATES = {
+    "GRCh37": _ploidy_template((60000, 2699521, 154931043), 59373566),
+    "GRCh38": _ploidy_template((9999, 2781480, 155701381), 57227415),
+}
+# What versions before 0.6 wrote when bcftools' definition wasn't read: no chr
+# lines, so male chrX/chrY were diploid on chr-named references.
+_OLD_PLOIDY_TEMPLATES = {
+    "GRCh37": "X 1 60000 M 1\nX 2699521 154931043 M 1\nY 1 59373566 M 1\n"
+    "Y 1 59373566 F 0\nMT 1 16569 M 1\nMT 1 16569 F 1\n* * * M 2\n* * * F 2\n",
+    "GRCh38": "X 1 10000 M 1\nX 2781480 155701383 M 1\nY 1 57227415 M 1\n"
+    "Y 1 57227415 F 0\nMT 1 16569 M 1\nMT 1 16569 F 1\n* * * M 2\n* * * F 2\n",
+}
+
+
+def download_gnomad(
+    reflib_dir: str,
+    cancel_event: CancelEvent | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> bool:
+    """Downloads and indexes gnomAD sites VCFs for hg19 and hg38."""
+    target_dir = str(Path(reflib_dir, "ref"))
+    Path(target_dir).mkdir(parents=True, exist_ok=True)
+
+    success = True
+    for build, url in GNOMAD_URLS.items():
+        if cancel_event and cancel_event.is_set():
+            return False
+
+        dest_path = str(Path(target_dir, f"gnomad_{build}.vcf.bgz"))
+        logging.info(f"Downloading gnomAD {build} from Google Storage...")
+
+        if not download_file(url, dest_path, progress_callback, cancel_event):
+            success = False
+            continue
+
+        if cancel_event and cancel_event.is_set():
+            return False
+
+        # Index the VCF
+        logging.info(f"Indexing gnomAD {build}...")
+        try:
+            # gnomAD VCFs are usually already bgzipped and indexed,
+            # but we might need to download the index or recreate it.
+            # Tabix -p vcf works for .vcf.bgz as well.
+            run_command(["tabix", "-p", "vcf", "-f", dest_path])
+        except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+            logging.error(f"Failed to index gnomAD {build}: {e}")
+            success = False
+
+    return success
+
+
+def _remove_genome_files(base_path: str) -> None:
+    """The FASTA, everything made from it, and its sequence dictionary."""
+    for path in [base_path, *(base_path + ext for ext in GENOME_SIDECARS)]:
+        Path(path).unlink(missing_ok=True)
+    Path(reference_dict_path(base_path)).unlink(missing_ok=True)
+
+
+def has_ref_ns(final_name: str, reflib_dir: str) -> bool:
+    """Checks if N-count files exist for a reference genome."""
+    if not reflib_dir:
+        return False
+    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
+    return any(Path(path).exists() for path in n_count_paths(base_path))
+
+
+def _run_reference_tool(cmd: list[str], cancel_event: CancelEvent | None) -> bool:
+    """Run an indexing tool; False if cancelled, WGSExtractError with stderr on failure."""
+    with tempfile.TemporaryFile() as stderr_file:
+        process = popen(cmd, stdout=subprocess.DEVNULL, stderr=stderr_file)
+        if wait_with_cancel(process, cancel_event):
+            return True
+        if cancel_event and cancel_event.is_set():
+            return False
+        stderr_file.seek(0)
+        stderr = stderr_file.read().decode(errors="replace").strip()
+    raise WGSExtractError(
+        f"{' '.join(cmd[:2])} failed with exit code {process.returncode}: "
+        f"{stderr[-2000:] or 'no error output'}"
+    )
+
+
+def process_reference_file(
+    fasta_path: str,
+    status_callback: Callable[[str], None] | None = None,
+    cancel_event: CancelEvent | None = None,
+) -> bool:
+    logging.info(f"Processing reference: {fasta_path}")
+
+    try:
+        bgzf_path = ensure_bgzf(fasta_path, status_callback, cancel_event)
+    except WGSExtractError as e:
+        # A corrupt download: False lets the caller try the next mirror.
+        logging.error(str(e))
+        return False
+    if not bgzf_path:
+        return False
+
+    if cancel_event and cancel_event.is_set():
+        return False
+
+    dict_path = reference_dict_path(bgzf_path)
+    try:
+        logging.info("Generating sequence dictionary...")
+        if status_callback:
+            status_callback("Processing: Generating Dictionary...")
+        if not _run_reference_tool(
+            ["samtools", "dict", bgzf_path, "-o", dict_path], cancel_event
+        ):
+            return False
+
+        logging.info("Indexing FASTA...")
+        if status_callback:
+            status_callback("Processing: Indexing FASTA...")
+        if not _run_reference_tool(["samtools", "faidx", bgzf_path], cancel_event):
+            return False
+
+    except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.error(f"Indexing failed: {e}")
+        return False
+
+    return True
+
+
+def download_and_process_genome(
+    genome_data: Mapping[str, str],
+    reflib_dir: str,
+    progress_callback: ProgressCallback | None = None,
+    cancel_event: CancelEvent | None = None,
+    restart: bool = False,
+    status_callback: Callable[[str], None] | None = None,
+) -> bool:
+    """Download (resuming a .partial) and index a genome; restart discards existing data.
+
+    An already-installed genome is only re-indexed unless restart is set.
+    """
+    verify_dependencies(["samtools", "bgzip"])
+    target_dir = reference_genomes_dir(reflib_dir)
+    Path(target_dir).mkdir(parents=True, exist_ok=True)
+    final_path = str(Path(target_dir, genome_data["final"]))
+
+    if restart:
+        # Indexes too: an old .fai beside a failed download reads as installed.
+        _remove_genome_files(final_path)
+
+    if get_genome_status(genome_data["final"], reflib_dir) != "installed":
+        logging.info(
+            f"Downloading {genome_data['label']} from {genome_data['source']}..."
+        )
+        if not download_file(
+            genome_data["url"],
+            final_path,
+            progress_callback,
+            cancel_event,
+            expected_sha256=genome_data.get("sha256") or None,
+        ):
+            return False
+
+    if not process_reference_file(final_path, status_callback, cancel_event):
+        return False
+    expected = genome_data.get("md5")
+    if expected:
+        try:
+            verify_sequence_signature(
+                genome_data["final"], read_fai_lengths(final_path), expected
+            )
+        except WGSExtractError as error:
+            logging.error(str(error))
+            # Do not advertise a rejected mirror as installed or trust it on retry.
+            _remove_genome_files(final_path)
+            return False
+    return True
+
+
+def download_bootstrap(
+    reflib_dir: str,
+    cancel_event: CancelEvent | None = None,
+    progress_callback: ProgressCallback | None = None,
+) -> bool:
+    """Downloads and extracts the reference library bootstrap."""
+    from wgsextract_cli.core.constants import (
+        BOOTSTRAP_FILENAME,
+        BOOTSTRAP_SHA256,
+        BOOTSTRAP_URL,
+        BOOTSTRAP_VERSION,
+    )
+
+    if not Path(reflib_dir).exists():
+        Path(reflib_dir).mkdir(parents=True, exist_ok=True)
+
+    normalize_bootstrap_layout(reflib_dir)
+    if bootstrap_has_support_assets(reflib_dir):
+        logging.info("Reference bootstrap assets are already installed.")
+        return install_bootstrap_support_files(reflib_dir)
+
+    dest_path = str(Path(reflib_dir, BOOTSTRAP_FILENAME))
+    # An archive left by an interrupted run is re-extracted if it still verifies.
+    reuse = Path(dest_path).is_file() and verify_download_sha256(
+        dest_path, BOOTSTRAP_SHA256
+    )
+    if not reuse and not _download_bootstrap_archive(
+        BOOTSTRAP_URL, dest_path, BOOTSTRAP_SHA256, progress_callback, cancel_event
+    ):
+        return False
+
+    logging.info(f"Extracting bootstrap to {reflib_dir}...")
+    try:
+        extract_archive_keep_existing(dest_path, reflib_dir)
+        normalize_bootstrap_layout(reflib_dir)
+        if not install_bootstrap_support_files(reflib_dir):
+            return False
+        Path(reflib_dir, BOOTSTRAP_MARKER_PREFIX + BOOTSTRAP_VERSION).write_text(
+            BOOTSTRAP_SHA256 + "\n", encoding="utf-8", newline="\n"
+        )
+        Path(dest_path).unlink()
+        logging.info("Bootstrap extraction complete.")
+        return True
+    except (OSError, tarfile.TarError, WGSExtractError) as e:
+        logging.error(f"Failed to extract bootstrap: {e}")
+        return False
+
+
+def _download_bootstrap_archive(
+    url: str,
+    dest_path: str,
+    sha256: str,
+    progress_callback: ProgressCallback | None,
+    cancel_event: CancelEvent | None,
+) -> bool:
+    logging.info(f"Downloading bootstrap from {url}...")
+    for attempt in range(1, 4):
+        if download_file(
+            url,
+            dest_path,
+            progress_callback,
+            cancel_event,
+            expected_sha256=sha256,
+            resolve_release_digest=False,
+        ):
+            return True
+        if attempt < 3:
+            logging.warning(
+                "Bootstrap download failed; retrying (%s/3)...", attempt + 1
+            )
+    return False
+
+
+def extract_archive_keep_existing(archive_path: str, dest_dir: str) -> None:
+    """Extract regular files and directories from a tar archive, never overwriting.
+
+    Equivalent to `tar -xkf` on every platform. Members that would land outside
+    dest_dir are rejected; links and special files are skipped, as is macOS
+    AppleDouble/Finder metadata.
+    """
+    dest_root = Path(dest_dir).resolve()
+    with tarfile.open(archive_path, "r:*") as archive:
+        for member in archive:
+            name = PurePosixPath(member.name)
+            if (
+                name.name.startswith("._")
+                or name.name == ".DS_Store"
+                or "__MACOSX" in name.parts
+            ):
+                continue
+            target = (dest_root / name).resolve()
+            if (
+                name.is_absolute()
+                or ".." in name.parts
+                or not target.is_relative_to(dest_root)
+            ):
+                raise WGSExtractError(f"Unsafe path in archive: {member.name}")
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            if not member.isfile():
+                logging.warning("Skipping non-regular archive member: %s", member.name)
+                continue
+            if target.exists():
+                continue
+            source = archive.extractfile(member)
+            if source is None:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            partial = target.with_name(target.name + ".partial")
+            try:
+                with source, open(partial, "wb") as out:
+                    shutil.copyfileobj(source, out, 1024 * 1024)
+                partial.replace(target)
+            finally:
+                partial.unlink(missing_ok=True)
+
+
+# Written once a bootstrap is fully extracted, e.g. ``.bootstrap-0.2.0``.
+BOOTSTRAP_MARKER_PREFIX = ".bootstrap-"
+# Libraries extracted before the marker existed: files spread across the
+# archive, so an interrupted extraction is not taken for a finished one, and
+# that no command deletes (unlike genomes/*_ncnt.csv, removed with a genome).
+_LEGACY_BOOTSTRAP_SENTINELS = (
+    "chm13v2-grch38.chain",
+    "hg19-chm13v2.chain",
+    "microarray/raw_file_templates/head/MyHeritage_V2.csv",
+    "xgen_plus_spikein.GRCh38num.bed",
+)
+
+
+def bootstrap_has_support_assets(reflib_dir: str) -> bool:
+    """Whether the bootstrap is completely installed in ``reflib_dir``."""
+    from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
+
+    root = Path(reflib_dir)
+    if not root.is_dir():
+        return False
+    # The archive (or partial download) download_bootstrap leaves in the
+    # library means a run was interrupted before extraction finished.
+    archive = root / BOOTSTRAP_FILENAME
+    leftovers = ("", ".partial", ".partial.segments", ".partial.source")
+    if any(Path(f"{archive}{suffix}").exists() for suffix in leftovers):
+        return False
+    if any(root.glob(BOOTSTRAP_MARKER_PREFIX + "*")):
+        return True
+    return all((root / name).is_file() for name in _LEGACY_BOOTSTRAP_SENTINELS)
+
+
+def normalize_bootstrap_layout(reflib_dir: str) -> None:
+    nested = str(Path(reflib_dir, "reference"))
+    if not Path(nested).is_dir():
+        _remove_macos_metadata(reflib_dir)
+        return
+    _merge_directory(nested, reflib_dir)
+    _remove_empty_directories(nested)
+    if Path(nested).is_dir() and not os.listdir(nested):
+        Path(nested).rmdir()
+    _remove_macos_metadata(reflib_dir)
+
+
+def install_bootstrap_support_files(reflib_dir: str) -> bool:
+    ok = install_ploidy_files(reflib_dir)
+    if ok:
+        logging.info("Reference bootstrap support files are ready.")
+    return ok
+
+
+def install_ploidy_files(reflib_dir: str) -> bool:
+    outputs = {
+        "GRCh37": str(Path(reflib_dir, "ploidy_hg19.txt")),
+        "GRCh38": str(Path(reflib_dir, "ploidy_hg38.txt")),
+    }
+    ok = True
+    for alias, output in outputs.items():
+        existing = Path(output).read_text() if Path(output).is_file() else None
+        if existing is not None and existing != _OLD_PLOIDY_TEMPLATES[alias]:
+            logging.info("Ploidy file already installed: %s", output)
+            continue
+        logging.info("Installing ploidy file for %s: %s", alias, output)
+        try:
+            content = _ploidy_content(alias)
+            with open(output, "w", encoding="utf-8", newline="\n") as ploidy_file:
+                ploidy_file.write(content)
+        except OSError as e:
+            logging.error("Failed to install ploidy file %s: %s", output, e)
+            ok = False
+    return ok
+
+
+def _ploidy_content(alias: str) -> str:
+    try:
+        result = run_command(
+            ["bcftools", "call", "--ploidy", f"{alias}?"],
+            capture_output=True,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+        # bcftools prints the definition on stderr (and exits 255).
+        text = f"{getattr(result, 'stdout', '') or ''}{getattr(result, 'stderr', '') or ''}"
+        if "chrX" in text and "*" in text:
+            return text
+    except (OSError, subprocess.SubprocessError):
+        logging.debug("Could not query bcftools built-in ploidy for %s.", alias)
+    return _PLOIDY_TEMPLATES[alias]
+
+
+def _merge_directory(src: str, dst: str) -> None:
+    Path(dst).mkdir(parents=True, exist_ok=True)
+    for name in os.listdir(src):
+        source = str(Path(src, name))
+        if name.startswith("._") or name == ".DS_Store":
+            _remove_path(source)
+            continue
+        target = str(Path(dst, name))
+        if Path(source).is_dir() and not Path(source).is_symlink():
+            _merge_directory(source, target)
+            if not os.listdir(source):
+                Path(source).rmdir()
+        elif not Path(target).exists():
+            shutil.move(source, target)
+        elif (
+            Path(source).is_file()
+            and Path(target).is_file()
+            and filecmp.cmp(source, target, shallow=False)
+        ):
+            Path(source).unlink()
+        else:
+            logging.warning("Leaving duplicate bootstrap file in place: %s", source)
+
+
+def _remove_macos_metadata(root: str) -> None:
+    if not Path(root).is_dir():
+        return
+    for current_dir, dirs, files in os.walk(root):
+        for file_name in files:
+            if file_name.startswith("._") or file_name == ".DS_Store":
+                _remove_path(str(Path(current_dir, file_name)))
+        for directory in list(dirs):
+            if directory == "__MACOSX":
+                _remove_path(str(Path(current_dir, directory)))
+                dirs.remove(directory)
+
+
+def _remove_empty_directories(root: str) -> None:
+    if not Path(root).is_dir():
+        return
+    for current_dir, _, _ in os.walk(root, topdown=False):
+        if current_dir != root and not os.listdir(current_dir):
+            Path(current_dir).rmdir()
+
+
+def _remove_path(path: str) -> None:
+    if Path(path).is_dir() and not Path(path).is_symlink():
+        shutil.rmtree(path)
+    elif Path(path).exists():
+        Path(path).unlink()

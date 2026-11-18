@@ -8,7 +8,9 @@ prints the same document to stdout. The model is plain dataclasses so library
 callers (the typed API, server mode) can return it directly.
 
 The document follows ``assets/schemas/wgsextract.result.1.schema.json``;
-docs/result-manifest.md describes it.
+docs/result-manifest.md describes it. ``core.result_schema`` generates that
+contract from these actual writer dataclasses and their annotated constraints;
+``scripts/gen_output_schemas.py --check`` detects stale committed schemas.
 """
 
 from __future__ import annotations
@@ -31,13 +33,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
-from typing import Any, Literal, TextIO
+from typing import Annotated, Any, Final, Literal, TextIO, overload
 from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import execution_context
+from wgsextract_cli.core.output_schema import Constraints
 
-SCHEMA_ID = "wgsextract.result/1"
+SCHEMA_ID: Final = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
 MANIFEST_SUFFIX = ".manifest.json"
 
@@ -49,6 +52,12 @@ EXIT_MISSING_DEPENDENCY = 3
 Scalar = str | int | float | bool | None
 Status = Literal["ok", "failed", "cancelled"]
 ErrorKind = Literal["failure", "usage", "missing_dependency", "cancelled"]
+Fingerprint = Annotated[
+    Annotated[str, Constraints(pattern="^wgse-fp1:[0-9a-f]{64}$")] | None,
+    Constraints(
+        description="wgse-fp1:<sha256 of the size and the first, middle and last MiB>; see docs/result-manifest.md."
+    ),
+]
 
 FINGERPRINT_PREFIX = "wgse-fp1:"
 _FINGERPRINT_BLOCK = 1 << 20  # 1 MiB
@@ -173,14 +182,29 @@ def manifest_path_for(output: str | os.PathLike[str]) -> Path:
 class FileRecord:
     """A file (or directory) a command read or wrote."""
 
-    path: str
-    kind: str
-    role: str
+    path: Annotated[str, Constraints(description="Absolute path.")]
+    kind: Annotated[
+        str,
+        Constraints(
+            description="File type from the name: bam, cram, vcf, fasta, fastq, bed, tsv, ..., directory or other."
+        ),
+    ]
+    role: Annotated[
+        str,
+        Constraints(
+            description="What the file is to this command, e.g. input, snps, combined_kit."
+        ),
+    ]
     exists: bool = False
-    size_bytes: int | None = None
-    mtime: str | None = None
-    fingerprint: str | None = None
-    index: str | None = None
+    size_bytes: Annotated[int | None, Constraints(minimum=0)] = None
+    mtime: Annotated[str | None, Constraints(format="date-time")] = None
+    fingerprint: Fingerprint = None
+    index: Annotated[
+        str | None,
+        Constraints(
+            description="Absolute path of the file's index (.bai, .crai, .tbi, .csi, .fai), if any."
+        ),
+    ] = None
     metrics: dict[str, Scalar] = field(default_factory=dict)
 
     @classmethod
@@ -246,7 +270,7 @@ class FileRecord:
 class ResultWarning:
     """A condition the user should know about; ``code`` is stable for machines."""
 
-    code: str
+    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")]
     message: str
     details: dict[str, Scalar] = field(default_factory=dict)
 
@@ -261,24 +285,36 @@ class ResultError:
 class ReferenceRecord:
     path: str
     build: str | None = None
-    fingerprint: str | None = None
+    fingerprint: Fingerprint = None
 
 
 @dataclass
 class Provenance:
-    version: str = __version__
+    version: Annotated[str, Constraints(description="wgsextract-cli version.")] = (
+        __version__
+    )
     argv: list[str] = field(default_factory=list)
-    params: dict[str, Any] = field(default_factory=dict)
-    tools: dict[str, str] = field(default_factory=dict)
+    params: Annotated[
+        dict[str, object],
+        Constraints(
+            description="Effective option values after config defaults; secrets redacted."
+        ),
+    ] = field(default_factory=dict)
+    tools: Annotated[
+        dict[str, str],
+        Constraints(description="Version of each external tool the command ran."),
+    ] = field(default_factory=dict)
     reference: ReferenceRecord | None = None
     platform: str = field(default_factory=_platform.platform)
     python: str = field(default_factory=_platform.python_version)
-    started: str = field(default_factory=lambda: _utc(time.time()))
-    finished: str = ""
-    elapsed_s: float = 0.0
+    started: Annotated[str, Constraints(format="date-time")] = field(
+        default_factory=lambda: _utc(time.time())
+    )
+    finished: Annotated[str, Constraints(format="date-time")] = ""
+    elapsed_s: Annotated[float, Constraints(minimum=0)] = 0.0
 
 
-def _json_safe(value: Any) -> Any:
+def _json_safe(value: object) -> object:
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     if isinstance(value, os.PathLike):
@@ -291,7 +327,15 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
-def _redact_strings(value: Any) -> Any:
+@overload
+def _redact_strings(value: str) -> str: ...
+
+
+@overload
+def _redact_strings(value: object) -> object: ...
+
+
+def _redact_strings(value: object) -> object:
     """Strip URL credentials and query strings from every string in ``value``."""
     from wgsextract_cli.core.download_progress import redact_urls
 
@@ -304,7 +348,7 @@ def _redact_strings(value: Any) -> Any:
     return value
 
 
-def params_from_args(args: argparse.Namespace) -> dict[str, Any]:
+def params_from_args(args: argparse.Namespace) -> dict[str, object]:
     """The effective options of a run, minus internals and secrets."""
     return redact_params(
         {
@@ -317,7 +361,7 @@ def params_from_args(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
-def redact_params(values: Mapping[str, Any]) -> dict[str, Any]:
+def redact_params(values: Mapping[str, object]) -> dict[str, object]:
     """Parameters safe to record: secret ones and URL credentials and
     queries hidden."""
     return {
@@ -405,16 +449,35 @@ def tool_version(tool: str) -> str | None:
 class CommandResult:
     """What one command read, wrote and found; serialised as wgsextract.result/1."""
 
-    command: str
+    schema: Literal["wgsextract.result/1"] = field(init=False, default=SCHEMA_ID)
+    command: Annotated[
+        str,
+        Constraints(description='The subcommand path, e.g. "vcf snp".', minLength=1),
+    ]
     status: Status = "ok"
-    exit_code: int = EXIT_OK
+    exit_code: Annotated[
+        int,
+        Constraints(
+            description="0 ok, 1 failure, 2 usage error, 3 missing dependency; 128+N after signal N.",
+            minimum=0,
+            maximum=255,
+        ),
+    ] = EXIT_OK
     error: ResultError | None = None
     inputs: list[FileRecord] = field(default_factory=list)
     outputs: list[FileRecord] = field(default_factory=list)
     metrics: dict[str, Scalar] = field(default_factory=dict)
     warnings: list[ResultWarning] = field(default_factory=list)
-    details: dict[str, Any] | None = None
-    manifest: str | None = None
+    details: Annotated[
+        dict[str, object] | None,
+        Constraints(description="Command-specific structured result, or null."),
+    ] = None
+    manifest: Annotated[
+        str | None,
+        Constraints(
+            description="Absolute path of the manifest file written for this run, or null when none was written."
+        ),
+    ] = None
     provenance: Provenance = field(default_factory=Provenance)
 
     def __post_init__(self) -> None:
@@ -466,6 +529,15 @@ class CommandResult:
                     metrics=dict(metrics or {}),
                 )
             )
+            inputs = [record.path for record in self.inputs]
+        from wgsextract_cli.core.output_location import primary_overwrite_warning
+
+        notice = primary_overwrite_warning(
+            absolute, inputs, self.provenance.params.get("outdir")
+        )
+        if notice:
+            logging.warning(notice)
+            self.warn("primary_overwrite", notice, path=absolute)
 
     def add_metrics(self, **metrics: Scalar) -> None:
         with self._lock:
@@ -496,7 +568,7 @@ class CommandResult:
         with self._text_lock:
             self._text_sink = sink
 
-    def set_details(self, details: Mapping[str, Any] | None) -> None:
+    def set_details(self, details: Mapping[str, object] | None) -> None:
         self.details = None if details is None else dict(details)
 
     def set_reference(
@@ -572,8 +644,8 @@ class CommandResult:
         self.provenance.finished = _utc(time.time())
         self.provenance.elapsed_s = round(time.monotonic() - self._clock, 3)
 
-    def to_dict(self) -> dict[str, Any]:
-        document: dict[str, Any] = {"schema": SCHEMA_ID}
+    def to_dict(self) -> dict[str, object]:
+        document: dict[str, object] = {}
         for item in dataclasses.fields(self):
             document[item.name] = _json_safe_dataclass(getattr(self, item.name))
         return document
@@ -671,7 +743,7 @@ def _fail_unexpected(result: CommandResult, error: BaseException, message: str) 
     result.fail("failure", message, EXIT_FAILURE)
 
 
-def _json_safe_dataclass(value: Any) -> Any:
+def _json_safe_dataclass(value: object) -> object:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
             item.name: _json_safe_dataclass(getattr(value, item.name))

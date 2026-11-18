@@ -88,10 +88,12 @@ function Get-PageText($Window) {
         ForEach-Object { $_.Current.Name }) -join " | "
 }
 
-# The uninstall's question whether to delete the workspace too is answered Yes,
-# so the uninstall restores the baseline. Any other dialog from the wizard (an
+# The uninstall's workspace question uses the scenario's explicit removal
+# choice (No unless requested). Any other dialog from the wizard (an
 # error, a warning) is read, answered with OK, and recorded; the caller fails
 # the step if there was one.
+. (Join-Path $PSScriptRoot "uninstall-confirmation.ps1")
+
 function Read-MessageBoxes($Window, [string]$TitlePattern) {
     # Windows 11 shows a message box the wizard owns as the wizard's child in UIA,
     # not as a top-level window.
@@ -101,10 +103,13 @@ function Read-MessageBoxes($Window, [string]$TitlePattern) {
         if ($w.Current.ClassName -ne "#32770" -or $w.Current.NativeWindowHandle -eq $Window.Current.NativeWindowHandle -or
             $w.Current.Name -notlike $TitlePattern) { continue }
         $text = Get-PageText $w
-        if ($text -like "*workspace folder?*") {
+        $answer = if ($Action -eq "uninstall") {
+            Get-WorkspaceRemovalAnswer $text ($req.removeUsersWorkspace -eq $true)
+        } else { $null }
+        if ($answer) {
             Note "message box '$($w.Current.Name)': $text"
-            Click (Find-Button $w "Yes" 5)
-            Note "clicked Yes"
+            Click (Find-Button $w $answer 5)
+            Note "clicked $answer"
             continue
         }
         $complaint = "message box '$($w.Current.Name)': $text"

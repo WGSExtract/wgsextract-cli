@@ -27,8 +27,8 @@ from wgsextract_cli.commands import align
 from wgsextract_cli.commands._extract_helpers import alignments_to_fastq
 from wgsextract_cli.commands.align import AlignJob
 from wgsextract_cli.core import runtime
+from wgsextract_cli.core.alignment.cram_staging import cram_version, needs_cram30
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.cram_staging import cram_version, needs_cram30
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -495,7 +495,7 @@ def test_indexing_sort_that_spills_to_disk_keeps_every_read(tmp_path):
     """#561 review: samtools before 1.14 named its spill files after the
     ``##idx##`` output, so the second spill clashed with the first and the
     BAM kept only the first block of reads."""
-    from wgsextract_cli.core.samtools_commands import get_sam_sort_cmd
+    from wgsextract_cli.core.alignment.samtools_commands import get_sam_sort_cmd
 
     rng = random.Random(561)
     lines = ["@HD\tVN:1.6", "@SQ\tSN:c1\tLN:10000000"]
@@ -860,7 +860,7 @@ def test_repair_bam_streams_through_real_samtools(tmp_path):
 
     api.repair.ftdna_bam(api.RepairFtdnaBamParams(input=source))
 
-    output = tmp_path / "ftdna_repaired.bam"
+    output = tmp_path / "wgse" / "ftdna_repaired.bam"
     view = subprocess.run(
         [shutil.which("samtools") or get_tool_path("samtools"), "view", str(output)],
         check=True,

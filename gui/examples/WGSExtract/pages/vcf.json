@@ -6,10 +6,18 @@
   "sections": [
     {
       "id": "vcf-inputs",
+      "collapsible": false,
       "title": "sections.vcf.vcf-inputs.title",
       "iconName": "inspect-variants",
       "textIcon": "🔎",
       "controls": [
+        {
+          "id": "vcf_path",
+          "label": "controls.vcf.vcf-inputs.vcf_path.label",
+          "kind": "path",
+          "defaultDirectory": "{{mygenomes_library}}",
+          "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
+        },
         {
           "id": "ref_path",
           "label": "controls.vcf.vcf-inputs.ref_path.label",
@@ -44,8 +52,8 @@
             "{{ref_path}}"
           ],
           [
-            "--dataset-library",
-            "{{dataset_library}}"
+            "--mygenomes-library",
+            "{{mygenomes_library}}"
           ],
           [
             "--annotation-vcf",
@@ -58,13 +66,6 @@
         ]
       },
       "controls": [
-        {
-          "id": "vcf_path",
-          "label": "controls.vcf.vcf-inputs.vcf_path.label",
-          "kind": "path",
-          "defaultDirectory": "{{dataset_library}}",
-          "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
-        },
         {
           "id": "vcf_region",
           "label": "controls.vcf.variant-calling.vcf_region.label",
@@ -655,6 +656,35 @@
           "kind": "text",
           "tooltip": "controls.cli.confidence_gq_high.tooltip",
           "advancedOnly": true
+        },
+        {
+          "id": "acmg_research",
+          "label": "controls.cli.acmg_research.label",
+          "kind": "checkboxGroup",
+          "options": [
+            {
+              "id": "--research-acmg",
+              "title": "controls.cli.acmg_research.label"
+            }
+          ],
+          "tooltip": "controls.cli.acmg_research.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "acmg_sa_dir",
+          "label": "controls.cli.acmg_sa_dir.label",
+          "kind": "path",
+          "pathType": "directory",
+          "tooltip": "controls.cli.acmg_sa_dir.tooltip",
+          "advancedOnly": true
+        },
+        {
+          "id": "acmg_gff3",
+          "label": "controls.cli.acmg_gff3.label",
+          "kind": "path",
+          "pathType": "file",
+          "tooltip": "controls.cli.acmg_gff3.tooltip",
+          "advancedOnly": true
         }
       ],
       "actions": [
@@ -907,6 +937,61 @@
               ]
             ]
           }
+        },
+        {
+          "id": "vcf-acmg",
+          "title": "actions.cli.vcf-acmg.title",
+          "tooltip": "actions.cli.vcf-acmg.tooltip",
+          "disabledTooltip": "actions.cli.vcf-acmg.disabledTooltip",
+          "advancedOnly": true,
+          "visibleWhen": [
+            {
+              "placeholder": "hostPlatform",
+              "notEquals": "windows"
+            }
+          ],
+          "disabledWhen": [
+            {
+              "placeholder": "acmg_research",
+              "notEquals": "--research-acmg"
+            }
+          ],
+          "confirm": {
+            "title": "actions.cli.vcf-acmg.confirm.title",
+            "message": "actions.cli.vcf-acmg.confirm.message",
+            "confirmButtonTitle": "actions.cli.vcf-acmg.confirm.confirmButtonTitle",
+            "cancelButtonTitle": "actions.cli.vcf-acmg.confirm.cancelButtonTitle"
+          },
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "acmg",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "{{acmg_research}}"
+              ],
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--sa-dir",
+                "{{acmg_sa_dir}}"
+              ],
+              [
+                "--gff3",
+                "{{acmg_gff3}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
         }
       ]
     },
@@ -999,6 +1084,7 @@
     {
       "id": "consensus",
       "title": "sections.cli.consensus.title",
+      "subtitle": "sections.cli.consensus.subtitle",
       "iconName": "fasta",
       "textIcon": "🧬",
       "advancedOnly": true,

@@ -134,10 +134,20 @@ def _view(path, *opts):
 
 
 def _basecall(tmp_path, source, **params):
+    params.setdefault("download", True)
     params.setdefault("models_dir", tmp_path / "models")
     params.setdefault("device", "cpu")
     params.setdefault("outdir", tmp_path / "out")
     return api.align.basecall(api.BasecallParams(input=source, **params))
+
+
+def test_1052_basecall_model_selection_requires_explicit_download(tmp_path):
+    source = _pod5(tmp_path / "fake.pod5", {"fake": "ACGT"})
+    with pytest.raises(api.CommandFailed) as refused:
+        _basecall(tmp_path, source, download=False)
+    assert refused.value.exit_code == 2
+    assert "--download" in str(refused.value)
+    assert "Oxford Nanopore" in str(refused.value)
 
 
 def _codes(result):

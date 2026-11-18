@@ -131,7 +131,9 @@ def test_other_trees_never_fetch_either_yfull_module(served, kit, tmp_path):
 def test_yfull_with_own_markers_fetches_only_the_tree_module(served, kit, tmp_path):
     panel = tmp_path / "panel.txt"
     panel.write_text(MARKERS)
-    assert _call(kit, tmp_path / "out", "--pos-file", str(panel)) == "R1b1"
+    assert (
+        _call(kit, tmp_path / "out", "--download", "--pos-file", str(panel)) == "R1b1"
+    )
     assert set(served.paths) == {"yfull-tree-1.0.tar.gz"}
     assert _installed(served) == {"yfull-tree"}
 
@@ -140,7 +142,7 @@ def test_yfull_fetches_both_modules_once_with_a_licence_notice(
     served, kit, tmp_path, caplog
 ):
     caplog.set_level(logging.INFO)
-    assert _call(kit, tmp_path / "first") == "R1b1"
+    assert _call(kit, tmp_path / "first", "--download") == "R1b1"
     assert _installed(served) == {"yfull-tree", "yfull-ybrowse-positions"}
     tree = served.library / "yleaf/modules/yfull-tree/1.0"
     assert sorted(p.name for p in tree.iterdir()) == sorted(TREE_FILES)
@@ -163,16 +165,16 @@ def test_each_module_is_verified_against_its_own_pin(served, kit, tmp_path):
         {**POSITIONS_FILES, "hg38/new_positions.txt": b"tampered"}
     )
     with pytest.raises(WGSExtractError, match="yfull-ybrowse-positions 1.0"):
-        _call(kit, tmp_path / "bad")
+        _call(kit, tmp_path / "bad", "--download")
     assert _installed(served) == {"yfull-tree"}
     positions = served.library / "yleaf/modules/yfull-ybrowse-positions/1.0"
     assert not positions.exists()
 
     # A corrupted installed table is replaced from its own module only.
     served.files["yfull-ybrowse-positions-1.0.tar.gz"] = good
-    assert _call(kit, tmp_path / "ok") == "R1b1"
+    assert _call(kit, tmp_path / "ok", "--download") == "R1b1"
     (positions / "hg38/new_positions.txt").write_text("corrupt")
     served.paths.clear()
-    assert _call(kit, tmp_path / "repaired") == "R1b1"
+    assert _call(kit, tmp_path / "repaired", "--download") == "R1b1"
     assert set(served.paths) == {"yfull-ybrowse-positions-1.0.tar.gz"}
     assert (positions / "hg38/new_positions.txt").read_text() == MARKERS

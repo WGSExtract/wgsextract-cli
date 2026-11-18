@@ -8,6 +8,10 @@ original source (NCBI, EBI, UCSC, AWS) is listed after it as an `-Alt` row,
 and the install falls back to it automatically. The original servers have
 been slow and unreliable, so the copies come first (#701).
 
+For annotation resources, gene maps and benchmark downloads, see
+[download mirrors and source rights](resource-mirrors.md). Their separate
+audit deliberately excludes restricted or unclear third-party data.
+
 ## Listing the library
 
 `wgsextract ref library --list` shows every catalog row (one per source) with
@@ -38,6 +42,16 @@ remain build evidence. Tool command-history lines in VCF headers are not.
 HG00096 dataset. Its human-readable status identifies it as **WGS Extract hg19
 mini benchmark genome**, the same title shown by the app. The status and path
 are also available in the JSON result's `details`.
+
+## Shared-library permissions
+
+On POSIX systems, new `.lock` and `.guard` coordination files use `0666`
+filtered by the process umask. For a group-writable reference library, use a
+shared group, writable directories and a umask such as `0002` for every writer.
+Existing guards keep their permissions. If an older guard denies access, ask
+its owner or administrator to grant the shared users read/write access to the
+named file and access to its directory. Do not delete guards while any run may
+be using the library: replacing a guard can break locking between processes.
 
 ## Deleting a genome
 
@@ -94,7 +108,10 @@ These download from their original source only.
 
 **hs38DH:** `GRCh38_full_analysis_set_plus_decoy_hla` includes HLA sequences
 from IMGT/HLA, whose [licence](https://www.ebi.ac.uk/ipd/imgt/hla/licence/)
-asks for permission to redistribute modified data. Its copy in `v0.1.0`
-predates #701 and is under review there.
+is CC BY-ND, explicitly asks people not to mirror the data, and requires
+permission to redistribute modified data. The composite FASTA is therefore
+excluded from the new benchmark mirrors (the coordinate-only `.fai` may be
+copied). Its copy in `v0.1.0` predates #701 (reference-genome mirrors) and
+remains under review there.
 
 GitHub limits each release file to 2 GiB. Every genome's BGZF file fits.

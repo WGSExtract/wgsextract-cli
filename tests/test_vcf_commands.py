@@ -210,7 +210,6 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
         patch.object(chain, "verify_dependencies"),
         patch.object(chain, "get_tool_path", return_value="bcftools"),
         patch.object(chain, "ReferenceLibrary", Lib),
-        patch.object(chain, "ensure_vcf_prepared", side_effect=lambda p: p),
         patch.object(chain, "run_command", side_effect=fake_run_command),
     ):
         chain.cmd_chain_annotate(args)
@@ -269,7 +268,6 @@ def test_chain_fails_instead_of_copying_unannotated_input(tmp_path, scenario):
         patch.object(chain, "verify_dependencies"),
         patch.object(chain, "get_tool_path", return_value="bcftools"),
         patch.object(chain, "ReferenceLibrary", Lib),
-        patch.object(chain, "ensure_vcf_prepared", side_effect=lambda p: p),
         patch.object(chain, "run_command", side_effect=failing_step),
         pytest.raises(WGSExtractError),
     ):
@@ -438,9 +436,20 @@ def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys
     results = tmp_path / "results"
     _cli_json(capsys, "vcf", "clinvar", "--input", other, "--vcf-input", sample,
               *_clinvar(tmp_path, sample), "--outdir", str(results))  # fmt: skip
+    genes = tmp_path / "genes.tsv"
+    genes.write_text("gene\nBRCA1\n")
 
     def sources(vcf: str) -> list[str]:
-        report = _cli_json(capsys, "report", "--input", vcf, "--results", str(results))
+        report = _cli_json(
+            capsys,
+            "report",
+            "--input",
+            vcf,
+            "--results",
+            str(results),
+            "--gene-list",
+            str(genes),
+        )
         return [name for role, name in _inputs(report) if role == "manifest"]
 
     assert sources(other) == []
@@ -480,7 +489,7 @@ def test_trio_on_a_vcf_only_genome_is_the_genomes_report_vcf(tmp_path, capsys):
     genome = tmp_path / "genomes" / "child"
     genome.mkdir(parents=True)
     config = tmp_path / "config.toml"
-    config.write_text(f"dataset_library = {json.dumps(str(genome.parent))}\n")
+    config.write_text(f"mygenomes_library = {json.dumps(str(genome.parent))}\n")
     _write_vcf(genome / "child.vcf.gz", body, sample="S", header=gq)
     mom, dad = (
         _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)
@@ -617,7 +626,6 @@ def test_clinvar_normalizes_contigs_and_leaves_no_temporaries(tmp_path):
     assert _query(str(outdir / "clinvar_pathogenic.vcf.gz"), "%POS\n") == ["10"]
     assert sorted(os.listdir(inputs)) == ["sample.vcf.gz", "sample.vcf.gz.tbi"]
     assert sorted(os.listdir(outdir)) == [
-        ".wgse_normalized_resources",
         "clinvar_annotated.vcf.gz",
         "clinvar_annotated.vcf.gz.tbi",
         "clinvar_conflicts.confidence.tsv",

@@ -4,7 +4,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
-import { conditionMatches, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
+import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
@@ -82,9 +82,9 @@ test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide 
 
   const context = { fieldValues: { bam_path: "/tmp/sample.bam" }, checkedOptions: {}, configValues: {}, rowValues: {}, bundleRootPath: "/bundle" };
   const calling = sections.find((section) => section.id === "variant-calling");
-  const svCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-sv").command, context);
+  const callCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-call").command, context);
   const deepVariantCommand = displayCommand(calling.actions.find((action) => action.id === "vcf-deepvariant").command, context);
-  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats/.test(svCommand), svCommand);
+  assert.ok(!/--ont|--long-read|--caller|--tandem-repeats|--merge|--reference-evidence=gvcf/.test(callCommand), callCommand);
   assert.ok(!/--ont|--model-type/.test(deepVariantCommand), deepVariantCommand);
 
   const methylation = sections.find((section) => section.id === "methylation");
@@ -98,6 +98,26 @@ test("WGSExtract v0.8.7 controls start unset and platform-limited sections hide 
   }
   assert.equal(isSectionVisible(calling, context), true);
   assert.equal(conditionMatches({ placeholder: "hostPlatform", equals: currentSetupPlatform() }, context), true);
+});
+
+test("#629: ACMG classes run only once research use is ticked and confirmed", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const sections = bundle.manifest.pages.flatMap((page) => page.sections ?? []);
+  const annotations = sections.find((section) => section.id === "more-annotations");
+  const action = annotations.actions.find((candidate) => candidate.id === "vcf-acmg");
+  const context = (checked) => ({
+    fieldValues: { vcf_path: "/tmp/sample_vep.vcf.gz" },
+    checkedOptions: checked ? { acmg_research: "--research-acmg" } : {},
+    configValues: {}, rowValues: {}, bundleRootPath: "/bundle",
+  });
+
+  assert.match(disabledReason(action, context(false)) ?? "", /research use only, not a diagnosis/);
+  assert.equal(disabledReason(action, context(true)), undefined);
+  assert.match(action.confirm.message, /not a diagnosis/);
+  assert.match(displayCommand(action.command, context(true)), /vcf acmg --vcf-input \/tmp\/sample_vep\.vcf\.gz --research-acmg/);
+  assert.doesNotMatch(displayCommand(action.command, context(false)), /--research-acmg/);
+  assert.equal(isActionVisible(action, context(true)), currentSetupPlatform() !== "windows");
 });
 
 test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async (t) => {
@@ -201,7 +221,7 @@ test("conformance bundle applies requested localization overlays in TypeScript",
   assert.equal(bundle.manifest.summary, "Ejercita semánticas comunes de ejecución de paquetes.");
 });
 
-test("WGSExtract exposes dataset and reference genome library controls in TypeScript", async (t) => {
+test("WGSExtract exposes My Genomes and reference genome library controls in TypeScript", async (t) => {
   const copy = await exampleBundleCopy(t);
   const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const library = bundle.manifest.pages.find((page) => page.id === "library");
@@ -228,11 +248,14 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(pageOrder.indexOf("annotate") < pageOrder.indexOf("workflows"), "Annotate sits above Workflows");
   const datasetPaths = datasets.sections.find((section) => section.id === "dataset-paths");
   assert.equal(datasetPaths.title, "Library Paths");
-  const datasetLibraryControl = datasetPaths.controls.find((control) => control.id === "dataset_library");
-  assert.equal(datasetLibraryControl.label, "Dataset Library Path");
-  assert.equal(datasetLibraryControl.kind, "path");
+  const myGenomesControl = datasetPaths.controls.find((control) => control.id === "mygenomes_library");
+  assert.equal(myGenomesControl.label, "My Genomes Library Path");
+  assert.equal(myGenomesControl.kind, "path");
   const referenceGenomePaths = genomesPage.sections.find((section) => section.id === "reference-genome-paths");
-  assert.equal(referenceGenomePaths.advancedOnly, true);
+  // Library Paths show in Basic, on all three library pages.
+  for (const section of [libraryPaths, datasetPaths, referenceGenomePaths]) {
+    assert.equal(section.advancedOnly, undefined, section.id);
+  }
   assert.equal(referenceGenomePaths.controls[0].id, "reference_genome_library");
   assert.equal(referenceGenomePaths.controls[0].label, "Reference Genomes Library Path");
   const genomeTable = genomesPage.sections.find((section) => section.id === "genome-management").controls[0];
@@ -242,7 +265,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(databaseTools, "databases and tools section exists");
   assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
   assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
-  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]]);
+  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
   assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
   assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
@@ -257,7 +280,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
-  const libraryArguments = [["--ref", "{{ref_path}}"], ["--dataset-library", "{{dataset_library}}"]];
+  const libraryArguments = [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]];
   assert.deepEqual(downloadAction.command.arguments, ["ref", "test-genome", "--install"]);
   assert.deepEqual(downloadAction.command.optionalArguments, libraryArguments);
   const deleteAction = testDataset.actions.find((action) => action.id === "test-dataset-delete");
@@ -272,9 +295,11 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   assert.equal(installStep.toolVersionFile, "scripts/wgsextract-release-tag.txt");
   assert.equal(bundle.manifest.setup.initialInstallSizeGB, 6);
 
-  const settings = settingsPage.sections[0].controls[0];
-  const datasetLibrarySetting = settings.settings.find((setting) => setting.id === "dataset_library");
-  assert.equal(datasetLibrarySetting.key, "dataset_library");
+  const settings = settingsPage.sections.find((section) => section.id === "settings-paths").controls[0];
+  assert.equal(settings.configFile.path, "{{usersWorkspace}}/config.toml");
+  const myGenomesSetting = settings.settings.find((setting) => setting.id === "mygenomes_library");
+  assert.equal(myGenomesSetting.key, "mygenomes_library");
+  assert.ok(!settings.settings.some((setting) => setting.key === "dataset_library"));
   assert.ok(!settings.settings.some((setting) => setting.key === "genome_library"));
   const referenceGenomeSetting = settings.settings.find((setting) => setting.id === "reference_genome_library");
   assert.equal(referenceGenomeSetting.key, "reference_genome_library");
@@ -282,7 +307,7 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const bamPath = bundle.manifest.pages
     .find((page) => page.id === "info-bam")
     .sections[0].controls.find((control) => control.id === "bam_path");
-  assert.equal(bamPath.defaultDirectory, "{{dataset_library}}");
+  assert.equal(bamPath.defaultDirectory, "{{mygenomes_library}}");
   const fastqAlign = bundle.manifest.pages
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "fastq-align")
@@ -300,16 +325,12 @@ test("WGSExtract exposes dataset and reference genome library controls in TypeSc
   const variantCalling = bundle.manifest.pages
     .find((page) => page.id === "extract")
     .sections.find((section) => section.id === "variant-calling");
-  const snpAction = variantCalling.actions.find((action) => action.id === "vcf-snp");
-  assert.equal(snpAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
-  assert.deepEqual(snpAction.command.arguments.slice(0, 3), ["vcf", "snp", "--input"]);
-  assert.equal(snpAction.estimatedDurationMinutes, 34);
-  const indelAction = variantCalling.actions.find((action) => action.id === "vcf-indel");
-  assert.equal(indelAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
-  assert.deepEqual(indelAction.command.arguments.slice(0, 3), ["vcf", "indel", "--input"]);
-  assert.equal(indelAction.estimatedDurationMinutes, 34);
+  const callAction = variantCalling.actions.find((action) => action.id === "vcf-call");
+  assert.equal(callAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
+  assert.deepEqual(callAction.command.arguments.slice(0, 3), ["vcf", "call", "--input"]);
+  assert.equal(callAction.estimatedDurationMinutes, 68);
   const defaultVcfPath = settings.settings.find((setting) => setting.id === "vcf_path");
-  assert.equal(defaultVcfPath.defaultDirectory, "{{dataset_library}}");
+  assert.equal(defaultVcfPath.defaultDirectory, "{{mygenomes_library}}");
   const microarrayAction = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-formats")

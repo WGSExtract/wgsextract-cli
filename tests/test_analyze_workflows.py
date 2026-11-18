@@ -26,7 +26,10 @@ from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5, pinned_sequences
+from wgsextract_cli.core.ref_library.mitochondrial import (
+    CHM13_CHRM_MD5,
+    pinned_sequences,
+)
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
@@ -677,6 +680,51 @@ def test_863_missing_reference_evidence_reruns_the_snp_step(
     run = fake.run("--input", bam, "--outdir", str(out))
     assert run.ran[0] == "snp" and "indel" not in run.ran
     assert Path(out, "bcftools.g.vcf.gz.tbi").is_file()
+
+
+@needs_bcftools
+def test_982_default_baq_resumes_pre_baq_caller_journal_without_rerunning(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    from wgsextract_cli.core.steps import ResumePolicy, Step, StepJournal
+
+    out = tmp_path / "out"
+    initial = fake.run("--input", bam, "--outdir", str(out))
+    assert initial.code == 0
+    with StepJournal(
+        out / "analyze.steps.json", "analyze comprehensive", ResumePolicy()
+    ) as journal:
+        for name in ("snp", "indel"):
+            old_command = [
+                "vcf", name, "--input", bam, "--outdir", str(out),
+            ]  # fmt: skip
+            journal.migrate_params(
+                name,
+                lambda params, command=old_command: {**params, "command": command},
+            )
+        # Persist the legacy parameters without changing callers' producer IDs.
+        with journal.running(journal.decide(Step("legacy-journal-fixture"))):
+            pass
+
+    resumed = fake.run("--input", bam, "--outdir", str(out))
+    assert resumed.code == 0 and not resumed.ran
+    assert fake.calls == []
+
+
+@needs_bcftools
+def test_982_changing_baq_reruns_both_callers_on_resume(
+    fake: FakeSteps, bam: str, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    for mode in ("false", "true", "false"):
+        fake.tables = f"\nbaq = {mode}\n"
+        run = fake.run("--input", bam, "--outdir", str(out))
+        assert run.code == 0
+        assert {"snp", "indel"} <= set(run.ran)
+        if mode == "true":
+            assert not {"info", "mt-haplogroup", "y-haplogroup"} & set(run.ran)
+        resumed = fake.run("--input", bam, "--outdir", str(out))
+        assert resumed.code == 0 and not resumed.ran
 
 
 @needs_bcftools

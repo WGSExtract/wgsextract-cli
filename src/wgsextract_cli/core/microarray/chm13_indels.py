@@ -27,8 +27,8 @@ from wgsextract_cli.core.microarray.indels import (
     _normalize_sites,
     _query_lines,
 )
-from wgsextract_cli.core.microarray_quality import quality_policy
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.quality import quality_policy
+from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_for_format,
     get_template_format,
     template_rows,

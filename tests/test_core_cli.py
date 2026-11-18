@@ -24,14 +24,14 @@ from wgsextract_cli.commands import (
 )
 from wgsextract_cli.core import (
     config,
-    microarray_quirks,
     mimalloc,
     native_aligners,
     native_deepvariant,
-    output_profiles,
     process_registry,
     resource_policy,
 )
+from wgsextract_cli.core.alignment import profiles as output_profiles
+from wgsextract_cli.core.microarray import quirks as microarray_quirks
 from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -677,7 +677,7 @@ def test_example_download_says_how_to_select_it_with_genome(
         assignment = hint.removeprefix(" after setting ").removesuffix(
             " in config.toml"
         )
-        assert tomllib.loads(assignment) == {"dataset_library": str(root.resolve())}
+        assert tomllib.loads(assignment) == {"mygenomes_library": str(root.resolve())}
 
 
 @pytest.mark.parametrize(

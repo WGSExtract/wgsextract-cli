@@ -10,7 +10,6 @@ checked, never installed.
 import contextlib
 import gzip
 import logging
-import os
 import subprocess
 import sys
 import tempfile
@@ -24,6 +23,10 @@ from wgsextract_cli.api.methylation import MethylationPileupParams
 from wgsextract_cli.cli.registration.methylation import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.commands.vcf.basic import plain_reference
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    warn_mixed_platforms,
+)
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
@@ -33,11 +36,10 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genotype_qc import contigs_with_reads
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.table_writer import (
     Column,
     TableWriter,
@@ -48,6 +50,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -652,7 +655,9 @@ def run_pileup(params: MethylationPileupParams) -> None:
     logging.info(f"Tabulating base modifications with modkit to {out_bed}")
     with (
         plain_reference(ref, outdir) as use_ref,
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_modkit_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_modkit_"
+        ) as work,
     ):
         index_fasta(use_ref)
         lengths = read_fai_lengths(use_ref)
@@ -706,7 +711,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
             checkpoint()
             run_command(["tabix", "-f", "-p", "bed", staged_bed])
             if staged_bed != out_bed:
-                os.replace(f"{staged_bed}.tbi", index)
+                move_file(f"{staged_bed}.tbi", index)
             summaries = summarize_bedmethyl(staged_bed)
             write_summary(staged_summary, summaries, params.table_format, metadata)
             if parquet:
@@ -715,7 +720,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
                 sites = bedmethyl_to_parquet(staged_bed, staged_table, metadata)
             checkpoint()
         if index.exists():
-            os.replace(index, f"{out_bed}.tbi")
+            move_file(index, f"{out_bed}.tbi")
     result = current_result()
     result.set_reference(ref, lib.build)
     result.add_output(out_bed, "bedmethyl", kind="bed")

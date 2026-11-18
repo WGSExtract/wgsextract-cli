@@ -44,16 +44,17 @@ from pathlib import Path
 from threading import Event
 from typing import IO
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
 from wgsextract_cli.core.progress import ContigProgress
-from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .call_cleanup import indel_cleanup_pipeline
@@ -151,8 +152,11 @@ def _pipeline(
     call_args: list[str],
     indels: bool,
     bands: bool = False,
+    baq: bool = False,
 ) -> list[list[str]]:
-    mpileup = ["bcftools", "mpileup", *profile, "-B"]
+    mpileup = ["bcftools", "mpileup", *profile]
+    if not baq:
+        mpileup += ["-B"]
     if not indels:
         mpileup += ["-I"]
     if bands:
@@ -404,6 +408,7 @@ class _ContigCaller:
     profile: list[str]
     call_args: list[str]
     indels: bool
+    baq: bool = False
     bands: bool = False
     workers: int = 1
     cancelled: Event | None = None
@@ -433,6 +438,7 @@ class _ContigCaller:
             call_args=self.call_args,
             indels=self.indels,
             bands=self.bands,
+            baq=self.baq,
         )
         description = self.description + (f" ({label})" if label else "")
         env = {**os.environ, **self.environment} if self.environment else None
@@ -640,13 +646,20 @@ def call_small_variants(
     call_args: list[str],
     contigs: dict[str, int],
     indels: bool = False,
+    baq: bool = False,
     environment: Mapping[str, str] | None = None,
 ) -> None:
     """Call into ``output``: per-contig workers for ``contigs`` (from
     `calling_contigs`), or one bcftools stream when it is empty.
     ``environment`` is added to the calling bcftools processes' environment."""
     caller = _ContigCaller(
-        alignment, ref, profile, call_args, indels, environment=dict(environment or {})
+        alignment,
+        ref,
+        profile,
+        call_args,
+        indels,
+        baq=baq,
+        environment=dict(environment or {}),
     )
     if not contigs:
         caller.call(output, ["-r", region] if region else [], region, threads)
@@ -660,7 +673,7 @@ def call_small_variants(
         f"with {caller.workers} workers."
     )
     with tempfile.TemporaryDirectory(
-        dir=Path(output).parent, prefix=".wgse_call_"
+        dir=scratch_parent(Path(output).parent), prefix=".wgse_call_"
     ) as work:
         parts, listings, tasks = [], [], []
         progress = ContigProgress(contigs, contigs)
@@ -715,6 +728,6 @@ def call_small_variants(
         )
         if caller.bands:
             merged = _drop_band_header(merged, work)
-        Path(merged).replace(output)
+        move_file(merged, output)
         for suffix in (".tbi", ".csi"):
             Path(output + suffix).unlink(missing_ok=True)

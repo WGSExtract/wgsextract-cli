@@ -65,6 +65,7 @@ CRAM `--input`.
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
 | Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
 
@@ -114,10 +115,12 @@ Pick another list with `--gene-list` or `report_gene_list` in config.toml:
 - **A built-in list**: `acmg-sf-3.3` (the default) or `acmg-sf-3.2`. Built-in
   lists are assets of the GitHub release `report-gene-lists-v3`, pinned by
   SHA-256 in `src/wgsextract_cli/assets/report/gene_lists.json`. The report
-  downloads one the first time it has ClinVar calls to place, into
+  downloads a missing list only with `--download` permission, into
   `report/gene_lists/` of the reference library, and checks it against the
-  pinned SHA-256 whenever it reads it. Offline, without a downloaded list,
-  the section warns (`gene_list_unavailable`) and places no calls; the other
+  pinned SHA-256 whenever it reads it. Without a local list and permission,
+  the command errors without connecting and asks for `--download` (see
+  [privacy](privacy.md)). If an explicitly permitted download fails, the
+  section warns (`gene_list_unavailable`) and places no calls; the other
   sections are unaffected.
 - **A TSV file** with a `gene` column, and optionally `category`,
   `inheritance` (`AD`, `AR`, `SD`, `XL`; see below), `note`, and
@@ -193,6 +196,42 @@ no status. If the run's confidence table is missing, its manifest lists only
 the first 1,000 calls; the section then warns (`calls_truncated`) and gives
 only biallelic statuses, which more calls can't change.
 
+### Automated ACMG classes (research only)
+
+> **Research use only; not a diagnosis.** These classes are computed
+> automatically by fastVEP from public databases, without the clinical,
+> family and functional evidence a classification needs, and a VUS can mean
+> that nothing was checked.
+
+This section appears only when [`vcf acmg`](acmg.md) ran for the sample. It
+is opt-in research: a report without it never asks for it. The disclaimer
+heads the section, and each of its findings carries "Research use only; not
+a diagnosis." instead of the technical-result disclaimer.
+
+The report reads `acmg_annotated.vcf.gz` itself (about a second per
+chromosome 22, a minute or so for a whole genome). It counts the classes
+(`P`, `LP`, `VUS`, `LB`, `B`) of the alleles the sample carries (every ALT of
+a sites-only VCF) and lists each carried P/LP call in a gene of the gene list
+(the same list and reporting notes as the ClinVar section), placed by the
+VEP gene symbol of the transcript the variant table shows, or by the list's
+spans when there is none. A finding gives the class, the criteria fastVEP
+found met, the transcript it classified on, the HGVS change and consequence,
+and the call's sequencing confidence ([variant-confidence.md](variant-confidence.md);
+`not_assessed` for a sites-only VCF). P/LP calls outside the list are only
+counted; every class is in the classified VCF and in its
+[variant table](variant-table.md). The JSON section adds `disclaimer`,
+`gene_list`, `tool`, `criteria_not_evaluated` (criteria fastVEP never
+evaluates, such as PS3/BS3), `build`, `counts` and `all_calls`.
+
+As in the ClinVar section, an imputed P/LP allele rarer than 1% in the panel
+(or of unknown panel frequency) is counted but not listed
+(`rare_imputed_not_listed`), and a sample that `qc contamination` found
+contaminated has every call at most `moderate` (`sample_contaminated`). A
+multi-sample VCF is read for its first sample, named in a
+`confidence_first_sample_only` warning; subset it to the intended sample
+first. A classified VCF that can't be read (`unreadable_evidence`) leaves the
+section without findings; the rest of the report is still written.
+
 ## Confidence labels
 
 Every finding has a label, `high`, `moderate`, `low` or `not_assessed`, with
@@ -258,6 +297,19 @@ click them.
 same document is the `details` of the report's result manifest
 (`<sample>_personal_report.manifest.json`), of `--json` output and of
 `api.report.build()`.
+
+The committed schema is regenerated with `scripts/gen_report_schema.py`
+(`--check` detects drift), also included in `just regen`. Source-run,
+newest-attempt, warning, missing-command, external-link, finding, evidence,
+variant, pharmacogenomics, fact and QC components come from the writer-used
+types in `core/report_documents.py` and `core/clinical_evidence.py`; their
+HTML and Markdown renderers use the same types.
+The sample, section map, section-specific records and root also come from
+writer-used Python types: no handwritten structural schema template remains.
+This does not add runtime validation or change how old reports render.
+The HTML, Markdown and findings-table consumers use those document types too;
+the complete raw TypeScript contract is generated into
+`gui/app/shared/generated/report-records.ts` by `scripts/gen_server_contracts.py`.
 
 ```json
 {
@@ -334,6 +386,11 @@ followed.
 ## Implementation layout
 
 The internal `core/personal_report/` package keeps the existing import interface.
-Its initializer collects evidence and builds the JSON document and findings
-table; `rendering.py` formats the offline HTML/Markdown documents and evidence
-links. Confidence and clinical rules are independent of presentation.
+Its initializer assembles the JSON document and findings table, re-exporting
+existing helper paths. `context.py` collects manifests and workspace evidence
+and provides shared finding/confidence support. `overview.py` builds sample,
+lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
+carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`variant_sections.py` handles automated ACMG and structural-variant evidence.
+`rendering.py` formats the offline HTML/Markdown documents and evidence links.
+Confidence and clinical rules remain independent of presentation.

@@ -16,18 +16,18 @@ from typing import NamedTuple
 
 import psutil
 
-from wgsextract_cli.core import bwa_index
-from wgsextract_cli.core.alignment_memory import (
+from wgsextract_cli.core.alignment import bwa_index as bwa_index
+from wgsextract_cli.core.alignment.memory import (
     available_memory,
     estimate_mapping_memory,
     reference_bases,
 )
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.ref_library.assets import sequence_dictionary
 from wgsextract_cli.core.ref_library.downloads import (
     download_file,
     verify_download_sha256,
 )
-from wgsextract_cli.core.reference_assets import sequence_dictionary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 INDEX_SUFFIXES = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
@@ -250,7 +250,7 @@ def check_index(ref: str) -> None:
 
 def _unbuildable(ref: str, prebuilt: PrebuiltIndex | None) -> WGSExtractError:
     how = (
-        "Run `wgsextract ref index --aligner bwa-mem2` to download the published one"
+        "Run `wgsextract ref index --aligner bwa-mem2 --download` to download the published one"
         if prebuilt
         else "Build it on a computer with that much memory and copy the "
         f"{', '.join(INDEX_SUFFIXES)} files next to the reference"

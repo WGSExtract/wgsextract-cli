@@ -15,6 +15,13 @@ Please cite Ralf et al., *Molecular Biology and Evolution* 35(5):1291–1294
 The modified Yleaf-derived files retain GPL-3.0-or-later licensing;
 see [NOTICE](NOTICE) and the [upstream sync procedure](src/wgsextract_cli/ydna/yleaf_native/README.md).
 
+## Privacy
+
+Default commands stay offline: no telemetry, background update checks or
+silent reference downloads. Missing public data requires an explicit
+`--download`; sample-derived information must never be sent without a
+separate, documented opt-in. See [network permissions and destinations](docs/privacy.md).
+
 ## Install
 
 macOS and Linux: open Terminal, paste this command, and press Enter.
@@ -69,6 +76,8 @@ When Pixi is missing, installers verify the pinned release's SHA-256 before runn
 ```
 
 This removes the install directory, launcher, Pixi environments, and Pixi cache under it, including a reference library in the default `app/reference/` location. Rerunning the installer to update keeps `app/reference/`, `app/genomes/`, and the Pixi environments. `config.toml` is kept unless you add `--remove-config`. Interactive runs ask whether to remove Pixi from `~/.pixi`; with `--yes`, Pixi is kept unless you add `--remove-pixi`, which also removes Pixi's `PATH` line from your shell profiles (and deletes a profile such as `~/.zshrc` if the install created it and nothing else was added). Custom `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_CACHE_DIR`, and `WGSEXTRACT_PIXI_ENV_DIR` locations are recorded at install time, so the uninstaller finds them; `--bin-dir`, `--pixi-cache-dir`, and `--pixi-env-dir` override them.
+
+On all platforms, `--remove-config` includes the owned default users workspace's `~/wgs-extract/config.toml` (`%USERPROFILE%\wgs-extract\config.toml` on Windows) and the legacy per-user config locations. An otherwise empty default users workspace loses its ownership marker and directory too; libraries, other files and their workspace marker are preserved. Unmarked user folders are left alone. Without `--remove-config`, the workspace config is left unchanged.
 
 ### Running the CLI
 
@@ -137,6 +146,12 @@ validation cooperatively. Named pipes and standard input are spooled under
 complete stream. Read names and output filenames still use the original inputs.
 Pass `--platform` for long-read streams; unlabelled streams use Illumina defaults
 without consuming their first read for platform detection.
+
+Native PacBio HiFi FASTQs select long-read HiFi/CCS defaults, like PacBio BAMs.
+For renamed FASTQs, bounded header, length and quality sampling distinguishes
+long reads from short reads. Ambiguous long reads require `--platform ont`,
+`--platform hifi` or `--platform clr`, never silently BWA/Illumina defaults;
+see [platform detection and recorded evidence](docs/ont.md).
 
 Persistent logging is off by default. Use a **new, dedicated** path:
 

@@ -5,12 +5,15 @@ of alleles, not an absolute disease risk. Do not change treatment or screening
 based on it. Clinical disease scores carry this warning too.
 
 ```bash
-wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height
-wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018 --json
+wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height --download
+wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018 --download --json
 ```
 
-Genotypes stay on your machine. Only the score ID/build is sent to the
-PGS Catalog, to download its metadata and harmonized weights. No scoring
+Genotypes stay on your machine. Only with `--download` is the score ID/build sent to the
+PGS Catalog, to download its metadata and harmonized weights. Without it, cached
+files are reused and missing public data causes an error naming `--download`.
+Explicit download permission also permits refreshing cached Catalog files.
+See [privacy](privacy.md) for destinations and persistent configuration. No scoring
 files are bundled or mirrored. Downloads retry transient failures three times.
 Each attempt checks the advertised byte count (when present) and validates
 the complete gzip stream or metadata JSON before replacing a cached file.
@@ -75,8 +78,16 @@ or citation is reported explicitly, never guessed.
   sample-filtered (`FILTER` or `FORMAT/FT`) calls, unresolved alleles and
   ambiguous duplicate records are unmatched.
   **Missing never means homozygous reference by default**, even in WGS.
-- A called, passing gVCF reference block can supply a reference genotype
-  within its bounds when an indexed `--ref` FASTA is supplied.
+- Reference evidence: given a gVCF, or a variant VCF whose caller published
+  a gVCF beside it (`--reference-evidence gvcf`, found through the caller's
+  result manifest), a site is homozygous reference only where the gVCF
+  calls it callable reference: enough depth and, where the gVCF has GQ,
+  genotype quality (the `confidence_*` settings). Sites the gVCF calls
+  `uncovered`, `low_quality_reference`, `filtered`, `no_call`, `variant`,
+  `excluded_by_policy` or `not_assessed` stay missing, counted under that
+  name. Sites the VCF doesn't list need an indexed `--ref` to check their
+  alleles; `--ref` also gives the length of a contig the gVCF declares
+  without one (otherwise its sites are `not_assessed`). See [reference-evidence.md](reference-evidence.md).
 - For a variants-only callset with a same-sample, same-build confident BED,
   add `--confident-bed sample.confident.bed --ref reference.fa.gz`. Only
   positions inside the BED may be inferred reference; positions outside it
@@ -137,8 +148,8 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
    published reference file holds those rows, their reference allele
    frequencies, the reference samples' scores and the fitted models, not
    genotypes or scoring files. It is the GitHub release `pgs-ref-1`
-   (38 MB), downloaded into `<library>/pgs/` the first time a
-   curated score is run, and checked against a pinned SHA-256. Each score is
+   (38 MB), downloaded into `<library>/pgs/` only with `--download`,
+   and checked against a pinned SHA-256. Each score is
    tied to the SHA-256 of the Catalog file it was built from; if the Catalog
    changes that file, or you supply your own, there is no percentile.
 2. **Your ancestry.** Your genotypes at the ~187,000 ancestry sites are

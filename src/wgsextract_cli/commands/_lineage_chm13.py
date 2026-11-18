@@ -5,7 +5,7 @@ extra C after rCRS 310, no 3107N, 10208 C for T), so positions can't simply
 be shifted. A sample matching CHM13 at 10208 has no call there yet carries
 10208C against the rCRS, so mapping needs a call at every position, not
 variants alone: calls at all sites go through the pinned alignment
-(``mito_reference``) and come out as rCRS variants, indels left-aligned
+(``ref_library.mitochondrial``) and come out as rCRS variants, indels left-aligned
 against the rCRS.
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from wgsextract_cli.core.mito_reference import (
+from wgsextract_cli.core.ref_library.mitochondrial import (
     chm13_to_rcrs,
     pinned_sequences,
     rcrs_variants,

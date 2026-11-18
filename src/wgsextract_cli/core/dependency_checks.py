@@ -232,6 +232,8 @@ def get_tool_version(tool: str) -> str | None:
             return f"Error: Pixi env '{optional_env}' is not installed.{hint}"
         if "--no-install" not in full_cmd:
             full_cmd.insert(full_cmd.index("run") + 1, "--no-install")
+        if "--frozen" not in full_cmd:
+            full_cmd.insert(full_cmd.index("--no-install") + 1, "--frozen")
 
     key = (tool, *full_cmd)
     # One lookup: a config reload on another thread may clear the cache.

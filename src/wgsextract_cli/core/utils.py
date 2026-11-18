@@ -27,6 +27,15 @@ from typing import (
 )
 
 from wgsextract_cli.core import execution_context, live_status
+from wgsextract_cli.core.alignment.samtools_commands import (
+    get_sam_index_cmd as get_sam_index_cmd,
+)
+from wgsextract_cli.core.alignment.samtools_commands import (
+    get_sam_sort_cmd as get_sam_sort_cmd,
+)
+from wgsextract_cli.core.alignment.samtools_commands import (
+    get_sam_view_cmd as get_sam_view_cmd,
+)
 from wgsextract_cli.core.download_progress import CancelEvent, redact_urls
 from wgsextract_cli.core.paths import PathInput, command_is_path, expand_path
 from wgsextract_cli.core.process_registry import (
@@ -44,15 +53,6 @@ from wgsextract_cli.core.resource_policy import (
 from wgsextract_cli.core.run_log import active_run_log, record_command
 from wgsextract_cli.core.runtime import (
     default_thread_tuning_profile as default_thread_tuning_profile,
-)
-from wgsextract_cli.core.samtools_commands import (
-    get_sam_index_cmd as get_sam_index_cmd,
-)
-from wgsextract_cli.core.samtools_commands import (
-    get_sam_sort_cmd as get_sam_sort_cmd,
-)
-from wgsextract_cli.core.samtools_commands import (
-    get_sam_view_cmd as get_sam_view_cmd,
 )
 
 _process_group_kwargs = process_group_kwargs

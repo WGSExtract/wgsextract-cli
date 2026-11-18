@@ -11,11 +11,12 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   # Isolate delayed draft payloads from readiness; redrafting still cancels ready work.
   group: pr-area-${{ github.ref }}-diff${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -39,6 +40,8 @@ jobs:
       draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
       routed: ${{ steps.diff.outputs.routed }}
+      setup_checks: ${{ steps.diff.outputs.setup_checks }}
+      move_modules: ${{ steps.diff.outputs.move_modules }}
       tests: ${{ steps.diff.outputs.tests }}
       ci: ${{ steps.diff.outputs.ci }}
       ci_tests: ${{ steps.diff.outputs.ci_tests }}
@@ -51,10 +54,11 @@ jobs:
       windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
       arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
       generic_tests: ${{ steps.diff.outputs.generic_tests }}
-      linux_x64: ${{ steps.cert.outputs.linux_x64 }}
-      linux_arm64: ${{ steps.cert.outputs.linux_arm64 }}
-      macos_arm64: ${{ steps.cert.outputs.macos_arm64 }}
-      windows_x64: ${{ steps.cert.outputs.windows_x64 }}
+      # Certificates do not yet include move imports/full collection.
+      linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
+      linux_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_arm64 || 'false' }}
+      macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
+      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier
@@ -117,6 +121,7 @@ jobs:
       - name: Lint, workflow policy and type checks
         run: |
           pixi run -e lint -x ruff check .
+          pixi run -e lint -x python scripts/check_python_size.py
           pixi run -e lint -x python scripts/validate_site_sources.py
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
@@ -185,6 +190,7 @@ jobs:
         run: |
           pixi run -e lint -x python - <<'PY'
           import json, os, subprocess, sys
+          subprocess.run([sys.executable, "scripts/check_python_size.py"], check=True)
           files = json.loads(os.environ["PYTHON_FILES"])
           cli = [path for path in files if not path.startswith("gui/")]
           gui = [path for path in files if path.startswith("gui/")]
@@ -207,6 +213,8 @@ jobs:
       smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
       platform-certified: ${{ needs.changes.outputs.linux_x64 == 'true' }}
       generic-certified: ${{ needs.changes.outputs.generic == 'true' }}
+      setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
+      move-modules: ${{ needs.changes.outputs.move_modules }}
   macos:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.macos_arm64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.macos_tests != '[]' && github.event_name != 'merge_group'
@@ -214,13 +222,17 @@ jobs:
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
+      setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
+      move-modules: ${{ needs.changes.outputs.move_modules }}
   windows:
     needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.windows_x64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]' && github.event_name != 'merge_group'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.windows_x64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.windows_tests != '[]'
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
+      setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
+      move-modules: ${{ needs.changes.outputs.move_modules }}
   arm64:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.linux_arm64 != 'true' && needs.changes.result == 'success' && needs.changes.outputs.arm64_tests != '[]' && github.event_name != 'merge_group'
@@ -228,6 +240,8 @@ jobs:
     with:
       tests: ${{ needs.changes.outputs.arm64_tests }}
       smoke-only: ${{ needs.changes.outputs.arm64_smoke == 'true' }}
+      setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
+      move-modules: ${{ needs.changes.outputs.move_modules }}
 
   ci-policy:
     needs: changes
@@ -245,6 +259,7 @@ jobs:
       - run: |
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
+          pixi run -e lint -x python scripts/check_python_size.py
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"
@@ -278,6 +293,8 @@ jobs:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
     uses: ./.github/workflows/install_lab.yml
+    with:
+      macos: ${{ needs.changes.outputs.setup_checks == 'true' }}
 
   # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
@@ -352,7 +369,7 @@ jobs:
   required:
     # A late skipped draft suite must never satisfy the ready run's required check.
     name: ${{ github.event.pull_request.draft && 'required (draft)' || 'required' }}
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, gitleaks, native-smoke, pages, ready-gate]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, windows, gitleaks, native-smoke, pages, ready-gate]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     # Draft events allocate no runner, including this summary.

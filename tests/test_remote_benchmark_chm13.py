@@ -14,7 +14,7 @@ from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray.chm13 import load_chm13_catalogue
 from wgsextract_cli.core.microarray.site_map import SiteMap
-from wgsextract_cli.core.microarray_targets import ncbi36_chain
+from wgsextract_cli.core.microarray.targets import ncbi36_chain
 
 pytestmark = [
     pytest.mark.remote,
@@ -85,7 +85,7 @@ def test_native_chm13_kit_matches_its_omni_chip(tmp_path: Path) -> None:
     )
     outdir = tmp_path / "kit"
     _run(
-        [*cli, "--config", str(config), "microarray", "--formats"]
+        [*cli, "--config", str(config), "microarray", "--download", "--formats"]
         + [
             ",".join(
                 name.lower().replace("23andme_snps_api", "23andme_api")

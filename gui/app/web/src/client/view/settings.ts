@@ -14,11 +14,20 @@ export function renderSetupStatusSection() {
   const hasSteps = steps.length > 0;
   const toolSummary = hasSteps ? setupHeaderToolSummary(steps) : "";
   const isRunning = setupRun.status === "running";
-  const runButtonTitle = setupRun.status === "ok" || setupRun.status === "warning"
+  const hasRun = setupRun.status === "ok" || setupRun.status === "warning";
+  const runButtonTitle = hasRun
     ? state.labels.setupRerunButtonTitle ?? "Rerun Setup"
     : state.labels.setupRunButtonTitle ?? "Run Setup";
+  // The steps start hidden once setup has run, and show while it runs, before it has run or after it failed.
+  const expanded = hasSteps && (isRunning || (state.setupExpanded ?? !hasRun));
+  const toggleVerb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
+  const toggleTitle = escapeAttribute(toggleVerb);
+  const toggleName = escapeAttribute(`${toggleVerb}: ${state.labels.setupTitle ?? "Setup"}`);
+  const toggle = hasSteps && !isRunning
+    ? `<button type="button" class="section-toggle" data-setup-toggle aria-expanded="${expanded}" title="${toggleTitle}" aria-label="${toggleName}">${expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄")}</button>`
+    : "";
   return `
-    <section class="card setup-status-card">
+    <section class="card setup-status-card${expanded ? "" : " collapsed"}">
       <div class="setup-status-header">
         <div>
           <h3>${escapeHTML(state.labels.setupTitle ?? "Setup")}</h3>
@@ -33,9 +42,10 @@ export function renderSetupStatusSection() {
         ${isRunning
           ? `<button type="button" class="action-button secondary" data-cancel-setup>${escapeHTML(state.labels.terminalCancelButtonTitle ?? "Cancel")}</button>`
           : ""}
+        ${toggle}
         </div>
       </div>
-      ${hasSteps
+      ${expanded
         ? `<ol class="setup-step-list">
           ${steps.map((step) => renderSetupStepStatus(step, resultsByID.get(step.id), setupRun.currentStepID === step.id)).join("")}
         </ol>`

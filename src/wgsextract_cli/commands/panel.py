@@ -10,7 +10,7 @@ from wgsextract_cli.core import panel
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.builds import build_from_chr1_length
 from wgsextract_cli.core.panel_presets import PRESETS, preset_genes
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.utils import UsageError
 

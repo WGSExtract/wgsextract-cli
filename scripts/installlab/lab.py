@@ -55,6 +55,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import app_contract  # noqa: E402
 import gui_oracle  # noqa: E402
 import housekeeping  # noqa: E402
 import macos_policy  # noqa: E402
@@ -66,7 +67,6 @@ from gui_build import (  # noqa: E402
     build_windows_gui_installer,
     pe_has_signature,
 )
-from gui_oracle import GuiOracle  # noqa: E402
 from oracle import Oracle, find_tools  # noqa: E402
 
 DATASET_URL = (
@@ -141,7 +141,7 @@ def build_artifacts(work: Path) -> dict[str, Path]:
 
     guest = work / "guest"
     shutil.copytree(HERE / "guest", guest)
-    shutil.copy2(HERE / "gui" / "wgsextract-plan.json", guest / "gui-plan.json")
+    shutil.copy2(app_contract.plan_path, guest / "gui-plan.json")
     return {"serve": serve, "guest": guest, "dataset": dataset}
 
 
@@ -651,7 +651,7 @@ def judge(results: Path, target: str) -> bool:
     if meta.get("mode") == "control":
         return report_control(results, target)
     if meta.get("product") == "gui":
-        oracle: Oracle = GuiOracle(
+        oracle: Oracle = app_contract.oracle_type(
             results, meta["nonce"], find_tools(), signed=meta["signed"]
         )
     else:
@@ -1067,7 +1067,8 @@ def _json_edit(path: Path, edit: Callable[[Any], None]) -> None:
     path.write_text(json.dumps(data))
 
 
-def _fail_action(report: Any, action: str) -> None:
+def _fail_action(report: Any) -> None:
+    action = json.loads(app_contract.plan_path.read_text())["steps"][0]["id"]
     for step in report["steps"]:
         if step.get("id") == action:
             step["status"] = "failed"
@@ -1116,9 +1117,7 @@ GUI_MUTATIONS: dict[str, Callable[[Path], object]] = {
     "setup-failed": lambda r: _json_edit(
         r / "setup-result.json", lambda d: d.update(status="failed")
     ),
-    "action-failed": lambda r: _json_edit(
-        r / "bundle-report.json", lambda d: _fail_action(d, "snp")
-    ),
+    "action-failed": lambda r: _json_edit(r / "bundle-report.json", _fail_action),
     "action-missing": lambda r: _json_edit(
         r / "bundle-report.json", lambda d: d.update(steps=d["steps"][:-1])
     ),
@@ -1236,6 +1235,16 @@ def _append(path: Path, line: str) -> None:
     path.write_text(path.read_text() + line + "\n")
 
 
+def copy_mutation_evidence(source: Path, destination: Path) -> None:
+    """Copy the whole results tree for mutation, excluding coordination files."""
+    shutil.copytree(
+        source,
+        destination,
+        symlinks=True,
+        ignore=shutil.ignore_patterns("*.lock", "*.guard"),
+    )
+
+
 def cmd_mutate(args: argparse.Namespace) -> None:
     """Corrupt copies of a passing run; the oracle must fail every one."""
     meta = json.loads((args.results / "lab-run.json").read_text())
@@ -1253,7 +1262,7 @@ def cmd_mutate(args: argparse.Namespace) -> None:
     for name, mutate in mutations.items():
         copy = args.results.parent / f"mutant-{name}"
         shutil.rmtree(copy, ignore_errors=True)
-        shutil.copytree(args.results, copy, symlinks=True)
+        copy_mutation_evidence(args.results, copy)
         mutate(copy)
         print(f"\n--- mutation {name}")
         if judge(copy, meta["target"]):
@@ -1339,7 +1348,7 @@ def main() -> None:
     p = sub.add_parser("judge", help="Judge an existing results directory.")
     p.add_argument("results", type=Path)
     p.set_defaults(func=cmd_judge)
-    args = parser.parse_args()
+    args = app_contract.parse_arguments(parser)
     if args.func not in (cmd_run, cmd_prepare, cmd_selftest):
         args.func(args)
         return

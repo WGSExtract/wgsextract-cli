@@ -12,6 +12,8 @@ values. The annotations come from the INFO fields our own commands write:
   confidence labels, `vcf clinvar`/`vcf gnomad`/`vcf pharmcat`).
 - ``SV_AF``/``SV_FREQ`` (`vcf sv-freq`): structural variants' population
   frequency and class (common, low, rare or novel).
+- ``ACMG_CLASS``/``ACMG_CRITERIA``/``ACMG_TRANSCRIPT`` (`vcf acmg`): fastVEP's
+  automated ACMG/AMP class, research only (core/acmg.py).
 
 An annotation the VCF lacks leaves its column empty. Records are parsed one at
 a time, so a whole genome streams through in constant memory.
@@ -24,6 +26,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import unquote
 
+from wgsextract_cli.core import acmg
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
@@ -148,6 +151,23 @@ COLUMNS: tuple[Column, ...] = (
     Column(
         "mnv_components", TEXT, "Phase-supported MNV components (URL-encoded JSON)."
     ),
+    Column(
+        "acmg_class",
+        TEXT,
+        "Research only, not a diagnosis: fastVEP's automated ACMG/AMP class "
+        "(P, LP, VUS, LB or B; INFO/ACMG_CLASS, `vcf acmg`).",
+    ),
+    Column(
+        "acmg_criteria",
+        TEXT,
+        "Research only: the ACMG/AMP criteria fastVEP found met, '&'-separated "
+        "(INFO/ACMG_CRITERIA).",
+    ),
+    Column(
+        "acmg_transcript",
+        TEXT,
+        "The transcript fastVEP classified the allele on (INFO/ACMG_TRANSCRIPT).",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -219,6 +239,7 @@ class VcfHeader:
             ("pharmgkb", "PHARMGKB"),
             ("confidence", "WGSE_CONF"),
             ("sv_freq", "SV_FREQ"),
+            ("acmg", acmg.CLASS),
         ):
             if key in self.info_number:
                 found.append(name)
@@ -625,4 +646,8 @@ def variant_rows(
                 clinical["CLNSIGCONF"],
                 _value(info.get(ce.ORIGIN)),
                 _value(info.get(ce.COMPONENTS)),
+                *(
+                    _per_allele(info.get(tag), numbers.get(tag), alt_index)
+                    for tag in acmg.TAGS
+                ),
             )

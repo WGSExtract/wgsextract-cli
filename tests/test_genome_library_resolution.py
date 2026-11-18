@@ -47,14 +47,19 @@ def test_without_a_genome_nothing_changes(library):
     assert args == Namespace(genome=None, input="x.bam", outdir=None)
 
 
-def test_genome_needs_genome_library_in_config(library):
+def test_without_the_setting_genomes_are_in_the_users_workspace(library, monkeypatch):
     settings.pop("genome_library")
-    with pytest.raises(WGSExtractError, match="dataset_library"):
+    monkeypatch.setattr("wgsextract_cli.core.runtime.repo_root", lambda: library.parent)
+    default = Path.home() / "wgs-extract" / "mygenomes"
+    with pytest.raises(
+        WGSExtractError, match="not found in the My Genomes library"
+    ) as e:
         _select("ken", command="info")
+    assert str(default / "ken") in str(e.value)
 
 
 def test_unknown_genome_names_its_folder(library):
-    with pytest.raises(WGSExtractError, match="not found in dataset_library"):
+    with pytest.raises(WGSExtractError, match="not found in the My Genomes library"):
         _select("nobody", command="info")
 
 
@@ -358,7 +363,7 @@ def test_a_link_out_of_the_library_on_the_way_to_a_genome_is_refused(library, tm
     (outside / "ken" / "ken.bam").write_text("x")
     (library / "people").symlink_to(outside, target_is_directory=True)
 
-    with pytest.raises(WGSExtractError, match="cannot escape dataset_library"):
+    with pytest.raises(WGSExtractError, match="cannot escape the My Genomes library"):
         _select("people/ken", command="info")
 
 
@@ -368,7 +373,7 @@ def test_a_genome_linked_to_the_library_or_above_is_refused(library, target):
     destination = library if target == "library" else library.parent
     (library / "loop").symlink_to(destination, target_is_directory=True)
 
-    with pytest.raises(WGSExtractError, match="cannot escape dataset_library"):
+    with pytest.raises(WGSExtractError, match="cannot escape the My Genomes library"):
         _select("loop", command="info")
 
 

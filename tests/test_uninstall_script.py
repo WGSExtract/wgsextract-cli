@@ -83,6 +83,83 @@ def test_uninstall_removes_default_install_tree(tmp_path: Path) -> None:
     assert not install_dir.exists()
 
 
+@pytest.mark.parametrize("remove_config", [False, True])
+@pytest.mark.parametrize("has_data", [False, True])
+def test_1087_uninstall_removes_only_explicitly_requested_workspace_config(
+    tmp_path: Path, remove_config: bool, has_data: bool
+) -> None:
+    install = make_fake_install(tmp_path)
+    home = tmp_path / "home"
+    workspace = home / "wgs-extract"
+    workspace.mkdir(parents=True)
+    config = workspace / "config.toml"
+    config.write_text("cpu_threads = 2\n")
+    marker = workspace / ".users-workspace"
+    marker.write_text("WGS Extract users workspace\n")
+    library = workspace / "mygenomes" / "sample"
+    if has_data:
+        library.mkdir(parents=True)
+        (library / "keep.bam").write_bytes(b"keep")
+
+    run_uninstall(
+        install / "uninstall.sh",
+        "--yes",
+        "--keep-pixi",
+        *(["--remove-config"] if remove_config else []),
+        env={"HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")},
+    )
+
+    assert config.exists() is not remove_config
+    if has_data:
+        assert (library / "keep.bam").read_bytes() == b"keep"
+        assert marker.is_file()
+    elif remove_config:
+        assert not workspace.exists()
+    else:
+        assert marker.is_file()
+
+
+def test_1087_uninstall_keeps_config_in_an_unmarked_user_folder(tmp_path: Path) -> None:
+    install = make_fake_install(tmp_path)
+    home = tmp_path / "home"
+    workspace = home / "wgs-extract"
+    workspace.mkdir(parents=True)
+    config = workspace / "config.toml"
+    config.write_text("unrelated = true\n")
+
+    run_uninstall(
+        install / "uninstall.sh",
+        "--yes",
+        "--keep-pixi",
+        "--remove-config",
+        env={"HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")},
+    )
+
+    assert config.read_text() == "unrelated = true\n"
+
+
+def test_1087_uninstall_does_not_remove_workspace_config_through_a_symlink(
+    tmp_path: Path,
+) -> None:
+    install = make_fake_install(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "config.toml").write_text("cpu_threads = 3\n")
+    (home / "wgs-extract").symlink_to(shared, target_is_directory=True)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        run_uninstall(
+            install / "uninstall.sh",
+            "--yes",
+            "--keep-pixi",
+            "--remove-config",
+            env={"HOME": str(home)},
+        )
+    assert (shared / "config.toml").read_text() == "cpu_threads = 3\n"
+
+
 def test_uninstall_yes_keeps_pixi_by_default(tmp_path: Path) -> None:
     install_dir = make_fake_install(tmp_path)
     home = tmp_path / "home"

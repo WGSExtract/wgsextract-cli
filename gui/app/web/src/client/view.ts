@@ -8,7 +8,7 @@ export { renderActions, renderPrecheckBanner } from "./view/actions.js";
 import { renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -121,12 +121,54 @@ export function renderPage(page: BundlePage) {
         <h2>${renderIconTitle(page.title, page.iconName, page.textIcon, "📄")}</h2>
         <p>${escapeHTML(page.summary)}</p>
       </header>
-      ${page.id === "settings" ? `${renderSetupStatusSection()}${state.uiMode === "advanced" ? renderWorkspaceLocationSection() : ""}${renderStandardOptionsAccessory()}` : ""}
+      ${page.id === "settings" ? `${renderSetupStatusSection()}${renderStandardOptionsAccessory()}` : ""}
       <div class="sections">
-        ${visibleSections(page, state.uiMode).map((section) => renderSection(section, page)).join("")}
+        ${renderSections(page)}
       </div>
+      ${renderSettingFolderMoveDialog()}
     </article>
   `;
+}
+/**
+ * Advanced mode shows each titled section collapsed to its header row until it is expanded, except sections marked
+ * `"collapsible": false` (the Inputs every other section needs) and `"collapsible": "open"` ones, which start open.
+ * Explicitly collapsed sections also collapse in Basic. Collapsed sections hide their continuing subsections.
+ */
+export function isSectionCollapsible(section: PageSection): boolean {
+    return (state.uiMode === "advanced" || section.collapsed === true) && Boolean(section.title) && section.subsection !== true && section.collapsible !== false;
+}
+export function sectionExpansionKey(page: BundlePage, section: PageSection): string {
+    return `${page.id}/${String(section.id ?? "")}`;
+}
+/** Whether a section shows its body: its default (open for "open" sections), unless the user toggled it. */
+export function isSectionExpanded(page: BundlePage, section: PageSection): boolean {
+    if (!isSectionCollapsible(section)) {
+        return true;
+    }
+    return (section.collapsible === "open") !== state.toggledSections.has(sectionExpansionKey(page, section));
+}
+function renderSections(page: BundlePage): string {
+    let parentCollapsed = false;
+    const sections = visibleSections(page, state.uiMode);
+    const location = page.id === "settings" && state.uiMode === "advanced" ? renderWorkspaceLocationSection() : "";
+    const editorIndex = sections.findIndex((section) => (section.controls ?? []).some((control) => control.kind === "configEditor"));
+    const rendered = sections
+        .map((section) => {
+            if (section.subsection === true) {
+                return parentCollapsed ? "" : renderSection(section, page);
+            }
+            parentCollapsed = !isSectionExpanded(page, section);
+            return renderSection(section, page);
+        });
+    rendered.splice(editorIndex < 0 ? rendered.length : editorIndex, 0, location);
+    return rendered.join("");
+}
+function renderSectionToggle(page: BundlePage, section: PageSection, expanded: boolean): string {
+    const verb = expanded ? state.labels.sectionCollapseLabel ?? "Collapse Section" : state.labels.sectionExpandLabel ?? "Expand Section";
+    // Screen readers list the buttons apart from their headings, so each names its section.
+    const name = escapeAttribute(`${verb}: ${String(section.title ?? "")}`);
+    const icon = expanded ? renderIcon("chevron.up", undefined, "⌃") : renderIcon("chevron.down", undefined, "⌄");
+    return `<button type="button" class="section-toggle" data-section-toggle="${escapeAttribute(sectionExpansionKey(page, section))}" aria-expanded="${expanded}" aria-controls="section-body-${escapeAttribute(section.id)}" title="${escapeAttribute(verb)}" aria-label="${name}">${icon}</button>`;
 }
 /** Each section data source's last values, shown while it reloads. */
 const lastSectionValues = new Map<string, ValueMap>();
@@ -154,22 +196,36 @@ export function renderSection(section: PageSection, page: BundlePage) {
     if (!isSectionVisible(section, context)) {
         return "";
     }
+    const collapsible = isSectionCollapsible(section);
+    const expanded = isSectionExpanded(page, section);
+    const header = section.title || section.subtitle
+        ? `<header class="section-header${collapsible ? " collapsible" : ""}">
+        <div class="section-heading">
+        ${section.title
+            ? `<h3 id="section-${escapeAttribute(section.id)}">${renderIconTitle(section.title, section.iconName, section.textIcon, "▦")}</h3>`
+            : ""}
+        ${section.subtitle && expanded ? `<p>${escapeHTML(section.subtitle)}</p>` : ""}
+        </div>
+        ${collapsible ? renderSectionToggle(page, section, expanded) : ""}
+      </header>`
+        : "";
+    const sectionClass = `card${section.subsection === true ? " subsection" : ""}${expanded ? "" : " collapsed"}`;
+    if (!expanded) {
+        return `
+    <section class="${sectionClass}" id="section-body-${escapeAttribute(section.id)}" aria-labelledby="section-${escapeAttribute(section.id)}">
+      ${header}
+    </section>
+  `;
+    }
     const sectionActions = (section.actions ?? []).filter((action) => isShownInUIMode(action, state.uiMode));
     const controls = visibleControls(section, state.uiMode);
     // Empty header and controls blocks would still add their margins: a blank band above the first row.
     return `
-    <section class="card${section.subsection === true ? " subsection" : ""}" aria-labelledby="section-${escapeAttribute(section.id)}">
-      ${section.title || section.subtitle
-        ? `<header class="section-header">
-        ${section.title
-            ? `<h3 id="section-${escapeAttribute(section.id)}">${renderIconTitle(section.title, section.iconName, section.textIcon, "▦")}</h3>`
-            : ""}
-        ${section.subtitle ? `<p>${escapeHTML(section.subtitle)}</p>` : ""}
-      </header>`
-        : ""}
+    <section class="${sectionClass}" id="section-body-${escapeAttribute(section.id)}" aria-labelledby="section-${escapeAttribute(section.id)}">
+      ${header}
       ${controls.length
         ? `<div class="controls">
-        ${controls.map((control) => renderControl(control, context, location)).join("")}
+        ${renderControls(controls, context, location)}
       </div>`
         : ""}
       ${state.loadingDataSources.has(key) ? renderLoadingBox(state.labels.loadingTitle) : ""}
@@ -179,6 +235,28 @@ export function renderSection(section: PageSection, page: BundlePage) {
       ${sectionActions.length ? `<div class="action-row">${renderActions(sectionActions, context, location)}</div>` : ""}
     </section>
   `;
+}
+/** Consecutive `"layout": "inline"` checkbox groups share one row, each with its options side by side. */
+function renderControls(controls: ControlSpec[], context: CommandContext, location: ManifestLocation): string {
+    const isInline = (control: ControlSpec) => control.kind === "checkboxGroup" && control.layout === "inline";
+    let html = "";
+    let row: string[] = [];
+    const flush = () => {
+        if (row.length) {
+            html += `<div class="control-row">${row.join("")}</div>`;
+            row = [];
+        }
+    };
+    for (const control of controls) {
+        if (isInline(control)) {
+            row.push(renderControl(control, context, location));
+            continue;
+        }
+        flush();
+        html += renderControl(control, context, location);
+    }
+    flush();
+    return html;
 }
 export function renderControl(control: ControlSpec, sectionContext: CommandContext, sectionLocation: ManifestLocation) {
     const key = `control:${control.id}`;
@@ -290,6 +368,8 @@ export function renderCheckboxGroup(control: ControlSpec, context: CommandContex
     };
     const body = control.layout === "rows"
         ? renderOptionRows(options, checkbox)
+        : control.layout === "inline"
+        ? `<div class="option-inline">${options.map(checkbox).join("")}</div>`
         : groupedOptions(options)
             .map((group) => `
         <div class="option-group">
@@ -433,7 +513,7 @@ export function renderConfigEditor(control: ControlSpec, location: ManifestLocat
             </label>
             <button type="button" class="visually-hidden" data-save-config="${escapeAttribute(control.id)}">${escapeHTML(state.labels.saveButtonTitle)}</button>`
         : `<div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>`}
-      ${(control.settings ?? []).map((setting) => renderConfigSetting(control, setting, location)).join("")}
+      ${(control.settings ?? []).filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => renderConfigSetting(control, setting, location)).join("")}
     </div>
   `;
 }

@@ -17,6 +17,9 @@ run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_r
 on:
   workflow_call:
     inputs:
+      macos:
+        type: boolean
+        default: true
       app_run:
         type: string
         default: ""
@@ -67,15 +70,15 @@ permissions:
 
 env:
   APP_RUN: ${{ inputs.app_run }}
-  # `tree`: the app sets up this CLI tree. `pinned` (nightly): the CLI release the
-  # app pins, exactly as a user's app does.
+  # `tree`: current app/CLI/plan. `pinned` (nightly): released app/CLI and its
+  # trusted tag's plan/step expectations; scientific checks stay current.
   EXTENDED_SCENARIOS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
 # Coalesce main pushes and PRs independently; never cancel nightly/manual runs.
 # A literal prefix avoids sharing the reusable caller's github.workflow group.
 concurrency:
   group: install-lab-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   linux:
@@ -110,7 +113,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # The app as users get it: the latest WGS Extract app release (or the one
@@ -207,6 +213,15 @@ jobs:
           persist-credentials: false
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
+      - name: Check out the pinned app's plan and step expectations
+        if: matrix.cli == 'pinned'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.app-source.outputs.repo }}
+          ref: ${{ needs.app-source.outputs.revision }}
+          path: out/app-contract
+          sparse-checkout: scripts/installlab
+          persist-credentials: false
       - name: Get the app built from this tree
         if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -238,19 +253,30 @@ jobs:
           CLI: ${{ matrix.cli }}
         run: |
           args=()
+          contract=()
           if [ "$CLI" = tree ]; then args+=(--cli-from-tree); fi
-          python3 scripts/installlab/lab.py run linux --gui-installer out/app/*_amd64.deb "${args[@]}" --out out/installlab/ci-linux-app
+          if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
+          python3 scripts/installlab/lab.py "${contract[@]}" run linux --gui-installer out/app/*_amd64.deb "${args[@]}" --out out/installlab/ci-linux-app
       - name: Every corruption of the evidence must fail the oracle
-        run: python3 scripts/installlab/lab.py mutate out/installlab/ci-linux-app/results
+        env:
+          CLI: ${{ matrix.cli }}
+        run: |
+          contract=()
+          if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
+          python3 scripts/installlab/lab.py "${contract[@]}" mutate out/installlab/ci-linux-app/results
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-linux-app-${{ matrix.cli }}
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos:
+    if: github.event_name != 'pull_request' || inputs.macos
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -278,12 +304,15 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   macos-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' && (github.event_name != 'pull_request' || inputs.macos) }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:
@@ -350,6 +379,15 @@ jobs:
           ref: ${{ steps.app.outputs.revision }}
           path: out/app-src
           persist-credentials: false
+      - name: Check out the pinned app's plan and step expectations
+        if: matrix.cli == 'pinned'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.app-source.outputs.repo }}
+          ref: ${{ needs.app-source.outputs.revision }}
+          path: out/app-contract
+          sparse-checkout: scripts/installlab
+          persist-credentials: false
       - name: Install, use and uninstall the app as the runner's macOS user
         env:
           CLI: ${{ matrix.cli }}
@@ -357,8 +395,10 @@ jobs:
           APP_SOURCE: ${{ needs.app-source.outputs.source }}
         run: |
           args=()
+          contract=()
           if [ "$CLI" = tree ]; then args+=(--cli-from-tree); fi
-          python scripts/installlab/lab.py run host --gui-repo "$APP_SOURCE" --dmg "$DMG" "${args[@]}" --no-judge --out out/installlab/ci-macos-app
+          if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
+          python scripts/installlab/lab.py "${contract[@]}" run host --gui-repo "$APP_SOURCE" --dmg "$DMG" "${args[@]}" --no-judge --out out/installlab/ci-macos-app
       # After the scenario, whose app installs and removes its own ~/.pixi.
       # Restore only: this job has run the app repository's code, and a cache
       # saved here would be restored by this repository's other jobs.
@@ -367,15 +407,28 @@ jobs:
         with:
           writer: "false"
       - name: Judge the evidence
-        run: pixi run python scripts/installlab/lab.py judge out/installlab/ci-macos-app/results
+        env:
+          CLI: ${{ matrix.cli }}
+        run: |
+          contract=()
+          if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
+          pixi run python scripts/installlab/lab.py "${contract[@]}" judge out/installlab/ci-macos-app/results
       - name: Every corruption of the evidence must fail the oracle
-        run: pixi run python scripts/installlab/lab.py mutate out/installlab/ci-macos-app/results
+        env:
+          CLI: ${{ matrix.cli }}
+        run: |
+          contract=()
+          if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
+          pixi run python scripts/installlab/lab.py "${contract[@]}" mutate out/installlab/ci-macos-app/results
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-macos-app-${{ matrix.cli }}
-          path: out/installlab
+          path: |
+            out/installlab
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows:
@@ -397,7 +450,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Weekly: each sabotaged install, on its own fresh runner, must fail.
@@ -420,7 +476,10 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: install-lab-windows-sabotage-${{ matrix.sabotage }}
-          path: out/installlab/ci-windows/results
+          path: |
+            out/installlab/ci-windows/results
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   windows-app:
@@ -435,6 +494,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - name: Check out the pinned app's plan and step expectations
+        if: matrix.cli == 'pinned'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.app-source.outputs.repo }}
+          ref: ${{ needs.app-source.outputs.revision }}
+          path: out/app-contract
+          sparse-checkout: scripts/installlab
           persist-credentials: false
       - name: Get the app built from this tree
         if: matrix.cli == 'tree' && needs.app-source.outputs.build == 'true'
@@ -472,7 +540,8 @@ jobs:
         run: |
           $installer = (Get-ChildItem out/app/*_x64-setup.exe).FullName
           $fromTree = if ($env:CLI -eq "tree") { "--cli-from-tree" } else { $null }
-          python scripts/installlab/lab.py run windows-host --gui-installer $installer $fromTree --no-judge --out out/installlab/ci-windows-app
+          $contract = if ($env:CLI -eq "pinned") { @("--app-contract", "out/app-contract") } else { @() }
+          python scripts/installlab/lab.py @contract run windows-host --gui-installer $installer $fromTree --no-judge --out out/installlab/ci-windows-app
           exit $LASTEXITCODE
       - name: Upload evidence
         if: always()
@@ -482,12 +551,14 @@ jobs:
           path: |
             out/installlab/ci-windows-app/results
             out/installlab/ci-windows-app/screens
+            !out/installlab/**/*.lock
+            !out/installlab/**/*.guard
           retention-days: 14
 
   # Judged on Linux: the oracle needs samtools/bcftools, which have no native
   # Windows Pixi build, and the machine under test shouldn't judge itself.
   windows-judge:
-    needs: [windows, windows-sabotage, windows-app]
+    needs: [app-source, windows, windows-sabotage, windows-app]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -497,6 +568,15 @@ jobs:
           persist-credentials: false
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
+      - name: Check out the pinned app's plan and step expectations
+        if: env.EXTENDED_SCENARIOS == 'true' && needs.app-source.result == 'success'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.app-source.outputs.repo }}
+          ref: ${{ needs.app-source.outputs.revision }}
+          path: out/app-contract
+          sparse-checkout: scripts/installlab
+          persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: install-lab-windows*
@@ -516,15 +596,19 @@ jobs:
           EXPECTED=$(python3 -m scripts.ci_windows_evidence \
             --root out/installlab --app-job-result '${{ needs.windows-app.result }}' "${expected[@]}")
           for name in $EXPECTED; do
+            contract=()
+            if [ "$name" = install-lab-windows-app-pinned ]; then
+              contract+=(--app-contract out/app-contract)
+            fi
             results=out/installlab/$name
             [ -d "$results/results" ] && results=$results/results
             echo "::group::$name"
             if [ ! -f "$results/lab-run.json" ]; then
               echo "no evidence for $name"; status=1
-            elif ! python3 scripts/installlab/lab.py judge "$results"; then
+            elif ! python3 scripts/installlab/lab.py "${contract[@]}" judge "$results"; then
               status=1
             elif [ "${name#install-lab-windows-sabotage-}" = "$name" ] &&
-                 ! python3 scripts/installlab/lab.py mutate "$results"; then
+                 ! python3 scripts/installlab/lab.py "${contract[@]}" mutate "$results"; then
               status=1
             fi
             echo "::endgroup::"

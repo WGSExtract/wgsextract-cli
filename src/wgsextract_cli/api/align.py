@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.alignment.profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
-from wgsextract_cli.core.output_profiles import OUTPUT_PROFILES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
+from ._network import DownloadParams
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import (
@@ -325,12 +326,13 @@ DORADO_MODELS = ("fast", "hac", "sup")
 
 
 @dataclass(frozen=True, kw_only=True)
-class BasecallParams(Params):
+class BasecallParams(DownloadParams):
     """Basecall Nanopore POD5 signal with ONT's Dorado into an unaligned BAM,
     ``<input stem>.<model>[.<modifications>].bam``, that keeps the MM/ML
     base-modification tags and feeds ``align`` (``r1``) directly. Dorado is
-    an optional tool the user installs; models download into
-    ``models_dir``."""
+    an optional tool the user installs; ``download`` permits model selection
+    and downloads into ``models_dir`` (including chemistry/model identifiers
+    sent to Oxford Nanopore). Without it, use a local model directory."""
 
     COMMAND = "basecall"
 

@@ -12,10 +12,49 @@ from scripts.microarray_aadr_markers import build_markers
 from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core import aadr_resources, microarray_targets
-from wgsextract_cli.core import microarray_aadr as aadr
+from wgsextract_cli.core import aadr_resources
+from wgsextract_cli.core.microarray import aadr
+from wgsextract_cli.core.microarray import targets as microarray_targets
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+
+
+@needs_tools("bcftools", "samtools", "bgzip", "tabix")
+def test_issue_1043_aadr_forward_chain_edit_recomputes_genotypes(tmp_path, markers):
+    from tests.htslib_helpers import bgzip_index, write_fasta
+    from wgsextract_cli import api
+
+    library = tmp_path / "library"
+    library.mkdir()
+    ref = write_fasta(library / "hs38.fa", {"chr1": "A" * 1000})
+    chain = library / "hg19ToHg38.over.chain.gz"
+    chain.write_bytes(
+        gzip.compress(b"chain 1 chr1 1000 + 0 900 chr1 1000 + 0 900 1\n900\n\n")
+    )
+    plain = tmp_path / "sample.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/0:30:60\n"
+        "chr1\t200\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+    )
+    source = bgzip_index(plain)
+    out = tmp_path / "out"
+    params = api.MicroarrayParams(
+        input=Path(source), ref=ref, outdir=out, formats="aadr_ho"
+    )
+    api.microarray.generate(params)
+    genotype = out / "sample_AADR_ho.geno"
+    assert genotype.read_text().splitlines()[0] == "2"
+    chain.write_bytes(
+        gzip.compress(b"chain 1 chr1 1000 + 0 900 chr1 1000 + 100 1000 1\n900\n\n")
+    )
+    result = api.microarray.generate(params)
+    assert genotype.read_text().splitlines()[0] == "0"
+    assert all(not output.metrics.get("reused") for output in result.outputs)
 
 
 @pytest.fixture
@@ -584,6 +623,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     other panels must not be reused."""
     library = tmp_path / "library"
     fasta = _fasta(library / "genomes" / "hg19.fa")
+    (library / "hg18ToHg19.over.chain.gz").write_bytes(
+        gzip.compress(b"chain 1 chr1 600 + 0 600 chr1 600 + 0 600 1\n600\n\n")
+    )
     templates = library / "microarray" / "raw_file_templates"
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)

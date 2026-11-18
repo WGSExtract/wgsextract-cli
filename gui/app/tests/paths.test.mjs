@@ -100,6 +100,8 @@ test("{{appData}} and bundle scripts' WGSEXTRACT_GUI_APP_DATA are the app's data
     assert.deepEqual(bundleEnvironment("/bundle"), {
       WGSEXTRACT_GUI_BUNDLE_ROOT: "/bundle",
       WGSEXTRACT_GUI_BUNDLE_WORKSPACE: "/bundle",
+      // No users workspace was prepared for it: the bundle workspace stands in.
+      WGSEXTRACT_GUI_USERS_WORKSPACE: "/bundle",
       WGSEXTRACT_GUI_APP_DATA: appData,
     });
     process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "test.app";
