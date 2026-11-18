@@ -14,6 +14,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     region_intervals,
     staging_bytes,
 )
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.containers import (
     docker,
     docker_info,
@@ -30,7 +31,6 @@ from wgsextract_cli.core.resource_estimates import (
     dv_calling_regions,
     plan_dv_postprocess,
 )
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from .models import (

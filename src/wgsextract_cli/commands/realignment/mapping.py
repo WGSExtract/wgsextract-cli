@@ -7,12 +7,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from wgsextract_cli.core.alignment.read_counts import fastq_input_statistics
-from wgsextract_cli.core.native_aligners import native_gpu_preference
-from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import (
+from wgsextract_cli.core.alignment.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
+from wgsextract_cli.core.native_aligners import native_gpu_preference
+from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import (
     get_resource_defaults,

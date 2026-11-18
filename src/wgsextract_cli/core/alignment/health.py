@@ -11,9 +11,9 @@ import subprocess
 from typing import Any
 
 from wgsextract_cli.core.alignment.alt_mapping import alt_unaware, alt_unaware_message
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.utils import run_command
 
 # chr1 here has no gaps or ALT copies in GRCh37 or GRCh38, so a short-read 30x

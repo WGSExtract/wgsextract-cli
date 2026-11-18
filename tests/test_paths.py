@@ -8,12 +8,8 @@ from types import SimpleNamespace
 import pytest
 
 from wgsextract_cli.commands._extract_helpers import cleanup_files, derive_output_path
-from wgsextract_cli.core import (
-    config,
-    paths,
-    samtools_commands,
-    tool_commands,
-)
+from wgsextract_cli.core import config, paths, tool_commands
+from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
 from wgsextract_cli.core.paths import (
     absolute_path,
     append_suffix,

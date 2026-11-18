@@ -9,7 +9,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.ref import RefDenseSaParams
 from wgsextract_cli.core import dense_suffix_array
-from wgsextract_cli.core.bwa_index import INDEX_SUFFIXES, has_index
+from wgsextract_cli.core.alignment.bwa_index import INDEX_SUFFIXES, has_index
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.native_aligners import NativeAligner, NativeAlignerUnusable
 from wgsextract_cli.core.ref_library import removal as library_removal

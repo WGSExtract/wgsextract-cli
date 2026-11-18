@@ -36,7 +36,7 @@ from tests.test_native_aligners import (
 from wgsextract_cli.core.alignment.memory import (
     estimate_mapping_memory,
 )
-from wgsextract_cli.core.samtools_commands import sort_memory
+from wgsextract_cli.core.alignment.samtools_commands import sort_memory
 
 
 @pytest.mark.usefixtures("apple_silicon")

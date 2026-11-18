@@ -24,6 +24,7 @@ from wgsextract_cli.core.alignment.profiles import (
     output_profile_options,
 )
 from wgsextract_cli.core.alignment.read_counts import fastq_input_statistics
+from wgsextract_cli.core.alignment.samtools_commands import regular_files_bytes
 from wgsextract_cli.core.atomic_output import (
     atomic_outputs_enabled,
     safe_output,
@@ -43,9 +44,6 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.resource_policy import stage_thread_plan
-from wgsextract_cli.core.samtools_commands import (
-    regular_files_bytes,
-)
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,

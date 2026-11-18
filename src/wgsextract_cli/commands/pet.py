@@ -9,6 +9,10 @@ from wgsextract_cli.api.pet import PetAlignParams
 from wgsextract_cli.cli.registration.pet import register as register
 from wgsextract_cli.core.alignment.memory import check_mapping_memory
 from wgsextract_cli.core.alignment.read_counts import fastq_input_reads
+from wgsextract_cli.core.alignment.samtools_commands import (
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -19,7 +23,6 @@ from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import is_fasta_path, reference_genomes_dir
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,

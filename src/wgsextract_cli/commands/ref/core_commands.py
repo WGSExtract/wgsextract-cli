@@ -104,7 +104,7 @@ def run_index(params: RefIndexParams) -> None:
             bwa_mem2.ensure_index(ref, download=bool(params.download))
         else:
             logging.info("Indexing FASTA with bwa index (required for alignment)...")
-            from wgsextract_cli.core.bwa_index import ensure_index
+            from wgsextract_cli.core.alignment.bwa_index import ensure_index
 
             ensure_index(ref, runner=run_command)
 
