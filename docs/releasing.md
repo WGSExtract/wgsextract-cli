@@ -125,21 +125,10 @@ The app's releases up to v0.6.6 were made in the former
 and stay there. From the first release after v0.6.6, the app has no tags or
 releases of its own: it ships in this repository's `vX.Y.Z` release.
 
-Apps up to v0.6.6 look for updates in gui-for-cli's latest release. Until
-that repository is archived, copy each release's `latest.json` there so those
-installs find the update (once is enough: the updated app checks here):
-
-```bash
-gh release download vX.Y.Z -p latest.json -D out/bridge
-gh release create vX.Y.Z -R WGSExtract/gui-for-cli --latest \
-  --title "WGS Extract vX.Y.Z" \
-  --notes "Moved to https://github.com/WGSExtract/wgsextract-cli/releases/tag/vX.Y.Z" \
-  out/bridge/latest.json
-```
-
-The feed's download links point at this repository's release, so the update
-itself comes from here; the old apps accept it because the release is signed
-with the same updater key (copy the gui-for-cli secrets, not new ones).
+Apps up to v0.6.6 looked for updates in gui-for-cli's latest release. Only
+developers had those builds, and releases no longer copy their `latest.json`
+there, so those installs don't update themselves: install the current app
+instead. Apps from v0.8.5 on update from this repository's latest release.
 
 ## 3. Proof it reached users
 
