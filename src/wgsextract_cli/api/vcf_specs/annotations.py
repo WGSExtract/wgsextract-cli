@@ -19,14 +19,12 @@ from wgsextract_cli.core.utils import UsageError
 from .shared import (
     _AnnotatorParams,
     _min_score_param,
-    _public,
     _resource_param,
     _VcfFileParams,
 )
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfClinvarParams(_AnnotatorParams):
     """ClinVar significance and disease (CLNSIG, CLNDN) as
     ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
@@ -51,7 +49,6 @@ class VcfClinvarParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfRevelParams(_AnnotatorParams):
     """REVEL missense pathogenicity scores as ``revel_annotated.vcf.gz``."""
 
@@ -64,7 +61,6 @@ class VcfRevelParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfPhylopParams(_AnnotatorParams):
     """PhyloP conservation scores as ``phylop_annotated.vcf.gz``."""
 
@@ -78,7 +74,6 @@ class VcfPhylopParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfCaddParams(_AnnotatorParams):
     """CADD deleteriousness scores (CADD_RAW, CADD_PHRED) as
     ``cadd_annotated.vcf.gz``."""
@@ -97,7 +92,6 @@ class VcfCaddParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfGerpParams(_AnnotatorParams):
     """GERP++ conservation scores as ``gerp_annotated.vcf.gz``."""
 
@@ -110,7 +104,6 @@ class VcfGerpParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfGnomadParams(_AnnotatorParams):
     """gnomAD allele frequencies (GNOMAD_AF) as ``gnomad_annotated.vcf.gz``."""
 
@@ -136,7 +129,6 @@ class VcfGnomadParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfSvFreqParams(_AnnotatorParams):
     """Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
     SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
@@ -194,7 +186,6 @@ class VcfSvFreqParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfSpliceaiParams(_AnnotatorParams):
     """SpliceAI splicing scores as ``spliceai_annotated.vcf.gz``."""
 
@@ -206,7 +197,6 @@ class VcfSpliceaiParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfAcmgParams(_AnnotatorParams):
     """Research-only ACMG/AMP classes from fastVEP for a ``vep run`` (vep-rs)
     VCF, as ``acmg_annotated.vcf.gz`` (INFO ACMG_CLASS, ACMG_CRITERIA,
@@ -275,7 +265,6 @@ class VcfAcmgParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfAlphamissenseParams(_AnnotatorParams):
     """AlphaMissense pathogenicity scores as ``alphamissense_annotated.vcf.gz``."""
 
@@ -288,7 +277,6 @@ class VcfAlphamissenseParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfPharmgkbParams(_AnnotatorParams):
     """PharmGKB drug-response annotations as ``pharmgkb_annotated.vcf.gz``
     (GRCh38 only)."""
@@ -301,7 +289,6 @@ class VcfPharmgkbParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     """Star-allele diplotypes and drug-response phenotypes from a GRCh38 VCF
     with PharmCAT: ``<stem>.report.html``, ``.report.json`` and
@@ -343,7 +330,6 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfChainAnnotateParams(_VcfFileParams):
     """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
     steps whose tool or data is missing are skipped with a warning."""

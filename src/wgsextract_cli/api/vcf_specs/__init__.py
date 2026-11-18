@@ -2,5 +2,5 @@
 
 Shared field factories and file, calling and annotation declarations back
 the public ``api.vcf`` facade. Public entrypoints stay in that facade;
-parameter types retain their public module name for pickle/type metadata.
+facade aliases retain old pickle lookups while types remain source-discoverable.
 """

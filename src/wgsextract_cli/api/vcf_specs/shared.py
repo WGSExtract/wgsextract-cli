@@ -19,7 +19,7 @@ _Public = TypeVar("_Public")
 
 
 def _public(value: _Public) -> _Public:
-    """Retain the public API origin used by pickle and type hints."""
+    """Keep helper function exports in the public API documentation."""
     value.__module__ = "wgsextract_cli.api.vcf"
     return value
 
@@ -90,7 +90,6 @@ def _region_param(help: str = "Chromosomal region") -> Any:
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class _VcfFileParams(Params):
     VCF_INPUT_OVERRIDES_INPUT = True
 
@@ -102,7 +101,6 @@ class _VcfFileParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class _AnnotatorParams(_VcfFileParams):
     ref: Path | None = ref_param()
     threads: int | None = threads_param()

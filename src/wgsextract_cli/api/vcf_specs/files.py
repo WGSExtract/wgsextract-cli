@@ -19,7 +19,6 @@ from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
 from .shared import (
-    _public,
     _region_param,
     _resource_param,
     _vcf_input_param,
@@ -30,7 +29,6 @@ HAPLOTYPES = ("iupac", "alt", "1", "2")
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfAnnotateParams(_VcfFileParams):
     """Copy columns from an annotation VCF or tab file into ``annotated.vcf.gz``."""
 
@@ -52,7 +50,6 @@ class VcfAnnotateParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfFilterParams(_VcfFileParams):
     """Keep the calls in a region or gene, matching an expression, into
     ``filtered.vcf.gz``."""
@@ -74,7 +71,6 @@ class VcfFilterParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfTableParams(_VcfFileParams):
     """One row per variant with its annotations, as ``<stem>_variants.tsv``
     (or ``.parquet``) and an SQLite database."""
@@ -112,7 +108,6 @@ class VcfTableParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfToFastaParams(_VcfFileParams):
     """The reference with the VCF's variants applied, as
     ``<stem>_consensus.fa.gz`` (and optionally a liftover chain)."""
@@ -162,7 +157,6 @@ class VcfToFastaParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfTrioParams(_VcfFileParams):
     """Calls matching an inheritance mode in a child and both parents, as
     ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first
@@ -208,7 +202,6 @@ class VcfTrioParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfImputeParams(Params):
     """Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
     into ``imputed.vcf.gz``: low-coverage reads (``input``) with GLIMPSE2, or

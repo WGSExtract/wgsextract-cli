@@ -102,8 +102,9 @@ declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 declarations live in `api/vcf_specs/`: shared field helpers, calling, file
 operations and annotations. Update the responsible specification module when
 adding fields, and retain its explicit facade export. Parameter types keep
-their public module name for pickle/type metadata; the facade declaration order
-also keeps the generated API reference stable across these internal moves.
+their physical source modules for introspection; facade aliases keep pre-split
+pickle lookups working. Facade declaration order keeps the generated API
+reference stable without duplicating parameter descriptions beside their handlers.
 
 ### Generated references and parallel PRs
 

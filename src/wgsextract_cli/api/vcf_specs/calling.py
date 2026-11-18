@@ -33,7 +33,6 @@ from .shared import (
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class _SmallVariantParams(Params):
     input: Path = input_param("BAM or CRAM to call.")
     ref: Path | None = ref_param()
@@ -93,7 +92,6 @@ class _SmallVariantParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfSnpParams(_SmallVariantParams):
     """Call SNPs from a BAM/CRAM into ``snps.vcf.gz``.
 
@@ -107,7 +105,6 @@ class VcfSnpParams(_SmallVariantParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfIndelParams(_SmallVariantParams):
     """Call indels from a BAM/CRAM into ``indels.vcf.gz``; ploidy as for SNPs."""
 
@@ -136,7 +133,6 @@ SV_CALLERS = ("delly", "pbsv", "sniffles")
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class _CallerParams(Params):
     input: Path = input_param("BAM or CRAM to call.")
     ref: Path | None = ref_param()
@@ -146,7 +142,6 @@ class _CallerParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfCnvParams(_CallerParams):
     """Call copy-number variants with delly into ``cnv.vcf.gz``."""
 
@@ -162,7 +157,6 @@ class VcfCnvParams(_CallerParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfSvParams(_CallerParams):
     """Call structural variants into ``sv.vcf.gz`` (delly), ``pbsv.vcf.gz``
     or ``sniffles.vcf.gz``.
@@ -243,7 +237,6 @@ def _call_types_arg(text: str) -> str:
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfCallParams(_CallerParams):
     """Call the chosen variant types in one run, each into the file its own
     command writes: ``snps.vcf.gz`` (``vcf snp``), ``indels.vcf.gz``
@@ -314,7 +307,6 @@ class VcfCallParams(_CallerParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfFreebayesParams(_CallerParams):
     """Call small variants with FreeBayes into ``freebayes.vcf.gz``."""
 
@@ -330,7 +322,6 @@ class VcfFreebayesParams(_CallerParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfGatkParams(_CallerParams):
     """Call small variants with GATK HaplotypeCaller into ``gatk.vcf.gz``
     (flow mode for Ultima reads), or with Parabricks on a GPU."""
@@ -366,7 +357,6 @@ class VcfGatkParams(_CallerParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfDeepvariantParams(_CallerParams):
     """Call small variants with DeepVariant into ``deepvariant.vcf.gz``.
 
@@ -436,7 +426,6 @@ class VcfDeepvariantParams(_CallerParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfClair3Params(_CallerParams):
     """Call small variants in Nanopore reads with Clair3 into
     ``clair3.vcf.gz``."""
@@ -474,7 +463,6 @@ PHASERS = ("whatshap", "longphase")
 
 
 @dataclass(frozen=True, kw_only=True)
-@_public
 class VcfPhaseParams(_CallerParams):
     """Phase one sample's heterozygous calls with its reads into
     ``phased.vcf.gz``, with WhatsHap or LongPhase.
