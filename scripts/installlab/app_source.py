@@ -25,6 +25,12 @@ def resolve_revision(
     """Only this workflow's commit, or a published release tag, may execute."""
     if repository not in REPOSITORIES:
         raise ValueError("App repository is not trusted")
+    if repository == "WGSExtract/gui-for-cli":
+        raise ValueError(
+            "Legacy app releases from WGSExtract/gui-for-cli are unsupported: "
+            "they lack a version-bound Install Lab contract. Choose a published "
+            "WGSExtract/wgsextract-cli release containing scripts/installlab."
+        )
     if run_id:
         if not re.fullmatch(r"[0-9]+", run_id) or release:
             raise ValueError("Choose a numeric app run or a release, not both")

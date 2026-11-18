@@ -459,3 +459,168 @@ def test_a_plan_action_the_released_app_lacks_is_named_as_a_version_mismatch(ora
         "download_test_genome: the test plan expects action test-dataset-download, "
         "which this app version (wgs-extract 0.8.5) doesn't have"
     ) in actions
+
+
+@pytest.mark.parametrize("release_step_passed", [True, False])
+def test_801_pinned_expectations_ignore_tree_and_artifact_plans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, release_step_passed: bool
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    source = tmp_path / "trusted-tag"
+    scripts = source / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    shutil.copy2(LAB_SCRIPTS / "gui_oracle.py", scripts / "gui_oracle.py")
+    release_plan = {"steps": [{"id": "released-action"}]}
+    plan_path = scripts / "gui" / "wgsextract-plan.json"
+    plan_path.write_text(json.dumps(release_plan))
+    plan, oracle_type = load_contract(source)
+    assert json.loads(plan.read_text()) == release_plan
+
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    # Collected evidence cannot replace the trusted tag's required checks.
+    (results / "gui-plan.json").write_text(json.dumps({"steps": []}))
+    steps = [{"id": "not-a-release-action", "status": "passed"}]
+    if release_step_passed:
+        steps.append({"id": "released-action", "status": "passed"})
+    (results / "bundle-report.json").write_text(json.dumps({"steps": steps}))
+    current = oracle_type(results, "nonce", {}, signed=False)
+    current.check_app_reports()
+    actions = next(c for c in current.checks if c.name == "app.actions")
+    assert actions.ok is release_step_passed
+    assert "1/1" in actions.detail if release_step_passed else "0/1" in actions.detail
+
+
+def test_801_tagged_oracle_cannot_relax_scientific_or_state_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    scripts = tmp_path / "tag" / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    (scripts / "gui" / "wgsextract-plan.json").write_text('{"steps": []}')
+    # Model a tag whose historical scientific/state checks were less strict.
+    (scripts / "gui_oracle.py").write_text(
+        "from pathlib import Path\n"
+        "from gui_oracle import app_platform\n"
+        "PLAN = Path(__file__).parent / 'gui' / 'wgsextract-plan.json'\n"
+        "class GuiOracle:\n"
+        "    def check_steps(self):\n"
+        "        self.record('release.steps', False, 'tagged step requirement')\n"
+        "    def check_app_reports(self):\n"
+        "        self.record('release.reports', False, 'tagged report requirement')\n"
+        "    def check_outputs(self, dataset):\n"
+        "        raise AssertionError('must not use old scientific checks')\n"
+        "    def check_state(self, noise_patterns):\n"
+        "        raise AssertionError('must not use old state checks')\n"
+    )
+    _, oracle_type = load_contract(tmp_path / "tag")
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    current = oracle_type(results, "nonce", {}, signed=False)
+    current.check_steps()
+    current.check_app_reports()
+    assert all(not c.ok for c in current.checks)
+    assert {c.name for c in current.checks} == {"release.steps", "release.reports"}
+    current.check_outputs(tmp_path)
+    scientific = [c for c in current.checks if c.name.startswith("output.")]
+    assert len(scientific) == 8
+    assert all(not c.ok for c in scientific)
+    current.check_state([])
+    assert any(c.name == "state.app_installed" and not c.ok for c in current.checks)
+
+
+@pytest.mark.parametrize("target", ["linux", "windows", "macos"])
+@pytest.mark.parametrize("missing", ["", "step", "signature", "window"])
+def test_801_release_lifecycle_uses_tagged_platform_without_changing_state_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str, missing: str
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    scripts = tmp_path / "tag" / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    shutil.copy2(
+        LAB_SCRIPTS / "gui" / "wgsextract-plan.json",
+        scripts / "gui" / "wgsextract-plan.json",
+    )
+    (scripts / "gui_oracle.py").write_text(
+        (LAB_SCRIPTS / "gui_oracle.py").read_text()
+        + "\ntree_app_platform = app_platform\n"
+        "def app_platform(meta):\n"
+        "    return replace(tree_app_platform(meta),\n"
+        "        steps=['release-only', 'release-signature'],\n"
+        "        signature_step='release-signature', signed_text='release-signed',\n"
+        "        unsigned_text='release-unsigned', window_file='release-window.txt',\n"
+        "        window_text='release-rendered', install_marker='/release-state')\n"
+    )
+    _, oracle_type = load_contract(tmp_path / "tag")
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    (results / "lab-run.json").write_text(json.dumps({"target": target}))
+    (results / "evidence").mkdir(exist_ok=True)
+    if missing != "step":
+        (results / "evidence" / "release-only.rc").write_text("0")
+    (results / "evidence" / "release-signature.rc").write_text("0")
+    (results / "evidence" / "release-signature.log").write_text(
+        "" if missing == "signature" else "release-signed"
+    )
+    if missing != "window":
+        (results / "release-window.txt").write_text("release-rendered")
+    current = oracle_type(results, "nonce", {}, signed=True)
+    tree_platform = current.app
+    current.check_steps()
+    current.check_app_reports()
+    checks = {c.name: c.ok for c in current.checks}
+    assert checks["step.release-only"] is (missing != "step")
+    assert checks["step.release-signature"] is (missing != "signature")
+    assert checks["app.window_appeared"] is (missing != "window")
+    assert current.app is tree_platform
+    assert current.install_marker == tree_platform.install_marker
+    current.check_state([])
+    assert any(c.name == "state.app_installed" and not c.ok for c in current.checks)
+
+
+@pytest.mark.parametrize("step", ["snp", "release-renamed-action"])
+def test_801_action_failed_mutation_corrupts_a_required_selected_plan_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, step: str
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    import lab
+    from app_contract import load_contract
+
+    scripts = tmp_path / "tag" / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    shutil.copy2(LAB_SCRIPTS / "gui_oracle.py", scripts / "gui_oracle.py")
+    plan = scripts / "gui" / "wgsextract-plan.json"
+    plan.write_text(json.dumps({"steps": [{"id": step}]}))
+    _, oracle_type = load_contract(tmp_path / "tag")
+    monkeypatch.setattr(lab.app_contract, "plan_path", plan)
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    report = results / "bundle-report.json"
+    report.write_text(json.dumps({"steps": [{"id": step, "status": "passed"}]}))
+    before = oracle_type(results, "nonce", {}, signed=False)
+    before.check_app_reports()
+    assert next(c.ok for c in before.checks if c.name == "app.actions")
+    lab.GUI_MUTATIONS["action-failed"](results)
+    after = oracle_type(results, "nonce", {}, signed=False)
+    after.check_app_reports()
+    assert not next(c.ok for c in after.checks if c.name == "app.actions")
+
+
+def test_801_missing_tag_contract_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    with pytest.raises(ValueError, match="lacks its plan/oracle"):
+        load_contract(tmp_path)
