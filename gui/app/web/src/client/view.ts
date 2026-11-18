@@ -85,7 +85,7 @@ export function renderNavigation() {
     const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
-    <div class="nav-primary">${renderNavigationGroups(primaryPages)}</div>
+    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<a class="nav-item" href="/viewer?locale=${encodeURIComponent(state.localizationCode)}">${escapeHTML(String(state.labels.viewerTitle ?? ""))}</a>` : ""}</div>
     ${bottomPages.length || updateItem ? `<div class="nav-bottom">${updateItem}${renderNavigationGroups(bottomPages, false)}</div>` : ""}
   `;
 }
