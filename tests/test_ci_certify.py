@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -19,7 +21,12 @@ from scripts.ci_certifications import (
     certifications,
     publish_certification,
 )
-from scripts.ci_certify import host_platform, run_layer, validate_head
+from scripts.ci_certify import (
+    host_platform,
+    platform_commands,
+    run_layer,
+    validate_head,
+)
 from scripts.ci_certify_inputs import (
     check_packages,
     check_wheel,
@@ -591,3 +598,64 @@ def test_951_only_executed_test_failures_post_failure(
         publish_certification("owner/repo", "sha", "linux-x64", operation, post)
     assert isinstance(caught.value, CertificationTestFailure) == (expected == "failure")
     assert states == ["pending", expected]
+
+
+def test_certify_keeps_windows_test_paths_under_the_tool_path_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On Windows, certify ran pytest under the worktree's
+    out/certify/<sha>/<layer>/tmp-N, giving 277-character paths that samtools
+    and bcftools could not open (120 false failures); CI's runners use the
+    system temporary folder."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "test_where.py").write_text(
+        "from pathlib import Path\n"
+        "def test_where(tmp_path):\n"
+        "    Path(\x27where.txt\x27).write_text(str(tmp_path))\n"
+    )
+    sha = "a" * 40
+    run_layer(
+        "windows-x64",
+        [
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "test_where.py",
+            ]
+        ],
+        sha,
+        1,
+    )
+    where = Path((tmp_path / "where.txt").read_text())
+    layer = tmp_path / "out" / "certify" / sha / "windows-x64"
+    if sys.platform == "win32":
+        temporary = Path(tempfile.gettempdir(), "wgse-certify").resolve()
+        assert where.is_relative_to(temporary)
+        assert not where.is_relative_to(tmp_path / "out")
+    else:
+        assert where.is_relative_to(layer / "tmp-0")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows installer check")
+def test_certify_finds_the_windows_installer_without_current_directory_search() -> None:
+    """cmd /c install_windows.bat failed ("not recognized") wherever
+    NoDefaultCurrentDirectoryInExePath is set, as agent shells set it."""
+    (installer,) = (
+        command
+        for command in platform_commands(
+            "windows-x64", ["tests/test_ci_certify.py"], False
+        )
+        if command[0] == "cmd"
+    )
+    root = Path(__file__).resolve().parents[1]
+    environment = {**os.environ, "NoDefaultCurrentDirectoryInExePath": "1"}
+    result = subprocess.run(
+        installer, cwd=root, env=environment, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Dry run only" in result.stdout
