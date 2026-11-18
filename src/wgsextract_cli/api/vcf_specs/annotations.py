@@ -222,11 +222,12 @@ class VcfAcmgParams(_AnnotatorParams):
         "Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz).", "acmg_gff3"
     )
     site_data: str = param(
-        "auto",
+        "library",
         help="Where gnomAD and SpliceAI come from: library (the --sa-dir "
         "databases), per-run (only the input's sites, read from gnomAD's and "
-        "Ensembl's indexed files and cached in the folder's sites/), or auto "
-        "(default): the library's, per-run for chromosomes it lacks.",
+        "Ensembl's indexed files and cached in the folder's sites/). Explicit "
+        "per-run consent sends input-derived variant positions to Google Cloud "
+        "Storage and Ensembl. Default: library, offline; auto is an offline alias.",
         choices=("auto", "library", "per-run"),
     )
 
@@ -263,19 +264,25 @@ class VcfAcmgParams(_AnnotatorParams):
         """With gnomAD and SpliceAI read per run: the databases folder's
         sites/ cache, which the run writes, and the library's SpliceAI VCF,
         which it reads."""
+        from wgsextract_cli.api._params import with_config_defaults
         from wgsextract_cli.core import acmg_data
         from wgsextract_cli.core.reference_resolver import library_roots
 
-        from ._params import with_config_defaults
-
-        if self.site_data == "library":
+        if self.site_data != "per-run":
             return None, None
         filled = with_config_defaults(self)
         root = library_roots(filled.ref).root
         sa_dir = acmg_data.acmg_sa_dir(root, filled.sa_dir)
+        chosen = (
+            acmg_data.load_manifest(sa_dir).get("spliceai_file") if sa_dir else None
+        )
         return (
             sa_dir / acmg_data.SITES_CACHE if sa_dir is not None else None,
-            acmg_data.library_spliceai_path(root) if root else None,
+            Path(chosen)
+            if chosen
+            else acmg_data.library_spliceai_path(root)
+            if root
+            else None,
         )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
@@ -286,6 +293,9 @@ class VcfAcmgParams(_AnnotatorParams):
         for site_path in self._site_data_paths():
             if site_path is not None:
                 yield "site_data", site_path
+        _, spliceai = self._site_data_paths()
+        if spliceai is not None:
+            yield "site_data", Path(f"{spliceai}.tbi")
 
     def write_folders(self) -> Iterator[Path]:
         # fastVEP saves its transcript cache beside the GFF3.

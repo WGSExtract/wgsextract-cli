@@ -1305,7 +1305,7 @@ unless `research_acmg` is set; GRCh38 only.
 | `research_acmg` | `bool` | `False` | `--research-acmg` | Required: confirm these automated classes are for research only, not a diagnosis. |
 | `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder of fastVEP databases (fastvep sa-build): ClinVar, its protein index, gnomAD, gene constraint, ClinGen, REVEL, SpliceAI, phyloP. |
 | `gff3` | `Path \| None` | `None` (config `acmg_gff3`) | `--gff3` | Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz). |
-| `site_data` | `str` | `'auto'` | `--site-data` | Where gnomAD and SpliceAI come from: library (the --sa-dir databases), per-run (only the input's sites, read from gnomAD's and Ensembl's indexed files and cached in the folder's sites/), or auto (default): the library's, per-run for chromosomes it lacks. One of: `auto`, `library`, `per-run` |
+| `site_data` | `str` | `'library'` | `--site-data` | Where gnomAD and SpliceAI come from: library (the --sa-dir databases), per-run (only the input's sites, read from gnomAD's and Ensembl's indexed files and cached in the folder's sites/). Explicit per-run consent sends input-derived variant positions to Google Cloud Storage and Ensembl. Default: library, offline; auto is an offline alias. One of: `auto`, `library`, `per-run` |
 
 ### `api.vcf.alphamissense(VcfAlphamissenseParams)`
 

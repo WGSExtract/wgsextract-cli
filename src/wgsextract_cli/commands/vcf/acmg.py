@@ -39,7 +39,6 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
@@ -588,18 +587,24 @@ def run_acmg(params: VcfAcmgParams) -> None:
             "so the classes are taken on the transcript the variant table shows."
         )
     contigs = vcf_index_chromosomes(vcf)
+    _require_library_sources(databases, params.site_data)
     threads = int(get_resource_defaults(params.threads)[0])
     wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
     result = current_result()
-    with tempfile.TemporaryDirectory(dir=scratch_parent(outdir), prefix=".wgse_acmg_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_acmg_"
+    ) as work:
         run_sa, site_dbs = sa_dir, []
         if any(wanted.values()):
-            site_dbs = _site_databases(wanted, vcf, lib, sa_dir, work, threads)
+            site_dbs = acmg_sites.build_for_run(
+                wanted, vcf, lib, sa_dir, work, threads, cancel_event()
+            )
             run_sa = str(Path(work, "sa"))
             acmg_sites.link_folder(Path(sa_dir), left_out, site_dbs, Path(run_sa))
             databases = _databases(run_sa)
         inventory = _inventory(databases)
         skipped = _unclassifiable(databases, contigs)
+        _require_spliceai_coverage(databases, contigs)
         if skipped:
             warn(
                 "acmg_contigs_not_classified",
@@ -725,86 +730,54 @@ def run_acmg(params: VcfAcmgParams) -> None:
 def _per_run_plan(
     databases: list[_Database], contigs: list[str], mode: str, sa_dir: str
 ) -> tuple[dict[str, list[str]], set[Path]]:
-    """The input's nuclear chromosomes to read gnomAD and SpliceAI for per
-    run, by source, and the library databases to leave out: in ``per-run``
-    mode all of them and the library's; in ``auto``, those no library database
-    holds (or that ``ref acmg-data`` found the source has nothing of)."""
-    if mode == "library":
+    """Explicit per-run chromosomes and the library databases to leave out."""
+    if mode != "per-run":
         return {}, set()
-    recorded = (acmg_data.load_manifest(sa_dir).get("databases") or {}).values()
     nuclear = [c for c in contigs if _contig_key(c) in _NUCLEAR]
     wanted: dict[str, list[str]] = {}
     left_out: set[Path] = set()
     for source in acmg_sites.SOURCES:
         # SpliceAI's databases are keyed spliceAI by fastVEP's builder.
         held = [db for db in databases if db.source.lower().replace("_", "") == source]
-        covered: set[str] = set()
-        if mode == "per-run":
-            left_out.update(db.path for db in held)
-        elif any(db.chromosomes is None for db in held):
-            continue  # a database that doesn't say: taken to hold everything
-        else:
-            covered = {_contig_key(c) for db in held for c in db.chromosomes or ()}
-            covered |= {
-                _contig_key(str(e.get("chromosome")))
-                for e in recorded
-                if e.get("source") == source and e.get("absent") and e.get("chromosome")
-            }
-        wanted[source] = [c for c in nuclear if _contig_key(c) not in covered]
+        left_out.update(db.path for db in held)
+        wanted[source] = nuclear
     return wanted, left_out
 
 
-def _site_databases(
-    wanted: dict[str, list[str]],
-    vcf: str,
-    lib: ReferenceLibrary,
-    sa_dir: str,
-    work: str,
-    threads: int,
-) -> list[acmg_sites.SiteDatabase]:
-    """The per-run gnomAD and SpliceAI databases of the input's sites, cached
-    in the databases folder's sites/ (in ``work`` when it can't be written)."""
-    assert lib.fasta
-    cache = Path(sa_dir, acmg_sites.CACHE)
-    if not read_scope.may_follow(cache):
-        raise UsageError(f"{cache} is outside the folders this run may use.")
-    try:
-        cache.mkdir(exist_ok=True)
-        writable = os.access(cache, os.W_OK)
-    except OSError:
-        writable = False
-    if not writable:
-        logging.info("%s can't be written; the per-run databases aren't kept.", cache)
-        cache = Path(work, acmg_sites.CACHE)
-    reading = ", ".join(
-        f"{acmg_data.BY_KEY[k].label.split(' (')[0]} ({_chromosome_span(v)})"
-        for k, v in wanted.items()
-        if v
-    )
-    logging.info("Reading the input's sites of %s...", reading)
-    sites = acmg_sites.input_sites(vcf, lib.fasta)
-    found = acmg_sites.build_databases(
-        wanted,
-        sites,
-        lib.root,
-        cache,
-        connections=min(64, max(8, 16 * threads)),
-        cancel=cancel_event(),
-    )
-    sources = {db.source for db in found}
-    restricted = [acmg_data.BY_KEY[k] for k in sorted(sources)]
-    if any(s.restricted for s in restricted):
-        warn(
-            "acmg_data_terms",
-            "This run read these sources under their publishers' terms: "
-            + " ".join(s.terms for s in restricted if s.restricted),
-            sources=",".join(s.key for s in restricted if s.restricted),
+def _require_library_sources(databases: list[_Database], mode: str) -> None:
+    held = {db.source.lower().replace("_", "") for db in databases}
+    missing = [
+        label
+        for label, key in REQUIRED_SOURCES.items()
+        if not (mode == "per-run" and key in acmg_sites.SOURCES)
+        and key.replace("_", "") not in held
+    ]
+    if missing:
+        raise WGSExtractError(
+            "vcf acmg refused: databases lack "
+            + ", ".join(missing)
+            + "; build the library with `wgsextract ref acmg-data`, or explicitly "
+            "opt in to --site-data per-run for gnomAD/SpliceAI (input-derived "
+            "variant positions are sent to Google Cloud Storage and Ensembl)."
         )
-    return found
 
 
-def _chromosome_span(contigs: list[str]) -> str:
-    return ", ".join(contigs) if len(contigs) <= 3 else f"{len(contigs)} chromosomes"
+def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -> None:
+    held = [db for db in databases if db.source.lower() == "spliceai"]
+    covered = {_contig_key(c) for db in held for c in db.chromosomes or ()}
+    missing = [
+        c
+        for c in contigs
+        if _contig_key(c) in _NUCLEAR and _contig_key(c) not in covered
+    ]
+    if missing:
+        raise WGSExtractError(
+            "vcf acmg refused: SpliceAI holds nothing of "
+            + ", ".join(missing)
+            + ". Build the library databases with `wgsextract ref acmg-data`, "
+            "or explicitly opt in with --site-data per-run (input-derived variant "
+            "positions are sent to Google Cloud Storage and Ensembl)."
+        )
 
 
 def _refuse_overwrite(source: str, out_vcf: str) -> None:

@@ -166,11 +166,21 @@ database: fastVEP looks gnomAD and SpliceAI up by the variant's own position
 and alleles, never a neighbour's (no criterion reads a nearby record of
 them).
 
-- `--site-data auto` (the default) uses the library's gnomAD and SpliceAI
-  databases, and reads per run those of the input's chromosomes they don't
-  hold; `per-run` always reads them per run, leaving the library's out;
-  `library` never does, and refuses as before. `ref acmg-data --site-data
-  per-run` builds the other six sources only.
+- `--site-data library` (the default) uses the library's gnomAD and SpliceAI
+  databases, stays offline, and refuses missing sources or nuclear chromosomes
+  with guidance to build them using `ref acmg-data`. `auto` is an offline
+  alias. Only explicit `--site-data per-run` opts in to remote lookups, leaving
+  the library's gnomAD/SpliceAI databases out. **This sends input-derived variant
+  positions through byte-range requests to Google Cloud Storage (gnomAD) and
+  Ensembl (SpliceAI unless configured locally), revealing access patterns even
+  though the VCF is not uploaded.** The run warns `acmg_site_data_privacy`.
+  `ref acmg-data --site-data per-run` builds the other six sources only;
+  classification still requires explicit `vcf acmg --site-data per-run`.
+- A custom `ref acmg-data --spliceai-file PATH` is recorded and reused, including
+  with `--site-data per-run`; a missing chosen source is refused, never silently
+  replaced with Ensembl's. Local VCFs require a `.tbi` index. Older manifests
+  recording a custom source without the choice must record it again with
+  `ref acmg-data --site-data per-run --spliceai-file PATH`.
 - A site is each record's span, one base wider on each side, both as written
   and left-aligned by `bcftools norm` against the reference, as fastVEP
   left-aligns an indel before it looks gnomAD up.
@@ -184,9 +194,13 @@ them).
   gnomAD, as they are.
 - The databases are cached in the databases folder's `sites/` (in the run's
   temporary folder when that can't be written), keyed on the sites and the
-  file's ETag or size and date, and the 200 most recently used are kept. A
-  rerun with the same sites reads nothing. A server job refuses a `sites/`
-  folder or library SpliceAI VCF that leads outside its allowed folders, and
+  file's strong ETag or size and modification date; remote files without a usable
+  validator are refused. Local files are checked for replacement or modification
+  throughout the read. The 200 most recently used databases are kept, with a
+  two-day grace period for active runs. A rerun checks remote identity but reads
+  no records. Concurrent builders reuse a completed winner without deleting it.
+  A server job refuses a `sites/` folder, SpliceAI VCF or its `.tbi` index that
+  leads outside its allowed folders, and
   holds the job lock on `sites/` while it writes there.
 - `acmg_summary.json`'s `site_data` lists, per source and chromosome, the file
   read, its release, ETag and date, the sites, records, bytes and requests

@@ -18,7 +18,6 @@ import base64
 import csv
 import hashlib
 import io
-import json
 import logging
 import re
 import shutil
@@ -40,6 +39,12 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core import read_scope
+from wgsextract_cli.core.acmg_manifest import MANIFEST as MANIFEST
+from wgsextract_cli.core.acmg_manifest import SITE_DATA as SITE_DATA
+from wgsextract_cli.core.acmg_manifest import load_manifest as load_manifest
+from wgsextract_cli.core.acmg_manifest import record_site_data as record_site_data
+from wgsextract_cli.core.acmg_manifest import save_manifest
+from wgsextract_cli.core.acmg_manifest import site_data_of as site_data_of
 from wgsextract_cli.core.builds import CHR1_LENGTH_BUILDS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version
@@ -56,10 +61,8 @@ from wgsextract_cli.core.utils import (
     wait_with_cancel,
 )
 
-MANIFEST = "acmg_data.json"
 # The sources vcf acmg can read per run, at only the input's sites.
 PER_RUN = ("gnomad", "spliceai")
-SITE_DATA = ("library", "per-run")
 # vcf acmg's cache of per-run databases, in the databases folder.
 SITES_CACHE = "sites"
 ASSEMBLY = "GRCh38"
@@ -281,37 +284,6 @@ def parse_chromosomes(text: str | None) -> list[str]:
     return sorted(names, key=CHROMOSOMES.index)
 
 
-def load_manifest(sa_dir: str | Path) -> dict[str, Any]:
-    path = Path(sa_dir, MANIFEST)
-    try:
-        data = json.loads(path.read_text())
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as e:
-        raise WGSExtractError(f"Can't read {path}: {e}") from e
-    return data if isinstance(data, dict) else {}
-
-
-def site_data_of(manifest: dict[str, Any]) -> str:
-    """Whether the folder has gnomAD and SpliceAI (``library``) or leaves
-    them to vcf acmg to read per run (``per-run``)."""
-    value = manifest.get("site_data")
-    return value if value in SITE_DATA else "library"
-
-
-def record_site_data(sa_dir: str | Path, site_data: str) -> None:
-    """Note in the folder's manifest how gnomAD and SpliceAI are had."""
-    path = Path(sa_dir, MANIFEST)
-    manifest = load_manifest(sa_dir)
-    if manifest.get("site_data") == site_data:
-        return
-    manifest["site_data"] = site_data
-    Path(sa_dir).mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(path.name + ".partial")
-    partial.write_text(json.dumps(manifest, indent=1) + "\n", newline="\n")
-    partial.replace(path)
-
-
 def _built(sa_dir: Path, manifest: dict[str, Any]) -> set[str]:
     """The databases the manifest records that are still in place, unchanged in
     size; one a source has no data for counts as built."""
@@ -431,6 +403,8 @@ def make_plan(
     servers for download sizes. ``site_data`` per-run leaves gnomAD and
     SpliceAI out (None: as the folder was built, else library)."""
     manifest = load_manifest(sa_dir)
+    if spliceai is None and manifest.get("spliceai_file"):
+        spliceai = Path(manifest["spliceai_file"])
     plan = Plan(
         Path(reflib),
         Path(sa_dir),
@@ -683,6 +657,8 @@ class _Build:
         self.lock = threading.Lock()
         self.manifest = load_manifest(plan.sa_dir)
         self.manifest.update(format=1, assembly=ASSEMBLY, site_data=plan.site_data)
+        if plan.spliceai is not None:
+            self.manifest["spliceai_file"] = str(plan.spliceai.resolve())
         self.manifest.setdefault("sources", {})
         self.manifest.setdefault("databases", {})
         self.staging = plan.sa_dir / ".building"
@@ -694,9 +670,7 @@ class _Build:
     def _save(self) -> None:
         self.manifest["updated"] = _now()
         path = self.plan.sa_dir / MANIFEST
-        partial = path.with_name(path.name + ".partial")
-        partial.write_text(json.dumps(self.manifest, indent=1) + "\n", newline="\n")
-        partial.replace(path)
+        save_manifest(path, self.manifest)
 
     def record_source(
         self,

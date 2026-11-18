@@ -84,7 +84,7 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
     if params.dry_run:
         return
     if not plan.steps:
-        acmg_data.record_site_data(sa_dir, plan.site_data)
+        acmg_data.record_site_data(sa_dir, plan.site_data, plan.spliceai)
         human_output("Everything is built; nothing to do.")
         return
     # Only a build records its outputs there: a dry run or a run with nothing

@@ -18,6 +18,7 @@ import bisect
 import gzip
 import http.client
 import logging
+import os
 import struct
 import threading
 import time
@@ -26,11 +27,14 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future
 from dataclasses import dataclass, field
+from email.utils import parsedate_to_datetime
+from functools import cached_property
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import Request, getproxies, proxy_bypass, urlopen
 
+from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library.segmented import user_agent
@@ -75,12 +79,12 @@ class _Contig:
     bins: dict[int, list[tuple[int, int]]]
     linear: list[int]
 
-    @property
+    @cached_property
     def start(self) -> int:
         """The virtual offset of the contig's first record."""
         return min(beg for chunks in self.bins.values() for beg, _ in chunks)
 
-    @property
+    @cached_property
     def end(self) -> int:
         """The virtual offset just past the contig's last record."""
         return max(end for chunks in self.bins.values() for _, end in chunks)
@@ -138,13 +142,59 @@ class ByteSource:
         self._lock = threading.Lock()
         self._local = threading.local()
         self.etag = self.last_modified = ""
+        self.local_identity: tuple[int, int, int, int, int] | None = None
         if self.remote:
             self.url, self.size, headers = self._head(location)
             self.etag = headers.get("ETag") or ""
             self.last_modified = headers.get("Last-Modified") or ""
+            if not self.validator:
+                raise WGSExtractError(
+                    f"{location} has no strong ETag or Last-Modified validator; "
+                    "refusing unversioned range reads."
+                )
         else:
             self.url = location
-            self.size = Path(location).stat().st_size
+            self._check_scope()
+            self.local_identity = self._stat_identity(Path(location).stat())
+            self.size = self.local_identity[2]
+
+    @cached_property
+    def validator(self) -> str:
+        if self.etag.startswith('"') and self.etag.endswith('"'):
+            return self.etag
+        if self.last_modified:
+            try:
+                parsedate_to_datetime(self.last_modified)
+            except (TypeError, ValueError, OverflowError):
+                return ""
+            return self.last_modified
+        return ""
+
+    def _check_scope(self) -> None:
+        if not read_scope.may_follow(self.location):
+            raise WGSExtractError(
+                f"{self.location} is outside the folders this run may use."
+            )
+
+    @staticmethod
+    def _stat_identity(stat: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+        )
+
+    def _unchanged(self, stat: os.stat_result) -> None:
+        if self._stat_identity(stat) != self.local_identity:
+            raise SourceChanged(f"{self.location} changed during the run.")
+
+    def verify(self) -> None:
+        """Refuse a local source replaced or modified since it was opened."""
+        if not self.remote:
+            self._check_scope()
+            self._unchanged(Path(self.location).stat())
 
     def _head(self, url: str) -> tuple[str, int, http.client.HTTPMessage]:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
@@ -200,9 +250,13 @@ class ByteSource:
         if self.cancel and self.cancel.is_set():
             raise WGSExtractError("Cancelled.")
         if not self.remote:
+            self.verify()
             with open(self.location, "rb") as f:
+                self._unchanged(os.fstat(f.fileno()))
                 f.seek(start)
                 data = f.read(end - start)
+                self._unchanged(os.fstat(f.fileno()))
+            self._unchanged(Path(self.location).stat())
         else:
             data = self._get(start, end)
         with self._lock:
@@ -219,9 +273,9 @@ class ByteSource:
         }
         # A strong ETag, else the date: a server whose file changed answers
         # with the whole new file (200) instead of the range.
-        validator = self.etag if self.etag and not self.etag.startswith("W/") else ""
-        if validator or self.last_modified:
-            headers["If-Range"] = validator or self.last_modified
+        headers["If-Range"] = self.validator
+        if getproxies().get(parts.scheme) and not proxy_bypass(parts.hostname or ""):
+            return self._get_proxied(start, end, headers)
         data = b""
         for attempt in range(_ATTEMPTS):
             conn = self._connection()
@@ -229,7 +283,14 @@ class ByteSource:
                 conn.request("GET", target, headers=headers)
                 response = conn.getresponse()
                 if response.status == 206:
-                    data = response.read()
+                    if (
+                        response.headers.get("Content-Range")
+                        != f"bytes {start}-{end - 1}/{self.size}"
+                    ):
+                        raise SourceChanged(
+                            f"{self.url} returned an inconsistent byte range."
+                        )
+                    data = bytes(response.read(end - start + 1))
                     if len(data) == end - start:
                         if response.will_close:
                             self._drop_connection()
@@ -248,6 +309,34 @@ class ByteSource:
                 self._wait(self.url, attempt, OSError(f"HTTP {response.status}"))
             except (OSError, http.client.HTTPException) as e:
                 self._drop_connection()
+                self._wait(self.url, attempt, e)
+        raise AssertionError("unreachable")
+
+    def _get_proxied(self, start: int, end: int, headers: dict[str, str]) -> bytes:
+        for attempt in range(_ATTEMPTS):
+            try:
+                with urlopen(
+                    Request(self.url, headers=headers), timeout=120
+                ) as response:
+                    if (
+                        response.status != 206
+                        or response.headers.get("Content-Range")
+                        != f"bytes {start}-{end - 1}/{self.size}"
+                    ):
+                        raise SourceChanged(
+                            f"{self.url} changed during the run, or ignores byte ranges."
+                        )
+                    data = bytes(response.read(end - start + 1))
+                    if len(data) != end - start:
+                        raise http.client.IncompleteRead(data, end - start - len(data))
+                    return data
+            except HTTPError as e:
+                if e.code in (200, 416):
+                    raise SourceChanged(f"{self.url} changed during the run.") from e
+                if e.code != 429 and e.code < 500:
+                    raise WGSExtractError(f"Reading {self.url} failed: {e}") from e
+                self._wait(self.url, attempt, e)
+            except (URLError, OSError, http.client.HTTPException) as e:
                 self._wait(self.url, attempt, e)
         raise AssertionError("unreachable")
 

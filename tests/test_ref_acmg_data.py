@@ -128,6 +128,7 @@ def publishers(tmp_path, monkeypatch):
         "spliceai.vcf.gz.tbi": Path(f"{spliceai}.tbi").read_bytes(),
     }
     with serving(None, files) as server:
+        server.etags = True
         server.headers = {
             "constraint.tsv": _goog_hash(constraint),
             "gnomad/chr1.vcf.bgz": _goog_hash(gnomad),
@@ -607,7 +608,10 @@ def test_a_server_checks_the_gff3_vcf_acmg_finds_through_its_databases(tmp_path)
     PathGuard([tmp_path]).check(params_from_json(op, {**request, "sa_dir": str(sa)}))
 
 
-@pytest.mark.parametrize("linked", ["ref/acmg/sa/sites", "ref/spliceai_hg38.vcf.gz"])
+@pytest.mark.parametrize(
+    "linked",
+    ["ref/acmg/sa/sites", "ref/spliceai_hg38.vcf.gz", "ref/spliceai_hg38.vcf.gz.tbi"],
+)
 def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
     tmp_path, linked
 ):
@@ -626,7 +630,11 @@ def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
     (lib / "ref" / "acmg" / "sa").mkdir(parents=True)
     _link(lib / linked, outside / "target")
     op = find("vcf/acmg")
-    request = {"input": str(allowed / "in.vcf.gz"), "research_acmg": True}
+    request = {
+        "input": str(allowed / "in.vcf.gz"),
+        "research_acmg": True,
+        "site_data": "per-run",
+    }
 
     params = params_from_json(op, {**request, "ref": str(lib)})
     with pytest.raises(RequestError, match="outside the folders"):
@@ -647,7 +655,7 @@ def _input(tmp_path: Path, extra: str = "") -> Path:
     return vcf
 
 
-def _acmg_run(lib: Path, vcf: Path, out: Path, site_data: str = "auto"):
+def _acmg_run(lib: Path, vcf: Path, out: Path, site_data: str = "library"):
     return api.vcf.acmg(
         VcfAcmgParams(
             research_acmg=True,
@@ -677,7 +685,7 @@ def test_per_run_gnomad_and_spliceai_classify_as_the_full_databases_do(
     assert status["installed"] and status["siteData"] == "per-run"
 
     vcf = _input(tmp_path, SHIFTED_DELETION)
-    first = _acmg_run(lib, vcf, tmp_path / "per_run")
+    first = _acmg_run(lib, vcf, tmp_path / "per_run", site_data="per-run")
     assert first.exit_code == 0, first.error
     per_run = _acmg(tmp_path / "per_run" / "acmg_annotated.vcf.gz")
     # gnomAD holds the deletion left-aligned, 5 bases before where it's written.
@@ -692,7 +700,7 @@ def test_per_run_gnomad_and_spliceai_classify_as_the_full_databases_do(
 
     # The same sites again: the databases are reused, nothing is read.
     gets = len(publishers.gets())
-    again = _acmg_run(lib, vcf, tmp_path / "again")
+    again = _acmg_run(lib, vcf, tmp_path / "again", site_data="per-run")
     assert len(publishers.gets()) == gets
     assert _acmg(tmp_path / "again" / "acmg_annotated.vcf.gz") == per_run
     summary = json.loads((tmp_path / "again" / "acmg_summary.json").read_text())
@@ -730,9 +738,9 @@ def test_per_run_refuses_when_the_publisher_has_no_data(
     # A source that can't be read per run is refused, as a library without it
     # is: fastVEP alone would classify without it, which reads as VUS.
     lib, _ = library
-    api.ref.acmg_data(_params(library, site_data="per-run"))
+    api.ref.acmg_data(_params(library, site_data="per-run", spliceai_file=None))
     publishers.statuses[missing] = 404
-    result = _acmg_run(lib, _input(tmp_path), tmp_path / "out")
+    result = _acmg_run(lib, _input(tmp_path), tmp_path / "out", site_data="per-run")
     assert result.exit_code == 1
     assert result.error is not None and named in result.error.message
     assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()

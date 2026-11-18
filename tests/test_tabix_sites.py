@@ -11,6 +11,7 @@ import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.http_server import serving
+from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.tabix_sites import TabixFile
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -80,6 +81,7 @@ def test_records_at_the_sites_are_those_of_the_whole_file_from_far_fewer_bytes(
         None,
         {"s.vcf.gz": vcf.read_bytes(), "s.vcf.gz.tbi": Path(f"{vcf}.tbi").read_bytes()},
     ) as server:
+        server.etags = True
         location = server.url_for("s.vcf.gz") if remote else str(vcf)
         file = TabixFile(location)
 
@@ -108,6 +110,7 @@ def test_a_server_that_answers_a_range_with_the_whole_file_is_an_error(indexed):
         None,
         {"s.vcf.gz": vcf.read_bytes(), "s.vcf.gz.tbi": Path(f"{vcf}.tbi").read_bytes()},
     ) as server:
+        server.etags = True
         file = TabixFile(server.url_for("s.vcf.gz"))
         assert file.index.contigs  # read before the file changes
         server.ignore_ranges = True
@@ -127,3 +130,71 @@ def test_a_damaged_block_holding_a_sites_records_is_an_error(indexed, tmp_path):
     with pytest.raises(WGSExtractError, match="no valid BGZF block"):
         # Every record's site: one of them is in the damaged block.
         TabixFile(str(damaged)).records_at("chr1", [(chr1[0], chr1[-1])])
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"ETag": 'W/"weak"'},
+        {"ETag": "unquoted"},
+        {"Last-Modified": "not a date"},
+    ],
+)
+def test_629_unversioned_remote_file_is_refused_before_range_reads(headers):
+    with serving(b"source") as server:
+        server.headers["source"] = headers
+        with pytest.raises(WGSExtractError, match="validator"):
+            TabixFile(server.url_for("source"))
+        assert not server.gets()
+
+
+@pytest.mark.parametrize("replace", [True, False], ids=["replacement", "in-place"])
+def test_629_changed_local_source_cannot_mix_releases(indexed, tmp_path, replace):
+    vcf, _ = indexed
+    local = tmp_path / "source.vcf.gz"
+    local.write_bytes(vcf.read_bytes())
+    Path(f"{local}.tbi").write_bytes(Path(f"{vcf}.tbi").read_bytes())
+    file = TabixFile(str(local))
+    file.header()
+    if replace:
+        other = tmp_path / "replacement"
+        other.write_bytes(vcf.read_bytes())
+        other.replace(local)
+    else:
+        with local.open("r+b") as output:
+            output.write(b"changed")
+    with pytest.raises(WGSExtractError, match="changed during the run"):
+        file.records_at("chr1", [(100, 100)])
+
+
+def test_629_local_index_symlink_cannot_escape_read_scope(indexed, tmp_path):
+    vcf, _ = indexed
+    local = tmp_path / "source.vcf.gz"
+    local.write_bytes(vcf.read_bytes())
+    Path(f"{local}.tbi").symlink_to(Path(f"{vcf}.tbi"))
+    with read_scope.limited_to(lambda p: Path(p).resolve().is_relative_to(tmp_path)):
+        file = TabixFile(str(local))
+        with pytest.raises(WGSExtractError, match="outside the folders"):
+            file.records_at("chr1", [(100, 100)])
+
+
+def test_629_range_reads_honor_proxy_configuration(indexed, monkeypatch):
+    from urllib.request import build_opener
+
+    from wgsextract_cli.core import tabix_sites
+
+    vcf, records = indexed
+    files = {"source": vcf.read_bytes(), "source.tbi": Path(f"{vcf}.tbi").read_bytes()}
+    # A proxy receives an absolute URL. The fixture server accepts its path;
+    # origin.invalid is deliberately unreachable without the proxy.
+    with serving(None, files) as proxy:
+        proxy.etags = True
+        monkeypatch.setenv("http_proxy", proxy.base.rsplit("/", 1)[0])
+        monkeypatch.setenv("no_proxy", "")
+        monkeypatch.setenv("NO_PROXY", "")
+        monkeypatch.setattr(tabix_sites, "urlopen", build_opener().open)
+        file = TabixFile(f"http://origin.invalid{proxy.prefix}source")
+        sites = _sites(records, random.Random(3), 5)
+        assert file.records_at("chr1", sites, workers=2) == _expected(records, sites)
+        assert proxy.gets()
