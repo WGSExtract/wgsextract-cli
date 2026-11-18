@@ -548,6 +548,7 @@ class ReferenceEvidence:
             regions.write_text(
                 "".join(f"{c}\t{s}\t{e}\n" for c, s, e in probes),
                 encoding="utf-8",
+                newline="\n",
             )
             boundary = run_command(
                 ["bcftools", "view", "-H", "-R", str(regions), self.path],
