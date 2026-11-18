@@ -232,6 +232,7 @@ def run_discovery_filter(
     samples: Sequence[str | None] = (),
     called: str | None = None,
     clinvar: str | None = None,
+    reference: str | None = None,
 ) -> int:
     """Dynamically builds filter based on type and headers."""
     try:
@@ -321,16 +322,16 @@ def run_discovery_filter(
             # calls, and at the ClinVar pathogenic sites the filter looked for.
             from wgsextract_cli.commands.vcf.clinvar_revel import pathogenic_sites
 
-            sites = (
-                pathogenic_sites(clinvar, CLINVAR_PATHOGENIC_EXPR)
-                if clinvar and has_info("CLNSIG")
-                else None
-            )
             with tempfile.TemporaryDirectory(
                 prefix=".wgse_evidence_", dir=Path(out_vcf).parent
             ) as work:
+                sites = (
+                    pathogenic_sites(clinvar, CLINVAR_PATHOGENIC_EXPR, reference, work)
+                    if clinvar and reference and has_info("CLNSIG")
+                    else None
+                )
                 variant_confidence.add_reference_evidence(
-                    summary, called, work, clinvar_sites=sites
+                    summary, called, work, clinvar_sites=sites, reference=reference
                 )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Discovery filter failed for {v_type}: {e}") from e
@@ -588,6 +589,7 @@ def run_vcf_workflow(
             samples=(job.input, vcf_path),
             called=vcf_path,
             clinvar=dataset("clinvar", lib) if "clinvar" in available else None,
+            reference=lib.fasta,
         )
         handle.metrics["variants"] = count
         for index in (".tbi", ".csi"):

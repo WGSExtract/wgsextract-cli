@@ -207,7 +207,12 @@ for each set of sites checked, `calls` (the labelled calls) and, for
 `vcf clinvar` and `analyze`, `clinvar_pathogenic_sites` (every ClinVar
 pathogenic/likely pathogenic site the filter looked for, carried or not). A
 site is `callable_reference` only when every base of it is; otherwise it
-takes its strongest state against reference. ClinVar sites that are neither
+takes its strongest state against reference. Symbolic alleles use `INFO/END`
+when present. With a reference FASTA, checked ClinVar alleles and the gVCF
+are left-aligned to the same reference, and its index supplies missing gVCF
+contig lengths. The checked ClinVar set has the same compatibility exclusions
+as annotation, including incompatible hg19 mitochondrial references.
+ClinVar sites that are neither
 `variant` nor `callable_reference` (nor `excluded_by_policy`) raise a
 `reference_evidence_unassessed_sites` warning with the count per state: the
 sample may carry a variant there that was not called. The labels themselves

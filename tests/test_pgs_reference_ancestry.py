@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.ancestry_helpers import calls_vcf
-from tests.htslib_helpers import needs_htslib
+from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.test_pgs import _calibrated, _calibrated_world
 from wgsextract_cli.core.results import fingerprint
 
@@ -15,18 +14,23 @@ from wgsextract_cli.core.results import fingerprint
 @needs_htslib
 @pytest.mark.parametrize("header_lengths", [True, False])
 @pytest.mark.parametrize("direct_gvcf", [True, False])
+@pytest.mark.parametrize(
+    ("prefix", "marker"),
+    [("chr", "symbolic"), ("", "wgseReferenceEvidence"), ("", "GVCFBlock")],
+)
 def test_863_ancestry_projection_takes_only_callable_reference_from_the_gvcf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     header_lengths: bool,
     direct_gvcf: bool,
+    prefix: str,
+    marker: str,
 ) -> None:
     """Issue #863: missing ancestry sites became hom-ref even where the
     caller's gVCF says no read covered them."""
     world = _calibrated_world(tmp_path / "genome", monkeypatch, whole_genome=True)
     calls = tmp_path / "calls"
     calls.mkdir()
-    world["vcf"] = calls_vcf(world["world"], calls / "v.vcf.gz", variants_only=True)
     genotypes = world["world"]["genotypes"]
     half = len(genotypes) // 2
     uncovered = {i for i, g in enumerate(genotypes[:half]) if g == 0}
@@ -36,11 +40,17 @@ def test_863_ancestry_projection_takes_only_callable_reference_from_the_gvcf(
     lines = [
         "##fileformat=VCFv4.2",
         *(
-            f"##contig=<ID=chr{c}{',length=40000' if header_lengths else ''}>"
+            f"##contig=<ID={prefix}{c}{',length=40000' if header_lengths else ''}>"
             for c in range(1, 23)
         ),
-        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
-        '##ALT=<ID=*,Description="Any other allele">',
+        *(
+            [
+                '##INFO=<ID=END,Number=1,Type=Integer,Description="End">',
+                '##ALT=<ID=*,Description="Any other allele">',
+            ]
+            if marker == "symbolic"
+            else [f"##{marker}=<ID=reference>"]
+        ),
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">',
         '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">',
@@ -52,15 +62,37 @@ def test_863_ancestry_projection_takes_only_callable_reference_from_the_gvcf(
     ):
         if g:
             gt = ("0/1", "1/1")[g - 1]
-            lines.append(f"chr{c}\t{pos}\t.\t{ref}\t{alt},<*>\t50\tPASS\t.\tGT:DP:GQ\t{gt}:30:50")  # fmt: skip
+            lines.append(f"{prefix}{c}\t{pos}\t.\t{ref}\t{alt}\t50\tPASS\t.\tGT:DP:GQ\t{gt}:30:50")  # fmt: skip
         elif i in uncovered:
-            lines.append(f"chr{c}\t{pos}\t.\t{ref}\t{alt},<*>\t.\tPASS\t.\tGT:DP:GQ\t0/0:0:0")  # fmt: skip
+            lines.append(f"{prefix}{c}\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\t.\tGT:DP:GQ\t0/0:0:0")  # fmt: skip
         elif i < half:
-            lines.append(f"chr{c}\t{pos}\t.\t{ref}\t<*>\t.\tPASS\tEND={pos}\tGT:DP:MIN_DP:GQ\t0/0:30:30:50")  # fmt: skip
+            alt, info = ("<*>", f"END={pos}") if marker == "symbolic" else (".", ".")
+            lines.append(f"{prefix}{c}\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\t{info}\tGT:DP:MIN_DP:GQ\t0/0:30:30:50")  # fmt: skip
     plain = calls / "v.g.vcf"
     plain.write_text("\n".join(lines) + "\n")
     subprocess.run(["bgzip", "-f", str(plain)], check=True)
     subprocess.run(["tabix", "-p", "vcf", str(calls / "v.g.vcf.gz")], check=True)
+    variants = calls / "v.vcf"
+    variants.write_text(
+        "\n".join(
+            line
+            for line in lines
+            if (
+                line.startswith("#")
+                and not line.startswith(
+                    (
+                        "##wgseReferenceEvidence",
+                        "##GVCFBlock",
+                        "##INFO=<ID=END",
+                        "##ALT=",
+                    )
+                )
+            )
+            or (not line.startswith("#") and not line.split("\t")[9].startswith("0/0:"))
+        )
+        + "\n"
+    )
+    world["vcf"] = Path(bgzip_index(variants))
     if direct_gvcf:
         world["vcf"] = calls / "v.g.vcf.gz"
     (calls / "v.manifest.json").write_text(

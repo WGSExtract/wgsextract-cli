@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from wgsextract_cli.core.paths import PathInput
@@ -406,6 +406,103 @@ class ReferenceEvidence:
             for contig, ranges in selected.items()
             for start, end in ranges
         ]
+
+    def normalized(self, reference: str, work: Path) -> ReferenceEvidence:
+        """Left-align the evidence against the same FASTA as the checked alleles.
+
+        Blocks retain their coordinates; moved indels take precedence over
+        overlapping reference blocks. Provenance intervals keep their meaning
+        when chromosome aliases are renamed to the FASTA's names.
+        """
+        from wgsextract_cli.core.reference_resolver import read_fai_lengths
+        from wgsextract_cli.core.variant_files import (
+            ensure_vcf_indexed,
+            match_chromosome_name,
+            normalize_vcf_chromosomes,
+        )
+
+        lengths = read_fai_lengths(reference)
+        header = run_command(
+            ["bcftools", "view", "-h", self.path], capture_output=True
+        ).stdout
+        original = ReferenceEvidence(
+            self.path,
+            {
+                contig: lengths[alias]
+                for contig in _CONTIG_ID.findall(header)
+                if (alias := match_chromosome_name(contig, lengths))
+            },
+        )
+        renamed = normalize_vcf_chromosomes(self.path, list(lengths), str(work))
+        split = work / "evidence.split.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-m",
+                "-any",
+                "--multi-overlaps",
+                ".",
+                "-Oz",
+                "-o",
+                str(split),
+                renamed,
+            ],
+            capture_output=True,
+        )
+        aligned, output = work / "evidence.aligned.vcf.gz", work / "evidence.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-f",
+                reference,
+                "-c",
+                "e",
+                "-Oz",
+                "-o",
+                str(aligned),
+                str(split),
+            ],
+            capture_output=True,
+        )
+        run_command(
+            [
+                "bcftools",
+                "sort",
+                "-T",
+                str(work / "evidence-sort"),
+                "-Oz",
+                "-o",
+                str(output),
+                str(aligned),
+            ],
+            capture_output=True,
+        )
+        ensure_vcf_indexed(str(output))
+        result = ReferenceEvidence(str(output), lengths)
+        if self.provenance:
+
+            def mapped(intervals: Iterable[Interval]) -> list[Interval]:
+                return [
+                    (alias, start, end)
+                    for contig, start, end in intervals
+                    if (alias := match_chromosome_name(contig, lengths))
+                ]
+
+            assessed = original.assessed()
+            result.provenance = replace(
+                self.provenance,
+                region=(
+                    canonical_region((c, s - 1, e) for c, s, e in mapped(assessed))
+                    if assessed is not None
+                    else self.provenance.region
+                ),
+                ploidy_zero=tuple(
+                    f"{c}:{s}-{e}" for c, s, e in mapped(self.excluded())
+                ),
+            )
+        return result
 
     def excluded(self) -> list[Interval]:
         items = self.provenance.ploidy_zero if self.provenance else ()

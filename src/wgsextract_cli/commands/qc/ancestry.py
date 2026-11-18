@@ -68,7 +68,7 @@ from wgsextract_cli.core.utils import (
     popen,
     run_command,
 )
-from wgsextract_cli.core.variant_files import verify_paths_exist
+from wgsextract_cli.core.variant_files import vcf_header_chromosomes, verify_paths_exist
 
 from ..genotyping.common import open_alignment
 from ._relate_vcf import (
@@ -318,6 +318,8 @@ def vcf_genotypes(
     reference. Without it, a whole-genome variants-only VCF's absent sites are
     hom-ref. Either way only inside ``confident`` when it is given."""
     verify_dependencies(["bcftools"])
+    if evidence is not None and reference_fasta:
+        verify_dependencies(["samtools"])
     header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
     lengths = header_contig_lengths(header)
     build = build or build_from_chr1_length(lengths) or ""
@@ -333,7 +335,8 @@ def vcf_genotypes(
         )
     sample = _vcf_sample(vcf, sample)
     sites = reference.sites(build)
-    chr_prefix = "chr1" in lengths or not any(c == "1" for c in lengths)
+    contigs = vcf_header_chromosomes(header)
+    chr_prefix = "chr1" in contigs or "1" not in contigs
     regions = work / "sites.tsv"
     with regions.open("w", newline="\n") as f:
         f.writelines(
@@ -345,12 +348,14 @@ def vcf_genotypes(
         for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
     )
     query = ["bcftools", "query", "--allow-undef-tags", "-T", str(regions), "-s", sample,
-             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT]\n", vcf]  # fmt: skip
+             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT\t%DP\t%GQ]\n", vcf]  # fmt: skip
+    thresholds = variant_confidence.thresholds_from(None)
+    source = reference_evidence.ReferenceEvidence(evidence) if evidence else None
     called: dict[int, int] = {}
     unknown: set[int] = set()
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
-        contig, pos, ref, alts, filt, gt, sample_filter = line.split("\t")
+        contig, pos, ref, alts, filt, gt, sample_filter, dp, gq = line.split("\t")
         names = alts.split(",")
         for i in lookup.get((contig, int(pos)), ()):
             if ref.upper() != sites.ref[i] or i in called:
@@ -363,12 +368,23 @@ def vcf_genotypes(
                 continue
             passed = filt in _PASSING and sample_filter in _PASSING
             dosage = _dosage(gt, k) if passed else None
+            if evidence is not None and dosage == 0:
+                # The classifier applies the same DP/GQ floor to hom-ref,
+                # including explicit 0/0 records with a concrete ALT.
+                continue
+            if source is not None:
+                passed = (
+                    passed
+                    and dp not in {"", "."}
+                    and float(dp) >= thresholds.min_depth
+                    and (
+                        source.quality_model != reference_evidence.GQ
+                        or (gq not in {"", "."} and float(gq) >= thresholds.min_gq)
+                    )
+                )
+            dosage = _dosage(gt, k) if passed else None
             if dosage is None:
                 unknown.add(i)
-                continue
-            if evidence is not None and dosage == 0:
-                # Even an explicit 0/0 with a concrete ALT can be uncovered
-                # or low quality; the gVCF classifier decides reference.
                 continue
             passing += 1
             ref_only += dosage == 0
@@ -403,17 +419,34 @@ def vcf_genotypes(
             ((_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i])), i)
             for i in absent
         )
+        fill: list[int] = []
         for (site_contig, site_pos, _), state in reference_evidence.site_states(
             source,
             ((c, p, p) for c, p in located),
-            variant_confidence.thresholds_from(None),
+            thresholds,
         ):
             rows = located[(site_contig, site_pos)]
             states[state.value] += len(rows)
             if state is reference_evidence.State.CALLABLE_REFERENCE:
-                for i in rows:
-                    called[i] = 0
-                filled += len(rows)
+                fill.extend(rows)
+        from wgsextract_cli.core.reference_bases import verified_reference_bases
+
+        bases = verified_reference_bases(
+            evidence,
+            [
+                (_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i]))
+                for i in fill
+            ],
+            work,
+            reference_fasta,
+        )
+        for i in fill:
+            if (
+                bases.get((_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i])))
+                == sites.ref[i]
+            ):
+                called[i] = 0
+                filled += 1
     elif variants_only:
         freq = reference.pca()["frequency"][sites.index].astype(np.float64)
         expected = float((1 - (1 - freq) ** 2).sum())

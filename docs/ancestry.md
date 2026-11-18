@@ -70,6 +70,12 @@ is hom-ref only where the gVCF calls it `callable_reference`; elsewhere
 whether or not the VCF is a whole genome. The manifest counts the missing
 sites in each state as `ancestry_missing_sites_<state>`.
 An indexed `--ref` supplies contig lengths omitted from the gVCF header.
+Reference fills must also match the panel's REF: an indexed `--ref` verifies
+bases inside blocks; without it, only bases explicitly spelled in a gVCF
+record's REF can be filled. Incompatible or unverifiable bases stay unknown.
+With gVCF evidence, observed variants and reference fills use the same
+minimum depth and, for GQ-based evidence, genotype-quality thresholds.
+These rules also apply to the ancestry PCs used by `score pgs`.
 
 `--build` gives the input's build when its header doesn't tell it.
 

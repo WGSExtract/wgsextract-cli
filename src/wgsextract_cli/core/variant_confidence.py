@@ -1080,11 +1080,9 @@ def add_reference_evidence(
     vcf: PathInput,
     work: PathInput,
     clinvar_sites: Iterable[tuple[str, int, int]] | None = None,
+    reference: str | None = None,
 ) -> None:
-    """When the run that wrote ``vcf`` published a gVCF beside it, the gVCF's
-    state (core/reference_evidence) at the sites checked: the labelled calls,
-    and ``clinvar_sites`` (contig, 1-based start, inclusive end) when given.
-    Without a gVCF the summary is unchanged."""
+    """Add companion gVCF states at calls/ClinVar spans, aligned to ``reference``."""
     from wgsextract_cli.core import reference_evidence as evidence
 
     gvcf = evidence.companion(vcf)
@@ -1099,6 +1097,8 @@ def add_reference_evidence(
         )
         return
     source = evidence.ReferenceEvidence(read)
+    if reference:
+        source = source.normalized(reference, Path(work))
     checked: dict[str, Iterable[tuple[str, int, int]]] = {
         CALL_SITES: [
             (f.chrom, f.pos, f.pos + max(len(f.ref), 1) - 1) for f in summary.findings

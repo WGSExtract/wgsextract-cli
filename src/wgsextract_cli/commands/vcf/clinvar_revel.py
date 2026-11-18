@@ -120,7 +120,8 @@ def run_clinvar(params: VcfClinvarParams) -> None:
                 summary,
                 input_file,
                 work,
-                clinvar_sites=pathogenic_sites(clinvar_vcf, include),
+                clinvar_sites=pathogenic_sites(clinvar_vcf, include, lib.fasta, work),
+                reference=lib.fasta,
             )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"ClinVar filtering failed: {e}") from e
@@ -187,12 +188,22 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     logging.info(LOG_MESSAGES["vcf_clinvar_done"].format(output=path_out))
 
 
-def pathogenic_sites(clinvar_vcf: str, include: str) -> Iterator[tuple[str, int, int]]:
+def pathogenic_sites(
+    clinvar_vcf: str, include: str, reference: str, work: str
+) -> Iterator[tuple[str, int, int]]:
     """The ClinVar records ``include`` selects, as (contig, start, end)."""
-    query = ["bcftools", "query", "-i", include, "-f", "%CHROM\t%POS\t%REF\n", clinvar_vcf]  # fmt: skip
+    from .matching import normalized_clinvar_resource
+
+    clinvar_vcf = normalized_clinvar_resource(clinvar_vcf, reference, work)
+    query = ["bcftools", "query", "--allow-undef-tags", "-i", include,
+             "-f", "%CHROM\t%POS\t%REF\t%INFO/END\n", clinvar_vcf]  # fmt: skip
     for line in run_command(query, capture_output=True).stdout.splitlines():
-        contig, pos, ref = line.split("\t")
-        yield contig, int(pos), int(pos) + max(len(ref), 1) - 1
+        contig, pos, ref, end = line.split("\t")
+        yield (
+            contig,
+            int(pos),
+            max(int(pos) + max(len(ref), 1) - 1, int(end) if end.isdigit() else 0),
+        )
 
 
 def _vcf_header(vcf: str) -> str:
