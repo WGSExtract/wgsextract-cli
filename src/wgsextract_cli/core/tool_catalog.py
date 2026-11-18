@@ -229,6 +229,7 @@ PIXI_TOOL_ENVS = {
     "LongTR": "longtr",
     "strkit": "strkit",
     "run_clair3.sh": "clair3",
+    "wgse-clair3": "clair3",
     "wgse-deepvariant": "deepvariant",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",

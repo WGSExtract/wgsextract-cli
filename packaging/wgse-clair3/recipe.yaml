@@ -1,0 +1,45 @@
+context:
+  version: "0.1.0"
+
+package:
+  name: wgse-clair3
+  version: ${{ version }}
+
+source:
+  - url: https://github.com/HKU-BAL/Clair3/archive/refs/tags/v2.0.5.tar.gz
+    sha256: 9d5a9cbbe542105ec46d6ff5afa581356b2824537f0e67a2f3749e56469e19f8
+    patches:
+      - ../../native/clair3/patches/0001-streaming-mps.patch
+  - path: ../../native/clair3/wgse-clair3
+  - path: ../../LICENSE
+
+build:
+  number: 1
+  string: py311_osxarm64_wgse_${{ build_number }}
+  skip:
+    - not (osx and arm64)
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - patch
+  run:
+    # Reuse the pinned native CFFI ABI, htslib, tools and existing model resolver.
+    # No upstream model file is copied into this code-only package.
+    - clair3 ==2.0.5 py311h9aa1f4a_0
+    - python >=3.11,<3.12
+    - pytorch >=2,<3
+
+tests:
+  - script:
+      - wgse-clair3 --version
+      - wgse-clair3 --wgse-device-check
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native/clair3
+  license: BSD-3-Clause AND GPL-3.0-or-later
+  license_file:
+    - LICENSE.md
+    - LICENSE
+  summary: Clair3 2.0.5 caller code with opt-in Apple MPS streaming inference; no weights.

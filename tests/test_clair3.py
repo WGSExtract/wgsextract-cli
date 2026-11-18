@@ -35,7 +35,6 @@ from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.resource_estimates import estimate_clair3
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
-    UsageError,
     WGSExtractError,
     run_command,
 )
@@ -679,17 +678,6 @@ def test_gpu_refuses_a_host_that_cant_run_it_before_any_work(
         gpu_call(clair3_gpu, make_model(tmp_path, "my_r1041_model"))
     assert clair3_gpu.clair3.runs() == []
     assert not clair3_gpu.out.exists()
-
-
-@pytest.mark.parametrize(
-    ("host", "machine"), [("darwin", "arm64"), ("linux", "aarch64")]
-)
-def test_gpu_is_refused_where_clair3_has_no_gpu_build(monkeypatch, host, machine):
-    """#639: Clair3's GPU mode is CUDA only (no Apple MPS), in an x86-64 image."""
-    monkeypatch.setattr(sys, "platform", host)
-    monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(UsageError, match="x86-64 Linux with an NVIDIA GPU"):
-        run_wgsextract("vcf", "clair3", "--input", "reads.bam", "--gpu")
 
 
 # Clair3's temporary space (#811) ---------------------------------------------

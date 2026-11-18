@@ -1,0 +1,82 @@
+name: macOS Clair3
+
+# Caller code only: no model conversion, packaging, or redistribution.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    branches: [main]
+    paths:
+      - native/clair3/**
+      - packaging/wgse-clair3/**
+      - .github/workflows/macos_clair3.yml
+      - .github/actions/setup-pixi/**
+      - "!**/*.md"
+  push:
+    branches: [main]
+    paths:
+      - native/clair3/**
+      - packaging/wgse-clair3/**
+      - .github/workflows/macos_clair3.yml
+      - "!**/*.md"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New macos-clair3-* tag (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
+      - name: Build and test the code-only package
+        run: |
+          pixi exec --spec rattler-build==0.77.0 -- rattler-build build \
+            --no-build-id -c conda-forge -c bioconda \
+            --recipe-dir packaging/wgse-clair3 --target-platform osx-arm64 \
+            --output-dir out/conda
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-clair3
+          path: out/conda/osx-arm64/wgse-clair3-*.conda
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: macos-clair3-
+          title: macOS Clair3 ${{ inputs.release_tag }}
+          source: native/clair3 and packaging/wgse-clair3
+          artifacts: macos-clair3
+          description: |
+            Clair3 2.0.5 caller code with opt-in Apple Silicon MPS inference.
+            Preserves CPU streaming and high-depth scaling, including gVCF.
+            BSD-3-Clause upstream code and GPL-3.0-or-later WGSE integration.
+            Both licences retained; no model weights are redistributed.
+            Requires the pinned Bioconda Clair3 native library and existing models.
+            See native/clair3/README.md for qualification and the Pixi publication gate.

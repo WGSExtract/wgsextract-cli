@@ -21,6 +21,7 @@ src/wgsextract_cli/assets/resource_terms/** -text
 
 # Patches for upstream sources keep their exact bytes (some upstream files are CRLF).
 packaging/windows/recipes/**/*.patch -text -whitespace
+native/clair3/patches/*.patch -text -whitespace
 
 # Bundled catalogs are pinned by SHA-256 (provenance.json).
 src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf
