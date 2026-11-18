@@ -3,6 +3,7 @@
 import gzip
 import os
 import select
+import sys
 import tempfile
 import zlib
 from collections.abc import Iterator
@@ -29,15 +30,18 @@ def stage_read_input(path: str, directory: str, cleanup: ExitStack) -> str:
     try:
         report("reads_staging", f"Staging read stream {path}.")
         checkpoint()
-        source = (
-            os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK), "rb", buffering=0)
-            if os.name == "posix"
-            else open(path, "rb", buffering=0)
-        )
+        if sys.platform == "win32":
+            source = open(path, "rb", buffering=0)
+        else:
+            flags = os.O_RDONLY | os.O_NONBLOCK
+            source = os.fdopen(os.open(path, flags), "rb", buffering=0)
         with source, staged.open("wb") as target:
             while True:
                 checkpoint()
-                if os.name == "posix" and not select.select([source], [], [], 0.1)[0]:
+                if (
+                    sys.platform != "win32"
+                    and not select.select([source], [], [], 0.1)[0]
+                ):
                     continue
                 chunk = source.read(1024 * 1024)
                 if chunk is None:
