@@ -4,6 +4,10 @@
   padding: var(--space-5);
 }
 
+:root[data-viewer-embedded] .genome-viewer-back {
+  display: none;
+}
+
 .genome-viewer p {
   max-width: 75ch;
 }

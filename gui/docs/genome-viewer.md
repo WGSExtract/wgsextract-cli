@@ -25,6 +25,9 @@ selected files; it does not copy a whole-genome BAM/CRAM into memory or serve it
 over HTTP. A missing reference or index is reported before opening a track.
 The local Node backend only serves the app and library code, not your selected
 sample files. This desktop-only slice does not introduce a remote file API.
+The viewer opens in a separate in-app pane, so running jobs continue. Its frame
+is kept outside the app's command-output renders; returning to the app closes
+the selected files without interrupting jobs.
 
 Select only matching references and indexes. Duplicate filenames are rejected;
 open same-named files from different folders separately. Leaving or reloading

@@ -21,6 +21,7 @@ test("#1090: tracks require matching indexes, including alternate BAM and CRAM n
     ["sample.cram", "sample.crai"],
     ["sample.vcf.gz", "sample.vcf.gz.tbi"],
     ["sample.g.vcf.gz", "sample.g.vcf.gz.csi"],
+    ["sample.gvcf.gz", "sample.gvcf.gz.tbi"],
   ]) {
     assert.throws(() => localViewerFiles(reference, [file(data), file("other.bai")]), problem("indexMissing"));
     const result = localViewerFiles(reference, [file(data), file(index)]);
@@ -55,7 +56,8 @@ test("#1090: the shipped genome bundle has a localized built-in viewer entry poi
     labels: { viewerTitle: "Visualiseur de génome" },
     localizationCode: "fr",
   });
-  assert.match(renderNavigation(), /href="\/viewer\?locale=fr">Visualiseur de génome/);
-  state.manifest.id = "git-helper";
+  assert.match(renderNavigation(), /data-genome-viewer-open>Visualiseur de génome/);
   assert.doesNotMatch(renderNavigation(), /href="\/viewer/);
+  state.manifest.id = "git-helper";
+  assert.doesNotMatch(renderNavigation(), /data-genome-viewer-open/);
 });

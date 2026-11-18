@@ -1,6 +1,6 @@
 import { localViewerFiles, localViewerLocus, ViewerFileError, type LocalTrack, type LocalViewerFiles } from "../../../shared/genome-viewer.js";
-import type { ManifestResponse, StringMap } from "../../../shared/types.js";
-import { api } from "./api.js";
+import type { StringMap } from "../../../shared/types.js";
+import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 
 interface IgvBrowser {
@@ -30,15 +30,15 @@ let strings: StringMap = {};
 const text = (key: string) => strings[key] ?? key;
 
 try {
-    const locale = new URLSearchParams(location.search).get("locale");
-    const bundle = await api<ManifestResponse>(`/api/manifest${locale ? `?locale=${encodeURIComponent(locale)}` : ""}`);
-    strings = bundle.labels.viewerStrings ?? {};
-    document.documentElement.lang = bundle.localizationCode || "en";
-    document.documentElement.dir = bundle.labels.layoutDirection || "ltr";
+    const labels = await genomeViewerLabels();
+    strings = labels.strings;
+    document.documentElement.lang = labels.locale;
+    document.documentElement.dir = labels.direction;
+    document.documentElement.toggleAttribute("data-viewer-embedded", window.parent !== window);
     document.title = `${text("title")} · WGS Extract`;
     root.innerHTML = `
       <header class="page-header">
-        <a href="/">${escapeHTML(text("back"))}</a>
+        <a class="genome-viewer-back" href="/">${escapeHTML(text("back"))}</a>
         <h1>${escapeHTML(text("title"))}</h1>
         <p>${escapeHTML(text("privacy"))}</p>
       </header>

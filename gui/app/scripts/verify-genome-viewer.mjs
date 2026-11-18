@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
+import { verifyViewerJobs } from "./verify-viewer-jobs.mjs";
 
 const { values } = parseArgs({
   options: {
@@ -106,6 +107,7 @@ try {
   assert.deepEqual(requests.filter((request) => request.method !== "GET"), [], "No sample data may be uploaded.");
   assert.deepEqual(consoleMessages.filter((message) => ["error", "pageerror"].includes(message.type)), [], "Read actual browser console errors.");
   await writeFile(path.join(output, "viewer-browser-proof.json"), JSON.stringify({ externalRequests, requests, consoleMessages, largeBytes, reads }, null, 2));
+  await verifyViewerJobs(browser, fixtures, output);
   console.log(`BAM, CRAM, VCF and 4 GiB sparse-BAM checks passed; large BAM read ${largeBytes} bytes; no external requests or console errors.`);
 } catch (error) {
   await page.screenshot({ path: path.join(output, "viewer-failure.png"), fullPage: true });

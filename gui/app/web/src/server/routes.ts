@@ -88,6 +88,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             // CRAM's bundled decoder uses WASM; network access stays same-origin only.
             response.setHeader("content-security-policy", contentSecurityPolicy
                 .replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+                .replace("frame-ancestors 'none'", "frame-ancestors 'self'")
                 .replace(/connect-src[^;]+/, "connect-src 'self'"));
             return serveIndex(path.join(context.distRoot, "web", "viewer.html"), indexToken(context), response, headOnly);
         },

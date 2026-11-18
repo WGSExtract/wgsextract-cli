@@ -42,7 +42,7 @@ export function localViewerFiles(referenceFiles: File[], trackFiles: File[]): Lo
         if (/\.(bai|csi|crai|tbi)$/.test(name)) {
             continue;
         }
-        const format = name.endsWith(".bam") ? "bam" : name.endsWith(".cram") ? "cram" : /\.vcf\.gz$/.test(name) ? "vcf" : null;
+        const format = name.endsWith(".bam") ? "bam" : name.endsWith(".cram") ? "cram" : /\.g?vcf\.gz$/.test(name) ? "vcf" : null;
         if (!format) {
             throw new ViewerFileError("unsupportedFile", file.name);
         }
