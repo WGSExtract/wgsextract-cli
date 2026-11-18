@@ -634,7 +634,8 @@ def test_certify_keeps_windows_test_paths_under_the_tool_path_limit(
     where = Path((tmp_path / "where.txt").read_text())
     layer = tmp_path / "out" / "certify" / sha / "windows-x64"
     if sys.platform == "win32":
-        assert where.is_relative_to(Path(tempfile.gettempdir(), "wgse-certify"))
+        temporary = Path(tempfile.gettempdir(), "wgse-certify").resolve()
+        assert where.is_relative_to(temporary)
         assert not where.is_relative_to(tmp_path / "out")
     else:
         assert where.is_relative_to(layer / "tmp-0")
