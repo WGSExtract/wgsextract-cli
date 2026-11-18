@@ -96,7 +96,7 @@ def pytest_basetemp(directory: Path, sha: str, name: str, index: int) -> Path:
     if sys.platform == "win32":
         root = Path(tempfile.gettempdir(), "wgse-certify", sha[:12])
         root.mkdir(parents=True, exist_ok=True)  # pytest makes only the leaf.
-        return root / f"{name}-{index}"
+        return Path(tempfile.mkdtemp(prefix=f"{name}-{index}-", dir=root))
     return directory / f"tmp-{index}"
 
 
