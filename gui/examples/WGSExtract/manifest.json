@@ -1,7 +1,7 @@
 {
   "id": "wgs-extract",
   // Keep this bundle version in sync with scripts/wgsextract-release-tag.txt so installer names match the bundled WGSExtract CLI release.
-  "version": "0.8.7",
+  "version": "0.8.8",
   // The settings file and the folders the user manages (outputs, libraries) grow large and belong to the user,
   // so they are kept in plain sight in {{usersWorkspace}}, apart from the app's hidden {{bundleWorkspace}}.
   "defaultUsersWorkspace": "~/wgs-extract",
