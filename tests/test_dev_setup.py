@@ -100,13 +100,9 @@ def test_766_setup_excludes_macos_heavy_folders_idempotently(
             )
 
 
-@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell is not installed")
-@pytest.mark.parametrize(
-    ("version", "accepted"), [("0.70.2", False), ("0.82.0", True), ("0.100.0", True)]
-)
-def test_766_windows_setup_checks_pixi_before_installing(
-    tmp_path: Path, version: str, accepted: bool
-) -> None:
+def _run_windows_setup(
+    tmp_path: Path, version: str, path: str | None = None
+) -> subprocess.CompletedProcess[str]:
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     shutil.copy(ROOT / "scripts/dev_setup.ps1", scripts)
@@ -130,12 +126,23 @@ $env:USERPROFILE = $PSScriptRoot
 & (Join-Path $PSScriptRoot "scripts/dev_setup.ps1") -SkipTests
 """
     )
-    result = subprocess.run(
+    return subprocess.run(
         ["pwsh", "-NoProfile", "-File", str(runner)],
+        env={**os.environ, "PATH": path or os.environ["PATH"]},
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell is not installed")
+@pytest.mark.parametrize(
+    ("version", "accepted"), [("0.70.2", False), ("0.82.0", True), ("0.100.0", True)]
+)
+def test_766_windows_setup_checks_pixi_before_installing(
+    tmp_path: Path, version: str, accepted: bool
+) -> None:
+    result = _run_windows_setup(tmp_path, version)
     assert (result.returncode == 0) is accepted, result.stderr
     if accepted:
         assert "Setup complete" in result.stdout
@@ -143,3 +150,17 @@ $env:USERPROFILE = $PSScriptRoot
         assert version in result.stderr
         assert "pixi self-update" in result.stderr
         assert "Environment installation reached" not in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell is not installed")
+def test_windows_setup_reads_path_with_platform_separator(tmp_path: Path) -> None:
+    """A long POSIX PATH was tested as one directory and failed as too long."""
+    just_dir = tmp_path / "just-bin"
+    just_dir.mkdir()
+    (just_dir / "just.exe").write_text("")
+    padding = [str(tmp_path / f"missing-{i:03d}-{'x' * 20}") for i in range(60)]
+    path = os.pathsep.join([*padding, str(just_dir), os.environ["PATH"]])
+    result = _run_windows_setup(tmp_path, "0.82.0", path)
+    assert result.returncode == 0, result.stderr
+    assert "Setup complete" in result.stdout
+    assert "Open a new terminal" not in result.stdout
