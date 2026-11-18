@@ -124,7 +124,8 @@ def defined_in(module: ModuleType, predicate: typing.Callable[[object], bool]) -
         and predicate(obj)
         and getattr(obj, "__module__", None) == module.__name__
     ]
-    return sorted(members, key=lambda obj: inspect.getsourcelines(obj)[1])
+    # Facade declarations retain their order even when their source moves.
+    return members
 
 
 def group_section(module: ModuleType) -> Iterator[str]:

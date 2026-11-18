@@ -5,7 +5,6 @@
     "scripts/build_site.py": 922,
     "scripts/installlab/lab.py": 1365,
     "src/wgsextract_cli/api/ref.py": 1207,
-    "src/wgsextract_cli/api/vcf.py": 1659,
     "src/wgsextract_cli/cli/help.py": 928,
     "src/wgsextract_cli/cli/parser.py": 812,
     "src/wgsextract_cli/commands/info/runner.py": 1161,

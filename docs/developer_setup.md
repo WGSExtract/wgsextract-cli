@@ -96,6 +96,15 @@ is passed only to those child commands and does not change the sample's
 declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 `real-1x`/`real-30x` runs retain build-specific ploidy.
 
+### VCF API specifications
+
+`api/vcf.py` remains the public import and dispatch facade. Its parameter
+declarations live in `api/vcf_specs/`: shared field helpers, calling, file
+operations and annotations. Update the responsible specification module when
+adding fields, and retain its explicit facade export. Parameter types keep
+their public module name for pickle/type metadata; the facade declaration order
+also keeps the generated API reference stable across these internal moves.
+
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
