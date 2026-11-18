@@ -5,10 +5,34 @@ import tarfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from scripts.installlab import app_source
 
 LAB_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts" / "installlab"
+
+
+def test_801_pinned_contract_checkout_matches_resolved_installer_revision() -> None:
+    workflow = LAB_SCRIPTS.parents[1] / ".github" / "workflows" / "install_lab.yml"
+    jobs = yaml.safe_load(workflow.read_text())["jobs"]
+    for name in ("linux-app", "macos-app", "windows-app", "windows-judge"):
+        steps = jobs[name]["steps"]
+        checkout = next(
+            step
+            for step in steps
+            if step.get("with", {}).get("path") == "out/app-contract"
+        )
+        # contract: downloaded app and plan/judge must share the trusted source
+        # resolved by app-source, never a guest artifact's suggested revision.
+        assert checkout["with"]["repository"] == "${{ needs.app-source.outputs.repo }}"
+        assert checkout["with"]["ref"] == "${{ needs.app-source.outputs.revision }}"
+        assert checkout["with"]["persist-credentials"] is False
+        if name != "windows-judge":
+            assert checkout["if"] == "matrix.cli == 'pinned'"
+        commands = "\n".join(step.get("run", "") for step in steps)
+        assert "--app-contract out/app-contract" in commands or (
+            '"--app-contract", "out/app-contract"' in commands
+        )
 
 
 @pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])

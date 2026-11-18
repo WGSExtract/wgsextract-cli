@@ -55,6 +55,7 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import app_contract  # noqa: E402
 import gui_oracle  # noqa: E402
 import housekeeping  # noqa: E402
 import macos_policy  # noqa: E402
@@ -66,7 +67,6 @@ from gui_build import (  # noqa: E402
     build_windows_gui_installer,
     pe_has_signature,
 )
-from gui_oracle import GuiOracle  # noqa: E402
 from oracle import Oracle, find_tools  # noqa: E402
 
 DATASET_URL = (
@@ -141,7 +141,7 @@ def build_artifacts(work: Path) -> dict[str, Path]:
 
     guest = work / "guest"
     shutil.copytree(HERE / "guest", guest)
-    shutil.copy2(HERE / "gui" / "wgsextract-plan.json", guest / "gui-plan.json")
+    shutil.copy2(app_contract.plan_path, guest / "gui-plan.json")
     return {"serve": serve, "guest": guest, "dataset": dataset}
 
 
@@ -651,7 +651,7 @@ def judge(results: Path, target: str) -> bool:
     if meta.get("mode") == "control":
         return report_control(results, target)
     if meta.get("product") == "gui":
-        oracle: Oracle = GuiOracle(
+        oracle: Oracle = app_contract.oracle_type(
             results, meta["nonce"], find_tools(), signed=meta["signed"]
         )
     else:
@@ -1349,7 +1349,7 @@ def main() -> None:
     p = sub.add_parser("judge", help="Judge an existing results directory.")
     p.add_argument("results", type=Path)
     p.set_defaults(func=cmd_judge)
-    args = parser.parse_args()
+    args = app_contract.parse_arguments(parser)
     if args.func not in (cmd_run, cmd_prepare, cmd_selftest):
         args.func(args)
         return

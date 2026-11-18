@@ -459,3 +459,86 @@ def test_a_plan_action_the_released_app_lacks_is_named_as_a_version_mismatch(ora
         "download_test_genome: the test plan expects action test-dataset-download, "
         "which this app version (wgs-extract 0.8.5) doesn't have"
     ) in actions
+
+
+@pytest.mark.parametrize("release_step_passed", [True, False])
+def test_801_pinned_expectations_ignore_tree_and_artifact_plans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, release_step_passed: bool
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    source = tmp_path / "trusted-tag"
+    scripts = source / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    shutil.copy2(LAB_SCRIPTS / "gui_oracle.py", scripts / "gui_oracle.py")
+    release_plan = {"steps": [{"id": "released-action"}]}
+    plan_path = scripts / "gui" / "wgsextract-plan.json"
+    plan_path.write_text(json.dumps(release_plan))
+    plan, oracle_type = load_contract(source)
+    assert json.loads(plan.read_text()) == release_plan
+
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    # Collected evidence cannot replace the trusted tag's required checks.
+    (results / "gui-plan.json").write_text(json.dumps({"steps": []}))
+    steps = [{"id": "not-a-release-action", "status": "passed"}]
+    if release_step_passed:
+        steps.append({"id": "released-action", "status": "passed"})
+    (results / "bundle-report.json").write_text(json.dumps({"steps": steps}))
+    current = oracle_type(results, "nonce", {}, signed=False)
+    current.check_app_reports()
+    actions = next(c for c in current.checks if c.name == "app.actions")
+    assert actions.ok is release_step_passed
+    assert "1/1" in actions.detail if release_step_passed else "0/1" in actions.detail
+
+
+def test_801_tagged_oracle_cannot_relax_scientific_or_state_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    scripts = tmp_path / "tag" / "scripts" / "installlab"
+    (scripts / "gui").mkdir(parents=True)
+    (scripts / "gui" / "wgsextract-plan.json").write_text('{"steps": []}')
+    # Model a tag whose historical scientific/state checks were less strict.
+    (scripts / "gui_oracle.py").write_text(
+        "from pathlib import Path\n"
+        "PLAN = Path(__file__).parent / 'gui' / 'wgsextract-plan.json'\n"
+        "class GuiOracle:\n"
+        "    def check_steps(self):\n"
+        "        self.record('release.steps', False, 'tagged step requirement')\n"
+        "    def check_app_reports(self):\n"
+        "        self.record('release.reports', False, 'tagged report requirement')\n"
+        "    def check_outputs(self, dataset):\n"
+        "        raise AssertionError('must not use old scientific checks')\n"
+        "    def check_state(self, noise_patterns):\n"
+        "        raise AssertionError('must not use old state checks')\n"
+    )
+    _, oracle_type = load_contract(tmp_path / "tag")
+    results = tmp_path / "evidence"
+    results.mkdir()
+    _linux_run(results, None, "")
+    current = oracle_type(results, "nonce", {}, signed=False)
+    current.check_steps()
+    current.check_app_reports()
+    assert all(not c.ok for c in current.checks)
+    assert {c.name for c in current.checks} == {"release.steps", "release.reports"}
+    current.check_outputs(tmp_path)
+    scientific = [c for c in current.checks if c.name.startswith("output.")]
+    assert len(scientific) == 8
+    assert all(not c.ok for c in scientific)
+    current.check_state([])
+    assert any(c.name == "state.app_installed" and not c.ok for c in current.checks)
+
+
+def test_801_missing_tag_contract_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(LAB_SCRIPTS))
+    from app_contract import load_contract
+
+    with pytest.raises(ValueError, match="lacks its plan/oracle"):
+        load_contract(tmp_path)
