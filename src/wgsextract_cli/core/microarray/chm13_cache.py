@@ -16,7 +16,11 @@ from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.library_cache import short_key
 from wgsextract_cli.core.microarray.aadr import _MARKERS
 from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
-from wgsextract_cli.core.microarray.targets import TARGET_VERSION, _template_paths
+from wgsextract_cli.core.microarray.targets import (
+    CHM13_V1_FORMATS,
+    TARGET_VERSION,
+    _template_paths,
+)
 from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _resolve_templates_roots,
@@ -43,7 +47,9 @@ def cache_directory(
         return None
     files = [
         Path(path)
-        for _name, _ncbi36, paths in _template_paths(_resolve_templates_roots(roots))
+        for _name, _build, paths in _template_paths(
+            _resolve_templates_roots(roots), CHM13_V1_FORMATS
+        )
         for path in paths
     ]
     files.extend([_MARKERS, _PACKAGED_TEMPLATES / "corrections.tsv"])

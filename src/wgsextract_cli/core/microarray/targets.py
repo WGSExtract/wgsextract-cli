@@ -2,8 +2,8 @@
 
 A microarray kit is genotyped at its chip's positions. The templates the
 reference library ships (``ref bootstrap``), plus the few the CLI ships, list
-every chip's markers in GRCh37 (FTDNA's Affymetrix list is NCBI36, lifted with
-UCSC's hg18ToHg19 chain), so their union is the genome-wide target; for GRCh38
+every chip's markers in GRCh37 (FTDNA's Affymetrix list is NCBI36 and its Y
+lists GRCh38, lifted with UCSC's hg18ToHg19 and hg38ToHg19 chains), so their union is the genome-wide target; for GRCh38
 its positions are lifted with UCSC's hg19ToHg38 chain, except chrM: GRCh37's MT
 and hg38's chrM are both the rCRS. The result is saved in the library as
 ``microarray/All_SNPs_<build>_ref.tab.gz`` and rebuilt when it was built by an
@@ -19,7 +19,7 @@ import os
 import subprocess
 import tempfile
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +36,7 @@ from wgsextract_cli.core.microarray.templates import (
     _template_body_paths,
     chr_to_int,
     get_template_format,
-    ncbi36_to_grch37,
+    lift_to_grch37,
     template_rows,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -77,8 +77,20 @@ HG18_TO_HG19_CHAIN = ChainSource(
     ),
     "f1e57673d8f306ea4ed1553ea5fc2001b3cc3d149eef501fc97305b3b3e2a9d6",
 )
+HG38_TO_HG19_CHAIN = ChainSource(
+    "hg38ToHg19.over.chain.gz",
+    (_UCSC_LIFTOVER.format("hg38", "hg38ToHg19.over.chain.gz"),),
+    "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2",
+)
+# The chain lifting a template's build to GRCh37.
+_CHAINS_TO_GRCH37 = {"NCBI36": HG18_TO_HG19_CHAIN, "GRCh38": HG38_TO_HG19_CHAIN}
+# Builds whose markers join the target only when their chain is installed: the
+# FTDNA Y files ship with the CLI, so fetching their chain is left to a run that
+# writes one of them (see chain_to_grch37), not to every target build.
+_OPTIONAL_CHAINS = {"GRCh38"}
 # Bump when the builder's output changes, so libraries rebuild their target.
-TARGET_VERSION = 3
+# 5 is CombinedKit v5: the letter-named chip variants and third-tier vendors.
+TARGET_VERSION = 5
 _VERSION_LINE = f"##wgsextract_microarray_target_version={TARGET_VERSION}\n"
 # In order of precedence for a position's ID.
 _FORMATS = [
@@ -103,6 +115,24 @@ _FORMATS = [
     "Ancestry_V2_2021",
     "MyHeritage_GSA_2025",
     "MyHeritage_GSA_2025_609424",
+]
+# The pinned CHM13 v1 site map covers exactly these templates' markers.
+CHM13_V1_FORMATS = tuple(_FORMATS)
+_FORMATS += [
+    "Ancestry_V2ab",
+    "Ancestry_V2cd",
+    "Ancestry_V2e",
+    "FTDNA_V4",
+    "FTDNA_V2Y",
+    "FTDNA_V3Y",
+    "FTDNA_V4Y",
+    "MyHeritage_V3",
+    "TellMeGen_V1",
+    "Genera_V1",
+    "MTHFR_V1",
+    "meuDNA_V1",
+    "meuDNA_V2",
+    "SelfDecode_V1",
 ]
 
 
@@ -152,36 +182,45 @@ def _write_inputs(target: str, inputs: dict[str, object]) -> None:
         staged.replace(metadata)
 
 
-def _template_paths(roots: list[str]) -> Iterator[tuple[str, bool, list[str]]]:
-    """(format, whether it's NCBI36, body paths) of each template found, from
-    the first root holding all of its parts."""
-    for name in _FORMATS:
+def _template_paths(
+    roots: list[str], formats: Sequence[str] = ()
+) -> Iterator[tuple[str, str | None, list[str]]]:
+    """(format, the build of its positions when not GRCh37, body paths) of each
+    template found (of formats, by default every chip's), from the first root
+    holding all of its parts."""
+    for name in formats or _FORMATS:
         fmt = get_template_format(name)
         if not fmt:
             continue
         for root in roots:
             paths = _template_body_paths(root, name, fmt)
             if all(Path(p).exists() for p in paths):
-                yield name, fmt.get("ncbi36", False), paths
+                yield name, fmt.get("build"), paths
                 break
 
 
 def collect_template_markers(
-    template_roots: Sequence[str | None], ncbi36_chain: str | None = None
+    template_roots: Sequence[str | None],
+    chains: Mapping[str, str] | None = None,
+    formats: Sequence[str] = (),
 ) -> dict[tuple[str, int], str]:
     """The union of the chip templates' markers on GRCh37: {(chrNN, pos): ID}.
 
-    NCBI36 templates are included only when ncbi36_chain is given."""
+    A template on another build (NCBI36, GRCh38) is included only when chains
+    gives that build's chain to GRCh37."""
     roots = _resolve_templates_roots(list(template_roots))
     markers: dict[tuple[str, int], str] = {}
-    for name, ncbi36, paths in _template_paths(roots):
-        if ncbi36 and not ncbi36_chain:
-            continue
-        lifter = LiftOver(ncbi36_chain) if ncbi36 and ncbi36_chain else None
+    lifters: dict[str, LiftOver] = {}
+    for name, build, paths in _template_paths(roots, formats):
+        lifter = None
+        if build:
+            if not chains or build not in chains:
+                continue
+            lifter = lifters.setdefault(build, LiftOver(chains[build]))
         for path in paths:
             for rsid, chrom, pos in template_rows(name, path):
                 if lifter:
-                    lifted = ncbi36_to_grch37(lifter, chrom, pos)
+                    lifted = lift_to_grch37(lifter, chrom, pos)
                     if not lifted:
                         continue
                     chrom, pos, _inverted = lifted
@@ -192,9 +231,10 @@ def collect_template_markers(
     return markers
 
 
-def needs_ncbi36_chain(template_roots: Sequence[str | None]) -> bool:
+def lifted_builds(template_roots: Sequence[str | None]) -> set[str]:
+    """The non-GRCh37 builds of the installed templates."""
     roots = _resolve_templates_roots(list(template_roots))
-    return any(ncbi36 for _name, ncbi36, _paths in _template_paths(roots))
+    return {build for _name, build, _paths in _template_paths(roots) if build}
 
 
 def _lift_to_hg38(
@@ -244,22 +284,21 @@ def build_genome_wide_target(
     out = genome_wide_target_path(reflib_dir, target_build)
     roots = _resolve_templates_roots(list(template_roots))
     template_files = [
-        path for _name, _ncbi36, paths in _template_paths(roots) for path in paths
+        path for _name, _build, paths in _template_paths(roots) for path in paths
     ]
     templates = [
         {
             "format": name,
             "parts": [resource_identity(path, include_path=False) for path in paths],
         }
-        for name, _ncbi36, paths in _template_paths(roots)
+        for name, _build, paths in _template_paths(roots)
     ]
-    chain36_needed = needs_ncbi36_chain(template_roots)
+    builds = sorted(lifted_builds(template_roots))
     chain38_needed = target_build == "hg38" and bool(template_files)
-    chain36 = (
-        _installed_chain(reflib_dir, HG18_TO_HG19_CHAIN, chain_roots)
-        if chain36_needed
-        else None
-    )
+    lifts: dict[str, str | None] = {
+        build: _installed_chain(reflib_dir, _CHAINS_TO_GRCH37[build], chain_roots)
+        for build in builds
+    }
     chain38 = (
         _installed_chain(reflib_dir, HG19_TO_HG38_CHAIN, chain_roots)
         if chain38_needed
@@ -279,11 +318,12 @@ def build_genome_wide_target(
             _PACKAGED_TEMPLATES / "corrections.tsv", include_path=False
         ),
         # Missing source chains don't invalidate a completed offline target.
-        "chain36": resource_identity(chain36, include_path=False)
-        if chain36
-        else recorded_inputs.get("chain36")
-        if chain36_needed
-        else None,
+        **{
+            _chain_key(build): resource_identity(chain, include_path=False)
+            if chain
+            else recorded_inputs.get(_chain_key(build))
+            for build, chain in lifts.items()
+        },
         "chain38": resource_identity(chain38, include_path=False)
         if chain38
         else recorded_inputs.get("chain38")
@@ -304,15 +344,22 @@ def build_genome_wide_target(
     with _build_lock(out + ".lock"):
         if _is_current(out, inputs):
             return out
-        chain36 = ncbi36_chain(reflib_dir, chain_roots) if chain36_needed else None
+        chains = {
+            build: _chain(reflib_dir, _CHAINS_TO_GRCH37[build], chain_roots)
+            if build not in _OPTIONAL_CHAINS
+            else lifts[build]
+            for build in builds
+        }
         chain38 = (
             hg19_to_hg38_chain(reflib_dir, chain_roots) if chain38_needed else None
         )
-        inputs["chain36"] = resource_identity(chain36, include_path=False)
+        for build, chain in chains.items():
+            inputs[_chain_key(build)] = resource_identity(chain, include_path=False)
+        installed = {build: chain for build, chain in chains.items() if chain}
         inputs["chain38"] = resource_identity(chain38, include_path=False)
         if _is_current(out, inputs):
             return out
-        markers = collect_template_markers(template_roots, chain36)
+        markers = collect_template_markers(template_roots, installed)
         if not markers:
             if Path(out).is_file() and Path(out + ".tbi").is_file():
                 logging.warning(
@@ -341,6 +388,19 @@ def ncbi36_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:
     """The hg18ToHg19 chain from search or the library, downloaded into the
     library when it's missing."""
     return _chain(reflib_dir, HG18_TO_HG19_CHAIN, search)
+
+
+def chain_to_grch37(reflib_dir: str, build: str, search: Sequence[str] = ()) -> str:
+    """The chain from a template's build (NCBI36 or GRCh38) to GRCh37, from
+    search or the library, downloaded into the library when it's missing."""
+    if build not in _CHAINS_TO_GRCH37:
+        raise WGSExtractError(f"No chain from {build} to GRCh37 for the chip markers.")
+    return _chain(reflib_dir, _CHAINS_TO_GRCH37[build], search)
+
+
+def _chain_key(build: str) -> str:
+    # "chain36" keeps NCBI36-only targets' recorded inputs comparable.
+    return "chain36" if build == "NCBI36" else f"chain_{build}"
 
 
 def hg19_to_hg38_chain(reflib_dir: str, search: Sequence[str] = ()) -> str:

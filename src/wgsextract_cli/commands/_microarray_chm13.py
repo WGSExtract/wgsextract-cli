@@ -52,7 +52,10 @@ from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
-from wgsextract_cli.core.microarray.targets import collect_template_markers
+from wgsextract_cli.core.microarray.targets import (
+    CHM13_V1_FORMATS,
+    collect_template_markers,
+)
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     convert_to_vendor_format,
@@ -71,6 +74,12 @@ from ._microarray_vcf import _expand_gvcf_targets, _prepare_microarray_vcf
 
 if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
+
+# The installed chains placing a non-GRCh37 template's markers on GRCh37.
+_CHAINS_TO_GRCH37 = {
+    "NCBI36": "hg18ToHg19.over.chain.gz",
+    "GRCh38": "hg38ToHg19.over.chain.gz",
+}
 
 
 def _regions(region: str | None) -> list[tuple[str, int, int]]:
@@ -125,7 +134,9 @@ def _marker_ids(
         )
     markers = {
         (chrom, pos): marker
-        for (chrom, pos), marker in collect_template_markers(roots, str(chain)).items()
+        for (chrom, pos), marker in collect_template_markers(
+            roots, {"NCBI36": str(chain)}, CHM13_V1_FORMATS
+        ).items()
         if chrom in catalogue.source_lengths and pos <= catalogue.source_lengths[chrom]
     }
     for marker in aadr_markers("1240k"):
@@ -503,11 +514,12 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
-        chain36 = next(
+        chain_name = _CHAINS_TO_GRCH37.get(info.get("build", "") if info else "")
+        lift_chain = next(
             (
-                str(Path(root, "hg18ToHg19.over.chain.gz"))
+                str(Path(root, chain_name))
                 for root in roots
-                if Path(root, "hg18ToHg19.over.chain.gz").is_file()
+                if chain_name and Path(root, chain_name).is_file()
             ),
             None,
         )
@@ -517,7 +529,7 @@ def run_chm13(
             str(combined),
             kit,
             roots,
-            chain36,
+            lift_chain,
             identity=identity,
             quirks=quirks_mode(params),
             indel_calls={

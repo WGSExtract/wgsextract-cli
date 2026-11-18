@@ -32,7 +32,7 @@ def _templates(root: Path) -> Path:
 # NCBI36 chr3:999000-1000000 sits 1000 bp later on GRCh37.
 _HG18_CHAIN_NAME = "hg18ToHg19.over.chain.gz"
 _HG18_CHAIN = "chain 1000 chr3 2000000 + 999000 1000000 chr3 2000000 + 1000000 1001000 1\n1000\n\n"
-_VERSION = "##wgsextract_microarray_target_version=3"
+_VERSION = f"##wgsextract_microarray_target_version={mt.TARGET_VERSION}"
 
 
 def test_markers_are_the_union_of_the_grch37_templates(tmp_path):
@@ -59,10 +59,28 @@ def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
 def test_ncbi36_markers_are_lifted_to_grch37(tmp_path):
     templates = _templates(tmp_path)
     markers = mt.collect_template_markers(
-        [str(templates)], str(tmp_path / _HG18_CHAIN_NAME)
+        [str(templates)], {"NCBI36": str(tmp_path / _HG18_CHAIN_NAME)}
     )
     assert markers[("chr3", 1000999)] == "rs6"
     assert ("chr3", 999999) not in markers
+
+
+def test_grch38_y_markers_are_lifted_to_grch37(tmp_path):
+    templates = _templates(tmp_path)
+    (templates / "raw_file_templates/body/FTDNA_V2Y.csv").write_text("Z57\tY\t2500\n")
+    # GRCh38 chrY:2000-3000 sits 500 bp later on GRCh37.
+    chain = tmp_path / "hg38ToHg19.over.chain"
+    chain.write_text(
+        "chain 1000 chrY 9000 + 2000 3000 chrY 9000 + 2500 3500 1\n1000\n\n"
+    )
+    assert mt.lifted_builds([str(templates)]) == {"NCBI36", "GRCh38"}
+    markers = mt.collect_template_markers(
+        [str(templates)],
+        {"NCBI36": str(tmp_path / _HG18_CHAIN_NAME), "GRCh38": str(chain)},
+    )
+    assert markers[("chrY", 3000)] == "Z57"
+    # Without its chain, a GRCh38 template contributes nothing.
+    assert ("chrY", 3000) not in mt.collect_template_markers([str(templates)])
 
 
 @needs_tools("bgzip", "tabix")
@@ -306,13 +324,19 @@ def test_a_current_target_in_a_read_only_library_is_used(tmp_path):
 
 
 def _pre_inputs_target(root: Path) -> str:
-    # Output of the pre-#1051 v3 builder (81313d8b), indexed with real tools.
+    # Output of the pre-#1051 v3 builder (81313d8b), indexed with real tools,
+    # stamped with the current version: a sidecar-less target of this version.
     source = Path(__file__).parent / "fixtures" / "microarray-target-pre-inputs.tab"
+    stamped = root / "pre-inputs.tab"
+    root.mkdir(parents=True, exist_ok=True)
+    stamped.write_text(
+        mt._VERSION_LINE + source.read_text().split("\n", 1)[1], newline="\n"
+    )
     target = mt.genome_wide_target_path(str(root), "hg38")
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     with open(target, "wb") as output:
         subprocess.run(
-            [get_tool_path("bgzip"), "-c", str(source)], stdout=output, check=True
+            [get_tool_path("bgzip"), "-c", str(stamped)], stdout=output, check=True
         )
     subprocess.run(
         [get_tool_path("tabix"), "-s", "1", "-b", "2", "-e", "2", target], check=True

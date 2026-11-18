@@ -450,7 +450,7 @@ def call_chm13_indels(
             raise WGSExtractError(f"No verified I/D output encoding for {format_name}.")
         _, bodies = _resolve_templates_for_format(roots, format_name, info)
         output[format_name] = {}
-        if info.get("ncbi36"):
+        if info.get("build"):
             continue
         for body in bodies:
             for marker, chrom, pos in template_rows(format_name, body):

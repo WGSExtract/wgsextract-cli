@@ -167,6 +167,12 @@ Runtime limits are 7 MiB compressed, 17 MiB decoded and 3,000,000 rows. Changing
 these measured budgets requires an explicit asset update, not a writable cache
 or an automatic download.
 
+The v1 map covers the templates shipped before CombinedKit v5. Markers found
+only in later templates (the letter-named variants such as `ancestry_v2e`,
+FTDNA's GRCh38 Y files, tellmeGen, Genera, MTHFR Genetics, meuDNA and
+SelfDecode) are not in it, so those exports write no-calls there on CHM13 input
+until the map is rebuilt with them.
+
 ### Derived caches
 
 Runs reuse decoded site-map columns, the validated marker-ID union, and indexed
