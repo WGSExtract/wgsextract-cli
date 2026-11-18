@@ -3,6 +3,7 @@
 import logging
 import os
 import stat
+import sys
 from dataclasses import replace
 from pathlib import Path
 from typing import cast
@@ -606,7 +607,7 @@ def _recover_retained_fastqs(
         )
         if not sibling_workspace or not matching_names:
             return None
-        if os.name == "posix":
+        if sys.platform != "win32":
             # Windows temporary-directory access is controlled by its OS ACLs.
             directory, *files = [
                 path.stat() for path in (resolved[0].parent, *resolved)
