@@ -453,6 +453,9 @@ clean-machine/state checks remain those of the current tree. Locally, select
 such a checkout with `lab.py --app-contract <release-checkout> run ...` (or
 `judge ...` / `mutate ...`); the checkout must contain
 `scripts/installlab/gui_oracle.py` and its `gui/wgsextract-plan.json`.
+Legacy app-only releases from `WGSExtract/gui-for-cli` (for example `v0.4.4`)
+have no version-bound Install Lab contract and are rejected during app-source
+resolution. Select a published release from `WGSExtract/wgsextract-cli` instead.
 A sabotaged run's evidence (`--sabotage --no-judge`) is judged as a negative
 control: `lab.py judge` passes it only if it fails on the checks the sabotage
 breaks.

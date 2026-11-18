@@ -1067,7 +1067,8 @@ def _json_edit(path: Path, edit: Callable[[Any], None]) -> None:
     path.write_text(json.dumps(data))
 
 
-def _fail_action(report: Any, action: str) -> None:
+def _fail_action(report: Any) -> None:
+    action = json.loads(app_contract.plan_path.read_text())["steps"][0]["id"]
     for step in report["steps"]:
         if step.get("id") == action:
             step["status"] = "failed"
@@ -1116,9 +1117,7 @@ GUI_MUTATIONS: dict[str, Callable[[Path], object]] = {
     "setup-failed": lambda r: _json_edit(
         r / "setup-result.json", lambda d: d.update(status="failed")
     ),
-    "action-failed": lambda r: _json_edit(
-        r / "bundle-report.json", lambda d: _fail_action(d, "snp")
-    ),
+    "action-failed": lambda r: _json_edit(r / "bundle-report.json", _fail_action),
     "action-missing": lambda r: _json_edit(
         r / "bundle-report.json", lambda d: d.update(steps=d["steps"][:-1])
     ),

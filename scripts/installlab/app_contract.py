@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from gui_oracle import PLAN, GuiOracle
@@ -47,14 +48,29 @@ def load_contract(source: Path) -> tuple[Path, type[GuiOracle]]:
     spec.loader.exec_module(module)
     if module.PLAN.resolve() != plan:
         raise ValueError("App contract oracle must use its checkout's plan")
+
+    def release_check(self: GuiOracle, check: Callable[[GuiOracle], None]) -> None:
+        tree_platform = self.app
+        try:
+            self.app = module.app_platform(self.result_file("lab-run.json"))
+            check(self)
+        finally:
+            self.app = tree_platform
+
+    def check_steps(self: GuiOracle) -> None:
+        release_check(self, module.GuiOracle.check_steps)
+
+    def check_app_reports(self: GuiOracle) -> None:
+        release_check(self, module.GuiOracle.check_app_reports)
+
     # Only lifecycle/plan expectations follow the tag. In particular, never
     # replace check_outputs or the inherited biological accuracy checks.
     contract_oracle = type(
         "AppContractOracle",
         (GuiOracle,),
         {
-            "check_steps": module.GuiOracle.check_steps,
-            "check_app_reports": module.GuiOracle.check_app_reports,
+            "check_steps": check_steps,
+            "check_app_reports": check_app_reports,
         },
     )
     return plan, contract_oracle
