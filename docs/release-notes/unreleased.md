@@ -71,6 +71,14 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   blocks no longer block a site. On HG002 chr20 with PGS000018, matched sites
   rose from 12,723 to about 44,000. See
   [reference-evidence.md](../reference-evidence.md#commands-that-read-it).
+- `vcf clinvar`, `vcf gnomad --max-af` and `analyze` report the gVCF's state
+  at the sites they checked when the caller published one: how many ClinVar
+  pathogenic sites the sample doesn't carry are confident reference, and how
+  many were uncovered, low-quality, filtered or not assessed (a
+  `reference_evidence_unassessed_sites` warning). The ancestry projection of
+  `qc ancestry` and `score pgs` takes a missing site as hom-ref only where
+  the gVCF calls it callable reference, so a variants-only VCF of part of the
+  genome, or a gVCF, now gives ancestry too.
 - `vcf gatk --reference-evidence gvcf` writes `gatk.g.vcf.gz` (+ `.tbi`):
   HaplotypeCaller's gVCF, banded by GQ at 10, 20, 30 and 60 (about 1.4 GB a
   genome, against 6.5 GB with GATK's default bands), and the VCF genotyped

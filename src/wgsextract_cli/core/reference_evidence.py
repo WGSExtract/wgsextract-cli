@@ -4,7 +4,8 @@ A variant-only VCF cannot tell a confident reference base from one nobody
 looked at. With ``--reference-evidence gvcf`` a caller also publishes a gVCF
 (role ``reference_evidence``, its index ``reference_evidence_index``) next to
 its unchanged variant VCF. ``spans`` reads one and classifies every requested
-base into one ``State``; ``score pgs`` and ``vcf pharmcat`` find a VCF's
+base into one ``State`` (``site_states``: whole sites); ``score pgs``, ``vcf
+pharmcat``, the confidence labels and the ancestry projection find a VCF's
 gVCF with ``companion``.
 docs/reference-evidence.md explains each state and the rules.
 
@@ -18,6 +19,7 @@ model its FORMAT/GQ declaration implies and no exclusions.
 
 from __future__ import annotations
 
+import bisect
 import enum
 import hashlib
 import json
@@ -26,7 +28,7 @@ import subprocess
 import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from wgsextract_cli.core.paths import PathInput
@@ -405,6 +407,103 @@ class ReferenceEvidence:
             for start, end in ranges
         ]
 
+    def normalized(self, reference: str, work: Path) -> ReferenceEvidence:
+        """Left-align the evidence against the same FASTA as the checked alleles.
+
+        Blocks retain their coordinates; moved indels take precedence over
+        overlapping reference blocks. Provenance intervals keep their meaning
+        when chromosome aliases are renamed to the FASTA's names.
+        """
+        from wgsextract_cli.core.reference_resolver import read_fai_lengths
+        from wgsextract_cli.core.variant_files import (
+            ensure_vcf_indexed,
+            match_chromosome_name,
+            normalize_vcf_chromosomes,
+        )
+
+        lengths = read_fai_lengths(reference)
+        header = run_command(
+            ["bcftools", "view", "-h", self.path], capture_output=True
+        ).stdout
+        original = ReferenceEvidence(
+            self.path,
+            {
+                contig: lengths[alias]
+                for contig in _CONTIG_ID.findall(header)
+                if (alias := match_chromosome_name(contig, lengths))
+            },
+        )
+        renamed = normalize_vcf_chromosomes(self.path, list(lengths), str(work))
+        split = work / "evidence.split.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-m",
+                "-any",
+                "--multi-overlaps",
+                ".",
+                "-Oz",
+                "-o",
+                str(split),
+                renamed,
+            ],
+            capture_output=True,
+        )
+        aligned, output = work / "evidence.aligned.vcf.gz", work / "evidence.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-f",
+                reference,
+                "-c",
+                "e",
+                "-Oz",
+                "-o",
+                str(aligned),
+                str(split),
+            ],
+            capture_output=True,
+        )
+        run_command(
+            [
+                "bcftools",
+                "sort",
+                "-T",
+                str(work / "evidence-sort"),
+                "-Oz",
+                "-o",
+                str(output),
+                str(aligned),
+            ],
+            capture_output=True,
+        )
+        ensure_vcf_indexed(str(output))
+        result = ReferenceEvidence(str(output), lengths)
+        if self.provenance:
+
+            def mapped(intervals: Iterable[Interval]) -> list[Interval]:
+                return [
+                    (alias, start, end)
+                    for contig, start, end in intervals
+                    if (alias := match_chromosome_name(contig, lengths))
+                ]
+
+            assessed = original.assessed()
+            result.provenance = replace(
+                self.provenance,
+                region=(
+                    canonical_region((c, s - 1, e) for c, s, e in mapped(assessed))
+                    if assessed is not None
+                    else self.provenance.region
+                ),
+                ploidy_zero=tuple(
+                    f"{c}:{s}-{e}" for c, s, e in mapped(self.excluded())
+                ),
+            )
+        return result
+
     def excluded(self) -> list[Interval]:
         items = self.provenance.ploidy_zero if self.provenance else ()
         intervals = []
@@ -621,3 +720,78 @@ def companion(vcf: PathInput) -> str | None:
             ):
                 found.append((finished, str(gvcf)))
     return max(found)[1] if found else None
+
+
+def site_state(states: Iterable[State]) -> State:
+    """A site's state from its bases' states: callable reference only when
+    every base is; otherwise the strongest claim against reference among the
+    rest (not assessed included)."""
+    seen = list(states)
+    failing = [s for s in seen if s is not State.CALLABLE_REFERENCE]
+    if failing or not seen:
+        return min(failing or [State.NOT_ASSESSED], key=_RANK.__getitem__)
+    return State.CALLABLE_REFERENCE
+
+
+def _contig_key(name: str) -> str:
+    key = name.removeprefix("chr")
+    return "MT" if key == "M" else key
+
+
+def site_states(
+    source: ReferenceEvidence,
+    sites: Iterable[Interval],
+    thresholds: Thresholds,
+) -> Iterator[tuple[Interval, State]]:
+    """Each site (contig, 1-based start, inclusive end) with its state
+    (``site_state`` of its bases). Contig names are matched with or without
+    "chr" (and M/MT); a site on a contig the gVCF lacks is not assessed."""
+    names = {_contig_key(name): name for name in source.lengths}
+    order = {name: index for index, name in enumerate(source.lengths)}
+    given = sorted(
+        set(sites),
+        key=lambda s: (order.get(names.get(_contig_key(s[0]), ""), len(order)), s[1]),
+    )
+    local = [(names.get(_contig_key(c)), s, e) for c, s, e in given]
+    ends: dict[str, list[int]] = {}
+    found: dict[str, list[Span]] = {}
+    for span in source.spans(thresholds, ((c, s, e) for c, s, e in local if c)):
+        ends.setdefault(span.contig, []).append(span.end)
+        found.setdefault(span.contig, []).append(span)
+    for site, (contig, start, end) in zip(given, local, strict=True):
+        if contig is None:
+            yield site, State.NOT_ASSESSED
+            continue
+        spans = found.get(contig, [])
+        index = bisect.bisect_left(ends.get(contig, []), start)
+        states: list[State] = []
+        covered = 0
+        while index < len(spans) and spans[index].start <= end:
+            span = spans[index]
+            states.append(span.state)
+            covered += min(span.end, end) - max(span.start, start) + 1
+            index += 1
+        if covered < end - start + 1:
+            states.append(State.NOT_ASSESSED)
+        yield site, site_state(states)
+
+
+def readable(gvcf: str, sample: str | None, work: Path) -> str | None:
+    """``gvcf`` as the classifier reads it (an indexed bgzipped gVCF whose
+    first sample is ``sample``): itself, or a copy in ``work``. None when it
+    doesn't hold ``sample``."""
+    samples = run_command(
+        ["bcftools", "query", "-l", gvcf], capture_output=True
+    ).stdout.splitlines()
+    if not samples or (sample is not None and sample not in samples):
+        return None
+    indexed = gvcf.endswith((".gz", ".bgz")) and any(
+        Path(gvcf + suffix).is_file() for suffix in (".tbi", ".csi")
+    )
+    if (sample is None or samples[0] == sample) and len(samples) == 1 and indexed:
+        return gvcf
+    copy = str(work / "evidence.g.vcf.gz")
+    run_command(["bcftools", "view", "--no-version", "-s", sample or samples[0],
+                 "-Oz", "-o", copy, gvcf])  # fmt: skip
+    run_command(["bcftools", "index", "-t", copy])
+    return copy

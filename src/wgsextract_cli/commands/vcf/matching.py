@@ -612,6 +612,20 @@ def _combined(
     ]
 
 
+def normalized_clinvar_resource(source: str, reference: str, work: str) -> str:
+    """The validated, left-aligned ClinVar resource used for matching."""
+    from .resource_cache import normalized_resource
+
+    return normalized_resource(
+        source,
+        reference,
+        ["", [], True],
+        lambda: _normalize(
+            source, reference, str(Path(work, "resource.vcf.gz")), work, True, True
+        ),
+    )
+
+
 def normalized_inputs(
     query: str,
     resource: str,
@@ -667,7 +681,9 @@ def normalized_inputs(
         else normalized_resource(
             resource_source or source,
             reference,
-            [columns, list(headers), clinical],
+            ["", [], True]
+            if clinical and is_vcf
+            else [columns, list(headers), clinical],
             build,
         )
     )
