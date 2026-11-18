@@ -13,6 +13,7 @@ export const contentSecurityPolicy = [
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
     "font-src 'self'",
+    "frame-src 'self'",
     // Tauri IPC uses the ipc: scheme (or http://ipc.localhost on Windows).
     "connect-src 'self' ipc: http://ipc.localhost",
     "base-uri 'none'",

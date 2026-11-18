@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -136,6 +136,51 @@ async function readNDJSON(response) {
 }
 
 const runContext = { fieldValues: { sample: "HG001" }, checkedOptions: {}, configValues: {}, rowValues: {} };
+
+test("#1090: viewer permits the bundled CRAM WASM but not outside connections or inline scripts", async (t) => {
+  const { baseURL, tempRoot } = await withTestServer(t);
+  await mkdir(path.join(tempRoot, "web"), { recursive: true });
+  await writeFile(path.join(tempRoot, "web", "viewer.html"), '<meta name="gfc-api-token" content="">');
+  const response = await fetch(`${baseURL}/viewer`);
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), new RegExp(apiToken));
+  const policy = response.headers.get("content-security-policy");
+  assert.match(policy, /script-src 'self' 'wasm-unsafe-eval'/);
+  assert.match(policy, /connect-src 'self';/);
+  assert.doesNotMatch(policy, /'unsafe-eval'|'unsafe-inline'.*script-src|https:|localhost:\*/);
+  const main = await fetch(baseURL);
+  assert.doesNotMatch(main.headers.get("content-security-policy"), /wasm-unsafe-eval/);
+});
+
+test("#1090: vendored viewer assets are served locally without exposing neighbouring files", async (t) => {
+  const { baseURL, tempRoot } = await withTestServer(t);
+  await mkdir(path.join(tempRoot, "vendor", "igv"), { recursive: true });
+  await writeFile(path.join(tempRoot, "vendor", "igv", "igv.min.js"), "/* bundled igv */");
+  await writeFile(path.join(tempRoot, "private.txt"), "not public");
+  const response = await fetch(`${baseURL}/vendor/igv/igv.min.js`);
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "/* bundled igv */");
+  const escape = await fetch(`${baseURL}/vendor/igv/%2e%2e/%2e%2e/private.txt`);
+  assert.equal(escape.status, 404);
+});
+
+test("#1090: viewer documents and library ship in the existing desktop resource mappings", async (t) => {
+  const { baseURL, tempRoot, context } = await withTestServer(t);
+  const shell = path.resolve("web/packagers/tauri");
+  const config = JSON.parse(await readFile(path.join(shell, "tauri.conf.json"), "utf8"));
+  for (const [source, target] of Object.entries(config.bundle.resources)) {
+    if (target.startsWith("app/")) {
+      await cp(path.resolve(shell, source), path.join(tempRoot, target), { recursive: true });
+    }
+  }
+  context.distRoot = path.join(tempRoot, "app/dist");
+  context.webRoot = path.join(tempRoot, "app/web");
+  for (const route of ["/viewer", "/viewer.css", "/client/genome-viewer.js", "/vendor/igv/igv.min.js", "/vendor/igv/LICENSE"]) {
+    const response = await fetch(`${baseURL}${route}`);
+    assert.equal(response.status, 200, route);
+    assert.ok((await response.text()).length > 0, route);
+  }
+});
 
 test("audit regression: cross-origin simple requests and DNS rebinding cannot run commands", async (t) => {
   const { port, calls } = await withTestServer(t);
