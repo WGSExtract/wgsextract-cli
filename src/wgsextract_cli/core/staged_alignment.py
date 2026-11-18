@@ -38,7 +38,7 @@ def safety_reserve(reads: int | None) -> int:
 
 
 def _sync_directory(path: Path) -> None:
-    if os.name != "nt":
+    if sys.platform != "win32":
         descriptor = os.open(path, os.O_RDONLY)
         try:
             os.fsync(descriptor)
@@ -214,7 +214,7 @@ def run_staged_alignment(
     if workspace.is_symlink():
         raise WGSExtractError("Staged workspace must not be a symbolic link")
     workspace.mkdir(mode=0o700, parents=True, exist_ok=True)
-    if os.name != "nt":
+    if sys.platform != "win32":
         info = workspace.stat()
         if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
             raise WGSExtractError(
