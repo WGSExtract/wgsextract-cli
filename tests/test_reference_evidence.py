@@ -21,6 +21,7 @@ from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
+    Provenance,
     ReferenceEvidence,
     Span,
     State,
@@ -199,6 +200,57 @@ _DV_HEADER = """##fileformat=VCFv4.2
 ##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS
 """
+
+
+@needs_htslib
+@pytest.mark.parametrize("engine", ["deepvariant", "clair3"])
+def test_1103_native_diploid_encoded_haploid_blocks_use_policy_depth(tmp_path, engine):
+    """#1103: native 0/0 blocks at 6x are callable off PAR, not inside PAR."""
+    header = Provenance(
+        engine,
+        "wgse-deepvariant 0.4.0",
+        "gq",
+        ploidy="chrX:1-40=1,chrX:61-100=1",
+    ).header()
+    plain = tmp_path / "native.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("#CHROM", header + "\n#CHROM")
+        + "chrX\t1\t.\tA\t<*>\t0\tPASS\tEND=40\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t41\t.\tA\t<*>\t0\tPASS\tEND=60\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t61\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:6\n"
+    )
+    assert list(
+        ReferenceEvidence(bgzip_index(plain)).spans(THRESHOLDS, [("chrX", 1, 100)])
+    ) == [
+        Span("chrX", 1, 40, State.CALLABLE_REFERENCE),
+        Span("chrX", 41, 60, State.LOW_QUALITY_REFERENCE),
+        Span("chrX", 61, 100, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_1103_normalized_haploid_evidence_preserves_policy_and_quality(tmp_path):
+    """#1103/#1026: alias normalization keeps haploid floors and GQ eligibility."""
+    header = Provenance(
+        "deepvariant", "0.4.0", "gq", ploidy="chrX:1-40=1,chrX:61-100=1"
+    ).header()
+    plain = tmp_path / "native.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("#CHROM", header + "\n#CHROM")
+        + "chrX\t1\t.\tA\t<*>\t0\tPASS\tEND=40\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t41\t.\tA\t<*>\t0\tPASS\tEND=60\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t61\t.\tA\t<*>\t0\tPASS\tEND=80\tGT:GQ:MIN_DP\t0/0:10:6\n"
+        + "chrX\t81\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:6\n"
+    )
+    reference = write_fasta(tmp_path / "ref.fa", {"X": "A" * 100})
+    work = tmp_path / "normalized"
+    work.mkdir()
+    evidence = ReferenceEvidence(bgzip_index(plain)).normalized(reference, work)
+    assert list(evidence.spans(THRESHOLDS, [("X", 1, 100)])) == [
+        Span("X", 1, 40, State.CALLABLE_REFERENCE),
+        Span("X", 41, 80, State.LOW_QUALITY_REFERENCE),
+        Span("X", 81, 100, State.CALLABLE_REFERENCE),
+    ]
 
 
 @needs_htslib

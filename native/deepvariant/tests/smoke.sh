@@ -19,11 +19,11 @@ rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
-# Two 30 kb contigs; 30x of 2x150 bp pairs; a het and a hom-alt SNP every 3 kb.
+# Three 30 kb contigs; two at 30x, one without reads.
 awk "$seeded_random"'BEGIN {
     seed(647)
     split("A C G T", base, " ")
-    contigs = 2; n = 30000; read = 150; insert = 400; depth = 30
+    contigs = 3; n = 30000; read = 150; insert = 400; depth = 30
     printf "@HD\tVN:1.6\tSO:unsorted\n" > "reads.sam"
     for (c = 1; c <= contigs; c++) printf "@SQ\tSN:chr%d\tLN:%d\n", c, n > "reads.sam"
     printf "@RG\tID:rg\tSM:smoke\n" > "reads.sam"
@@ -35,6 +35,7 @@ awk "$seeded_random"'BEGIN {
         print ">chr" c > "reference.fa"
         line = ""
         for (i = 1; i <= n; i++) { line = line ref[i]; if (i % 60 == 0) { print line > "reference.fa"; line = "" } }
+        if (c == 3) continue
         for (i = 3000; i < n - 1000; i += 3000) {
             alt[i] = ref[i] == "A" ? "G" : "A"
             hom[i] = (i / 3000) % 2 == 0
@@ -106,6 +107,45 @@ if ! cmp -s calls.body staged.body; then
     exit 1
 fi
 echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; the staged commands agree"
+
+# #1103: staged execution must carry PAR/haploid policy to both reference
+# confidence generation and final calling, without changing diploid chr2.
+printf 'chr1\t0\t9000\n' > par.bed
+"$binary" run --model_type=WGS --ref=reference.fa --reads=reads.bam \
+    --checkpoint="$weights/wgs.dvw" --small_model_path="$weights/wgs_small_weights" \
+    --output_vcf=haploid.vcf.gz --output_gvcf=haploid.g.vcf.gz \
+    --haploid_contigs=chr1 --par_regions_bed=par.bed \
+    --intermediate_results_dir=haploid --num_shards=2 \
+    --dry_run=true > haploid-plan.txt
+awk '/^\*\*\*\*\* Running the command:\*\*\*\*\*$/ { getline; print }' haploid-plan.txt > haploid-stages.sh
+test "$(wc -l < haploid-stages.sh)" -eq 3
+mkdir -p haploid
+sh -e haploid-stages.sh > haploid.log 2>&1 || { tail -20 haploid.log; exit 1; }
+gzip -dc haploid.vcf.gz | awk -F '\t' '
+    !/^#/ {
+        split($10, f, ":"); gt = f[1]; gsub(/\|/, "/", gt)
+        if ($1 == "chr1" && $2 > 9000 && gt ~ /^[0-9]+\/[0-9]+$/) {
+            split(gt, a, "/")
+            if (a[1] != a[2]) bad++
+        }
+        if ($1 == "chr1" && $2 == 3000 && gt == "0/1" && $7 == "PASS") par++
+        if ($1 == "chr1" && $2 == 12000 && gt == "1/1" && $7 == "PASS") haploid++
+        if ($1 == "chr2" && $2 == 3000 && gt == "0/1" && $7 == "PASS") diploid++
+    }
+    END { exit (bad || haploid != 1 || par != 1 || diploid != 1) }'
+gzip -dc haploid.g.vcf.gz | awk -F '\t' '
+    !/^#/ {
+        end = $2 + length($4) - 1
+        n = split($8, info, ";")
+        for (i = 1; i <= n; i++) if (info[i] ~ /^END=/) end = substr(info[i], 5) + 0
+        if ($2 != last[$1] + 1) bad++
+        last[$1] = end
+        seen[$1]++
+    }
+    END { exit (bad || last["chr1"] != 30000 || last["chr2"] != 30000 ||
+                last["chr3"] != 30000 || !seen["chr1"] || !seen["chr2"] ||
+                !seen["chr3"]) }'
+echo "smoke: haploid non-PAR calls, retained PAR/diploid hets, gap-free gVCF"
 
 [ -f "$weights/ont_r104.dvw" ] || exit 0
 # 60x of 8 kb reads (30x at the outer SNPs), long enough to join the het SNPs

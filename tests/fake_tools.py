@@ -1,59 +1,13 @@
 """Stand-in executables written in Python that run on every platform."""
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
 
-import pytest
-
-
-def require_bare_name_fakes() -> None:
-    """Skip on Windows, where a tool the CLI starts by bare name (`gatk`,
-    `bcftools`) can't be faked: CreateProcess finds only .exe files, not
-    python_tool's .cmd launcher, and killing a launcher leaves its Python
-    child running."""
-    if sys.platform == "win32":
-        pytest.skip("a .cmd fake can't stand in for a tool started by bare name")
-
-
-def only_tools(request: pytest.FixtureRequest, *tools: str) -> Path:
-    """Leave PATH with just the real ``tools`` and a pixi without environments
-    (the ``fake_pixi`` fixture), so every other tool is missing. Returns the
-    bin directory, for fakes. POSIX only: it links the tools."""
-    if sys.platform == "win32":
-        pytest.skip("links the real tools into a bin directory")
-    paths = {tool: shutil.which(tool) for tool in tools}
-    bindir: Path = request.getfixturevalue("fake_pixi").host_bin
-    for tool, path in paths.items():
-        if not path:
-            pytest.skip(f"{tool} missing")
-        os.symlink(path, bindir / tool)
-        # bwa-mem2's Linux build runs bwa-mem2.<SIMD level> from beside itself.
-        for variant in Path(path).parent.glob(f"{tool}.*"):
-            if variant.name not in paths and not (bindir / variant.name).exists():
-                os.symlink(variant, bindir / variant.name)
-    return bindir
-
-
-def python_tool(bindir: Path, name: str, source: str) -> Path:
-    """An executable `name` in bindir that runs the Python ``source``.
-
-    POSIX runs the script by its shebang; Windows can't, so it gets
-    ``name.py`` and a ``name.cmd`` launcher, which PATH lookups find too.
-    """
-    bindir.mkdir(parents=True, exist_ok=True)
-    if sys.platform != "win32":
-        path = bindir / name
-        path.write_text(f"#!{sys.executable}\n{source}")
-        path.chmod(0o755)
-        return path
-    (bindir / f"{name}.py").write_text(source)
-    launcher = bindir / f"{name}.cmd"
-    launcher.write_text(f'@"{sys.executable}" "%~dp0{name}.py" %*\r\n', newline="")
-    return launcher
-
+from tests.fake_tool_launchers import only_tools as only_tools
+from tests.fake_tool_launchers import python_tool as python_tool
+from tests.fake_tool_launchers import require_bare_name_fakes as require_bare_name_fakes
 
 _FAKE_PIXI = """\
 import json, os, shutil, subprocess, sys
@@ -988,16 +942,20 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    ploidy = "".join(
+        f" '--{flag}={opts[flag]}'" for flag in ("haploid_contigs", "par_regions_bed")
+        if flag in opts
+    )
     for flag in ("inference_backend", "cpu_threads"):
         if flag in opts:
             batch += f" --{flag}={opts[flag]}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
-        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
+        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}{ploidy}",
         f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
         f"--checkpoint={opts['checkpoint']}{batch}",
         f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
-        f"--output_vcf_outfile={opts['output_vcf']}"
+        f"--output_vcf_outfile={opts['output_vcf']}{ploidy}"
         + (f" --gvcf_outfile={opts['output_gvcf']}" if "output_gvcf" in opts else ""),
     ]
     print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
@@ -1018,7 +976,7 @@ elif command == "make_examples":
     def write():
         for shard in shard_names(opts["examples"]):
             with open(shard, "w") as out:
-                json.dump({"ref": ref, "reads": reads}, out)
+                json.dump({"ref": ref, "reads": reads, "regions": opts.get("regions")}, out)
         stem, n = opts["small_model_cvo_outfile"].split("@")
         for i in range(int(n)):
             open(f"{stem}-{i:05d}-of-{int(n):05d}", "w").close()
@@ -1045,13 +1003,24 @@ elif command == "postprocess_variants":
 
 
     def write():
+        regions = []
+        if called.get("regions"):
+            from wgsextract_cli.core.region_selection import selected_intervals
+            lengths = dict((r.split()[0], int(r.split()[1]))
+                           for r in open(called["ref"] + ".fai"))
+            bed = opts["output_vcf_outfile"] + ".bed"
+            with open(bed, "w") as out:
+                for chrom, spans in selected_intervals(called["regions"], lengths, commas=False).items():
+                    for start, end in spans:
+                        out.write(f"{chrom}\t{start}\t{end}\n")
+            regions = ["-R", bed]
         mpileup = subprocess.Popen(
-            [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+            [BCFTOOLS, "mpileup", "-f", called["ref"], *regions, "-Ou", called["reads"]], stdout=subprocess.PIPE
         )
         subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["output_vcf_outfile"]], stdin=mpileup.stdout, check=True)
         if opts.get("gvcf_outfile"):
             write_gvcf(opts["output_vcf_outfile"], called["reads"], called["ref"],
-                       opts["gvcf_outfile"])
+                       opts["gvcf_outfile"], regions[1] if regions else None)
 
 
     fail_here("postprocess_variants", None, write)

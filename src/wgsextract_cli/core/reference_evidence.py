@@ -29,9 +29,11 @@ import json
 import re
 import subprocess
 import tempfile
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 
 from wgsextract_cli.core.clair3_reference_shadow import (
@@ -76,6 +78,7 @@ from wgsextract_cli.core.variant_confidence import Thresholds
 SCHEMA = "wgsextract.reference_evidence/1"
 ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
+POLICY_HEADER_KEY = "wgsePloidyPolicy"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
@@ -107,13 +110,41 @@ class Provenance:
     # Ploidy-0 bases, as "contig:start-end" (1-based, inclusive) items.
     ploidy_zero: tuple[str, ...] = ()
 
+    @cached_property
+    def _ploidy_intervals(self) -> dict[str, list[tuple[int, int, int]]]:
+        intervals: dict[str, list[tuple[int, int, int]]] = {}
+        for item in self.ploidy.split(","):
+            match = re.fullmatch(r"(.+):(\d+)-(\d+)=([012])", item)
+            if match:
+                chrom, start, end, ploidy = match.groups()
+                intervals.setdefault(chrom, []).append(
+                    (int(start), int(end), int(ploidy))
+                )
+        return {chrom: sorted(spans) for chrom, spans in intervals.items()}
+
+    def record_ploidy(self, chrom: str, start: int, end: int) -> int | None:
+        """Effective ploidy of an inclusive record span, not its GT encoding.
+
+        A span touching diploid PAR stays diploid. Headers without interval
+        rules (including bcftools' named policies) leave GT-based inference intact.
+        """
+        if not self._ploidy_intervals:
+            return None
+        spans = self._ploidy_intervals.get(chrom, [])
+        index = bisect_right(spans, start, key=lambda span: span[0]) - 1
+        if index >= 0:
+            left, right, ploidy = spans[index]
+            if left <= start <= end <= right:
+                return ploidy
+        return 2
+
     @property
     def ploidy_policy(self) -> str:
         """A digest of the ploidy rules and sex the caller applied."""
         text = "\n".join((self.ploidy, self.sex, *self.ploidy_zero))
         return "sha256:" + hashlib.sha256(text.encode()).hexdigest()[:16]
 
-    def header(self) -> str:
+    def header(self, *, key: str = HEADER_KEY) -> str:
         values = {
             "Schema": SCHEMA,
             "Engine": self.engine,
@@ -128,7 +159,7 @@ class Provenance:
             "PloidyZero": ",".join(self.ploidy_zero),
         }  # fmt: skip
         body = ",".join(f'{key}="{_quote(value)}"' for key, value in values.items())
-        return f"##{HEADER_KEY}=<{body}>"
+        return f"##{key}=<{body}>"
 
     def metrics(self) -> dict[str, str | int | None]:
         """The provenance as result-manifest metrics of the gVCF output."""
@@ -153,8 +184,15 @@ def _quote(value: str) -> str:
 
 def parse_provenance(line: str) -> Provenance | None:
     """The Provenance of a ``##wgseReferenceEvidence`` header line."""
-    prefix = f"##{HEADER_KEY}=<"
-    if not line.startswith(prefix):
+    prefix = next(
+        (
+            f"##{key}=<"
+            for key in (HEADER_KEY, POLICY_HEADER_KEY)
+            if line.startswith(f"##{key}=<")
+        ),
+        None,
+    )
+    if prefix is None:
         return None
     values = {
         key: re.sub(r"\\(.)", r"\1", value)
@@ -430,6 +468,16 @@ class ReferenceEvidence:
                 ploidy_zero=tuple(
                     f"{c}:{s}-{e}" for c, s, e in mapped(self.excluded())
                 ),
+                ploidy=(
+                    ",".join(
+                        f"{alias}:{start}-{end}={ploidy}"
+                        for contig, spans in self.provenance._ploidy_intervals.items()
+                        if (alias := match_chromosome_name(contig, lengths))
+                        for start, end, ploidy in spans
+                    )
+                    if self.provenance._ploidy_intervals
+                    else self.provenance.ploidy
+                ),
             )
         return result
 
@@ -517,6 +565,7 @@ class ReferenceEvidence:
                             self.quality_model,
                             thresholds,
                             self.deletion_shadow,
+                            self.provenance.record_ploidy if self.provenance else None,
                         ),
                         order,
                     )

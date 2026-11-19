@@ -28,7 +28,7 @@ from wgsextract_cli.core.containers import (
     run_container,
 )
 from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.reference_evidence import Provenance
+from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance
 from wgsextract_cli.core.resource_estimates import (
     PostprocessPlan,
 )
@@ -358,6 +358,7 @@ def _run_stages(
     staging: Callable[[], str] | None,
     out_vcf: str,
     evidence: tuple[str, Provenance] | None = None,
+    provenance: Provenance | None = None,
     preflight: Callable[[bool], None] | None = None,
 ) -> bool:
     """Run DeepVariant stage by stage, skipping the ones an earlier run
@@ -385,6 +386,10 @@ def _run_stages(
     # one reruns it; without --reference-evidence its record is as before.
     final_outputs = [out_vcf]
     final_params: dict[str, Any] = {}
+    if provenance:
+        final_params["ploidy_policy"] = hashlib.sha256(
+            provenance.header().encode()
+        ).hexdigest()
     if evidence:
         final_outputs += [evidence[0], evidence[0] + ".tbi"]
         # The provenance (region, ploidy exclusions) can change while the
@@ -499,6 +504,10 @@ def _run_stages(
                 if not Path(out_vcf).exists():
                     raise WGSExtractError("DeepVariant failed to produce output VCF.")
                 ensure_vcf_indexed(out_vcf)
+                if provenance:
+                    publish_gvcf(
+                        out_vcf, out_vcf, provenance, header_key=POLICY_HEADER_KEY
+                    )
                 if evidence:
                     staged_gvcf = work / GVCF_NAME
                     if not staged_gvcf.exists():

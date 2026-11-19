@@ -86,7 +86,12 @@ def reference_depth(
     return None if block else _int(values.get("DP"))
 
 
-def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
+def record_state(
+    fields: Sequence[str],
+    model: str,
+    thresholds: Thresholds,
+    ploidy: int | None = None,
+) -> State:
     """The state of the bases one gVCF record covers (its first sample)."""
     values = _sample(fields)
     if fields[6] not in {"PASS", "."} or values.get("FT", ".") not in {"PASS", "."}:
@@ -105,7 +110,7 @@ def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> S
     depth = reference_depth(info, values, block=block)
     if depth == 0:
         return State.UNCOVERED
-    scale = 0.5 if len(alleles) == 1 else 1.0
+    scale = 0.5 if (ploidy if ploidy is not None else len(alleles)) == 1 else 1.0
     if depth is None or depth < thresholds.min_depth * scale:
         return State.LOW_QUALITY_REFERENCE
     if model == GQ:

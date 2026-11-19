@@ -81,8 +81,17 @@ published (`bcftools reheader`), so every record stays as DeepVariant wrote
 it. Bases a sex/PAR ploidy of 0 leaves out of calling (a woman's chrY) are
 recorded in `PloidyZero`. Parabricks calls a man's haploid chrX and chrY
 apart from the rest and its gVCF is gathered from the parts (see
-[Sex and PAR](#sex-and-par)); `wgse-deepvariant` calls diploid genomes only,
-as without the gVCF. `wgse-deepvariant`'s gVCF agrees
+[Sex and PAR](#sex-and-par)); `wgse-deepvariant` requires 0.4.0 or later
+for non-diploid policies. Like Google's pipeline it accepts PAR intervals
+directly, preserving one resumable run; its reference blocks split at PAR
+boundaries and use haploid likelihoods outside PAR. Haploid GT and PL retain
+Google's diploid encoding, with heterozygous likelihoods suppressed.
+The readers use the published ploidy intervals, not GT length, for haploid
+depth thresholds; PAR remains diploid. The variant-only VCF carries the same
+policy under `##wgsePloidyPolicy` (not a reference-evidence declaration).
+PAR BEDs describe the full policy on the selected haploid contigs, even for
+a bounded selection, so deletions reaching into PAR keep diploid treatment.
+`wgse-deepvariant`'s diploid gVCF agrees
 with Google's in every field the states read; before 0.3.1 its variant
 records lacked the PL values of genotypes with `<*>` (#999).
 

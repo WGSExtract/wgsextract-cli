@@ -201,6 +201,26 @@ def calling_ploidy(
     return male if sex == "Male" else female
 
 
+def haploid_contig_policy(
+    alignment: str,
+    reference: str,
+    library: ReferenceLibrary,
+    directory: str,
+    intervals: list[PloidyInterval],
+) -> list[PloidyInterval]:
+    """Uncrop haploid contigs so deletions can see PAR beyond the selection."""
+    haploid = {i.chrom for i in intervals if i.ploidy == 1}
+    full = calling_ploidy(
+        alignment,
+        reference,
+        library,
+        directory,
+        None,
+        default_contigs=haploid,
+    )
+    return [i for i in intervals if i.chrom not in haploid] + full
+
+
 def policy_sex(intervals: list[PloidyInterval]) -> str:
     """The sex a ploidy policy was made for: M when an X or Y interval is
     haploid, F when Y is excluded (ploidy 0), else "" (it doesn't say)."""
