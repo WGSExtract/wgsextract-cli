@@ -54,7 +54,8 @@ from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
 from wgsextract_cli.core.microarray.targets import (
-    CHM13_V1_FORMATS,
+    _CHAINS_TO_GRCH37,
+    CHM13_V2_FORMATS,
     collect_template_markers,
     lifted_chain,
 )
@@ -114,23 +115,19 @@ def _selected(site: SiteProjection, regions: list[tuple[str, int, int]]) -> bool
 def _marker_ids(
     catalogue: CHM13Catalogue, roots: list[str]
 ) -> dict[tuple[str, int], str]:
-    chain = next(
-        (
-            Path(root, "hg18ToHg19.over.chain.gz")
-            for root in roots
-            if Path(root, "hg18ToHg19.over.chain.gz").is_file()
-        ),
-        None,
-    )
-    if chain is None:
+    chains = microarray_chm13_cache.installed_chains(roots)
+    if missing := sorted(set(_CHAINS_TO_GRCH37) - set(chains)):
         raise WGSExtractError(
-            "CHM13 microarray needs the installed hg18ToHg19.over.chain.gz "
-            "and the complete template set used by its pinned site map."
+            "CHM13 microarray needs the installed "
+            + " and ".join(_CHAINS_TO_GRCH37[build].name for build in missing)
+            + " and the complete template set used by its pinned site map."
         )
     markers = {
         (chrom, pos): marker
         for (chrom, pos), marker in collect_template_markers(
-            roots, {"NCBI36": str(chain)}, CHM13_V1_FORMATS
+            roots,
+            {build: str(chain) for build, chain in chains.items()},
+            CHM13_V2_FORMATS,
         ).items()
         if chrom in catalogue.source_lengths and pos <= catalogue.source_lengths[chrom]
     }

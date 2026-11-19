@@ -21,6 +21,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache, lru_cache
 from pathlib import Path
 
 from pyliftover import LiftOver
@@ -118,8 +119,6 @@ _FORMATS = [
     "MyHeritage_GSA_2025",
     "MyHeritage_GSA_2025_609424",
 ]
-# The pinned CHM13 v1 site map covers exactly these templates' markers.
-CHM13_V1_FORMATS = tuple(_FORMATS)
 _FORMATS += [
     "Ancestry_V2ab",
     "Ancestry_V2cd",
@@ -136,6 +135,9 @@ _FORMATS += [
     "meuDNA_V2",
     "SelfDecode_V1",
 ]
+# The pinned CHM13 v2 site map covers exactly these templates' markers: add a
+# template after this only together with a rebuilt map.
+CHM13_V2_FORMATS = tuple(_FORMATS)
 
 
 def genome_wide_target_path(reflib_dir: str, build: str) -> str:
@@ -477,20 +479,52 @@ def download_chain(source: ChainSource, dest: str) -> bool:
     return False
 
 
+def installed_chain_copy(
+    source: ChainSource, directories: Iterable[str | Path]
+) -> Path | None:
+    """The first copy of source in directories, or their ref/ and microarray/
+    subdirectories (as ReferenceLibrary finds them), with its pinned SHA-256,
+    else the first copy by that name (warned): a different chain places
+    markers elsewhere, so a pinned copy later in the search order wins."""
+    copies = [
+        path
+        for directory in directories
+        for sub in ("", "ref", "microarray")
+        if (path := Path(directory, sub, source.name)).is_file()
+    ]
+    for path in copies:
+        stat = path.stat()
+        if _chain_sha256(str(path), stat.st_size, stat.st_mtime_ns) == source.sha256:
+            return path
+    if copies:
+        _warn_unpinned_chain(str(copies[0]), source.name)
+        return copies[0]
+    return None
+
+
+@lru_cache(maxsize=32)
+def _chain_sha256(path: str, _size: int, _mtime_ns: int) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+@cache
+def _warn_unpinned_chain(path: str, name: str) -> None:
+    logging.warning(
+        f"{path} is not UCSC's pinned {name} (its SHA-256 differs) and no pinned "
+        "copy was found; using it anyway. Replace it with UCSC's copy if chip "
+        "markers land in the wrong place."
+    )
+
+
 def _installed_chain(
     reflib_dir: str, source: ChainSource, search: Sequence[str] = ()
 ) -> str | None:
-    """An installed chain in a search root or the library, or their ref/ and
-    microarray/ subdirectories (as ReferenceLibrary finds them)."""
-    return next(
-        (
-            str(path)
-            for directory in (*search, reflib_dir)
-            for sub in ("", "ref", "microarray")
-            if (path := Path(directory, sub, source.name)).is_file()
-        ),
-        None,
-    )
+    found = installed_chain_copy(source, (*search, reflib_dir))
+    return str(found) if found else None
 
 
 def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:
