@@ -83,6 +83,13 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
   The build runs native likelihood and PAR-edge regressions; the smoke test
   checks staged flag propagation, retained PAR heterozygotes and gVCF coverage.
+- **0012** (0.4.1) traverses the Apple small model's hidden-layer weights
+  contiguously, so independent outputs use SIMD without changing each output's
+  input accumulation order or adding fast-math flags. The three-output final
+  layer and Linux computation are unchanged.
+- **0013** (0.4.1) compiles the realigner's fixed CIGAR regular expression once
+  per worker instead of once per read/haplotype alignment, with unchanged
+  parsing and no shared matching-cache contention.
 
 The haploid contract follows Google DeepVariant **v1.10.0**:
 [`postprocess_variants.py`, lines 1070–1092](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1070-L1092)
@@ -177,6 +184,45 @@ RTG SNP/indel F1 is **0.997409 / 0.995993** (RTG, not the hap.py figures above).
 See the [16 GB measurements](../../docs/apple-silicon-16gb.md#native-deepvariant)
 for the version-labelled whole-genome timing projection; a whole genome was
 measured with 0.1.0, **not** 0.1.1.
+
+### Apple Silicon CPU hill-climb (0.4.1)
+
+The CPU changes in 0.4.1 were checked on the same HG002 35x chr20 input on
+an M1 Pro (eight performance and two efficiency cores, 32 GiB). Three
+interleaved, unprofiled observations per variant, with the same Apple Clang 21
+toolchain and Homebrew dependencies, gave these make_examples medians:
+
+| Change, ten workers | Wall seconds | CPU seconds, user + system |
+| --- | ---: | ---: |
+| Unchanged 0.4.0 source control | 149.55 | 1,378.19 |
+| Contiguous small-model hidden layers | 130.60 | 1,212.30 |
+| Plus per-worker CIGAR regex cache | **124.41** | **1,169.03** |
+
+That is **16.8% less wall time and 15.2% less CPU time** in make_examples for
+the combined changes, not a 16.8% whole-pipeline speedup. These development
+builds are not directly comparable with the older qualification timings or
+the self-contained release binary.
+
+The exact self-contained 0.4.1 superbuild was also checked against released
+0.4.0, with three unprofiled make_examples observations each: median wall
+**137.62 → 122.84 seconds** (10.7% less), median CPU **1,272.61 → 1,148.23
+seconds** (9.8% less). One complete staged run with gVCF took **252.37 →
+242.00 seconds** (4.1% less); inference and postprocessing were not changed.
+Do not substitute the development-build percentage for this release comparison.
+
+Each individual change retained all **210,390 VCF calls**, the sites, alleles,
+GT and FILTER of **1,743,980 gVCF records**, and all **1,533,590 complete
+reference-block rows** against released 0.4.0. The synthetic-genome smoke
+also checks staged VCF/gVCF equality with two versus three workers, haploid/PAR
+calls and reference coverage through an empty contig.
+
+Eight- and twelve-worker pilots took 139.22 and 124.19 seconds respectively;
+these pilots do not justify introducing a new thread default. Eight uses
+less CPU, but takes longer; twelve is effectively tied with ten here.
+macOS scheduled the workers; they were not pinned to P or E cores.
+Weights, inference backend, batch-size policy and CLI thread defaults are
+unchanged. See [resource estimates](../../docs/resource_estimates.md#apple-silicon-cpu-hill-climb)
+for release-build measurements and remaining whole-genome qualification.
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 

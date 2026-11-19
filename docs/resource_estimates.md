@@ -919,6 +919,45 @@ The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
 0.1.1/0.1.0 chr20 timing ratio. It is not a measured 0.1.1 whole-genome run;
 the estimator does not promise a wall time.
 
+#### Apple Silicon CPU hill-climb
+
+Measured 2026-11-19 on an M1 Pro (eight P cores, two E cores, 32 GiB),
+HG002 NovaSeq 35x chr20, ten workers, Metal FP32 batch 1024, gVCF enabled.
+The exact self-contained **0.4.1** superbuild, linking only macOS system
+libraries, was compared with released **0.4.0**. Three unprofiled
+make_examples observations per build gave median wall **137.62 → 122.84 s**
+(10.7% less) and CPU **1,272.61 → 1,148.23 s** (9.8% less).
+
+One complete staged observation per build, excluding CLI overhead:
+
+| Stage | 0.4.0 wall s | 0.4.1 wall s | 0.4.0 CPU s | 0.4.1 CPU s | Peak RSS GB, 0.4.0 / 0.4.1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| make_examples | 136.93 | 124.95 | 1,283.43 | 1,140.75 | 0.458 / 0.469 |
+| call_variants | 101.58 | 103.34 | 33.06 | 34.31 | 4.400 / 4.883 |
+| postprocess_variants | 13.86 | 13.71 | 13.75 | 13.62 | 0.811 / 0.814 |
+
+The stage sum was **252.37 → 242.00 seconds** (4.1% less), not a 10.7%
+whole-pipeline speedup. Inference and postprocessing are unchanged.
+CPU means user + system; memory figures are decimal GB, not GiB.
+Inference's GPU-inclusive footprint was **13.679 / 14.025 GB**; RSS alone
+still understates it. The two runs wrote **745.466 / 745.655 MB** of gzip
+examples across ten shards and peaked at **1.097 / 1.094 GB** of allocated
+intermediate space, including reference evidence.
+
+All **210,390 VCF calls** match in sites, alleles, GT and FILTER, as do
+**1,743,980 gVCF records** and all **1,533,590 complete reference-block rows**.
+The [native build notes](../native/deepvariant/README.md#apple-silicon-cpu-hill-climb-041)
+record the isolated changes, matched development-build repeats, and
+8/10/12-worker pilots; those pilots do not justify a new thread default.
+Protocol and results are tracked in
+[#1116 (native Apple Silicon hill-climb)](https://github.com/WGSExtract/wgsextract-cli/issues/1116).
+
+The conservative RAM/disk coefficients are unchanged: the batch-scaled
+inference envelope must still cover Metal buffers, not RSS alone, and gVCF
+needs its additional temporary-space allowance. No 0.4.1 whole-genome or
+16 GiB base-M1 confirmation has run; the older version-labelled measurements
+above are not a qualification of these changes.
+
 ### DeepVariant postprocess_variants
 
 DeepVariant's stages run one after another, so its RAM estimate is the largest
