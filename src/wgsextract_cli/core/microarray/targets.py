@@ -19,7 +19,7 @@ import os
 import subprocess
 import tempfile
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +28,7 @@ from pyliftover import LiftOver
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.file_lock import build_lock as _build_lock
 from wgsextract_cli.core.microarray.coordinates import sole_placement
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.resource_identity import resource_identity
 from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
@@ -396,6 +397,42 @@ def chain_to_grch37(reflib_dir: str, build: str, search: Sequence[str] = ()) -> 
     if build not in _CHAINS_TO_GRCH37:
         raise WGSExtractError(f"No chain from {build} to GRCh37 for the chip markers.")
     return _chain(reflib_dir, _CHAINS_TO_GRCH37[build], search)
+
+
+def lifted_chain(
+    reflib_dir: str | None, build: str, search: Sequence[str] = ()
+) -> str | None:
+    """The chain from build to GRCh37, or None (warned) to match its markers
+    by ID instead."""
+    if not reflib_dir:
+        return None
+    try:
+        return chain_to_grch37(reflib_dir, build, search)
+    except WGSExtractError as e:
+        logging.warning(str(e))
+        return None
+
+
+def fetch_requested_chains(
+    reflib_dir: str, format_keys: Iterable[str], search: Sequence[str] = ()
+) -> None:
+    """Install the chains of requested templates whose chain a target build
+    doesn't fetch itself (FTDNA's GRCh38 Y files), so their markers join it."""
+    builds = {
+        fmt["build"]
+        for key in format_keys
+        if (name := resolve_format_key(key))
+        and (fmt := get_template_format(name))
+        and fmt.get("build") in _OPTIONAL_CHAINS
+    }
+    for build in sorted(builds):
+        chain_to_grch37(reflib_dir, build, search)
+
+
+def output_chain_key(build: str) -> str:
+    """A vendor output's recorded-input key for its template's chain;
+    "ncbi36_chain" keeps earlier NCBI36 outputs comparable."""
+    return "ncbi36_chain" if build == "NCBI36" else f"{build}_chain"
 
 
 def _chain_key(build: str) -> str:

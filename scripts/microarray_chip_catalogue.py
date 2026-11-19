@@ -407,7 +407,7 @@ def _closest_template(
 
 
 def _relation(name: str, relation: str, added: int, removed: int) -> dict[str, Any]:
-    from wgsextract_cli.core.microarray.templates import FORMAT_ALIASES
+    from wgsextract_cli.core.microarray.formats import FORMAT_ALIASES
 
     keys = sorted(k for k, v in FORMAT_ALIASES.items() if v == name)
     return {

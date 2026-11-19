@@ -40,6 +40,7 @@ from wgsextract_cli.core.microarray.aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
 from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
@@ -54,14 +55,15 @@ from wgsextract_cli.core.microarray.quirks import (
 )
 from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
-    chain_to_grch37,
+    fetch_requested_chains,
     is_genome_wide_target,
+    lifted_chain,
+    output_chain_key,
 )
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     _resolve_templates_roots,
     get_template_format,
-    resolve_format_key,
 )
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
@@ -136,16 +138,6 @@ def _target_root(lib: ReferenceLibrary) -> str | None:
         ):
             return lib.beside_fasta
     return lib.root
-
-
-def _lift_chain(lib: ReferenceLibrary, build: str) -> str | None:
-    """The chain from build to GRCh37, or None to match its markers by ID."""
-    assert lib.root is not None
-    try:
-        return chain_to_grch37(lib.root, build, lib.resource_roots)
-    except WGSExtractError as e:
-        logging.warning(str(e))
-        return None
 
 
 def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
@@ -299,7 +291,7 @@ def _convert_microarray_outputs(
         output_file = str(Path(outdir, f"{base_name}_{real_fmt}{suffix}"))
         try:
             lift_chain = (
-                _lift_chain(lib, fmt_info["build"])
+                lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
                 if fmt_info and fmt_info.get("build") and lib.root
                 else None
             )
@@ -498,17 +490,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         # genome-wide target: build it from them, and rebuild one an older
         # version of the CLI built. A requested GRCh38 template (FTDNA's Y
         # files) needs its chain installed first for its markers to join it.
-        for build in sorted(
-            {
-                fmt["build"]
-                for key in params.formats.split(",")
-                if aadr_panel(key) is None
-                and (real := resolve_format_key(key))
-                and (fmt := get_template_format(real))
-                and fmt.get("build") == "GRCh38"
-            }
-        ):
-            chain_to_grch37(lib.root, build, lib.resource_roots)
+        keys = [k for k in params.formats.split(",") if aadr_panel(k) is None]
+        fetch_requested_chains(lib.root, keys, lib.resource_roots)
         ref_vcf_tab = build_genome_wide_target(
             target_root,
             lib.build,
@@ -581,11 +564,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                 )
             ]
             if (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
-                # "ncbi36_chain" keeps earlier NCBI36 outputs' inputs comparable.
-                chain_key = "ncbi36_chain" if lifted == "NCBI36" else f"{lifted}_chain"
-                units[key].extra[chain_key] = resource_identity(
-                    _lift_chain(lib, lifted)
-                )
+                chain = lifted_chain(lib.root, lifted, lib.resource_roots)
+                units[key].extra[output_chain_key(lifted)] = resource_identity(chain)
     for unit in units.values():
         reuse.check(unit, inputs)
     stale = [key for key, unit in units.items() if not unit.fresh]

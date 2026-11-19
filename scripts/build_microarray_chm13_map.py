@@ -32,9 +32,7 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteProjection,
     load_site_map,
 )
-from wgsextract_cli.core.microarray.targets import (
-    CHM13_V1_FORMATS as _FORMATS,
-)
+from wgsextract_cli.core.microarray.targets import CHM13_V1_FORMATS as _FORMATS
 from wgsextract_cli.core.microarray.targets import _template_paths
 from wgsextract_cli.core.microarray.templates import (
     _chrom_for_liftover,
@@ -66,9 +64,8 @@ def collect_markers(
     source_lengths: Mapping[str, int],
 ) -> tuple[dict[tuple[str, int], str], dict[str, object]]:
     paths = list(_template_paths(_resolve_templates_roots(list(roots)), _FORMATS))
-    found = {name for name, _build, _parts in paths}
-    if found != set(_FORMATS):
-        raise ValueError(f"Missing template layouts: {sorted(set(_FORMATS) - found)}")
+    if missing := set(_FORMATS) - {name for name, _build, _parts in paths}:
+        raise ValueError(f"Missing template layouts: {sorted(missing)}")
     ncbi36_lifter = LiftOver(str(chain36))
     markers: dict[tuple[str, int], str] = {}
     source_ids: set[str] = set()
