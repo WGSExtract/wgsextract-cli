@@ -51,6 +51,21 @@ function Save-Summary {
     Compress-Archive -Path "$Evidence/*" -DestinationPath (Join-Path $Root 'evidence.zip') -Force
 }
 
+function Get-ProcessStartTimeUtc($Process, [switch]$Required) {
+    try {
+        $StartTime = $Process.StartTime
+    } catch {
+        # Process metadata may disappear before HasExited observes the exit.
+        if ($Required -and -not $Process.WaitForExit(1000)) { throw }
+        return $null
+    }
+    if ($null -ne $StartTime) { return $StartTime.ToUniversalTime() }
+    if ($Required -and -not $Process.WaitForExit(1000)) {
+        throw 'Process start time is unavailable for a running process.'
+    }
+    return $null
+}
+
 function Get-ProcessTreeWorkingSet($Processes, [hashtable]$Known) {
     $Processes = @($Processes | Where-Object { $null -ne $_.CreationDate })
     $Now = [DateTime]::UtcNow
@@ -141,13 +156,7 @@ function Invoke-Step {
         if (-not $Started) { throw "Could not start $Name" }
         $OutTask = $Process.StandardOutput.BaseStream.CopyToAsync($OutStream)
         $ErrTask = $Process.StandardError.BaseStream.CopyToAsync($ErrStream)
-        $StartedAt = $null
-        try {
-            $StartedAt = $Process.StartTime.ToUniversalTime()
-        } catch {
-            # Unix may no longer expose start time for an already-exited child.
-            if (-not $Process.HasExited) { throw }
-        }
+        $StartedAt = Get-ProcessStartTimeUtc $Process -Required
         $Known = @{}
         do {
             $Processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, WorkingSetSize)

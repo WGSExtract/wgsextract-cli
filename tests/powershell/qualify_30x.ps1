@@ -1,5 +1,8 @@
 #requires -Version 7.2
-param([string]$Helpers, [string]$Root, [switch]$ExitedBeforeTelemetry)
+param(
+    [string]$Helpers, [string]$Root,
+    [ValidateSet('', 'throw-exited', 'null-exited', 'throw-live', 'null-live')][string]$UnavailableStartTime = ''
+)
 $ErrorActionPreference = 'Stop'
 $Evidence = Join-Path $Root 'evidence'
 $Threads = 2
@@ -10,27 +13,40 @@ New-Item -ItemType Directory -Force $Evidence | Out-Null
 function Get-CimInstance {
     param($ClassName, $Property)
     if ($ClassName -eq 'Win32_Process') {
-        if ($ExitedBeforeTelemetry) { return }
-        Get-Process | Select-Object @{n='ProcessId';e={$_.Id}}, @{n='ParentProcessId';e={0}}, @{n='CreationDate';e={$_.StartTime.ToUniversalTime()}}, @{n='WorkingSetSize';e={if ($WorkingSetOverride) { $WorkingSetOverride } else { $_.WorkingSet64 }}}
+        Get-Process | Select-Object @{n='ProcessId';e={$_.Id}}, @{n='ParentProcessId';e={0}}, @{n='CreationDate';e={Get-ProcessStartTimeUtc $_}}, @{n='WorkingSetSize';e={if ($WorkingSetOverride) { $WorkingSetOverride } else { $_.WorkingSet64 }}}
     } else {
         [pscustomobject]@{ TotalVisibleMemorySize = 64MB; FreePhysicalMemory = 60MB }
     }
 }
 $Pwsh = (Get-Process -Id $PID).Path
-if ($ExitedBeforeTelemetry) {
+if ($UnavailableStartTime) {
     # Force the OS-property race without replacing the real child process or pipes.
+    $script:ChildProcessId = $null
     Update-TypeData -TypeName System.Diagnostics.Process -MemberType ScriptProperty -MemberName StartTime -Value {
-        $this.WaitForExit()
-        throw 'Process start time is unavailable after exit'
+        if ($null -eq $script:ChildProcessId) { $script:ChildProcessId = $this.Id }
+        if ($this.Id -eq $script:ChildProcessId -and $UnavailableStartTime.EndsWith('exited')) { $this.WaitForExit() }
+        if ($UnavailableStartTime.StartsWith('throw')) { throw 'Process start time is unavailable' }
+        return $null
     } -Force
     try {
-        Invoke-Step 'fast_stdout' @($Pwsh, '-NoProfile', '-Command', '[Console]::WriteLine("captured stdout"); [Console]::Error.WriteLine("captured stderr")')
+        Invoke-Step 'fast_stdout' @($Pwsh, '-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; [Console]::WriteLine("captured stdout"); [Console]::Error.WriteLine("captured stderr")')
+        $script:ChildProcessId = $null
         Invoke-Step 'fast_empty' @($Pwsh, '-NoProfile', '-Command', 'exit 0')
+        $script:ChildProcessId = $null
         try {
             Invoke-Step 'fast_failure' @($Pwsh, '-NoProfile', '-Command', '[Console]::Error.WriteLine("fast failure"); exit 7')
             throw 'Nonzero exit was accepted'
         } catch {
             if ($_ -notmatch 'exited 7') { throw }
+        }
+        if ($UnavailableStartTime.EndsWith('live')) {
+            $script:ChildProcessId = $null
+            try {
+                Invoke-Step 'live_metadata_failure' @($Pwsh, '-NoProfile', '-Command', '[Console]::Error.WriteLine("still running"); Start-Sleep -Seconds 10')
+                throw 'Missing start time for a live process was accepted'
+            } catch {
+                if ($_ -notmatch 'start time is unavailable') { throw }
+            }
         }
     } finally {
         Remove-TypeData -TypeName System.Diagnostics.Process
@@ -90,7 +106,8 @@ function Snapshot($Id, $Parent, $Offset, $Bytes) {
 $Known = @{ 10 = @{ created = $Start; last_seen = $Start } }
 $Bytes = Get-ProcessTreeWorkingSet @(
     (Snapshot 12 11 2 300), (Snapshot 11 10 1 200), (Snapshot 10 0 0 100),
-    (Snapshot 13 10 -1 9999)
+    (Snapshot 13 10 -1 9999),
+    ([pscustomobject]@{ ProcessId = 17; ParentProcessId = 10; CreationDate = $null; WorkingSetSize = 9999 })
 ) $Known
 if ($Bytes -ne 600) { throw "Did not include live descendants or included older stale child: $Bytes" }
 $Bytes = Get-ProcessTreeWorkingSet @(

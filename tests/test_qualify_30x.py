@@ -124,7 +124,12 @@ def test_1114_relative_roots_follow_powershell_location(tmp_path: Path) -> None:
     assert not (target / "run").exists()
 
 
-def test_798_exited_child_keeps_logs_exit_status_and_evidence(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "unavailable_start_time", ["throw-exited", "null-exited", "throw-live", "null-live"]
+)
+def test_798_missing_process_metadata_keeps_logs_exit_status_and_evidence(
+    tmp_path: Path, unavailable_start_time: str
+) -> None:
     result = subprocess.run(
         [
             str(PWSH),
@@ -135,7 +140,8 @@ def test_798_exited_child_keeps_logs_exit_status_and_evidence(tmp_path: Path) ->
             str(HELPERS),
             "-Root",
             str(tmp_path),
-            "-ExitedBeforeTelemetry",
+            "-UnavailableStartTime",
+            unavailable_start_time,
         ],
         capture_output=True,
         text=True,
@@ -151,6 +157,12 @@ def test_798_exited_child_keeps_logs_exit_status_and_evidence(tmp_path: Path) ->
     assert steps["fast_empty"]["status"] == "complete"
     assert steps["fast_failure"]["status"] == "failed"
     assert steps["fast_failure"]["exit_code"] == 7
+    if unavailable_start_time.endswith("live"):
+        assert steps["live_metadata_failure"]["status"] == "failed"
+        assert steps["live_metadata_failure"]["exit_code"] is None
+        assert (
+            evidence / "attempts/live_metadata_failure/0001/stderr.log"
+        ).read_text().strip() == "still running"
     for step, stream, expected in (
         ("fast_stdout", "stdout", "captured stdout"),
         ("fast_stdout", "stderr", "captured stderr"),
