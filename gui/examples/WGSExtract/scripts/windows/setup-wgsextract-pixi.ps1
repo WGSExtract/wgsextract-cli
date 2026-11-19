@@ -105,17 +105,23 @@ function Restore-AppSource {
     Remove-DirectoryWithRetry -Path $newAppDir
     # The .zip, as the CLI's own Windows installer uses: the release has
     # symlinks, which tar.exe can't create without Developer Mode ("Invalid
-    # argument") and Expand-Archive writes as small files. It is staged in
-    # %TEMP%, a short path, as Expand-Archive can't write paths over 260 characters.
+    # argument") and ZIP extraction writes as small files. Stage in a short
+    # path. Use the .NET Framework's two-argument API: an inherited PSModulePath
+    # can load PowerShell 7's Archive module into Windows PowerShell 5.1, where
+    # its three-argument ExtractToDirectory overload doesn't exist.
     $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("wgsextract-" + [guid]::NewGuid().ToString("N"))
-    Expand-Archive -LiteralPath $Archive -DestinationPath $staging -Force
-    $top = @(Get-ChildItem -LiteralPath $staging -Directory)
-    if ($top.Count -ne 1) {
-        Write-Error "Downloaded archive did not contain a single source directory."
-        exit 1
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    try {
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($Archive, $staging)
+        $top = @(Get-ChildItem -LiteralPath $staging -Directory)
+        if ($top.Count -ne 1) {
+            throw "Downloaded archive did not contain a single source directory."
+        }
+        Move-Item -LiteralPath $top[0].FullName -Destination $newAppDir
     }
-    Move-Item -LiteralPath $top[0].FullName -Destination $newAppDir
-    Remove-DirectoryWithRetry -Path $staging
+    finally {
+        Remove-DirectoryWithRetry -Path $staging
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $newAppDir "install_windows.bat") -PathType Leaf)) {
         Write-Error "Downloaded archive did not contain install_windows.bat."
         exit 1
