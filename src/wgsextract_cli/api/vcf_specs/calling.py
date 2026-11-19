@@ -345,7 +345,8 @@ class VcfGatkParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
+        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see "
+        "docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -411,7 +412,8 @@ class VcfDeepvariantParams(_CallerParams):
     gpu: bool = param(
         False,
         help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
-        "else Parabricks; Ultima: Google's GPU image (README).",
+        "else Parabricks; Ultima: Google's GPU image "
+        "(docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()

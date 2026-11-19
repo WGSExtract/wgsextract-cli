@@ -2,10 +2,15 @@
 
 ```bash
 wgsextract extract mito-vcf --input sample.cram
-wgsextract lineage mt-haplogroup --input sample.cram
-wgsextract lineage y-haplogroup --input sample.cram
+# First use: explicitly allow missing public trees/tables to be downloaded
+wgsextract lineage mt-haplogroup --input sample.cram --download
+wgsextract lineage y-haplogroup --input sample.cram --download
 wgsextract lineage y-str --input sample.cram --panel Y-37
 ```
+
+`ref bootstrap` does not install these haplogroup trees/tables. `--download`
+authorizes their public-data downloads; omit it once the needed resources
+are cached in the reference library to run offline. No sample data is uploaded.
 
 Maternal prediction uses Haplogrep 3, with optional haplocheck contamination
 testing. `lineage mt-haplogroup --tree-links` adds the YFull mtDNA branch and
@@ -17,9 +22,10 @@ adds YFull/FTDNA links.
 `lineage y-haplogroup` uses native code derived from
 [Yleaf v4.1.6](https://github.com/genid/Yleaf), not an external installation.
 Predictions, marker/QC tables and version provenance go to `<outdir>/yleaf/`;
-the user's directory is never deleted. Build tables are lazy, SHA-256-verified
-downloads from this repository's `yleaf-data-v4.1.6` release into the configured
-reference library, subject to [network consent](privacy.md).
+the user's directory is never deleted. Missing build tables require explicit
+`--download` consent for SHA-256-verified downloads from this repository's
+`yleaf-data-v4.1.6` release into the configured reference library. Cached tables
+work offline; see [network consent](privacy.md).
 CRAM and variant-only VCF inference require a matching `--ref`;
 use `--no-ref-inference` for targeted VCF panels. Align FASTQ first.
 

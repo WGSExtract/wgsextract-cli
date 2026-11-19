@@ -22,8 +22,8 @@ block a valid alternate file; a bundling tool can choose a separate config.
 The CLI and desktop app otherwise share the users-workspace config described
 above. Former per-user locations, still recognized for existing installs, are:
 
-- macOS: `~/.config/wgsextract/config.toml` if `~/.config/` exists, otherwise
-  `~/Library/Application Support/wgsextract/config.toml`;
+- macOS: `~/.config/wgsextract/config.toml` if that file exists, otherwise
+  `~/Library/Application Support/wgsextract/config.toml` if present;
 - Linux: `~/.config/wgsextract/config.toml`;
 - Windows: `%LocalAppData%\theontho\wgsextract\config.toml`.
 

@@ -162,9 +162,11 @@ or pbsv with ONT is rejected. See [structural variants](ont.md#structural-varian
 
 Gene filtering (`--gene`) requires rebuilt/current `ref gene-map` maps,
 hg19/hg38 only, not T2T; see [reference verification](reference-genomes.md#verification-and-gene-maps).
-`vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat` and analyze's discovery
-report write technical `high`/`moderate`/`low` labels and reason codes to
-INFO/WGSE_CONF, `.confidence.tsv` and manifests. Configure `confidence_*`,
+`vcf clinvar`, `vcf gnomad --max-af` and analyze's discovery report write
+technical `high`/`moderate`/`low` labels and reason codes to INFO/WGSE_CONF,
+`.confidence.tsv` and manifests. `vcf pharmcat` publishes confidence labels
+only in its `.confidence.tsv` and manifest, not in an annotated VCF.
+Configure `confidence_*`,
 or override `--confidence-depth LOW HIGH` / `--confidence-gq LOW HIGH`.
 See [rules, rationale and validation](variant-confidence.md).
 
@@ -215,8 +217,11 @@ It is not a diagnosis.
 (ExpansionHunter) need indexed whole-genome BAM/CRAM (~30x).
 Install `cyrius`, `t1k` or `expansionhunter` explicitly on Linux/macOS.
 Cyrius is PolyForm Strict: noncommercial only, no distribution/modification;
-it is not bundled. T1K first builds an IPD-IMGT/HLA index at
-`<reference library>/ref/t1k_hla`. STR typing compares with
+it is not bundled. If its index is missing, `typing hla --download` explicitly
+allows T1K to download IPD-IMGT/HLA data and build the index at
+`<reference library>/ref/t1k_hla`. Without `--download`, a missing index stops
+the command. For offline use, reuse the cached index or supply an existing
+index FASTA with `--hla-index PATH`. STR typing compares with
 [STRchive](https://strchive.org) ranges; give `--sex` or infer from depth.
 For ONT/PacBio use LongTR (`longtr`) or `--caller strkit` (`strkit`).
 See [repeat expansions](ont.md#repeat-expansions).

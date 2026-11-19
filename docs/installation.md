@@ -46,7 +46,7 @@ running `install.sh`:
 | `WGSEXTRACT_REF` | `WGSEXTRACT_RELEASE_TAG` | Git ref, or `latest` |
 | `WGSEXTRACT_ARCHIVE_URL` | GitHub source archive for `WGSEXTRACT_REF` | Exact source archive URL |
 | `WGSEXTRACT_BIN_DIR` | `$WGSEXTRACT_INSTALL_DIR` | CLI launcher directory |
-| `WGSEXTRACT_PIXI_HOME` | unset | Install SHA-256-verified pinned Pixi here if missing, instead of `~/.pixi` |
+| `WGSEXTRACT_PIXI_HOME` | `$WGSEXTRACT_INSTALL_DIR/.pixi` when Pixi is missing | Install SHA-256-verified pinned Pixi here; an existing Pixi on `PATH` or in `~/.pixi` is reused |
 | `WGSEXTRACT_PIXI_CACHE_DIR` | `$WGSEXTRACT_INSTALL_DIR/.pixi/cache` | Pixi package cache |
 | `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environments, kept across updates |
 | `WGSEXTRACT_NO_OPEN` | unset | `1` skips opening Finder on macOS |
@@ -92,6 +92,10 @@ nothing else was added.
 Custom `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_CACHE_DIR` and
 `WGSEXTRACT_PIXI_ENV_DIR` locations are recorded at install time.
 `--bin-dir`, `--pixi-cache-dir` and `--pixi-env-dir` override those records.
+**Recorded cache and environment directories outside the installation are
+also deleted by default.** Use `--keep-pixi-cache` and `--keep-pixi-envs`
+to preserve those external directories; these flags do not preserve files
+inside the installation being removed.
 Windows has its [own uninstaller](windows.md).
 
 On every platform, `--remove-config` includes the owned default users

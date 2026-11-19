@@ -103,8 +103,8 @@ def _prefer_native_gpu_param() -> Any:
 
 
 GPU_HELP = (
-    "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, "
-    "minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU "
+    "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; "
+    "docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU "
     "alignment to retain MM/ML methylation tags."
 )
 _FORMAT_DOC = "Default: BAM. CRAM is written with the target reference."

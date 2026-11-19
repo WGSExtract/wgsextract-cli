@@ -99,8 +99,12 @@ wgsextract microarray --input sample.cram --formats 23andme_v5
 
 # Extract mitochondrial variants and predict the maternal haplogroup
 wgsextract extract mito-vcf --input sample.cram
-wgsextract lineage mt-haplogroup --input sample.cram
+wgsextract lineage mt-haplogroup --input sample.cram --download
 ```
+
+`--download` explicitly allows the first-use public haplogroup tree download,
+which `ref bootstrap` does not include. Omit it for offline use once cached;
+no sample data is uploaded.
 
 Try a small region (`--region chrM`, where supported) before a whole genome:
 large jobs can take hours and hundreds of gigabytes of working space.
