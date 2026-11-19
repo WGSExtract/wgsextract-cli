@@ -530,15 +530,21 @@ def write_site_map(
             ],
             "provenance": dict(provenance),
         }
-        manifest_part.write_text(json.dumps(manifest), encoding="utf-8")
+        # LF on every platform: the runtime checks these bytes against the
+        # sidecar, and git stores them as they are (.gitattributes -text).
+        manifest_part.write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
         load_site_map(manifest_part)
         final = outdir / f"chm13-sites-v1-{compressed_sha256[:16]}.bin.gz"
         os.replace(part, final)
         manifest["file"] = final.name
         manifest_part.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
-        checksum_part.write_text(file_sha256(manifest_part) + "\n", encoding="ascii")
+        checksum_part.write_text(
+            file_sha256(manifest_part) + "\n", encoding="ascii", newline="\n"
+        )
         os.replace(manifest_part, outdir / "manifest.json")
         os.replace(checksum_part, outdir / "manifest.json.sha256")
         return outdir / "manifest.json"

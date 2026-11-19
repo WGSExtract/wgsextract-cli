@@ -88,6 +88,8 @@ def test_missing_hg38_chain_is_named_not_no_called(
     # union can't be rebuilt, so the run stops and names the missing file.
     fasta = _native_library(tmp_path, monkeypatch)
     (tmp_path / "hg38ToHg19.over.chain.gz").unlink()
+    # The configured library is searched too; CI's bootstrapped one has the chain.
+    monkeypatch.setitem(settings, "reference_library", str(tmp_path))
     source = tmp_path / "sample.vcf"
     source.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"

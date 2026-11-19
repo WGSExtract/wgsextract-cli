@@ -209,6 +209,9 @@ def test_compact_writer_is_reproducible_and_preserves_static_no_calls(
         sites, {"chr1": 100}, {"chr1": 100}, tmp_path / "second", {}
     )
     assert first.read_bytes() == second.read_bytes()
+    # Git stores the asset byte-for-byte, so a Windows build must not write CRLF.
+    assert b"\r" not in first.read_bytes()
+    assert b"\r" not in Path(f"{first}.sha256").read_bytes()
     filename = json.loads(first.read_text())["file"]
     assert (first.parent / filename).read_bytes() == (
         second.parent / filename
