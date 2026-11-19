@@ -8,7 +8,7 @@ import os
 import socket
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from wgsextract_cli.core.utils import WGSExtractError
@@ -34,7 +34,11 @@ else:
 
 
 @contextlib.contextmanager
-def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
+def _reclaim_guard(
+    path: Path,
+    deadline: float,
+    checkpoint: Callable[[], None] | None = None,
+) -> Iterator[None]:
     # Keep this inode: deleting it would let concurrent reclaimers lock different files.
     guard = Path(f"{path}.guard")
     try:
@@ -54,6 +58,8 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
         ) from error
     try:
         while True:
+            if checkpoint is not None:
+                checkpoint()
             try:
                 _try_lock(fd)
                 break
@@ -66,6 +72,8 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
                     ) from None
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         try:
+            if checkpoint is not None:
+                checkpoint()
             yield
         finally:
             _unlock(fd)
@@ -74,10 +82,16 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
 
 
 @contextlib.contextmanager
-def exclusive_lock(path: Path, timeout: float = 30) -> Iterator[None]:
+def exclusive_lock(
+    path: Path,
+    timeout: float = 30,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> Iterator[None]:
     """Hold an advisory lock on ``<path>.guard`` (kept between runs) for a short
-    read-modify-write; waits up to ``timeout`` seconds for another holder."""
-    with _reclaim_guard(path, time.monotonic() + timeout):
+    read-modify-write; waits up to ``timeout`` seconds for another holder.
+    ``checkpoint``, when supplied, may raise to cancel acquisition or waiting."""
+    with _reclaim_guard(path, time.monotonic() + timeout, checkpoint):
         yield
 
 

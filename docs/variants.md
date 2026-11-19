@@ -209,6 +209,9 @@ The first run also needs PharmCAT's GRCh38 reference from Zenodo record 7288118
 (about 883 MB). Pass `--download` to fetch it. WGS Extract verifies the pinned
 SHA-256 before extraction and installs the FASTA only after both indexes;
 interrupted downloads never become installed references. Later runs stay offline.
+First-use installs share a directory lock. Interrupted or cancelled transfers
+keep their download resume state for the next `--download` run;
+incomplete FASTA indexes are detected and repaired with the same consent.
 
 `typing smn` uses archived SMNCopyNumberCaller 1.1.2 (last Apache-2.0 release)
 for SMN1/SMN2 copy number. One SMN1 copy indicates a carrier, none SMA;
