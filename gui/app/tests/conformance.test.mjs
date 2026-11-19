@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
 import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
+import { commandContextFromState } from "../dist/shared/rendering-context.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { exampleBundleCopy } from "./example-bundle.mjs";
@@ -144,6 +145,32 @@ test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report
   // Before the app has run anything, the CLI's own record is the only one.
   assert.equal(shown(false, {}), "report-issue --print --description Crashed");
   assert.equal(shown(true, {}), "report-issue --print --last-failed --description Crashed");
+});
+
+test("#1138: CLI bug reports are disabled with a setup-log explanation until setup succeeds", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
+  for (const status of [undefined, "running", "failed", "ok", "warning"]) {
+    for (const lastFailed of [false, true]) {
+      const context = commandContextFromState({
+        manifest: bundle.manifest,
+        setupRun: status ? { status } : undefined,
+        checkedOptions: { report_last_failed: lastFailed ? "--last-failed" : "" },
+      });
+      const actions = section.actions.filter((action) => isActionVisible(action, context));
+      assert.equal(actions.length, 2);
+      for (const action of actions) {
+        const reason = disabledReason(action, context);
+        if (status === "ok" || status === "warning") {
+          assert.equal(reason, undefined);
+        } else {
+          assert.match(reason, /Finish setup/);
+          assert.match(reason, /copy the setup output/);
+        }
+      }
+    }
+  }
 });
 
 test("conformance bundle preserves shared runtime semantics in TypeScript", async () => {

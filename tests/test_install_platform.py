@@ -15,6 +15,61 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("location", ["explicit", "path", "home"])
+def test_1138_installer_rejects_old_pixi_before_replacing_existing_app(
+    tmp_path: Path, location: str
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nrequires-pixi = ">=0.82.0"\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    home = tmp_path / "home"
+    binary = home / ".pixi/bin/pixi"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.69.0"; else exit 99; fi\n'
+    )
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    app.mkdir(parents=True)
+    (app / "keep").write_text("existing app")
+    env = {
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("WGSEXTRACT_")
+        },
+        "HOME": str(home),
+        "PATH": os.defpath,
+        "PIXI": "",
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+    }
+    if location == "explicit":
+        env["PIXI"] = str(binary)
+    elif location == "path":
+        env["PATH"] = str(binary.parent) + os.pathsep + os.defpath
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 1
+    assert ">=0.82.0" in result.stderr
+    assert "0.69.0" in result.stderr
+    assert "self-update" in result.stderr
+    assert str(binary) in result.stderr
+    assert (app / "keep").read_text() == "existing app"
+    assert "0.69.0" in binary.read_text()
+
+
 @pytest.mark.parametrize(
     "compiler",
     ["usr/bin/clang", "Toolchains/XcodeDefault.xctoolchain/usr/bin/clang", None],
@@ -205,12 +260,16 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
     pixi_marker = tmp_path / "pixi-invoked"
     if supported:
         pixi = commands / "pixi"
-        pixi.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> \'{pixi_marker}\'\n')
+        pixi.write_text(
+            '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.82.0"; exit; fi\n'
+            f'printf "%s\\n" "$*" >> \'{pixi_marker}\'\n'
+        )
         pixi.chmod(0o755)
 
     payload = tmp_path / "payload"
     payload.mkdir()
-    (payload / "pixi.toml").write_text("[workspace]\n" + declaration + "\n")
+    manifest_text = '[workspace]\nrequires-pixi = ">=0.82.0"\n' + declaration + "\n"
+    (payload / "pixi.toml").write_text(manifest_text)
     shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
     archive = tmp_path / "source.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
@@ -255,7 +314,7 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
     if supported:
         assert result.returncode == 0, result.stderr
         assert "install --locked" in pixi_marker.read_text()
-        assert (app / "pixi.toml").read_text() == "[workspace]\n" + declaration + "\n"
+        assert (app / "pixi.toml").read_text() == manifest_text
         assert launcher.read_text() != "existing launcher"
         assert (installation / "uninstall.sh").exists()
         assert (installation / "install-manifest.json").exists()

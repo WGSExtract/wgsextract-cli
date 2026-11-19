@@ -2,7 +2,7 @@ import { allControls, configEditorControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
 import { currentSetupPlatform } from "./setup-platforms.js";
 import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
-import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
+import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "./types.js";
 
 type CheckedOptionsInput = Record<string, Set<string> | string[] | string | null | undefined>;
 type StateLike = {
@@ -15,11 +15,13 @@ type StateLike = {
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
     uiMode?: unknown;
+    setupRun?: SetupRun | null;
 } & LooseRecord;
 
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
     const { fieldValues, checkedOptions, configValues } = valuesForUIMode(state);
     const context: CommandContext = {
+        setupReady: !(state.manifest?.setup?.steps?.length) || state.setupRun?.status === "ok" || state.setupRun?.status === "warning",
         fieldValues: { ...fieldValues, ...sectionValues },
         checkedOptions,
         configValues: { ...configValues, ...fieldValues, ...sectionValues },
@@ -102,6 +104,9 @@ function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefin
 }
 
 export function contextValue(context: CommandContext, placeholder: string): StateValue {
+    if (placeholder === "setupReady") {
+        return context.setupReady ? "true" : "false";
+    }
     if (placeholder === "bundleRoot" || placeholder === "bundleWorkspace") {
         return context.bundleRootPath;
     }
