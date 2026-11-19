@@ -142,7 +142,12 @@ def index_folder(ref: PathInput | None) -> str | None:
     )
     if not root or not Path(root).is_dir():
         return None
-    return str(download_path(root, INDEX_NAME))
+    # A complete index wins over a folder left by an interrupted build.
+    built = (Path(root, d, INDEX_NAME) for d in DOWNLOAD_DIRS)
+    return str(
+        next((d for d in built if (d / INDEX_FASTA).is_file()), None)
+        or download_path(root, INDEX_NAME)
+    )
 
 
 def hla_index(params: TypingHlaParams) -> str:

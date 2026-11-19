@@ -119,3 +119,12 @@ def test_interrupted_download_in_ref_resumes_there(tmp_path):
 
     assert resumed == [str(partial.with_suffix(""))]
     assert not (tmp_path / "downloads" / "phylop_hg19.bw").exists()
+
+
+def test_complete_hla_index_in_ref_wins_over_an_empty_downloads_folder(tmp_path):
+    """#1141 review: an empty downloads/t1k_hla hid a complete ref/ index, so
+    offline `typing hla` asked for --download."""
+    _put(tmp_path / "ref" / "t1k_hla" / "hla_dna_seq.fa", ">A*01:01\nACGT\n")
+    (tmp_path / "downloads" / "t1k_hla").mkdir(parents=True)
+
+    assert index_folder(str(tmp_path)) == str(tmp_path / "ref" / "t1k_hla")
