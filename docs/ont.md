@@ -364,9 +364,9 @@ On whole chr20 (64.44 Mb), paired four-thread gVCF calls also matched:
 **142,070 sites/alleles/GT/FILTER** in both VCF and gVCF, and **3,084,277
 reference records identical in every column**. QUAL differed by at most
 0.03; six PL fields and two GQ fields differed by one, without changing GT
-or FILTER. MPS took 15.47 min. The CPU's recorded 86.77 min includes host
-idle sleep and is **not a valid speed comparison**; an awake CPU repeat and
-whole-genome qualification remain pending. See the
+or FILTER. In an awake paired repeat (2026-11-19, `caffeinate`, shared bench
+lock), CPU took **20.36 min** and MPS **15.19 min**: about **1.34x** end to
+end, with the same results. Whole-genome qualification remains pending. See the
 [sizing table and caveats](resource_estimates.md#clair3-on-the-gpu).
 
 On **x86-64 Linux**, `vcf clair3 --gpu` runs its neural networks on an NVIDIA

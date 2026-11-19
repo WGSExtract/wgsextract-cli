@@ -580,44 +580,46 @@ temporary-space and time estimates, not the CUDA tensor budget or NVIDIA
 memory thresholds. These time estimates are conservative placeholders, not
 measured MPS whole-genome times. MPS availability and the patched package
 are mandatory preflight checks; no automatic fallback or installation.
-Package publication/Pixi pinning and whole-genome qualification are pending;
-see [the package release gate](../native/clair3/README.md#packaging-and-release).
+Package publication/Pixi pinning is done (`macos-clair3-1`); whole-genome
+qualification is pending; see [the package release](../native/clair3/README.md#packaging-and-release).
 
-**M1 Pro sizing, 2026-11-18:** 10 cores, 32 GiB, four calling threads,
+**M1 Pro sizing, 2026-11-18/19:** 10 cores, 32 GiB, four calling threads,
 Clair3 2.0.5/PyTorch 2.14.1, original-alignment public HG002 ONT reads,
 `r1041_e82_400bps_sup_v400`, through the real CLI with gVCF. Only chr20 was
 streamed from the public CRAM, once, into a shared 3.7 GiB BAM; the same
 local BAM/reference/model served both runs. No whole-genome run was made.
+The table is the awake paired repeat on 2026-11-19 with the published
+`macos-clair3-1` package: `caffeinate`, CPU then MPS in one turn of the shared
+bench lock (no other timed work; one-minute load 15–33 at the CPU run's start,
+3–7 later, so the CPU figure may be slightly pessimistic).
 
 | chr20, 64.44 Mb (~2.1% of 3,088 Mb) | Wall | Max process RSS / sampled tree RSS | Sampled peak temp | Published output |
 | --- | ---: | ---: | ---: | ---: |
-| CPU + gVCF | 86.77 min **(includes host sleep)** | 1.99 / 4.63 GiB | 512.76 MiB | 31.44 MiB |
-| MPS + gVCF | 15.47 min | 2.09 / 4.88 GiB | 515.85 MiB | 31.44 MiB |
+| CPU + gVCF | 20.36 min | 1.99 / 4.71 GiB | 510.92 MiB | 31.44 MiB |
+| MPS + gVCF | 15.19 min | 2.09 / 5.22 GiB | 512.63 MiB | 31.44 MiB |
 
 Both produced **142,070 identical sites/alleles/GT/FILTER**, in VCF and gVCF,
 and **3,084,277 reference records identical in every column**. QUAL differed
-by at most 0.03; six PL fields and two GQ fields differed by one. The system's
-pre-existing 256 KiB swap usage did not increase; minimum available system
-RAM was 10.38/10.48 GiB. Tree RSS double-counts shared pages and is not GPU
-allocator/unified-memory accounting; 0.5-second disk sampling can miss spikes.
+by at most 0.03; six PL fields and two GQ fields differed by one. Peak system
+swap was 1.55/1.54 GiB (left over from earlier host work); minimum available
+system RAM was 12.0/10.8 GiB. Tree RSS double-counts
+shared pages and is not GPU allocator/unified-memory accounting; 0.5-second
+disk sampling can miss spikes.
 
-**Do not claim a 5.6x speedup from this table.** Power logs confirm repeated
-idle sleep during the CPU run (13:11–14:19); `/usr/bin/time`'s real elapsed
-time includes it. The monitor's sleep-excluding monotonic counter recorded
-about 20.39 min, but is not a replacement wall-time benchmark. MPS had no
-sleep interval. A reserved slot excluded certification, not all other host
-activity (one-minute load ranged 4.3–58.1 CPU, 6.4–21.7 MPS).
+MPS was about **1.34x** faster end to end on whole chr20. The first sizing
+pair (2026-11-18) recorded 86.77 min for CPU because the host slept during the
+run, and is superseded by this repeat.
 
 For **capacity planning only**, multiplying chr20 by 47.9 gives about 24 GiB
 temporary space and 1.47 GiB output. The same mechanical scaling gives
-12.4 h for MPS, **not a measured or reliable whole-genome ETA**: chr20's
+12.1 h for MPS, **not a measured or reliable whole-genome ETA**: chr20's
 depth/candidate mix, including its pericentromere, is not representative.
 Do not scale peak RSS linearly or assume the whole genome fits from this
 slice alone. Its measured temp peak also exceeds the current CPU-path
 preflight estimate (~0.18 GiB); reserve space from measurements, not that
-estimate alone. Before paired whole genomes, repeat the CPU sizing run in
-an awake reserved slot, check large-contig/gather memory and staging disk,
-and use run-scoped sleep prevention and failure notifications.
+estimate alone. Before paired whole genomes, check large-contig/gather memory
+and staging disk, and use run-scoped sleep prevention and failure
+notifications.
 
 ### Clair3's temporary space
 
