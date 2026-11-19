@@ -1,5 +1,25 @@
 # CLI resource preflight and reusable estimates
 
+## Pipeline benchmarks
+
+`wgsextract benchmark --help` lists datasets and profiles. Start with
+generated chrM and the lighter core operation suite:
+
+```bash
+pixi run wgsextract benchmark --profile smoke --suite core --outdir out/benchmark-smoke
+```
+
+The default is synthetic; `--dataset real` is the release-backed mini-genome,
+while `real-1x`/`real-30x` use public WGS data. HTTP downloads resume
+`.partial` files and publish only after completion and available checksum
+verification. `example-genome download` shares this downloader; FTP/Aspera
+keep their specialized transports. See [download safety](reference-genomes.md#download-safety).
+Keep larger runs last and budget CPU, RAM and disk first.
+
+Runtime/workspace depend on coverage, input, hardware and toolchain.
+Help and realignment stages promise no fixed times; thread-based estimates
+are advisory. Choose a reproducible dataset/profile before comparing hosts.
+
 ## Imputation
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
@@ -741,6 +761,29 @@ reference RAM fallback, and adds a structured `UNKNOWN` disk row with no guessed
 filesystem for reference-index storage.
 
 ## Calibration and limitations
+
+Native short-read preflight checks available, not installed, RAM on Linux,
+macOS and Windows. It includes resident indexes, working buffers, samblaster,
+per-thread sort plus overhead and pipeline bookkeeping. Read-dependent
+headroom scales with input count, not reference length. FASTQ counts use
+size and a bounded prefix (up to 4 MiB compressed/16 MiB decoded per mate,
+plain/gzip/BGZF); realign uses indexed `idxstats` before extraction.
+Unreadable/unsupported samples or missing indexes use the explicit
+680-million-read fallback, not a guarantee for larger inputs.
+Changing length/compressibility later in a FASTQ can affect extrapolation.
+Swap/pagefile does not count as available RAM.
+
+Component and per-read spill estimates are logged. Low spill space warns
+for align; realign retains its refusal. Auto falls back to BWA if MEM2
+cannot fit; explicit MEM2 fails before alignment/extraction, including when
+its proposed native MEM3 stand-in does not fit. BWA warns and continues.
+Free RAM, lower `--memory`/`--threads`, or choose `--aligner bwa`.
+In a 339.8-million-pair genome, BWA's working set was 17–17.5 GiB including
+paged-out memory: the resident peak alone is not the requirement.
+At six threads/256M, the historical conservative budgets were ~18 GiB BWA
+and ~29 GiB MEM2 including transient headroom; smaller inputs scale down,
+deeper/shorter-read inputs up. Newer platform/read-length calibration below
+also applies.
 
 - Ordinary 150-bp, up-to-six-thread alignment RAM retains the #179/#194 model:
   resident reference indexes, aligner working set, read-scaled samblaster and

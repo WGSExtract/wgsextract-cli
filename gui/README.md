@@ -10,6 +10,9 @@ This folder is part of the [wgsextract-cli](../README.md) repository: the app sh
 
 Earlier work, including the SwiftUI macOS app, the Swift CLI, Electron and a dozen experimental renderers, and the benchmarks across them, is preserved on the [`old-experimental`](https://github.com/WGSExtract/gui-for-cli/tree/old-experimental) branch.
 
+The [built-in genome viewer](docs/genome-viewer.md) opens indexed local BAM,
+CRAM and VCF/gVCF files against a manually selected local reference, entirely offline.
+
 ## Layout
 
 | Path | Contents |

@@ -254,13 +254,13 @@ def test_packaged_catalogue_matches_packaged_templates():
         name = body.name.split(".")[0]
         ids = revisions.template_ids(name, [str(_PACKAGED_TEMPLATES)])
         assert name in linked, name
-        assert ids is not None and len(ids) == linked[name].markers
+        rows = sum(1 for _ in template_rows(name, str(body)))
+        assert ids is not None and rows == linked[name].markers
 
 
 def test_info_chip_cli(tmp_path):
-    body = _PACKAGED_TEMPLATES / "body" / "Ancestry_V2_2024.txt.gz"
-    with gzip.open(body, "rt") as source:
-        rows = [line.split("\t")[:3] for line in source]
+    body = _PACKAGED_TEMPLATES / "body" / "Ancestry_V2_2024.txt.delta.gz"
+    rows = list(template_rows("Ancestry_V2_2024", str(body)))
     export = tmp_path / "AncestryDNA.txt"
     export.write_text(
         "#AncestryDNA raw data download\n#Data was collected using AncestryDNA "

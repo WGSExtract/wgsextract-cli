@@ -208,3 +208,30 @@ def test_858_repointed_link_in_directory_input_reruns(tmp_path: Path) -> None:
     (flow.database / "current").symlink_to(tmp_path / "b", True)
 
     assert flow.run()["annotation"].startswith("ran: its database")
+
+
+def test_process_exiting_during_the_tag_scan_is_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """psutil's macOS proc_environ raised SystemError and crashed realign."""
+    import psutil
+
+    from wgsextract_cli.core.steps import RUN_TAG, tagged_processes
+
+    class FakeProcess:
+        def __init__(self, pid: int, environ: dict[str, str] | None) -> None:
+            self.pid = pid
+            self.info = {"name": f"tool{pid}"}
+            self._environ = environ
+
+        def environ(self) -> dict[str, str]:
+            if self._environ is None:
+                raise SystemError(
+                    "<built-in function proc_environ> returned a result "
+                    "with an exception set"
+                )
+            return self._environ
+
+    processes = [FakeProcess(101, None), FakeProcess(102, {RUN_TAG: "run-1"})]
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: iter(processes))
+    assert tagged_processes({"run-1"}) == ["tool102 (pid 102)"]

@@ -125,10 +125,10 @@ def load_strand_quirks(path: Path | None = None) -> tuple[StrandQuirk, ...]:
                     raise ValueError(f"line {number} is not a valid strand quirk")
                 for template in quirk.templates:
                     info = get_template_format(template)
-                    # NCBI36 templates are already written in their own build's
+                    # NCBI36/GRCh38 templates are written in their own build's
                     # orientation; corrections.tsv markers are relocated, so a
                     # strand entry for them could apply on top of a position fix.
-                    if info is None or info.get("ncbi36"):
+                    if info is None or info.get("build"):
                         raise ValueError(f"line {number}: unusable template {template}")
                     if (template, quirk.marker) in corrected:
                         raise ValueError(

@@ -11,6 +11,77 @@ For memory and disk planning, see [resource estimates](resource_estimates.md).
 
 ## CPU aligners
 
+### Input and output safety
+
+FASTQ alignment requires an explicit `--ref FASTA` when the library holds
+several genomes: reads cannot identify the intended reference.
+`align` validates every FASTQ record before mapping. Paired files need equal
+counts and ordered matching names (`/1`/`/2` accepted); truncated FASTQ or
+gzip fails. Setup/platform checks run first. Completed alignment must contain
+exactly one primary record per FASTQ read, not counting secondary/supplementary
+records. Only validated files replace earlier alignments, atomically, even
+with `--no-atomic-output`. API cancellation interrupts validation cooperatively.
+
+Pipes/stdin spool under `--tmp-dir` (else `--outdir`) before validation;
+budget disk for the entire stream. Read names/output filenames retain the
+original inputs. Use `--platform` for long-read streams: unlabelled streams
+use Illumina defaults without consuming the first read to detect platform.
+Native HiFi/CCS FASTQs select long-read defaults; bounded header/length/quality
+sampling handles renamed FASTQs. Ambiguous long reads require `--platform
+ont|hifi|clr`, never silent BWA defaults; see [platform evidence](ont.md).
+
+BWA/bwa-mem2 use fixed `-K 100000000` for thread-count reproducibility,
+including realign, pet and Ultima alignment; older releases used thread-based
+batches. On references with ALT contigs (hs38DH/full GRCh38), BWA gets a
+`<ref>.alt` list. Without it, reads across ~110 Mb of duplicated sequence
+(including HLA) get MAPQ 0 or land on ALT copies, losing variants.
+WGS Extract v4 aligned that way; callers, microarray and trios warn,
+and `realign` recovers the affected regions. See [input diagnostics](usage.md#inspecting-an-alignment).
+`pet-align` writes beside the R1 FASTQ unless `--outdir` is given.
+
+Short-read realign checks the first 10,000 primary reads and, when indexed,
+10,000 unplaced unmapped reads before extraction. It refuses single-end
+primary reads (neither first nor second mate, e.g. flag 0 or 4) with exit 1,
+rather than silently discarding them. This costs ~0.1 s on a 30x CRAM versus
+~3 min for an exact count. Sampling can miss rare single-end reads in paired
+input, so extraction also counts dropped reads and warns. Extract such inputs
+with `bam unalign --se`, then `align` the single-end FASTQ.
+ONT, PacBio and Ultima `--platform` paths handle single ends themselves.
+
+Paired short-read realign streams newly extracted reads as interleaved pairs
+(`-p`) into BWA/bwa-mem2 when a collate bucket fits beside alignment, including
+30x genomes. It uses extraction's bucket count for identical records and
+preserves paired filtering; the program header truthfully records stdin `-p`.
+Otherwise it extracts to files without changing aligner. `--keep-fastq`,
+supplied/reused FASTQs, minimap2, GPU and long reads retain their file paths.
+`--force-extract` with cached FASTQs at the exact output paths also retains
+file handling and success-cleanup/failure-retention rules; fresh forced
+extraction may stream. Collation needs temp disk and one bucket's RAM beside
+sorting, both in [preflight](resource_estimates.md#other-pipelines).
+Failed streams leave no reusable FASTQs: use `--keep-fastq` for retries.
+
+### Long-read realignment
+
+Single-end PacBio (`PL:PACBIO` or read names, all sampled primary reads
+single-end) selects minimap2 `map-hifi`, or `map-pb` for `READTYPE=SUBREAD`,
+as explicit `--platform pacbio|hifi|clr` does. Paired PacBio-labelled input
+keeps short-read defaults.
+Aligned BAM/CRAM and unaligned basecaller BAM each supply one primary record
+per read: `samtools fastq -F 0x900 -T MM,ML,MN,pi | minimap2 -y -Y`.
+MM/ML tags survive; secondary/supplementary records never become extra reads.
+Kinetics tags `fi`/`ri`/`fp`/`rp` do not carry through.
+`--keep-fastq` writes tagged `<input stem>.fastq.gz` first:
+`movie.ccs.bam` gives `movie.fastq.gz` and `movie_aligned.bam`, also for ONT.
+
+Streaming long-read realign uses neither pbmm2 nor `--gpu`. For pbmm2 give PacBio BAM
+to `align --r1 BAM --aligner pbmm2`, which reads primary records itself;
+convert CRAM with `bam to-bam` first.
+ONT read groups/UUID read names select minimap2 `map-ont`; CPU alignment
+and sorting retain MM/ML. See [ONT](ont.md) for methylation, Sniffles,
+Clair3 basecaller-matched models, phasing and qualification limits.
+
+### Automatic short-read selection
+
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
 
@@ -288,12 +359,25 @@ The gain is modest. Measured at 4 threads on an 8-core Linux workstation
   marked 5,884 duplicate records instead of 5,894. samblaster stays the
   default for paired reads.
 
+<a id="nvidia-gpus-parabricks"></a>
+
 ## NVIDIA GPUs (`--gpu`, Parabricks)
 
 `align --gpu` and `realign --gpu` run [NVIDIA Parabricks](https://docs.nvidia.com/clara/parabricks/):
 `fq2bam` (BWA-MEM, sorting and duplicate marking) for short reads, and its
-minimap2 for PacBio HiFi. The [README](../README.md#nvidia-gpus-parabricks)
-lists exactly what each command runs.
+minimap2 for PacBio HiFi FASTQs. Streaming long-read realignment directly
+from BAM/CRAM refuses `--gpu` to retain tags; supply FASTQs for that GPU path.
+
+| Command | With `--gpu` |
+| :--- | :--- |
+| `align`, `realign` (short reads) | `pbrun fq2bam`, same index, `.alt` and read group as `--aligner bwa` |
+| `align`, `realign` with supplied FASTQs (HiFi) | minimap2 `map-hifi`, or `map-pbmm2` for `--aligner pbmm2` |
+| `vcf deepvariant` | WGS, WES, PACBIO or ONT_R104 (`--mode ont`); no checkpoint/hybrid. ONT mapping is tested, GPU ONT accuracy is not qualified. With native wgse-deepvariant ≥0.3.0 and weights installed, WGS/ONT use CUDA instead. |
+| `vcf gatk` | HaplotypeCaller |
+
+These are BWA-MEM, DeepVariant and GATK-equivalent paths, not new callers.
+On the measured RTX 3090, DeepVariant and HaplotypeCaller took about a minute
+for chr20. Ultima uses Google's experimental image instead, below.
 
 Requirements, which the CLI checks but doesn't install:
 
@@ -302,6 +386,14 @@ Requirements, which the CLI checks but doesn't install:
 - an NVIDIA GPU with 16 GB or more and its driver;
 - Docker with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/);
 - the Parabricks image (`parabricks_image` in `config.toml`).
+
+Install the image explicitly with
+`docker pull nvcr.io/nvidia/clara/clara-parabricks:4.8.0-1`.
+Reads, outputs and reference mount at their own paths; tools run as you.
+Parabricks cannot write CRAM against gzipped FASTA, so it writes BAM and
+host samtools converts. With [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
+and `deepvariant_weights`, WGS/ONT_R104 run natively on CUDA;
+`deepvariant_native = "off"` keeps Parabricks. Other models still use it.
 
 Before starting Parabricks, the CLI reads the GPU's free memory from
 `nvidia-smi`. When another program holds part of the GPU, it uses the tool's
@@ -326,6 +418,22 @@ What `--gpu` refuses:
   flow-based duplicates.
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
+
+Parabricks has no Ultima model. `vcf deepvariant --gpu` on Ultima
+(or `--model-type ULTIMA`) instead runs Google's experimental
+`google/deepvariant:gh1100-ultima-gpu`, pinned by digest:
+
+```bash
+docker pull google/deepvariant:gh1100-ultima-gpu@sha256:f5572ef9b996c619c9e73a3f3391f894af72bf868d27578d9a4985298e75a1f7
+```
+
+`deepvariant_ultima_gpu_image` overrides it. The CPU image's resumable
+stages, `--dry-run`, `--force-step` and `--batch-size` remain; only
+call_variants uses GPU. It needs x86-64 Linux, NVIDIA driver and Docker's
+NVIDIA runtime. Before call_variants, each GPU must have 7.3 GiB free;
+`--no-gpu-memory-check` warns and runs anyway. This was measured at batch
+1024; another batch warns that the check may not fit. Download/unpacked
+sizes are ~10/17.5 GB.
 
 ## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
 

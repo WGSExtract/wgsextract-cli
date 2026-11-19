@@ -140,6 +140,8 @@ export type LabelTextKey =
     | "prerequisitesCheckingTitle"
     | "prerequisitesInstallTitleFormat";
 export interface Labels extends Partial<Record<LabelTextKey, string>> {
+    viewerTitle?: string;
+    viewerStrings?: StringMap;
     libraryStatusLabels?: StringMap;
     libraryTagLabels?: StringMap;
     [key: string]: unknown;

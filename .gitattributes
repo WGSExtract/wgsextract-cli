@@ -14,7 +14,7 @@ packaging/windows-arm64/recipes/*/patches/*.patch -whitespace
 src/wgsextract_cli/assets/microarray/raw_file_templates/head/* -text whitespace=cr-at-eol
 
 # The CHM13 manifest and payloads are verified byte-for-byte at runtime.
-src/wgsextract_cli/assets/microarray/chm13/v1/* -text
+src/wgsextract_cli/assets/microarray/chm13/v2/* -text
 
 # Audited terms are pinned by sources.json and copied verbatim to release assets.
 src/wgsextract_cli/assets/resource_terms/** -text

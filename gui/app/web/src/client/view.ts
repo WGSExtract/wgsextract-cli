@@ -85,7 +85,7 @@ export function renderNavigation() {
     const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
-    <div class="nav-primary">${renderNavigationGroups(primaryPages)}</div>
+    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open>${escapeHTML(state.labels.viewerTitle ?? "")}</button>` : ""}</div>
     ${bottomPages.length || updateItem ? `<div class="nav-bottom">${updateItem}${renderNavigationGroups(bottomPages, false)}</div>` : ""}
   `;
 }
@@ -318,7 +318,7 @@ export function renderTextControl(control: ControlSpec) {
     <div class="form-row">
       <label class="row-label" for="${escapeAttribute(inputID)}">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</label>
       ${control.kind === "path"
-        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
+        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button>${state.manifest?.id === "wgs-extract" && ["bam_path", "vcf_path"].includes(control.id) && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(rawValue)) ? `<button type="button" class="secondary-button" data-view-reads="${escapeAttribute(control.id)}">${escapeHTML(state.labels.viewerStrings?.viewReads ?? "")}</button>` : ""}</span>`
         : input}
     </div>
   `;

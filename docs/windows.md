@@ -33,6 +33,69 @@ Installers before this one set up MSYS2 (by default at `C:\msys64`) for their
 tools. Nothing uses it now; `uninstall_windows.bat --remove-msys2` removes it if
 you have no other use for it.
 
+## Qualifying a whole genome on your own PC
+
+The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
+HG002 data through chr22 extraction, BWA realignment and SNP/indel calling,
+then repeats processing on the whole genome. Before calling variants it declares
+HG002's known Male sex with `sample set --input <aligned.bam> --sex Male` in
+both phases and uses GRCh38 ploidy; the chr22 slice cannot infer sex from
+coverage. Use native x64 Windows and
+PowerShell 7.2 or newer (`pwsh`). Install the CLI as above first; the script
+checks dependencies and does not install or upgrade software.
+
+Allow **400 GiB of free space on a local SSD** and **48 GiB RAM minimum
+(64 GiB recommended, with 40 GiB available)**. This conservative disk budget
+allows for a 100+ GB input, reference/indexes, both sets of outputs and temporary
+files. Existing files from the same run count toward the budget on resume.
+In the earlier qualification, chr22 extraction took 46 seconds and used
+4.2 GiB of system memory. That measures extraction only, not chr22 processing.
+The older full-genome baseline took about **14.4 hours on 16 vCPUs** and peaked
+at 35.8 GiB; allow longer for downloads, indexing or a slower PC.
+
+From your installed CLI folder, use a dedicated workspace on your chosen drive:
+
+```powershell
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -DryRun
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -Download
+```
+
+`-Download` permits only the documented public inputs: HG002 BAM/BAI from
+Google's `brain-genomics-public` bucket, the reference bootstrap archive from
+GitHub releases, and `hs38` from the CLI reference catalog's public mirrors.
+The script prints these sources before work starts. Without `-Download`,
+missing preparation steps stop with instructions to opt in. Processing runs
+locally; the script does not upload data or send results anywhere.
+
+`-Root` defaults to `$HOME\wgse-30x`; `-Threads` defaults to your logical CPU
+count. Use `-InstallDir` if you run outside your installed CLI folder.
+Select `-Phase prepare`, `-Phase slice` or `-Phase full` to run in stages;
+the default `all` runs them in order and requires a passing slice before full
+processing. Preparation downloads the whole BAM before making the slice.
+Close other workloads, keep the PC awake, and leave the PowerShell window open.
+After interruption, repeat the same command: completed steps remain skipped
+and curl resumes partial downloads. The CLI's realignment checkpoints resume
+an interrupted realignment.
+
+To select a version, install the desired release with `install_windows.bat`
+in that release's folder first. `-Version 0.9.0` checks the installed version;
+`-Commit <40-character SHA>` checks an existing Git checkout (and requires Git).
+Neither option downloads source or changes your installation. Keep the same
+script, installation, root and thread count when resuming; choose a fresh
+root to compare versions. Do not edit the workspace's generated `config.toml`
+or delete completed outputs.
+
+Attach `evidence\summary.md` and `evidence.zip` from the workspace to
+[#1024 (Windows 30x qualification)](https://github.com/WGSExtract/wgsextract-cli/issues/1024).
+The summary includes wall times, sampled process-tree and whole-system memory
+peaks, alignment/VCF record counts, CPU/RAM and disk details. The zip contains
+logs, installation manifests and summaries, including failed steps. Each retry
+keeps its own logs and measurements under `evidence\attempts`; summary wall
+times sum all attempts and peaks take the maximum, so checkpoint reuse does
+not hide earlier work. Time between retries is excluded. It excludes
+BAM/VCF/FASTQ files. Review it for local paths and machine details before posting.
+Failures print the evidence location and return a nonzero exit code.
+
 ## Where the tools come from
 
 Bioconda publishes no Windows packages, so WGS Extract builds its own:

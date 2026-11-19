@@ -185,3 +185,32 @@ offline `multiqc_report.html`. The report includes:
 - FastQC reports;
 - `bcftools stats` output, as written by `qc vcf`;
 - our sections.
+
+For example:
+
+```bash
+wgsextract qc fastqc --input sample_R1.fastq.gz --outdir out/fastqc
+wgsextract qc fastqc --input sample_R2.fastq.gz --outdir out/fastqc
+wgsextract qc multiqc --input out/fastqc --outdir out/combined
+```
+
+Or `qc fastqc --input sample_R1.fastq.gz --r2 sample_R2.fastq.gz --multiqc`
+processes both mates and replaces `multiqc_report.html` in its output directory
+in one run.
+
+`qc multiqc` is opt-in: it combines existing reports without rerunning tools
+or changing their outputs. `--input` accepts a file or directory; without
+`--outdir`, output goes beside the file or into the directory.
+The output is one standalone `multiqc_report.html`, never a parsed-data
+directory, and inherited titles cannot change its filename.
+Replacing it requires `--force`; failed replacement preserves the old report.
+Non-force publication uses atomic hard links against concurrent overwrites;
+filesystems without them need another `--outdir` or explicit `--force`.
+
+The CLI validates [MultiQC](https://github.com/MultiQC/MultiQC), never installs it. The optional `multiqc` Pixi
+environment is explicit user-managed setup; dev environments include it for
+tiny real-tool tests. MultiQC is an external GPLv3 tool, not a bundled dataset.
+Only FastQC, bcftools and custom-content modules run. Version checks, MegaQC
+uploads, AI summaries and report controls are disabled; no browser opens.
+The subprocess's standard `TMPDIR` points to an owned report workspace,
+not a new application configuration option.

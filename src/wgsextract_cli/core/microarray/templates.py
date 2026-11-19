@@ -1,12 +1,13 @@
 import functools
 import gzip
+import itertools
 import logging
 import os
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO, TypedDict
+from typing import TextIO
 
 from pyliftover import LiftOver
 
@@ -15,24 +16,19 @@ from wgsextract_cli.core.microarray.coordinates import (
     project_coordinates,
     sole_placement,
 )
+from wgsextract_cli.core.microarray.formats import TemplateFormat
+
+# Re-exported: most callers find template formats here.
+from wgsextract_cli.core.microarray.formats import (
+    get_template_format as get_template_format,
+)
 from wgsextract_cli.core.microarray.identity import MicroarrayIdentity, resolve_rsid
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError
 
 TemplateSearchPath = str | os.PathLike[str]
 TemplateSearchInput = TemplateSearchPath | Sequence[TemplateSearchPath | None] | None
 _TEMPLATE_SEARCH_PARENT_LIMIT = 3
-
-
-class _TemplateFormatOptions(TypedDict, total=False):
-    # The template's positions are NCBI36 (hg18), not GRCh37: lifted to GRCh37
-    # to find their calls, and written as they are.
-    ncbi36: bool
-
-
-class TemplateFormat(_TemplateFormatOptions):
-    suffix: str
-    parts: int
 
 
 _COMPLEMENT = str.maketrans("ACGTacgt", "TGCAtgca")
@@ -159,16 +155,99 @@ def _template_body_paths(
         part_suffix = f"_{i}" if fmt_info["parts"] > 1 else ""
         template_name = f"{format_name}{part_suffix}{fmt_info['suffix']}"
         path = Path(templates_root, "body", template_name)
-        # Templates shipped with the CLI are gzipped (see assets/microarray).
-        gzipped = path.with_name(path.name + ".gz")
-        body_templates.append(str(gzipped if gzipped.exists() else path))
+        # Templates shipped with the CLI are gzipped, most as a delta against
+        # another shipped template (see assets/microarray).
+        candidates = (path.with_name(path.name + ext) for ext in DELTA_EXTENSIONS)
+        body_templates.append(str(next((p for p in candidates if p.exists()), path)))
     return body_templates
+
+
+# A delta body names a shipped base template, then rebuilds the template's rows
+# from it in order: "=N" copies the base's next N rows, "-N" skips them, and
+# "+ID<TAB>chromosome<TAB>position" inserts a row.
+DELTA_SUFFIX = ".delta.gz"
+DELTA_EXTENSIONS = (".gz", DELTA_SUFFIX)
 
 
 def _open_template(path: str) -> TextIO:
     if path.endswith(".gz"):
         return gzip.open(path, "rt")
     return open(path)
+
+
+# A delta's base may itself be a delta, this many deep.
+_MAX_DELTA_DEPTH = 4
+
+
+def _body_rows(
+    format_name: str, path: str, depth: int = 0
+) -> Iterator[tuple[str, str, str]]:
+    """A template body's rows as stored, before corrections."""
+    if path.endswith(DELTA_SUFFIX):
+        if depth >= _MAX_DELTA_DEPTH:
+            raise WGSExtractError(f"Template delta {path} nests too deep.")
+        yield from _delta_rows(path, depth)
+        return
+    with _open_template(path) as f:
+        for line in f:
+            line = line.strip().replace('"', "")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("," if line.count(",") > line.count("\t") else "\t")
+            if len(parts) < 3:
+                continue
+            if format_name == "23andMe_SNPs_API":
+                # This template is chrom (chr1), position, rsID.
+                yield parts[2], _chrom_from_liftover(parts[0]), parts[1]
+            else:
+                yield parts[0], parts[1], parts[2]
+
+
+def delta_bases(path: str | Path) -> list[Path]:
+    """The shipped bodies a delta body is decoded from, nearest first, so a
+    change to any of them makes what was built from it stale."""
+    bases: list[Path] = []
+    current = str(path)
+    while current.endswith(DELTA_SUFFIX) and len(bases) < _MAX_DELTA_DEPTH:
+        try:
+            with gzip.open(current, "rt") as f:
+                header = f.readline().rstrip("\n").split("\t")
+        except OSError:
+            break
+        info = get_template_format(header[-1]) if header[0] == "#base" else None
+        if len(header) != 2 or info is None or info["parts"] != 1:
+            break
+        (current,) = _template_body_paths(str(_PACKAGED_TEMPLATES), header[1], info)
+        bases.append(Path(current))
+    return bases
+
+
+def _delta_rows(path: str, depth: int) -> Iterator[tuple[str, str, str]]:
+    with gzip.open(path, "rt") as f:
+        header = f.readline().rstrip("\n").split("\t")
+        base_info = get_template_format(header[-1]) if len(header) == 2 else None
+        if header[0] != "#base" or base_info is None or base_info["parts"] != 1:
+            raise WGSExtractError(f"Template delta {path} names no shipped base.")
+        (base_path,) = _template_body_paths(
+            str(_PACKAGED_TEMPLATES), header[1], base_info
+        )
+        if not Path(base_path).exists():
+            raise WGSExtractError(f"Template delta {path}: base {header[1]} missing.")
+        base = _body_rows(header[1], base_path, depth + 1)
+        for line in f:
+            op, arg = line[0], line[1:].rstrip("\n")
+            if op == "+":
+                snp_id, chrom, pos = arg.split("\t")
+                yield snp_id, chrom, pos
+                continue
+            count = int(arg)
+            taken = list(itertools.islice(base, count))
+            if len(taken) != count:
+                raise WGSExtractError(f"Template delta {path} overruns its base.")
+            if op == "=":
+                yield from taken
+            elif op != "-":
+                raise WGSExtractError(f"Template delta {path}: bad line {line!r}")
 
 
 def _template_corrections() -> dict[tuple[str, str, str], str]:
@@ -187,29 +266,16 @@ def template_rows(format_name: str, path: str) -> Iterator[tuple[str, str, str]]
     """(ID, chromosome, position) of each marker in a template body, as the
     vendor names them, with corrections.tsv's fixes applied."""
     corrections = _template_corrections()
-    with _open_template(path) as f:
-        for line in f:
-            line = line.strip().replace('"', "")
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("," if line.count(",") > line.count("\t") else "\t")
-            if len(parts) < 3:
-                continue
-            if format_name == "23andMe_SNPs_API":
-                # This template is chrom (chr1), position, rsID.
-                snp_id, chrom, pos = parts[2], _chrom_from_liftover(parts[0]), parts[1]
-            else:
-                snp_id, chrom, pos = parts[0], parts[1], parts[2]
-            pos = corrections.get((format_name, snp_id, pos), pos)
-            yield snp_id, chrom, pos
+    for snp_id, chrom, pos in _body_rows(format_name, path):
+        yield snp_id, chrom, corrections.get((format_name, snp_id, pos), pos)
 
 
-def ncbi36_to_grch37(
+def lift_to_grch37(
     lifter: LiftOver, chrom: str, pos: str
 ) -> tuple[str, str, bool] | None:
-    """An NCBI36 template position on GRCh37 (vendor chromosome naming), and
-    whether it lies in a region inverted between the builds; None unless the
-    chain places it exactly once on a primary chromosome."""
+    """An NCBI36 or GRCh38 template position on GRCh37 (vendor chromosome
+    naming), and whether it lies in a region inverted between the builds; None
+    unless the chain places it exactly once on a primary chromosome."""
     if not pos.isdigit():
         return None
     hit = sole_placement(
@@ -257,6 +323,7 @@ def template_resource_paths(
     return [
         Path(root, "head", format_name + fmt["suffix"]),
         *(Path(body) for body in bodies),
+        *(base for body in bodies for base in delta_bases(body)),
         _PACKAGED_TEMPLATES / "corrections.tsv",
     ]
 
@@ -335,91 +402,6 @@ def liftover_hg38_to_hg19(
     return counts
 
 
-# Ported from legacy program/aconv.py logic
-_TEMPLATE_FORMATS: dict[str, TemplateFormat] = {
-    # v1 and v2 chips share one marker list (see assets/microarray).
-    "23andMe_V2": {"suffix": ".txt", "parts": 1},
-    "23andMe_V3": {"suffix": ".txt", "parts": 1},
-    "23andMe_V4": {"suffix": ".txt", "parts": 2},
-    "23andMe_V5": {"suffix": ".txt", "parts": 2},
-    "23andMe_V5_2025": {"suffix": ".txt", "parts": 1},
-    "Ancestry_V1": {"suffix": ".txt", "parts": 4},
-    "Ancestry_V2": {"suffix": ".txt", "parts": 5},
-    "Ancestry_V2_2021": {"suffix": ".txt", "parts": 1},
-    "Ancestry_V2_2024": {"suffix": ".txt", "parts": 1},
-    "FTDNA_V1_Affy": {"suffix": ".csv", "parts": 1, "ncbi36": True},
-    "FTDNA_V2": {"suffix": ".csv", "parts": 1},
-    "FTDNA_V3": {"suffix": ".csv", "parts": 3},
-    "MyHeritage_V1": {"suffix": ".csv", "parts": 1},
-    "MyHeritage_V2": {"suffix": ".csv", "parts": 1},
-    "MyHeritage_GSA_2025": {"suffix": ".csv", "parts": 1},
-    "MyHeritage_GSA_2025_609424": {"suffix": ".csv", "parts": 1},
-    "23andMe_SNPs_API": {"suffix": ".txt", "parts": 1},
-    "23andMe_V35": {"suffix": ".txt", "parts": 1},
-    "LDNA_V1": {"suffix": ".txt", "parts": 1},
-    "LDNA_V2": {"suffix": ".txt", "parts": 1},
-    "Nucleus_V1": {"suffix": ".txt", "parts": 1},
-}
-
-FORMAT_ALIASES = {
-    # 23andMe's v1 and v2 chips export the same marker list.
-    "23andme_v1": "23andMe_V2",
-    "23andme_v2": "23andMe_V2",
-    "23andme_v3": "23andMe_V3",
-    "23andme_v4": "23andMe_V4",
-    "23andme_v5": "23andMe_V5",
-    "23andme_v5_2025": "23andMe_V5_2025",
-    "23andme_v3+v5": "23andMe_V35",
-    "23andme_v3_v5": "23andMe_V35",
-    "23andme_v35": "23andMe_V35",
-    "23andme_api": "23andMe_SNPs_API",
-    "ancestry_v1": "Ancestry_V1",
-    "ancestry_v2": "Ancestry_V2",
-    "ancestry_v2_2021": "Ancestry_V2_2021",
-    "ancestry_v2_2024": "Ancestry_V2_2024",
-    "ftdna_v1": "FTDNA_V1_Affy",
-    "ftdna_v1_affy": "FTDNA_V1_Affy",
-    "familytreedna_v1": "FTDNA_V1_Affy",
-    "ftdna_v2": "FTDNA_V2",
-    "ftdna_v3": "FTDNA_V3",
-    "familytreedna_v2": "FTDNA_V2",
-    "familytreedna_v3": "FTDNA_V3",
-    "ldna_v1": "LDNA_V1",
-    "ldna_v2": "LDNA_V2",
-    "livingdna_v1": "LDNA_V1",
-    "livingdna_v2": "LDNA_V2",
-    "myheritage_v1": "MyHeritage_V1",
-    "myheritage_v2": "MyHeritage_V2",
-    "myheritage_gsa_2025": "MyHeritage_GSA_2025",
-    "myheritage_gsa_2025_609424": "MyHeritage_GSA_2025_609424",
-    "nucleus": "Nucleus_V1",
-    "nucleus_v1": "Nucleus_V1",
-}
-
-
-def resolve_format_key(format_key: str) -> str | None:
-    """The template name for a --formats item, or None for the combined kit
-    ("all", "combined_all" or empty). Refuses anything else: the name becomes
-    part of template and output paths."""
-    normalized = format_key.strip().lower().replace("-", "_")
-    if normalized in {"", "all", "combined_all"}:
-        return None
-    name = FORMAT_ALIASES.get(normalized) or next(
-        (known for known in _TEMPLATE_FORMATS if known.lower() == normalized), None
-    )
-    if name is None:
-        raise UsageError(
-            f"Unknown microarray format {format_key.strip()!r}; see "
-            "`wgsextract microarray --help` for the list."
-        )
-    return name
-
-
-def get_template_format(format_name: str) -> TemplateFormat | None:
-    """Returns metadata for known microarray formats."""
-    return _TEMPLATE_FORMATS.get(format_name)
-
-
 @dataclass(frozen=True)
 class VendorOutputProfile:
     layout: str = "tsv"
@@ -452,8 +434,13 @@ def vendor_output_profile(format_name: str) -> VendorOutputProfile:
         )
     if format_name == "FTDNA_V2":
         return VendorOutputProfile(layout="quoted_csv")
-    if format_name in {"FTDNA_V1_Affy", "FTDNA_V3"}:
+    if format_name.startswith(("FTDNA_", "meuDNA_")):
         return VendorOutputProfile(layout="csv")
+    if format_name == "Genera_V1":
+        # Genera writes MT and Y calls as one letter, but X as two.
+        return VendorOutputProfile(layout="csv", haploid_style="single_ymt")
+    if format_name == "SelfDecode_V1":
+        return VendorOutputProfile(haploid_style="single")
     return VendorOutputProfile()
 
 
@@ -552,7 +539,7 @@ def _kit_is_male(calls: dict[tuple[str, str], str]) -> bool:
 
 def _haploid_letter(genotype: str, chrom: str, pos: str, male: bool) -> str:
     """23andMe writes a haploid call as one letter: MT, Y, and a man's X
-    outside the PARs."""
+    outside the PARs (male is False for vendors writing X with two)."""
     haploid = chrom in ("MT", "M", "Y") or (
         chrom == "X" and male and not _in_x_par(pos)
     )
@@ -566,7 +553,7 @@ def convert_to_vendor_format(
     combined_kit_txt: str,
     output_path: str,
     templates_dir: TemplateSearchInput,
-    ncbi36_chain: str | None = None,
+    lift_chain: str | None = None,
     *,
     identity: MicroarrayIdentity | None = None,
     indel_calls: Mapping[tuple[str, str, str], str] | None = None,
@@ -577,9 +564,9 @@ def convert_to_vendor_format(
     templates. Ported from legacy program/aconv.py. Returns the tally of the
     autosomal genotypes written.
 
-    An NCBI36 template (FTDNA's Affymetrix export) finds its calls at its
-    markers' GRCh37 positions, lifted with ncbi36_chain (UCSC hg18ToHg19);
-    without the chain, by rsID.
+    A template on another build (FTDNA's NCBI36 Affymetrix export, its GRCh38
+    Y files) finds its calls at its markers' GRCh37 positions, lifted with
+    lift_chain (UCSC hg18ToHg19, hg38ToHg19); without the chain, by marker ID.
 
     Calls are written on the forward strand (quirks="corrected"); "vendor"
     writes the markers the vendor reported on the reverse strand that way.
@@ -592,12 +579,13 @@ def convert_to_vendor_format(
     if not fmt_info:
         raise WGSExtractError(f"Unknown microarray format: {format_name}")
 
-    match_rsid = fmt_info.get("ncbi36", False) and not ncbi36_chain
-    lifter = LiftOver(ncbi36_chain) if fmt_info.get("ncbi36") and ncbi36_chain else None
+    build = fmt_info.get("build")
+    match_rsid = bool(build) and not lift_chain
+    lifter = LiftOver(lift_chain) if build and lift_chain else None
     if match_rsid:
         logging.warning(
-            f"No hg18ToHg19 chain to place {format_name}'s NCBI36 markers on "
-            "GRCh37; matching its markers by rsID instead."
+            f"No chain to place {format_name}'s {build} markers on GRCh37; "
+            "matching its markers by ID instead."
         )
     called_variants: dict[tuple[str, str], str] = {}
     called_by_rsid: dict[str, str] = {}
@@ -633,8 +621,10 @@ def convert_to_vendor_format(
                         identity_counts["conflicting_source_rows"] += 1
                     else:
                         called_variants[source_key] = parts[3]
-    single_letter_haploid = vendor_output_profile(format_name).haploid_style == "single"
-    male = single_letter_haploid and _kit_is_male(called_variants)
+    haploid_style = vendor_output_profile(format_name).haploid_style
+    single_letter_haploid = haploid_style != "doubled"
+    # A man's X counts as haploid only for the vendors writing it as one letter.
+    male = haploid_style == "single" and _kit_is_male(called_variants)
 
     templates_root, body_templates = _resolve_templates_for_format(
         templates_dir, format_name, fmt_info
@@ -668,12 +658,12 @@ def convert_to_vendor_format(
                         key: tuple[str, str] | None = (vendor_chrom(t_chrom), t_pos)
                         inverted = False
                         if lifter:
-                            lifted = ncbi36_to_grch37(lifter, t_chrom, t_pos)
+                            lifted = lift_to_grch37(lifter, t_chrom, t_pos)
                             key = lifted[:2] if lifted else None
                             inverted = bool(lifted and lifted[2])
                         result = called_variants.get(key, "--") if key else "--"
                         if inverted and result != "--":
-                            # GRCh37's forward strand is the NCBI36 reverse strand here.
+                            # GRCh37's forward strand is the template build's reverse here.
                             result = sort_alleles(result.translate(_COMPLEMENT))
                         if result != "--" and key and (t_id, *key) in flips:
                             result = sort_alleles(result.translate(_COMPLEMENT))

@@ -43,6 +43,8 @@ GENERATED_DOCS = frozenset(
         "docs/api.md",
         "docs/commands.md",
         "docs/configuration.md",
+        # Hand-written generator input also requires configuration freshness.
+        "docs/data/configuration-guide.md",
         "site_src/cli.md",
         "tests/fixtures/api_cli_snapshot.json",
         "src/wgsextract_cli/assets/cli/help-index.json",
@@ -59,6 +61,7 @@ DOCS_TARGET_INPUTS = {
         "src/wgsextract_cli/core/settings_schema.py",
         "scripts/gen_config_docs.py",
         "docs/configuration.md",
+        "docs/data/configuration-guide.md",
     ),
     "tests/test_api_cli_parity.py": (
         "src/wgsextract_cli/**",
@@ -76,6 +79,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "docs/data/configuration-guide.md",
         "tests/cli_snapshot.py",
         "justfile",
     ),

@@ -21,7 +21,7 @@ CHM13_CHRM_MD5 = "ec493a132ac4823aa696e37109f64972"
 CHM13_CHRM = "CHM13v2.0's chrM"
 # The rCRS's first 40 bases: a rotated copy has them further along.
 RCRS_ORIGIN = "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCT"
-_ASSETS = Path(__file__).resolve().parents[2] / "assets/microarray/chm13/v1"
+_ASSETS = Path(__file__).resolve().parents[2] / "assets/microarray/chm13/v2"
 
 
 def sequence_md5(sequence: str) -> str:

@@ -4,70 +4,66 @@
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-An independent command-line recreation of [WGS Extract](https://github.com/WGSExtract/WGSExtract-Dev/). It wraps samtools, bcftools, bwa/minimap2, GATK, Haplogrep, VEP and other tools and includes native Yleaf-derived Y-DNA analysis, so you can inspect BAM/CRAM files, simulate consumer microarray files, extract Y/mtDNA data, call and annotate variants, and manage reference genomes from scripts or the terminal. [Pixi](https://pixi.sh) provides Python and the bioinformatics tools on macOS, Linux, and Windows.
+An independent command-line recreation of
+[WGS Extract](https://github.com/WGSExtract/WGSExtract-Dev/).
+Inspect BAM/CRAM files, simulate consumer microarray files, extract Y/mtDNA,
+call and annotate variants, and manage reference genomes from the terminal.
+It wraps samtools, bcftools, bwa/minimap2, GATK, Haplogrep, VEP and other tools,
+with native Yleaf-derived Y-DNA analysis.
+[Pixi](https://pixi.sh) provides Python and bioinformatics tools on macOS,
+Linux and Windows.
 
-Documentation site: <https://wgsextract.github.io/wgsextract-cli/>. The WGS Extract desktop app, which bundles this CLI, lives in [`gui/`](gui/README.md); its installers come with each [release](https://github.com/WGSExtract/wgsextract-cli/releases) (see the [app's site](https://wgsextract.github.io/wgsextract-cli/app/)).
-
-Y-DNA prediction credits Yleaf's authors at Erasmus MC: Arwin Ralf, Diego
-Montiel Gonzalez, Kaiyin Zhong, Manfred Kayser and Bram van Wersch.
-Please cite Ralf et al., *Molecular Biology and Evolution* 35(5):1291–1294
-(2018), [doi:10.1093/molbev/msy032](https://doi.org/10.1093/molbev/msy032).
-The modified Yleaf-derived files retain GPL-3.0-or-later licensing;
-see [NOTICE](NOTICE) and the [upstream sync procedure](src/wgsextract_cli/ydna/yleaf_native/README.md).
+- [Documentation site](https://wgsextract.github.io/wgsextract-cli/)
+- [All topic guides](docs/README.md)
+- [Desktop app](gui/README.md), which bundles this CLI; installers ship with
+  each [release](https://github.com/WGSExtract/wgsextract-cli/releases).
+  See the [app site](https://wgsextract.github.io/wgsextract-cli/app/).
 
 ## Privacy
 
 Default commands stay offline: no telemetry, background update checks or
 silent reference downloads. Missing public data requires an explicit
 `--download`; sample-derived information must never be sent without a
-separate, documented opt-in. See [network permissions and destinations](docs/privacy.md).
+separate, documented opt-in.
+See [network permissions and destinations](docs/privacy.md).
 
 ## Install
 
-macOS and Linux: open Terminal, paste this command, and press Enter.
-Linux x86_64 and native ARM64 (`linux-aarch64`) use the same installer.
-ARM64 phase 1 supports the default alignment/CRAM/calling/export pipeline, VEP,
-native Yleaf-derived Y-DNA analysis and Haplogrep 3. GATK still fails before execution because its native kernels
-are not yet qualified. DeepVariant has an explicit
-[native CPU source-build path](docs/deepvariant-arm64.md). There is no silent
-Java or x86-emulation fallback. See [Linux ARM64](docs/linux-arm64.md).
+On macOS or Linux, open Terminal and run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/main/install.sh | sh
 ```
 
-Native Linux ARM64 needs a release that includes ARM64 support; v0.6.5 and
-earlier do not. Until a supporting release is available, select `main` explicitly:
+The script comes from `main` but installs the latest published release into
+`./wgsextract-cli/`, not the development branch. On macOS it checks for Xcode
+Command Line Tools. Linux x86_64 and native ARM64 use the same installer;
+see [Linux ARM64 support and limitations](docs/linux-arm64.md).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/main/install.sh | WGSEXTRACT_REF=main sh
+On Windows, clone or download this repository, then run in PowerShell:
+
+```powershell
+.\install_windows.bat
 ```
 
-The bootstrap script comes from `main`, but it installs the latest published GitHub release, not `main`. It creates `wgsextract-cli/` in the current directory (or next to a downloaded `install.sh`) containing the app (`app/`), Pixi files (`.pixi/`), the `wgsextract` launcher, and `uninstall.sh`. On macOS it checks for the Xcode Command Line Tools first.
+This installs Pixi when missing and native Windows tools; no WSL or MSYS2 is
+needed. See the [Windows guide](docs/windows.md).
 
-Windows: clone or download the repository and run `install_windows.bat` from PowerShell. It installs Pixi when missing, then the CLI and its native Windows tools (WGS Extract's own builds of samtools, bcftools, BWA, bwa-mem2, minimap2, fastp and samblaster) into the Pixi environment. No WSL or MSYS2 is needed. See [docs/windows.md](docs/windows.md).
+[Installer options and uninstall details](docs/installation.md) cover pinned
+versions, custom directories, verification and preserved data.
+The [site install guide](https://wgsextract.github.io/wgsextract-cli/install.html)
+also walks through platform setup and the reference library.
 
-The [install guide](https://wgsextract.github.io/wgsextract-cli/install.html) covers platform notes, download verification, and the reference library in more detail.
+### Running the CLI
 
-### Installer options
+| Install type | Command |
+| :--- | :--- |
+| macOS/Linux installer | `./wgsextract-cli/wgsextract`, or add `wgsextract-cli/` to `PATH` |
+| Source checkout or Windows install | `pixi run wgsextract`, from the repository directory |
 
-Set these environment variables before running `install.sh`:
-
-| Variable | Default | Purpose |
-| :--- | :--- | :--- |
-| `WGSEXTRACT_INSTALL_DIR` | `wgsextract-cli` next to `install.sh`, or `./wgsextract-cli` for `curl \| sh` | Install location |
-| `WGSEXTRACT_RELEASE_TAG` | latest GitHub release | Release tag to install, or `latest` |
-| `WGSEXTRACT_REF` | `WGSEXTRACT_RELEASE_TAG` | Git ref to install, or `latest` |
-| `WGSEXTRACT_ARCHIVE_URL` | GitHub source archive for `WGSEXTRACT_REF` | Exact source archive URL |
-| `WGSEXTRACT_BIN_DIR` | `$WGSEXTRACT_INSTALL_DIR` | CLI launcher directory |
-| `WGSEXTRACT_PIXI_HOME` | unset | Install the SHA-256-verified pinned Pixi under this directory when Pixi is missing, instead of `~/.pixi` |
-| `WGSEXTRACT_PIXI_CACHE_DIR` | `$WGSEXTRACT_INSTALL_DIR/.pixi/cache` | Pixi package cache directory |
-| `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environment directory (kept across updates) |
-| `WGSEXTRACT_NO_OPEN` | unset | Set to `1` to skip opening Finder on macOS |
-
-Leave `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_HOME`, `WGSEXTRACT_PIXI_CACHE_DIR`, and `WGSEXTRACT_PIXI_ENV_DIR` unset to keep everything inside one directory. For reproducible installs set `WGSEXTRACT_RELEASE_TAG=vX.Y.Z`; for testing unreleased code set `WGSEXTRACT_REF=main` or `WGSEXTRACT_ARCHIVE_URL=<url>`.
-
-When Pixi is missing, installers verify the pinned release's SHA-256 before running it; unsigned upstream installer scripts are not executed. Updating the Pixi pin requires updating its trusted release digests too. `ref library --install` also verifies catalogued references against their sequence-name/length signature after indexing. The catalog's `md5` is this dictionary signature, not a FASTA content checksum.
+Examples below write plain `wgsextract`; substitute your launcher.
+Optional tools must be [installed explicitly](docs/developer_setup.md#pixi-environments)
+before use. Feature commands check dependencies; they never install them.
 
 ### Uninstall
 
@@ -75,705 +71,105 @@ When Pixi is missing, installers verify the pinned release's SHA-256 before runn
 ./wgsextract-cli/uninstall.sh --yes
 ```
 
-This removes the install directory, launcher, Pixi environments, and Pixi cache under it, including a reference library in the default `app/reference/` location. Rerunning the installer to update keeps `app/reference/`, `app/genomes/`, and the Pixi environments. `config.toml` is kept unless you add `--remove-config`. Interactive runs ask whether to remove Pixi from `~/.pixi`; with `--yes`, Pixi is kept unless you add `--remove-pixi`, which also removes Pixi's `PATH` line from your shell profiles (and deletes a profile such as `~/.zshrc` if the install created it and nothing else was added). Custom `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_CACHE_DIR`, and `WGSEXTRACT_PIXI_ENV_DIR` locations are recorded at install time, so the uninstaller finds them; `--bin-dir`, `--pixi-cache-dir`, and `--pixi-env-dir` override them.
-
-On all platforms, `--remove-config` includes the owned default users workspace's `~/wgs-extract/config.toml` (`%USERPROFILE%\wgs-extract\config.toml` on Windows) and the legacy per-user config locations. An otherwise empty default users workspace loses its ownership marker and directory too; libraries, other files and their workspace marker are preserved. Unmarked user folders are left alone. Without `--remove-config`, the workspace config is left unchanged.
-
-### Running the CLI
-
-How you invoke the CLI depends on how you installed it:
-
-| Install type | Command |
-| :--- | :--- |
-| `install.sh` | `./wgsextract-cli/wgsextract` (or add `wgsextract-cli/` to your `PATH`) |
-| Source checkout or Windows install | `pixi run wgsextract`, from the repository directory |
-
-The rest of this README writes plain `wgsextract`; substitute the form that matches your install.
+This removes the installation, including reference data inside it.
+Back up anything you want to keep first. Configuration and user-level Pixi
+are kept unless you request `--remove-config` or `--remove-pixi`.
+For Windows and custom locations, see the [uninstall guide](docs/installation.md#uninstall).
 
 ## Quick start
 
-```bash
-# Download the reference library bootstrap (liftover chains, chip templates, metadata)
-wgsextract ref bootstrap
+Use your own BAM/CRAM in place of `sample.cram`. Install the exact reference
+it was aligned to: `hs38` below is an example, not interchangeable with every
+GRCh38 reference.
 
-# List and install a reference genome
+```bash
+# Explicit downloads: library metadata, then a matching reference genome
+wgsextract ref bootstrap
 wgsextract ref library --list
 wgsextract ref library --install hs38
 
-# Check that the required tools are available (exits 3 if a mandatory tool is missing)
+# Validate installed tools (exit 3 if a mandatory tool is missing)
 wgsextract deps check
 
-# Inspect a BAM/CRAM: reference build, file integrity, read metrics
+# Inspect the alignment and its reference build
 wgsextract info --input sample.cram --detailed
 
 # Simulate a 23andMe v5 raw-data file
 wgsextract microarray --input sample.cram --formats 23andme_v5
 
-# Mitochondrial variants and haplogroups
+# Extract mitochondrial variants and predict the maternal haplogroup
 wgsextract extract mito-vcf --input sample.cram
-wgsextract lineage mt-haplogroup --input sample.cram
-wgsextract lineage y-haplogroup --input sample.cram
-wgsextract lineage y-str --input sample.cram --panel Y-37
+wgsextract lineage mt-haplogroup --input sample.cram --download
 ```
 
-Global options (`--input`, `--outdir`, `--genome`, `--ref`, `--threads`, `--memory`, `--json`, `--quiet`, `--debug`, `--log-file` and the others listed by `wgsextract --help`) work before or after the command, at any depth: `wgsextract vcf snp --input x.bam` and `wgsextract --input x.bam vcf snp` are the same. Giving one both before and after the command with different values (`wgsextract --input a.bam info --input b.bam`) is a usage error; repeated in the same position, the last value wins, as usual. A command's own `--help` lists them in one line.
+`--download` explicitly allows the first-use public haplogroup tree download,
+which `ref bootstrap` does not include. Omit it for offline use once cached;
+no sample data is uploaded.
 
-Try commands on a small region (`--region chrM`, where supported) before running whole-genome jobs, which can take hours and hundreds of gigabytes of working space. Every command exits non-zero on failure, so they can be chained in scripts: 1 for a failure, 2 for a usage error (such as a missing `--input`), 3 for a missing or too-old external tool.
+Try a small region (`--region chrM`, where supported) before a whole genome:
+large jobs can take hours and hundreds of gigabytes of working space.
+See [resource estimates](docs/resource_estimates.md) before starting.
 
-Commands that write files also write a `<output>.manifest.json` beside them. It lists the inputs and outputs (with cheap fingerprints), headline metrics, structured warnings and provenance (versions, parameters, reference, timing). With `--json`, any command prints that document to stdout instead of its human-readable output, and logs stay on stderr. See [docs/result-manifest.md](docs/result-manifest.md) for the `wgsextract.result/1` schema, warning codes and exit codes.
+Find the next command with `wgsextract help --all` or the
+[command reference](docs/commands.md).
+For scripts and agents, use `wgsextract help --all --json` for the compact
+index, then `wgsextract help <command> --json` for required arguments,
+options, examples and typed input schemas. Key flags in the index are hints,
+not complete invocations.
 
-Commands can also be called from Python through the typed `wgsextract_cli.api` package, which returns that manifest as a `Result` object; see [docs/api.md](docs/api.md). Commands are moving onto it one group at a time: so far `info`, `vcf snp`/`indel`, `lineage` and `microarray`.
+Commands exit non-zero on failure. Writers record inputs, outputs, warnings
+and provenance in a [result manifest](docs/result-manifest.md); `--json`
+prints structured results while logs stay on stderr.
+See [running commands](docs/usage.md) for option placement, progress and logging.
 
-The same operations are available to other programs on this computer through `wgsextract serve`: a local HTTP/JSON API (127.0.0.1 only, with a per-launch token, background jobs, progress, cancelling and an OpenAPI document) or an MCP server for AI agents (`--mcp`, on stdio or streamable HTTP). Requests may only use files in the folders you allow. See [docs/server.md](docs/server.md).
+## Where to go next
 
-Alignment/realignment pipelines and GATK scatter print a stderr heartbeat every
-60 seconds, including processed versus expected reads (when known), or completed
-shards, elapsed time and a rate-based ETA. Sampled FASTQ read counts are estimates;
-reaching the read count does not mean sorting/indexing has finished. Stdout data,
-alignment/caller arguments and generated genomic files are unchanged. Per-contig
-calling (`vcf snp`/`indel` and `microarray` with more than one thread) reports each
-finished contig on the terminal's progress line and as a `contig` progress event.
-
-`align` validates every FASTQ record before mapping: paired files must have
-equal read counts and matching names in order (`/1` and `/2` mate suffixes
-are accepted). Truncated FASTQ or gzip input is an error. For FASTQ inputs,
-the completed alignment must contain exactly one primary record per input
-read; secondary and supplementary records do not count as extra reads.
-Validated outputs replace previous alignments only after the check passes.
-Setup and platform checks precede the scan. API cancellation interrupts
-validation cooperatively. Named pipes and standard input are spooled under
-`--tmp-dir` (otherwise `--outdir`) before validation; allow disk space for the
-complete stream. Read names and output filenames still use the original inputs.
-Pass `--platform` for long-read streams; unlabelled streams use Illumina defaults
-without consuming their first read for platform detection.
-
-Native PacBio HiFi FASTQs select long-read HiFi/CCS defaults, like PacBio BAMs.
-For renamed FASTQs, bounded header, length and quality sampling distinguishes
-long reads from short reads. Ambiguous long reads require `--platform ont`,
-`--platform hifi` or `--platform clr`, never silently BWA/Illumina defaults;
-see [platform detection and recorded evidence](docs/ont.md).
-
-Persistent logging is off by default. Use a **new, dedicated** path:
-
-```sh
-pixi run wgsextract info --input sample.bam --log-file out/run.log
-```
-
-Alternatively set `log_dir = "~/wgse_logs"` in `config.toml` to create a unique log
-for each run; the folder keeps the newest 100 runs' logs and removes older ones
-it generated. The UTF-8 DEBUG log retains Python diagnostics and pipeline/scatter
-tool messages; `run.log.provenance.json` records argv, CLI/platform versions,
-executed tool commands/versions and small reference-index signatures. Provenance
-is available during the run and finalized on normal exit or handled failure. A
-hard kill may leave its status as `running`. Existing logs are never truncated;
-`--quiet` still suppresses informational console messages, not the file log.
-Review logs before sharing: commands and diagnostics may contain private paths
-or URLs. No environment is captured, no tool is installed for logging, and
-complete reference genomes are not hashed.
-
-Output files are named after the full input stem: `HG002.chr20.bam` produces `HG002.chr20_sorted.bam`, `HG002.chr20_coverage.tsv`, and so on. Outputs go to `--outdir`, the configured `outdir`, or the `--genome` folder.
-
-What commands detect about a sample (sex, sequencing platform, build, depth) is recorded once in its genome folder's `wgsextract.sample.toml`, tied to each input's fingerprint, so later commands don't detect it again. Correct a wrong call with `wgsextract sample set --genome ID --sex Female`; see [docs/sample-workspace.md](docs/sample-workspace.md).
-
-Long workflows (`realign`, `vcf deepvariant`, `analyze comprehensive`) record each step they complete in a `.steps.json` journal beside their output. Rerunning a command that was stopped by a crash, Ctrl-C or an out-of-memory kill skips the verified steps and restarts at the first one that didn't finish. `--dry-run` shows which steps would run and why, `--force-step STEP` reruns one step and those after it, and `--force` reruns them all; see [docs/step-resume.md](docs/step-resume.md).
-
-`wgsextract report --genome ID` summarises a sample's results in one local report (HTML, Markdown and JSON, plus a findings table): sample overview and QC, Y and mtDNA haplogroups, pharmacogenomics (including HLA-A and HLA-B), ClinVar pathogenic calls in the ACMG SF v3.3 genes (or a gene list you choose) with carrier or biallelic status for recessive genes, and the microarray files. Each finding has a confidence label and a link to its evidence. It reads earlier runs' manifests and runs nothing itself; sections not run yet show the command to run. These are technical results, not a diagnosis. See [docs/personal-report.md](docs/personal-report.md).
-
-## Commands
-
-`wgsextract --help` starts with the core commands, in the order you would
-usually run them: `info` → `microarray` / `lineage` → `extract` → `realign` /
-`align` → `vcf` → `vep` → `report`. Setup commands (`ref`, `deps`,
-`example-genome`, `config`) follow, and the advanced ones (optional or
-hard-to-install tools, format repair, benchmarks) are listed by name only.
-[docs/commands.md](docs/commands.md) starts with the path to take from what you
-have (a BAM/CRAM, FASTQ, VCF or raw-data file), then lists every command.
-
-- `wgsextract help --all`: every command on one line, grouped by tier
-  (`help --all vcf` for one group).
-- `wgsextract help vcf snp` (or `wgsextract vcf snp --help`): one command's
-  options, examples and the files it writes. Options for tuning and unusual
-  data are left out; `wgsextract vcf snp --help-all` shows them too.
-- `wgsextract help topics`: concept pages such as `help references`,
-  `help dataset-library`, `help exit-codes` and `help manifests`.
-- `wgsextract help`: the full command tree.
-
-For agents, navigate **index → command**: `help --all --json` is a compact
-index (schema `wgsextract.help-index/1`), with each command's path, one-line
-summary, tier and key flags. Then `help <command> --json` gives the full
-details (schema `wgsextract.help/1`): each command's options with their types,
-choices and defaults, its examples and outputs, and, for commands of the
-[typed API](docs/api.md), a JSON Schema of its parameters (`input_schema`).
-New fields may be added under the same schema version; a renamed or removed
-field gets a new one. `help --all --json --full` opts into the complete dump.
-Key flags are discovery hints, not a complete invocation; consult the command
-schema for required arguments, advanced options and defaults.
-
-A mistyped command, option or choice is a usage error (exit 2) with a "Did you
-mean" hint. On a terminal, some commands end with "Next:" suggestions for
-what to run next (on stderr; never with `--json`, `--quiet` or when piped).
-Help is plain text when piped, and colour is off when `NO_COLOR` is set.
-[docs/commands.md](docs/commands.md) is the generated command reference.
-
-`info` recognizes native Element AVITI read names from
-[Bases2Fastq](https://docs.elembio.io/docs/bases2fastq/outputs/#seq-identifiers-sequencing),
-including legacy AV serials and explicit `_AVITI` instrument-model suffixes.
-Detection requires the original identifiers; accession-renamed reads can still
-report `Unknown`.
-
-`info calculate-coverage --bins` replaces the normal summary with a TSV of per-contig counts and fractions at depth **0 / 1–3 / 4–7 / 8+**, also saved as `<input>_coverage_bins.tsv`. It makes one streaming `samtools depth` pass, never writes per-base depths, includes contigs with no reads, and supports `--region` (fractions then describe that interval). As in original WGS Extract v4, depth uses samtools' default base/mapping quality thresholds (zero), excludes unmapped/secondary/QC-failed/duplicate reads, excludes deletion bases and counts overlapping mates separately. Fractions use all reference coordinates (including N bases), not an estimated N-adjustment; the original UI's double-subtraction of N counts is not reproduced. Without `--bins`, the existing report and cache behavior are unchanged.
-
-`info calculate-coverage --by panel.bed` reports depth per BED target (mean, median, fraction at 10x/20x/30x and `--min-depth`) and the on-/off-target enrichment, as `<input>_<bed>_target_coverage.tsv` and `_target_summary.txt` ([docs](docs/ont.md#adaptive-sampling-targets)).
-
-Depth rows are counted with bounded 8 MiB binary chunks and byte operations,
-without per-base Python parsing or a NumPy dependency. TSV contents and depth
-filters are unchanged. CRAM bin coverage requires an existing reference FASTA
-from `--ref`, configuration or the reference library. Missing references fail
-before decoding; htslib is never allowed to download one implicitly.
-
-Disk-space preflight counts records in single-reference CRAM 3.0/3.1 files
-directly from container headers, falling back to `samtools idxstats` for other
-versions, multi-reference containers or invalid headers. This preserves placed
-and unplaced unmapped reads in the total. Detailed `info` and sex inference
-still use idxstats: container totals cannot distinguish mapped reads from
-placed-unmapped reads, so using those totals as mapped counts would be inexact.
-
-### MultiQC reports and professional pipelines
-
-`qc multiqc-metrics` turns result manifests into MultiQC custom-content files
-(`wgsextract_*_mqc.json`) without needing MultiQC. Their sections cover:
-
-- `info` metrics;
-- haplogroups;
-- microarray genotype summaries;
-- variant counts and warnings;
-- General Statistics columns.
-
-A MultiQC run elsewhere, such as nf-core/sarek's, picks the files up beside
-its own. [docs/interop.md](docs/interop.md) covers that, and also:
-
-- handing our BAM/CRAM files to nf-core/sarek, wf-human-variation and GATK;
-- bringing their VCFs back, including gVCFs and multi-sample VCFs via
-  `microarray --sample`.
-
-`qc multiqc` is opt-in and combines existing reports into one HTML file
-without rerunning anything or changing their outputs. It reads:
-
-- FastQC reports;
-- `bcftools stats` output from `qc vcf`;
-- WGS Extract result manifests, converted as above.
-
-```bash
-wgsextract qc fastqc --input sample_R1.fastq.gz --outdir out/fastqc
-wgsextract qc fastqc --input sample_R2.fastq.gz --outdir out/fastqc
-wgsextract qc multiqc --input out/fastqc --outdir out/combined
-```
-
-`qc fastqc --input sample_R1.fastq.gz --r2 sample_R2.fastq.gz --multiqc` does
-both mates and merges the reports in its `--outdir` in one run, replacing an
-earlier `multiqc_report.html` there.
-
-It writes one standalone `multiqc_report.html` (no parsed-data directory).
-`--input` accepts a report file or directory; without `--outdir`, the report goes
-beside the input file or into the input directory. Existing reports require
-`--force`; a failed replacement leaves the previous report intact.
-Non-force publication uses atomic hard links to prevent concurrent overwrite;
-filesystems without hard-link support need a different `--outdir` or explicit
-`--force`. Inherited report titles cannot change the fixed output filename.
-
-MultiQC **1.32 or newer, below 2** must already be installed. The command only
-validates dependencies, never installs them. An optional Pixi `multiqc`
-environment is available for explicit user-managed setup (`pixi install -e
-multiqc`); development environments include it for tiny real-tool tests.
-[MultiQC](https://github.com/MultiQC/MultiQC) is an external GPLv3 tool, not a
-bundled dataset. Only its FastQC, bcftools and custom-content modules run. Version checks, MegaQC uploads,
-AI summaries and AI report controls are disabled; no browser is launched.
-The standard subprocess `TMPDIR` is set to an owned report workspace, not
-exposed as an application configuration setting.
-
-| Command | Subcommands / purpose |
+| Task | Guide |
 | :--- | :--- |
-| `info` | Reference build, file integrity, and read metrics. `calculate-coverage` (exact, via samtools coverage), `coverage-sample` (fast estimate), `chip` (identify a consumer microarray raw file's vendor, chip and silent same-version revision, and the matching `--formats` template) |
-| `bam` | `identify`, `sort`, `index`, `unindex`, `unsort`, `to-cram`, `to-bam`, `unalign`, `merge`, `to-ubam` (unaligned BAM for GATK) |
-| `extract` | `mito-fasta`, `mito-vcf`, `mt-bam`, `ydna-bam`, `ydna-vcf`, `y-mt-extract`, `unmapped`, `custom`, `bam-subset` |
-| `microarray` | Simulate 23andMe, AncestryDNA, FTDNA, Living DNA, MyHeritage, and combined (`all`) raw-data files |
-| `microarray --formats aadr_1240k,aadr_ho,aadr_1240k+ho` | Export pinned AADR research panels as PLINK and EIGENSTRAT ([conventions and validation](docs/aadr.md)) |
-| `lineage` | `y-haplogroup` (Yleaf), `y-str` (genealogy Y-STR panels), `mt-haplogroup` (Haplogrep 3, optional haplocheck contamination check) |
-| `vcf` | Calling: `snp`, `indel`, `freebayes`, `gatk`, `deepvariant`, `clair3`, `sv`, `cnv`. Annotation: `annotate`, `chain-annotate`, `clinvar`, `gnomad`, `sv-freq` (SV population frequencies, [docs](docs/sv-frequency.md)), `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `pharmcat`, `acmg` (opt-in, research-only ACMG classes with fastVEP, [docs](docs/acmg.md)). Other: `table` (one row per variant as TSV or Parquet + SQLite, [docs](docs/variant-table.md)), `filter`, `trio`, `to-fasta` (personal consensus genome), `phase` (read-backed phasing, [docs](docs/ont.md#phasing)) |
-| `typing` | From a WGS BAM/CRAM: `cyp2d6` (Cyrius), `smn` (SMNCopyNumberCaller, SMA carrier status), `hla` (T1K), `str` (ExpansionHunter repeat expansions) |
-| `methylation` | `pileup`: CpG 5mC (optionally 5hmC) bedMethyl and summary from Nanopore/PacBio MM/ML tags (modkit) |
-| `gatk`, `freebayes` | Used by `vcf gatk` / `vcf freebayes` from optional environments; [Windows GATK](docs/windows.md#gatk-on-native-windows) is prepared at setup, not during calling |
-| `vep` | `run`, `download`, `verify`, `delete` (Variant Effect Predictor: vep-rs by default, or Ensembl VEP with `--engine ensembl`, [docs](docs/vep-engines.md)) |
-| `align` | Align FASTQ reads with bwa, bwa-mem2, bwa-mem3, minimap2, or pbmm2, or on an NVIDIA GPU with `--gpu`. On Linux, `pixi install -e bwa-mem3` lets bwa-mem3 write bwa's or bwa-mem2's exact records several times faster ([details](docs/hardware.md#bwa-mem3-on-linux)) |
-| `realign` | Re-align an existing BAM/CRAM to another reference, streaming paired reads into BWA or reusing FASTQs |
-| `basecall` | Nanopore POD5 to an unaligned BAM with ONT's Dorado (optional, installed separately), with `MM`/`ML` modification tags for `align`; [docs](docs/ont.md#basecalling) |
-| `panel` | `bed`: genes and presets (pharmacogenes, HLA, autoimmune, ACMG SF, cardiac) to a padded, merged BED for Nanopore adaptive sampling ([docs](docs/ont.md#adaptive-sampling-targets)) |
-| `pet-align` | Align dog or cat FASTQs and call variants |
-| `qc` | `fastp`, `fastqc`, `multiqc` (FastQC, bcftools stats and our metrics in one report), `multiqc-metrics` (MultiQC custom content from manifests; [pipeline interop](docs/interop.md)), `vcf` (stats), `relate` (sex, relatedness and continental ancestry with somalier; Linux and macOS, `pixi install -e somalier`; [docs](docs/relate.md)), `contamination` (DNA from another person, VerifyBamID2; [docs](docs/contamination.md)), `ancestry` (admixture-style proportions of 7 continental and 12 sub-continental HGDP+1KG reference components, from a BAM/CRAM, VCF or microarray file; [docs](docs/ancestry.md)), `fake-data` (synthetic BAM/CRAM/VCF/FASTQ) |
-| `repair` | `ftdna-bam`, `ftdna-vcf` |
-| `analyze` | `comprehensive` (QC, lineage, calling, annotation in one run), `batch-gen` |
-| `ref` | Library: `bootstrap`, `library` (`--list` to list), `status`, `download`, `index`, `verify`, `count-ns`, `gene-map`. Annotation data: `clinvar`, `gnomad`, `revel`, `phylop`, `cadd`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`, `acmg-data` (the sources and fastVEP databases of `vcf acmg`, [docs](docs/acmg.md)), `ybrowse` (GRCh38 only), `somalier` (sites and 1000 Genomes sketches for `qc relate`), `ancestry` (HGDP+1KG reference for `qc ancestry`, also fetched on first use), `gnomad-sv` (gnomAD-SV and gnomAD-LR SV tables for `vcf sv-freq`) |
-| `sign` | `create` (SHA256SUMS manifest, optionally signed with an OpenSSH key), `verify` |
-| `example-genome` | `list`, `download` curated 1000 Genomes / HGSVC2 datasets |
-| `deps` | `check` |
-| `benchmark` | Benchmark the main workflows on generated or release-backed data |
-| `config` | Show the active config file and settings |
-
-Notes on a few commands:
-
-- `vep run --assembly GRCh37` and the deprecated `--vep-assembly GRCh37` select the
-  same annotation build; `vep download --assembly` selects the cache build.
-  VEP conflict warnings use the canonical `--assembly` spelling for either alias.
-- Runtime and working-space needs depend on the input, coverage, hardware and
-  toolchain, so command help and realignment stage descriptions do not promise
-  fixed times. Thread-based runtime estimates remain advisory. Use
-  `wgsextract benchmark --help` to choose a reproducible dataset and profile.
-
-- `extract ydna-bam --poz` writes an indexed `_Y_poz.bam` containing reads overlapping the original WGS Extract CombBED/McDonald/Poznik union (about 12 Mb), **not** all stable Y SNPs or a BigY/exome capture. It supports exact GRCh37/hg19 or GRCh38 Y lengths with either `chrY` or `Y`, including Y-only inputs, and never includes the original BEDs' mitochondrial regions. Reads overlapping BED boundaries are kept whole. T2T, unknown and inconsistent assemblies are rejected rather than silently lifted. Bundled BED provenance/license is in `assets/reference/poz/NOTICE.txt`; no download is needed. Without `--poz`, whole-Y extraction is unchanged.
-
-### Opt-in yBrowse Y SNP calling (GRCh38 only)
-
-```bash
-# Explicit download; --ref here names the reference library directory.
-wgsextract ref ybrowse --install --ref /path/to/reference-library
-# Or explicitly install your own header-verified GRCh38 snapshot (VCF or VCF.gz).
-wgsextract ref ybrowse --install --snapshot /path/to/snps_hg38.vcf.gz --ref /path/to/reference-library
-# Set reference_library in config.toml (wgsextract config shows its location).
-wgsextract extract ydna-vcf --ybrowse --input sample.bam --ref /path/to/GRCh38.fa --outdir results
-```
-
-```toml
-reference_library = "/path/to/reference-library"
-```
-
-The explicit download pins compressed SHA256
-`b7984349c575c3d582933993a92770d6143603d3b895d3a0612340b167f37b62`
-from <https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz>. Upstream URLs are
-mutable: a changed hash fails without replacing the installed snapshot. Use
-`--snapshot` for a deliberately selected local replacement; its GRCh38 Y
-length, copyright, annotation header and sorted coordinates are verified and
-its own hash is recorded. Installation retains only SNP sites/annotations, never
-the upstream sample columns. No dataset is bundled or redistributed: since
-reference bootstrap v0.2.0, `ref bootstrap` installs no YBrowse files either,
-and the `snps_*.vcf.gz` files an older bootstrap left are unused and can be
-deleted.
-
-Data attribution/copyright: **CC-BY-SA Thomas Krahn YSEQ (2022).**
-The exact statement and source attribution are retained in the local manifest
-and output VCF header. The upstream grant does not specify a CC-BY-SA version:
-clarify it before redistributing adapted data. These commands perform local
-processing, not a licensed-data mirror. (The `yfull-ybrowse-positions` data
-module for `lineage y-haplogroup` does redistribute YBrowse-derived positions,
-separately from the program, with this attribution and a share-alike notice;
-see [Data licences](#data-licences).)
-
-Calling never downloads or refreshes resources. It validates installed
-samtools/bcftools/bgzip/tabix, checks an indexed matching GRCh38 FASTA and rejects
-REF-allele disagreements before calling. It writes `_Y_ybrowse.vcf.gz` with
-haploid genotypes at installed SNP targets, SNP aliases in ID and allele-matched
-HG/ISOGG annotations. Duplicate aliases are combined only for the same REF/ALT.
-Multi-allelic sites are split without turning another ALT into a reference call;
-uncovered sites remain missing, not ancestral. Ancestral alleles (AA) are retained:
-GRCh38 REF can itself be derived, so GT=1 does not always mean derived.
-HG is a marker annotation, **not a sample haplogroup prediction**. Non-SNP/symbolic upstream
-alleles are omitted and counted in the manifest. `chrY`/`Y` naming is adapted,
-but GRCh37 and T2T are out of scope. Without `--ybrowse`, existing extraction
-outputs are unchanged.
-
-### Other command notes
-
-- GERP/PhyloP bigWig annotation reuses bounded per-contig score windows, using pyBigWig's NumPy reader when available and ordinary lists otherwise. Scores remain the exact maximum over each variant's REF bases; missing bases are ignored, and wholly missing spans remain unscored. Very long REF alleles use chunked exact interval statistics rather than expanding the per-base window.
-- `ref verify` checks gzip integrity, the FASTA index, and the sequence-dictionary signature of catalog genomes, and fails on mismatch. `ref count-ns` writes `_ncnt.csv`/`_nbin.csv` next to the FASTA, or into `--outdir`.
-- `vcf snp` and `vcf indel` call independent contigs at once when `--threads` is above 1, using up to `--threads` workers on indexed whole-genome BAM/CRAM input; `--no-parallel` calls the whole alignment as one bcftools stream. With workers, sex and ploidy are resolved once, and the results are concatenated in reference-index order before indexing. bcftools subsamples sites with more than 255 bases using one random stream per process, so `vcf snp` then recalls the stretches holding such sites (found from the workers' pileups) in one process and splices those calls in; its records match a single-stream run exactly. Indel calling never subsamples (bcftools skips indel likelihoods above 250 reads), so its workers already match. Indel records omit INFO/BQBZ and INFO/MQSBZ: bcftools does not compute them for indels and would print the values of the previous SNP site. `--threads 1`, explicit `--region`, unindexed inputs, inputs with more than one sample, and inputs whose contig order differs from the reference always use one stream.
-- `vcf indel` resolves IUPAC reference ambiguity codes to their first alphabetical base (for example, `R` to `A`) during normalization, as the VCF specification requires. This prevents full hs38DH calls from aborting at ambiguous bases; ordinary reference alleles are unchanged. `vcf to-fasta` reconciles compatible ambiguity codes in its temporary input without changing the exported VCF or its called ALT bases.
-- Regional `vcf to-fasta --uncalled n` mask generation reads only indexed records overlapping the requested interval, including deletions and gVCF blocks beginning before it. Whole-genome masking is unchanged.
-- Gene-name filtering (`--gene`) needs gene maps from `ref gene-map` (hg19/hg38 only; T2T is rejected). Gene maps installed by older versions should be rebuilt with `ref gene-map`.
-- `microarray` exports hg19 nuclear coordinates. The existing hg38 vendor route retains its legacy Yoruba-to-hg19 mitochondrial chain shifts and gaps; those positions are not rCRS. CHM13v2 original-MT/masked-Y input has a separate pinned hg19/rCRS projection path; see [reference requirements and limitations](docs/microarray-chm13.md).
-- `microarray` on hg38 input never picks one of several hg19 placements. A site the chain places more than once, or that lands on the same hg19 position as a different site (or on one of its several placements), is left out and exported as a no-call (`--`), like unmapped and alternate-contig sites. NCBI36 template markers and the hg38 target likewise leave out markers the chain places more than once. Inverted blocks complement the genotype once. The run manifest counts each outcome (`liftover_lifted`, `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous`, `liftover_collision`) and warns `liftover_ambiguous` when either of the last two is nonzero. UCSC's pinned chains place every bundled chip marker at most once.
-- `microarray` genotypes every chip's markers at once from a genome-wide target list. A library set up with `ref bootstrap` has none, so the first run builds `microarray/All_SNPs_<build>_ref.tab.gz` from the chip templates (for hg38, lifted with UCSC's hg19ToHg38 chain, downloaded into the library) and later runs reuse it. Reads with mapping quality under 10 are ignored, so a marker whose reads could belong elsewhere in the genome is a no-call (`--`) rather than a guessed homozygous call. The kits match their owners' real AncestryDNA and MyHeritage chips at about 99% of markers; a weekly test checks 1000 Genomes sample HG00096's kit against its Omni chip.
-- hg38 vendor exports cache exact hg38-to-hg19 chain projections in the configured library's `microarray/hg19-coordinates/` directory. Cache keys include chain content, ordered source coordinates and the format version; IDs and genotypes are never cached. Changed inputs or damaged files rebuild automatically, and deleting this directory is safe. Without a configured writable library, exports work uncached; an explicit FASTA does not choose the cache location. Existing valid read-only caches remain usable. On Windows, a library path deeper than 175 characters runs uncached (see the CHM13 derived-cache notes in docs/microarray-chm13.md).
-- Microarray calls require evidence by default: sample DP at least **10**, GQ at least **20**, and no failing FILTER (`PASS` or `.`). Missing required quality fields are no-calls. For internally called single-sample BAM/CRAM reference genotypes, bcftools can omit GQ; its reference-call QUAL supplies that confidence instead. Supplied VCFs never use this fallback. A multi-sample VCF needs `--sample` to choose whose kit to write.
-- Absent VCF markers are **no-calls**, not reference genotypes: a variant-only VCF cannot establish coverage there. Explicit `0/0` records and gVCF reference-block interiors become reference calls only when their evidence passes the same quality/FILTER gates as alternate calls. Block `MIN_DP`, when present, supplies the conservative depth instead of the block-start DP. Uncovered gVCF gaps remain no-calls (see [docs/interop.md](docs/interop.md#bringing-vcfs-back)).
-- Unsafe legacy absence-as-reference behavior requires an explicit `--assume-hom-ref --min-dp 0 --min-gq 0`; `--no-exclude-filtered` additionally accepts failing FILTER records. These overrides can invent reference calls at unassessed sites or retain weak calls; use only with independently established callability. Imputed VCFs without DP/GQ likewise require explicit threshold overrides; their own imputation-confidence mask still applies.
-- `microarray` saves each output's inputs beside it as `<output>.inputs.json`: one for the combined kit (`<sample>_CombinedKit.txt.inputs.json`), one per vendor kit and one per AADR panel. It records the input BAM/CRAM/VCF and reference (path, size and modification time), the target list, ploidy file and liftover chain, the CLI version, and every option that changes genotypes (`--min-gq`, `--min-dp`, `--strand-ambiguous`, `--resolve-rsids`, `--quirks`, `--assume-hom-ref`, `--exclude-filtered`, `--call-reasons`, `--region`, `--sample`, the AADR sample label and sex, `--indel-manifest`), and the requested AADR panels (their sites join the combined kit), resolved through `config.toml`. A rerun reuses an output only when its recorded inputs match and its files are unchanged; otherwise it regenerates that output and rewrites the sidecar. Adding a vendor format to an earlier run converts it from the kept combined kit without calling genotypes again. Reused outputs are marked `reused` in the result manifest. Delete a sidecar to force its output to be rebuilt. CHM13 runs always regenerate.
-- `microarray --call-reasons` adds `<sample>_CombinedKit_reasons.tsv`, a complete target-level table with the usual four fields plus `CALL_REASON`, in the input build, and `call_reason_<reason>` counts in the GRCh37/38 result manifest (CHM13 counts remain in its report). It distinguishes `no_reads` (no aligned base evidence under standard read-flag filters), `low_mapq` (evidence exists only below MAPQ 10), low/missing GQ or DP, `filtered`, `missing_gt`, unsupported alleles and absent VCF markers/contigs; explicitly reference-filled sites are labeled `assumed_hom_ref`. The four-column CombinedKit and vendor schemas stay unchanged. BAM/CRAM reporting adds two depth passes per requested interval using indexed traversal with `--region`; without a region, it reads the whole alignment twice. Reporting is disabled by default.
-- These microarray options have matching top-level `config.toml` settings: `microarray_min_gq`, `microarray_min_dp`, `microarray_assume_hom_ref`, `microarray_exclude_filtered` and `microarray_call_reasons`. Explicit CLI values override configuration, including `--min-gq 0`, `--assume-hom-ref`, `--no-exclude-filtered` and `--no-call-reasons`. Per-vendor profiles retain existing haploid, allele-order, quoting and no-call behavior; declaring a vendor's I/D encoding does not enable indel calling.
-- `microarray`, the `vcf` callers and the haplogroup commands warn when a BAM/CRAM's mean depth is too low for the genotypes they make (below 15x on autosomes, 3x on chrY/mtDNA), and `microarray` warns afterwards when its autosomal genotypes look low-pass or imputed (over 88% homozygous) or its vendor files have over 10% no-calls. The depth comes from `info --detailed`'s cache, CRAM container headers or a BAM index, so the check is cheap; outputs are never changed. Thresholds are `qc_*` settings in `config.toml`, and `--qc-min-depth DEPTH` (0 disables) overrides the depth threshold for one run. See [what each warning means](docs/genotype-qc.md).
-- `vcf snp`/`vcf indel --reference-evidence gvcf` (or `reference_evidence = "gvcf"` in `config.toml`) also write `bcftools.g.vcf.gz`, a gVCF recording every assessed base, beside the unchanged variant VCF, so a base the VCF doesn't list can be told apart: confident reference, low-quality reference, uncovered, filtered, no-call, or excluded by ploidy. It costs a second bcftools pass, which about doubles `vcf snp`'s time, and about 0.4 GB per 30x genome. Other callers are to follow. See [docs/reference-evidence.md](docs/reference-evidence.md).
-- `vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat` and `analyze`'s discovery report label each reported call `high`, `moderate` or `low` confidence, with reason codes, from its depth, genotype quality, allele balance, mapping quality and strand bias. The labels are in the VCF (`INFO/WGSE_CONF`), a `.confidence.tsv` and the result manifest. A label rates the sequencing evidence, not whether a variant causes disease: confirm any finding with an accredited laboratory. Thresholds are `confidence_*` settings in `config.toml`, with `--confidence-depth LOW HIGH` and `--confidence-gq LOW HIGH` overrides. See [the rules, their rationale and their validation](docs/variant-confidence.md).
-- `microarray --indel-manifest FORMAT=PATH` optionally calls sequence-defined insertion/deletion probes from a matching GRCh37 Illumina manifest (CSV, gzip or ZIP). Repeat for explicitly selected 23andMe, Ancestry or MyHeritage layouts. Full reference contexts and DNA alleles must verify; unsupported/absent or quality/identity-rejected calls stay missing. The separate caller leaves the SNP CombinedKit unchanged. See [manifest requirements, real encoding evidence and coverage limits](docs/microarray-indels.md); proprietary probe definitions and Ancestry probe-order reproduction are not inferred.
-- `info chip --input <raw file>` identifies a consumer microarray raw-data file (plain, gzip or ZIP): vendor and chip from the header, and the revision from its marker list, since vendors change markers without renaming a chip. An identical marker list matches with confidence 1; otherwise confidence is the marker-ID Jaccard similarity to the closest [catalogued revision](src/wgsextract_cli/assets/microarray/revisions/README.md), halved when two revisions are equally close. It names the `--formats` template a revision matches, or the closest one with the markers it adds and drops. `--list` prints the catalogue; with `--json` the detection (or catalogue) is the result manifest's `details`. Nothing is exported or changed.
-- [Microarray benchmarks](docs/microarray-benchmarks.md) score all consumer layouts against independent public chip data, report per-chromosome call rate/concordance, and measure serial/parallel CPU, wall time, memory and final-export byte identity. With `--threads` above 1, `microarray` calls chromosomes in parallel workers by default and recalls any deep (over 255 reads) sites in one stream, so its calls match a single-stream run exactly; `--no-parallel` calls everything in one stream.
-- Identity checks are also opt-in, with unchanged default output: `--strand-ambiguous no-call` masks known biallelic A/T and C/G **input REF/ALT sites**, including homozygous calls. This is a conservative site filter, **not probe-strand validation**: absent sites, reference-only records and multiallelic sites cannot be classified this way. It does not infer a vendor's probe orientation or correct mitochondrial complements. The default is `--strand-ambiguous keep`; the matching setting is `microarray_strand_ambiguous`.
-- `--resolve-rsids` uses a bundled, compact [dbSNP build157 history](src/wgsextract_cli/assets/microarray/rsid/README.md) to match merged aliases in rsID-based vendor lookup and exclude withdrawn, ambiguous or unresolved identities. Vendor marker IDs, coordinates and row order remain unchanged; no alleles are flipped. Conflicting aliases, including an explicit quality no-call versus a called allele, remain no-calls. Unlisted IDs are **not** certified active. This does not replace an NCBI36 liftover chain or validate probe alleles. The default is disabled (`microarray_resolve_rsids = false`); `--no-resolve-rsids` explicitly overrides configuration. Call-policy options require a single sample. `--call-reasons` includes `strand_ambiguous`, `retired_rsid`, `ambiguous_rsid` and `unresolved_rsid` for native CombinedKit calls; additional vendor-projection conflicts are counted in the log.
-- `--quirks vendor` writes the markers that public vendor exports of a template's chip revision reported on the reverse strand as the vendor did; the default `--quirks corrected` writes every call on the GRCh37 forward strand, exactly as before. The [packaged table](src/wgsextract_cli/assets/microarray/revisions/README.md#strand-quirks-strandtsv) is derived from openSNP's public exports, and lists only reverse-strand reports another revision confirms; it covers 32 markers across 23andMe V2/V3, AncestryDNA V1/V2 and FTDNA V2, and says which a later revision fixed. A/T and C/G markers, swapped probe alleles and unconfirmed reports are not inferred. `corrections.tsv` position fixes apply in both modes. The setting is `microarray_quirks` (default `corrected`).
-- `vcf trio` takes the proband's, mother's and father's VCFs, or their BAM/CRAMs. `--proband` overrides other proband inputs; otherwise the usual `--vcf-input`/`--input` selection applies, including explicit `--input` taking precedence over a configured default VCF. Mixed chr/no-chr naming is normalized across primary, random, unplaced and ALT contigs; gVCFs follow the resolved reference's naming. From VCFs a parent's missing record or reference block (often GQ 0) can't show the parent lacks a variant, so de novo lists fill with inherited variants, and the command warns when that's likely. From BAM/CRAMs the child is called first and all three are then genotyped together from their reads at the child's variant positions, so each parent's depth and allele counts are known there. Samples are named by role, even when every file says `SM:WGSE` as WGS Extract v4 wrote. The proband's sex comes from chrX/chrY coverage (or `--proband-sex`), chrY and chrM aren't called, a de novo call needs `--min-depth` reads (default 15) in all three and no alt read in either parent, and `trio_denovo_isolated.vcf.gz` keeps the candidates with no other within 1 kb, since clusters are mostly misaligned reads in repeats. A 30x whole-genome trio takes about 70 minutes with 8 threads.
-- `ref pharmgkb` builds `ref/pharmgkb_hg38.tsv.gz` from ClinPGx's (formerly PharmGKB) clinical annotations and variant locations; `vcf pharmgkb` labels the records that carry an annotated SNV allele. Star-allele/haplotype annotations (e.g. CYP2D6*4) and indels are not included, and it is hg38 only. ClinPGx data is CC BY-SA 4.0 under ClinPGx's [data usage policy](https://www.clinpgx.org/page/dataUsagePolicy) (research use; the data may not be sold). The table's header keeps ClinPGx's licence, each download's creation date and the retrieval date; `vcf pharmgkb` copies them into the annotated VCF's header and the result manifest (`details.pharmgkb_source`).
-- `vcf pharmcat` calls star-allele diplotypes and drug-response phenotypes (CYP2C19, CYP2C9, DPYD, TPMT, ...) with [PharmCAT](https://pharmcat.org) and writes its prescribing report. PharmCAT isn't on conda: extract `pharmcat-pipeline-<version>.tar.gz` from its [releases](https://github.com/PharmGKB/PharmCAT/releases) into `<reference library>/pharmcat` (or set `pharmcat_directory`); `pixi install -e pharmcat` provides its runtime (macOS, Linux and Windows). Input must be GRCh38; gVCFs are handled. CYP2D6 and HLA can't be called from a VCF: pass the `<stem>.cyp2d6.pharmcat.tsv` and `<stem>.hla.pharmcat.tsv` files written by `typing cyp2d6` and `typing hla` with `--outside-call` (repeatable); they are merged into `<stem>.outside.tsv` in the output directory, which PharmCAT also picks up on later runs.
-- `typing smn` calls SMN1/SMN2 copy number with SMNCopyNumberCaller (v1.1.2, the last Apache-2.0 release; upstream is archived) for SMA carrier screening: one SMN1 copy is a carrier, none SMA. Two copies can still be a "2+0" silent carrier; the associated g.27134T>G is reported. It needs short-read WGS of at least 30x median depth (long reads are refused; below 30x no calls are given, and a non-bwa-like aligner gets a warning), runs from the `smn` Pixi environment (Linux and macOS), and is not a diagnosis.
-- `typing cyp2d6`, `typing hla`, and `typing str` need a whole-genome BAM/CRAM (about 30x) with an index. Their tools live in the `cyrius`, `t1k`, and `expansionhunter` Pixi environments (Linux and macOS; install each with `pixi install -e <environment>`). Cyrius's PolyForm Strict license allows noncommercial use only, and no distribution or modification; WGS Extract doesn't bundle it. The first `typing hla` run builds T1K's allele index from IPD-IMGT/HLA into `<reference library>/ref/t1k_hla`. `typing str` compares repeat sizes with [STRchive](https://strchive.org)'s ranges; give `--sex` when known, otherwise it is inferred from read depth. Nanopore and PacBio reads are sized with LongTR instead (`longtr` environment), or STRkit with `--caller strkit` (`strkit` environment); see [Nanopore: repeat expansions](docs/ont.md#repeat-expansions).
-- `ref gnomad --release 4.1` streams gnomAD v4.1's native-GRCh38 exome and genome VCFs (about 880 GB, hours) into one allele-frequency-only table; the default 2.1.1 release is exome-only and lifted over to hg38.
-- Reference downloads resume only explicit `.partial` files bound to the source URL by a `.partial.source` hash sidecar (segmented downloads retain their own source metadata). Unknown legacy partials or changed URLs restart safely. Refreshing an existing complete file starts from byte zero and preserves it until the replacement finishes and passes available checksum verification, then replaces it atomically. Diagnostic URLs omit userinfo and query strings; requests keep the original URL. MD5-pinned benchmark downloads enter the dev cache only after verification.
-- `ref cadd` downloads CADD v1.7 (about 85 GB per build) and `ref gerp` the GERP++ bigWig; `vcf cadd` and `vcf gerp` add `CADD_RAW`/`CADD_PHRED` and `GERP` to a VCF.
-- `sign create` writes a `SHA256SUMS` manifest that `sha256sum -c` also reads, signed with `ssh-keygen -Y sign` when `--key` is given; `sign verify` checks the signature against a trusted key, then re-hashes every file.
-- `align` with FASTQs needs `--ref <FASTA>` when the reference library holds more than one genome, since reads don't say which genome they belong to.
-- BWA and bwa-mem2 alignment use a fixed 100-million-base batch (`-K 100000000`) for reproducible results when `--threads` changes. This also applies to `realign`, `pet-align` and Ultima alignment; earlier releases used thread-dependent batches.
-- Paired short-read `realign` streams newly extracted reads into BWA/bwa-mem2 as interleaved pairs (`-p`) through process pipes, with no gzipped FASTQ intermediates, whenever one collate bucket fits in RAM beside alignment; that includes 30x genomes. Streaming collates with the same bucket count as file extraction, so the realigned records are identical either way. Otherwise it uses the existing extract-to-files path without changing the selected aligner. `--keep-fastq`, supplied/reused FASTQs, minimap2, GPU and long-read workflows retain file handling. `--force-extract` also retains file handling when cached FASTQs exist at the exact output paths, refreshing them and preserving the existing success cleanup/failure retention; fresh forced extraction may stream. Streaming preserves paired-read filtering; the BAM/CRAM program header truthfully records interleaved stdin (`-p`). Collation still needs temporary disk and one bucket of RAM alongside sorting; both are included in preflight (see [resource estimates](docs/resource_estimates.md)). Failed streams leave no reusable FASTQs; use `--keep-fastq` when you need them for a retry.
-- Before extracting reads from a BAM/CRAM, short-read `realign` refuses input whose primary reads are single-end (flagged neither first nor second of a pair, e.g. flag 0 or 4), which its paired extraction would otherwise silently drop (exit code 1). It checks the first 10,000 primary records and, for indexed input, the first 10,000 unplaced unmapped ones: about 0.1 s on a 30x CRAM, against ~3 minutes for an exact whole-file count. A sample can miss rare single-end reads mixed into paired data, so extraction also counts what it leaves out and warns with the number. Extract such input with `bam unalign --se` and align the single-end FASTQ with `align`; ONT, PacBio and Ultima reads (`--platform`) take their own single-end paths.
-- `realign` detects single-end PacBio input (a `PL:PACBIO` read group or PacBio read names, every sampled primary read single-end) and maps it with minimap2 (`map-hifi`, or `map-pb` for `READTYPE=SUBREAD` read groups), as `--platform pacbio`/`hifi`/`clr` does. Aligned BAM/CRAM and unaligned (basecaller) BAM work alike: each read is taken once, from its primary record, with its `MM`/`ML` tags (`samtools fastq -F 0x900 -T MM,ML,MN,pi | minimap2 -y -Y`); secondary and supplementary records never become extra reads. Kinetics tags (`fi`/`ri`/`fp`/`rp`) are not carried. With `--keep-fastq` the reads are first written to a tagged `<input stem>.fastq.gz` (`movie.ccs.bam` gives `movie.fastq.gz` and `movie_aligned.bam`; also for ONT). realign does not use pbmm2 or `--gpu` for long reads; for pbmm2, give the PacBio BAM to `align --r1 <BAM> --aligner pbmm2`, which reads its primary records itself (convert a CRAM with `bam to-bam` first). Paired input labelled PacBio keeps the short-read defaults.
-- `align` with BWA on a reference with ALT contigs (hs38DH and other full GRCh38 sets) writes `<ref>.alt` listing them, which makes BWA ALT-aware. Without it, reads in the ~110 Mb those contigs repeat (HLA among them) get mapping quality 0 or land on the ALT copy, and callers lose their variants. WGS Extract v4 aligned this way; the variant callers, `microarray` and `vcf trio` warn when an input looks like it, and re-aligning (`realign`) recovers those regions.
-- `align`, `realign` and `pet-align` use bwa-mem2 rather than bwa when it's installed (Linux, macOS and Windows) and the reference has a bwa-mem2 index that fits in memory: the same alignments in about three quarters of the time (192 s against 259 s for 4.2M read pairs on 12 threads). Its index needs 17 GB of memory for a human genome, against bwa's 5 GB, and building it ~28 bytes per base (~90 GB), so `ref index --aligner bwa-mem2` downloads hs38DH's (17 GB; nf-core's iGenomes publishes it for Broad's GRCh38, whose sequences are hs38DH's) and builds the index for other references only where there's the memory. `--aligner bwa` or `--aligner bwa-mem2` chooses explicitly. See [hardware and acceleration](docs/hardware.md).
-- On Apple Silicon Macs, `align` and `realign` use WGS Extract's own aligner builds when they're on `PATH`: `wgse-bwa` for bwa, `wgse-bwa-mem2` for bwa-mem2 and `wgse-minimap2` for minimap2. Each writes its upstream aligner's alignments from the same index files, faster; `wgse-bwa` and `wgse-bwa-mem2` also use the Metal GPU. `wgse-bwa-mem3` (bwa-mem3) is faster still: when the reference has a bwa-mem2 index and its pipeline fits in the Mac's RAM, it runs in place of bwa (`--compat=bwa-mem`) or bwa-mem2 (`--compat=bwa-mem2`), writing their exact records (5M read pairs on hs38: 1.8 times as fast as `wgse-bwa` on the GPU, for about 11 GiB of memory against 6). In bwa's place its pipeline must fit the RAM available, so on 8 to 16 GB Macs `wgse-bwa` usually runs. They aren't installed for you: see [Installing](native/README.md#installing). `--native-aligners off` (or `native_aligners = "off"` in `config.toml`) turns this off. See [hardware and acceleration](docs/hardware.md#apple-silicon-metal).
-- `--aligner bwa-mem3` aligns short reads with bwa-mem3 (`wgse-bwa-mem3` on Apple Silicon, else `bwa-mem3` from Bioconda on `PATH`, which WGS Extract doesn't install) from the reference's bwa-mem2 index, writing bwa's exact records. `--fast` opts in to bwa-mem3's speed preset, about twice as fast again, whose alignments differ from BWA's (5M HG002 pairs: 3.5% of primary records placed differently, 92% of them with BWA MAPQ below 20): the run warns (`bwa_mem3_fast`) and the manifest records `bwa_mem3_mode`.
-- When bwa-mem2 is selected, sorting is capped at 256 MiB per thread to leave memory for its index. Smaller explicit `--memory` budgets remain smaller; BWA and other aligners keep the requested sort budget. This also applies to Ultima and pet alignment.
-- Native short-read alignment checks currently available RAM on Linux, macOS and Windows, not just installed RAM. Its estimate includes resident index files, aligner working buffers, samblaster when used, per-thread sort memory plus overhead, and pipeline bookkeeping. Samblaster and transient headroom scale with **input read count**, not reference length. FASTQ counts come from file size and a bounded prefix sample (up to 4 MiB compressed/16 MiB decoded per mate; plain FASTQ, gzip and BGZF supported); `realign` uses indexed BAM/CRAM `idxstats` before extraction. Unreadable/unsupported samples or missing alignment indexes use a documented 680-million-read memory fallback, not a guarantee for larger inputs. Memory-component and per-read sort-spill estimates are logged; inadequate sort spill space warns for `align`, while `realign` retains its disk preflight refusal. Automatic selection falls back to BWA when the MEM2 pipeline will not fit; explicit MEM2 fails before alignment (and before `realign` extracts FASTQs), including when `wgse-bwa-mem3` would stand in for it and its smaller pipeline doesn't fit either. BWA only warns and continues. Free memory, lower `--memory`/`--threads`, or choose `--aligner bwa`; pagefile/swap capacity is not treated as available RAM.
-- Full human-genome measurements (339.8 million read pairs) include a 17–17.5 GiB BWA working set with paged-out memory. At six threads and `--memory 256M`, the guard conservatively budgets about 18 GiB available for BWA and 29 GiB for MEM2, including transient headroom. Smaller inputs scale the read-dependent allowance down, while deeper or shorter-read inputs increase it even for the same reference. Counts extrapolated from a FASTQ prefix are approximate; changing read lengths/compressibility later in a file can affect accuracy. The capped resident peak alone is not the memory requirement.
-- Native BWA alignment/realignment, BAM sorting/conversion, and SNP/indel/GATK calling print a compact memory/disk preflight with `OK`/`LOW` status before heavy processing. Disk budgets combine temporary files, outputs and indexes on each shared volume; existing refusal policies remain unchanged. The same read-only estimator exposes versioned JSON-compatible data for GUI integration; see [resource estimates and calibration](docs/resource_estimates.md).
-- `info` reports how an alignment was made, from a sample of reads near chr1:20 Mb: whether duplicates were marked (and what share are duplicates), how many base-quality values the sequencer wrote (binned or full resolution), and whether the mapping was ALT-aware. The variant callers, `microarray` and `vcf trio` warn when an input is ALT-unaware or has no duplicates marked, as WGS Extract v4's alignments are; `realign` fixes both.
-- ONT `align`/`realign` automatically select minimap2 `map-ont` from read groups or UUID read names and retain MM/ML methylation tags through CPU alignment and sorting. See [ONT support and the CLI/GUI contract](docs/ont.md) for limitations.
-  `vcf deepvariant` selects `ONT_R104` for ONT automatically (`--ont` / `--model-type ONT_R104` explicitly). R10.4.1 only; R9.4.1 is unsupported and identifiable legacy basecaller metadata produces a warning. ONT_R104 requires x86-64, including when using the pinned Parabricks 4.8.0-1 `--gpu` mapping (`--mode ont`); ARM64 ONT calling is not qualified. `vcf clair3` is an optional ONT caller (Linux x86-64/ARM64 and Apple Silicon macOS, `pixi install -e clair3`) whose model matches the basecaller, chosen by `--model`, `clair3_model` or header metadata, with pinned checksums; `--gpu` runs it on an NVIDIA GPU in HKU's pinned Clair3 GPU image (x86-64 Linux, Docker) ([details](docs/ont.md#clair3-optional)). `vcf sv` calls ONT structural variants with Sniffles automatically (pbsv is PacBio-only). `methylation pileup` writes CpG methylation (bedMethyl) from the retained MM/ML tags with modkit (Linux and macOS, `pixi install -e modkit`; [details](docs/ont.md#methylation)). `vcf phase` phases calls with the reads (LongPhase for long reads, else WhatsHap; Linux and macOS, `pixi install -e phasing`; [details](docs/ont.md#phasing)). Regional validation is not whole-genome qualification (#299).
-- `ref spliceai` downloads Ensembl's open GRCh38 SpliceAI scores (about 29 GB with its published index): every SNV in MANE Select transcripts, no indels. Illumina's full hg19 and hg38 sets sit behind a BaseSpace login, so hg19 needs a manual download; the command explains where to place it. SpliceAI scores are free for academic and not-for-profit use only.
-- `vcf deepvariant` runs Google's DeepVariant from its Docker image on x64 Linux and Intel Macs (`docker pull google/deepvariant:1.10.0`; set `deepvariant_image` in `config.toml` for another version), or Google's `run_deepvariant` when it's on `PATH`, or Parabricks with `--gpu`. On Linux x86-64 with [wgse-deepvariant](native/deepvariant/README.md#installing-on-linux) installed (`pixi install -e deepvariant`, which installs 0.3.1) and `deepvariant_weights` set to the `wgse-deepvariant-weights-1.10.0` folder, the WGS and ONT_R104 models run with it instead, without Docker: on the CPU, and with `--gpu` on CUDA instead of Parabricks (`deepvariant_native = "off"` keeps Docker and Parabricks). On Apple Silicon it runs [wgse-deepvariant](native/deepvariant/README.md), WGS Extract's native build with call_variants on the GPU, when that is on `PATH` (WGS model only; its weights are checked against their published hashes). Linux ARM64 and Apple Silicon Macs without it use a [locally built native 1.10.0 CPU image](docs/deepvariant-arm64.md), validates the engine/image architecture and bypasses precision-changing entrypoints; it never falls back to x86 or an unaudited PATH launcher. Docker and images are checked, not installed. Bioconda's `deepvariant` package has contained no DeepVariant since 1.8, so there is no Pixi environment for it. Google's image is x86-64 only and aborts under Docker Desktop's emulation on Apple Silicon (no AVX), so it's refused there; use `vcf clair3` (ONT), `vcf snp`/`vcf indel`, or an x86-64 host instead.
-  CPU DeepVariant's preflight runs on every platform and includes whole-genome `postprocess_variants`, whose workers each sort a partition of the calls in memory (about 7 GiB each for a 30x genome at `-t 5`). When they don't fit the RAM available, it splits postprocessing into more partitions or runs fewer workers, logging the change, and refuses before starting when even one worker can't fit. An out-of-memory kill in the container stops the run with an error rather than leaving it hung, and its stages' work stays in `.deepvariant.work` in the output folder, so a rerun resumes at the stage that stopped ([details](docs/resource_estimates.md#deepvariant-postprocess_variants), [resuming](docs/step-resume.md)).
-  CPU DeepVariant stages CRAM 3.1 or newer as indexed CRAM 3.0 with host samtools, working around the htslib 1.18 SSE4 rANS decoder bug in DeepVariant's x86-64 images; staging also runs for other images, such as ARM builds. Staging honors `--region` (including whitespace-separated intervals and BED/BED.gz/BEDPE files, taking their union without duplicate reads), checks free disk space, and removes its temporary files on completion, failure or cancellation. Targeted disk estimates use twice the compressed sizes of overlapping CRAI slices, with a 64 MiB minimum; shared slices count only once. This accounts for reads concentrated in capture regions; missing or unreadable indexes fall back to the conservative whole-input estimate. Unknown contigs in BED rows or explicit intervals are dropped; bare unknown contigs and selections covering no reference bases are rejected. Colon-containing contigs, such as HLA alleles, support whole-contig, range and single-position selections. Allow extra temporary disk and transcode time (about 32 GB / 19 minutes for the observed 30x genome). BAM, CRAM 3.0 and Parabricks inputs are unchanged.
-  - ARM enables only the qualified default WGS model; other models, `--wes`, `--pacbio` and `--checkpoint` fail clearly. Its default image is the local-only `localhost/wgsextract-deepvariant:1.10.0-arm64`: build it using `packaging/deepvariant-arm64/build.sh`, never pull a similarly named Docker Hub image. The single multi-stage build does not resolve a builder image from a registry.
-  - Native ARM's default TensorFlow `call_variants` batch (1024) needs about 26 GiB maximum-child RSS; this is **not** that amount per `--threads` shard. Profiling identifies FP32 oneDNN/ACL inference, not 64K pages (the tested guests use 4K) or malloc arenas. `--batch-size 256` forwards Google's existing CPU inference flag: a chr20 replay reduced inference RSS from 26,971,300 to 7,981,020 KiB (70.4%), with all 210,390 VCF records and fields identical. Models and precision are unchanged; the default remains upstream's 1024.
-  - ARM memory preflight accounts separately for the inference batch and concurrent `make_examples` shards. Lowering only `--threads` does not remove the default inference floor. For lower-memory hosts, combine `--batch-size 256` with fewer shards, e.g. `wgsextract vcf deepvariant -i sample.bam --ref reference.fna --batch-size 256 -t 8 -o results`. The conservative WGS inference estimate is 33 GiB at the qualified 16-shard default, or 17 GiB for this example; it warns about insufficient reclaimable/cgroup-limited RAM, not a memory allocation or promise for custom models. The smaller batch was validated on chr20, not a new full-genome benchmark.
-- `vcf sv` and `vcf cnv` use Delly 2 (`delly sr` / `delly cnv`), which needs no mappability map; `vcf cnv --map` is accepted but ignored.
-- `lineage y-haplogroup` uses native code derived from [Yleaf v4.1.6](https://github.com/genid/Yleaf), not an external Yleaf installation. It writes predictions, marker/QC tables and version provenance to `<outdir>/yleaf/` without deleting the user's directory. Build-specific tables download lazily, SHA-256 verified, from this repo's `yleaf-data-v4.1.6` release into the configured `reference_library`. CRAM and variant-only VCF inference need a matching `--ref`; use `--no-ref-inference` for targeted VCF panels. Choose `--tree yfull|yfull_v10|ftdna|isogg`; the default `yfull` is a pinned, SHA-256 verified YFull YTree release (14.06.0) and results name the tree version. Your own trees go in config.toml `[y_trees.<id>]` tables (local files, or URLs pinned by SHA-256), or pass a one-off `--tree-file` with `--pos-file`; the `y_tree` setting picks the default. `--min-reads`, `--base-quality`, `--base-majority`, `--min-score`, `--ancient` and `--pos-file` replace external-tool passthrough. Align FASTQ first with `align`. See [native Yleaf documentation](src/wgsextract_cli/ydna/yleaf_native/README.md).
-- `lineage y-str` reports FamilyTreeDNA Y-12 to Y-111, PowerPlex Y23 and Yfiler Plus repeat counts from a hg19, hg38 or T2T BAM/CRAM. It needs only samtools; `typing str` (ExpansionHunter) is for disease expansions. Results go to `<outdir>/ystr/` as a per-marker TSV, an FTDNA-ordered CSV and `run.json`. Reads must span a repeat and both its flanks, so long markers may be no-calls, and DYS464, CDY, DYF387S1 and Y-GGAAT-1B07 are not callable. Against 1000 Genomes PowerPlex Y23 typings, 99.9% of 30x calls match, with 8% no-calls. See the [Y-STR documentation](src/wgsextract_cli/ydna/ystr/README.md) for sources, licences, conventions and accuracy.
-- `extract unmapped --fastq` also writes `_unmapped_R1.fastq.gz`, `_unmapped_R2.fastq.gz`, `_unmapped_SE.fastq.gz` (unpaired reads) and `_unmapped_singletons.fastq.gz` (mates absent from the extraction). Without the flag, only the BAM is written.
-- `lineage y-haplogroup --tree-links` adds YFull/FTDNA links; `lineage mt-haplogroup --tree-links` adds the YFull mtDNA branch and FTDNA public mtDNA tree (use its branch search). Detailed info omits the uncomputed WES-depth row. Missing-reference errors identify the explicit library install command when the alignment matches a catalog model; references are never downloaded automatically.
-- `pet-align` writes next to the R1 FASTQ unless `--outdir` is given.
-- Ultima Genomics (UG 100) reads, as in MyHeritage's and Nebula/DNA360's WGS, are single-end (~300 bp) and err mostly in homopolymer lengths. Each read carries flow-space probabilities in `tp`/`t0` tags, and its read group has `PL:ULTIMA` and the flow order (`FO`). WGS Extract recognizes them from the read group (or `--platform ultima`, needed for FASTQs, whose names SRA replaces) and:
-  - `align`/`realign` use BWA-MEM (`-Y`), as Ultima's and Broad's pipelines do. `tp`/`t0` stay attached to each read: they are reversed for reads that change strand, because `samtools reset` doesn't. Read groups (flow order) are kept. `realign` streams the BAM/CRAM into BWA without writing FASTQs.
-  - Duplicates are marked with GATK's `MarkDuplicates --FLOW_MODE`, which needs a single-end read's start and end to match. Without GATK, `samtools markdup` (start only) is used and the command warns. `--gpu` is refused: Parabricks keeps no flow tags.
-  - `vcf snp`/`indel` use bcftools' Ultima profile (`mpileup -X ultima`) and `bcftools call`'s default prior instead of `-P 0`, which more than halved indel precision on Ultima reads. bcftools still calls many false indels in homopolymers, so prefer DeepVariant (see the accuracy table). `vcf gatk` calls with `--flow-mode ADVANCED`, and `vcf deepvariant` with the `ULTIMA` model, from Google's experimental `google/deepvariant:gh1100-ultima` image (`deepvariant_ultima_image` in `config.toml`). `vcf deepvariant --gpu` runs the same stages from Google's experimental `gh1100-ultima-gpu` image, with call_variants on the GPU ([details](#nvidia-gpus-parabricks)). `vcf freebayes` warns that it has no homopolymer error model.
-  - `bam to-ubam` keeps `tp`, `t0`, `tm`, `rq` and `a3`, in read orientation.
-  - Low-pass Ultima WGS (MyHeritage's is about 2x) is too shallow for reliable genotypes without imputation, which WGS Extract doesn't do.
-- `vcf sv` uses Delly by default, Sniffles for detected ONT input (`--ont`) or any long reads (`--long-read`), and pbsv/Sniffles with `--pacbio`; an explicit `--caller` is respected, but `--caller delly` with a long-read flag and pbsv on ONT reads are rejected. See [ONT support](docs/ont.md#structural-variants).
-- `vep download --mirror` accepts `uk` (default) or `ebi`.
-
-### Variant calling accuracy
-
-Scored against [Genome in a Bottle](https://www.nist.gov/programs-projects/genome-bottle)'s HG002 v4.2.1 truth set on chr20, inside its confident regions, with `rtg vcfeval` (genotypes must match). The reads are Google's 35x NovaSeq PCR-free HG002 chr20 reads, aligned to hs38DH with `align`. Each caller ran with `-r chr20` and 8 threads (DeepVariant with 4) on a 4-core Ryzen 5350GE.
-
-| Caller | SNP precision | SNP recall | SNP F1 | Indel precision | Indel recall | Indel F1 | Time |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `vcf snp` + `vcf indel` (bcftools) | 0.974 | 0.993 | 0.984 | 0.949 | 0.949 | 0.949 | 6 min |
-| `vcf freebayes` | 0.976 | 0.995 | 0.985 | 0.970 | 0.966 | 0.968 | 9.5 min |
-| `vcf gatk` | 0.991 | 0.994 | 0.993 | 0.993 | 0.991 | 0.992 | 21 min |
-| `vcf deepvariant` | 0.999 | 0.995 | **0.997** | 0.998 | 0.994 | **0.996** | 18.5 min |
-
-**Ultima reads.** There's no GIAB truth set for an Ultima-sequenced sample with public reads. Instead, this compares against the same tissue (GIAB HG008-N-D) sequenced on Illumina: its 169x BAM downsampled to ~40x and called with bcftools. Both are scored on chr20 inside GIAB's "not in any difficult region" stratification (50.8 Mb). The setup is otherwise the same as above, without rtg (alleles and genotype class must match).
-
-The Ultima reads are Ultima's GIAB CRAM, downsampled to ~30x and realigned to hs38DH's chr20 with `realign`. Each caller ran with 2–3 threads on a busy shared host. GATK's flow mode is slow, about 1 Mb per minute (its flow likelihood engine is Java only).
-
-| Caller on Ultima reads | SNP precision | SNP recall | SNP F1 | Indel precision | Indel recall | Indel F1 |
-| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `vcf snp` + `vcf indel` (bcftools, `-X ultima`) | 0.998 | 0.994 | 0.996 | 0.354 | 0.984 | 0.520 |
-| `vcf gatk` (`--flow-mode ADVANCED`) | 0.985 | 0.996 | 0.991 | 0.396 | 0.971 | 0.563 |
-| `vcf deepvariant` (ULTIMA model) | 0.997 | 0.994 | **0.995** | 0.969 | 0.950 | **0.959** |
-
-bcftools and GATK call extra indels in homopolymers, Ultima's main error mode, so use DeepVariant for Ultima indels.
-
-For flow-aware Ultima input, `vcf gatk --scatter` optionally runs independent
-HaplotypeCaller processes over nonoverlapping intervals, then gathers in reference
-order. It is **off by default**: annotations and genotypes can change, including
-far from interval boundaries. Separate processes reset GATK's random state
-(used by annotation jitter and read downsampling), as well as assembly context.
-Concurrency is capped by `--threads` and available physical RAM, allowing 6 GiB per
-worker with an explicit 4 GiB Java heap. If only one worker fits, the original
-unscattered path is used. `--memory` remains the shared sort-memory setting, not a
-GATK heap setting. Scattering requires bcftools and tabix in addition to GATK and
-samtools, and cannot be combined with `--gpu`.
-
-In a functional comparison on the original GIABv3-mapped public HG008 Ultima
-chr20 reads, downsampled to nominal 30x (7,012,718 primary reads), GATK 4.6.2.0
-with two workers retained the same **131,299 sites**, but **85 records and two
-genotypes differed**. Both genotype changes were `0/1` → `1/1` at
-chr20:47,895,004 and chr20:47,895,025. All differences were 1.91–32.08 Mb from
-the split at chr20:32,222,084, not boundary-local; this is **not equivalence**.
-One run took 57.2 minutes unscattered versus 37.5 minutes scattered, including
-CRAM preparation; this is not a controlled throughput benchmark or an accuracy
-comparison. A separate 200 kb realigned-read smoke was byte-identical across
-395 decoded records, but slower with scattering because of startup overhead.
-
-### Pixi environments
-
-Some tools live in their own Pixi environment. Install optional environments explicitly with `pixi install --locked -e <environment>` from the app directory (`wgsextract-cli/app/`) or a source checkout before using them. The CLI never installs dependencies at runtime; missing tools report the exact install command, including the app's manifest path so it works from any directory. Installed tools not on `PATH` are launched through `pixi run --no-install -e <environment>`. Cyrius's PolyForm Strict license allows noncommercial use only, and no distribution or modification; WGS Extract doesn't bundle it. You can also run a whole command inside an installed environment:
-
-| Environment | Used for |
-| :--- | :--- |
-| `default` | All standard commands |
-| `pacbio` | `pbmm2`, `pbsv`, `sniffles`: `pixi run -e pacbio wgsextract vcf sv --pacbio` |
-| `vep-rs` | `vep run` and `vep download`, with vep-rs (the default engine; all platforms, [docs](docs/vep-engines.md)) |
-| `vep` | `vep run --engine ensembl` (Ensembl VEP; not native Windows) |
-| `cyrius`, `smn`, `t1k`, `expansionhunter`, `longtr`, `strkit` | `typing cyp2d6`, `typing smn`, `typing hla`, `typing str` (Linux and macOS) |
-| `pharmcat` | PharmCAT's Python, Java and bcftools runtime for `vcf pharmcat` |
-| `modkit` | `methylation pileup` (Linux and macOS) |
-| `verifybamid2` | `qc contamination` (Linux and macOS) |
-| `parquet` | `pyarrow` for `--format parquet` tables: `pixi run -e parquet wgsextract vcf table ... --format parquet` (no Windows ARM64 build; [details](docs/parquet.md)) |
-| `dev` | Contributor tooling (pytest, ruff, mypy); selected automatically by the development tasks below |
-
-### NVIDIA GPUs (Parabricks)
-
-With an NVIDIA GPU, `--gpu` runs the slow steps with [NVIDIA Parabricks](https://docs.nvidia.com/clara/parabricks/), which gives BWA-MEM, DeepVariant and GATK-equivalent results:
-
-| Command | With `--gpu` |
-| :--- | :--- |
-| `align`, `realign` (short reads) | BWA-MEM, sorting and duplicate marking (`pbrun fq2bam`), with the same index, `.alt` file and read group as `--aligner bwa` |
-| `align`, `realign` (HiFi) | minimap2 (`map-hifi`; `map-pbmm2` for `--aligner pbmm2`). PacBio CLR has no GPU preset; ONT requires CPU alignment until GPU MM/ML tag retention is qualified |
-| `vcf deepvariant` | DeepVariant's WGS, WES, PACBIO and ONT_R104 models (ONT maps to `--mode ont`; command mapping tested, GPU ONT accuracy not qualified; with wgse-deepvariant 0.3.0 or later installed, ONT runs with it on CUDA instead, with Google's calls). Not `--checkpoint` or the hybrid model. Ultima reads (`ULTIMA`) run DeepVariant's own stages from Google's experimental GPU image instead, below |
-| `vcf gatk` | HaplotypeCaller |
-
-On an RTX 3090 (24 GB), a 30x genome aligns in 40-50 minutes, against 3.5-4 hours for BWA on that machine's 12 CPU threads. DeepVariant and HaplotypeCaller take about a minute for chr20. See [hardware and acceleration](docs/hardware.md) for when a GPU or bwa-mem2 is worth it.
-
-It needs Linux (WSL2 should work but is untested), an NVIDIA GPU with 16 GB or more, Docker with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/), and the image (`docker pull nvcr.io/nvidia/clara/clara-parabricks:4.8.0-1`; set `parabricks_image` in `config.toml` for another version). The CLI checks each of these and says what's missing; it doesn't install them. It also checks the GPU's free memory and the host's RAM first, using Parabricks' low-memory modes on a GPU that other programs share ([details](docs/resource_estimates.md#nvidia-gpus-parabricks)). Reads, outputs and the reference are mounted into the container at their own paths, and the tools run as you. Parabricks can't write CRAM against a gzipped reference, so then it writes BAM and samtools converts it.
-
-With [wgse-deepvariant](docs/hardware.md#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant) installed and `deepvariant_weights` set, `vcf deepvariant --gpu` calls the WGS and ONT_R104 models with it on CUDA instead of Parabricks; set `deepvariant_native = "off"` in `config.toml` to keep Parabricks for them. Other models still use Parabricks.
-
-Parabricks has no Ultima model, and `align`/`realign --gpu` refuse Ultima reads because it drops their flow tags. `vcf deepvariant --gpu` on Ultima reads (or with `--model-type ULTIMA`) runs instead Google's experimental `google/deepvariant:gh1100-ultima-gpu` image, pinned by digest (`docker pull google/deepvariant:gh1100-ultima-gpu@sha256:f5572ef9b996c619c9e73a3f3391f894af72bf868d27578d9a4985298e75a1f7`; `deepvariant_ultima_gpu_image` in `config.toml`). It runs the same resumable stages as the CPU image, with `--dry-run`, `--force-step` and `--batch-size`; only call_variants gets the GPU. It needs x86-64 Linux, the NVIDIA driver and Docker's NVIDIA runtime, and checks just before call_variants that each GPU has the 7.3 GiB free it needs (`--no-gpu-memory-check` runs anyway, with a warning). That 7.3 GiB was measured at call_variants' default batch of 1024, so a different `--batch-size` warns that the check may not fit it. It is about 10 GB to download and 17.5 GB unpacked.
-
-## Configuration
-
-Settings live in `config.toml`. Run `wgsextract config` to see its path and every active value. [docs/configuration.md](docs/configuration.md) lists every setting with its type, allowed values, default and meaning.
-
-- macOS: `~/.config/wgsextract/config.toml` if `~/.config/` exists, otherwise `~/Library/Application Support/wgsextract/config.toml`
-- Linux: `~/.config/wgsextract/config.toml`
-- Windows: `%LocalAppData%\theontho\wgsextract\config.toml`
-
-`--config FILE` (accepted anywhere on the command line) reads and saves settings in another file instead, so a tool that bundles the CLI, such as the GUI, keeps its settings out of your own config.
-
-Set `temp_directory = "/data/scratch"` in config.toml or pass `--tmp-dir DIRECTORY` for one run to place samtools/sambamba sort spills, GATK temporary files, and realign staging on a chosen volume. The directory must already exist and be writable. Each run owns a separate workspace, normally removed after success or failure; final outputs stay in `--outdir`. If realign fails after extracting FASTQs, it retains that workspace and prints the paths to reuse with `--r1` and `--r2`; remove the workspace after recovery. Realign's `--keep-fastq` keeps extracted reads in the output directory instead. When unset, existing defaults and tool arguments are unchanged. Native pbmm2's internal sorter cannot honor this setting; use minimap2 or omit it. This is a capacity/placement option, not a speedup claim.
-
-Configuration saves are atomic; unknown keys warn with a suggested spelling. `wgsextract config` only prompts in an interactive terminal.
-
-Known settings are type-checked when loading or saving. Boolean settings require
-unquoted TOML `true` or `false`; strings such as `"false"` are errors, not toggles.
-Threads require a positive integer (for example `threads = 4`) or `"auto"`;
-previously supported numeric thread strings such as `"4"` remain accepted.
-Integer thresholds and cache TTLs require TOML integers, not quoted numbers or
-booleans. Memory limits (for example `memory = "2G"`), paths,
-and image names are strings. `vcf_input_paths` and `server_allowed_paths` also accept an array of strings.
-Ports, job counts and thresholds must be in range, and settings with fixed
-choices (such as `server_mcp_transport`, `microarray_quirks` or
-`native_aligners`) must be one of them.
-Errors name the setting and expected type; canonical keys and aliases follow
-the same rules. `--config` selects its file before validation, so an invalid
-unused default file does not block a valid alternate configuration. Valid
-values and missing-setting defaults are unchanged.
-
-Invalid configured thread counts warn and fall back to automatic threads;
-an explicit `--threads` overrides that fallback. Saves still require a valid
-thread count. Other invalid types stop startup with one concise error line
-naming the key, file and expected type. This CLI has no `config set`/`config show`
-repair commands: edit the reported file directly, or select a valid file with
-`--config PATH`, before rerunning `config`, help or another command.
-
-BWA and bwa-mem2 indexes require every nonempty index file. Builds use an exclusive lock and a staged prefix; an interrupted build is rebuilt on the next run instead of being trusted.
-
-`align` always publishes completed files atomically, including with `--no-atomic-output`, so validation failures preserve previous alignments. `--atomic-output` (or `atomic_outputs = true` in config.toml) opts realign, SNP/InDel/GATK/FreeBayes callers, and main extract writers into publishing completed files by rename, with indexes generated afterward. A failed write preserves a previous output. Other commands retain the opt-in default because staged paths change tool provenance headers and can need extra disk space. `--no-atomic-output` disables their configured opt-in, but never disables alignment validation/publication safety. This does not add resume/skip behavior.
-
-```toml
-# Defaults for --input and --outdir
-input = "/data/genomes/joe/joe.cram"
-outdir = "/data/wgse-out"
-
-# Reference genome FASTA (same as --ref)
-ref = "/data/reference/genomes/hs38.fa.gz"
-
-# Reference library directory (default: reference/ in the app directory)
-reflib = "/data/reference"
-
-# Reference genomes only (default: genomes/ in reflib)
-reference_genome_library = "/data/reference/genomes"
-
-# One subfolder per person/sample, selected with --genome
-dataset_library = "/data/datasets"
-
-# Resources: a number, or "auto"
-threads = "auto"   # Per-stage core-layout plan on Apple Silicon; all cores elsewhere
-memory = "auto"    # per thread, e.g. "2G"; auto uses 25% of RAM split across threads
-
-# External tool overrides (optional when the tools are on PATH)
-haplogrep_path = "/path/to/haplogrep3"
-haplogrep_tree = "phylotree-fu-rcrs"   # or phylotree-rcrs, mitotree-rcrs
-y_tree = "yfull"                       # or yfull_v10, ftdna, isogg, a [y_trees] id
-vep_cache = "~/.vep"
-```
-
-The short keys above are aliases; `wgsextract config` shows the canonical names (`input_path`, `output_directory`, `reference_fasta`, `reference_library`, `cpu_threads`, `memory_limit`, and so on). Either form works. Command-line options override config values for a single run. Other settings cover annotation data paths (`clinvar_vcf_path`, `gnomad_vcf_path`, `gnomad_sv_path`, `gnomad_lr_sv_path`, `revel_tsv_path`, ...), default trio VCFs (`mother_vcf`, `father_vcf`), and the developer settings listed under [Development](#development).
-
-A `--ref` FASTA chooses the genome sequence. If it sits in a library's reference genomes folder (`reference_genome_library` for the configured library, else its `genomes/` folder), that library supplies the other files. Only reference genomes and the files made from them are written to that folder; datasets go in `dataset_library`. Otherwise the files in the FASTA's folder are used first, then the configured `reference_library`'s. Those files include liftover chains, ploidy files, chip templates and annotation data. An error about a missing library file names the folders searched.
-
-### Keep-awake
-
-Add `--keep-awake` to long commands, or set `keep_awake = true` in `config.toml`, to request idle/sleep inhibition until the command exits. `--no-keep-awake` overrides the config, including delegated analyze, annotation-chain and benchmark commands; `keep_awake = false` disables it persistently (the default). macOS uses `caffeinate`, Linux uses `systemd-inhibit` if already present and permitted, and native Windows uses `SetThreadExecutionState`. Missing helpers, denied permissions and cleanup failures never fail the run. This prevents automatic sleep, not shutdown or a forced/manual suspend; display sleep remains allowed. Report-only `help`/`config`/`deps` never inhibit sleep.
-
-### Dataset library
-
-Set `dataset_library` (formerly `genome_library`) to a directory with one subfolder per person or sample. The subfolder name is the `--genome` ID:
-
-```text
-/data/datasets/
-  joe/
-    joe.cram
-    joe.vcf.gz
-    raw-fastqs/joe_R1.fastq.gz, joe_R2.fastq.gz
-  ken mcdonald/
-    bam files/sample.bam
-```
-
-A genome ID can also be a nested path inside the library, using `/`, such as `test-1000genomes/na12878-lowcov-bam`. IDs can't be absolute or contain `.` or `..` parts. A genome folder may be a link to another disk, but the folders leading to it must stay inside the library.
-
-With `--genome <id>`, the CLI finds inputs in that folder (recursively) and writes outputs there unless `--outdir` is given. It creates a `genome-config.toml` in the folder. If several BAM/CRAM files, VCFs, or FASTQ sets match, the command fails instead of guessing; pick the files in `genome-config.toml`:
-
-```toml
-alignment = "bam files/sample.bam"
-vcf = "variants/sample.vcf.gz"
-fastq_r1 = "raw-fastqs/sample_R1.fastq.gz"
-fastq_r2 = "raw-fastqs/sample_R2.fastq.gz"
-```
-
-```bash
-wgsextract info --genome joe
-wgsextract microarray --genome "ken mcdonald" --formats 23andme_v5
-wgsextract vcf filter --genome joe --expr 'QUAL>30'
-```
-
-### Example genomes
-
-`example-genome` downloads curated 1000 Genomes and HGSVC2 datasets into the genome library. Some are very large, so check with `--dry-run` first. Interrupted downloads resume; `--force` starts over and bypasses dev-cache reads and writes. Switching from an interrupted segmented HTTP download to Aspera discards sparse partial data before resuming.
-
-```bash
-wgsextract example-genome list
-wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam --dry-run
-wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam
-
-pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam align --platform hifi --ref /path/to/hs38.fa
-pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam vcf sv --pacbio --ref /path/to/hs38.fa
-```
-
-## Pipeline benchmarks
-
-`wgsextract benchmark --help` lists the current datasets and profiles. Start
-with generated chrM data and the lighter operation suite:
-
-```bash
-pixi run wgsextract benchmark --profile smoke --suite core --outdir out/benchmark-smoke
-```
-
-The default dataset is synthetic; `--dataset real` uses the release-backed
-mini-genome, while `real-1x` and `real-30x` use public WGS data. HTTP downloads
-resume from `.partial` files and only replace the destination after completion
-and checksum verification where a digest is provided. `example-genome download`
-uses the same HTTP downloader; FTP and Aspera retain their specialized transports.
-Keep larger runs last and budget their CPU, memory and working space.
+| Choose a workflow or find a command | [Command reference](docs/commands.md), [workflow recipes](https://wgsextract.github.io/wgsextract-cli/workflows.html) |
+| Export consumer chips or AADR panels | [Microarray rules and formats](docs/microarray.md), [AADR](docs/aadr.md) |
+| Extract Y/mtDNA or find haplogroups | [Lineage and yBrowse](docs/lineage.md) |
+| Call variants, annotate or type pharmacogenes | [Variant workflows](docs/variants.md), [confidence and accuracy](docs/variant-confidence.md) |
+| Work with Nanopore or PacBio | [Long-read support](docs/ont.md) |
+| Choose hardware and plan disk/RAM | [Hardware and acceleration](docs/hardware.md), [resource estimates](docs/resource_estimates.md) |
+| Configure paths, resources or keep-awake | [Configuration](docs/configuration.md) |
+| Organise samples or download example genomes | [Dataset library and sample workspace](docs/sample-workspace.md#dataset-library) |
+| Install and verify reference genomes | [Reference genomes](docs/reference-genomes.md) |
+| Resume an interrupted workflow | [Step journals](docs/step-resume.md) |
+| Combine pipeline outputs or MultiQC reports | [Professional pipeline interoperability](docs/interop.md) |
+| Read a local personal report | [Personal report](docs/personal-report.md), [genotype QC](docs/genotype-qc.md) |
+| Integrate from Python, HTTP or MCP | [Typed Python API](docs/api.md), [local server](docs/server.md) |
+| Browse every guide | [Documentation index](docs/README.md) |
 
 ## Reporting a problem
 
-`wgsextract report-issue` builds a bug report about the last command you ran and opens it as a pre-filled [GitHub issue](https://github.com/WGSExtract/wgsextract-cli/issues/new/choose):
-
-```bash
-wgsextract report-issue                 # the last run
-wgsextract report-issue --last-failed   # the last run that failed
-wgsextract report-issue --run out/sample.vcf.gz.manifest.json --print
-```
-
-The report has the command line, exit code, error, warnings and the last 40 log lines, plus the wgsextract version and install type, OS, CPU, RAM, free disk, tool versions and the settings you changed. Before you see it, it is redacted on your computer: your home folder, user and computer names, sample and file names, read names, data lines (genotypes, VCF records, sequences), email addresses, tokens and other secrets are removed, and paths are reduced to placeholders such as `<path>/<file>.cram`. Result details such as sex and haplogroups are never included.
-
-Nothing is uploaded. The command prints the report and its link and saves the full report as `issue-report-<time>.md` in `state/reports` in the data folder, beside `reference` and `genomes` (or the `state_directory` setting, or `--outdir`). It opens the browser only when you answer yes, or with `--open`; `--print` never opens it, and `--json` gives the report to scripts and agents. GitHub links are kept under 8,000 characters (`--max-url-length`): the log tail, then warnings, settings and tool versions are shortened, and the issue says what was left out so you can paste it from the saved file. Read the issue before you submit it. The Python API has the same function: `api.support.build_issue_report(api.ReportIssueParams(...))` (see [docs/api.md](docs/api.md)).
+Run `wgsextract report-issue --last-failed` to prepare a locally redacted
+report, or `wgsextract report-issue --print` to inspect the last run without
+opening a browser. Nothing is uploaded automatically: review before submitting.
+See [report contents, privacy and options](docs/usage.md#reporting-a-problem),
+or [open an issue](https://github.com/WGSExtract/wgsextract-cli/issues/new/choose).
 
 ## Development
 
-```bash
-git clone https://github.com/WGSExtract/wgsextract-cli.git
-cd wgsextract-cli
-./scripts/dev_setup.sh   # Windows: powershell -ExecutionPolicy Bypass -File scripts\dev_setup.ps1
-# open a new terminal if the script installed Pixi or just
-just run --help
-```
-
-The setup script installs Pixi, the environments, `just` and the pre-commit hooks, then checks that everything works. [docs/developer_setup.md](docs/developer_setup.md) covers what it does and how to make a change, by hand or with an AI agent.
-
-Use `pathlib.Path` for filesystem operations. Shared path helpers accept strings
-and `os.PathLike[str]` (the `PathInput` alias in `core.paths`); keep path objects
-while manipulating paths and convert at string-based CLI, configuration, tool
-wrapper, and public return-value boundaries. Use `input_stem` / `fasta_prefix`
-for compound genomic extensions and `append_suffix` for sidecars such as
-`.vcf.gz.tbi` and `.cram.crai`. `absolute_path` normalizes `..` without following
-symlinks; use `Path.resolve()` when comparing real targets. Wrapper commands and samtools'
-`out##idx##index` arguments must remain strings; native filesystem paths must
-not be converted to POSIX spelling for Windows.
-
-Developer tools live in the `dev` Pixi environment, which Pixi selects automatically for these tasks:
-
-| Task | What it runs |
-| :--- | :--- |
-| `pixi run test` | Unit and integration tests (excludes the end-to-end suites) |
-| `pixi run test-ci` | Parallel tests with timing/JUnit and non-gating coverage reports under `out/` |
-| `pixi run smoke-test` | CLI smoke tests (`smoke-test-full` adds full-genome and pet tests) |
-| `pixi run test-e2e` | End-to-end suites against real data |
-| `pixi run test-e2e-fake` | End-to-end suites against generated data (`pytest --fake-data`); CI runs them on Linux, macOS and Windows |
-| `pixi run test-remote` | Live checks that every file the CLI downloads is still published, SpliceAI is in the expected format, and a microarray kit made from public 1000 Genomes data (HG00096) matches its real Omni chip; CI runs them weekly |
-| `pixi run lint` | Ruff, site-source validation, and GitHub Actions checks |
-| `pixi run format` | `ruff format .` |
-| `pixi run typecheck` | Strict mypy on `src/wgsextract_cli` |
-| `pixi run site-build` | Rebuild the documentation site (see [docs/site_generation.md](docs/site_generation.md)) |
-| `pixi run benchmark-dataset` | Rebuild the release-backed mini-genome benchmark dataset |
-| `pixi run stats` | Code statistics (needs [cloc](https://github.com/AlDanial/cloc) installed separately) |
-
-If you have [just](https://github.com/casey/just) installed, the `justfile` offers short aliases for these tasks: `just run <args>` runs the CLI, and `just test`, `just lint`, `just fmt`, `just typecheck` and `just check` (all four) run the checks. `just ci` runs lint, type checking, the regular test suite and generated small/full-genome integration tests without formatting files; pytest scratch outputs stay under `out/`. Run `just` to list every recipe.
-
-PR and main-branch CI are bounded and cancel superseded runs. A separate
-lint-only environment runs Ruff, workflow validation and strict mypy without
-reference downloads; genomic jobs cache the public hs38 reference. Action
-updates must retain a full commit SHA and version comment from an allow-listed
-source, rather than updating a duplicate SHA table in the validator.
-
-The weekly **Pixi refresh** workflow resolves updates within the declared
-manifest pins, restores declared direct-archive digests, and validates the
-lockfile candidate with a read-only token. A validated change is force-pushed to
-the fixed `automation/pixi-refresh` branch and opens or updates a single PR; a
-run with no change opens none and closes a superseded one. GitHub holds that
-PR's CI until a maintainer approves it ("Approve workflows to run", or the
-command in the PR body); the runs are then ordinary PR checks. It never merges
-dependencies automatically. Numerical-tool
-changes still need public small/full-genome byte-parity validation before merge.
-
-Real-data tests read their inputs from pytest options or from config:
-
-```bash
-pixi run pytest tests/test_smoke_real_basics.py \
-  --real-input /data/HG002.cram --real-ref /data/reference/hs38.fa --real-region chr20
-```
-
-Options include `--real-input`, `--real-ref`, `--real-vcf`, `--real-region`, `--real-targets`, `--real-fastq-r1`/`--real-fastq-r2`, `--fake-data`, and `--full-data` (see `tests/conftest.py`). Alternatively, set `real_genome_test_path` and `real_genome_tests_enabled = true` in the `[dev]` table at the end of `config.toml`. Setting `download_cache = true` there caches downloads under `$XDG_CACHE_HOME/wgsextract/downloads` (`~/.cache/wgsextract/downloads` by default) for reuse across test runs, pruned after `download_cache_ttl_seconds` (default one week). These developer settings used to be top-level keys (`dev_download_cache` and `dev_download_cache_ttl_seconds` without the `dev_` prefix); a config.toml that still has one there fails to load and names its new place.
-
-`wgsextract qc fake-data` generates synthetic BAM/CRAM/VCF/FASTQ files for tests and bug reports; see the [workflows page](https://wgsextract.github.io/wgsextract-cli/workflows.html#testing).
-
-To cut a release, and get it into the WGS Extract app, see [docs/releasing.md](docs/releasing.md).
+Start with [developer setup](docs/developer_setup.md) for the setup scripts,
+Pixi environments, tests and contribution workflow.
+The desktop app has its [own setup guide](gui/docs/developer_setup.md).
+See [releasing](docs/releasing.md) for coordinated CLI/app releases.
 
 ## Data licences
 
-WGS Extract is GPL-3.0 software. The reference data it downloads at run time
-comes as separate data modules, each carrying its own licence. Data modules
-are not part of the program, and their licences don't apply to it. Each is
-pinned by SHA-256 and fetched into the reference library only when a command
-needs it.
+Downloaded reference data is separate from the program and retains its own
+licences. See the [data-module licence table](docs/lineage.md#data-licences)
+and [reference sources and terms](docs/reference-genomes.md#sources-and-terms).
 
-| Data module | Used by | Licence |
-|---|---|---|
-| `yfull-tree` | `lineage y-haplogroup --tree yfull` (default) | CC-BY-4.0, YFull |
-| `yfull-ybrowse-positions` | the same, unless `--pos-file` is given | CC-BY-SA (version not stated), Thomas Krahn YSEQ (2022) |
-| Yleaf data `v4.1.6` | `lineage y-haplogroup` QC tables and the other trees | GPL-3.0-or-later, Yleaf |
-| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse` | CC-BY-SA, Thomas Krahn YSEQ; downloaded from ybrowse.org on request, not redistributed (and not in the reference bootstrap since v0.2.0) |
-
-The YFull modules print a one-line licence notice when first downloaded; see
-the [native Yleaf README](src/wgsextract_cli/ydna/yleaf_native/README.md#trees).
+Y-DNA prediction credits Yleaf's authors at Erasmus MC: Arwin Ralf, Diego
+Montiel Gonzalez, Kaiyin Zhong, Manfred Kayser and Bram van Wersch.
+Please cite Ralf et al., *Molecular Biology and Evolution* 35(5):1291–1294
+(2018), [doi:10.1093/molbev/msy032](https://doi.org/10.1093/molbev/msy032).
+Modified Yleaf-derived files remain GPL-3.0-or-later; see [NOTICE](NOTICE)
+and the [upstream sync procedure](src/wgsextract_cli/ydna/yleaf_native/README.md).
 
 ## License
 
-Distributed under the GPL-3.0 License. See `LICENSE`. Downloaded data modules
-have their own licences; see [Data licences](#data-licences).
+Distributed under [GPL-3.0](LICENSE). Downloaded data modules have their own
+licences; they do not change the program's licence.

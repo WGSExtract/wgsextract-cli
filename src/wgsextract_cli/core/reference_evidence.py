@@ -4,7 +4,8 @@ A variant-only VCF cannot tell a confident reference base from one nobody
 looked at. With ``--reference-evidence gvcf`` a caller also publishes a gVCF
 (role ``reference_evidence``, its index ``reference_evidence_index``) next to
 its unchanged variant VCF. ``spans`` reads one and classifies every requested
-base into one ``State``; ``score pgs`` and ``vcf pharmcat`` find a VCF's
+base into one ``State`` (``site_states``: whole sites); ``score pgs``, ``vcf
+pharmcat``, the confidence labels and the ancestry projection find a VCF's
 gVCF with ``companion``.
 docs/reference-evidence.md explains each state and the rules.
 
@@ -14,31 +15,70 @@ carry GQ; ``depth_only``: bcftools blocks carry only DP/MIN_DP), its bands, the
 assessed region and the bases its ploidy policy excludes (ploidy 0, such as a
 woman's chrY). A gVCF without the header (another tool's) is read with the
 model its FORMAT/GQ declaration implies and no exclusions.
+
+Public imports stay here. ``reference_evidence_records`` shares the record
+states and interval sweep with ``clair3_reference_shadow``, which owns the
+missed-deletion rule and its complete-anchor boundary queries.
 """
 
 from __future__ import annotations
 
-import enum
+import bisect
 import hashlib
 import json
 import re
 import subprocess
 import tempfile
+from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_DEPTH as CLAIR3_DELETION_DEPTH,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_SPAN as CLAIR3_DELETION_SPAN,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    classified_records as _classified,
+)
+from wgsextract_cli.core.clair3_reference_shadow import query_intervals
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.reference_evidence_records import _RANK, _merge, _sweep
+from wgsextract_cli.core.reference_evidence_records import (
+    DEPTH_ONLY as DEPTH_ONLY,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    GQ as GQ,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Classified as Classified,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Interval as Interval,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Span as Span,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    State as State,
+)
+from wgsextract_cli.core.reference_evidence_records import record_state as record_state
+from wgsextract_cli.core.reference_evidence_records import (
+    reference_depth as reference_depth,
+)
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
-from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
+from wgsextract_cli.core.variant_confidence import Thresholds
 
 SCHEMA = "wgsextract.reference_evidence/1"
 ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
-GQ, DEPTH_ONLY = "gq", "depth_only"
+POLICY_HEADER_KEY = "wgsePloidyPolicy"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
@@ -50,25 +90,6 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
-
-Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
-
-
-class State(enum.Enum):
-    """A base's evidence state, from the strongest claim against reference
-    to the weakest. Where records overlap, the earlier state wins."""
-
-    EXCLUDED_BY_POLICY = "excluded_by_policy"
-    VARIANT = "variant"
-    FILTERED = "filtered"
-    NO_CALL = "no_call"
-    LOW_QUALITY_REFERENCE = "low_quality_reference"
-    UNCOVERED = "uncovered"
-    CALLABLE_REFERENCE = "callable_reference"
-    NOT_ASSESSED = "not_assessed"
-
-
-_RANK = {state: rank for rank, state in enumerate(State)}
 
 
 @dataclass(frozen=True)
@@ -89,13 +110,41 @@ class Provenance:
     # Ploidy-0 bases, as "contig:start-end" (1-based, inclusive) items.
     ploidy_zero: tuple[str, ...] = ()
 
+    @cached_property
+    def _ploidy_intervals(self) -> dict[str, list[tuple[int, int, int]]]:
+        intervals: dict[str, list[tuple[int, int, int]]] = {}
+        for item in self.ploidy.split(","):
+            match = re.fullmatch(r"(.+):(\d+)-(\d+)=([012])", item)
+            if match:
+                chrom, start, end, ploidy = match.groups()
+                intervals.setdefault(chrom, []).append(
+                    (int(start), int(end), int(ploidy))
+                )
+        return {chrom: sorted(spans) for chrom, spans in intervals.items()}
+
+    def record_ploidy(self, chrom: str, start: int, end: int) -> int | None:
+        """Effective ploidy of an inclusive record span, not its GT encoding.
+
+        A span touching diploid PAR stays diploid. Headers without interval
+        rules (including bcftools' named policies) leave GT-based inference intact.
+        """
+        if not self._ploidy_intervals:
+            return None
+        spans = self._ploidy_intervals.get(chrom, [])
+        index = bisect_right(spans, start, key=lambda span: span[0]) - 1
+        if index >= 0:
+            left, right, ploidy = spans[index]
+            if left <= start <= end <= right:
+                return ploidy
+        return 2
+
     @property
     def ploidy_policy(self) -> str:
         """A digest of the ploidy rules and sex the caller applied."""
         text = "\n".join((self.ploidy, self.sex, *self.ploidy_zero))
         return "sha256:" + hashlib.sha256(text.encode()).hexdigest()[:16]
 
-    def header(self) -> str:
+    def header(self, *, key: str = HEADER_KEY) -> str:
         values = {
             "Schema": SCHEMA,
             "Engine": self.engine,
@@ -110,7 +159,7 @@ class Provenance:
             "PloidyZero": ",".join(self.ploidy_zero),
         }  # fmt: skip
         body = ",".join(f'{key}="{_quote(value)}"' for key, value in values.items())
-        return f"##{HEADER_KEY}=<{body}>"
+        return f"##{key}=<{body}>"
 
     def metrics(self) -> dict[str, str | int | None]:
         """The provenance as result-manifest metrics of the gVCF output."""
@@ -135,8 +184,15 @@ def _quote(value: str) -> str:
 
 def parse_provenance(line: str) -> Provenance | None:
     """The Provenance of a ``##wgseReferenceEvidence`` header line."""
-    prefix = f"##{HEADER_KEY}=<"
-    if not line.startswith(prefix):
+    prefix = next(
+        (
+            f"##{key}=<"
+            for key in (HEADER_KEY, POLICY_HEADER_KEY)
+            if line.startswith(f"##{key}=<")
+        ),
+        None,
+    )
+    if prefix is None:
         return None
     values = {
         key: re.sub(r"\\(.)", r"\1", value)
@@ -218,99 +274,6 @@ def ploidy_zero(
     return tuple(items)
 
 
-@dataclass(frozen=True)
-class Span:
-    """Consecutive bases of one contig in one state (1-based, inclusive)."""
-
-    contig: str
-    start: int
-    end: int
-    state: State
-
-    @property
-    def length(self) -> int:
-        return self.end - self.start + 1
-
-
-def _info(text: str) -> dict[str, str]:
-    return dict(item.partition("=")[::2] for item in text.split(";") if item != ".")
-
-
-def _int(value: str | None) -> int | None:
-    try:
-        return int(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def _float(value: str | None) -> float | None:
-    try:
-        return float(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def reference_depth(
-    info: Mapping[str, str], values: Mapping[str, str], *, block: bool
-) -> int | None:
-    """Block evidence needs an explicit minimum; point DP is not a block floor."""
-    floors = [
-        depth
-        for value in (info.get("MIN_DP"), values.get("MIN_DP"))
-        if (depth := _int(value)) is not None and depth >= 0
-    ]
-    if floors:
-        return min(floors)
-    return None if block else _int(values.get("DP"))
-
-
-def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
-    """The state of the bases one gVCF record covers (its first sample)."""
-    keys = fields[8].split(":") if len(fields) > 9 else []
-    values = dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
-    if fields[6] not in {"PASS", "."} or values.get("FT", ".") not in {"PASS", "."}:
-        return State.FILTERED
-    alleles = re.split(r"[/|]", values.get("GT", "."))
-    alts = fields[4].split(",")
-    carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
-    if any(alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS for a in carried):
-        return State.VARIANT
-    if carried or any(a != "0" for a in alleles):
-        return State.NO_CALL
-    info = _info(fields[7])
-    block = "END" in info and all(
-        alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
-    )
-    depth = reference_depth(info, values, block=block)
-    if depth == 0:
-        return State.UNCOVERED
-    scale = 0.5 if len(alleles) == 1 else 1.0
-    if depth is None or depth < thresholds.min_depth * scale:
-        return State.LOW_QUALITY_REFERENCE
-    if model == GQ:
-        gq = _float(values.get("GQ"))
-        if gq is None or gq < thresholds.min_gq:
-            return State.LOW_QUALITY_REFERENCE
-    return State.CALLABLE_REFERENCE
-
-
-def _record_end(fields: Sequence[str]) -> int:
-    end = _int(_info(fields[7]).get("END"))
-    return end if end is not None else int(fields[1]) + len(fields[3]) - 1
-
-
-def _merge(intervals: Iterable[Interval], order: Mapping[str, int]) -> list[Interval]:
-    merged: list[Interval] = []
-    for contig, start, end in sorted(
-        intervals, key=lambda item: (order.get(item[0], len(order)), item[1])
-    ):
-        if merged and merged[-1][0] == contig and start <= merged[-1][2] + 1:
-            merged[-1] = (contig, merged[-1][1], max(merged[-1][2], end))
-        else:
-            merged.append((contig, start, end))
-    return merged
-
-
 def _overlay(
     spans: Iterator[Span], intervals: Sequence[Interval], state: State, inside: bool
 ) -> Iterator[Span]:
@@ -369,6 +332,7 @@ class ReferenceEvidence:
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
+    deletion_shadow: bool = field(init=False)
 
     def __post_init__(self) -> None:
         header = run_command(
@@ -382,6 +346,11 @@ class ReferenceEvidence:
                 self.lengths.setdefault(name, length)
         self.provenance = next(
             (p for line in header.splitlines() if (p := parse_provenance(line))), None
+        )
+        engine = self.provenance.engine if self.provenance else None
+        # Another tool's gVCF from Clair3 says so in its ##source line.
+        self.deletion_shadow = engine == "clair3" or (
+            engine is None and "\n##source=Clair3" in f"\n{header}"
         )
         has_gq = "##FORMAT=<ID=GQ," in header
         self.quality_model = (
@@ -404,6 +373,113 @@ class ReferenceEvidence:
             for contig, ranges in selected.items()
             for start, end in ranges
         ]
+
+    def normalized(self, reference: str, work: Path) -> ReferenceEvidence:
+        """Left-align the evidence against the same FASTA as the checked alleles.
+
+        Blocks retain their coordinates; moved indels take precedence over
+        overlapping reference blocks. Provenance intervals keep their meaning
+        when chromosome aliases are renamed to the FASTA's names.
+        """
+        from wgsextract_cli.core.reference_resolver import read_fai_lengths
+        from wgsextract_cli.core.variant_files import (
+            ensure_vcf_indexed,
+            match_chromosome_name,
+            normalize_vcf_chromosomes,
+        )
+
+        lengths = read_fai_lengths(reference)
+        header = run_command(
+            ["bcftools", "view", "-h", self.path], capture_output=True
+        ).stdout
+        original = ReferenceEvidence(
+            self.path,
+            {
+                contig: lengths[alias]
+                for contig in _CONTIG_ID.findall(header)
+                if (alias := match_chromosome_name(contig, lengths))
+            },
+        )
+        renamed = normalize_vcf_chromosomes(self.path, list(lengths), str(work))
+        split = work / "evidence.split.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-m",
+                "-any",
+                "--multi-overlaps",
+                ".",
+                "-Oz",
+                "-o",
+                str(split),
+                renamed,
+            ],
+            capture_output=True,
+        )
+        aligned, output = work / "evidence.aligned.vcf.gz", work / "evidence.vcf.gz"
+        run_command(
+            [
+                "bcftools",
+                "norm",
+                "-f",
+                reference,
+                "-c",
+                "e",
+                "-Oz",
+                "-o",
+                str(aligned),
+                str(split),
+            ],
+            capture_output=True,
+        )
+        run_command(
+            [
+                "bcftools",
+                "sort",
+                "-T",
+                str(work / "evidence-sort"),
+                "-Oz",
+                "-o",
+                str(output),
+                str(aligned),
+            ],
+            capture_output=True,
+        )
+        ensure_vcf_indexed(str(output))
+        result = ReferenceEvidence(str(output), lengths)
+        if self.provenance:
+
+            def mapped(intervals: Iterable[Interval]) -> list[Interval]:
+                return [
+                    (alias, start, end)
+                    for contig, start, end in intervals
+                    if (alias := match_chromosome_name(contig, lengths))
+                ]
+
+            assessed = original.assessed()
+            result.provenance = replace(
+                self.provenance,
+                region=(
+                    canonical_region((c, s - 1, e) for c, s, e in mapped(assessed))
+                    if assessed is not None
+                    else self.provenance.region
+                ),
+                ploidy_zero=tuple(
+                    f"{c}:{s}-{e}" for c, s, e in mapped(self.excluded())
+                ),
+                ploidy=(
+                    ",".join(
+                        f"{alias}:{start}-{end}={ploidy}"
+                        for contig, spans in self.provenance._ploidy_intervals.items()
+                        if (alias := match_chromosome_name(contig, lengths))
+                        for start, end, ploidy in spans
+                    )
+                    if self.provenance._ploidy_intervals
+                    else self.provenance.ploidy
+                ),
+            )
+        return result
 
     def excluded(self) -> list[Interval]:
         items = self.provenance.ploidy_zero if self.provenance else ()
@@ -464,8 +540,9 @@ class ReferenceEvidence:
         """Spans of ``wanted`` from the records alone (absent: uncovered)."""
         with tempfile.TemporaryDirectory(prefix="wgse_evidence_") as work:
             regions = Path(work, "regions.tsv")
+            queried = self._query_intervals(wanted, thresholds, order, regions)
             regions.write_text(
-                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in wanted),
+                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in queried),
                 encoding="utf-8",
                 newline="\n",
             )
@@ -480,11 +557,16 @@ class ReferenceEvidence:
                 )
                 assert process.stdout is not None
                 try:
+                    records = (line.rstrip("\n").split("\t") for line in process.stdout)
                     yield from _sweep(
                         wanted,
-                        (line.rstrip("\n").split("\t") for line in process.stdout),
-                        self.quality_model,
-                        thresholds,
+                        _classified(
+                            records,
+                            self.quality_model,
+                            thresholds,
+                            self.deletion_shadow,
+                            self.provenance.record_ploidy if self.provenance else None,
+                        ),
                         order,
                     )
                 finally:
@@ -497,46 +579,19 @@ class ReferenceEvidence:
                         f"{errors.read().strip()[-500:]}"
                     )
 
-
-def _sweep(
-    wanted: list[Interval],
-    records: Iterator[list[str]],
-    model: str,
-    thresholds: Thresholds,
-    order: Mapping[str, int],
-) -> Iterator[Span]:
-    """Resolve overlapping records base by base, highest-ranked state first.
-    Records arrive sorted, so only the few overlapping the cursor are held."""
-    pending = next(records, None)
-    active: list[tuple[str, int, State]] = []
-    for contig, first, last in wanted:
-        rank = order[contig]
-        # Records of contigs already passed (none, from bcftools -R) are skipped.
-        while pending is not None and order.get(pending[0], -1) < rank:
-            pending = next(records, None)
-        cursor = first
-        while cursor <= last:
-            while (
-                pending is not None
-                and pending[0] == contig
-                and int(pending[1]) <= cursor
-            ):
-                end = _record_end(pending)
-                if end >= cursor:
-                    state = record_state(pending, model, thresholds)
-                    active.append((contig, end, state))
-                pending = next(records, None)
-            active = [a for a in active if a[0] == contig and a[1] >= cursor]
-            upcoming = last + 1
-            if pending is not None and pending[0] == contig:
-                upcoming = min(upcoming, int(pending[1]))
-            if active:
-                state = min((a[2] for a in active), key=_RANK.__getitem__)
-                stop = min(min(a[1] for a in active), upcoming - 1)
-            else:
-                state, stop = State.UNCOVERED, upcoming - 1
-            yield Span(contig, cursor, stop, state)
-            cursor = stop + 1
+    def _query_intervals(
+        self,
+        wanted: list[Interval],
+        thresholds: Thresholds,
+        order: Mapping[str, int],
+        regions: Path,
+    ) -> list[Interval]:
+        """Include complete anchor chains; batch boundary probes for point lists."""
+        if not self.deletion_shadow:
+            return wanted
+        return query_intervals(
+            self.path, self.quality_model, wanted, thresholds, order, regions
+        )
 
 
 def count_bases(spans: Iterable[Span]) -> Counter[State]:
@@ -621,3 +676,78 @@ def companion(vcf: PathInput) -> str | None:
             ):
                 found.append((finished, str(gvcf)))
     return max(found)[1] if found else None
+
+
+def site_state(states: Iterable[State]) -> State:
+    """A site's state from its bases' states: callable reference only when
+    every base is; otherwise the strongest claim against reference among the
+    rest (not assessed included)."""
+    seen = list(states)
+    failing = [s for s in seen if s is not State.CALLABLE_REFERENCE]
+    if failing or not seen:
+        return min(failing or [State.NOT_ASSESSED], key=_RANK.__getitem__)
+    return State.CALLABLE_REFERENCE
+
+
+def _contig_key(name: str) -> str:
+    key = name.removeprefix("chr")
+    return "MT" if key == "M" else key
+
+
+def site_states(
+    source: ReferenceEvidence,
+    sites: Iterable[Interval],
+    thresholds: Thresholds,
+) -> Iterator[tuple[Interval, State]]:
+    """Each site (contig, 1-based start, inclusive end) with its state
+    (``site_state`` of its bases). Contig names are matched with or without
+    "chr" (and M/MT); a site on a contig the gVCF lacks is not assessed."""
+    names = {_contig_key(name): name for name in source.lengths}
+    order = {name: index for index, name in enumerate(source.lengths)}
+    given = sorted(
+        set(sites),
+        key=lambda s: (order.get(names.get(_contig_key(s[0]), ""), len(order)), s[1]),
+    )
+    local = [(names.get(_contig_key(c)), s, e) for c, s, e in given]
+    ends: dict[str, list[int]] = {}
+    found: dict[str, list[Span]] = {}
+    for span in source.spans(thresholds, ((c, s, e) for c, s, e in local if c)):
+        ends.setdefault(span.contig, []).append(span.end)
+        found.setdefault(span.contig, []).append(span)
+    for site, (contig, start, end) in zip(given, local, strict=True):
+        if contig is None:
+            yield site, State.NOT_ASSESSED
+            continue
+        spans = found.get(contig, [])
+        index = bisect.bisect_left(ends.get(contig, []), start)
+        states: list[State] = []
+        covered = 0
+        while index < len(spans) and spans[index].start <= end:
+            span = spans[index]
+            states.append(span.state)
+            covered += min(span.end, end) - max(span.start, start) + 1
+            index += 1
+        if covered < end - start + 1:
+            states.append(State.NOT_ASSESSED)
+        yield site, site_state(states)
+
+
+def readable(gvcf: str, sample: str | None, work: Path) -> str | None:
+    """``gvcf`` as the classifier reads it (an indexed bgzipped gVCF whose
+    first sample is ``sample``): itself, or a copy in ``work``. None when it
+    doesn't hold ``sample``."""
+    samples = run_command(
+        ["bcftools", "query", "-l", gvcf], capture_output=True
+    ).stdout.splitlines()
+    if not samples or (sample is not None and sample not in samples):
+        return None
+    indexed = gvcf.endswith((".gz", ".bgz")) and any(
+        Path(gvcf + suffix).is_file() for suffix in (".tbi", ".csi")
+    )
+    if (sample is None or samples[0] == sample) and len(samples) == 1 and indexed:
+        return gvcf
+    copy = str(work / "evidence.g.vcf.gz")
+    run_command(["bcftools", "view", "--no-version", "-s", sample or samples[0],
+                 "-Oz", "-o", copy, gvcf])  # fmt: skip
+    run_command(["bcftools", "index", "-t", copy])
+    return copy

@@ -236,7 +236,13 @@ def print_ref_status(status: dict[str, Any]) -> None:
     human_output(
         "ACMG data (vcf acmg): "
         + (
-            f"installed for {_chromosome_span(acmg['chromosomes'])} ({acmg['folder']})"
+            f"installed for {_chromosome_span(acmg['chromosomes'])}"
+            + (
+                ", gnomAD and SpliceAI read per run"
+                if acmg["siteData"] == "per-run"
+                else ""
+            )
+            + f" ({acmg['folder']})"
             if acmg["installed"]
             else f"unusable: {acmg['problem']}"
             if acmg.get("problem")
