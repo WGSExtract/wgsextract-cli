@@ -503,6 +503,32 @@ def test_no_chain_is_installed_when_no_source_has_the_pinned_checksum(
     assert sorted(p.name for p in tmp_path.iterdir()) == [name + ".lock.guard"]
 
 
+def test_the_pinned_chain_wins_over_an_earlier_same_named_copy(tmp_path, chain_servers):
+    # A FASTA folder searched first holds a different hg19ToHg38; the library's
+    # pinned copy is the one that places the markers.
+    primary, _mirror, data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    fasta_dir, library = tmp_path / "fasta", tmp_path / "library"
+    fasta_dir.mkdir()
+    library.mkdir()
+    (fasta_dir / name).write_bytes(gzip.compress(b"another release"))
+    (library / name).write_bytes(data)
+    assert mt.hg19_to_hg38_chain(str(library), [str(fasta_dir)]) == str(library / name)
+    assert primary.requests == []
+
+
+def test_an_unpinned_chain_is_still_used_but_named_when_nothing_matches(
+    tmp_path, chain_servers, caplog
+):
+    primary, _mirror, _data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    (tmp_path / name).write_bytes(gzip.compress(b"another release"))
+    with caplog.at_level("WARNING"):
+        assert mt.hg19_to_hg38_chain(str(tmp_path)) == str(tmp_path / name)
+    assert f"{tmp_path / name} is not UCSC's pinned {name}" in caplog.text
+    assert primary.requests == []
+
+
 def _cut_off_with_a_partial(server, data: bytes) -> None:
     """Every GET and every resume is cut off half-way, leaving a partial."""
     server.drops = 1

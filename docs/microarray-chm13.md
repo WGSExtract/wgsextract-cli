@@ -33,7 +33,10 @@ FASTA before projection.
 The complete installed marker-template union and the installed
 `hg18ToHg19.over.chain.gz` and `hg38ToHg19.over.chain.gz` are required: they
 place the NCBI36 (FTDNA_V1_Affy) and GRCh38 (FTDNA's Y files) templates'
-markers on GRCh37. No tools, templates or chains are
+markers on GRCh37. Among same-named chains in the searched folders, the copy
+with UCSC's pinned SHA-256 is used; any other copy is used only when no pinned
+one is found, with a warning, and then the site-map union check can fail with
+"Installed templates differ". No tools, templates or chains are
 installed by this path. Custom `--ref-vcf-tab` and `--ploidy-file` overrides are
 not supported for CHM13.
 

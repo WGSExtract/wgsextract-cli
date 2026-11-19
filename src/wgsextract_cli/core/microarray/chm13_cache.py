@@ -21,6 +21,7 @@ from wgsextract_cli.core.microarray.targets import (
     CHM13_V2_FORMATS,
     TARGET_VERSION,
     _template_paths,
+    installed_chain_copy,
 )
 from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
@@ -41,15 +42,12 @@ def _key(value: object) -> str:
 
 
 def installed_chains(roots: list[str]) -> dict[str, Path]:
-    """{build: the first installed chain from build to GRCh37 in roots}, for
-    the builds (NCBI36, GRCh38) of templates in the pinned site map."""
+    """{build: the installed chain from build to GRCh37 in roots, preferring
+    the pinned copy}, for the builds (NCBI36, GRCh38) of templates in the
+    pinned site map."""
     chains = {}
     for build, source in _CHAINS_TO_GRCH37.items():
-        chain = next(
-            (Path(r, source.name) for r in roots if Path(r, source.name).is_file()),
-            None,
-        )
-        if chain is not None:
+        if (chain := installed_chain_copy(source, roots)) is not None:
             chains[build] = chain
     return chains
 
