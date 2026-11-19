@@ -21,28 +21,53 @@ function Get-CimInstance {
 $Pwsh = (Get-Process -Id $PID).Path
 if ($UnavailableStartTime) {
     # Force the OS-property race without replacing the real child process or pipes.
+    $ReadyPath = Join-Path $Root 'child-ready'
+    $Child = Join-Path $Root 'metadata-child.ps1'
+    @'
+param([string]$ReadyPath, [string]$Mode)
+[IO.File]::WriteAllText($ReadyPath, 'ready')
+switch ($Mode) {
+    'stdout' { [Console]::WriteLine('captured stdout'); [Console]::Error.WriteLine('captured stderr') }
+    'failure' { [Console]::Error.WriteLine('fast failure'); exit 7 }
+    'live' { [Console]::Error.WriteLine('still running'); Start-Sleep -Seconds 10 }
+}
+'@ | Set-Content $Child
     $script:ChildProcessId = $null
     Update-TypeData -TypeName System.Diagnostics.Process -MemberType ScriptProperty -MemberName StartTime -Value {
         if ($null -eq $script:ChildProcessId) { $script:ChildProcessId = $this.Id }
-        if ($this.Id -eq $script:ChildProcessId -and $UnavailableStartTime.EndsWith('exited')) { $this.WaitForExit() }
+        if ($this.Id -eq $script:ChildProcessId) {
+            if ($UnavailableStartTime.EndsWith('exited')) {
+                $this.WaitForExit()
+            } else {
+                # Exclude PowerShell startup from the exit-notification grace period.
+                $Startup = [Diagnostics.Stopwatch]::StartNew()
+                while (-not (Test-Path -LiteralPath $ReadyPath)) {
+                    if ($Startup.Elapsed.TotalSeconds -gt 30) { throw 'Child readiness timed out' }
+                    Start-Sleep -Milliseconds 10
+                }
+            }
+        }
         if ($UnavailableStartTime.StartsWith('throw')) { throw 'Process start time is unavailable' }
         return $null
     } -Force
     try {
-        Invoke-Step 'fast_stdout' @($Pwsh, '-NoProfile', '-Command', 'Start-Sleep -Milliseconds 100; [Console]::WriteLine("captured stdout"); [Console]::Error.WriteLine("captured stderr")')
+        Invoke-Step 'fast_stdout' @($Pwsh, '-NoProfile', '-File', $Child, $ReadyPath, 'stdout')
+        Remove-Item -LiteralPath $ReadyPath
         $script:ChildProcessId = $null
-        Invoke-Step 'fast_empty' @($Pwsh, '-NoProfile', '-Command', 'exit 0')
+        Invoke-Step 'fast_empty' @($Pwsh, '-NoProfile', '-File', $Child, $ReadyPath, 'empty')
+        Remove-Item -LiteralPath $ReadyPath
         $script:ChildProcessId = $null
         try {
-            Invoke-Step 'fast_failure' @($Pwsh, '-NoProfile', '-Command', '[Console]::Error.WriteLine("fast failure"); exit 7')
+            Invoke-Step 'fast_failure' @($Pwsh, '-NoProfile', '-File', $Child, $ReadyPath, 'failure')
             throw 'Nonzero exit was accepted'
         } catch {
             if ($_ -notmatch 'exited 7') { throw }
         }
         if ($UnavailableStartTime.EndsWith('live')) {
+            Remove-Item -LiteralPath $ReadyPath
             $script:ChildProcessId = $null
             try {
-                Invoke-Step 'live_metadata_failure' @($Pwsh, '-NoProfile', '-Command', '[Console]::Error.WriteLine("still running"); Start-Sleep -Seconds 10')
+                Invoke-Step 'live_metadata_failure' @($Pwsh, '-NoProfile', '-File', $Child, $ReadyPath, 'live')
                 throw 'Missing start time for a live process was accepted'
             } catch {
                 if ($_ -notmatch 'start time is unavailable') { throw }
