@@ -29,7 +29,6 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from functools import cached_property
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, getproxies, proxy_bypass, urlopen
@@ -155,7 +154,10 @@ class ByteSource:
         else:
             self.url = location
             self._check_scope()
-            self.local_identity = self._stat_identity(Path(location).stat())
+            # Windows stat(path) and fstat(fd) can report different device IDs
+            # and ctimes. Use descriptor metadata for every identity check.
+            with open(location, "rb") as f:
+                self.local_identity = self._stat_identity(os.fstat(f.fileno()))
             self.size = self.local_identity[2]
 
     @cached_property
@@ -194,7 +196,8 @@ class ByteSource:
         """Refuse a local source replaced or modified since it was opened."""
         if not self.remote:
             self._check_scope()
-            self._unchanged(Path(self.location).stat())
+            with open(self.location, "rb") as f:
+                self._unchanged(os.fstat(f.fileno()))
 
     def _head(self, url: str) -> tuple[str, int, http.client.HTTPMessage]:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
@@ -250,13 +253,13 @@ class ByteSource:
         if self.cancel and self.cancel.is_set():
             raise WGSExtractError("Cancelled.")
         if not self.remote:
-            self.verify()
+            self._check_scope()
             with open(self.location, "rb") as f:
                 self._unchanged(os.fstat(f.fileno()))
                 f.seek(start)
                 data = f.read(end - start)
                 self._unchanged(os.fstat(f.fileno()))
-            self._unchanged(Path(self.location).stat())
+            self.verify()
         else:
             data = self._get(start, end)
         with self._lock:

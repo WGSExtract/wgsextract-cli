@@ -4,6 +4,7 @@ for gnomAD's bucket (the network is the boundary) or a local file. The VCF is
 made with the real bgzip and tabix: two contigs over many 16 kb windows and
 BGZF blocks, with records dense in places and sparse in others."""
 
+import os
 import random
 from pathlib import Path
 
@@ -100,6 +101,35 @@ def test_a_contig_with_no_records_at_its_sites_still_has_a_first_record(indexed)
     assert file.records_at("chr2", [(1, 1)]) == []
     first = next(line for contig, _, line in records if contig == "chr2")
     assert file.first_record("chr2") == first.encode()
+
+
+def test_629_windows_stat_and_fstat_difference_does_not_change_the_source(
+    indexed: tuple[Path, list[tuple[str, int, str]]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vcf, records = indexed
+    fstat = os.fstat
+
+    def descriptor_stat(fd: int) -> os.stat_result:
+        stat = fstat(fd)
+        values = list(stat)
+        # Windows pathname and descriptor queries need not agree on the
+        # device ID or whether ctime is creation time or metadata-change time.
+        values[2] = stat.st_dev ^ 1
+        values[9] += 1
+        return os.stat_result(
+            values,
+            {
+                "st_atime_ns": stat.st_atime_ns,
+                "st_mtime_ns": stat.st_mtime_ns,
+                "st_ctime_ns": stat.st_ctime_ns + 1_000_000_000,
+            },
+        )
+
+    monkeypatch.setattr(os, "fstat", descriptor_stat)
+    file = TabixFile(str(vcf))
+    sites = _sites(records, random.Random(4), 5)
+    assert file.header().decode() == HEADER
+    assert file.records_at("chr1", sites, workers=2) == _expected(records, sites)
 
 
 def test_a_server_that_answers_a_range_with_the_whole_file_is_an_error(indexed):
