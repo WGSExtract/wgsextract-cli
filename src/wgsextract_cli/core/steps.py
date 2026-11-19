@@ -291,7 +291,7 @@ def tagged_processes(tags: set[str]) -> list[str]:
             continue
         try:
             tag = process.environ().get(RUN_TAG)
-        except (psutil.Error, OSError):
+        except (psutil.Error, OSError, SystemError):
             continue
         if tag in tags:
             found.append(f"{process.info['name']} (pid {process.pid})")
