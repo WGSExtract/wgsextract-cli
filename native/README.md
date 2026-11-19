@@ -18,6 +18,11 @@ run them in place of their upstream aligners when they're on `PATH`, and
 Silicon build of DeepVariant 1.10.0, published separately as
 `macos-deepvariant-*` prereleases.
 
+[`pairhmm/`](pairhmm/README.md) is the experimental Linux CUDA PairHMM
+sidecar for GATK 4.6.2.0, explicitly selected with
+`vcf gatk --pair-hmm-cuda JAR`. It is separate from these aligner builds
+and does not change `vcf gatk --gpu` (Parabricks).
+
 | Executable | Upstream | Notes |
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |

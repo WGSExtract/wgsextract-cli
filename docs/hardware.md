@@ -327,6 +327,40 @@ What `--gpu` refuses:
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
 
+## Experimental native CUDA PairHMM for GATK
+
+`vcf gatk --pair-hmm-cuda JAR` opts into a locally built native PairHMM
+sidecar, **not Parabricks**. `vcf gatk --gpu` keeps its existing Parabricks
+meaning. This prototype is pinned to Linux x86-64, GATK 4.6.2.0 and
+GKL 0.8.11; see [build and validation instructions](../native/pairhmm/README.md).
+The CLI validates local dependencies but installs or downloads nothing.
+
+An AVX-capable CPU supplies the original GKL fallback. Kernels target
+Turing/SM 7.5 and newer; only the RTX 3090 has been tested. There is no
+16 GiB device minimum: native preflight checks actual buffers plus a
+256 MiB reserve, falling back to GKL when the GPU/driver is unavailable,
+incompatible or short of memory. Long reads and explicit double-precision
+requests also stay on the CPU.
+
+**Preliminary measured slice only:** HG002 PCR-free 35×, GRCh38 no-alt,
+`chr20:10000001-11000000` (1 Mb), Ryzen 5 5600X, RTX 3090, driver 615.78.08,
+CUDA 13.4. One logical CPU/native thread, 4 GiB Java heap, exclusive GPU
+lease with one CPU headroom. Times include JVM startup.
+
+| Backend | Wall seconds | GATK PairHMM timer seconds | Peak process RSS MiB |
+| :--- | ---: | ---: | ---: |
+| Java LOGLESS_CACHING | 54.7 | 22.383 | 284.7 |
+| GKL AVX OpenMP | 44.0 | 5.273 | 281.5 |
+| CUDA sidecar | 42.0 | 1.561 | 440.9 |
+
+CUDA computed 293,578 read/haplotype pairs; complete GKL/CUDA gVCF bodies
+matched byte-for-byte, including genotypes and reference blocks. This was
+one sequential pass, **not an established end-to-end speedup**. Full HG002
+chr20 parity/timing and whole-genome timing remain pending: do not treat
+these slice results as qualification or extrapolate their memory use to a
+whole genome. See [#1131 (native Linux CUDA PairHMM)](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7003257400)
+for the sizing evidence and outstanding acceptance.
+
 ## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
 
 On Linux x86-64, WGS Extract's `wgse-bwa` 0.10.0 or later (bwa 0.7.19) can run
