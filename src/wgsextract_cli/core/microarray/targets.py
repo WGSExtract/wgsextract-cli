@@ -81,7 +81,7 @@ HG18_TO_HG19_CHAIN = ChainSource(
 HG38_TO_HG19_CHAIN = ChainSource(
     "hg38ToHg19.over.chain.gz",
     (_UCSC_LIFTOVER.format("hg38", "hg38ToHg19.over.chain.gz"),),
-    "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2",
+    "14a712e8e147d9fc8e9d87d51977b46f6f8ddb93efbe5d0843d86b6205f587b1",
 )
 # The chain lifting a template's build to GRCh37.
 _CHAINS_TO_GRCH37 = {"NCBI36": HG18_TO_HG19_CHAIN, "GRCh38": HG38_TO_HG19_CHAIN}
