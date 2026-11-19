@@ -344,10 +344,9 @@ selects MPS inference in the WGSE-built **code-only** `wgse-clair3` package.
 It preserves the CPU streaming pipeline and high-depth scaling, including
 gVCF; it does not select upstream's CUDA disk-tensor pipeline. Preflight
 refuses missing/unpatched packages or unavailable PyTorch MPS, even with
-`--no-preflight`, rather than falling back or installing anything. The
-package is awaiting publication and an osx-arm64 Pixi pin; the currently
-released environment remains CPU-only. See the
-[build/publication gate](../native/clair3/README.md#packaging-and-release).
+`--no-preflight`, rather than falling back or installing anything. On Apple
+Silicon, `pixi install -e clair3` installs the pinned package
+([release and pin](../native/clair3/README.md#packaging-and-release)).
 Models are resolved and checked exactly as on the CPU; the new package
 redistributes **no weights** (ONT Rerio's licence is research-only).
 Whole-genome MPS qualification is still pending.

@@ -190,10 +190,9 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 [feature.clair3.dependencies]
 clair3 = ">=2.0.5,<3"
 
-# Apple MPS needs the code-only wgse-clair3 build (native/clair3/README.md).
-# Publication gate: add its release URL + SHA-256 under
-# [feature.clair3.target.osx-arm64.dependencies] and relock after owner publication.
-# Do not pin an unpublished artifact or make normal calls install it.
+[feature.clair3.target.osx-arm64.dependencies]
+# Code-only Clair3 caller with Apple MPS for `vcf clair3 --gpu` (native/clair3/README.md).
+wgse-clair3 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-1/wgse-clair3-0.1.0-py311_osxarm64_wgse_1.conda", sha256 = "689a1103f7e03cc5f8a0e73b270bb5fd98745849b529f94f71ac6c7df1b00d9e" }
 
 # wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
 # DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with

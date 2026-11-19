@@ -35,18 +35,19 @@ For local development, add the resulting `.conda` explicitly with
 `pixi add --feature clair3 --platform osx-arm64 /absolute/path/to/package.conda`,
 then `pixi install -e clair3`. Do not commit the local URL or its lockfile.
 
-**Publication gate:** the package is not yet a released dependency. An owner
-must dispatch **macOS Clair3** with a new `macos-clair3-*` release tag,
-verify the artifact and SHA-256, then add a URL/SHA-256 dependency for
-`wgse-clair3` under `[feature.clair3.target.osx-arm64.dependencies]` in
-`pixi.toml` and regenerate `pixi.lock`. Until then the released environment
-remains CPU-only; `--gpu` clearly names the missing package. Never pin a
-nonexistent release or make a normal invocation fetch the package.
-If the new workflow is not yet on the default branch, an owner can instead
-publish the verified local `.conda` to a prerelease targeting its reviewed
-source commit, record its SHA-256, then perform the same URL pin and relock.
-Do not upload the build output directory: it contains upstream source and
-dependency/test-environment metadata, not just the code-only release asset.
+**Releases.** The pinned build is
+[`macos-clair3-1`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/macos-clair3-1),
+pinned by URL and SHA-256 under `[feature.clair3.target.osx-arm64.dependencies]`
+in `pixi.toml`, so `pixi install -e clair3` installs it alongside Bioconda's
+Clair3 on Apple Silicon. It was built locally from the reviewed source commit
+named in its release notes, because this workflow was not yet on the default
+branch. For later releases, dispatch **macOS Clair3** with a new
+`macos-clair3-*` tag (or publish a verified local build to a prerelease
+targeting its reviewed source commit), verify the artifact and SHA-256, update
+the URL/SHA-256 pin and regenerate `pixi.lock`. Never pin a nonexistent release
+or make a normal invocation fetch the package. Upload only the `.conda` file,
+not the build output directory: that contains upstream source and
+dependency/test-environment metadata.
 
 Clair3 code is BSD-3-Clause; `LICENSE.md` is retained in the package and
 its conda license metadata. WGSE integration is GPL-3.0-or-later, with the
