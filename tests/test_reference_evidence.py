@@ -236,6 +236,208 @@ def test_gq_gvcf_blocks_read_by_genotype_quality_and_minimum_depth(
     ]
 
 
+@needs_htslib
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(
+    tmp_path: Path, split: bool
+) -> None:
+    """Issue #1028 review: another tool's Clair3 gVCF (``##source=Clair3``)
+    gets the missed-deletion rule too, and a call overlapping a demoted
+    block keeps its own state rather than reading as low quality."""
+    rows = [
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\tEND=10\tGT:GQ:MIN_DP\t./.:0:40",
+        f"chr1\t11\t.\tA\t<*>\t0\tPASS\tEND={16 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t15\t.\tA\tC\t30\tPASS\t.\tGT:GQ:DP\t0/1:30:20",
+        *(
+            ["chr1\t17\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
+        "chr1\t31\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:40",
+    ]
+    plain = tmp_path / "clair3.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace(
+            "##fileformat=VCFv4.2\n", "##fileformat=VCFv4.2\n##source=Clair3\n"
+        )
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 40)])) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 14, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 15, 15, State.VARIANT),
+        Span("chr1", 16, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 40, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_long_anchor_chain_point_query_matches_full_region_1028(
+    tmp_path: Path,
+) -> None:
+    rows = ["chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60"]
+    rows += [
+        f"chr1\t{pos}\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20"
+        for pos in range(101, 131)
+    ]
+    rows += ["chr1\t131\t.\tA\t<*>\t0\tPASS\tEND=150\tGT:GQ:MIN_DP\t0/0:50:20"]
+    plain = tmp_path / "chain.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 130, State.NO_CALL),
+        Span("chr1", 131, 140, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 141, 150, State.CALLABLE_REFERENCE),
+    ]
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 150)])) == expected
+    for pos in (131, 140, 141):
+        assert list(evidence.spans(THRESHOLDS, [("chr1", pos, pos)])) == [
+            Span("chr1", pos, pos, _state_at(expected, "chr1", pos))
+        ]
+    assert list(
+        evidence.spans(
+            THRESHOLDS, [("chr1", 60, 60), ("chr1", 131, 131), ("chr1", 260, 260)]
+        )
+    ) == [
+        Span("chr1", 60, 60, State.UNCOVERED),
+        Span("chr1", 131, 131, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 260, 260, State.UNCOVERED),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_anchor_demotes_preceding_reference_block_tail_1028(
+    tmp_path: Path,
+    split: bool,
+) -> None:
+    rows = [
+        f"chr1\t1\t.\tA\t<*>\t0\tPASS\tEND={9 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40",
+        *(
+            ["chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
+    ]
+    plain = tmp_path / "overlap.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 1, 30)])) == [
+        Span("chr1", 1, 9, State.CALLABLE_REFERENCE),
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_separated_anchors_do_not_inherit_depth_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "separated.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=109\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + "chr1\t110\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:30\n"
+        + "chr1\t111\t.\tA\t<*>\t0\tPASS\tEND=130\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 130)])) == [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 109, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 110, 110, State.NO_CALL),
+        Span("chr1", 111, 130, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_nested_anchor_preserves_furthest_end_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "nested.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t10\t.\tAAAA\tA\t0\tRefCall\t.\tGT:GQ:DP\t0/1:0:60\n"
+        + "chr1\t12\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20\n"
+        + "chr1\t14\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 30)])) == [
+        Span("chr1", 10, 13, State.FILTERED),
+        Span("chr1", 14, 23, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 24, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("recovery", [False, True])
+def test_clair3_deletion_shadow_stops_at_gap_or_depth_recovery_1028(
+    tmp_path: Path, recovery: bool
+) -> None:
+    plain = tmp_path / "interrupted.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=103\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + (
+            "chr1\t104\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t0/0:50:42\n"
+            if recovery
+            else ""
+        )
+        + "chr1\t105\t.\tA\t<*>\t0\tPASS\tEND=110\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 103, State.LOW_QUALITY_REFERENCE),
+    ]
+    expected += (
+        [Span("chr1", 104, 110, State.CALLABLE_REFERENCE)]
+        if recovery
+        else [
+            Span("chr1", 104, 104, State.UNCOVERED),
+            Span("chr1", 105, 110, State.CALLABLE_REFERENCE),
+        ]
+    )
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 110)])) == expected
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 105, 105)])) == [
+        Span("chr1", 105, 105, State.CALLABLE_REFERENCE)
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    "engine", ["deepvariant", "gatk", "bcftools", "parabricks-deepvariant"]
+)
+def test_other_engines_do_not_inherit_clair3_deletion_rule_1028(
+    tmp_path: Path,
+    engine: str,
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    plain = tmp_path / "other.g.vcf"
+    provenance = Provenance(engine, "test", "gq").header()
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", f"{provenance}\n##contig=", 1)
+        + "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40\n"
+        + "chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    assert list(
+        ReferenceEvidence(bgzip_index(plain)).spans(THRESHOLDS, [("chr1", 10, 30)])
+    ) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
 def _seq(ref: str) -> str:
     return "".join(Path(ref).read_text().split(">chrY")[0].splitlines()[1:])
 

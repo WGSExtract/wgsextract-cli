@@ -15,12 +15,15 @@ carry GQ; ``depth_only``: bcftools blocks carry only DP/MIN_DP), its bands, the
 assessed region and the bases its ploidy policy excludes (ploidy 0, such as a
 woman's chrY). A gVCF without the header (another tool's) is read with the
 model its FORMAT/GQ declaration implies and no exclusions.
+
+Public imports stay here. ``reference_evidence_records`` shares the record
+states and interval sweep with ``clair3_reference_shadow``, which owns the
+missed-deletion rule and its complete-anchor boundary queries.
 """
 
 from __future__ import annotations
 
 import bisect
-import enum
 import hashlib
 import json
 import re
@@ -31,16 +34,48 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_DEPTH as CLAIR3_DELETION_DEPTH,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_SPAN as CLAIR3_DELETION_SPAN,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    classified_records as _classified,
+)
+from wgsextract_cli.core.clair3_reference_shadow import query_intervals
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.reference_evidence_records import _RANK, _merge, _sweep
+from wgsextract_cli.core.reference_evidence_records import (
+    DEPTH_ONLY as DEPTH_ONLY,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    GQ as GQ,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Classified as Classified,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Interval as Interval,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Span as Span,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    State as State,
+)
+from wgsextract_cli.core.reference_evidence_records import record_state as record_state
+from wgsextract_cli.core.reference_evidence_records import (
+    reference_depth as reference_depth,
+)
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
-from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
+from wgsextract_cli.core.variant_confidence import Thresholds
 
 SCHEMA = "wgsextract.reference_evidence/1"
 ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
-GQ, DEPTH_ONLY = "gq", "depth_only"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
@@ -52,25 +87,6 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
-
-Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
-
-
-class State(enum.Enum):
-    """A base's evidence state, from the strongest claim against reference
-    to the weakest. Where records overlap, the earlier state wins."""
-
-    EXCLUDED_BY_POLICY = "excluded_by_policy"
-    VARIANT = "variant"
-    FILTERED = "filtered"
-    NO_CALL = "no_call"
-    LOW_QUALITY_REFERENCE = "low_quality_reference"
-    UNCOVERED = "uncovered"
-    CALLABLE_REFERENCE = "callable_reference"
-    NOT_ASSESSED = "not_assessed"
-
-
-_RANK = {state: rank for rank, state in enumerate(State)}
 
 
 @dataclass(frozen=True)
@@ -220,99 +236,6 @@ def ploidy_zero(
     return tuple(items)
 
 
-@dataclass(frozen=True)
-class Span:
-    """Consecutive bases of one contig in one state (1-based, inclusive)."""
-
-    contig: str
-    start: int
-    end: int
-    state: State
-
-    @property
-    def length(self) -> int:
-        return self.end - self.start + 1
-
-
-def _info(text: str) -> dict[str, str]:
-    return dict(item.partition("=")[::2] for item in text.split(";") if item != ".")
-
-
-def _int(value: str | None) -> int | None:
-    try:
-        return int(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def _float(value: str | None) -> float | None:
-    try:
-        return float(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def reference_depth(
-    info: Mapping[str, str], values: Mapping[str, str], *, block: bool
-) -> int | None:
-    """Block evidence needs an explicit minimum; point DP is not a block floor."""
-    floors = [
-        depth
-        for value in (info.get("MIN_DP"), values.get("MIN_DP"))
-        if (depth := _int(value)) is not None and depth >= 0
-    ]
-    if floors:
-        return min(floors)
-    return None if block else _int(values.get("DP"))
-
-
-def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
-    """The state of the bases one gVCF record covers (its first sample)."""
-    keys = fields[8].split(":") if len(fields) > 9 else []
-    values = dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
-    if fields[6] not in {"PASS", "."} or values.get("FT", ".") not in {"PASS", "."}:
-        return State.FILTERED
-    alleles = re.split(r"[/|]", values.get("GT", "."))
-    alts = fields[4].split(",")
-    carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
-    if any(alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS for a in carried):
-        return State.VARIANT
-    if carried or any(a != "0" for a in alleles):
-        return State.NO_CALL
-    info = _info(fields[7])
-    block = "END" in info and all(
-        alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
-    )
-    depth = reference_depth(info, values, block=block)
-    if depth == 0:
-        return State.UNCOVERED
-    scale = 0.5 if len(alleles) == 1 else 1.0
-    if depth is None or depth < thresholds.min_depth * scale:
-        return State.LOW_QUALITY_REFERENCE
-    if model == GQ:
-        gq = _float(values.get("GQ"))
-        if gq is None or gq < thresholds.min_gq:
-            return State.LOW_QUALITY_REFERENCE
-    return State.CALLABLE_REFERENCE
-
-
-def _record_end(fields: Sequence[str]) -> int:
-    end = _int(_info(fields[7]).get("END"))
-    return end if end is not None else int(fields[1]) + len(fields[3]) - 1
-
-
-def _merge(intervals: Iterable[Interval], order: Mapping[str, int]) -> list[Interval]:
-    merged: list[Interval] = []
-    for contig, start, end in sorted(
-        intervals, key=lambda item: (order.get(item[0], len(order)), item[1])
-    ):
-        if merged and merged[-1][0] == contig and start <= merged[-1][2] + 1:
-            merged[-1] = (contig, merged[-1][1], max(merged[-1][2], end))
-        else:
-            merged.append((contig, start, end))
-    return merged
-
-
 def _overlay(
     spans: Iterator[Span], intervals: Sequence[Interval], state: State, inside: bool
 ) -> Iterator[Span]:
@@ -371,6 +294,7 @@ class ReferenceEvidence:
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
+    deletion_shadow: bool = field(init=False)
 
     def __post_init__(self) -> None:
         header = run_command(
@@ -384,6 +308,11 @@ class ReferenceEvidence:
                 self.lengths.setdefault(name, length)
         self.provenance = next(
             (p for line in header.splitlines() if (p := parse_provenance(line))), None
+        )
+        engine = self.provenance.engine if self.provenance else None
+        # Another tool's gVCF from Clair3 says so in its ##source line.
+        self.deletion_shadow = engine == "clair3" or (
+            engine is None and "\n##source=Clair3" in f"\n{header}"
         )
         has_gq = "##FORMAT=<ID=GQ," in header
         self.quality_model = (
@@ -563,8 +492,9 @@ class ReferenceEvidence:
         """Spans of ``wanted`` from the records alone (absent: uncovered)."""
         with tempfile.TemporaryDirectory(prefix="wgse_evidence_") as work:
             regions = Path(work, "regions.tsv")
+            queried = self._query_intervals(wanted, thresholds, order, regions)
             regions.write_text(
-                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in wanted),
+                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in queried),
                 encoding="utf-8",
                 newline="\n",
             )
@@ -579,11 +509,15 @@ class ReferenceEvidence:
                 )
                 assert process.stdout is not None
                 try:
+                    records = (line.rstrip("\n").split("\t") for line in process.stdout)
                     yield from _sweep(
                         wanted,
-                        (line.rstrip("\n").split("\t") for line in process.stdout),
-                        self.quality_model,
-                        thresholds,
+                        _classified(
+                            records,
+                            self.quality_model,
+                            thresholds,
+                            self.deletion_shadow,
+                        ),
                         order,
                     )
                 finally:
@@ -596,46 +530,19 @@ class ReferenceEvidence:
                         f"{errors.read().strip()[-500:]}"
                     )
 
-
-def _sweep(
-    wanted: list[Interval],
-    records: Iterator[list[str]],
-    model: str,
-    thresholds: Thresholds,
-    order: Mapping[str, int],
-) -> Iterator[Span]:
-    """Resolve overlapping records base by base, highest-ranked state first.
-    Records arrive sorted, so only the few overlapping the cursor are held."""
-    pending = next(records, None)
-    active: list[tuple[str, int, State]] = []
-    for contig, first, last in wanted:
-        rank = order[contig]
-        # Records of contigs already passed (none, from bcftools -R) are skipped.
-        while pending is not None and order.get(pending[0], -1) < rank:
-            pending = next(records, None)
-        cursor = first
-        while cursor <= last:
-            while (
-                pending is not None
-                and pending[0] == contig
-                and int(pending[1]) <= cursor
-            ):
-                end = _record_end(pending)
-                if end >= cursor:
-                    state = record_state(pending, model, thresholds)
-                    active.append((contig, end, state))
-                pending = next(records, None)
-            active = [a for a in active if a[0] == contig and a[1] >= cursor]
-            upcoming = last + 1
-            if pending is not None and pending[0] == contig:
-                upcoming = min(upcoming, int(pending[1]))
-            if active:
-                state = min((a[2] for a in active), key=_RANK.__getitem__)
-                stop = min(min(a[1] for a in active), upcoming - 1)
-            else:
-                state, stop = State.UNCOVERED, upcoming - 1
-            yield Span(contig, cursor, stop, state)
-            cursor = stop + 1
+    def _query_intervals(
+        self,
+        wanted: list[Interval],
+        thresholds: Thresholds,
+        order: Mapping[str, int],
+        regions: Path,
+    ) -> list[Interval]:
+        """Include complete anchor chains; batch boundary probes for point lists."""
+        if not self.deletion_shadow:
+            return wanted
+        return query_intervals(
+            self.path, self.quality_model, wanted, thresholds, order, regions
+        )
 
 
 def count_bases(spans: Iterable[Span]) -> Counter[State]:
