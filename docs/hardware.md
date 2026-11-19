@@ -500,7 +500,7 @@ runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
-  which installs 0.3.1 from `linux-deepvariant-3`) and `deepvariant_weights`
+  which installs 0.4.0 from `linux-deepvariant-4`) and `deepvariant_weights`
   set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
   models), `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
