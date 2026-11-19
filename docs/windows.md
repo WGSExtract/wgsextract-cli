@@ -37,7 +37,10 @@ you have no other use for it.
 
 The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
 HG002 data through chr22 extraction, BWA realignment and SNP/indel calling,
-then repeats processing on the whole genome. Use native x64 Windows and
+then repeats processing on the whole genome. Before calling variants it declares
+HG002's known Male sex with `sample set --input <aligned.bam> --sex Male` in
+both phases and uses GRCh38 ploidy; the chr22 slice cannot infer sex from
+coverage. Use native x64 Windows and
 PowerShell 7.2 or newer (`pwsh`). Install the CLI as above first; the script
 checks dependencies and does not install or upgrade software.
 
@@ -86,7 +89,10 @@ Attach `evidence\summary.md` and `evidence.zip` from the workspace to
 [#1024 (Windows 30x qualification)](https://github.com/WGSExtract/wgsextract-cli/issues/1024).
 The summary includes wall times, sampled process-tree and whole-system memory
 peaks, alignment/VCF record counts, CPU/RAM and disk details. The zip contains
-logs, installation manifests and summaries, including failed steps; it excludes
+logs, installation manifests and summaries, including failed steps. Each retry
+keeps its own logs and measurements under `evidence\attempts`; summary wall
+times sum all attempts and peaks take the maximum, so checkpoint reuse does
+not hide earlier work. Time between retries is excluded. It excludes
 BAM/VCF/FASTQ files. Review it for local paths and machine details before posting.
 Failures print the evidence location and return a nonzero exit code.
 

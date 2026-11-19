@@ -24,8 +24,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$Root = [IO.Path]::GetFullPath($Root)
-$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+$Root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root)
+$InstallDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($InstallDir)
 $Evidence = Join-Path $Root 'evidence'
 $Config = Join-Path $Root 'config.toml'
 $Bam = Join-Path $Root 'HG002.novaseq.pcr-free.30x.dedup.grch38.bam'
@@ -36,10 +36,10 @@ $BaseUrl = 'https://storage.googleapis.com/brain-genomics-public/research/sequen
 $Plan = [ordered]@{
     prepare = @('download_bam', 'download_bai', 'reference_bootstrap', 'reference_install',
         'input_check', 'slice_extract', 'slice_index', 'input_records', 'slice_records')
-    slice = @('forced_missing_input', 'bwa_index', 'slice_realign', 'slice_aligned_records',
+    slice = @('forced_missing_input', 'bwa_index', 'slice_realign', 'slice_aligned_records', 'slice_sex',
         'slice_snp', 'slice_snp_stats', 'slice_snp_q30dp10', 'slice_indel',
         'slice_indel_stats', 'slice_indel_q30dp10')
-    full = @('full_realign', 'full_aligned_records', 'full_snp', 'full_snp_stats',
+    full = @('full_realign', 'full_aligned_records', 'full_sex', 'full_snp', 'full_snp_stats',
         'full_snp_q30dp10', 'full_indel', 'full_indel_stats', 'full_indel_q30dp10')
 }
 Write-Host "Root: $Root; installed CLI: $InstallDir; threads: $Threads; phase: $Phase"
@@ -179,18 +179,7 @@ try {
             }
             $InputBam = $(if ($part -eq 'slice') { $Slice } else { $Bam })
             $Work = Join-Path $Root $part
-            Invoke-Wgse "${part}_realign" @('realign', '--input', $InputBam, '--ref', $Ref, '--aligner', 'bwa', '--format', 'bam',
-                '--outdir', "$Work/realign", '--threads', "$Threads") -Outputs @("$Work/realign/*_aligned.bam")
-            $Aligned = (Get-Item "$Work/realign/*_aligned.bam").FullName
-            Invoke-Step "${part}_aligned_records" @($Sam, 'idxstats', $Aligned) -CountKind bam
-            foreach ($kind in @('snp', 'indel')) {
-                Invoke-Wgse "${part}_$kind" @('vcf', $kind, '--input', $Aligned, '--ref', $Ref,
-                    '--outdir', "$Work/$kind", '--threads', "$Threads") -Outputs @("$Work/$kind/*.vcf.gz")
-                $Vcfs = @(Get-Item "$Work/$kind/*.vcf.gz")
-                if ($Vcfs.Count -ne 1) { throw "Expected one $kind VCF, found $($Vcfs.Count)." }
-                Invoke-Step "${part}_${kind}_stats" @($Bcf, 'stats', $Vcfs[0].FullName) -CountKind vcf
-                Invoke-Step "${part}_${kind}_q30dp10" @($Bcf, 'stats', '-i', 'QUAL>=30 && INFO/DP>=10', $Vcfs[0].FullName) -CountKind vcf
-            }
+            Invoke-GenomeQualification $part $InputBam $Ref $Work
         }
         Remove-Item (Join-Path $Evidence 'failure.txt') -ErrorAction SilentlyContinue
         Write-Host "Qualification phase complete. Attach $Evidence/summary.md and $Root/evidence.zip to issue #1024 (Windows whole-genome qualification)."
