@@ -15,12 +15,15 @@ carry GQ; ``depth_only``: bcftools blocks carry only DP/MIN_DP), its bands, the
 assessed region and the bases its ploidy policy excludes (ploidy 0, such as a
 woman's chrY). A gVCF without the header (another tool's) is read with the
 model its FORMAT/GQ declaration implies and no exclusions.
+
+Public imports stay here. ``reference_evidence_records`` shares the record
+states and interval sweep with ``clair3_reference_shadow``, which owns the
+missed-deletion rule and its complete-anchor boundary queries.
 """
 
 from __future__ import annotations
 
 import bisect
-import enum
 import hashlib
 import json
 import re
@@ -31,16 +34,48 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_DEPTH as CLAIR3_DELETION_DEPTH,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    CLAIR3_DELETION_SPAN as CLAIR3_DELETION_SPAN,
+)
+from wgsextract_cli.core.clair3_reference_shadow import (
+    classified_records as _classified,
+)
+from wgsextract_cli.core.clair3_reference_shadow import query_intervals
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.reference_evidence_records import _RANK, _merge, _sweep
+from wgsextract_cli.core.reference_evidence_records import (
+    DEPTH_ONLY as DEPTH_ONLY,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    GQ as GQ,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Classified as Classified,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Interval as Interval,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    Span as Span,
+)
+from wgsextract_cli.core.reference_evidence_records import (
+    State as State,
+)
+from wgsextract_cli.core.reference_evidence_records import record_state as record_state
+from wgsextract_cli.core.reference_evidence_records import (
+    reference_depth as reference_depth,
+)
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
-from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
+from wgsextract_cli.core.variant_confidence import Thresholds
 
 SCHEMA = "wgsextract.reference_evidence/1"
 ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
-GQ, DEPTH_ONLY = "gq", "depth_only"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
@@ -52,36 +87,6 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
-# Clair3's gVCF counts, at a reference base, only the reads that show a base
-# there (preprocess/utils.py, _cal_reference_likelihood): a read deleting it
-# counts for neither its DP nor its GQ. A deletion it saw but didn't call is a
-# no-call or filtered record at its anchor, then confident 0/0 blocks with the
-# deleting reads missing from their depth. Bases within this span after one,
-# at under this share of its depth, are low quality (HG002 ONT chr20:10-15 Mb:
-# 41 truth variants on callable reference became 3, for 0.4% of its callable
-# bases; #1028).
-CLAIR3_DELETION_SPAN = 10
-CLAIR3_DELETION_DEPTH = 0.7
-
-Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
-
-
-class State(enum.Enum):
-    """A base's evidence state, from the strongest claim against reference
-    to the weakest. Where records overlap, the earlier state wins."""
-
-    EXCLUDED_BY_POLICY = "excluded_by_policy"
-    VARIANT = "variant"
-    FILTERED = "filtered"
-    NO_CALL = "no_call"
-    LOW_QUALITY_REFERENCE = "low_quality_reference"
-    UNCOVERED = "uncovered"
-    CALLABLE_REFERENCE = "callable_reference"
-    NOT_ASSESSED = "not_assessed"
-
-
-_RANK = {state: rank for rank, state in enumerate(State)}
-Classified = tuple[str, int, int, State]  # a record's bases and their state
 
 
 @dataclass(frozen=True)
@@ -229,103 +234,6 @@ def ploidy_zero(
         if first <= last:
             items.append(f"{contig}:{first}-{last}")
     return tuple(items)
-
-
-@dataclass(frozen=True)
-class Span:
-    """Consecutive bases of one contig in one state (1-based, inclusive)."""
-
-    contig: str
-    start: int
-    end: int
-    state: State
-
-    @property
-    def length(self) -> int:
-        return self.end - self.start + 1
-
-
-def _info(text: str) -> dict[str, str]:
-    return dict(item.partition("=")[::2] for item in text.split(";") if item != ".")
-
-
-def _int(value: str | None) -> int | None:
-    try:
-        return int(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def _float(value: str | None) -> float | None:
-    try:
-        return float(value) if value not in (None, "", ".") else None
-    except ValueError:
-        return None
-
-
-def _sample(fields: Sequence[str]) -> dict[str, str]:
-    keys = fields[8].split(":") if len(fields) > 9 else []
-    return dict(zip(keys, fields[9].split(":"), strict=False)) if keys else {}
-
-
-def reference_depth(
-    info: Mapping[str, str], values: Mapping[str, str], *, block: bool
-) -> int | None:
-    """Block evidence needs an explicit minimum; point DP is not a block floor."""
-    floors = [
-        depth
-        for value in (info.get("MIN_DP"), values.get("MIN_DP"))
-        if (depth := _int(value)) is not None and depth >= 0
-    ]
-    if floors:
-        return min(floors)
-    return None if block else _int(values.get("DP"))
-
-
-def record_state(fields: Sequence[str], model: str, thresholds: Thresholds) -> State:
-    """The state of the bases one gVCF record covers (its first sample)."""
-    values = _sample(fields)
-    if fields[6] not in {"PASS", "."} or values.get("FT", ".") not in {"PASS", "."}:
-        return State.FILTERED
-    alleles = re.split(r"[/|]", values.get("GT", "."))
-    alts = fields[4].split(",")
-    carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
-    if any(alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS for a in carried):
-        return State.VARIANT
-    if carried or any(a != "0" for a in alleles):
-        return State.NO_CALL
-    info = _info(fields[7])
-    block = "END" in info and all(
-        alt in SYMBOLIC_REFERENCE_ALTS or alt == "." for alt in alts
-    )
-    depth = reference_depth(info, values, block=block)
-    if depth == 0:
-        return State.UNCOVERED
-    scale = 0.5 if len(alleles) == 1 else 1.0
-    if depth is None or depth < thresholds.min_depth * scale:
-        return State.LOW_QUALITY_REFERENCE
-    if model == GQ:
-        gq = _float(values.get("GQ"))
-        if gq is None or gq < thresholds.min_gq:
-            return State.LOW_QUALITY_REFERENCE
-    return State.CALLABLE_REFERENCE
-
-
-def _record_end(fields: Sequence[str]) -> int:
-    end = _int(_info(fields[7]).get("END"))
-    return end if end is not None else int(fields[1]) + len(fields[3]) - 1
-
-
-def _merge(intervals: Iterable[Interval], order: Mapping[str, int]) -> list[Interval]:
-    merged: list[Interval] = []
-    for contig, start, end in sorted(
-        intervals, key=lambda item: (order.get(item[0], len(order)), item[1])
-    ):
-        if merged and merged[-1][0] == contig and start <= merged[-1][2] + 1:
-            merged[-1] = (contig, merged[-1][1], max(merged[-1][2], end))
-        else:
-            merged.append((contig, start, end))
-    return merged
 
 
 def _overlay(
@@ -632,162 +540,9 @@ class ReferenceEvidence:
         """Include complete anchor chains; batch boundary probes for point lists."""
         if not self.deletion_shadow:
             return wanted
-        margins = [2 * CLAIR3_DELETION_SPAN] * len(wanted)
-        while True:
-            queried = _merge(
-                (
-                    (c, max(1, s - m), e)
-                    for (c, s, e), m in zip(wanted, margins, strict=True)
-                ),
-                order,
-            )
-            probes = [(c, s, s) for c, s, _ in queried if s > 1]
-            if not probes:
-                return queried
-            regions.write_text(
-                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in probes),
-                encoding="utf-8",
-                newline="\n",
-            )
-            boundary = run_command(
-                ["bcftools", "view", "-H", "-R", str(regions), self.path],
-                capture_output=True,
-            ).stdout
-            anchors = _merge(
-                (
-                    (fields[0], int(fields[1]), _record_end(fields))
-                    for line in boundary.splitlines()
-                    if record_state(
-                        fields := line.split("\t"), self.quality_model, thresholds
-                    )
-                    in (State.NO_CALL, State.FILTERED)
-                ),
-                order,
-            )
-            crossing = {
-                (span.contig, span.start)
-                for span in _sweep(
-                    probes, iter((c, s, e, State.NO_CALL) for c, s, e in anchors), order
-                )
-                if span.state is State.NO_CALL
-            }
-            if not crossing:
-                return queried
-            for index, (contig, start, _) in enumerate(wanted):
-                if (contig, max(1, start - margins[index])) in crossing:
-                    margins[index] *= 2
-
-
-def _classified(
-    records: Iterator[list[str]],
-    model: str,
-    thresholds: Thresholds,
-    deletion_shadow: bool,
-) -> Iterator[Classified]:
-    """Each record's bases (contig, start, end) and state. With
-    ``deletion_shadow`` (Clair3), reference bases directly after a no-call or
-    filtered record, within CLAIR3_DELETION_SPAN of it, are low quality while
-    their depth stays under CLAIR3_DELETION_DEPTH of its depth: the missing
-    reads delete them, which Clair3's reference GQ doesn't see (#1028)."""
-    if not deletion_shadow:
-        for fields in records:
-            yield (
-                fields[0],
-                int(fields[1]),
-                _record_end(fields),
-                record_state(fields, model, thresholds),
-            )
-        return
-    references = (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
-    pending = next(records, None)
-    # Keep only overlapping records. Evaluate their tails after later anchors
-    # arrive, so block splitting and overlapping calls cannot change evidence.
-    active: list[tuple[int, State, int]] = []
-    contig, cursor = "", 0
-    anchor_end, anchor_depth, shadow = 0, 0, False
-    while pending is not None or active:
-        if not active and (pending is not None and pending[0] != contig):
-            contig, cursor = pending[0], int(pending[1])
-            anchor_end, anchor_depth, shadow = 0, 0, False
-        while pending is not None and (pending[0], int(pending[1])) == (contig, cursor):
-            end = _record_end(pending)
-            state = record_state(pending, model, thresholds)
-            info = _info(pending[7])
-            depth = (
-                reference_depth(
-                    info, _sample(pending), block="END" in info and state in references
-                )
-                or 0
-            )
-            active.append((end, state, depth))
-            if state in (State.NO_CALL, State.FILTERED):
-                if cursor <= anchor_end + 1:
-                    anchor_end = max(anchor_end, end)
-                    anchor_depth = max(anchor_depth, depth)
-                else:
-                    anchor_end, anchor_depth = end, depth
-                shadow = True
-            pending = next(records, None)
-        stop = min((end + 1 for end, _, _ in active), default=cursor + 1)
-        if pending is not None and pending[0] == contig:
-            stop = min(stop, int(pending[1])) if active else int(pending[1])
-        if shadow:
-            boundary = (
-                anchor_end
-                if cursor <= anchor_end
-                else anchor_end + CLAIR3_DELETION_SPAN
-            )
-            stop = min(stop, boundary + 1) if cursor <= boundary else stop
-        if active:
-            state = min((state for _, state, _ in active), key=_RANK.__getitem__)
-            if shadow and cursor > anchor_end:
-                depths = [d for _, s, d in active if s in references]
-                if cursor <= anchor_end + CLAIR3_DELETION_SPAN and any(
-                    d < CLAIR3_DELETION_DEPTH * anchor_depth for d in depths
-                ):
-                    state = min(
-                        state, State.LOW_QUALITY_REFERENCE, key=_RANK.__getitem__
-                    )
-                else:
-                    shadow = False
-            yield contig, cursor, stop - 1, state
-        elif cursor > anchor_end:
-            shadow = False
-        cursor = stop
-        active = [record for record in active if record[0] >= cursor]
-
-
-def _sweep(
-    wanted: list[Interval],
-    records: Iterator[Classified],
-    order: Mapping[str, int],
-) -> Iterator[Span]:
-    """Resolve overlapping records base by base, highest-ranked state first.
-    Records arrive sorted, so only the few overlapping the cursor are held."""
-    pending = next(records, None)
-    active: list[tuple[str, int, State]] = []
-    for contig, first, last in wanted:
-        rank = order[contig]
-        # Records of contigs already passed (none, from bcftools -R) are skipped.
-        while pending is not None and order.get(pending[0], -1) < rank:
-            pending = next(records, None)
-        cursor = first
-        while cursor <= last:
-            while pending is not None and pending[0] == contig and pending[1] <= cursor:
-                if pending[2] >= cursor:
-                    active.append((contig, pending[2], pending[3]))
-                pending = next(records, None)
-            active = [a for a in active if a[0] == contig and a[1] >= cursor]
-            upcoming = last + 1
-            if pending is not None and pending[0] == contig:
-                upcoming = min(upcoming, pending[1])
-            if active:
-                state = min((a[2] for a in active), key=_RANK.__getitem__)
-                stop = min(min(a[1] for a in active), upcoming - 1)
-            else:
-                state, stop = State.UNCOVERED, upcoming - 1
-            yield Span(contig, cursor, stop, state)
-            cursor = stop + 1
+        return query_intervals(
+            self.path, self.quality_model, wanted, thresholds, order, regions
+        )
 
 
 def count_bases(spans: Iterable[Span]) -> Counter[State]:
