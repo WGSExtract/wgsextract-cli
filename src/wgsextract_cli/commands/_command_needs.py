@@ -150,7 +150,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         "bcftools",
         "samtools",
         "tabix",
-        optional="docker run_clair3.sh sambamba",
+        optional="docker run_clair3.sh sambamba wgse-clair3",
     ),
     "vcf impute": _n(
         HOURS,
