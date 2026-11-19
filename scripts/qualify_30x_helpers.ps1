@@ -133,17 +133,25 @@ function Invoke-Step {
     }
     Save-StepAttempt $Row $AttemptDir $Watch
     $Started = $false
+    $OutTask = $null
+    $ErrTask = $null
     Write-Host "START $Name (logs: $StdoutPath / $StderrPath)"
     try {
         $Started = $Process.Start()
         if (-not $Started) { throw "Could not start $Name" }
-        $StartedAt = $Process.StartTime.ToUniversalTime()
         $OutTask = $Process.StandardOutput.BaseStream.CopyToAsync($OutStream)
         $ErrTask = $Process.StandardError.BaseStream.CopyToAsync($ErrStream)
+        $StartedAt = $null
+        try {
+            $StartedAt = $Process.StartTime.ToUniversalTime()
+        } catch {
+            # Unix may no longer expose start time for an already-exited child.
+            if (-not $Process.HasExited) { throw }
+        }
         $Known = @{}
         do {
             $Processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, WorkingSetSize)
-            if (-not $Known.Count) {
+            if ($null -ne $StartedAt -and -not $Known.Count) {
                 $RootProcess = $Processes | Where-Object {
                     $null -ne $_.CreationDate -and $_.ProcessId -eq $Process.Id -and
                     [math]::Abs((([DateTime]$_.CreationDate).ToUniversalTime() - $StartedAt).TotalMilliseconds) -lt 1
@@ -194,10 +202,8 @@ function Invoke-Step {
     } finally {
         if ($Row.status -ne 'complete') { $Row.status = 'failed' }
         if ($Started -and -not $Process.HasExited) { $Process.Kill($true); $Process.WaitForExit() }
-        if ($Started) {
-            [void]$OutTask.GetAwaiter().GetResult()
-            [void]$ErrTask.GetAwaiter().GetResult()
-        }
+        if ($null -ne $OutTask) { [void]$OutTask.GetAwaiter().GetResult() }
+        if ($null -ne $ErrTask) { [void]$ErrTask.GetAwaiter().GetResult() }
         $OutStream.Dispose()
         $ErrStream.Dispose()
         $Process.Dispose()

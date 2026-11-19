@@ -1,5 +1,5 @@
 #requires -Version 7.2
-param([string]$Helpers, [string]$Root)
+param([string]$Helpers, [string]$Root, [switch]$ExitedBeforeTelemetry)
 $ErrorActionPreference = 'Stop'
 $Evidence = Join-Path $Root 'evidence'
 $Threads = 2
@@ -10,12 +10,33 @@ New-Item -ItemType Directory -Force $Evidence | Out-Null
 function Get-CimInstance {
     param($ClassName, $Property)
     if ($ClassName -eq 'Win32_Process') {
+        if ($ExitedBeforeTelemetry) { return }
         Get-Process | Select-Object @{n='ProcessId';e={$_.Id}}, @{n='ParentProcessId';e={0}}, @{n='CreationDate';e={$_.StartTime.ToUniversalTime()}}, @{n='WorkingSetSize';e={if ($WorkingSetOverride) { $WorkingSetOverride } else { $_.WorkingSet64 }}}
     } else {
         [pscustomobject]@{ TotalVisibleMemorySize = 64MB; FreePhysicalMemory = 60MB }
     }
 }
 $Pwsh = (Get-Process -Id $PID).Path
+if ($ExitedBeforeTelemetry) {
+    # Force the OS-property race without replacing the real child process or pipes.
+    Update-TypeData -TypeName System.Diagnostics.Process -MemberType ScriptProperty -MemberName StartTime -Value {
+        $this.WaitForExit()
+        throw 'Process start time is unavailable after exit'
+    } -Force
+    try {
+        Invoke-Step 'fast_stdout' @($Pwsh, '-NoProfile', '-Command', '[Console]::WriteLine("captured stdout"); [Console]::Error.WriteLine("captured stderr")')
+        Invoke-Step 'fast_empty' @($Pwsh, '-NoProfile', '-Command', 'exit 0')
+        try {
+            Invoke-Step 'fast_failure' @($Pwsh, '-NoProfile', '-Command', '[Console]::Error.WriteLine("fast failure"); exit 7')
+            throw 'Nonzero exit was accepted'
+        } catch {
+            if ($_ -notmatch 'exited 7') { throw }
+        }
+    } finally {
+        Remove-TypeData -TypeName System.Diagnostics.Process
+    }
+    return
+}
 $Output = Join-Path $Root "space & apostrophe's.bam"
 $Code = '[IO.File]::WriteAllText($args[0], "public fixture"); [Console]::WriteLine($args[1])'
 $Child = Join-Path $Root 'child.ps1'
