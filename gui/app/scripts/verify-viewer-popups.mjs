@@ -43,6 +43,7 @@ export async function observeViewer(page) {
 
 export async function verifyViewerPopups(page, fixtures, output, label) {
   // Find an actual mismatching read/base from the decoded HG002 alignments, then click the canvas.
+  await scrollTrackIntoView(page, "alignment");
   const targets = await page.evaluate(() => {
     const track = window.viewerBrowser.trackViews.find((view) => view.track.type === "alignment");
     const viewport = track.viewports[0];
@@ -107,6 +108,7 @@ export async function verifyViewerPopups(page, fixtures, output, label) {
 }
 
 async function clickVariant(page, position) {
+  await scrollTrackIntoView(page, "variant");
   const variant = await page.evaluate((position) => {
     const view = window.viewerBrowser.trackViews.find((entry) => entry.track.type === "variant");
     const viewport = view.viewports[0];
@@ -115,6 +117,13 @@ async function clickVariant(page, position) {
     return { x: canvas.x + (position + 0.5 - frame.start) / frame.bpPerPixel, y: canvas.y + 15 };
   }, position);
   await page.mouse.click(variant.x, variant.y);
+}
+
+async function scrollTrackIntoView(page, type) {
+  const viewport = await page.evaluateHandle((type) =>
+    window.viewerBrowser.trackViews.find((view) => view.track.type === type).viewports[0].viewportElement, type);
+  await viewport.asElement().scrollIntoViewIfNeeded();
+  await viewport.dispose();
 }
 
 async function revealPopup(page, popup) {

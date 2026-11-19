@@ -25,6 +25,8 @@ import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
 import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
+import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -76,6 +78,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
     const pickedBundlePaths = new Set<string>();
     const resultPaths = new ResultPaths();
+    const viewerFiles = new ViewerFiles();
     // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
     let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
@@ -95,6 +98,15 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/viewer.css": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "viewer.css"), "text/css; charset=utf-8", response, headOnly),
     };
     const postRoutes: Record<string, (request: IncomingMessage, response: ServerResponse) => Promise<void>> = {
+        "/api/viewer/open": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles));
+        },
+        "/api/viewer/close": jsonRoute(context, async (body) => {
+            viewerFiles.revoke(requiredString(body, "id"));
+            return { ok: true };
+        }),
         "/api/datasource": jsonRoute(context, async (body) => {
             const location = parseManifestLocation(body.source);
             const payload = await runDataSource(resolveDataSource(context.manifest, location), commandContext(body, context), context.bundleRoot, context.runProcess);
@@ -228,6 +240,12 @@ export function createRequestHandler(context: RequestHandlerContext) {
             guardRequest(request, url.pathname, { apiToken: context.apiToken, hostnames: context.hostnames ?? [] });
             const method = request.method ?? "GET";
             const headOnly = method === "HEAD";
+            if (url.pathname.startsWith("/viewer-data/")) {
+                requireViewerLoopback(request);
+                const library = await viewerLibraries(context);
+                await viewerFiles.serve(request, response, url.pathname, library.roots, library.key);
+                return;
+            }
             if (method === "GET" || method === "HEAD") {
                 await handleGet(url, request, response, context, staticRoutes[url.pathname], headOnly);
                 return;

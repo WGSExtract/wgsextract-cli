@@ -6,18 +6,25 @@ export class ViewerFileError extends Error {
     }
 }
 
-export interface LocalTrack {
+export interface LocalTrack<Source = File> {
     name: string;
     type: "alignment" | "variant";
     format: "bam" | "cram" | "vcf";
-    url: File;
-    indexURL: File;
+    url: Source;
+    indexURL: Source;
+    headers?: Record<string, string>;
     indexed: true;
 }
 
-export interface LocalViewerFiles {
-    reference: { id: string; name: string; fastaURL: File; indexURL: File; compressedIndexURL?: File; wholeGenomeView: false };
-    tracks: LocalTrack[];
+export interface LocalViewerFiles<Source = File> {
+    reference: { id: string; name: string; fastaURL: Source; indexURL: Source; compressedIndexURL?: Source; headers?: Record<string, string>; wholeGenomeView: false };
+    tracks: LocalTrack<Source>[];
+}
+
+export interface LibraryViewerSession {
+    id: string;
+    files: LocalViewerFiles<string>;
+    locus: string;
 }
 
 /** Only explicit File objects reach igv: no inferred URLs, remote lookups, or whole-file reads. */
