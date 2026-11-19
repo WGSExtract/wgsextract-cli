@@ -22,6 +22,7 @@ from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.reference_assets import (
     build_hint,
     default_reference_library,
@@ -294,7 +295,7 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
             path = first_existing_file(
                 [
                     str(Path(directory, f"{key}_{build}{extension}"))
-                    for directory in (str(Path(reflib, "ref")), reflib)
+                    for directory in (*map(str, download_dirs(reflib)), reflib)
                     for extension in extensions
                 ]
             )
@@ -446,14 +447,14 @@ def _ploidy_status(reflib: str) -> dict[str, Any]:
         "hg19": first_existing_file(
             [
                 str(Path(reflib, "ploidy_hg19.txt")),
-                str(Path(reflib, "ref", "ploidy_hg19.txt")),
+                *(str(Path(d, "ploidy_hg19.txt")) for d in download_dirs(reflib)),
                 str(Path(reflib, "microarray", "ploidy_hg19.txt")),
             ]
         ),
         "hg38": first_existing_file(
             [
                 str(Path(reflib, "ploidy_hg38.txt")),
-                str(Path(reflib, "ref", "ploidy_hg38.txt")),
+                *(str(Path(d, "ploidy_hg38.txt")) for d in download_dirs(reflib)),
                 str(Path(reflib, "microarray", "ploidy_hg38.txt")),
             ]
         ),

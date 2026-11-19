@@ -664,7 +664,7 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     )
     sa_dir: Path | None = param(
         None,
-        help="Folder to build the databases in (default: ref/acmg/sa in the library).",
+        help="Folder to build the databases in (default: downloads/acmg/sa in the library).",
         path="directory",
         config_key="acmg_sa_dir",
     )
@@ -734,10 +734,10 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         # The library (configured when ref is omitted), then everything written
         # in it and in sa_dir: a server checks each with links resolved, so a
-        # linked ref/acmg or sa folder can't lead outside the allowed ones.
+        # linked downloads/acmg or sa folder can't lead outside the allowed ones.
         yield from super().implied_paths()
         folders, files = self._destinations()
-        databases = folders[3]  # destinations(): ref/acmg, sources, ref, sa_dir, ...
+        databases = folders[3]  # destinations(): acmg, sources, downloads, sa_dir, ...
         for path in (*folders, *files):
             yield "sa_dir" if path.is_relative_to(databases) else "ref", path
 

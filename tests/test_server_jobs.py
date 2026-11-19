@@ -238,7 +238,7 @@ def test_hla_typing_building_its_library_index_waits_for_a_busy_library(
     # reference library, outside its outdir, so that folder is locked too.
     bam, ref = fake_data
     library = work / "library"
-    index = library / "ref" / "t1k_hla"
+    index = library / "downloads" / "t1k_hla"
     index.mkdir(parents=True)
     (library / "genomes").mkdir()
     shutil.copy(ref, library / "genomes" / "ref.fa")

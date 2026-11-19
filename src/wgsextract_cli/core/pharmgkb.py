@@ -2,7 +2,7 @@
 
 ClinPGx publishes its clinical annotations by rsID, with no coordinates, and
 each variant's GRCh38 location and alleles (as HGVS synonyms) in a separate
-file. `ref pharmgkb` joins the two into ref/pharmgkb_hg38.tsv.gz (#CHROM, POS,
+file. `ref pharmgkb` joins the two into downloads/pharmgkb_hg38.tsv.gz (#CHROM, POS,
 REF, ALT, PHARMGKB; bgzipped and tabix-indexed) for `vcf pharmgkb`, which
 annotates the records carrying one of those alleles; matching by allele keeps a
 gVCF reference block that merely spans a site from being labelled with it.
@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
+from wgsextract_cli.core.ref_library.layout import downloads_dir
 from wgsextract_cli.core.utils import run_command
 
 from .ref_library import download_file
@@ -217,8 +218,8 @@ def download_pharmgkb(
     progress_callback: ProgressCallback | None = None,
 ) -> bool:
     """Download ClinPGx's clinical annotations and variant locations and build
-    ref/pharmgkb_hg38.tsv.gz from them."""
-    target_dir = str(Path(reflib_dir, "ref"))
+    downloads/pharmgkb_hg38.tsv.gz from them."""
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target_dir, prefix=".pharmgkb_") as work:
         downloads = {}

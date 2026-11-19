@@ -7,6 +7,11 @@ from wgsextract_cli.core.annotation_resources import CancelEvent
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.ref_library.assets import library_of_genomes_dir
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import (
+    download_dirs,
+    download_path,
+    downloads_dir,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 # Official UCSC RefGene database URLs
@@ -48,19 +53,11 @@ class GeneMap:
         if build_key in self.maps:
             return True
 
-        # Look for local file in reflib (ref/genes_hg38.tsv)
-        map_file = str(Path(self.reflib_dir, "ref", f"genes_{build_key}.tsv"))
-        logging.debug(f"GeneMap: Searching for {map_file}")
-        if not Path(map_file).exists():
-            # Try root/microarray as fallback
-            map_file = str(
-                Path(self.reflib_dir, "microarray", f"genes_{build_key}.tsv")
-            )
-            logging.debug(f"GeneMap: Searching for {map_file}")
-
-        if not Path(map_file).exists():
-            logging.debug("GeneMap: No gene map file found.")
+        found = gene_map_path(self.reflib_dir, build_key)
+        if found is None:
+            logging.debug(f"GeneMap: No genes_{build_key}.tsv in {self.reflib_dir}.")
             return False
+        map_file = str(found)
 
         try:
             ranges: dict[str, tuple[str, int, int]] = {}
@@ -123,12 +120,10 @@ def are_gene_maps_installed(reflib_dir: str) -> bool:
     """Checks if gene mapping files for both hg19 and hg38 are installed."""
     if not reflib_dir:
         return False
-    target_dir = str(Path(reflib_dir, "ref"))
-    for build in GENE_MAP_URLS.keys():
-        tsv_path = str(Path(target_dir, f"genes_{build}.tsv"))
-        if not Path(tsv_path).exists():
-            return False
-    return True
+    return all(
+        download_path(reflib_dir, f"genes_{build}.tsv").exists()
+        for build in GENE_MAP_URLS
+    )
 
 
 def gene_map_exists(reflib_dir: str | None, build: str = "hg38") -> bool:
@@ -136,10 +131,14 @@ def gene_map_exists(reflib_dir: str | None, build: str = "hg38") -> bool:
     build_key = canonical_build(build)
     if not reflib_dir or build_key not in GENE_MAP_URLS:
         return False
-    root = Path(reflib_dir)
-    return (root / "ref" / f"genes_{build_key}.tsv").exists() or (
-        root / "microarray" / f"genes_{build_key}.tsv"
-    ).exists()
+    return gene_map_path(reflib_dir, build_key) is not None
+
+
+def gene_map_path(reflib_dir: str, build_key: str) -> Path | None:
+    """The library's genes_<build>.tsv: downloaded, else in microarray/."""
+    name = f"genes_{build_key}.tsv"
+    candidates = [*download_dirs(reflib_dir), Path(reflib_dir, "microarray")]
+    return next((d / name for d in candidates if (d / name).exists()), None)
 
 
 def resolve_gene_map_reflib(
@@ -173,10 +172,9 @@ def delete_gene_maps(reflib_dir: str) -> bool:
     """Deletes gene mapping files from the reference library."""
     if not reflib_dir:
         return False
-    target_dir = str(Path(reflib_dir, "ref"))
     success = True
     for build in GENE_MAP_URLS.keys():
-        tsv_path = str(Path(target_dir, f"genes_{build}.tsv"))
+        tsv_path = str(download_path(reflib_dir, f"genes_{build}.tsv"))
         if Path(tsv_path).exists():
             try:
                 Path(tsv_path).unlink()
@@ -190,7 +188,7 @@ def download_gene_maps(
     reflib_dir: str, cancel_event: CancelEvent | None = None
 ) -> bool:
     """Downloads and processes official UCSC RefGene maps."""
-    target_dir = str(Path(reflib_dir, "ref"))
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
     success = True

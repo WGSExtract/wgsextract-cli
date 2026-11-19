@@ -187,7 +187,7 @@ See [rules, rationale and validation](variant-confidence.md).
 
 ## Pharmacogenomics and repeat typing
 
-`ref pharmgkb` builds `ref/pharmgkb_hg38.tsv.gz` from ClinPGx (formerly
+`ref pharmgkb` builds `downloads/pharmgkb_hg38.tsv.gz` from ClinPGx (formerly
 PharmGKB) clinical annotations and variant locations. `vcf pharmgkb` matches
 annotated SNV alleles only, not star alleles/haplotypes (CYP2D6*4) or indels;
 hg38 only. Data is CC BY-SA 4.0 under the
@@ -219,7 +219,7 @@ Install `cyrius`, `t1k` or `expansionhunter` explicitly on Linux/macOS.
 Cyrius is PolyForm Strict: noncommercial only, no distribution/modification;
 it is not bundled. If its index is missing, `typing hla --download` explicitly
 allows T1K to download IPD-IMGT/HLA data and build the index at
-`<reference library>/ref/t1k_hla`. Without `--download`, a missing index stops
+`<reference library>/downloads/t1k_hla`. Without `--download`, a missing index stops
 the command. For offline use, reuse the cached index or supply an existing
 index FASTA with `--hla-index PATH`. STR typing compares with
 [STRchive](https://strchive.org) ranges; give `--sex` or infer from depth.

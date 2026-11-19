@@ -24,6 +24,7 @@ from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
+from wgsextract_cli.core.ref_library.layout import download_path, downloads_dir
 from wgsextract_cli.core.resource_mirrors import mirror_chunks, mirror_for
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -167,13 +168,13 @@ def build_gnomad_af(
     attempts: int = 3,
 ) -> bool:
     """
-    Build <library>/ref/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
+    Build <library>/downloads/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
 
     Contigs stream in parallel (the build is network-bound) into resumable
     per-contig parts, which are then concatenated (BGZF allows that) and indexed.
     """
-    target_dir = str(Path(reflib_dir, "ref"))
-    dest = str(Path(target_dir, GNOMAD_AF_TABLE))
+    target_dir = str(downloads_dir(reflib_dir))
+    dest = str(download_path(reflib_dir, GNOMAD_AF_TABLE))
     if Path(dest).is_file() and Path(dest + ".tbi").is_file():
         logging.info(f"{GNOMAD_AF_TABLE} is already installed.")
         return True

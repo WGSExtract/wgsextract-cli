@@ -30,6 +30,11 @@ from wgsextract_cli.core.ref_library.downloads import (
     download_file,
     verify_download_sha256,
 )
+from wgsextract_cli.core.ref_library.layout import (
+    LEGACY_DOWNLOADS_DIR,
+    download_path,
+    downloads_dir,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -72,7 +77,7 @@ def download_gnomad(
     progress_callback: ProgressCallback | None = None,
 ) -> bool:
     """Downloads and indexes gnomAD sites VCFs for hg19 and hg38."""
-    target_dir = str(Path(reflib_dir, "ref"))
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
     success = True
@@ -80,7 +85,7 @@ def download_gnomad(
         if cancel_event and cancel_event.is_set():
             return False
 
-        dest_path = str(Path(target_dir, f"gnomad_{build}.vcf.bgz"))
+        dest_path = str(download_path(reflib_dir, f"gnomad_{build}.vcf.bgz"))
         logging.info(f"Downloading gnomAD {build} from Google Storage...")
 
         if not download_file(url, dest_path, progress_callback, cancel_event):
@@ -378,14 +383,16 @@ def bootstrap_has_support_assets(reflib_dir: str) -> bool:
 
 def normalize_bootstrap_layout(reflib_dir: str) -> None:
     nested = str(Path(reflib_dir, "reference"))
-    if not Path(nested).is_dir():
-        _remove_macos_metadata(reflib_dir)
-        return
-    _merge_directory(nested, reflib_dir)
-    _remove_empty_directories(nested)
-    if Path(nested).is_dir() and not os.listdir(nested):
-        Path(nested).rmdir()
+    if Path(nested).is_dir():
+        _merge_directory(nested, reflib_dir)
+        _remove_empty_directories(nested)
+        if Path(nested).is_dir() and not os.listdir(nested):
+            Path(nested).rmdir()
     _remove_macos_metadata(reflib_dir)
+    # The archive still carries an empty ref/; downloads now go in downloads/.
+    legacy = Path(reflib_dir, LEGACY_DOWNLOADS_DIR)
+    if legacy.is_dir() and not os.listdir(legacy):
+        legacy.rmdir()
 
 
 def install_bootstrap_support_files(reflib_dir: str) -> bool:

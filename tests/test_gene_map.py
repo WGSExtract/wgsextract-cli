@@ -56,14 +56,14 @@ def ucsc(monkeypatch):
 
 
 def _tsv(lib: Path, build: str) -> list[str]:
-    return (lib / "ref" / f"genes_{build}.tsv").read_text().splitlines()
+    return (lib / "downloads" / f"genes_{build}.tsv").read_text().splitlines()
 
 
 def test_download_builds_sorted_merged_gene_maps(tmp_path, ucsc):
     assert not are_gene_maps_installed(str(tmp_path))
     assert download_gene_maps(str(tmp_path))
     assert are_gene_maps_installed(str(tmp_path))
-    assert sorted(p.name for p in (tmp_path / "ref").iterdir()) == [
+    assert sorted(p.name for p in (tmp_path / "downloads").iterdir()) == [
         "genes_hg19.tsv",
         "genes_hg38.tsv",
     ]
@@ -124,24 +124,26 @@ class _CancelAfter:
 def test_cancelled_download_writes_no_gene_map(tmp_path, ucsc, n):
     # Checks: before downloading, after downloading, then while parsing.
     assert not download_gene_maps(str(tmp_path), cancel_event=_CancelAfter(n))
-    assert not list((tmp_path / "ref").glob("genes_*.tsv"))
+    assert not list((tmp_path / "downloads").glob("genes_*.tsv"))
     if n == 2:
-        assert not list((tmp_path / "ref").iterdir())
+        assert not list((tmp_path / "downloads").iterdir())
 
 
 def test_delete_removes_both_maps(tmp_path, ucsc):
     assert not delete_gene_maps("")
     assert download_gene_maps(str(tmp_path))
     assert delete_gene_maps(str(tmp_path))
-    assert not list((tmp_path / "ref").iterdir())
+    assert not list((tmp_path / "downloads").iterdir())
     assert delete_gene_maps(str(tmp_path))  # nothing to delete is still success
 
 
 def test_delete_reports_a_map_it_cannot_remove(tmp_path):
-    (tmp_path / "ref" / "genes_hg38.tsv").mkdir(parents=True)
-    (tmp_path / "ref" / "genes_hg19.tsv").write_text("symbol\tchrom\tstart\tend\n")
+    (tmp_path / "downloads" / "genes_hg38.tsv").mkdir(parents=True)
+    (tmp_path / "downloads" / "genes_hg19.tsv").write_text(
+        "symbol\tchrom\tstart\tend\n"
+    )
     assert not delete_gene_maps(str(tmp_path))
-    assert not (tmp_path / "ref" / "genes_hg19.tsv").exists()
+    assert not (tmp_path / "downloads" / "genes_hg19.tsv").exists()
 
 
 def test_gene_map_falls_back_to_microarray_and_caches(tmp_path):
@@ -163,7 +165,7 @@ def test_gene_map_falls_back_to_microarray_and_caches(tmp_path):
 
 
 def test_malformed_gene_map_loads_nothing(tmp_path, caplog):
-    tsv = tmp_path / "ref" / "genes_hg38.tsv"
+    tsv = tmp_path / "downloads" / "genes_hg38.tsv"
     tsv.parent.mkdir()
     tsv.write_text("symbol\tchrom\tstart\tend\nBRCA1\tchr17\tforty\t43125364\n")
     assert GeneMap(str(tmp_path)).get_coords("BRCA1", "hg38") is None

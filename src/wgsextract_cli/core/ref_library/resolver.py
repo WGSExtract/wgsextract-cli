@@ -33,6 +33,7 @@ from wgsextract_cli.core.ref_library.assets import (
     resolve_input_reference_fasta,
     resolve_input_target_tab,
 )
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.ref_library.models import identify_reference, sequence_lengths
 
 _UNKNOWN_SIGNATURE = "0" * 32
@@ -344,7 +345,7 @@ class ReferenceLibrary:
         if not self.build:
             return
         self.ploidy_file = self._first_existing_file(
-            self._resource_dirs("", "ref", "microarray"),
+            self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
             [f"ploidy_{self.build}.txt", "ploidy.txt"],
         )
 
@@ -376,7 +377,7 @@ class ReferenceLibrary:
         so every kit made from it was empty. Without a genome-wide target,
         microarray builds one from the chip templates.
         """
-        subdirs = ["microarray", "", "ref"]
+        subdirs = ["microarray", "", *DOWNLOAD_DIRS]
         tab_names: list[str] = []
         if self.build:
             build = self.build.lower()
@@ -390,12 +391,19 @@ class ReferenceLibrary:
             subdirs += [
                 str(Path("microarray", self.build)),
                 self.build,
-                str(Path("ref", self.build)),
+                *(str(Path(d, self.build)) for d in DOWNLOAD_DIRS),
             ]
             if alt_build:
-                subdirs += [alt_build, str(Path("ref", alt_build))]
+                subdirs += [
+                    alt_build,
+                    *(str(Path(d, alt_build)) for d in DOWNLOAD_DIRS),
+                ]
         generic_names = ["All_SNPs.vcf.gz", "common_all.vcf.gz"]
-        walk_subdirs = ["microarray", "ref", str(Path("genomes", "microarray"))]
+        walk_subdirs = [
+            "microarray",
+            *DOWNLOAD_DIRS,
+            str(Path("genomes", "microarray")),
+        ]
 
         def search(root: str) -> Iterator[str | None]:
             dirs = [str(Path(root, d)) for d in subdirs]
@@ -417,7 +425,7 @@ class ReferenceLibrary:
     def _resolve_annotation_files(self) -> None:
         from wgsextract_cli.core.config import settings
 
-        dirs = self._resource_dirs("", "ref")
+        dirs = self._resource_dirs("", *DOWNLOAD_DIRS)
         vcf_exts = [".vcf.gz", ".vcf.bgz"]
         tsv_exts = [".tsv.gz", ".vcf.gz"]
         self.clinvar_vcf = self._resolve_annotation_file(
@@ -473,7 +481,7 @@ class ReferenceLibrary:
 
         if self.build and is_hg38_build(self.build):
             self.liftover_chain = self._first_existing_file(
-                self._resource_dirs("", "ref", "microarray"),
+                self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
                 ["hg38ToHg19.over.chain.gz"],
             )
 

@@ -43,6 +43,7 @@ from wgsextract_cli.core.microarray.templates import (
     template_rows,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -482,14 +483,15 @@ def download_chain(source: ChainSource, dest: str) -> bool:
 def installed_chain_copy(
     source: ChainSource, directories: Iterable[str | Path]
 ) -> Path | None:
-    """The first copy of source in directories, or their ref/ and microarray/
-    subdirectories (as ReferenceLibrary finds them), with its pinned SHA-256,
-    else the first copy by that name (warned): a different chain places
-    markers elsewhere, so a pinned copy later in the search order wins."""
+    """The first copy of source in directories, or their downloads/, ref/ and
+    microarray/ subdirectories (as ReferenceLibrary finds them), with its
+    pinned SHA-256, else the first copy by that name (warned): a different
+    chain places markers elsewhere, so a pinned copy later in the search order
+    wins."""
     copies = [
         path
         for directory in directories
-        for sub in ("", "ref", "microarray")
+        for sub in ("", *DOWNLOAD_DIRS, "microarray")
         if (path := Path(directory, sub, source.name)).is_file()
     ]
     for path in copies:
