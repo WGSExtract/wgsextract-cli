@@ -185,6 +185,10 @@ def test_629_changed_local_source_cannot_mix_releases(indexed, tmp_path, replace
     local = tmp_path / "source.vcf.gz"
     local.write_bytes(vcf.read_bytes())
     Path(f"{local}.tbi").write_bytes(Path(f"{vcf}.tbi").read_bytes())
+    # A release file predates the run; on Windows an edit within the same
+    # clock tick as its creation would leave its mtime unchanged.
+    old = local.stat().st_mtime_ns - 10**9
+    os.utime(local, ns=(old, old))
     file = TabixFile(str(local))
     file.header()
     if replace:
