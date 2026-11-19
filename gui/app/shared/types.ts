@@ -401,8 +401,8 @@ export interface CommandContext {
     usersWorkspacePath?: string;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
-    /** The last setup run's status (`{{setupStatus}}`); empty before setup has run. */
-    setupStatus?: string;
+    /** `true` once the last setup run installed every tool (pathTool step) for this platform (`{{setupToolsReady}}`). */
+    setupToolsReady?: string;
     [key: string]: unknown;
 }
 

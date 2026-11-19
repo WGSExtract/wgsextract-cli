@@ -121,7 +121,7 @@ test("#629: ACMG classes run only once research use is ticked and confirmed", as
   assert.equal(isActionVisible(action, context(true)), currentSetupPlatform() !== "windows");
 });
 
-test("#1138: WGSExtract's bug report actions wait for setup to finish, since they run the CLI it installs", async (t) => {
+test("#1138: WGSExtract's bug report actions wait until setup has installed the CLI they run", async (t) => {
   const copy = await exampleBundleCopy(t);
   const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
   const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
@@ -129,17 +129,23 @@ test("#1138: WGSExtract's bug report actions wait for setup to finish, since the
     const context = commandContextFromState({ manifest: bundle.manifest, setupRun, lastResultDocumentPaths: { last: "/w/last.json" } });
     return section.actions.map((action) => disabledReason(action, context));
   };
+  const toolStep = currentSetupPlatform() === "windows" ? "wgsextract-cli-windows" : "wgsextract-cli";
+  const installStep = currentSetupPlatform() === "windows" ? "install-wgsextract-windows" : "install-wgsextract";
+  const ready = section.actions.map(() => undefined);
 
   assert.ok(section.actions.length > 0);
-  for (const setupRun of [null, { status: "running" }, { status: "failed" }]) {
+  // The issue: the CLI install failed, and the report was offered anyway.
+  const installFailed = { status: "failed", results: [{ id: "pixi", status: "ok" }, { id: installStep, status: "failed" }] };
+  for (const setupRun of [null, { status: "running", results: [] }, installFailed]) {
     for (const reason of reasons(setupRun)) {
-      assert.match(reason ?? "", /once setup has finished/);
+      assert.match(reason ?? "", /once setup has installed the WGS Extract CLI/);
       assert.match(reason ?? "", /github\.com\/WGSExtract\/wgsextract-cli\/issues/);
     }
   }
-  for (const status of ["ok", "warning"]) {
-    assert.deepEqual(reasons({ status }), section.actions.map(() => undefined));
-  }
+  assert.deepEqual(reasons({ status: "ok", results: [{ id: installStep, status: "ok" }, { id: toolStep, status: "ok" }] }), ready);
+  // A later step failing (the reference library download) leaves the CLI usable, and that failure reportable.
+  const referenceFailed = { status: "failed", results: [{ id: toolStep, status: "ok" }, { id: "bootstrap-reference-library", status: "failed" }] };
+  assert.deepEqual(reasons(referenceFailed), ready);
 });
 
 test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async (t) => {

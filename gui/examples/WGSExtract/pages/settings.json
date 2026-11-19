@@ -99,11 +99,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
@@ -153,11 +150,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
@@ -207,11 +201,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
@@ -262,11 +253,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
@@ -322,11 +310,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
@@ -382,11 +367,8 @@
           ],
           "disabledWhen": [
             {
-              "placeholder": "setupStatus",
-              "notIn": [
-                "ok",
-                "warning"
-              ]
+              "placeholder": "setupToolsReady",
+              "notEquals": "true"
             }
           ],
           "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",

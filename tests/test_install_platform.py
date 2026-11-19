@@ -320,6 +320,7 @@ def _run_install_with_pixi(
         "WGSEXTRACT_INSTALL_DIR": str(installation),
         "WGSEXTRACT_ARCHIVE_URL": str(archive),
         "WGSEXTRACT_REF": "main",
+        "WGSEXTRACT_NO_OPEN": "1",
         "PIXI": str(pixi) if explicit else "",
     }
     result = subprocess.run(

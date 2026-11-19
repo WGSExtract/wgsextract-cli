@@ -1,8 +1,8 @@
 import { allControls, configEditorControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
-import { currentSetupPlatform } from "./setup-platforms.js";
+import { currentSetupPlatform, setupStepsForPlatform } from "./setup-platforms.js";
 import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
-import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
+import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "./types.js";
 
 type CheckedOptionsInput = Record<string, Set<string> | string[] | string | null | undefined>;
 type StateLike = {
@@ -14,7 +14,7 @@ type StateLike = {
     manifest?: BundleManifest | null;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
-    setupRun?: { status?: string } | null;
+    setupRun?: SetupRun | null;
     uiMode?: unknown;
 } & LooseRecord;
 
@@ -39,10 +39,21 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     if (state.lastResultDocumentPaths != null) {
         context.lastResultDocumentPaths = state.lastResultDocumentPaths;
     }
-    if (state.setupRun?.status) {
-        context.setupStatus = state.setupRun.status;
+    if (setupToolsReady(state.manifest, state.setupRun)) {
+        context.setupToolsReady = "true";
     }
     return context;
+}
+/**
+ * Whether the last setup run installed every tool this platform's setup declares (its pathTool steps). A later
+ * step's failure (a download, say) leaves the tools usable.
+ */
+function setupToolsReady(manifest: BundleManifest | null | undefined, setupRun: SetupRun | null | undefined): boolean {
+    const toolIDs = setupStepsForPlatform(manifest?.setup?.steps ?? [])
+        .filter((step) => step.kind === "pathTool")
+        .map((step) => step.id);
+    const statuses = new Map((setupRun?.results ?? []).map((result) => [result.id, result.status]));
+    return toolIDs.length > 0 && toolIDs.every((id) => ["ok", "warning"].includes(statuses.get(id) ?? ""));
 }
 /** Basic mode runs commands with the controls it hides at their defaults, and the options it hides unchecked. */
 function valuesForUIMode(state: StateLike): { fieldValues: ValueMap; checkedOptions: StringMap; configValues: ValueMap } {
@@ -118,8 +129,8 @@ export function contextValue(context: CommandContext, placeholder: string): Stat
     if (placeholder === "hostPlatform") {
         return currentSetupPlatform();
     }
-    if (placeholder === "setupStatus") {
-        return context.setupStatus;
+    if (placeholder === "setupToolsReady") {
+        return context.setupToolsReady;
     }
     if (placeholder === lastResultDocumentPlaceholders.last) {
         return context.lastResultDocumentPaths?.last;

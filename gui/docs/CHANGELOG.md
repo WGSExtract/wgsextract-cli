@@ -6,11 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
-- Conditions can read the built-in `setupStatus` placeholder: the last setup run's `ok`, `warning`, `failed` or `running`, empty before setup has run.
+- Conditions can read the built-in `setupToolsReady` placeholder: `true` once the last setup run installed every tool (its `pathTool` steps) for this platform, otherwise empty. A later step that fails, such as a download, leaves it `true`.
 
 ### Fixed
 - WGSExtract setup no longer reuses a Pixi older than the CLI release needs (#1138). On macOS and Linux the check step names the Pixi's version, and setup installs its own Pixi in the runtime, leaving the user's unchanged; on Windows the check step stops with a request to run `pixi self-update`.
-- WGSExtract's **Report a Problem** actions are disabled until setup has finished, since they run the CLI setup installs; their tooltip says how to report a setup problem instead.
+- WGSExtract's **Report a Problem** actions are disabled until setup has installed the CLI they run; their tooltip says how to report a setup problem instead.
 
 ## [0.8.8] - 2026-11-18
 

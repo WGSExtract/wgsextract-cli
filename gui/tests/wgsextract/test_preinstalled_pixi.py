@@ -115,6 +115,9 @@ class PreinstalledPixiTests(unittest.TestCase):
             **self.env(),
             "WGSEXTRACT_ARCHIVE_URL": str(archive),
             "WGSEXTRACT_INSTALL_DIR": str(install_dir),
+            # Setup removes an earlier version's runtime in the bundle workspace;
+            # keep that away from the checkout's own.
+            "WGSEXTRACT_GUI_BUNDLE_WORKSPACE": str(self.root / "bundle"),
         }
         result = subprocess.run(
             ["sh", str(SCRIPTS / "posix" / "setup-wgsextract-pixi.sh")],

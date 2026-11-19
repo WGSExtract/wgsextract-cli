@@ -584,7 +584,7 @@
 "actions.settings.v066.report-issue-open.confirm.message" = "Votre navigateur ouvre le formulaire de nouveau ticket GitHub, rempli avec le rapport expurgé : GitHub reçoit donc le texte du rapport dans le lien. Aucun ticket n’est créé tant que vous ne l’avez pas relu et soumis vous-même. Une copie est enregistrée dans le dossier reports de votre dossier de données."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Ouvrir dans le navigateur"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Annuler"  # i18n-source-hash:77dfd213
-"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Disponible une fois la configuration terminée : le rapport est produit par la CLI WGS Extract, que la configuration installe. Pour signaler un problème de configuration, copiez sa sortie dans un nouveau ticket sur https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:3debe787
+"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Disponible une fois que la configuration a installé la CLI WGS Extract, qui produit le rapport. Pour signaler un problème de configuration, copiez sa sortie dans un nouveau ticket sur https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:23d42ba4
 "controls.reference-genome.emptyText" = "Aucun chargé. Voir la page Génomes de référence pour en ajouter."  # i18n-source-hash:e328ff9b
 "sections.fastq.inputs.title" = "Entrées"  # i18n-source-hash:bbcf64a3
 "sections.fastq.analysis.title" = "Analyse"  # i18n-source-hash:62c7fcf4

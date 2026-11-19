@@ -584,7 +584,7 @@
 "actions.settings.v066.report-issue-open.confirm.message" = "Seu navegador abre o formulário de nova issue do GitHub, preenchido com o relatório censurado, então o GitHub recebe o texto do relatório no link. Nenhuma issue é criada até você revisá-lo lá e enviá-lo você mesmo. Uma cópia é salva na pasta reports da sua pasta de dados."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Abrir no navegador"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Cancelar"  # i18n-source-hash:77dfd213
-"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Disponível quando a configuração terminar: o relatório vem da CLI do WGS Extract, que a configuração instala. Para relatar um problema na configuração, copie a saída dela em uma nova issue em https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:3debe787
+"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Disponível quando a configuração tiver instalado a CLI do WGS Extract, que gera o relatório. Para relatar um problema na configuração, copie a saída dela em uma nova issue em https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:23d42ba4
 "controls.reference-genome.emptyText" = "Nenhum carregado. Veja a página Genomas de referência para adicionar."  # i18n-source-hash:e328ff9b
 "sections.fastq.inputs.title" = "Entradas"  # i18n-source-hash:bbcf64a3
 "sections.fastq.analysis.title" = "Análise"  # i18n-source-hash:62c7fcf4

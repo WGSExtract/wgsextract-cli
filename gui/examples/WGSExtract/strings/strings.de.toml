@@ -584,7 +584,7 @@
 "actions.settings.v066.report-issue-open.confirm.message" = "Ihr Browser öffnet das Formular für ein neues GitHub-Issue, ausgefüllt mit dem geschwärzten Bericht; GitHub erhält den Berichtstext dabei über den Link. Ein Issue wird erst erstellt, wenn Sie ihn dort prüfen und selbst absenden. Eine Kopie wird im Ordner „reports“ Ihres Datenordners gespeichert."  # i18n-source-hash:5aa07ec2
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Im Browser öffnen"  # i18n-source-hash:56c8f9db
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Abbrechen"  # i18n-source-hash:77dfd213
-"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Verfügbar, sobald die Einrichtung abgeschlossen ist: Der Bericht stammt von der WGS Extract CLI, die bei der Einrichtung installiert wird. Um ein Problem bei der Einrichtung zu melden, kopieren Sie deren Ausgabe in ein neues Issue unter https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:3debe787
+"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Verfügbar, sobald die Einrichtung die WGS Extract CLI installiert hat, die den Bericht erstellt. Um ein Problem bei der Einrichtung zu melden, kopieren Sie deren Ausgabe in ein neues Issue unter https://github.com/WGSExtract/wgsextract-cli/issues."  # i18n-source-hash:23d42ba4
 "controls.reference-genome.emptyText" = "Keine geladen. Siehe Seite Referenzgenome zum Hinzufügen."  # i18n-source-hash:e328ff9b
 "sections.fastq.inputs.title" = "Eingaben"  # i18n-source-hash:bbcf64a3
 "sections.fastq.analysis.title" = "Analyse"  # i18n-source-hash:62c7fcf4

@@ -1,7 +1,8 @@
-# Reports the Pixi and MSYS2 that setup finds. install_windows.bat reuses a Pixi
-# on PATH or in ~\.pixi and installs one into ~\.pixi otherwise; $env:PIXI
-# overrides the Pixi that commands run with, so an unusable one fails here, and
-# so does a Pixi older than WGS Extract needs, which install_windows.bat rejects.
+# Reports the Pixi and MSYS2 that setup finds. install_windows.bat uses the Pixi
+# in PIXI_HOME\bin or ~\.pixi\bin, then one on PATH, and installs one into
+# Pixi's home otherwise; commands then run with $env:PIXI, else the Pixi on PATH,
+# else Pixi's home (run-wgsextract-env.ps1). Each Pixi either will use must exist
+# and be new enough for WGS Extract, which install_windows.bat checks too.
 $ErrorActionPreference = "Stop"
 
 # The bundled release's requires-pixi (scripts\wgsextract-pixi-minimum.txt).
@@ -20,44 +21,56 @@ function Get-PixiVersion {
     return $null
 }
 
-# Reports the user's Pixi, or fails when it is too old to install WGS Extract.
-function Report-ReusedPixi {
-    param([string]$Pixi, [string]$Where)
+# Fails unless the Pixi at $Pixi is new enough for WGS Extract; returns its version.
+function Assert-PixiNewEnough {
+    param([string]$Pixi, [string]$Role)
     $minimum = Get-PixiMinimum
     $version = Get-PixiVersion $Pixi
     if ($minimum -and (-not $version -or $version -lt $minimum)) {
         $found = if ($version) { "Pixi $version" } else { "a Pixi whose version could not be read" }
-        [Console]::Error.WriteLine("WGS Extract needs Pixi >=$minimum, but found $found $Where`: $Pixi. Run 'pixi self-update' in a terminal, then run setup again.")
+        [Console]::Error.WriteLine("WGS Extract needs Pixi >=$minimum, but $Role is $found`: $Pixi. Run 'pixi self-update' in a terminal, then run setup again.")
         exit 1
     }
-    Write-Host "Setup will reuse the Pixi $version $Where`: $Pixi"
+    return $version
 }
 
-function Report-Pixi {
-    if ($env:PIXI) {
-        if (-not (Test-Path -LiteralPath $env:PIXI -PathType Leaf)) {
-            [Console]::Error.WriteLine("PIXI is set but is not a file: $env:PIXI")
-            exit 1
-        }
-        Write-Host "Commands will run with the Pixi set in PIXI: $env:PIXI"
-        return
-    }
+function Get-PathPixi {
     $command = Get-Command pixi -ErrorAction SilentlyContinue
-    if ($command) {
-        Report-ReusedPixi $command.Source "on PATH"
-        return
-    }
-    # Pixi's home: PIXI_HOME (Pixi's own setting), then ~\.pixi.
+    if ($command) { return $command.Source }
+    return $null
+}
+
+# Pixi's home: PIXI_HOME (Pixi's own setting), then ~\.pixi.
+function Get-HomePixi {
     foreach ($pixiHome in @($env:PIXI_HOME, (Join-Path $HOME ".pixi"))) {
         if (-not $pixiHome) { continue }
         $homePixi = Join-Path $pixiHome "bin\pixi.exe"
-        if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
-            Report-ReusedPixi $homePixi "in $pixiHome"
-            return
-        }
+        if (Test-Path -LiteralPath $homePixi -PathType Leaf) { return $homePixi }
     }
-    $installHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
-    Write-Host "Pixi is not pre-installed; setup will install it into $installHome."
+    return $null
+}
+
+function Report-Pixi {
+    if ($env:PIXI -and -not (Test-Path -LiteralPath $env:PIXI -PathType Leaf)) {
+        [Console]::Error.WriteLine("PIXI is set but is not a file: $env:PIXI")
+        exit 1
+    }
+    $homePixi = Get-HomePixi
+    $pathPixi = Get-PathPixi
+    $setupPixi = if ($homePixi) { $homePixi } else { $pathPixi }
+    if ($setupPixi) {
+        $version = Assert-PixiNewEnough $setupPixi "the Pixi setup would use"
+        Write-Host "Setup will reuse the Pixi $version`: $setupPixi"
+    } else {
+        $installHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
+        Write-Host "Pixi is not pre-installed; setup will install it into $installHome."
+    }
+    $commandPixi = if ($env:PIXI) { $env:PIXI } else { $pathPixi }
+    if ($commandPixi -and $commandPixi -ne $setupPixi) {
+        $role = if ($env:PIXI) { "the Pixi set in PIXI" } else { "the Pixi commands would run with" }
+        $version = Assert-PixiNewEnough $commandPixi $role
+        Write-Host "Commands will run with the Pixi $version`: $commandPixi"
+    }
 }
 
 function Report-Msys2 {
