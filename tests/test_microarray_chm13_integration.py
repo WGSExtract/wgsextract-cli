@@ -68,6 +68,7 @@ def _native_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         command, "validate_chm13_reference", lambda *_args: {"chr1": "chr1"}
     )
     (tmp_path / "hg18ToHg19.over.chain.gz").touch()
+    (tmp_path / "hg38ToHg19.over.chain.gz").touch()
     monkeypatch.setattr(command, "collect_template_markers", lambda *_args: {})
 
     def markers(_panel, _reflib_dir=None):
@@ -78,6 +79,28 @@ def _native_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(aadr, "aadr_markers", markers)
     monkeypatch.setattr(command, "aadr_markers", markers)
     return fasta
+
+
+def test_missing_hg38_chain_is_named_not_no_called(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The v2 map includes FTDNA's GRCh38 Y templates; without their chain the
+    # union can't be rebuilt, so the run stops and names the missing file.
+    fasta = _native_library(tmp_path, monkeypatch)
+    (tmp_path / "hg38ToHg19.over.chain.gz").unlink()
+    source = tmp_path / "sample.vcf"
+    source.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    )
+    args = microarray_params(
+        input=str(source), region=None, ref_vcf_tab=None, ploidy_file=None
+    )
+    with pytest.raises(WGSExtractError, match=r"hg38ToHg19\.over\.chain\.gz"):
+        command.run_chm13(
+            args, SimpleNamespace(root=str(tmp_path)), str(fasta), str(tmp_path), "1"
+        )
 
 
 @pytest.mark.parametrize("chrom", ["chr1", "1"])

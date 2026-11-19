@@ -118,8 +118,6 @@ _FORMATS = [
     "MyHeritage_GSA_2025",
     "MyHeritage_GSA_2025_609424",
 ]
-# The pinned CHM13 v1 site map covers exactly these templates' markers.
-CHM13_V1_FORMATS = tuple(_FORMATS)
 _FORMATS += [
     "Ancestry_V2ab",
     "Ancestry_V2cd",
@@ -136,6 +134,9 @@ _FORMATS += [
     "meuDNA_V2",
     "SelfDecode_V1",
 ]
+# The pinned CHM13 v2 site map covers exactly these templates' markers: add a
+# template after this only together with a rebuilt map.
+CHM13_V2_FORMATS = tuple(_FORMATS)
 
 
 def genome_wide_target_path(reflib_dir: str, build: str) -> str:

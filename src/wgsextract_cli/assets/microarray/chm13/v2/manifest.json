@@ -1,8 +1,9 @@
 {
-  "compressed_bytes": 6802944,
-  "file": "chm13-sites-v1-7f6cabc29769f400.bin.gz",
+  "compressed_bytes": 7009790,
+  "file": "chm13-sites-v1-3b027397307021e1.bin.gz",
   "format": "wgsextract-chm13-map",
   "provenance": {
+    "bridge_sha256": "c1c35dc509d9394dd5c81c4eea895060256faf24a6615924aa1718f13d51d672",
     "chains": {
       "chm13v2-hg19.chain": {
         "sha256": "c498d65fda77a6df62aeee9d1e99966614fa8631f06b85ce36dcb481920a25ce",
@@ -14,14 +15,15 @@
       }
     },
     "generator": "scripts/build_microarray_chm13_map.py",
-    "generator_sha256": "d8e7487567d8ad4ac4eb1a485dabee93d2b3f4d1630a213c97e046cc54b5b3f5",
+    "generator_sha256": "ed4d91ec80568ab88ac7cc080baddfe3e9afdc0ee58d10b6a317aec63238aed4",
+    "grch38_chain_sha256": "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2",
     "mapping_counts": {
-      "mapped": 2856174,
+      "mapped": 2979394,
       "mt_gap": 3,
-      "ref_different": 668049,
-      "ref_equal": 2188124,
+      "ref_different": 675724,
+      "ref_equal": 2303669,
       "ref_unknown": 1,
-      "unmapped": 6323
+      "unmapped": 7197
     },
     "markers": {
       "aadr": {
@@ -32,8 +34,8 @@
         "release": "v66.p1",
         "sha256": "7ecbbc06a876c57236c36b4779f881648dbe7754851c42fd12d625ada8269b05"
       },
-      "complete_sites": 2862500,
-      "distinct_source_ids": 2932890,
+      "complete_sites": 2986594,
+      "distinct_source_ids": 3446731,
       "layouts": {
         "23andMe_SNPs_API": {
           "counts": {
@@ -199,7 +201,43 @@
           "parts": [
             {
               "part": 1,
-              "sha256": "5179a0d246ba70dd253dbb78f5fe83eb186cfc90e380655f4bcf91a0a9960a4c"
+              "sha256": "1a87e48a14c9138e8fca3f278bcfd3f22d51cdc3ee4cfec73c40d75704c81aed"
+            }
+          ]
+        },
+        "Ancestry_V2ab": {
+          "counts": {
+            "placed_rows": 670296,
+            "rows": 670296
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "f363e6adf6f52f8adeb46e8fbef26fd1fd9314d8902bec925a780ee54526007e"
+            }
+          ]
+        },
+        "Ancestry_V2cd": {
+          "counts": {
+            "placed_rows": 700164,
+            "rows": 700164
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "90dd9fb2acdf06d7791b32054d8094bc8c7d6f8624d4e2c4672ba8a0f332a382"
+            }
+          ]
+        },
+        "Ancestry_V2e": {
+          "counts": {
+            "placed_rows": 434818,
+            "rows": 434818
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "61b5dc46338d62703bc36e3a27aabcd1d72484f7d0ba6327c997fc94e8740f25"
             }
           ]
         },
@@ -228,6 +266,19 @@
             }
           ]
         },
+        "FTDNA_V2Y": {
+          "counts": {
+            "grch38_no_hit": 2,
+            "placed_rows": 15406,
+            "rows": 15408
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "1d0538f7f0962b017b92cda9772470dca2f6d8eedbe04dd78d2938afd9f90bea"
+            }
+          ]
+        },
         "FTDNA_V3": {
           "counts": {
             "placed_rows": 629292,
@@ -246,6 +297,56 @@
             {
               "part": 3,
               "sha256": "b398f2001d0c1792e14a91dd3db11041a7450fc18240168d86c6b9a34b8d22fd"
+            }
+          ]
+        },
+        "FTDNA_V3Y": {
+          "counts": {
+            "grch38_no_hit": 1,
+            "placed_rows": 10577,
+            "rows": 10578
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "9aafdfe89138a9168c1e72e70b01c60d6d160102ef4f4a75c08f9c7f6ba5ee30"
+            }
+          ]
+        },
+        "FTDNA_V4": {
+          "counts": {
+            "placed_rows": 758990,
+            "rows": 758990
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "4a736a2e7359efeb6fb507ea2c351b46c280d6c280f3882f2eabe4f3a13a2a5b"
+            }
+          ]
+        },
+        "FTDNA_V4Y": {
+          "counts": {
+            "grch38_no_hit": 26,
+            "placed_rows": 19974,
+            "rows": 20000
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "b7e4ebea84d002c92905a4374d8b4611d1a615e36f323b9d75f5bef3c3d08c03"
+            }
+          ]
+        },
+        "Genera_V1": {
+          "counts": {
+            "placed_rows": 639813,
+            "rows": 639813
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "d9b8f01ab4c76b92b63fad3324004ca52c2c6d727b4732497714c31bca3f860f"
             }
           ]
         },
@@ -273,6 +374,18 @@
             }
           ]
         },
+        "MTHFR_V1": {
+          "counts": {
+            "placed_rows": 640418,
+            "rows": 640418
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "118c101fbc840b44599b39194a5238b7ee58ff18d3902375de8572baeedff98e"
+            }
+          ]
+        },
         "MyHeritage_GSA_2025": {
           "counts": {
             "placed_rows": 609346,
@@ -293,7 +406,7 @@
           "parts": [
             {
               "part": 1,
-              "sha256": "8d031e853fc573296f668bc8f0a4b500b6c4f8b0fec38b3ec800c803cfa7cb20"
+              "sha256": "72df2253ea62b4e6bd381d7139d2b820248a40a78c88de483dfec7c4edc4a286"
             }
           ]
         },
@@ -321,6 +434,18 @@
             }
           ]
         },
+        "MyHeritage_V3": {
+          "counts": {
+            "placed_rows": 593345,
+            "rows": 593345
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "e2882addc80681b3b7ed274a4a5fd4980c6f2c914d96bfeb0a0699406374ad62"
+            }
+          ]
+        },
         "Nucleus_V1": {
           "counts": {
             "placed_rows": 665107,
@@ -332,9 +457,58 @@
               "sha256": "ec66b6c24242d49f8ef2b708e41a1fd39bb0457164fc3e838cd8f32c99d7fbfc"
             }
           ]
+        },
+        "SelfDecode_V1": {
+          "counts": {
+            "placed_rows": 686763,
+            "rows": 686763
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "42dfc47ceb9959de7f6ded6833ddcce99458c7a80e59f90c8d8c28e5e7634478"
+            }
+          ]
+        },
+        "TellMeGen_V1": {
+          "counts": {
+            "placed_rows": 779518,
+            "rows": 779518
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "8939631c570991cd4fbff61f8a0b9c02f4772a9fed0e594ddfcd3b6db626fe72"
+            }
+          ]
+        },
+        "meuDNA_V1": {
+          "counts": {
+            "placed_rows": 631368,
+            "rows": 632150,
+            "unplaced": 782
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "d35d8a5542b82ed4b2afbab35e344d6234f35fa9ee7cb7d9b96fce789e4b2302"
+            }
+          ]
+        },
+        "meuDNA_V2": {
+          "counts": {
+            "placed_rows": 654017,
+            "rows": 654017
+          },
+          "parts": [
+            {
+              "part": 1,
+              "sha256": "3dc73451e9f16cbb9fcce15a27d1cc9ea1ac53b6a18b471da8db1c5949fefb33"
+            }
+          ]
         }
       },
-      "legacy_sites": 2392384,
+      "legacy_sites": 2525397,
       "source_alleles": {
         "bundled_manifest_defined_indels": 0,
         "known_marker_rows": 1233013,
@@ -660,7 +834,7 @@
           "name": "chrM"
         }
       ],
-      "local_bgzip_sha256": "97aaa5476c28aec58c4f0e1f561a76cb47fb2157c4e9d5848cdc9700e08f8159",
+      "local_bgzip_sha256": "a0cebfae3e2090691f730f2177b10e3a7a10a7072854e7e2caf3a8f19b7c5bc5",
       "upstream_url": "https://1000genomes.s3.amazonaws.com/technical/reference/phase2_reference_assembly_sequence/hs37d5.fa.gz"
     },
     "validation": {
@@ -671,150 +845,150 @@
         "hg38ToHg19.over.chain.gz": "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2"
       },
       "counts": {
-        "GRCh38_nonprimary": 708,
-        "GRCh38_nonreciprocal": 593,
-        "GRCh38_static_collision_sites": 14,
-        "GRCh38_unmapped": 1261,
-        "MT_validated_separately": 4529,
-        "bridge_coordinate_disagreement": 498,
-        "eligible_sites": 2848725,
-        "nuclear_sites": 2857971,
-        "via38_reachable_but_direct_rejected": 348,
-        "via38_unmapped": 5832
+        "GRCh38_nonprimary": 874,
+        "GRCh38_nonreciprocal": 676,
+        "GRCh38_static_collision_sites": 50,
+        "GRCh38_unmapped": 1287,
+        "MT_validated_separately": 5712,
+        "bridge_coordinate_disagreement": 606,
+        "eligible_sites": 2970360,
+        "nuclear_sites": 2980882,
+        "via38_reachable_but_direct_rejected": 422,
+        "via38_unmapped": 6638
       },
       "eligibility_file": "validation-grch38-reciprocal.tsv.gz",
-      "eligibility_sha256": "fab5819332917a932f96cec54c27e46d79ae87c5a563dfd84adf8b184f37cf4e",
+      "eligibility_sha256": "9b429e8bd99dbba3074c3c10fbe2a81d600a5f3aea94784d5b5d7ebcf6c8811d",
       "policy": "direct CHM13 authoritative; via38 is validation cross-check only",
       "shipped": false
     }
   },
-  "sha256": "7f6cabc29769f400cfb0879d24f828d79a1de2aed843520f776bbb6694309b35",
+  "sha256": "3b027397307021e13b575df2e8e0020e552507e8f437dd67ae79ef01c8971601",
   "source_build": "GRCh37-rCRS",
   "source_contigs": [
     {
       "length": 249250621,
       "name": "chr1",
-      "rows": 224538
+      "rows": 233245
     },
     {
       "length": 243199373,
       "name": "chr2",
-      "rows": 233000
+      "rows": 240675
     },
     {
       "length": 198022430,
       "name": "chr3",
-      "rows": 190065
+      "rows": 195685
     },
     {
       "length": 191154276,
       "name": "chr4",
-      "rows": 172657
+      "rows": 177152
     },
     {
       "length": 180915260,
       "name": "chr5",
-      "rows": 169043
+      "rows": 173758
     },
     {
       "length": 171115067,
       "name": "chr6",
-      "rows": 182547
+      "rows": 188320
     },
     {
       "length": 159138663,
       "name": "chr7",
-      "rows": 152560
+      "rows": 156945
     },
     {
       "length": 146364022,
       "name": "chr8",
-      "rows": 143735
+      "rows": 147547
     },
     {
       "length": 141213431,
       "name": "chr9",
-      "rows": 120753
+      "rows": 124602
     },
     {
       "length": 135534747,
       "name": "chr10",
-      "rows": 140159
+      "rows": 144805
     },
     {
       "length": 135006516,
       "name": "chr11",
-      "rows": 138378
+      "rows": 143892
     },
     {
       "length": 133851895,
       "name": "chr12",
-      "rows": 132408
+      "rows": 136749
     },
     {
       "length": 115169878,
       "name": "chr13",
-      "rows": 100036
+      "rows": 104010
     },
     {
       "length": 107349540,
       "name": "chr14",
-      "rows": 89000
+      "rows": 91735
     },
     {
       "length": 102531392,
       "name": "chr15",
-      "rows": 85676
+      "rows": 89474
     },
     {
       "length": 90354753,
       "name": "chr16",
-      "rows": 91440
+      "rows": 95324
     },
     {
       "length": 81195210,
       "name": "chr17",
-      "rows": 83550
+      "rows": 88604
     },
     {
       "length": 78077248,
       "name": "chr18",
-      "rows": 79819
+      "rows": 81691
     },
     {
       "length": 59128983,
       "name": "chr19",
-      "rows": 60116
+      "rows": 64810
     },
     {
       "length": 63025520,
       "name": "chr20",
-      "rows": 67478
+      "rows": 69433
     },
     {
       "length": 48129895,
       "name": "chr21",
-      "rows": 38845
+      "rows": 40012
     },
     {
       "length": 51304566,
       "name": "chr22",
-      "rows": 40022
+      "rows": 42221
     },
     {
       "length": 155270560,
       "name": "chrX",
-      "rows": 85370
+      "rows": 87495
     },
     {
       "length": 59373566,
       "name": "chrY",
-      "rows": 36776
+      "rows": 62698
     },
     {
       "length": 16569,
       "name": "chrM",
-      "rows": 4529
+      "rows": 5712
     }
   ],
   "target_build": "CHM13v2.0",
@@ -920,7 +1094,7 @@
       "name": "chrM"
     }
   ],
-  "uncompressed_bytes": 16621310,
-  "uncompressed_sha256": "daa04fbaf974b4f8323ba1b0b25046f322431fe9d9bc3f296a0ce06d7e646365",
+  "uncompressed_bytes": 17274231,
+  "uncompressed_sha256": "2a238ba963968c484cbf5cae5629082616c056c2afe01afc1cb25c947392caad",
   "version": 1
 }

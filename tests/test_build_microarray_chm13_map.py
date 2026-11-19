@@ -66,17 +66,27 @@ def test_full_union_includes_aadr_numeric_and_sex_chromosome_sites(
 ) -> None:
     template = tmp_path / "markers.txt"
     template.write_text("marker-only fixture\n")
-    monkeypatch.setattr(builder, "_FORMATS", ["Test"])
+    monkeypatch.setattr(builder, "_FORMATS", ["Test", "TestY"])
     monkeypatch.setattr(builder, "_resolve_templates_roots", lambda roots: roots)
     monkeypatch.setattr(
         builder,
         "_template_paths",
-        lambda _roots, _formats: iter([("Test", None, [str(template)])]),
+        lambda _roots, _formats: iter(
+            [("Test", None, [str(template)]), ("TestY", "GRCh38", [str(template)])]
+        ),
     )
+    rows = {
+        "Test": [("rs1", "1", "10")],
+        # A GRCh38 Y template (FTDNA_V*Y): one row lifts, one has no hit.
+        "TestY": [("rsY", "Y", "500"), ("rsLost", "Y", "600")],
+    }
+    monkeypatch.setattr(builder, "template_rows", lambda name, _path: iter(rows[name]))
+    hg38 = _Lifter({("chrY", 499): [("chrY", 49, "+", 1)]})
     monkeypatch.setattr(
-        builder, "template_rows", lambda *_args: iter([("rs1", "1", "10")])
+        builder,
+        "LiftOver",
+        lambda path: hg38 if path.endswith("hg38.chain") else _Lifter({}),
     )
-    monkeypatch.setattr(builder, "LiftOver", lambda _path: _Lifter({}))
     from wgsextract_cli.core.microarray.aadr import AADRMarker
 
     monkeypatch.setattr(
@@ -92,16 +102,24 @@ def test_full_union_includes_aadr_numeric_and_sex_chromosome_sites(
     )
     monkeypatch.setattr(builder, "_MARKERS", template)
     markers, provenance = builder.collect_markers(
-        [str(tmp_path)], tmp_path / "unused.chain", {"chr1": 100, "chrX": 100}
+        [str(tmp_path)],
+        {"NCBI36": tmp_path / "hg18.chain", "GRCh38": tmp_path / "hg38.chain"},
+        {"chr1": 100, "chrX": 100, "chrY": 100},
     )
     assert markers == {
         ("chr1", 10): "rs1",
+        ("chrY", 50): "rsY",
         ("chr1", 20): "aadr1",
         ("chrX", 30): "aadrX",
         ("chr1", 40): "knownIndel",
     }
-    assert provenance["legacy_sites"] == 1
-    assert provenance["complete_sites"] == 4
+    assert provenance["layouts"]["TestY"]["counts"] == {
+        "rows": 2,
+        "placed_rows": 1,
+        "grch38_no_hit": 1,
+    }
+    assert provenance["legacy_sites"] == 2
+    assert provenance["complete_sites"] == 5
     alleles = provenance["source_alleles"]
     assert alleles["known_marker_rows"] == 3
     assert alleles["non_snv_marker_rows"] == 1

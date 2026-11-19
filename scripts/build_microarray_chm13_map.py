@@ -9,8 +9,9 @@ import json
 import os
 import re
 import subprocess
+import sys
 import uuid
-from collections import Counter, OrderedDict, deque
+from collections import Counter, OrderedDict
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,15 @@ from typing import Protocol, TypedDict
 
 from pyliftover import LiftOver
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.chm13_mito_bridge import (  # noqa: E402
+    MitochondrialBridge,
+    align_mitochondria,
+    file_sha256,
+    mitochondrial_artifact,
+)
 from wgsextract_cli.core.microarray.aadr import (
     _MARKERS,
     _chrom_name,
@@ -32,8 +42,8 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteProjection,
     load_site_map,
 )
-from wgsextract_cli.core.microarray.targets import CHM13_V1_FORMATS as _FORMATS
-from wgsextract_cli.core.microarray.targets import _template_paths
+from wgsextract_cli.core.microarray.targets import _CHAINS_TO_GRCH37, _template_paths
+from wgsextract_cli.core.microarray.targets import CHM13_V2_FORMATS as _FORMATS
 from wgsextract_cli.core.microarray.templates import (
     _chrom_for_liftover,
     _resolve_templates_roots,
@@ -50,23 +60,17 @@ class PARInterval(TypedDict):
     end0: int
 
 
-def file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        while chunk := source.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def collect_markers(
     roots: Sequence[str],
-    chain36: Path,
+    chains: Mapping[str, Path],
     source_lengths: Mapping[str, int],
 ) -> tuple[dict[tuple[str, int], str], dict[str, object]]:
+    """The GRCh37 union of the templates' and AADR's markers; chains lifts a
+    template on another build (NCBI36, GRCh38) to GRCh37."""
     paths = list(_template_paths(_resolve_templates_roots(list(roots)), _FORMATS))
     if missing := set(_FORMATS) - {name for name, _build, _parts in paths}:
         raise ValueError(f"Missing template layouts: {sorted(missing)}")
-    ncbi36_lifter = LiftOver(str(chain36))
+    lifters = {build: LiftOver(str(chain)) for build, chain in chains.items()}
     markers: dict[tuple[str, int], str] = {}
     source_ids: set[str] = set()
     formats: dict[str, object] = {}
@@ -79,10 +83,10 @@ def collect_markers(
                 if not pos.isdigit() or int(pos) < 1:
                     counts["unplaced"] += 1
                     continue
-                if build == "NCBI36":
-                    lifted = lift_to_grch37(ncbi36_lifter, chrom, pos)
+                if build:
+                    lifted = lift_to_grch37(lifters[build], chrom, pos)
                     if lifted is None:
-                        counts["ncbi36_no_hit"] += 1
+                        counts[f"{build.lower()}_no_hit"] += 1
                         continue
                     chrom, pos, _inverted = lifted
                 canonical = _chrom_for_liftover(chrom)
@@ -410,149 +414,6 @@ def project_sites(
     return rows, dict(counts)
 
 
-@dataclass(frozen=True)
-class MitochondrialBridge:
-    edit_distance: int
-    source_to_target: tuple[int, ...]
-    target_to_source: tuple[int, ...]
-    aligned_source: str
-    aligned_target: str
-    target_rotation: int = 0
-
-    def original_target(self) -> str:
-        rotated = self.aligned_target.replace("-", "")
-        offset = self.target_rotation
-        return rotated[-offset:] + rotated[:-offset] if offset else rotated
-
-
-def align_mitochondria(
-    source: str, target: str, *, band: int = 128, target_rotation: int = 0
-) -> MitochondrialBridge:
-    """Globally align MT; zero map entries are nonreciprocal/ambiguous/gapped."""
-    if not source or not target or set(source + target) - set("ACGTN"):
-        raise ValueError("Mitochondrial sequences must be nonempty A/C/G/T/N strings")
-    if not 0 <= target_rotation < len(target):
-        raise ValueError("Invalid circular target origin")
-    target = target[target_rotation:] + target[:target_rotation]
-    if not 0 <= band <= 256:
-        raise ValueError("Mitochondrial alignment band must be in [0, 256]")
-    n, m = len(source), len(target)
-    if max(n, m) > 20_000:
-        raise ValueError("Unexpected mitochondrial sequence length")
-    width = 2 * band + 1
-    traceback = bytearray((n + 1) * width)
-    infinity = n + m + 1
-    previous = {j: j for j in range(min(m, band) + 1)}
-    for j in range(1, min(m, band) + 1):
-        traceback[j + band] = 4
-    for i in range(1, n + 1):
-        current: dict[int, int] = {}
-        for j in range(max(0, i - band), min(m, i + band) + 1):
-            diagonal = (
-                previous.get(j - 1, infinity)
-                + (
-                    source[i - 1] != target[j - 1]
-                    or "N" in (source[i - 1], target[j - 1])
-                )
-                if j
-                else infinity
-            )
-            deletion = previous.get(j, infinity) + 1
-            insertion = current.get(j - 1, infinity) + 1
-            best = min(diagonal, deletion, insertion)
-            current[j] = best
-            traceback[i * width + j - i + band] = (
-                (1 if diagonal == best else 0)
-                | (2 if deletion == best else 0)
-                | (4 if insertion == best else 0)
-            )
-        previous = current
-    score = previous.get(m, infinity)
-    # Leaving this band needs at least band+1 unit-cost indels. Thus every
-    # globally optimal path is inside the band when this inequality holds.
-    if score > band:
-        raise ValueError("Edit distance exceeds the globally complete alignment band")
-
-    source_candidates = [-1] * (n + 1)
-    target_candidates = [-1] * (m + 1)
-    source_candidates[0] = target_candidates[0] = 0
-
-    def candidate(values: list[int], position: int, match: int) -> None:
-        if values[position] == -1:
-            values[position] = match
-        elif values[position] != match:
-            values[position] = 0
-
-    visited = bytearray(len(traceback))
-    pending = deque([(n, m)])
-    while pending:
-        i, j = pending.popleft()
-        cell = i * width + j - i + band
-        if visited[cell]:
-            continue
-        visited[cell] = 1
-        directions = traceback[cell]
-        if directions & 1:
-            candidate(source_candidates, i, j)
-            candidate(target_candidates, j, i)
-            pending.append((i - 1, j - 1))
-        if directions & 2:
-            candidate(source_candidates, i, 0)
-            pending.append((i - 1, j))
-        if directions & 4:
-            candidate(target_candidates, j, 0)
-            pending.append((i, j - 1))
-
-    source_map = [0] * (n + 1)
-    target_map = [0] * (m + 1)
-    for i, j in enumerate(source_candidates[1:], 1):
-        if (
-            j > 0
-            and target_candidates[j] == i
-            and source[i - 1] in "ACGT"
-            and target[j - 1] in "ACGT"
-        ):
-            source_map[i] = j
-            target_map[j] = i
-
-    aligned_source: list[str] = []
-    aligned_target: list[str] = []
-    i, j = n, m
-    while i or j:
-        directions = traceback[i * width + j - i + band]
-        if directions & 1:
-            aligned_source.append(source[i - 1])
-            aligned_target.append(target[j - 1])
-            i, j = i - 1, j - 1
-        elif directions & 2:
-            aligned_source.append(source[i - 1])
-            aligned_target.append("-")
-            i -= 1
-        elif directions & 4:
-            aligned_source.append("-")
-            aligned_target.append(target[j - 1])
-            j -= 1
-        else:
-            raise ValueError("Incomplete global-alignment traceback")
-    return MitochondrialBridge(
-        score,
-        tuple(
-            (position + target_rotation - 1) % m + 1 if position else 0
-            for position in source_map
-        ),
-        tuple(
-            [0]
-            + [
-                target_map[(position - target_rotation - 1) % m + 1]
-                for position in range(1, m + 1)
-            ]
-        ),
-        "".join(reversed(aligned_source)),
-        "".join(reversed(aligned_target)),
-        target_rotation,
-    )
-
-
 def write_site_map(
     sites: Sequence[SiteProjection],
     source_lengths: Mapping[str, int],
@@ -687,45 +548,6 @@ def write_site_map(
         checksum_part.unlink(missing_ok=True)
 
 
-def _mitochondrial_artifact(
-    bridge: MitochondrialBridge, source: str, target: str, outdir: Path
-) -> dict[str, object]:
-    alignment = (
-        f">rCRS_NC_012920.1\n{bridge.aligned_source}\n"
-        f">CHM13v2.0_chrM\n{bridge.aligned_target}\n"
-    ).encode()
-    checksum = hashlib.sha256(alignment).hexdigest()
-    filename = f"mt-alignment-v1-{checksum[:16]}.fa.gz"
-    with (
-        (outdir / filename).open("wb") as raw,
-        gzip.GzipFile(fileobj=raw, filename="", mode="wb", mtime=0) as compressed,
-    ):
-        compressed.write(alignment)
-    return {
-        "algorithm": "unit-cost global Levenshtein, complete optimal-path graph",
-        "algorithm_version": 1,
-        "unknown_bases": "N always costs one substitution; N pairs never map",
-        "target_rotation_offset0": bridge.target_rotation,
-        "origin_policy": "unique exact first-40bp rCRS anchor; global alignment after origin normalization",
-        "band": 128,
-        "band_completeness_proof": "optimal_distance <= band",
-        "alignment_tie_order": ["diagonal", "source_only", "target_only"],
-        "mapping": "unique reciprocal pairs across ALL optimal alignments",
-        "edit_distance": bridge.edit_distance,
-        "rCRS_length": len(source),
-        "rCRS_md5": hashlib.md5(source.encode()).hexdigest(),
-        "rCRS_sha256": hashlib.sha256(source.encode()).hexdigest(),
-        "CHM13_length": len(target),
-        "CHM13_md5": hashlib.md5(target.encode()).hexdigest(),
-        "CHM13_sha256": hashlib.sha256(target.encode()).hexdigest(),
-        "rCRS_no_call_positions": sum(pos == 0 for pos in bridge.source_to_target[1:]),
-        "CHM13_no_call_positions": sum(pos == 0 for pos in bridge.target_to_source[1:]),
-        "alignment_file": filename,
-        "alignment_sha256": file_sha256(outdir / filename),
-        "alignment_uncompressed_sha256": checksum,
-    }
-
-
 def audit_grch38(
     sites: Sequence[SiteProjection], chains: Path, outdir: Path
 ) -> dict[str, object]:
@@ -846,7 +668,7 @@ def main() -> None:
     if len(origins) != 1 or set(anchor) - set("ACGT"):
         raise ValueError("Cannot establish a unique pinned mitochondrial origin")
     mt = align_mitochondria(rcrs, native_mt, target_rotation=origins[0])
-    mt_provenance = _mitochondrial_artifact(mt, rcrs, native_mt, args.outdir)
+    mt_provenance = mitochondrial_artifact(mt, rcrs, native_mt, args.outdir)
     par: list[PARInterval] = []
     y = native.sequence("chrY")
     for line in args.par_bed.read_text().splitlines():
@@ -870,9 +692,15 @@ def main() -> None:
         raise ValueError(
             "Phase-A asset requires the original-MT, masked-Y analysis set"
         )
+    lift_chains = {
+        build: args.chains / source.name for build, source in _CHAINS_TO_GRCH37.items()
+    }
+    for build, chain in lift_chains.items():
+        if file_sha256(chain) != _CHAINS_TO_GRCH37[build].sha256:
+            raise ValueError(f"{chain.name} is not the pinned UCSC chain")
     markers, marker_provenance = collect_markers(
         [str(path) for path in args.templates],
-        args.chains / "hg18ToHg19.over.chain.gz",
+        lift_chains,
         source.lengths,
     )
     rank = {chrom: index for index, chrom in enumerate(_CHROMS)}
@@ -894,6 +722,7 @@ def main() -> None:
     provenance: dict[str, object] = {
         "generator": "scripts/build_microarray_chm13_map.py",
         "generator_sha256": file_sha256(Path(__file__)),
+        "bridge_sha256": file_sha256(Path(__file__).with_name("chm13_mito_bridge.py")),
         "markers": marker_provenance,
         "mapping_counts": counts,
         "chains": {
@@ -906,7 +735,8 @@ def main() -> None:
             }
             for path in (forward_path, reverse_path)
         },
-        "ncbi36_chain_sha256": file_sha256(args.chains / "hg18ToHg19.over.chain.gz"),
+        "ncbi36_chain_sha256": file_sha256(lift_chains["NCBI36"]),
+        "grch38_chain_sha256": file_sha256(lift_chains["GRCh38"]),
         "source_reference": {
             "upstream_url": (
                 "https://1000genomes.s3.amazonaws.com/technical/reference/"
