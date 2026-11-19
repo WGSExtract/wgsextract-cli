@@ -579,6 +579,7 @@
 "actions.settings.v066.report-issue-open.confirm.message" = "Your browser opens GitHub's new-issue form, filled in with the redacted report, so GitHub receives the report text in the link. No issue is created until you review it there and submit it yourself. A copy is saved in the reports folder of your data folder."
 "actions.settings.v066.report-issue-open.confirm.confirmButtonTitle" = "Open in Browser"
 "actions.settings.v066.report-issue-open.confirm.cancelButtonTitle" = "Cancel"
+"actions.settings.report-issue.setup-unfinished.disabledTooltip" = "Available once setup has finished: the report comes from the WGS Extract CLI, which setup installs. To report a setup problem, copy the setup output into a new issue at https://github.com/WGSExtract/wgsextract-cli/issues."
 "controls.reference-genome.emptyText" = "None loaded. See Reference Genomes page to add."
 "sections.fastq.inputs.title" = "Inputs"
 "sections.fastq.analysis.title" = "Analysis"

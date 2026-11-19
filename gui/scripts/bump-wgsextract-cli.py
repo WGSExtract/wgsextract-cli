@@ -3,10 +3,10 @@
 
 Usage: scripts/bump-wgsextract-cli.py v0.4.4
 
-Updates the release tag setup installs, the bundle version that names the
-installers, the tests and docs that pin them, and the app site's download
-links and current-release text (then rebuilds site/), and adds a CHANGELOG
-entry.
+Updates the release tag setup installs, the Pixi version setup requires, the
+bundle version that names the installers, the tests and docs that pin them,
+and the app site's download links and current-release text (then rebuilds
+site/), and adds a CHANGELOG entry.
 """
 
 from __future__ import annotations
@@ -18,6 +18,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TAG_FILE = ROOT / "examples/WGSExtract/scripts/wgsextract-release-tag.txt"
+# The bundled release's requires-pixi, which setup's Pixi check reports against;
+# the app and CLI release together, so it is the CLI's own pixi.toml.
+PIXI_MINIMUM_FILE = ROOT / "examples/WGSExtract/scripts/wgsextract-pixi-minimum.txt"
+CLI_PIXI_TOML = ROOT.parent / "pixi.toml"
 # Files that name the bundled CLI release's version.
 PINNED = [
     "docs/distribution.md",
@@ -64,6 +68,13 @@ def main(argv: list[str]) -> int:
         f"- Bump the bundled WGSExtract CLI installer target to `{new_tag}` "
         f"([release notes]({RELEASES}/{new_tag})).",
     )
+    minimum = re.search(
+        r'^requires-pixi\s*=\s*">=(\d+\.\d+\.\d+)"', CLI_PIXI_TOML.read_text(), re.M
+    )
+    if not minimum:
+        print(f"{CLI_PIXI_TOML} has no requires-pixi.", file=sys.stderr)
+        return 1
+    changes[PIXI_MINIMUM_FILE] = minimum[1] + "\n"
     changes[TAG_FILE] = new_tag + "\n"
     for path, text in changes.items():
         path.write_text(text)

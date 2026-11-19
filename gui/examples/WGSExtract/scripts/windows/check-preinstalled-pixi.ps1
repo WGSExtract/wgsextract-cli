@@ -1,7 +1,37 @@
 # Reports the Pixi and MSYS2 that setup finds. install_windows.bat reuses a Pixi
 # on PATH or in ~\.pixi and installs one into ~\.pixi otherwise; $env:PIXI
-# overrides the Pixi that commands run with, so an unusable one fails here.
+# overrides the Pixi that commands run with, so an unusable one fails here, and
+# so does a Pixi older than WGS Extract needs, which install_windows.bat rejects.
 $ErrorActionPreference = "Stop"
+
+# The bundled release's requires-pixi (scripts\wgsextract-pixi-minimum.txt).
+function Get-PixiMinimum {
+    $file = Join-Path (Split-Path -Parent $PSScriptRoot) "wgsextract-pixi-minimum.txt"
+    if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
+    $line = "$(Get-Content -LiteralPath $file -TotalCount 1)".Trim()
+    if ($line -match '^\d+\.\d+\.\d+$') { return [version]$line }
+    return $null
+}
+
+function Get-PixiVersion {
+    param([string]$Pixi)
+    $output = & $Pixi --version 2>$null
+    if ($LASTEXITCODE -eq 0 -and "$output" -match '^pixi (\d+\.\d+\.\d+)') { return [version]$Matches[1] }
+    return $null
+}
+
+# Reports the user's Pixi, or fails when it is too old to install WGS Extract.
+function Report-ReusedPixi {
+    param([string]$Pixi, [string]$Where)
+    $minimum = Get-PixiMinimum
+    $version = Get-PixiVersion $Pixi
+    if ($minimum -and (-not $version -or $version -lt $minimum)) {
+        $found = if ($version) { "Pixi $version" } else { "a Pixi whose version could not be read" }
+        [Console]::Error.WriteLine("WGS Extract needs Pixi >=$minimum, but found $found $Where`: $Pixi. Run 'pixi self-update' in a terminal, then run setup again.")
+        exit 1
+    }
+    Write-Host "Setup will reuse the Pixi $version $Where`: $Pixi"
+}
 
 function Report-Pixi {
     if ($env:PIXI) {
@@ -14,7 +44,7 @@ function Report-Pixi {
     }
     $command = Get-Command pixi -ErrorAction SilentlyContinue
     if ($command) {
-        Write-Host "Setup will reuse the Pixi on PATH: $($command.Source)"
+        Report-ReusedPixi $command.Source "on PATH"
         return
     }
     # Pixi's home: PIXI_HOME (Pixi's own setting), then ~\.pixi.
@@ -22,7 +52,7 @@ function Report-Pixi {
         if (-not $pixiHome) { continue }
         $homePixi = Join-Path $pixiHome "bin\pixi.exe"
         if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
-            Write-Host "Setup will reuse the Pixi in ${pixiHome}: $homePixi"
+            Report-ReusedPixi $homePixi "in $pixiHome"
             return
         }
     }

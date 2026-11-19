@@ -417,7 +417,7 @@
       "required": ["placeholder"],
       "additionalProperties": false,
       "properties": {
-        "placeholder": { "type": "string", "minLength": 1 },
+        "placeholder": { "type": "string", "minLength": 1, "description": "A control, setting or built-in placeholder. Built-ins include hostPlatform (windows, macos, linux, or posix) and setupStatus (the last setup run: ok, warning, failed or running; empty before setup has run)." },
         "equals": { "type": "string" },
         "notEquals": { "type": "string" },
         "in": {

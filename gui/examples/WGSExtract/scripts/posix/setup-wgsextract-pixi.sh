@@ -3,6 +3,7 @@ set -eu
 
 REPO_URL="${WGSEXTRACT_REPO_URL:-https://github.com/WGSExtract/wgsextract-cli}"
 script_dir="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+. "$script_dir/pixi-version.sh"
 release_tag_file="${WGSEXTRACT_RELEASE_TAG_FILE:-$script_dir/../wgsextract-release-tag.txt}"
 DEFAULT_RELEASE_TAG="${WGSEXTRACT_DEFAULT_RELEASE_TAG:-}"
 if [ -z "$DEFAULT_RELEASE_TAG" ] && [ -f "$release_tag_file" ]; then
@@ -132,11 +133,16 @@ export WGSEXTRACT_BIN_DIR="$BIN_DIR"
 export WGSEXTRACT_PIXI_HOME="${WGSEXTRACT_PIXI_HOME:-$INSTALL_DIR/.pixi}"
 export WGSEXTRACT_PIXI_CACHE_DIR="${WGSEXTRACT_PIXI_CACHE_DIR:-$INSTALL_DIR/.pixi/cache}"
 export WGSEXTRACT_PIXI_ENV_DIR="${WGSEXTRACT_PIXI_ENV_DIR:-$APP_DIR/.pixi/envs}"
-# Without a Pixi of the user's, install.sh embeds one in the runtime; its own
-# state stays there too (Pixi creates ~/.pixi/bin and ~/.pixi/envs whenever it
-# runs), so uninstalling the runtime leaves nothing in ~/.pixi.
-if ! command -v pixi >/dev/null 2>&1 && [ ! -x "$HOME/.pixi/bin/pixi" ]; then
-  export PIXI_HOME="$WGSEXTRACT_PIXI_HOME"
+# Without a Pixi of the user's new enough for this release (its requires-pixi),
+# install.sh embeds one in the runtime; its own state stays there too (Pixi
+# creates ~/.pixi/bin and ~/.pixi/envs whenever it runs), so uninstalling the
+# runtime leaves nothing in ~/.pixi.
+if [ -z "${PIXI:-}" ]; then
+  user_pixi_path="$(user_pixi)"
+  if [ -z "$user_pixi_path" ] ||
+    ! pixi_version_at_least "$(pixi_version "$user_pixi_path")" "$(pixi_minimum_version "$source_dir/pixi.toml")"; then
+    export PIXI_HOME="$WGSEXTRACT_PIXI_HOME"
+  fi
 fi
 # Upstream install.sh accepts WGSEXTRACT_ARCHIVE_URL as a local archive path.
 export WGSEXTRACT_ARCHIVE_URL="$archive"

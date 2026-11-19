@@ -112,6 +112,39 @@ download_source_archive() {
     fail "Could not download source archive from $primary_url"
 }
 
+# The minimum Pixi a pixi.toml declares (requires-pixi = ">=X.Y.Z"), or nothing.
+# Read without Pixi: an older one may not parse the manifest.
+pixi_minimum_version() {
+    sed -n 's/^requires-pixi[[:space:]]*=[[:space:]]*">=\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"[[:space:]]*$/\1/p' "$1" | head -n 1
+}
+
+# The X.Y.Z version of the Pixi at $1, or nothing when it does not run.
+pixi_version() {
+    { "$1" --version 2>/dev/null || true; } |
+        sed -n 's/^pixi \([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*$/\1/p' | head -n 1
+}
+
+# Whether version $1 is at least version $2 (both X.Y.Z).
+version_at_least() {
+    awk -v actual="$1" -v required="$2" 'BEGIN {
+        split(actual, a, ".")
+        split(required, r, ".")
+        for (i = 1; i <= 3; i++) {
+            if (a[i] + 0 > r[i] + 0) exit 0
+            if (a[i] + 0 < r[i] + 0) exit 1
+        }
+        exit 0
+    }'
+}
+
+# Whether the Pixi at $1 is new enough for this release ($PIXI_MINIMUM); sets
+# $found_pixi_version for messages.
+pixi_is_new_enough() {
+    found_pixi_version="$(pixi_version "$1")"
+    [ -z "$PIXI_MINIMUM" ] && return 0
+    [ -n "$found_pixi_version" ] && version_at_least "$found_pixi_version" "$PIXI_MINIMUM"
+}
+
 pixi_asset_name() {
     platform="$(uname -s)"
     arch="${PIXI_ARCH:-$(uname -m)}"
@@ -571,11 +604,27 @@ case "$OS_NAME:$(uname -m)" in
         ;;
 esac
 
-if [ -z "$PIXI" ]; then
+# A Pixi older than the release's requires-pixi can't install it (#1138).
+PIXI_MINIMUM="$(pixi_minimum_version "$SOURCE_DIR/pixi.toml")"
+found_pixi_version=""
+if [ -n "$PIXI" ]; then
+    if ! pixi_is_new_enough "$PIXI"; then
+        fail "PIXI is set to Pixi ${found_pixi_version:-of unknown version} ($PIXI), but WGS Extract needs Pixi >=$PIXI_MINIMUM. Update it with 'pixi self-update', or unset PIXI to let setup install its own. No dependencies were installed and the existing app was not changed."
+    fi
+else
+    user_pixi=""
     if command_exists pixi; then
-        PIXI="$(command -v pixi)"
+        user_pixi="$(command -v pixi)"
     elif [ -x "$HOME/.pixi/bin/pixi" ]; then
-        PIXI="$HOME/.pixi/bin/pixi"
+        user_pixi="$HOME/.pixi/bin/pixi"
+    fi
+    if [ -n "$user_pixi" ] && pixi_is_new_enough "$user_pixi"; then
+        PIXI="$user_pixi"
+    elif [ -n "$user_pixi" ]; then
+        # Leave the user's Pixi as it is; this install gets its own.
+        log "Your Pixi ($user_pixi) is ${found_pixi_version:-of unknown version}, older than the >=$PIXI_MINIMUM WGS Extract needs; installing Pixi ${PIXI_VERSION#v} for WGS Extract only. Your Pixi is not changed."
+        install_embedded_pixi
+        PIXI_INSTALLED_BY_SETUP=1
     else
         log "Installing Pixi..."
         install_embedded_pixi

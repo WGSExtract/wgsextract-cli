@@ -97,6 +97,16 @@
               "notEquals": "--last-failed"
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -141,6 +151,16 @@
               "exists": true
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -185,6 +205,16 @@
               "exists": false
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -230,6 +260,16 @@
               "notEquals": "--last-failed"
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -280,6 +320,16 @@
               "exists": true
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [
@@ -330,6 +380,16 @@
               "exists": false
             }
           ],
+          "disabledWhen": [
+            {
+              "placeholder": "setupStatus",
+              "notIn": [
+                "ok",
+                "warning"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.settings.report-issue.setup-unfinished.disabledTooltip",
           "command": {
             "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
             "arguments": [

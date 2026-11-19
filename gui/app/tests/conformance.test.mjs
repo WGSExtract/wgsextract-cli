@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { parseJsonWithComments } from "../dist/shared/json-comments.js";
 import { conditionMatches, disabledReason, displayCommand, hydrateRows, isActionVisible, isSectionVisible, missingPlaceholders } from "../dist/shared/rendering.js";
 import { readsLastResultDocument } from "../dist/shared/last-result-documents.js";
+import { commandContextFromState } from "../dist/shared/rendering-context.js";
 import { currentSetupPlatform } from "../dist/shared/setup-platforms.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { exampleBundleCopy } from "./example-bundle.mjs";
@@ -118,6 +119,27 @@ test("#629: ACMG classes run only once research use is ticked and confirmed", as
   assert.match(displayCommand(action.command, context(true)), /vcf acmg --vcf-input \/tmp\/sample_vep\.vcf\.gz --research-acmg/);
   assert.doesNotMatch(displayCommand(action.command, context(false)), /--research-acmg/);
   assert.equal(isActionVisible(action, context(true)), currentSetupPlatform() !== "windows");
+});
+
+test("#1138: WGSExtract's bug report actions wait for setup to finish, since they run the CLI it installs", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
+  const reasons = (setupRun) => {
+    const context = commandContextFromState({ manifest: bundle.manifest, setupRun, lastResultDocumentPaths: { last: "/w/last.json" } });
+    return section.actions.map((action) => disabledReason(action, context));
+  };
+
+  assert.ok(section.actions.length > 0);
+  for (const setupRun of [null, { status: "running" }, { status: "failed" }]) {
+    for (const reason of reasons(setupRun)) {
+      assert.match(reason ?? "", /once setup has finished/);
+      assert.match(reason ?? "", /github\.com\/WGSExtract\/wgsextract-cli\/issues/);
+    }
+  }
+  for (const status of ["ok", "warning"]) {
+    assert.deepEqual(reasons({ status }), section.actions.map(() => undefined));
+  }
 });
 
 test("PR #530 review and #528: WGSExtract's bug report preview and GitHub report target the app's last run, never themselves", async (t) => {

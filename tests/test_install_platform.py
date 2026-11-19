@@ -274,3 +274,92 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
             else None
             for path in installation.rglob("*")
         } == before
+
+
+def _run_install_with_pixi(
+    tmp_path: Path, version: str, *, explicit: bool
+) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    """Install a release requiring Pixi >=0.82.0 with a Pixi of ``version``."""
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    # Downloads are the boundary: they fail, so an embedded Pixi never arrives.
+    curl = commands / "curl"
+    curl.write_text("#!/bin/sh\nexit 22\n")
+    curl.chmod(0o755)
+    home = tmp_path / "home"
+    pixi_dir = tmp_path / "explicit" if explicit else home / ".pixi" / "bin"
+    pixi_dir.mkdir(parents=True)
+    calls = tmp_path / "pixi-calls"
+    pixi = pixi_dir / "pixi"
+    pixi.write_text(
+        f'#!/bin/sh\nif [ "$1" = --version ]; then echo "pixi {version}"; exit 0; fi\n'
+        f"printf '%s\\n' \"$*\" >> '{calls}'\n"
+    )
+    pixi.chmod(0o755)
+    payload = tmp_path / "payload"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nrequires-pixi = ">=0.82.0"\nplatforms = ["linux-64", '
+        '"linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    installation = tmp_path / "installation"
+    (installation / "app").mkdir(parents=True)
+    (installation / "app" / "existing-app").write_text("keep")
+    env = {
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith(("WGSEXTRACT_", "PIXI"))
+        },
+        "HOME": str(home),
+        "PATH": os.pathsep.join((str(commands), os.defpath)),
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        "WGSEXTRACT_REF": "main",
+        "PIXI": str(pixi) if explicit else "",
+    }
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return result, calls, installation
+
+
+def test_issue_1138_old_user_pixi_is_not_used_to_install(tmp_path: Path) -> None:
+    result, calls, installation = _run_install_with_pixi(
+        tmp_path, "0.69.0", explicit=False
+    )
+    # Setup goes on to fetch its own Pixi instead of failing in `pixi install`.
+    assert "0.69.0" in result.stdout
+    assert ">=0.82.0" in result.stdout
+    assert "Your Pixi is not changed" in result.stdout
+    assert "Downloading Pixi from" in result.stdout
+    assert "requires pixi" not in result.stderr
+    assert not calls.exists()
+    assert (installation / "app" / "existing-app").read_text() == "keep"
+
+
+def test_issue_1138_old_explicit_pixi_fails_before_changes(tmp_path: Path) -> None:
+    result, calls, installation = _run_install_with_pixi(
+        tmp_path, "0.69.0", explicit=True
+    )
+    assert result.returncode == 1
+    assert "0.69.0" in result.stderr
+    assert ">=0.82.0" in result.stderr
+    assert "pixi self-update" in result.stderr
+    assert not calls.exists()
+    assert (installation / "app" / "existing-app").read_text() == "keep"
+
+
+@pytest.mark.parametrize("version", ["0.82.0", "0.100.0"])
+def test_new_enough_user_pixi_installs_the_app(tmp_path: Path, version: str) -> None:
+    result, calls, _ = _run_install_with_pixi(tmp_path, version, explicit=False)
+    assert result.returncode == 0, result.stderr
+    assert "install --locked" in calls.read_text()

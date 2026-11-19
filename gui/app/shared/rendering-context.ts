@@ -14,6 +14,7 @@ type StateLike = {
     manifest?: BundleManifest | null;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
+    setupRun?: { status?: string } | null;
     uiMode?: unknown;
 } & LooseRecord;
 
@@ -37,6 +38,9 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     }
     if (state.lastResultDocumentPaths != null) {
         context.lastResultDocumentPaths = state.lastResultDocumentPaths;
+    }
+    if (state.setupRun?.status) {
+        context.setupStatus = state.setupRun.status;
     }
     return context;
 }
@@ -113,6 +117,9 @@ export function contextValue(context: CommandContext, placeholder: string): Stat
     }
     if (placeholder === "hostPlatform") {
         return currentSetupPlatform();
+    }
+    if (placeholder === "setupStatus") {
+        return context.setupStatus;
     }
     if (placeholder === lastResultDocumentPlaceholders.last) {
         return context.lastResultDocumentPaths?.last;

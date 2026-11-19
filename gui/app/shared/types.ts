@@ -401,6 +401,8 @@ export interface CommandContext {
     usersWorkspacePath?: string;
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
+    /** The last setup run's status (`{{setupStatus}}`); empty before setup has run. */
+    setupStatus?: string;
     [key: string]: unknown;
 }
 

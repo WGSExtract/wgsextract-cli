@@ -193,6 +193,22 @@ function Add-PixiToUserPath {
     }
 }
 
+# A Pixi older than pixi.toml's requires-pixi can't install the CLI (#1138).
+# Checked before anything is installed; the user's Pixi is theirs to update.
+function Assert-PixiNewEnough {
+    param([string]$Pixi)
+    $manifest = Join-Path $PSScriptRoot "..\pixi.toml"
+    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { return }
+    if ((Get-Content -Raw -LiteralPath $manifest) -notmatch '(?m)^requires-pixi\s*=\s*">=(\d+\.\d+\.\d+)"\s*$') { return }
+    $minimum = [version]$Matches[1]
+    $output = & $Pixi --version 2>$null
+    $found = if ($LASTEXITCODE -eq 0 -and "$output" -match '^pixi (\d+\.\d+\.\d+)') { [version]$Matches[1] } else { $null }
+    if (-not $found -or $found -lt $minimum) {
+        $foundText = if ($found) { "Pixi $found" } else { "a Pixi whose version could not be read" }
+        throw "WGS Extract needs Pixi >=$minimum, but found $foundText at $Pixi. Run 'pixi self-update', then rerun setup."
+    }
+}
+
 function Ensure-Pixi {
     if ($SkipPixiInstall) {
         Write-Step "Skipping Pixi bootstrap."
@@ -204,6 +220,7 @@ function Ensure-Pixi {
     Add-PathForCurrentProcess (Get-PixiBinDirectory)
     $pixi = Get-Command pixi -ErrorAction SilentlyContinue
     if ($pixi) {
+        Assert-PixiNewEnough $pixi.Source
         Write-Step "Pixi found: $($pixi.Source)"
         return
     }
