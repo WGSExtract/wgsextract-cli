@@ -348,12 +348,26 @@ class VcfGatkParams(_CallerParams):
         help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
         action="store_true",
     )
+    pair_hmm_cuda: Path | None = param(
+        None,
+        help="Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK "
+        "4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. "
+        "See native/pairhmm/README.md. Not with --gpu or --scatter.",
+        path="file",
+    )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
         "gatk.g.vcf.gz",
         "little time; the VCF is then genotyped from it; not with --gpu or --scatter",
     )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.pair_hmm_cuda is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-cuda cannot be combined with --gpu or --scatter."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
