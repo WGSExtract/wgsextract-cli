@@ -19,7 +19,7 @@ import type { JobServer } from "./job-server.js";
 import { configPath, distModulePath, normalizeContext } from "./paths.js";
 import { pickPath, type NativePickerEndpoint } from "./path-picker.js";
 import { optionalString, parseActionReference, parseBundleStatePatch, parseCommandContext, parseLabels, parseManifestLocation, parsePrecheckTarget, requestObject, requiredString } from "./request-bodies.js";
-import { applySecurityHeaders, guardRequest } from "./request-guard.js";
+import { applySecurityHeaders, contentSecurityPolicy, guardRequest } from "./request-guard.js";
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
@@ -84,6 +84,15 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/favicon.ico": (response, headOnly) => serveBundleFavicon(response, headOnly, context.bundleRoot),
         "/client/app.js": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "src", "client", "app.js"), "text/javascript; charset=utf-8", response, headOnly),
         "/styles.css": (response, headOnly) => staticFile(path.join(context.webRoot, "styles.css"), "text/css; charset=utf-8", response, headOnly),
+        "/viewer": (response, headOnly) => {
+            // CRAM's bundled decoder uses WASM; network access stays same-origin only.
+            response.setHeader("content-security-policy", contentSecurityPolicy
+                .replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+                .replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+                .replace(/connect-src[^;]+/, "connect-src 'self'"));
+            return serveIndex(path.join(context.distRoot, "web", "viewer.html"), indexToken(context), response, headOnly);
+        },
+        "/viewer.css": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "viewer.css"), "text/css; charset=utf-8", response, headOnly),
     };
     const postRoutes: Record<string, (request: IncomingMessage, response: ServerResponse) => Promise<void>> = {
         "/api/datasource": jsonRoute(context, async (body) => {
@@ -358,11 +367,11 @@ function requestedLocale(body: LooseRecord, defaultLocale: string | undefined) {
 }
 
 function webuiVendorAssetPath(pathname: string, webRoot: string) {
-    const prefix = "/vendor/bootstrap-icons/";
+    const prefix = pathname.startsWith("/vendor/igv/") ? "/vendor/igv/" : "/vendor/bootstrap-icons/";
     if (!pathname.startsWith(prefix)) {
         return undefined;
     }
-    const vendorRoot = path.resolve(webRoot, "vendor", "bootstrap-icons");
+    const vendorRoot = path.resolve(webRoot, prefix.slice(1));
     const filePath = path.resolve(vendorRoot, pathname.slice(prefix.length));
     return filePath.startsWith(`${vendorRoot}${path.sep}`) ? filePath : undefined;
 }

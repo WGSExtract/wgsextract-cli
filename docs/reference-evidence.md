@@ -230,6 +230,26 @@ command works as before.
   with one ploidy; otherwise it is passed as a no-call (so `--absent-to-ref`
   can't make it reference) with the state as its `PGX_STATE`. See
   [variant-confidence.md](variant-confidence.md).
+- `vcf clinvar`, `vcf gnomad --max-af` and `analyze` add the gVCF's state at
+  the sites they checked to their confidence details
+  (`details.confidence[].reference_evidence`): at the calls they labelled
+  (`calls`), and for `vcf clinvar` and `analyze` at every ClinVar
+  pathogenic/likely pathogenic site (`clinvar_pathogenic_sites`), so a site
+  the sample doesn't carry reads as confident reference, uncovered,
+  low-quality, filtered or not assessed. Sites that are neither a call nor
+  callable reference (policy exclusions aside) raise a
+  `reference_evidence_unassessed_sites` warning. A site's state is
+  `callable_reference` only when every base of it is. See
+  [variant-confidence.md](variant-confidence.md#reference-evidence-at-the-sites-checked).
+- The ancestry projection (`qc ancestry` on a VCF, and `score pgs`'s PCA
+  projection) fills an ancestry site the VCF doesn't list as hom-ref only
+  where the gVCF calls it `callable_reference`, instead of assuming every
+  missing site of a whole-genome variants-only VCF is reference. A
+  variants-only VCF of part of the genome is then usable too, and a gVCF
+  given as the input itself. The missing sites' states are reported
+  (`ancestry_missing_sites_<state>` metrics,
+  `ancestry_calibration.pca_missing_site_states`). See
+  [ancestry.md](ancestry.md#inputs).
 
 Measured on HG002 chr20 (35x Illumina), with PGS000018 (CAD, 1.75 million
 sites, about 44,000 on chr20): `score pgs` matched 12,723 sites from the
