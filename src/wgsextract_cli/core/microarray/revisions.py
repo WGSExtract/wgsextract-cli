@@ -49,6 +49,7 @@ _VENDOR_CUES = (
     ("MyHeritage", re.compile(r"MyHeritage", re.I)),
     ("Living DNA", re.compile(r"Living\s?DNA", re.I)),
     ("FamilyTreeDNA", re.compile(r"Family\s?Tree\s?DNA|FTDNA", re.I)),
+    ("SelfDecode", re.compile(r"SelfDecode", re.I)),
 )
 _BUILD_CUES = (
     ("NCBI36", re.compile(r"\bbuild\s*36\b|\bNCBI\s*36\b|\bhg18\b", re.I)),
@@ -278,13 +279,15 @@ class Revision:
     exports: int
     period: str | None
     declares_vendor: bool
+    # The vendor's minor variant of the chip by letter (h600.org), e.g. "v4b".
+    variant: str | None = None
 
     @property
     def detectable(self) -> bool:
         return self.kind != "composite"
 
 
-_KINDS = {"export", "reference-library", "composite"}
+_KINDS = {"export", "reference-library", "merged", "composite"}
 _RELATIONS = {"exact", "same-markers", "closest"}
 
 
@@ -312,12 +315,14 @@ def _revision(entry: dict[str, Any]) -> Revision:
         exports=int(entry.get("exports", 0)),
         period=entry.get("period"),
         declares_vendor=bool(entry["declares_vendor"]),
+        variant=entry.get("variant"),
     )
     if (
         revision.kind not in _KINDS
         or revision.build not in {"NCBI36", "GRCh37", "GRCh38"}
         or revision.markers <= 0
         or not re.fullmatch(r"[a-z0-9_]+", revision.id)
+        or (revision.variant and not re.fullmatch(r"v[0-9]+[a-z]*", revision.variant))
         or any(
             re.fullmatch(r"[0-9a-f]{64}", value) is None
             for value in (revision.ids_sha256, revision.sites_sha256)

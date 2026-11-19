@@ -28,8 +28,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfAcmgParams
-from wgsextract_cli.core import acmg_data, read_scope
+from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -586,42 +587,57 @@ def run_acmg(params: VcfAcmgParams) -> None:
             "so the classes are taken on the transcript the variant table shows."
         )
     contigs = vcf_index_chromosomes(vcf)
-    skipped = _unclassifiable(databases, contigs)
-    if skipped:
-        warn(
-            "acmg_contigs_not_classified",
-            "No gnomAD data covers "
-            + ", ".join(skipped[:10])
-            + (" ..." if len(skipped) > 10 else "")
-            + "; their records are left unclassified.",
-        )
-    result = current_result()
-    result.add_input(gff3, "transcript_models")
-    result.add_input(sa_dir, "acmg_databases")
-    warn("acmg_research_only", DISCLAIMER)
-
+    _require_library_sources(databases, params.site_data)
     threads = int(get_resource_defaults(params.threads)[0])
-    fastvep = get_tool_path("fastvep") or "fastvep"
-    command = [
-        fastvep, "annotate", "-i", "-", "-o", "-",
-        "--gff3", gff3, "--fasta", lib.fasta, "--sa-dir", sa_dir,
-        "--acmg", "--pick-allele", "--pick-order", PICK_ORDER, "--no-progress",
-    ]  # fmt: skip
-    strip = ["bcftools", "annotate", "--no-version", "-x", "INFO/CSQ", "-Ov", vcf]
-    if skipped:
-        # In the index's order, which is the file's: fastVEP's records must
-        # come in the input's order.
-        strip[-1:-1] = ["-r", ",".join(c for c in contigs if c not in skipped)]
-    meta = [
-        f'##WGSE_ACMG=<Disclaimer="{DISCLAIMER}",Tool="fastVEP {version}",'
-        f'PickOrder="{PICK_ORDER}",GFF3="{Path(gff3).name}",'
-        f'Databases="{Path(sa_dir).name}">'
-    ]
-    env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
-    logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
+    wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
+    result = current_result()
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_acmg_"
     ) as work:
+        run_sa, site_dbs = sa_dir, []
+        if any(wanted.values()):
+            site_dbs = acmg_sites.build_for_run(
+                wanted, vcf, lib, sa_dir, work, threads, cancel_event()
+            )
+            run_sa = str(Path(work, "sa"))
+            acmg_sites.link_folder(Path(sa_dir), left_out, site_dbs, Path(run_sa))
+            databases = _databases(run_sa)
+        inventory = _inventory(databases)
+        skipped = _unclassifiable(databases, contigs)
+        _require_spliceai_coverage(databases, contigs)
+        if skipped:
+            warn(
+                "acmg_contigs_not_classified",
+                "No gnomAD data covers "
+                + ", ".join(skipped[:10])
+                + (" ..." if len(skipped) > 10 else "")
+                + "; their records are left unclassified.",
+            )
+        result.add_input(gff3, "transcript_models")
+        result.add_input(sa_dir, "acmg_databases")
+        warn("acmg_research_only", DISCLAIMER)
+
+        fastvep = get_tool_path("fastvep") or "fastvep"
+        command = [
+            fastvep, "annotate", "-i", "-", "-o", "-",
+            "--gff3", gff3, "--fasta", lib.fasta, "--sa-dir", run_sa,
+            "--acmg", "--pick-allele", "--pick-order", PICK_ORDER, "--no-progress",
+        ]  # fmt: skip
+        strip = ["bcftools", "annotate", "--no-version", "-x", "INFO/CSQ", "-Ov", vcf]
+        if skipped:
+            # In the index's order, which is the file's: fastVEP's records must
+            # come in the input's order.
+            strip[-1:-1] = ["-r", ",".join(c for c in contigs if c not in skipped)]
+        per_run = sorted({db.source for db in site_dbs})
+        meta = [
+            f'##WGSE_ACMG=<Disclaimer="{DISCLAIMER}",Tool="fastVEP {version}",'
+            f'PickOrder="{PICK_ORDER}",GFF3="{Path(gff3).name}",'
+            f'Databases="{Path(sa_dir).name}"'
+            + (f',PerRun="{",".join(per_run)}"' if per_run else "")
+            + ">"
+        ]
+        env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
+        logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
         partial = str(Path(work, ACMG_ANNOTATED))
         run = _FastVep(command, strip, env)
         try:
@@ -669,7 +685,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         "reference": str(Path(lib.fasta).absolute()),
         "databases": {
             "folder": str(Path(sa_dir).absolute()),
-            "files": _inventory(databases),
+            "files": inventory,
             # Where `ref acmg-data` built them: each source's release and terms.
             "sources": {
                 key: {k: info.get(k, "") for k in ("label", "release", "url", "terms")}
@@ -677,6 +693,11 @@ def run_acmg(params: VcfAcmgParams) -> None:
                     acmg_data.load_manifest(sa_dir).get("sources") or {}
                 ).items()
             },
+        },
+        "site_data": {
+            "mode": params.site_data,
+            "per_run": acmg_sites.summary(site_dbs),
+            "library_databases_left_out": sorted(p.name for p in left_out),
         },
         "sources_required": sorted(REQUIRED_SOURCES.values()),
         "sources_not_used": sorted(unused),
@@ -704,6 +725,59 @@ def run_acmg(params: VcfAcmgParams) -> None:
     logging.info(
         "Wrote %s and %s (research only, not a diagnosis).", out_vcf, summary_path
     )
+
+
+def _per_run_plan(
+    databases: list[_Database], contigs: list[str], mode: str, sa_dir: str
+) -> tuple[dict[str, list[str]], set[Path]]:
+    """Explicit per-run chromosomes and the library databases to leave out."""
+    if mode != "per-run":
+        return {}, set()
+    nuclear = [c for c in contigs if _contig_key(c) in _NUCLEAR]
+    wanted: dict[str, list[str]] = {}
+    left_out: set[Path] = set()
+    for source in acmg_sites.SOURCES:
+        # SpliceAI's databases are keyed spliceAI by fastVEP's builder.
+        held = [db for db in databases if db.source.lower().replace("_", "") == source]
+        left_out.update(db.path for db in held)
+        wanted[source] = nuclear
+    return wanted, left_out
+
+
+def _require_library_sources(databases: list[_Database], mode: str) -> None:
+    held = {db.source.lower().replace("_", "") for db in databases}
+    missing = [
+        label
+        for label, key in REQUIRED_SOURCES.items()
+        if not (mode == "per-run" and key in acmg_sites.SOURCES)
+        and key.replace("_", "") not in held
+    ]
+    if missing:
+        raise WGSExtractError(
+            "vcf acmg refused: databases lack "
+            + ", ".join(missing)
+            + "; build the library with `wgsextract ref acmg-data`, or explicitly "
+            "opt in to --site-data per-run for gnomAD/SpliceAI (input-derived "
+            "variant positions are sent to Google Cloud Storage and Ensembl)."
+        )
+
+
+def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -> None:
+    held = [db for db in databases if db.source.lower() == "spliceai"]
+    covered = {_contig_key(c) for db in held for c in db.chromosomes or ()}
+    missing = [
+        c
+        for c in contigs
+        if _contig_key(c) in _NUCLEAR and _contig_key(c) not in covered
+    ]
+    if missing:
+        raise WGSExtractError(
+            "vcf acmg refused: SpliceAI holds nothing of "
+            + ", ".join(missing)
+            + ". Build the library databases with `wgsextract ref acmg-data`, "
+            "or explicitly opt in with --site-data per-run (input-derived variant "
+            "positions are sent to Google Cloud Storage and Ensembl)."
+        )
 
 
 def _refuse_overwrite(source: str, out_vcf: str) -> None:

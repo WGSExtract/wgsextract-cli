@@ -110,25 +110,31 @@ CLI_HELP = {
     "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).",
     "cmd_ref-library": "Opens the interactive reference manager to help you organize and download genomic data.",
     "micro_formats_help": """Comma-separated list of formats to generate (default: all).
+Variants are named by letter (h600.org's Microarray File Formats); similar
+minor variants are merged into one file, e.g. ancestry_v2ab.
 Available formats:
   Combined kit only (always written):
-    all (every chip's markers in one 23andMe-style file, e.g. for GEDmatch;
-    writes no vendor files: list the vendor formats to get them)
+    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.
+    for GEDmatch; writes no vendor files: list the vendor formats to get them)
   23andMe:
-    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4, 23andme_v5,
-    23andme_v5_2025 (v5 chip as exported in 2025), 23andme_v3+v5, 23andme_api
+    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
+    23andme_v5, 23andme_v3+v5, 23andme_api
   AncestryDNA:
-    ancestry_v1, ancestry_v2, ancestry_v2_2021 (2021 V2.0 layout),
-    ancestry_v2_2024 (V2.0 chip as exported in 2024-25)
+    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),
+    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)
   Family Tree DNA:
-    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3
+    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4
+    ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)
   Living DNA:
     ldna_v1, ldna_v2
   MyHeritage:
-    myheritage_v1, myheritage_v2,
-    myheritage_gsa_2025 (609,346 markers), myheritage_gsa_2025_609424
-  Nucleus:
-    nucleus (array export, 2025)
+    myheritage_v1, myheritage_v2, myheritage_v3
+  Other vendors:
+    tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,
+    selfdecode, nucleus
+  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,
+  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are
+  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.
   AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):
     aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)
     aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances

@@ -33,6 +33,20 @@ CONSUMER_FORMATS = (
     "LDNA_V1",
     "LDNA_V2",
     "Nucleus_V1",
+    "Ancestry_V2ab",
+    "Ancestry_V2cd",
+    "Ancestry_V2e",
+    "FTDNA_V4",
+    "FTDNA_V2Y",
+    "FTDNA_V3Y",
+    "FTDNA_V4Y",
+    "MyHeritage_V3",
+    "TellMeGen_V1",
+    "Genera_V1",
+    "MTHFR_V1",
+    "meuDNA_V1",
+    "meuDNA_V2",
+    "SelfDecode_V1",
 )
 
 

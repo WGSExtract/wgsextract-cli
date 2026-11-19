@@ -2,9 +2,11 @@
 spoken to with the official MCP SDK's client."""
 
 import contextlib
+import ipaddress
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 import urllib.error
@@ -133,21 +135,47 @@ def test_mcp_http_refuses_requests_without_the_token_or_a_local_host(work):
         assert status == 200
 
 
+def _accepts(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _non_loopback_ipv4() -> set[str]:
+    return {
+        a.address
+        for addrs in psutil.net_if_addrs().values()
+        for a in addrs
+        if a.family == socket.AF_INET
+        and not ipaddress.ip_address(a.address).is_loopback
+    }
+
+
 def test_mcp_http_listens_on_loopback_only_and_cleans_up(work):
     with _serve("--allow", str(work)) as served:
         assert served.url.startswith("http://127.0.0.1:")
         if sys.platform != "win32":
             assert served.discovery.stat().st_mode & 0o777 == 0o600
-        process = psutil.Process(served.proc.pid)
-        listening = []
-        for proc in [process, *process.children(recursive=True)]:
-            with contextlib.suppress(psutil.AccessDenied):
-                listening += [
-                    c.laddr
-                    for c in proc.net_connections(kind="inet")
-                    if c.status == psutil.CONN_LISTEN
-                ]
-        assert listening and {addr.ip for addr in listening} == {"127.0.0.1"}
+        port = int(served.url.rsplit(":", 1)[1].split("/")[0])
+        # Connect rather than read the OS connection table: on some Windows
+        # hosts it leaves out Python's listening sockets (psutil reports them
+        # with status NONE and netstat doesn't list them).
+        assert _accepts("127.0.0.1", port)
+        reachable = [ip for ip in _non_loopback_ipv4() if _accepts(ip, port)]
+        assert reachable == [], f"also listening on {reachable}"
+        if sys.platform != "win32":
+            process = psutil.Process(served.proc.pid)
+            listening = []
+            for proc in [process, *process.children(recursive=True)]:
+                with contextlib.suppress(psutil.AccessDenied):
+                    listening += [
+                        c.laddr
+                        for c in proc.net_connections(kind="inet")
+                        if c.status == psutil.CONN_LISTEN
+                    ]
+            assert listening and {addr.ip for addr in listening} == {"127.0.0.1"}
     if sys.platform != "win32":
         assert served.proc.returncode == 0
         assert not served.discovery.exists()

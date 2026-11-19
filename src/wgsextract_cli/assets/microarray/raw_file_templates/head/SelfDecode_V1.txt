@@ -1,0 +1,3 @@
+# Source: SelfDecode
+# Assembly: GRCh37
+# rsid	chromosome	position	genotype

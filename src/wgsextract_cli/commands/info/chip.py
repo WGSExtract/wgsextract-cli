@@ -52,7 +52,8 @@ def _template_text(revision: Revision) -> str:
 
 
 def _label(revision: Revision) -> str:
-    return f"{revision.vendor} {revision.chip}, {revision.revision}"
+    variant = f" (variant {revision.variant})" if revision.variant else ""
+    return f"{revision.vendor} {revision.chip}{variant}, {revision.revision}"
 
 
 def _revision_json(revision: Revision) -> dict[str, Any]:
@@ -60,6 +61,7 @@ def _revision_json(revision: Revision) -> dict[str, Any]:
         "id": revision.id,
         "vendor": revision.vendor,
         "chip": revision.chip,
+        "variant": revision.variant,
         "revision": revision.revision,
         "build": revision.build,
         "markers": revision.markers,

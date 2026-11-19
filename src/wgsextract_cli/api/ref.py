@@ -677,6 +677,13 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     ensembl_release: str = param(
         "116", help="Ensembl release of the GFF3; match your vep-rs cache."
     )
+    site_data: str | None = param(
+        None,
+        help="per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB "
+        "downloaded for a genome); vcf acmg reads each input's own sites of "
+        "them. library builds them. Default: as the folder was built, else library.",
+        choices=("library", "per-run"),
+    )
     dry_run: bool = param(
         False,
         help="Show the sources, their terms, sizes and the disk needed; "

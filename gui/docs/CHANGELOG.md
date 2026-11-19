@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## [0.8.8] - 2026-11-18
+
 ### Added
 - In Advanced mode each titled section starts collapsed to its header row, with a down arrow on the right to open it and an up arrow to close it again. Sections marked `"collapsible": false` stay open; WGSExtract uses this for its Inputs sections. `"collapsible": "open"` sections start open instead; WGSExtract uses this for Generate Microarray Target Formats.
 - Checkbox groups take `"layout": "inline"`: the options side by side, and consecutive inline groups share one row.
@@ -14,6 +16,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Data sources take `optionalArguments`, as action commands do: a group is left out when a placeholder in it is empty.
 
 ### Changed
+- Bump the bundled WGSExtract CLI installer target to `v0.8.8` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.8)).
 - Workspace migration refuses symlink/junction aliases of the same physical folder before removing old state. Legacy My Genomes settings now move their actual library contents, and bundle test runs expand direct users-workspace placeholders against their separate users root.
 - Folder-move dialogs now take keyboard focus, contain Tab navigation, cancel with Escape and return focus to the initiating control without restoring a cancelled edit.
 - Reference-library setup explicitly selects the configured Reference Data library rather than inheriting the last selected reference FASTA.

@@ -27,7 +27,7 @@ Each output gets an `.inputs.json` file beside it recording what made it: the in
 
 Consumer exports use hg19 coordinates. hg38 input needs the liftover chain from `ref bootstrap`; the command fails early if it is missing. Native CHM13v2 input can also project to GRCh37/rCRS exports, but only with the exact **original chrM, masked-Y** analysis reference and required installed assets. Other CHM13 variants are rejected; ambiguous mappings stay no-calls. See [CHM13 requirements](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/microarray-chm13.md){.inline-link}.
 
-Haploid calls follow vendor conventions: 23andMe writes chrY, chrM, and male non-PAR chrX as one letter (`A`); the other formats double them (`AA`). Heterozygous calls are alphabetical. Updated MyHeritage GSA and Ancestry layouts are separately selectable without removing older IDs. Optional quality thresholds, `--strand-ambiguous no-call`, `--resolve-rsids` and `--call-reasons` add conservative filtering and diagnostics without changing defaults. Calls are written on the GRCh37 forward strand; `--quirks vendor` instead writes the markers a template's vendor revision is publicly known to have reported on the reverse strand that way.
+Haploid calls follow vendor conventions: 23andMe and SelfDecode write chrY, chrM, and male non-PAR chrX as one letter (`A`), Genera only chrY and chrM; the other formats double them (`AA`). Heterozygous calls are alphabetical. Chip variants are named by letter (`ancestry_v2ab`, `ancestry_v2cd`, `ancestry_v2e`, `ftdna_v4`, `myheritage_v3`), merging similar minor variants; FTDNA's separate Y files (`ftdna_v2y`, `ftdna_v3y`, `ftdna_v4y`) keep their GRCh38 positions. Older date- or size-named IDs still work. Optional quality thresholds, `--strand-ambiguous no-call`, `--resolve-rsids` and `--call-reasons` add conservative filtering and diagnostics without changing defaults. Calls are written on the GRCh37 forward strand; `--quirks vendor` instead writes the markers a template's vendor revision is publicly known to have reported on the reverse strand that way.
 
 AADR 1240K, HO and 1240K+HO research panels write both PLINK and EIGENSTRAT files. The opt-in `aadr_2m` panel needs an explicit `ref aadr --install --ref LIBRARY` first; it is not included in `all`, requires an installed forward chain for hg38, and does not support CHM13/T2T. See [AADR coordinates and allele conventions](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/aadr.md){.inline-link}.
 
@@ -38,7 +38,7 @@ Insertion/deletion probes are opt-in with `--indel-manifest FORMAT=PATH`, using 
 ```
 wgsextract --input sample.bam microarray --formats all
 wgsextract --input sample.bam microarray --formats 23andme_v5
-wgsextract --input sample.bam microarray --formats 23andme_v5_2025,ancestry_v2_2024,ftdna_v3
+wgsextract --input sample.bam microarray --formats 23andme_v5,ancestry_v2cd,ftdna_v3
 wgsextract --input sample.bam microarray --formats aadr_1240k,aadr_ho
 ```
 :::
