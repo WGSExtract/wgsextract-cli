@@ -44,6 +44,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   databases into the library, where `vcf acmg` now finds them. gnomAD's 877 GB
   are streamed; `--chromosomes` builds part of the genome, `--dry-run` shows
   the sizes, and reruns resume. See [acmg.md](../acmg.md).
+- Explicit `vcf acmg --site-data per-run` reads gnomAD and SpliceAI at only
+  the input's own sites, from gnomAD's and Ensembl's indexed files,
+  built into small cached databases that classify every variant as the full
+  ones do. `ref acmg-data --site-data per-run` leaves gnomAD (an 877 GB stream)
+  and SpliceAI (29 GB) out of the library. Default classification stays offline
+  and refuses missing data; per-run consent discloses that input-derived variant
+  positions are sent to Google Cloud Storage and Ensembl.
+  A whole genome reads about 240 GB in hours, so a library classifying many
+  genomes is better off building them. See [acmg.md](../acmg.md).
 - `vcf snp` and `vcf indel` can also write reference evidence:
   `--reference-evidence gvcf` (or `reference_evidence = "gvcf"` in
   `config.toml`) adds `bcftools.g.vcf.gz` (+ `.tbi`), a gVCF of every assessed

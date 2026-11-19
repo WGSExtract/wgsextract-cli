@@ -1,0 +1,651 @@
+"""gnomAD and SpliceAI databases of only an input's sites, for one ``vcf
+acmg`` run (issue 629).
+
+Whole-genome databases of gnomAD v4.1 (877 GB streamed to build) and SpliceAI
+(a 29 GB download) are a lot of disk for one genome. Instead, the records at
+the input's sites are read from the publishers' indexed files
+(``tabix_sites``) and built into small databases with the same ``fastvep
+sa-build`` as ``ref acmg-data``, so each variant finds what it would find in
+the full database: fastVEP looks gnomAD and SpliceAI up by the variant's own
+position and alleles, never a neighbour's. A site is each record's span, a
+base wider on each side, both as written and left-aligned (``bcftools norm``),
+since fastVEP left-aligns an indel before its gnomAD lookup.
+
+fastVEP reads "no gnomAD record" as "absent from gnomAD" only on a chromosome
+a gnomAD database holds; a chromosome whose sites have no records gets its
+first record, which no site can match, so that it is held. The databases are
+kept in a cache, keyed on the sites and the file's identity (ETag or size and
+date), and reused by a later run with the same sites.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+import shutil
+import subprocess
+import tempfile
+import time
+from array import array
+from collections import defaultdict
+from collections.abc import Iterable
+from concurrent.futures import FIRST_EXCEPTION, wait
+from contextlib import nullcontext, suppress
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import IO, Any
+
+import numpy as np
+
+from wgsextract_cli.core import acmg_data, read_scope, tabix_sites
+from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
+from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.tabix_sites import TabixFile
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+
+SOURCES = ("gnomad", "spliceai")
+CACHE = acmg_data.SITES_CACHE
+META = "site_db.json"
+# Bump when what a cached database holds would change.
+FORMAT = 1
+# Databases the cache keeps (a genome's are 48), the most recently used.
+_KEEP = 200
+_IN_USE = 2 * 86400  # seconds since its last use a database may be in use
+_PAD = 1
+
+
+def contig_key(name: str) -> str:
+    key = name.removeprefix("chr")
+    return "MT" if key == "M" else key
+
+
+def build_for_run(
+    wanted: dict[str, list[str]],
+    vcf: str,
+    lib: ReferenceLibrary,
+    sa_dir: str,
+    work: str,
+    threads: int,
+    cancel: CancelEvent | None,
+) -> list[SiteDatabase]:
+    """Build the explicitly requested site data, caching it when writable."""
+    assert lib.fasta
+    cache = Path(sa_dir, CACHE)
+    if not read_scope.may_follow(cache):
+        raise UsageError(f"{cache} is outside the folders this run may use.")
+    try:
+        cache.mkdir(exist_ok=True)
+        writable = os.access(cache, os.W_OK)
+    except OSError:
+        writable = False
+    if not writable:
+        logging.info("%s can't be written; the per-run databases aren't kept.", cache)
+        cache = Path(work, CACHE)
+    warn(
+        "acmg_site_data_privacy",
+        "Explicit --site-data per-run consent: input-derived variant positions "
+        "are sent as byte-range requests to Google Cloud Storage (gnomAD) and "
+        "Ensembl (SpliceAI, unless a local source is configured).",
+    )
+    sites = input_sites(
+        vcf,
+        lib.fasta,
+        list(dict.fromkeys(c for contigs in wanted.values() for c in contigs)),
+    )
+    found = build_databases(
+        wanted,
+        sites,
+        lib.root,
+        cache,
+        connections=min(64, max(8, 16 * threads)),
+        cancel=cancel,
+        sa_dir=Path(sa_dir),
+    )
+    restricted = [
+        acmg_data.BY_KEY[k]
+        for k in sorted({db.source for db in found})
+        if acmg_data.BY_KEY[k].restricted
+    ]
+    if restricted:
+        warn(
+            "acmg_data_terms",
+            "This run read these sources under their publishers' terms: "
+            + " ".join(s.terms for s in restricted),
+            sources=",".join(s.key for s in restricted),
+        )
+    return found
+
+
+def location(
+    source: str, chromosome: str, reflib: str | None, sa_dir: Path | None = None
+) -> str:
+    """Where a source's records of ``chromosome`` (``chrN``) are read: gnomAD's
+    per-chromosome file, or the library's SpliceAI VCF (``ref spliceai``),
+    else Ensembl's."""
+    if source == "gnomad":
+        return acmg_data.source_url("gnomad", chromosome)
+    manifest = acmg_data.load_manifest(sa_dir) if sa_dir else {}
+    chosen = manifest.get("spliceai_file")
+    if not chosen:
+        info = manifest.get("sources", {}).get("spliceai", {})
+        if "given with --spliceai-file" in info.get("label", ""):
+            raise WGSExtractError(
+                "The library used a custom SpliceAI source; record it again with "
+                "`ref acmg-data --site-data per-run --spliceai-file PATH` "
+                "before per-run reads. Not substituting Ensembl."
+            )
+    local = (
+        Path(chosen)
+        if chosen
+        else acmg_data.library_spliceai(reflib)
+        if reflib
+        else None
+    )
+    if local and not read_scope.may_follow(local):
+        raise WGSExtractError(f"{local} leads outside the folders this run may use.")
+    if chosen and (local is None or not local.is_file()):
+        raise WGSExtractError(
+            f"The chosen SpliceAI source {local} is missing; not substituting Ensembl."
+        )
+    return str(local) if local else acmg_data.SPLICEAI_URL
+
+
+def _spans(lines: Iterable[str], spans: dict[str, array[int]]) -> None:
+    for line in lines:
+        chrom, pos_text, ref = line.rstrip("\n").split("\t")
+        pos = int(pos_text)
+        found = spans.setdefault(chrom, array("q"))
+        found.append(max(1, pos - _PAD))
+        found.append(pos + len(ref) - 1 + _PAD)
+
+
+def _query(commands: list[list[str]], spans: dict[str, array[int]]) -> None:
+    """Spans of the records the pipeline ``commands`` ends in printing."""
+    procs: list[subprocess.Popen[str]] = []
+    errors: list[IO[bytes]] = []
+    upstream: IO[str] | None = None
+    try:
+        for command in commands:
+            # A file, not a pipe: bcftools norm warns for every REF mismatch.
+            errors.append(tempfile.TemporaryFile())
+            proc = popen(
+                command, stdin=upstream, stdout=subprocess.PIPE, stderr=errors[-1],
+                text=True,
+            )  # fmt: skip
+            if upstream is not None:
+                upstream.close()
+            upstream = proc.stdout
+            procs.append(proc)
+        assert upstream is not None
+        _spans(upstream, spans)
+        failed = []
+        for command, proc, err in zip(commands, procs, errors, strict=True):
+            if proc.wait() != 0:
+                err.seek(0)
+                detail = err.read().decode(errors="replace").strip()[-300:]
+                failed.append(f"bcftools {command[1]}: {detail}")
+        if failed:
+            raise WGSExtractError(
+                "Reading the input's sites failed: " + "; ".join(failed)
+            )
+    finally:
+        for proc in procs:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+        for err in errors:
+            err.close()
+
+
+def input_sites(
+    vcf: str, fasta: str, contigs: list[str] | None = None
+) -> dict[str, np.ndarray]:
+    """Per contig, the sites to look up as sorted, merged ``(first, last)``
+    1-based positions: each record's span a base wider on each side, as
+    written and left-aligned."""
+    spans: dict[str, array[int]] = {}
+    query = ["bcftools", "query", "-f", "%CHROM\t%POS\t%REF\n"]
+    regions = ["-r", ",".join(contigs)] if contigs is not None else []
+    _query([[*query, *regions, vcf]], spans)
+    _query(
+        [
+            ["bcftools", "view", "--no-version", "-G", *regions, "-Ou", vcf],
+            ["bcftools", "annotate", "--no-version", "-x", "INFO", "-Ou", "-"],
+            [
+                "bcftools",
+                "norm",
+                "--no-version",
+                "-f",
+                fasta,
+                "-m",
+                "-any",
+                "-c",
+                "w",
+                "-Ou",
+                "-",
+            ],
+            [*query, "-"],
+        ],  # fmt: skip
+        spans,
+    )
+    return {chrom: merge_spans(np.frombuffer(flat, dtype=np.int64).reshape(-1, 2))
+            for chrom, flat in spans.items()}  # fmt: skip
+
+
+def merge_spans(spans: np.ndarray) -> np.ndarray:
+    """Overlapping or touching ``(first, last)`` spans joined, sorted."""
+    if not len(spans):
+        return spans
+    spans = spans[np.argsort(spans[:, 0], kind="stable")]
+    reach = np.maximum.accumulate(spans[:, 1])
+    starts = np.flatnonzero(np.r_[True, spans[1:, 0] > reach[:-1] + 1])
+    return np.column_stack((spans[starts, 0], np.maximum.reduceat(spans[:, 1], starts)))
+
+
+@dataclass
+class SiteDatabase:
+    """A database of one source on one chromosome, as built or cached."""
+
+    source: str
+    chromosome: str
+    folder: Path
+    files: list[str]
+    meta: dict[str, Any] = field(default_factory=dict)
+    cached: bool = False
+
+    @property
+    def paths(self) -> list[Path]:
+        return [self.folder / name for name in self.files]
+
+
+def _key(
+    source: str, chromosome: str, file: TabixFile, sites: np.ndarray, version: str
+) -> str:
+    digest = hashlib.sha256()
+    identity = {
+        "format": FORMAT,
+        "source": source,
+        "chromosome": chromosome,
+        "location": file.location,
+        "size": file.source.size,
+        "etag": file.source.etag,
+        "modified": file.source.last_modified,
+        "local_identity": file.source.local_identity,
+        "keep": acmg_data.GNOMAD_KEEP if source == "gnomad" else "",
+        "chunk_bits": acmg_data.BY_KEY[source].chunk_bits,
+        "fastvep": version,
+    }
+    digest.update(json.dumps(identity, sort_keys=True).encode())
+    digest.update(np.ascontiguousarray(sites, dtype=np.int64).tobytes())
+    return digest.hexdigest()
+
+
+def _cached(entry: Path) -> SiteDatabase | None:
+    if not read_scope.may_follow(entry / META):
+        return None
+    try:
+        meta = json.loads((entry / META).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict) or not all(
+        isinstance(meta.get(key), str) for key in ("source", "chromosome")
+    ):
+        return None
+    files = meta.get("files")
+    if (
+        not isinstance(files, list)
+        or not files
+        or any(not isinstance(name, str) or Path(name).name != name for name in files)
+    ):
+        return None
+    found = SiteDatabase(meta["source"], meta["chromosome"], entry, files, meta, True)
+    # A server run uses only entries inside the folders it may read.
+    if not all(p.is_file() and read_scope.may_follow(p) for p in found.paths):
+        return None
+    try:
+        os.utime(entry)  # most recently used
+    except OSError:
+        pass
+    return found
+
+
+def _build(
+    source: str,
+    chromosome: str,
+    file: TabixFile,
+    contig: str,
+    sites: np.ndarray,
+    entry: Path,
+    connections: int,
+    cancel: CancelEvent | None,
+    version: str,
+    before: tuple[int, int],
+) -> SiteDatabase:
+    """Read the records at ``sites`` and build their database into ``entry``
+    (staged beside it); ``before`` is what had been read of ``file`` (bytes,
+    requests)."""
+    stage = Path(tempfile.mkdtemp(dir=entry.parent, prefix=f".{entry.name}."))
+    try:
+        meta = _fill(
+            stage, source, chromosome, file, contig, sites, connections, cancel
+        )
+        meta.update(
+            fastvep=version,
+            bytes_read=file.bytes_read - before[0],
+            requests=file.source.requests - before[1],
+        )
+        (stage / META).write_text(json.dumps(meta, indent=1) + "\n", newline="\n")
+        stage.replace(entry)
+    except OSError as e:
+        # Another run built it meanwhile: use that one.
+        if (other := _cached(entry)) is not None:
+            return other
+        raise WGSExtractError(
+            f"Cannot publish the site database {entry}; if it is an incomplete "
+            "cache entry, remove it when no runs are using it and retry."
+        ) from e
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+    return SiteDatabase(source, chromosome, entry, list(meta["files"]), meta)
+
+
+def _fill(
+    stage: Path,
+    source: str,
+    chromosome: str,
+    file: TabixFile,
+    contig: str,
+    sites: np.ndarray,
+    connections: int,
+    cancel: CancelEvent | None,
+) -> dict[str, Any]:
+    """Write the records at ``sites`` and build their database in ``stage``;
+    returns what it holds."""
+    name = f"{source}_{chromosome}"
+    started = time.monotonic()
+    header = file.header()
+    lines = header.decode(errors="replace").splitlines()
+    if source == "spliceai":
+        acmg_data.require_grch38_header(lines, file.location)
+    release = (
+        "4.1"
+        if source == "gnomad"
+        else next((h[11:] for h in lines if h.startswith("##fileDate=")), "")
+    )
+    records_vcf = stage / f"{name}.vcf.gz"
+    # gnomAD keeps only the INFO keys fastVEP reads, as ref acmg-data does.
+    command = (
+        ["bcftools", "annotate", "--no-version", "-x", f"^{acmg_data.GNOMAD_KEEP}",
+         "-Oz", "-o", str(records_vcf), "-"]
+        if source == "gnomad"
+        else ["bgzip", "-c"]
+    )  # fmt: skip
+    count = 0
+    writes = records_vcf.open("wb") if source != "gnomad" else nullcontext()
+    with writes as out:
+        proc = popen(
+            command,
+            stdin=subprocess.PIPE,
+            stdout=out or subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        assert proc.stdin is not None
+        sink = proc.stdin
+
+        def write(found: list[bytes]) -> None:
+            nonlocal count
+            if found:
+                sink.write(b"\n".join(found) + b"\n")
+                count += len(found)
+
+        anchor = None
+        try:
+            sink.write(header)
+            file.records_at(
+                contig,
+                (tuple(span) for span in sites.tolist()),
+                connections,
+                on_group=write,
+            )
+            if not count:
+                anchor = file.first_record(contig)
+                write([anchor] if anchor else [])
+            sink.close()
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        _, err = proc.communicate()
+    if proc.returncode != 0:
+        raise WGSExtractError(
+            f"Writing the {name} records failed: {err.decode(errors='replace')[-500:]}"
+        )
+    if not count:
+        raise _NoRecords
+    fastvep = get_tool_path("fastvep") or "fastvep"
+    built, records = acmg_data.sa_build(
+        fastvep, source, records_vcf, stage / "build", name, cancel
+    )
+    files = []
+    for path in built:
+        path.replace(stage / path.name)
+        files.append(path.name)
+    shutil.rmtree(stage / "build", ignore_errors=True)
+    records_vcf.unlink()
+    return {
+        "format": FORMAT,
+        "source": source,
+        "chromosome": chromosome,
+        "files": files,
+        "location": file.location,
+        "release": release,
+        "etag": file.source.etag,
+        "last_modified": file.source.last_modified,
+        "size_bytes": file.source.size,
+        "sites": len(sites),
+        "records": records,
+        "first_record_added": anchor is not None,
+        "seconds": round(time.monotonic() - started, 1),
+        "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+class _NoRecords(Exception):
+    """A chromosome the source's file holds nothing of."""
+
+
+def build_databases(
+    wanted: dict[str, list[str]],
+    sites: dict[str, np.ndarray],
+    reflib: str | None,
+    cache: Path,
+    connections: int,
+    cancel: CancelEvent | None = None,
+    sa_dir: Path | None = None,
+) -> list[SiteDatabase]:
+    """The databases of each source's ``wanted`` input contigs, from the
+    cache or built, the sources side by side (they are on different
+    servers); a contig a source holds nothing of gets none."""
+    cache.mkdir(parents=True, exist_ok=True)
+    version = acmg_data.fastvep_version()
+    # Ctrl-C stops the other source's reads and builds too.
+    stop = acmg_data.Stop(cancel)
+    pool = ContextThreadPoolExecutor(max_workers=len(SOURCES))
+    try:
+        futures = [
+            pool.submit(
+                _source_databases,
+                source,
+                wanted.get(source, []),
+                sites,
+                reflib,
+                cache,
+                connections,
+                stop,
+                version,
+                sa_dir,
+            )  # fmt: skip
+            for source in SOURCES
+        ]
+        # A source that fails stops the other, rather than reading on for hours.
+        done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+        for future in done:
+            if future.exception() is not None:
+                future.result()
+        found = [db for future in futures for db in future.result()]
+    except BaseException:
+        stop.set()
+        raise
+    finally:
+        pool.shutdown(cancel_futures=True)
+    _prune(cache)
+    return found
+
+
+def _source_databases(
+    source: str,
+    contigs: list[str],
+    sites: dict[str, np.ndarray],
+    reflib: str | None,
+    cache: Path,
+    connections: int,
+    cancel: CancelEvent | None,
+    version: str,
+    sa_dir: Path | None = None,
+) -> list[SiteDatabase]:
+    found = []
+    opened: dict[str, TabixFile] = {}
+    for contig in contigs:
+        spans = sites.get(contig)
+        if spans is None or not len(spans):
+            continue
+        chromosome = f"chr{contig_key(contig)}"
+        where = location(source, chromosome, reflib, sa_dir)
+        try:
+            file = opened.get(where) or TabixFile(where, cancel)
+        except FileNotFoundError as e:
+            raise WGSExtractError(
+                f"The databases lack {acmg_data.BY_KEY[source].label} for {chromosome}: "
+                f"{where} is missing."
+            ) from e
+        opened[where] = file
+        key = _key(source, chromosome, file, spans, version)
+        entry = cache / f"{source}_{chromosome}_{key[:24]}"
+        database = _cached(entry)
+        if database is not None:
+            file.source.verify()
+            logging.info("%s %s: reusing %s.", source, chromosome, entry)
+            found.append(database)
+            continue
+        before = (file.bytes_read, file.source.requests)
+        names = {contig_key(c): c for c in file.index.contigs}
+        remote = names.get(contig_key(contig))
+        if remote is None:
+            raise WGSExtractError(
+                f"{source} source {where} holds nothing of {chromosome}."
+            )
+        logging.info("Reading %s at %s's %d sites...", source, chromosome, len(spans))
+        try:
+            database = _build(
+                source, chromosome, file, remote, spans, entry,
+                tabix_sites.connections(where, connections), cancel, version, before,
+            )  # fmt: skip
+        except _NoRecords as e:
+            raise WGSExtractError(
+                f"{source} source {where} holds nothing of {chromosome}."
+            ) from e
+        logging.info(
+            "%s %s: %s records, read %s in %s requests (%.0f s).",
+            source, chromosome, f"{database.meta['records']:,}",
+            format_bytes(database.meta["bytes_read"]),
+            f"{database.meta['requests']:,}", database.meta["seconds"],
+        )  # fmt: skip
+        found.append(database)
+    return found
+
+
+def _prune(cache: Path) -> None:
+    """Keep the most recently used databases, and none an interrupted run
+    left staged; nothing used in the last two days, which a run going on
+    beside this one may be reading."""
+    old = time.time() - _IN_USE
+    used: dict[Path, float] = {}
+    for entry in cache.iterdir():
+        # Another run on the same cache may remove an entry meanwhile.
+        with suppress(OSError):
+            if entry.is_dir():
+                used[entry] = entry.stat().st_mtime
+    staged = [p for p in used if p.name.startswith(".")]
+    kept = sorted(
+        (p for p in used if p not in staged), key=used.__getitem__, reverse=True
+    )
+    for stale in [*staged, *kept[_KEEP:]]:
+        if used[stale] < old:
+            shutil.rmtree(stale, ignore_errors=True)
+
+
+def link_folder(
+    library: Path, leave_out: set[Path], databases: list[SiteDatabase], dest: Path
+) -> None:
+    """A new folder ``dest`` holding the library's databases but
+    ``leave_out`` (and their ``.idx``), and the per-run ones, as links (the
+    per-run ones copied where links can't be made). A per-run database
+    replaces a library file of its name; nothing is ever written through to
+    either. The per-run ones are
+    hard links where they can be, which outlive their cache entry."""
+    dest.mkdir(parents=True)
+    skip = {p.name for p in leave_out} | {f"{p.name}.idx" for p in leave_out}
+    chosen = {
+        p.name: (p, False)
+        for p in sorted(library.iterdir())
+        if p.is_file() and not p.name.startswith(".") and p.name not in skip
+    }
+    for database in databases:
+        chosen.update((p.name, (p, True)) for p in database.paths)
+    for name, (path, per_run) in chosen.items():
+        link = dest / name
+        ways = (_hard_link, _soft_link) if per_run else (_soft_link, _hard_link)
+        for way in ways:
+            try:
+                way(path, link)
+                break
+            except OSError:
+                continue
+        else:
+            if not per_run:
+                # Copying the library's databases could fill the output drive.
+                raise WGSExtractError(
+                    f"Can't link {path} into {dest.parent}: links aren't allowed "
+                    "there and the library's databases are too large to copy. "
+                    "Use an output folder on the library's drive."
+                )
+            shutil.copyfile(path, link)
+        if not link.is_file():
+            raise WGSExtractError(f"{path} went missing while the run was set up.")
+
+
+def _hard_link(path: Path, link: Path) -> None:
+    os.link(path, link)
+
+
+def _soft_link(path: Path, link: Path) -> None:
+    link.symlink_to(path.resolve())
+
+
+def summary(databases: list[SiteDatabase]) -> dict[str, Any]:
+    """What the run read, per source and chromosome, for acmg_summary.json."""
+    by_source: dict[str, Any] = defaultdict(dict)
+    for db in databases:
+        by_source[db.source][db.chromosome] = {
+            key: db.meta.get(key)
+            for key in ("location", "release", "etag", "last_modified", "size_bytes", "sites",
+                        "records", "first_record_added", "bytes_read", "requests",
+                        "seconds", "built")
+        } | {"cached": db.cached, "folder": str(db.folder)}  # fmt: skip
+    return dict(by_source)
