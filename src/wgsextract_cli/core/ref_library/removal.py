@@ -30,7 +30,7 @@ _INDEXES = (".tbi", ".csi")
 _DOWNLOAD_LEFTOVERS = (".partial", ".partial.segments", ".partial.source")
 
 # The files `ref status` finds for each deletable annotation resource:
-# <key>*<extension> in the library or its ref folder.
+# <key>*<extension> in the library or its downloads/ (or older ref/) folder.
 _RESOURCE_EXTENSIONS = {
     "spliceai": (".vcf.gz", ".vcf.bgz"),
     "alphamissense": (".tsv.gz", ".vcf.gz", ".vcf.bgz"),

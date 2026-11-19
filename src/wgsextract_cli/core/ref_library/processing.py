@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import filecmp
 import logging
 import os
@@ -391,8 +392,9 @@ def normalize_bootstrap_layout(reflib_dir: str) -> None:
     _remove_macos_metadata(reflib_dir)
     # The archive still carries an empty ref/; downloads now go in downloads/.
     legacy = Path(reflib_dir, LEGACY_DOWNLOADS_DIR)
-    if legacy.is_dir() and not os.listdir(legacy):
-        legacy.rmdir()
+    if legacy.is_dir() and not legacy.is_symlink() and not os.listdir(legacy):
+        with contextlib.suppress(OSError):  # something was just written there
+            legacy.rmdir()
 
 
 def install_bootstrap_support_files(reflib_dir: str) -> bool:

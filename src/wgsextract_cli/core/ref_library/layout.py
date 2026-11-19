@@ -25,6 +25,10 @@ def download_dirs(reflib: PathInput) -> list[Path]:
 
 def download_path(reflib: PathInput, *parts: str) -> Path:
     """A downloaded file or folder: in ``downloads/``, unless only an older
-    library's ``ref/`` holds it."""
+    library's ``ref/`` holds it or its interrupted ``.partial`` download."""
     current, legacy = (Path(d, *parts) for d in download_dirs(reflib))
-    return legacy if legacy.exists() and not current.exists() else current
+    return legacy if _started(legacy) and not _started(current) else current
+
+
+def _started(path: Path) -> bool:
+    return path.exists() or Path(f"{path}.partial").exists()

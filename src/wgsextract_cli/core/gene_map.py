@@ -174,13 +174,14 @@ def delete_gene_maps(reflib_dir: str) -> bool:
         return False
     success = True
     for build in GENE_MAP_URLS.keys():
-        tsv_path = str(download_path(reflib_dir, f"genes_{build}.tsv"))
-        if Path(tsv_path).exists():
-            try:
-                Path(tsv_path).unlink()
-            except OSError as e:
-                logging.error(f"Failed to delete {tsv_path}: {e}")
-                success = False
+        for folder in download_dirs(reflib_dir):
+            tsv_path = Path(folder, f"genes_{build}.tsv")
+            if tsv_path.exists():
+                try:
+                    tsv_path.unlink()
+                except OSError as e:
+                    logging.error(f"Failed to delete {tsv_path}: {e}")
+                    success = False
     return success
 
 

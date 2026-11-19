@@ -9,4 +9,12 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   partitions now retain zero-depth reference evidence instead of leaving gVCF
   gaps. Older native builds still refuse non-diploid policies (#1103).
 
+## Changed
+
+- Annotation data that `ref` commands download (ClinVar, CADD, gnomAD,
+  PhyloP, GERP, gene maps, PharmGKB, SpliceAI, ACMG data, the HLA index) now
+  goes in the reference library's `downloads/` folder instead of `ref/`.
+  Libraries that already have data in `ref/` keep working without moving it,
+  and `ref bootstrap` removes the empty `ref/` its archive leaves behind.
+
 ## Fixes

@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
-from wgsextract_cli.core.ref_library.layout import downloads_dir
+from wgsextract_cli.core.ref_library.layout import download_dirs, downloads_dir
 from wgsextract_cli.core.utils import run_command
 
 from .ref_library import download_file
@@ -246,8 +246,7 @@ def download_pharmgkb(
         )
         write_table(sites, dest, header)
     # Earlier versions saved ClinPGx's archive unconverted; nothing reads it.
-    stale = str(Path(target_dir, "pharmgkb_hg38.zip"))
-    if Path(stale).exists():
-        Path(stale).unlink()
+    for folder in download_dirs(reflib_dir):
+        Path(folder, "pharmgkb_hg38.zip").unlink(missing_ok=True)
     logging.info(f"PharmGKB table ready: {dest}")
     return True
