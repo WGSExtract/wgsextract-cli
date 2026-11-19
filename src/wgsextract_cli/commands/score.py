@@ -24,7 +24,7 @@ from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 
 def run_pgs(params: ScorePgsParams) -> None:
@@ -99,7 +99,13 @@ def run_pgs(params: ScorePgsParams) -> None:
         data["reference_evidence"] = states[0].describe(states[1]) if states else None
         if calibration is not None and data["match_rate"] >= data["minimum_match_rate"]:
             report("pgs", "Projecting the sample onto the ancestry PCA")
-            calibration.project(params, genotypes.sample, Path(work), confident)
+            calibration.project(
+                params,
+                genotypes.sample,
+                Path(work),
+                confident,
+                gvcf=states[2] if states else None,
+            )
         if matched_file is not None and data["score_sum"] is not None:
             report("pgs", "Cross-checking matched calls with PLINK 2")
             data["plink2_crosscheck"] = pgs_plink.crosscheck(
@@ -214,10 +220,11 @@ def _reference_evidence(
     genotypes: pgs.Genotypes,
     reference: pgs.Reference | None,
     work: Path,
-) -> tuple[pgs.EvidenceStates, str] | None:
-    """The reference evidence for the scored sites, and where it came from:
-    the input itself when it is a gVCF, else the gVCF the caller published
-    beside the input VCF (found through its result manifest)."""
+) -> tuple[pgs.EvidenceStates, str, str] | None:
+    """The reference evidence for the scored sites, where it came from (the
+    input itself when it is a gVCF, else the gVCF the caller published beside
+    the input VCF, found through its result manifest) and the indexed
+    single-sample gVCF read (reference_evidence.readable)."""
     if genotypes.is_gvcf:
         gvcf, origin = str(params.input), "input"
     else:
@@ -225,28 +232,14 @@ def _reference_evidence(
         if found is None:
             return None
         gvcf, origin = found, "manifest"
-    samples = run_command(
-        ["bcftools", "query", "-l", gvcf], capture_output=True
-    ).stdout.splitlines()
-    if genotypes.sample not in samples:
+    gvcf_read = evidence.readable(gvcf, genotypes.sample, work)
+    if gvcf_read is None:
         warn(
             "pgs_reference_evidence_other_sample",
             "The gVCF beside the input holds another sample; it was not used.",
             reference_evidence=gvcf,
         )
         return None
-    indexed = gvcf.endswith((".gz", ".bgz")) and any(
-        Path(gvcf + suffix).is_file() for suffix in (".tbi", ".csi")
-    )
-    if len(samples) > 1 or not indexed:
-        # The classifier reads the first sample of an indexed gVCF.
-        copy = str(work / "evidence.g.vcf.gz")
-        run_command(["bcftools", "view", "--no-version", "-s", genotypes.sample,
-                     "-Oz", "-o", copy, gvcf])  # fmt: skip
-        run_command(["bcftools", "index", "-t", copy])
-        gvcf_read = copy
-    else:
-        gvcf_read = gvcf
     if origin == "manifest":
         current_result().add_input(gvcf, evidence.ROLE)
     if params.ref is None:
@@ -265,7 +258,7 @@ def _reference_evidence(
         reference,
     )
     states.path = gvcf
-    return states, origin
+    return states, origin, gvcf_read
 
 
 class _Calibration:
@@ -280,6 +273,7 @@ class _Calibration:
         self.pca_sites = 0.0
         self.training_regions: Any = None
         self.problem: str | None = None
+        self.evidence: dict[str, Any] | None = None
 
     def project(
         self,
@@ -287,7 +281,11 @@ class _Calibration:
         sample: str,
         work: Path,
         confident: pgs.ConfidentBed | None,
+        gvcf: str | None = None,
     ) -> None:
+        """Project the sample onto the ancestry PCA. With ``gvcf`` (an
+        indexed single-sample gVCF), a site the VCF lists no variant at is
+        hom-ref only where the gVCF calls it callable reference."""
         from wgsextract_cli.commands.qc.ancestry import pca_projection, vcf_genotypes
 
         try:
@@ -309,7 +307,10 @@ class _Calibration:
                 sample=sample,
                 build="hg38",
                 confident=confident,
+                evidence=gvcf,
+                reference_fasta=str(params.ref) if params.ref else None,
             )
+            self.evidence = genotypes.reference_evidence
             self.pcs, self.pca_sites = pca_projection(genotypes, ancestry)
             self.training_regions = self.reference.training_regions(
                 ancestry.pca()["region"].astype(str)
@@ -387,6 +388,9 @@ def _calibrate(
         "reference": f"pgs-ref-{reference.version}",
         "method": reference.info["method"],
         "pca_sites_fraction": calibration.pca_sites,
+        "pca_missing_site_states": None
+        if calibration.evidence is None
+        else calibration.evidence["missing_site_states"],
         "pcs": None if calibration.pcs is None else [float(x) for x in calibration.pcs],
     }
     data["ancestry_calibration"] = a

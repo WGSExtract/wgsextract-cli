@@ -32,6 +32,7 @@ tests/conformance/*/settings/
 
 # TypeScript build outputs and dependencies
 app/dist/
+app/web/vendor/igv/igv.min.js
 app/.cache/
 app/node_modules/
 app/web/packagers/tauri/gen/

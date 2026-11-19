@@ -525,6 +525,8 @@ class ConfidenceSummary:
     not_carried: int = 0
     rare_imputed: int = 0
     findings: list[Finding] = field(default_factory=list)
+    # The gVCF's states at the sites checked (add_reference_evidence).
+    reference_evidence: dict[str, Any] | None = None
 
     @property
     def carried(self) -> int:
@@ -553,6 +555,11 @@ class ConfidenceSummary:
             "reasons": dict(sorted(self.reasons.items())),
             "findings": [finding.manifest() for finding in listed],
             "findings_truncated": len(self.findings) > len(listed),
+            **(
+                {"reference_evidence": self.reference_evidence}
+                if self.reference_evidence
+                else {}
+            ),
             "disclaimer": DISCLAIMER,
             "guide": GUIDE,
         }
@@ -1005,6 +1012,8 @@ def record(
         None if output is None else str(output), role
     )]  # fmt: skip
     result.set_details(details)
+    if summary.reference_evidence:
+        _record_reference_evidence(summary.reference_evidence)
 
     if summary.rare_imputed:
         warn(
@@ -1057,3 +1066,87 @@ def is_pathogenic(clnsig: str) -> bool:
 
 def clinical_count(summary: ConfidenceSummary) -> int:
     return sum(is_pathogenic(f.annotations.get("CLNSIG", "")) for f in summary.findings)
+
+
+CALL_SITES, CLINVAR_SITES = "calls", "clinvar_pathogenic_sites"
+_CHECKED = {
+    CALL_SITES: "labelled calls",
+    CLINVAR_SITES: "ClinVar pathogenic/likely pathogenic sites",
+}
+
+
+def add_reference_evidence(
+    summary: ConfidenceSummary,
+    vcf: PathInput,
+    work: PathInput,
+    clinvar_sites: Iterable[tuple[str, int, int]] | None = None,
+    reference: str | None = None,
+) -> None:
+    """Add companion gVCF states at calls/ClinVar spans, aligned to ``reference``."""
+    from wgsextract_cli.core import reference_evidence as evidence
+
+    gvcf = evidence.companion(vcf)
+    if gvcf is None:
+        return
+    read = evidence.readable(gvcf, summary.sample, Path(work))
+    if read is None:
+        warn(
+            "reference_evidence_other_sample",
+            "The gVCF beside the input holds another sample; it was not used.",
+            reference_evidence=gvcf,
+        )
+        return
+    source = evidence.ReferenceEvidence(read)
+    if reference:
+        source = source.normalized(reference, Path(work))
+    checked: dict[str, Iterable[tuple[str, int, int]]] = {
+        CALL_SITES: [
+            (f.chrom, f.pos, f.pos + max(len(f.ref), 1) - 1) for f in summary.findings
+        ]
+    }
+    if clinvar_sites is not None:
+        checked[CLINVAR_SITES] = clinvar_sites
+    report: dict[str, Any] = {}
+    for name, sites in checked.items():
+        counts = Counter(
+            state.value
+            for _, state in evidence.site_states(source, sites, summary.thresholds)
+        )
+        report[name] = {"sites": sum(counts.values()), "states": dict(sorted(counts.items()))}  # fmt: skip
+    current_result().add_input(gvcf, evidence.ROLE)
+    summary.reference_evidence = {
+        "file": gvcf,
+        "engine": source.provenance.engine if source.provenance else None,
+        "quality_model": source.quality_model,
+        "checked": report,
+    }
+
+
+def _record_reference_evidence(report: Mapping[str, Any]) -> None:
+    for name, checked in report["checked"].items():
+        states = ", ".join(f"{n} {state}" for state, n in checked["states"].items())
+        logging.info(
+            f"Reference evidence at the {checked['sites']} {_CHECKED[name]}: "
+            f"{states or 'none'} ({Path(report['file']).name})."
+        )
+    sites = report["checked"].get(CLINVAR_SITES)
+    if not sites:
+        return
+    open_states = {
+        state: n
+        for state, n in sites["states"].items()
+        if state not in {"callable_reference", "variant", "excluded_by_policy"}
+    }
+    if open_states:
+        count = sum(open_states.values())
+        warn(
+            "reference_evidence_unassessed_sites",
+            f"{count} of {sites['sites']} ClinVar pathogenic/likely pathogenic "
+            "sites have neither a call nor confident reference in the gVCF ("
+            + ", ".join(f"{n} {state}" for state, n in open_states.items())
+            + "): the sample may carry a variant there that was not called.",
+            count=count,
+            total=sites["sites"],
+            reference_evidence=str(report["file"]),
+            **{f"sites_{state}": n for state, n in open_states.items()},
+        )

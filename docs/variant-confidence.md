@@ -195,6 +195,31 @@ weakest base's state (`uncovered`, `low_quality_reference`, `filtered`,
 `no_call`, `variant`, `excluded_by_policy` or `not_assessed`), so
 `--absent-to-ref` no longer applies to it.
 
+### Reference evidence at the sites checked
+
+A findings VCF lists only what the sample carries, so a ClinVar pathogenic
+site it doesn't list can be confident reference or a stretch no read
+covered. When the input VCF's caller published a gVCF beside it
+([reference-evidence.md](reference-evidence.md)), `vcf clinvar`,
+`vcf gnomad --max-af` and `analyze` add `reference_evidence` to their entry
+in `details.confidence`: the gVCF, and the number of sites in each gVCF state
+for each set of sites checked, `calls` (the labelled calls) and, for
+`vcf clinvar` and `analyze`, `clinvar_pathogenic_sites` (every ClinVar
+pathogenic/likely pathogenic site the filter looked for, carried or not). A
+site is `callable_reference` only when every base of it is; otherwise it
+takes its strongest state against reference. Symbolic alleles use `INFO/END`
+when present. With a reference FASTA, checked ClinVar alleles and the gVCF
+are left-aligned to the same reference, and its index supplies missing gVCF
+contig lengths. The checked ClinVar set has the same compatibility exclusions
+as annotation, including incompatible hg19 mitochondrial references.
+ClinVar sites that are neither
+`variant` nor `callable_reference` (nor `excluded_by_policy`) raise a
+`reference_evidence_unassessed_sites` warning with the count per state: the
+sample may carry a variant there that was not called. The labels themselves
+are unchanged, and without a gVCF nothing is added. An unchanged `analyze`
+rerun retains these details and warnings when it reuses its discovery step;
+adding, replacing or removing the companion reruns that step.
+
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample
 doesn't carry. The estimate is read from the sample workspace, so it applies
