@@ -3,6 +3,7 @@
 A command can describe its run as a JSON result document: the files it wrote, warnings, key metrics, and why it failed. When a bundle says which of its commands write one, the app reads the document instead of the log:
 
 - outputs are listed under the run's output, each with **Open** and **Show in Folder**;
+- a run's result card (an output with role `result_card`, a `.card.html` page `wgsextract --card` writes) pops up over the app when the run ends, naming the file it is shown from, and **View Card** shows it again;
 - warnings and metrics are shown in the same summary, not left in the log;
 - a refused option is shown next to the action's button, and a missing tool offers **Open Setup**;
 - bundle test plans can check the document instead of the printed text.
@@ -46,6 +47,7 @@ record; optional historical report fields remain optional.
   gene symbols and rsIDs and opens the first chromosome instead. This link
   does not grant filesystem access: the existing My Genomes and reference
   library guards still apply. See [Genome viewer](genome-viewer.md).
+- A result card is shown only when a document listed it and its name ends in `.card.html`. The app reads it as text and shows it in a frame sandboxed without scripts, forms, popups or navigation.
 
 ## The last run
 

@@ -54,6 +54,27 @@ parser still treats external/compact documents as unvalidated input.
   command's human-readable output and also read its result, such as the
   desktop app. It is not listed in `--help`. Like `--json`, it writes nothing
   when argparse rejects the arguments.
+- **`--card`.** This global option (or `result_card = true` in config.toml;
+  `--no-card` overrides it) also writes `<name>.card.html` beside the
+  manifest: `sample_MT.vcf.card.html` beside `sample_MT.vcf.manifest.json`.
+  The card is a page to view, print to PDF or share. It shows the command,
+  its status, what the command printed, metrics, warnings and output files,
+  with the WGS Extract and tool versions, the input files with their size and
+  an abbreviated fingerprint, the reference and when the run happened. Files
+  appear by name only, and paths in the printed text are cut to file names
+  (the home folder to `~`), so sharing a card doesn't reveal your folders;
+  the manifest beside it keeps the full paths. The page is self-contained: no
+  scripts, nothing loaded from a network. A report-only command such as
+  `info`, which otherwise writes no manifest, writes both into its output
+  folder (with no `--outdir`, where outputs go by default: `output_directory`
+  or `wgse/` beside the input), named after its input and command
+  (`sample_info.card.html` and `sample_info.manifest.json`). The card is
+  listed in the manifest's `outputs` with role `result_card`. A failed run's
+  card shows the error. Help and settings commands (`help`, `config`, `deps`,
+  `sample`, `serve`, `report-issue`) write no card. `wgsextract serve --card`
+  gives every job it runs a card; without the option, jobs follow
+  `result_card`. The desktop app passes `--card` to both, and shows each
+  run's card when the run ends.
 
 ## Document
 

@@ -106,7 +106,8 @@
     ],
     "arguments": [
       "--result-file",
-      "{{resultDocumentPath}}"
+      "{{resultDocumentPath}}",
+      "--card"
     ]
   },
   "jobServer": {
@@ -116,6 +117,7 @@
         "--parent-pid",
         "{{appPid}}",
         "serve",
+        "--card",
         "--ready-json",
         "--allow",
         "{{home}}"

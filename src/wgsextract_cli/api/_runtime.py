@@ -302,6 +302,7 @@ def execute(
     with contextlib.nullcontext() if read_only else _LOCK:
         result, error, created = _run(params, impl, progress, cancel, read_only)
         if write_manifest:
+            _write_card(params, result)
             try:
                 result.write_manifest()
             except OSError as e:
@@ -312,6 +313,24 @@ def execute(
     if check and result.exit_code:
         raise CommandFailed(result) from error
     return result
+
+
+def _write_card(params: Params, result: CommandResult) -> None:
+    """Write the run's result card when the caller (``wgsextract serve
+    --card``) or config.toml asks for one, as the CLI does."""
+    from wgsextract_cli.cli.dispatch import card_wanted
+    from wgsextract_cli.core.result_card import card_path, write_card
+
+    if not card_wanted(params.COMMAND, execution_context.current().result_card):
+        return
+    path = card_path(result, getattr(params, "outdir", None))
+    if path is None:
+        logging.warning("No result card written: this run has no output folder.")
+        return
+    try:
+        write_card(result, path)
+    except OSError as e:
+        logging.warning(f"Could not write the result card: {e}")
 
 
 def _run(

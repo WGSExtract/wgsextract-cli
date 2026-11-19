@@ -13,6 +13,7 @@ import { runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
 import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
+import { readResultCard } from "./result-card.js";
 import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
@@ -144,6 +145,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             await openResultPath(requiredString(body, "path"), body.reveal === true, resultPaths, context.runProcess, context.bundleRoot);
             return { ok: true };
         }),
+        "/api/result/card": jsonRoute(context, async (body) => readResultCard(requiredString(body, "path"), resultPaths, context.bundleRoot)),
         "/api/precheck": jsonRoute(context, async (body) => {
             const target = parsePrecheckTarget(body.target);
             const labels = parseLabels(body.labels);

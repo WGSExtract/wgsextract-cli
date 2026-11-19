@@ -244,6 +244,10 @@ export function localizationLabels(table: StringMap = {}) {
         resultUsageTitle: table["app.result.usage.title"] ?? "Check the selected options",
         resultMissingDependencyTitle: table["app.result.missingDependency.title"] ?? "A required tool is not installed",
         resultOpenSetupTitle: table["app.result.openSetup.title"] ?? "Open Setup",
+        resultCardTitle: table["app.result.card.title"] ?? "Result card",
+        resultCardSourceFormat: table["app.result.card.sourceFormat"] ?? "Shown from %{file}",
+        resultCardViewTitle: table["app.result.card.view.title"] ?? "View Card",
+        resultCardCloseTitle: table["app.result.card.close.title"] ?? "Close",
         prerequisitesTitle: table["app.prerequisites.title"] ?? "Required data is missing",
         prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data that isn't installed yet:",
         prerequisitesStillMissingMessage: table["app.prerequisites.stillMissing"] ??

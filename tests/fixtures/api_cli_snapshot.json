@@ -155,6 +155,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -773,6 +790,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -1075,6 +1109,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -1416,6 +1467,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -1932,6 +2000,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -2234,6 +2319,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -2549,6 +2651,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -2852,6 +2971,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -3245,6 +3381,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -3587,6 +3740,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -3923,6 +4093,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -4285,6 +4472,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -4691,6 +4895,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5081,6 +5302,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5390,6 +5628,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5693,6 +5948,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -6147,6 +6419,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -6740,6 +7029,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -7042,6 +7348,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -7391,6 +7714,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -7693,6 +8033,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -8138,6 +8495,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -8537,6 +8911,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -8839,6 +9230,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -9204,6 +9612,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -9546,6 +9971,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -9849,6 +10291,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -10164,6 +10623,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -10467,6 +10943,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -10851,6 +11344,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -11176,6 +11686,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -11479,6 +12006,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -11810,6 +12354,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -12129,6 +12690,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -12529,6 +13107,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -12960,6 +13555,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -13279,6 +13891,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -13624,6 +14253,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -14050,6 +14696,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -14578,6 +15241,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -14993,6 +15673,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -15295,6 +15992,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -15693,6 +16407,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -16348,6 +17079,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -16780,6 +17528,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -17082,6 +17847,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -17466,6 +18248,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -17804,6 +18603,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -18242,6 +19058,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -18577,6 +19410,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -18924,6 +19774,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -19249,6 +20116,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -19552,6 +20436,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -19949,6 +20850,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -20269,6 +21187,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -21145,6 +22080,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -21447,6 +22399,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -21794,6 +22763,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -22113,6 +23099,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -22460,6 +23463,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -22763,6 +23783,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -23097,6 +24134,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -23406,6 +24460,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -23709,6 +24780,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -24056,6 +25144,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -24375,6 +25480,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -24709,6 +25831,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -25031,6 +26170,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -25416,6 +26572,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -25773,6 +26946,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -26112,6 +27302,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -26491,6 +27698,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -26810,6 +28034,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -27144,6 +28385,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -27447,6 +28705,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -27794,6 +29069,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -28113,6 +29405,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -28493,6 +29802,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -28796,6 +30122,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -29177,6 +30520,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -29479,6 +30839,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -29810,6 +31187,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -30129,6 +31523,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -30541,6 +31952,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -30843,6 +32271,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -31341,6 +32786,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -31643,6 +33105,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -31998,6 +33477,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -32419,6 +33915,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -32721,6 +34234,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -33030,6 +34560,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -33378,6 +34925,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -33681,6 +35245,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -34204,6 +35785,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -34506,6 +36104,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -34870,6 +36485,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -35222,6 +36854,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -35602,6 +37251,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -35954,6 +37620,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -36369,6 +38052,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -36749,6 +38449,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -37118,6 +38835,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -37690,6 +39424,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -38081,6 +39832,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -38417,6 +40185,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -38832,6 +40617,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -39184,6 +40986,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -39586,6 +41405,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -39953,6 +41789,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -40405,6 +42258,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -40834,6 +42704,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -41170,6 +43057,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -41569,6 +43473,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -41927,6 +43848,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -42279,6 +44217,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -42731,6 +44686,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -43067,6 +45039,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -43515,6 +45504,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -43953,6 +45959,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -44373,6 +46396,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -44821,6 +46861,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -45302,6 +47359,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -45604,6 +47678,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -46036,6 +48127,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -46593,6 +48701,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null

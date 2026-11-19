@@ -11,7 +11,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.window = { innerHeight: 900 };
 
 const { runBundleTest } = await import("../dist/web/src/server/bundle-test-runner.js");
-const { parseResultDocument, resultNotice } = await import("../dist/shared/result-document.js");
+const { parseResultDocument, resultCardOutput, resultNotice } = await import("../dist/shared/result-document.js");
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { renderResultNotice, renderResultSummary } = await import("../dist/web/src/client/result-view.js");
 
@@ -218,6 +218,7 @@ test("the result summary lists outputs to open, warnings and metrics; the notice
   assert.match(summary, /data-result-reveal="\/out\/sample\.manifest\.json"/);
   // A listed output that no longer exists can't be opened.
   assert.doesNotMatch(summary, /data-result-open="\/out\/gone\.bai"/);
+  assert.doesNotMatch(summary, /data-result-card/);
 
   assert.match(renderResultNotice({ kind: "missing_dependency", message: "Run: pixi install -e gpu" }), /data-result-open-setup[\s\S]*Open Setup/);
   assert.doesNotMatch(renderResultNotice({ kind: "usage", message: "Choose --ref." }), /data-result-open-setup/);
@@ -247,4 +248,24 @@ test("#1090: genomic results open in the built-in viewer at their own locus, nev
   }
   state.manifest.id = "git-helper";
   assert.doesNotMatch(renderResultSummary(document), /data-result-viewer/);
+});
+
+test("a run's result card gets a View Card button and is the document's card output", () => {
+  Object.assign(state, createInitialState(), { labels: {} });
+  const document = parseResultDocument({
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [
+      { path: "/out/sample_info.card.html", role: "result_card", kind: "html", size_bytes: 5000 },
+      { path: "/out/sample.tsv", role: "table" },
+    ],
+  }, "wgsextract.result/1");
+
+  const summary = renderResultSummary(document);
+
+  assert.match(summary, /data-result-card="\/out\/sample_info\.card\.html"[^>]*>View Card</);
+  assert.equal((summary.match(/data-result-card=/g) ?? []).length, 1);
+  assert.equal(resultCardOutput(document)?.path, "/out/sample_info.card.html");
+  const gone = parseResultDocument({ schema: "wgsextract.result/1", status: "ok", outputs: [{ path: "/out/x.card.html", role: "result_card", exists: false }] }, "wgsextract.result/1");
+  assert.equal(resultCardOutput(gone), undefined);
 });

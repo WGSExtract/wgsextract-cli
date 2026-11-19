@@ -1817,6 +1817,34 @@ tbody tr + tr {
   width: min(460px, calc(100vw - 32px));
 }
 
+.result-card-modal {
+  width: min(920px, calc(100vw - 32px));
+  height: min(86vh, 900px);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.result-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.result-card-modal .result-card-source {
+  margin-top: 2px;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.result-card-frame {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
 .prerequisites-modal {
   width: min(480px, calc(100vw - 32px));
 }

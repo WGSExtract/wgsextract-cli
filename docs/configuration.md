@@ -153,6 +153,7 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `server_mcp_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 (0: any free port) |
 | `server_max_jobs` | integer, at least 1 | `1` | Long `wgsextract serve` jobs that run at once; more wait in a queue |
 | `keep_awake` | boolean | `false` | Best-effort sleep inhibition while commands run (opt-in) |
+| `result_card` | boolean | `false` | Also write `<name>.card.html`, a shareable page of each run's result, beside its manifest |
 | `haplogrep_executable` | string, path (`~` expands) | unset | Path to the Haplogrep 3 executable or JAR |
 | `dorado_executable` | string, path (`~` expands) | unset | Path to ONT's dorado executable for `basecall` |
 | `native_aligners` | `auto` or `off` | unset | Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2 |

@@ -143,6 +143,7 @@ def _run(args: argparse.Namespace) -> None:
         config_path=get_config_path(),
         max_jobs=max_jobs,
         debug=bool(getattr(args, "debug", False)),
+        card=getattr(args, "card", None),
         default_outdir=settings.get("output_directory"),
         # As given: a worker allows a symlinked root as written, as here.
         allowed=roots,

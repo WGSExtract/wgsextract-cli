@@ -5,7 +5,8 @@ import { state } from "./state.js";
 import { apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
 import { findTerminalEntry } from "./terminal-output.js";
-import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { resultCardOutput, resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { actionNoticeKey } from "./result-view.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
@@ -148,6 +149,11 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
 function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null, exitCode: number, stderr: string, noticeRun: NoticeRun | null) {
     if (document) {
         tab.result = document;
+    }
+    // The card is the shareable result; it pops up even while the terminal is collapsed.
+    const card = resultCardOutput(document);
+    if (card) {
+        void openResultCard(card.path, state.labels);
     }
     const notice = resultNotice(document, exitCode, stderr);
     if (notice && noticeRun && latestNoticeRuns.get(noticeRun.key) === noticeRun) {

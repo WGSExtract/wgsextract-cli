@@ -131,6 +131,14 @@ export function resultNotice(document: ResultDocument | null, exitCode: number |
     return { kind, message };
 }
 
+/** The role `wgsextract --card` gives the page it writes of a run's result (docs/result-manifest.md). */
+export const resultCardRole = "result_card";
+
+/** The run's result card, when it wrote one. */
+export function resultCardOutput(document: ResultDocument | null | undefined): ResultFile | undefined {
+    return document?.outputs.find((output) => output.role === resultCardRole && output.exists);
+}
+
 /** Paths a document lets the user open: its outputs and its saved manifest. */
 export function resultDocumentPaths(document: ResultDocument): string[] {
     return [...document.outputs.map((output) => output.path), ...(document.manifestPath ? [document.manifestPath] : [])];

@@ -149,6 +149,7 @@ class JobManager:
         default_outdir: str | None = None,
         allowed: Iterable[str | os.PathLike[str]] | None = None,
         worker_command: list[str] | None = None,
+        card: bool | None = None,
     ) -> None:
         self.directory = directory
         self.allowed = None if allowed is None else [os.fspath(a) for a in allowed]
@@ -156,6 +157,7 @@ class JobManager:
         self.config_path = config_path
         self.max_jobs = max(1, max_jobs)
         self.debug = debug
+        self.card = card  # each job's result card; None: as config.toml says
         self.worker_command = worker_command or [
             sys.executable,
             "-m",
@@ -437,6 +439,7 @@ class JobManager:
             "config": str(self.config_path) if self.config_path else None,
             "debug": self.debug,
             "allowed": self.allowed,
+            "card": self.card,
         }
         log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
         try:
