@@ -292,11 +292,15 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
     for key, _label, extensions, builds in ANNOTATION_DATA:
         status[key] = {}
         for build in builds:
+            # downloads/ and ref/ as one place, ranked by extension, then the root.
             path = first_existing_file(
                 [
-                    str(Path(directory, f"{key}_{build}{extension}"))
-                    for directory in (*map(str, download_dirs(reflib)), reflib)
-                    for extension in extensions
+                    *(
+                        str(Path(directory, f"{key}_{build}{extension}"))
+                        for extension in extensions
+                        for directory in download_dirs(reflib)
+                    ),
+                    *(str(Path(reflib, f"{key}_{build}{e}")) for e in extensions),
                 ]
             )
             # bigWig files carry their own index; the rest need a tabix sidecar.

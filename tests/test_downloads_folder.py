@@ -128,3 +128,24 @@ def test_complete_hla_index_in_ref_wins_over_an_empty_downloads_folder(tmp_path)
     (tmp_path / "downloads" / "t1k_hla").mkdir(parents=True)
 
     assert index_folder(str(tmp_path)) == str(tmp_path / "ref" / "t1k_hla")
+
+
+def test_gnomad_v41_table_in_ref_wins_over_a_newer_v211_vcf(tmp_path):
+    """#1141 review: a v2.1.1 VCF in downloads/ silently replaced the older
+    library's v4.1 table in ref/, downgrading allele frequencies."""
+    table = _put(tmp_path / "ref" / "gnomad_hg38.tsv.gz")
+    _put(tmp_path / "downloads" / "gnomad_hg38.vcf.bgz")
+
+    assert _library(tmp_path).gnomad_vcf == str(table)
+
+
+def test_partial_in_downloads_does_not_hide_a_complete_ref_copy(tmp_path):
+    """#1141 review: a stray downloads/*.partial made an installed ref/ copy
+    look missing."""
+    from wgsextract_cli.core.acmg_data import library_spliceai
+
+    vcf = _put(tmp_path / "ref" / "spliceai_hg38.vcf.gz")
+    _put(tmp_path / "ref" / "spliceai_hg38.vcf.gz.tbi")
+    _put(tmp_path / "downloads" / "spliceai_hg38.vcf.gz.partial")
+
+    assert library_spliceai(tmp_path) == vcf
