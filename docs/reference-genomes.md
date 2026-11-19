@@ -36,6 +36,28 @@ placing it under a folder named `hg19` or `chm13` does not identify it.
 FASTA descriptions and assembly tags, and VCF reference/assembly metadata,
 remain build evidence. Tool command-history lines in VCF headers are not.
 
+## Verification and gene maps
+
+`ref verify` checks gzip integrity, the FASTA index and catalog
+sequence-dictionary signature, failing on mismatch.
+`ref library --install` also verifies the signature after indexing.
+The catalog's `md5` is a sequence-name/length dictionary signature,
+**not a FASTA content checksum**. `ref count-ns` writes `_ncnt.csv` and
+`_nbin.csv` beside the FASTA, or in `--outdir`.
+
+Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
+T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
+
+## Download safety
+
+Reference HTTP downloads resume only explicit `.partial` files bound to
+their source URL by a `.partial.source` hash sidecar; segmented downloads
+keep their own metadata. Unknown legacy partials or changed URLs restart.
+Refreshing a complete file starts from zero and preserves it until replacement
+finishes and passes available checksums, then publishes atomically.
+Diagnostic URLs omit userinfo and queries, while requests keep the original
+URL. MD5-pinned benchmark files enter the dev cache only after verification.
+
 ## The test genome
 
 `wgsextract ref test-genome --install` downloads and verifies the small
