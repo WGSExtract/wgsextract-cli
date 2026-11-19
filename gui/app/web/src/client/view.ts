@@ -318,7 +318,7 @@ export function renderTextControl(control: ControlSpec) {
     <div class="form-row">
       <label class="row-label" for="${escapeAttribute(inputID)}">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</label>
       ${control.kind === "path"
-        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
+        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button>${state.manifest?.id === "wgs-extract" && ["bam_path", "vcf_path"].includes(control.id) && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(rawValue)) ? `<button type="button" class="secondary-button" data-view-reads="${escapeAttribute(rawValue)}">${escapeHTML(state.labels.viewerStrings?.viewReads ?? "")}</button>` : ""}</span>`
         : input}
     </div>
   `;

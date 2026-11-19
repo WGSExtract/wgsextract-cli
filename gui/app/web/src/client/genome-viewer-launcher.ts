@@ -1,9 +1,11 @@
 import type { Labels } from "../../../shared/types.js";
+import type { LibraryViewerResult } from "./genome-viewer-library.js";
+import { api } from "./api.js";
 
 let pane: HTMLElement | undefined;
 
 /** A sibling of #app survives command-output renders without unloading either document or its streams. */
-export function openGenomeViewer(locale: string, labels: Labels) {
+export function openGenomeViewer(locale: string, labels: Labels, inputPath = "") {
     if (pane) {
         return;
     }
@@ -22,6 +24,8 @@ export function openGenomeViewer(locale: string, labels: Labels) {
     frame.title = labels.viewerTitle ?? "";
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
     frame.src = "/viewer";
+    const sessions = new Set<string>();
+    let closed = false;
     const onMessage = (event: MessageEvent) => {
         if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerReady") {
             frame.contentWindow?.postMessage({
@@ -29,11 +33,35 @@ export function openGenomeViewer(locale: string, labels: Labels) {
                 locale,
                 direction: labels.layoutDirection ?? "ltr",
                 strings: labels.viewerStrings ?? {},
+                inputPath,
             }, location.origin);
+        }
+        if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerOpenLibrary"
+            && typeof event.data.requestID === "string" && typeof event.data.path === "string" && typeof event.data.locus === "string") {
+            void api<LibraryViewerResult>("/api/viewer/open", { body: { path: event.data.path, locus: event.data.locus } })
+                .catch((): LibraryViewerResult => ({ problem: "libraryUnavailable" }))
+                .then((result) => {
+                    if ("id" in result) {
+                        if (closed) {
+                            void api("/api/viewer/close", { body: { id: result.id } }).catch(() => {});
+                            return;
+                        }
+                        for (const id of sessions) {
+                            void api("/api/viewer/close", { body: { id } }).catch(() => {});
+                        }
+                        sessions.clear();
+                        sessions.add(result.id);
+                    }
+                    frame.contentWindow?.postMessage({ type: "genomeViewerLibrary", requestID: event.data.requestID, result }, location.origin);
+                });
         }
     };
     window.addEventListener("message", onMessage);
     back.addEventListener("click", () => {
+        closed = true;
+        for (const id of sessions) {
+            void api("/api/viewer/close", { body: { id } }).catch(() => {});
+        }
         window.removeEventListener("message", onMessage);
         container.remove();
         pane = undefined;

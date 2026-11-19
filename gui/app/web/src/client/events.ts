@@ -38,6 +38,9 @@ let installedGlobalBundleLoadHandler = false;
 let installedGlobalAboutHandler = false;
 export function bindEvents(bootstrap: Bootstrap) {
     app.querySelector("[data-genome-viewer-open]")?.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels));
+    elements<HTMLButtonElement>("[data-view-reads]").forEach((button) => {
+        button.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels, button.dataset.viewReads ?? ""));
+    });
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();

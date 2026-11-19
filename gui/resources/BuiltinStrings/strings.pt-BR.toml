@@ -182,6 +182,14 @@
 "app.setup.stderrFailed.format" = "Erro no stderr da configuração: %{error}"  # i18n-source-hash:fa9f35f4
 "app.setup.startFailed.format" = "Falha ao iniciar a configuração: %{error}"  # i18n-source-hash:4d2e86ec
 "viewer.title" = "Visualizador de genoma"  # i18n-source-hash:ea19d818
+"viewer.viewReads" = "Ver leituras"  # i18n-source-hash:ead939e2
+"viewer.libraryPath" = "Arquivo em Meus Genomas"  # i18n-source-hash:db695806
+"viewer.libraryHelp" = "Digite o caminho completo de um BAM, CRAM ou VCF/gVCF bgzip indexado na biblioteca Meus Genomas configurada. A referência instalada é escolhida pelo cabeçalho. Deixe a posição vazia para abrir o primeiro cromossomo."  # i18n-source-hash:deae7d57
+"viewer.openLibrary" = "Abrir arquivo da biblioteca"  # i18n-source-hash:a91e3d1e
+"viewer.automaticReference" = "Referência local correspondente: %{file}."  # i18n-source-hash:6e650985
+"viewer.libraryUnavailable" = "Não foi possível abrir o arquivo. Verifique as pastas de Meus Genomas e de referências nas Configurações e conclua a configuração. Só arquivos dessas bibliotecas podem ser servidos. Você também pode selecionar arquivos locais manualmente abaixo."  # i18n-source-hash:1e0208d7
+"viewer.headerToolMissing" = "A leitura deste cabeçalho exige o ambiente CLI instalado e samtools (BAM/CRAM) ou bcftools (VCF). Conclua a configuração, verifique essas ferramentas e tente novamente. Nada é instalado automaticamente."  # i18n-source-hash:80d34d07
+"viewer.referenceUnverified" = "Não foi possível verificar a referência CRAM exata. Instale o FASTA correspondente, seus índices e o dicionário de sequências (.dict) em Genomas de Referência. O visualizador não buscará uma referência pelo cabeçalho CRAM."  # i18n-source-hash:344f1e75
 "viewer.locusNotFound" = "Posição não encontrada na referência selecionada. Verifique o nome do cromossomo e se esta referência corresponde ao arquivo."  # i18n-source-hash:9a2b55ff
 "viewer.back" = "Voltar ao WGS Extract"  # i18n-source-hash:78623ef3
 "viewer.privacy" = "Inspecione leituras e variantes neste computador. Nada é enviado; não são usadas referências nem buscas on-line."  # i18n-source-hash:350a8494
@@ -197,7 +205,7 @@
 "viewer.empty" = "Escolha uma referência, trilhas e uma posição como chr1:1000-2000."  # i18n-source-hash:e1c28ce6
 "viewer.loading" = "Abrindo arquivos locais…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Trilhas locais carregadas. Arraste para navegar, amplie para ver bases individuais ou clique em uma leitura ou variante para ver detalhes."  # i18n-source-hash:f136d021
-"viewer.limits" = "Esta primeira versão aceita arquivos locais indexados BAM, CRAM e VCF/gVCF. Escolha a referência manualmente; a correspondência automática, a busca por gene/rsID e outros formatos ainda não estão disponíveis. Menus de contexto e links externos estão desativados. Sair desta página fecha os arquivos."  # i18n-source-hash:b4cdd445
+"viewer.limits" = "Aceita arquivos locais indexados BAM, CRAM e VCF/gVCF. Arquivos da biblioteca usam correspondência de referência pelo cabeçalho; arquivos selecionados manualmente ainda exigem a seleção da referência. A busca por gene/rsID e outros formatos ainda não estão disponíveis. Menus de contexto e links externos estão desativados. Sair desta página fecha os arquivos."  # i18n-source-hash:d3ffb817
 "viewer.referenceMissing" = "Referência não instalada ou não selecionada. Instale a referência correspondente em Genomas de referência e selecione seu FASTA e .fai, além de .gzi para FASTA BGZF. Nada será baixado automaticamente."  # i18n-source-hash:094f8319
 "viewer.referenceCompressedIndexMissing" = "Selecione o índice .gzi junto com %{file} e seu .fai. Se faltar, indexe primeiro a referência BGZF e selecione os três arquivos."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Selecione o índice .fai junto com %{file}. Indexe a referência primeiro se necessário."  # i18n-source-hash:a39bb059

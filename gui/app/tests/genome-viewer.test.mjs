@@ -80,3 +80,18 @@ test("#1090: the shipped genome bundle has a localized built-in viewer entry poi
   state.manifest.id = "git-helper";
   assert.doesNotMatch(renderNavigation(), /data-genome-viewer-open/);
 });
+
+test("#1090: a selected My Genomes alignment has a localized View reads entry without running a job", async () => {
+  const { state, createInitialState } = await import("../dist/web/src/client/state.js");
+  const { renderTextControl } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), {
+    manifest: { id: "wgs-extract", pages: [] },
+    labels: { viewerStrings: { viewReads: "Voir les lectures" } },
+    fieldValues: { bam_path: "/genomes/HG002.bam" },
+  });
+  const rendered = renderTextControl({ id: "bam_path", kind: "path", label: "BAM" });
+  assert.match(rendered, /data-view-reads="\/genomes\/HG002.bam">Voir les lectures/);
+  assert.doesNotMatch(rendered, /data-action-id/);
+  state.fieldValues.bam_path = "/genomes/HG002.bam.bai";
+  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path" }), /data-view-reads/);
+});

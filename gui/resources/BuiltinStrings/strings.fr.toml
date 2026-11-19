@@ -182,6 +182,14 @@
 "app.setup.stderrFailed.format" = "Erreur stderr de la configuration : %{error}"  # i18n-source-hash:fa9f35f4
 "app.setup.startFailed.format" = "Échec du démarrage de la configuration : %{error}"  # i18n-source-hash:4d2e86ec
 "viewer.title" = "Visualiseur de génome"  # i18n-source-hash:ea19d818
+"viewer.viewReads" = "Voir les lectures"  # i18n-source-hash:ead939e2
+"viewer.libraryPath" = "Fichier dans Mes génomes"  # i18n-source-hash:db695806
+"viewer.libraryHelp" = "Saisissez le chemin complet d’un BAM, CRAM ou VCF/gVCF bgzip indexé dans la bibliothèque Mes génomes configurée. La référence installée est choisie d’après son en-tête. Laissez la position vide pour ouvrir le premier chromosome."  # i18n-source-hash:deae7d57
+"viewer.openLibrary" = "Ouvrir le fichier de la bibliothèque"  # i18n-source-hash:a91e3d1e
+"viewer.automaticReference" = "Référence locale correspondante : %{file}."  # i18n-source-hash:6e650985
+"viewer.libraryUnavailable" = "Impossible d’ouvrir ce fichier. Vérifiez les dossiers Mes génomes et de référence dans les paramètres et terminez la configuration. Seuls les fichiers de ces bibliothèques peuvent être servis. Vous pouvez aussi choisir les fichiers manuellement ci-dessous."  # i18n-source-hash:1e0208d7
+"viewer.headerToolMissing" = "La lecture de cet en-tête nécessite le moteur CLI installé et samtools (BAM/CRAM) ou bcftools (VCF). Terminez la configuration et vérifiez ces outils, puis réessayez. Rien n’est installé automatiquement."  # i18n-source-hash:80d34d07
+"viewer.referenceUnverified" = "La référence CRAM exacte n’a pas pu être vérifiée. Installez le FASTA correspondant, ses index et son dictionnaire de séquences (.dict) dans Génomes de référence. Le visualiseur ne téléchargera pas de référence depuis l’en-tête CRAM."  # i18n-source-hash:344f1e75
 "viewer.locusNotFound" = "Position introuvable dans la référence sélectionnée. Vérifiez le nom du chromosome et que cette référence correspond à votre fichier."  # i18n-source-hash:9a2b55ff
 "viewer.back" = "Retour à WGS Extract"  # i18n-source-hash:78623ef3
 "viewer.privacy" = "Examinez les lectures et les variants sur cet ordinateur. Rien n’est envoyé ; aucune référence ni recherche en ligne n’est utilisée."  # i18n-source-hash:350a8494
@@ -197,7 +205,7 @@
 "viewer.empty" = "Choisissez une référence, des pistes et une position telle que chr1:1000-2000."  # i18n-source-hash:e1c28ce6
 "viewer.loading" = "Ouverture des fichiers locaux…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Pistes locales chargées. Faites glisser pour vous déplacer, zoomez pour voir les bases ou cliquez sur une lecture ou un variant pour les détails."  # i18n-source-hash:f136d021
-"viewer.limits" = "Cette première version accepte les fichiers locaux indexés BAM, CRAM et VCF/gVCF. Choisissez la référence manuellement ; la détection automatique, la recherche de gènes/rsID et les autres formats ne sont pas encore disponibles. Les menus contextuels et liens externes sont désactivés. Quitter cette page ferme les fichiers."  # i18n-source-hash:b4cdd445
+"viewer.limits" = "Accepte les fichiers locaux indexés BAM, CRAM et VCF/gVCF. Les fichiers de la bibliothèque utilisent une référence choisie d’après l’en-tête ; les fichiers sélectionnés manuellement nécessitent encore un choix de référence. La recherche de gènes/rsID et les autres formats ne sont pas encore disponibles. Les menus contextuels et liens externes sont désactivés. Quitter cette page ferme les fichiers."  # i18n-source-hash:d3ffb817
 "viewer.referenceMissing" = "Référence non installée ou non sélectionnée. Installez la référence correspondante dans Génomes de référence, puis sélectionnez son FASTA et son .fai, ainsi que son .gzi pour un FASTA BGZF. Rien ne sera téléchargé automatiquement."  # i18n-source-hash:094f8319
 "viewer.referenceCompressedIndexMissing" = "Sélectionnez l’index .gzi avec %{file} et son .fai. S’il manque, indexez d’abord la référence BGZF, puis sélectionnez les trois fichiers."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Sélectionnez l’index .fai avec %{file}. Indexez d’abord la référence si nécessaire."  # i18n-source-hash:a39bb059

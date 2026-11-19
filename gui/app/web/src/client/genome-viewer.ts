@@ -1,11 +1,12 @@
 import { localViewerFiles, localViewerLocus, ViewerFileError, type LocalTrack, type LocalViewerFiles } from "../../../shared/genome-viewer.js";
+import { requestLibraryViewer } from "./genome-viewer-library.js";
 import type { StringMap } from "../../../shared/types.js";
 import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genome-viewer-privacy.js";
 
 interface IgvBrowser {
-    loadTrack(track: LocalTrack): Promise<IgvLocalTrack | undefined>;
+    loadTrack(track: LocalTrack<File | string>): Promise<IgvLocalTrack | undefined>;
     on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
     zoomIn(): void;
@@ -13,7 +14,7 @@ interface IgvBrowser {
 }
 
 interface IgvRuntime {
-    createBrowser(host: HTMLElement, options: LocalViewerFiles & Record<string, unknown>): Promise<IgvBrowser>;
+    createBrowser(host: HTMLElement, options: LocalViewerFiles<File | string> & Record<string, unknown>): Promise<IgvBrowser>;
     removeBrowser(browser: IgvBrowser): void;
 }
 
@@ -44,6 +45,14 @@ try {
         <h1>${escapeHTML(text("title"))}</h1>
         <p>${escapeHTML(text("privacy"))}</p>
       </header>
+      <form data-library class="viewer-files">
+        <label>${escapeHTML(text("libraryPath"))}
+          <input type="text" name="library-path" dir="ltr" autocomplete="off" spellcheck="false" required aria-describedby="library-help">
+        </label>
+        <p id="library-help">${escapeHTML(text("libraryHelp"))}</p>
+        <label>${escapeHTML(text("locus"))}<input name="locus" placeholder="chr1:1000-2000" autocomplete="off" spellcheck="false"></label>
+        <div><button type="submit" class="action-button primary">${escapeHTML(text("openLibrary"))}</button></div>
+      </form>
       <form data-files class="viewer-files">
         <label>${escapeHTML(text("reference"))}
           <input type="file" name="reference" multiple accept=".fa,.fasta,.fna,.gz,.fai,.gzi" aria-describedby="reference-help">
@@ -72,6 +81,11 @@ try {
     const filesForm = required<HTMLFormElement>("[data-files]");
     const navigation = required<HTMLFormElement>("[data-locus]");
     const host = required<HTMLElement>("[data-igv]");
+    const libraryForm = required<HTMLFormElement>("[data-library]");
+    libraryForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        void openLibrary(libraryForm, navigation, host);
+    });
     // igv's context menus contain BLAT actions that transmit read sequences. This slice exposes only local inspection.
     host.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -95,6 +109,10 @@ try {
         button.addEventListener("click", () => button.dataset.zoom === "in" ? browser?.zoomIn() : browser?.zoomOut());
     });
     window.addEventListener("pagehide", dispose);
+    if (labels.inputPath) {
+        required<HTMLInputElement>('[name="library-path"]').value = labels.inputPath;
+        void openLibrary(libraryForm, navigation, host);
+    }
 } catch (error) {
     root.textContent = error instanceof Error ? error.message : String(error);
 }
@@ -115,14 +133,48 @@ function status(key: string, isError = false, fileName = "") {
 }
 
 async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, host: HTMLElement) {
-    const controls = [...form.querySelectorAll<HTMLInputElement | HTMLButtonElement>("input, button")];
     try {
         const files = localViewerFiles(
             [...(required<HTMLInputElement>('[name="reference"]').files ?? [])],
             [...(required<HTMLInputElement>('[name="tracks"]').files ?? [])],
         );
         const locus = localViewerLocus(form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "");
-        controls.forEach((element) => { element.disabled = true; });
+        await openTracks(files, locus, navigation, host);
+    } catch (error) {
+        status(error instanceof ViewerFileError ? error.code : "loadFailed", true, error instanceof ViewerFileError ? error.fileName : "");
+    }
+}
+
+async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, host: HTMLElement) {
+    setBusy(true);
+    dispose();
+    navigation.hidden = true;
+    host.hidden = true;
+    status("loading");
+    try {
+        const result = await requestLibraryViewer(
+            required<HTMLInputElement>('[name="library-path"]').value,
+            form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "",
+        );
+        if ("problem" in result) {
+            status(result.problem, true, result.fileName ?? "");
+            return;
+        }
+        await openTracks(result.files, result.locus, navigation, host);
+    } catch {
+        status("libraryUnavailable", true);
+    } finally {
+        setBusy(false);
+    }
+}
+
+function setBusy(busy: boolean) {
+    root?.querySelectorAll<HTMLInputElement | HTMLButtonElement>("form input, form button").forEach((element) => { element.disabled = busy; });
+}
+
+async function openTracks(files: LocalViewerFiles<File | string>, locus: string, navigation: HTMLFormElement, host: HTMLElement) {
+    try {
+        setBusy(true);
         navigation.hidden = true;
         host.hidden = false;
         host.setAttribute("aria-busy", "true");
@@ -155,6 +207,11 @@ async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, hos
         required<HTMLInputElement>('[data-locus] [name="locus"]').value = locus;
         navigation.hidden = false;
         status("ready");
+        if (typeof files.reference.fastaURL === "string") {
+            const info = document.createElement("span");
+            info.textContent = ` ${text("automaticReference").replace("%{file}", files.reference.name)}`;
+            required<HTMLElement>("[data-viewer-status]").append(info);
+        }
     } catch (error) {
         status(error instanceof ViewerFileError ? error.code : "loadFailed", true, error instanceof ViewerFileError ? error.fileName : "");
         if (!(error instanceof ViewerFileError)) {
@@ -162,7 +219,7 @@ async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, hos
             console.error("Genome viewer:", error);
         }
     } finally {
-        controls.forEach((element) => { element.disabled = false; });
+        setBusy(false);
         host.setAttribute("aria-busy", "false");
         host.hidden = !browser;
     }

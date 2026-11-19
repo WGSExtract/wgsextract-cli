@@ -114,6 +114,18 @@ function apiFetch(baseURL, route, { body, headers = {}, method } = {}) {
   });
 }
 
+test("#1090: opening viewer library files uses API authentication and cannot grant arbitrary paths", async (t) => {
+  const { baseURL, tempRoot } = await withTestServer(t, { manifest: { id: "wgs-extract", pages: [] } });
+  const outside = path.join(tempRoot, "outside.bam");
+  await writeFile(outside, "not a library file");
+  for (const route of ["/api/viewer/open", "/api/viewer/close"]) {
+    const response = await apiFetch(baseURL, route, { body: { path: outside, id: "unknown" }, headers: { "x-gfc-token": "" } });
+    assert.equal(response.status, 401);
+  }
+  const response = await apiFetch(baseURL, "/api/viewer/open", { body: { path: outside } });
+  assert.equal(response.status, 403);
+});
+
 /** fetch() cannot spoof Host, so attacks that rely on it go through http.request. */
 function rawRequest(port, route, { method = "POST", headers = {}, body = "" } = {}) {
   return new Promise((resolve, reject) => {
