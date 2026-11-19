@@ -257,7 +257,10 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 From a checkout of this repository, `pixi install -e deepvariant` installs the
 CUDA build from `linux-deepvariant-4` (0.4.0, build 2), pinned by its checksum (about
 3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
-there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
+there without `PATH`. Updating WGS Extract preserves an existing optional
+`deepvariant` environment. To upgrade from 0.3.1 or another older version,
+rerun `pixi install -e deepvariant` from the updated checkout before calling
+haploid chrX/Y/MT. A `wgse-deepvariant` on `PATH` comes first, so remove an
 older standalone install (such as 0.2.0, which sends ONT reads to Google's
 image) from `PATH`. Then download, check and unpack just the weights, which
 have the WGS and ONT_R104 models, and set `deepvariant_weights` in

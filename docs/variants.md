@@ -67,7 +67,7 @@ A 30x genome trio took about 70 minutes with 8 threads.
   or Google's `run_deepvariant` on PATH;
 - [wgse-deepvariant](../native/deepvariant/README.md) on Apple Silicon
   (WGS only, GPU call_variants, published weight hashes checked), or Linux
-  x86-64 (`pixi install -e deepvariant`, native 0.3.1, WGS/ONT_R104);
+  x86-64 (`pixi install -e deepvariant`, native 0.4.0, WGS/ONT_R104);
   set `deepvariant_weights` to `wgse-deepvariant-weights-1.10.0`.
   Linux uses CPU or `--gpu` CUDA; `deepvariant_native = "off"` keeps
   Docker/Parabricks;
@@ -83,6 +83,12 @@ package has held no Google DeepVariant since 1.8: the optional native
 Google's x86-only image fails under Apple Silicon Docker emulation (no AVX)
 and is refused. Alternatives are `vcf clair3` for ONT, `vcf snp`/`indel`,
 or x86-64 hardware.
+
+Updating WGS Extract preserves the optional `deepvariant` environment.
+Rerun `pixi install -e deepvariant` from the updated checkout to upgrade an
+older native install to 0.4.0 before calling haploid chrX/Y/MT. If you installed
+`wgse-deepvariant` on PATH instead, replace that binary with 0.4.0 or later;
+it takes precedence over the optional environment.
 
 CPU preflight covers `postprocess_variants`: each worker sorts a partition
 in RAM (~7 GiB for a 30x genome at `-t 5`). It adds partitions/reduces workers

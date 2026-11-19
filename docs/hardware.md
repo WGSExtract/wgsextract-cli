@@ -498,6 +498,11 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
+Updating WGS Extract preserves the optional `deepvariant` environment. To
+upgrade an older install, rerun `pixi install -e deepvariant` from the updated
+checkout. Haploid chrX/Y/MT calling requires 0.4.0 or later. Replace any older
+standalone `wgse-deepvariant` on `PATH` too, since it takes precedence.
+
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
   which installs 0.4.0 from `linux-deepvariant-4`) and `deepvariant_weights`

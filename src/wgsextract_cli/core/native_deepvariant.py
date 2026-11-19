@@ -125,7 +125,10 @@ class NativeDeepVariant:
             raise WGSExtractError(
                 f"wgse-deepvariant {self.version} does not support this sex/PAR "
                 "ploidy policy. Install wgse-deepvariant 0.4.0 or later for "
-                "haploid chrX/Y/MT and diploid PAR calling, or set "
+                "haploid chrX/Y/MT and diploid PAR calling. To upgrade the "
+                "optional environment, rerun `pixi install -e deepvariant` "
+                "from the updated WGS Extract checkout; replace any older "
+                "wgse-deepvariant on PATH, which takes precedence. Or set "
                 'deepvariant_native = "off" in config.toml to use Google\'s image.'
             )
 
