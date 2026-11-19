@@ -15,8 +15,8 @@
       }
     },
     "generator": "scripts/build_microarray_chm13_map.py",
-    "generator_sha256": "ed4d91ec80568ab88ac7cc080baddfe3e9afdc0ee58d10b6a317aec63238aed4",
-    "grch38_chain_sha256": "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2",
+    "generator_sha256": "00382b43d420b1f4ae4d6ef77f624de6613ce6029ef27e71ad52f3649ebc602f",
+    "grch38_chain_sha256": "14a712e8e147d9fc8e9d87d51977b46f6f8ddb93efbe5d0843d86b6205f587b1",
     "mapping_counts": {
       "mapped": 2979394,
       "mt_gap": 3,
@@ -842,7 +842,7 @@
         "chm13v2-grch38.chain": "f5bd06d6d1ab4e44b22ee150bcd75ee8f1d6709ecb111a9029b64647e0cba8bf",
         "grch38-chm13v2.chain": "2a4086a9fda2cbc035ac354b5034dd5fd89f45c1213e046b55ab1b9aaf7b5d2b",
         "hg19ToHg38.over.chain.gz": "5c0598e500ceb5a78c73086929e8ef993aec309bcafb595139b53d440b125a1d",
-        "hg38ToHg19.over.chain.gz": "a4af0aaac27b26c2b3b52c031ebbdbea1a2f7ffc645a6cab70683f74064920a2"
+        "hg38ToHg19.over.chain.gz": "14a712e8e147d9fc8e9d87d51977b46f6f8ddb93efbe5d0843d86b6205f587b1"
       },
       "counts": {
         "GRCh38_nonprimary": 874,
