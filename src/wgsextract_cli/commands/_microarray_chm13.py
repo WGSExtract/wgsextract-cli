@@ -48,16 +48,20 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
-from wgsextract_cli.core.microarray.targets import collect_template_markers
+from wgsextract_cli.core.microarray.targets import (
+    CHM13_V1_FORMATS,
+    collect_template_markers,
+    lifted_chain,
+)
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     convert_to_vendor_format,
     get_template_format,
-    resolve_format_key,
 )
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -125,7 +129,9 @@ def _marker_ids(
         )
     markers = {
         (chrom, pos): marker
-        for (chrom, pos), marker in collect_template_markers(roots, str(chain)).items()
+        for (chrom, pos), marker in collect_template_markers(
+            roots, {"NCBI36": str(chain)}, CHM13_V1_FORMATS
+        ).items()
         if chrom in catalogue.source_lengths and pos <= catalogue.source_lengths[chrom]
     }
     for marker in aadr_markers("1240k"):
@@ -503,21 +509,16 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
-        chain36 = next(
-            (
-                str(Path(root, "hg18ToHg19.over.chain.gz"))
-                for root in roots
-                if Path(root, "hg18ToHg19.over.chain.gz").is_file()
-            ),
-            None,
-        )
+        build = info.get("build") if info else None
+        # Found in the library or fetched (with consent); else matched by ID.
+        lift_chain = lifted_chain(lib.root, build, roots) if build else None
         kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,
             str(combined),
             kit,
             roots,
-            chain36,
+            lift_chain,
             identity=identity,
             quirks=quirks_mode(params),
             indel_calls={

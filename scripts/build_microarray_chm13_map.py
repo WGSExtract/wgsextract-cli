@@ -32,11 +32,12 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteProjection,
     load_site_map,
 )
-from wgsextract_cli.core.microarray.targets import _FORMATS, _template_paths
+from wgsextract_cli.core.microarray.targets import CHM13_V1_FORMATS as _FORMATS
+from wgsextract_cli.core.microarray.targets import _template_paths
 from wgsextract_cli.core.microarray.templates import (
     _chrom_for_liftover,
     _resolve_templates_roots,
-    ncbi36_to_grch37,
+    lift_to_grch37,
     template_rows,
 )
 
@@ -62,15 +63,14 @@ def collect_markers(
     chain36: Path,
     source_lengths: Mapping[str, int],
 ) -> tuple[dict[tuple[str, int], str], dict[str, object]]:
-    paths = list(_template_paths(_resolve_templates_roots(list(roots))))
-    found = {name for name, _ncbi36, _parts in paths}
-    if found != set(_FORMATS):
-        raise ValueError(f"Missing template layouts: {sorted(set(_FORMATS) - found)}")
+    paths = list(_template_paths(_resolve_templates_roots(list(roots)), _FORMATS))
+    if missing := set(_FORMATS) - {name for name, _build, _parts in paths}:
+        raise ValueError(f"Missing template layouts: {sorted(missing)}")
     ncbi36_lifter = LiftOver(str(chain36))
     markers: dict[tuple[str, int], str] = {}
     source_ids: set[str] = set()
     formats: dict[str, object] = {}
-    for name, ncbi36, parts in paths:
+    for name, build, parts in paths:
         counts: Counter[str] = Counter()
         for path in parts:
             for rsid, chrom, pos in template_rows(name, path):
@@ -79,8 +79,8 @@ def collect_markers(
                 if not pos.isdigit() or int(pos) < 1:
                     counts["unplaced"] += 1
                     continue
-                if ncbi36:
-                    lifted = ncbi36_to_grch37(ncbi36_lifter, chrom, pos)
+                if build == "NCBI36":
+                    lifted = lift_to_grch37(ncbi36_lifter, chrom, pos)
                     if lifted is None:
                         counts["ncbi36_no_hit"] += 1
                         continue

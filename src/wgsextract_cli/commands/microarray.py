@@ -40,6 +40,7 @@ from wgsextract_cli.core.microarray.aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
 from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
@@ -54,13 +55,15 @@ from wgsextract_cli.core.microarray.quirks import (
 )
 from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
+    fetch_requested_chains,
     is_genome_wide_target,
-    ncbi36_chain,
+    lifted_chain,
+    output_chain_key,
 )
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     _resolve_templates_roots,
-    resolve_format_key,
+    get_template_format,
 )
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
@@ -135,16 +138,6 @@ def _target_root(lib: ReferenceLibrary) -> str | None:
         ):
             return lib.beside_fasta
     return lib.root
-
-
-def _ncbi36_chain(lib: ReferenceLibrary) -> str | None:
-    """The hg18ToHg19 chain, or None to match NCBI36 markers by rsID."""
-    assert lib.root is not None
-    try:
-        return ncbi36_chain(lib.root, lib.resource_roots)
-    except WGSExtractError as e:
-        logging.warning(str(e))
-        return None
 
 
 def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
@@ -297,9 +290,9 @@ def _convert_microarray_outputs(
         suffix = fmt_info["suffix"] if fmt_info else ".txt"
         output_file = str(Path(outdir, f"{base_name}_{real_fmt}{suffix}"))
         try:
-            chain36 = (
-                _ncbi36_chain(lib)
-                if fmt_info and fmt_info.get("ncbi36") and lib.root
+            lift_chain = (
+                lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
+                if fmt_info and fmt_info.get("build") and lib.root
                 else None
             )
             format_converter = (
@@ -308,7 +301,7 @@ def _convert_microarray_outputs(
                 else converter
             )
             tallies[real_fmt] = format_converter(
-                real_fmt, final_txt, output_file, template_search_roots, chain36
+                real_fmt, final_txt, output_file, template_search_roots, lift_chain
             )
         except (OSError, ValueError, WGSExtractError) as e:
             raise WGSExtractError(f"Failed to generate {real_fmt}: {e}") from e
@@ -495,7 +488,13 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     ):
         # A library set up with `ref bootstrap` has the chip templates but no
         # genome-wide target: build it from them, and rebuild one an older
-        # version of the CLI built.
+        # version of the CLI built. A requested GRCh38 template (FTDNA's Y
+        # files) needs its chain installed first for its markers to join it.
+        keys = [k for k in params.formats.split(",") if aadr_panel(k) is None]
+        fetched = fetch_requested_chains(lib.root, keys, lib.resource_roots)
+        if lib.build and is_hg38_build(lib.build) and not lib.liftover_chain:
+            # hg38 input's own liftover uses the chain just installed.
+            lib.liftover_chain = fetched.get("GRCh38")
         ref_vcf_tab = build_genome_wide_target(
             target_root,
             lib.build,
@@ -557,10 +556,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
     from wgsextract_cli.core.microarray.resource_identity import resource_identity
-    from wgsextract_cli.core.microarray.templates import (
-        get_template_format,
-        template_resource_paths,
-    )
+    from wgsextract_cli.core.microarray.templates import template_resource_paths
 
     for key, item in unit_formats.items():
         if not aadr_panel(item):
@@ -570,8 +566,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     _template_search_roots(ref_fasta, lib), key
                 )
             ]
-            if (fmt := get_template_format(key)) and fmt.get("ncbi36"):
-                units[key].extra["ncbi36_chain"] = resource_identity(_ncbi36_chain(lib))
+            if (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
+                chain = lifted_chain(lib.root, lifted, lib.resource_roots)
+                units[key].extra[output_chain_key(lifted)] = resource_identity(chain)
     for unit in units.values():
         reuse.check(unit, inputs)
     stale = [key for key, unit in units.items() if not unit.fresh]

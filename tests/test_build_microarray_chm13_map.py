@@ -71,7 +71,7 @@ def test_full_union_includes_aadr_numeric_and_sex_chromosome_sites(
     monkeypatch.setattr(
         builder,
         "_template_paths",
-        lambda _roots: iter([("Test", False, [str(template)])]),
+        lambda _roots, _formats: iter([("Test", None, [str(template)])]),
     )
     monkeypatch.setattr(
         builder, "template_rows", lambda *_args: iter([("rs1", "1", "10")])

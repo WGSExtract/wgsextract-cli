@@ -5,6 +5,71 @@ ones it lacks; `microarray` searches here last. A body file holds one marker per
 line (rsID, chromosome, position, tab-separated) and is gzipped; the head file
 is written as-is at the top of the output.
 
+Most bodies are stored as a delta (`NAME.<suffix>.delta.gz`) against another
+shipped body, which keeps the wheel small: its first line is `#base<TAB>BASE`,
+then `=N` copies BASE's next N rows, `-N` skips them and
+`+ID<TAB>chromosome<TAB>position` inserts a row; BASE's remaining rows are
+dropped. A base may itself be a delta (at most four deep). The extractor
+verifies that a delta reproduces the export before writing it.
+
+## Letter-named variants and further vendors (CombinedKit v5)
+
+Variants are named by letter, as h600.org's
+[Microarray File Formats](https://h600.org/wiki/Microarray+File+Formats) names
+them, never by size or date. Exports within a few thousand markers of each
+other are one sub-minor variant; similar minor variants are merged into one
+template (the union, in position order when every export is, as Ancestry's and
+MyHeritage's are; otherwise the first export's rows in order, a later export's
+markers after the unchanged row preceding them in that export, as for
+tellmeGen. A marker ID keeps the first export's coordinates, so a marker the
+older export places differently, even on another chromosome, takes the newer
+export's position).
+
+- Source: private donated exports from the H600 Project's sample set, one or
+  two per variant. Only marker IDs and positions are kept, no genotypes,
+  headers or identifiers.
+
+| Format ID (`--formats`) | Template | Variant, exports merged | Markers | Build | Stored as |
+|---|---|---|---:|---|---|
+| `ancestry_v2ab` | `Ancestry_V2ab` | v2a (2016) + v2b (2018) | 670,296 | GRCh37 | delta vs `Ancestry_V2cd` |
+| `ancestry_v2cd` | `Ancestry_V2cd` | v2d (2019) + v2c (2018) | 700,164 | GRCh37 | delta vs `Ancestry_V2_2021` |
+| `ancestry_v2e` | `Ancestry_V2e` | v2e (2026; no Y, MT or 200k+ markers) | 434,818 | GRCh37 | delta vs `Ancestry_V2cd` |
+| `ftdna_v4` | `FTDNA_V4` | v4 (2026) | 758,990 | GRCh37 | full |
+| `ftdna_v2y` | `FTDNA_V2Y` | v2y, the separate Y file | 15,408 | GRCh38 | full |
+| `ftdna_v3y` | `FTDNA_V3Y` | v3y, the separate Y file | 10,578 | GRCh38 | full |
+| `ftdna_v4y` | `FTDNA_V4Y` | v4y, the separate Y file | 20,000 | GRCh38 | full |
+| `myheritage_v3` | `MyHeritage_V3` | v3 male (2026) + female (2025) | 593,345 | GRCh37 | delta vs `MyHeritage_GSA_2025` |
+| `tellmegen` | `TellMeGen_V1` | corporate male + male | 779,518 | GRCh37 | full |
+| `genera` | `Genera_V1` | template export | 639,813 | GRCh37 | delta vs `23andMe_V5_2025` |
+| `mthfr` | `MTHFR_V1` | female template (no Y) | 640,418 | GRCh37 | full |
+| `meudna_v1` | `meuDNA_V1` | v1 (2021) | 632,150 | GRCh37 | delta vs `MyHeritage_GSA_2025_609424` |
+| `meudna_v2` | `meuDNA_V2` | v2 template (2022) | 654,017 | GRCh37 | delta vs `23andMe_V5_2025` |
+| `selfdecode` | `SelfDecode_V1` | 2023 | 686,763 | GRCh37 | full |
+
+- FTDNA's Y files are delivered on GRCh38 and are never merged with its
+  autosomal files. Their markers are lifted to GRCh37 with UCSC's
+  `hg38ToHg19.over.chain.gz` (downloaded once into the reference library) to
+  find their calls, and written at their GRCh38 positions, like the NCBI36
+  `FTDNA_V1_Affy`.
+- The SelfDecode export's header declares GRCh38, but its positions are GRCh37
+  (rs3131972 at 752,721, rs114525117 at 759,036); it was extracted with
+  `--ignore-header-build`.
+- Sub-minor variants without their own template: 23andMe v4a-c (`23andme_v4`),
+  FTDNA v2a-d (`ftdna_v2`), LivingDNA v2's 660,634-marker female export (a
+  subset of `ldna_v2`), Ancestry's 2023-2025 677,436-marker layout
+  (`ancestry_v2_2024`, v2d less 428 markers). `info chip` still names a file's
+  letter variant.
+- Not added: 23andMe v2 and FTDNA v1 (NCBI36) already have templates, and
+  National Geographic Geno 2.0's files are NCBI36 with Y and MT given as SNP
+  names without positions; LivingDNA's Y and MT files list derived SNPs only,
+  so they are no template of what was tested.
+- `Ancestry_V2_2024` and `MyHeritage_GSA_2025_609424` are now stored as deltas
+  against `Ancestry_V2_2021` and `MyHeritage_GSA_2025`; their rows are
+  byte-identical to the previous full bodies.
+- Rebuild, e.g.: `python scripts/microarray_template_from_raw.py
+  AncestryDNA_v2d.txt AncestryDNA_v2c.txt Ancestry_V2cd --delta-base auto
+  --overwrite` (rebuild a template's dependants after it).
+
 ## 23andMe_V2 (`--formats 23andme_v2`, also `23andme_v1`)
 
 - Source: openSNP data dump 2017-12-08, CC0 1.0

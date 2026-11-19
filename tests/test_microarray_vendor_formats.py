@@ -647,3 +647,69 @@ def test_ftdna_v1_complements_calls_in_regions_inverted_since_ncbi36(tmp_path):
     convert_to_vendor_format("FTDNA_V1_Affy", kit, str(out), str(root), chain)
 
     assert out.read_text().splitlines()[1:] == ["rsInv,1,1,GT"]
+
+
+def test_ftdna_y_files_find_calls_at_their_grch38_markers_lifted(tmp_path):
+    root = _templates(
+        tmp_path / "lib",
+        "FTDNA_V2Y.csv",
+        "RSID,CHROMOSOME,POSITION,RESULT\n",
+        "Z57,Y,500\nCTS2,Y,1500\n",
+    )
+    # GRCh38 chrY [0,1000) is GRCh37 chrY [2000,3000); 1500 is unmapped.
+    chain = _chain(
+        tmp_path / "hg38ToHg19.chain",
+        "chain 1 chrY 10000 + 0 1000 chrY 10000 + 2000 3000 1\n1000",
+    )
+    kit = _kit(tmp_path / "kit.txt", [("rsY", "Y", "2500", "GG")])
+    out = tmp_path / "out.csv"
+
+    convert_to_vendor_format("FTDNA_V2Y", kit, str(out), str(root), chain)
+
+    # Written at the file's own GRCh38 positions, with FTDNA's doubled calls.
+    assert out.read_text().splitlines()[1:] == ["Z57,Y,500,GG", "CTS2,Y,1500,--"]
+
+
+@pytest.mark.parametrize(
+    ("name", "suffix", "expected"),
+    [
+        # SelfDecode writes a man's X, Y and MT as one letter, like 23andMe.
+        ("SelfDecode_V1", ".txt", ["rsX\tX\t5000000\tA", "rsY\tY\t3000000\tG"]),
+        # Genera only Y and MT.
+        ("Genera_V1", ".csv", ["rsX,X,5000000,AA", "rsY,Y,3000000,G"]),
+    ],
+)
+def test_single_letter_haploid_calls_follow_the_vendor(
+    tmp_path, name, suffix, expected
+):
+    root = _templates(
+        tmp_path / "lib", name + suffix, "", "rsX\tX\t5000000\nrsY\tY\t3000000\n"
+    )
+    rows = [("rsX", "X", "5000000", "AA"), ("rsY", "Y", "3000000", "GG")]
+    # Enough homozygous X calls outside the PARs make the kit male.
+    rows += [(f"x{i}", "X", str(10_000_000 + i), "CC") for i in range(200)]
+    out = tmp_path / ("out" + suffix)
+
+    convert_to_vendor_format(
+        name, _kit(tmp_path / "kit.txt", rows), str(out), str(root)
+    )
+
+    assert out.read_text().splitlines() == expected
+
+
+def test_a_delta_templates_bases_are_among_its_freshness_inputs():
+    from wgsextract_cli.core.microarray.templates import (
+        _PACKAGED_TEMPLATES,
+        template_resource_paths,
+    )
+
+    names = [
+        path.name
+        for path in template_resource_paths(
+            str(_PACKAGED_TEMPLATES.parent), "Ancestry_V2ab"
+        )
+    ]
+    assert "Ancestry_V2ab.txt.delta.gz" in names
+    # V2ab is stored against V2cd, itself against V2_2021.
+    assert "Ancestry_V2cd.txt.delta.gz" in names
+    assert "Ancestry_V2_2021.txt.gz" in names

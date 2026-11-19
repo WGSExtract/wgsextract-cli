@@ -46,6 +46,9 @@ REGION_HG38 = "chr20:10000000-12000000"
 REGION_HG19 = "20:9900000-12100000"
 MIN_MARKERS = 200
 MIN_CONCORDANCE = 0.98
+Y_ONLY_FORMATS = {
+    n for n in CONSUMER_FORMATS if n.startswith("FTDNA_") and n.endswith("Y")
+}
 
 
 def _run(cmd: list[str], cwd: Path) -> str:
@@ -92,6 +95,8 @@ def _score_all_exports(
     report_file.write_text(json.dumps(reports, indent=2) + "\n", newline="\n")
     print(json.dumps(reports, indent=2))
     for name, report in reports.items():
+        if name in Y_ONLY_FORMATS:
+            continue  # No Y markers in a chr20 slice.
         matched = report["matched_sample"]["total"]
         negative = report["different_sample"]["total"]
         minimum = (

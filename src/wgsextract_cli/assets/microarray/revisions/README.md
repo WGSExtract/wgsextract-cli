@@ -21,9 +21,18 @@ Each revision is a marker list, described only by derived fingerprints:
 - `vendor`, `chip`, `revision`, `build`: the label. `chip` follows the vendor's
   own name; `revision` describes the list (its size). These are not
   manufacturer revision names, which vendors don't publish.
+- `variant`: the vendor's minor variant by letter, as h600.org's
+  [Microarray File Formats](https://h600.org/wiki/Microarray+File+Formats)
+  names them (23andMe v4a-c, Ancestry v2a-e, FTDNA v2a-d, the FTDNA Y files
+  v2y-v4y). A list within a few thousand markers of a lettered one, such as a
+  female export without Y or a later download dropping a few hundred markers,
+  is a sub-minor variant and shares its letter. FTDNA downloads of the
+  autosomes alone share their full download's letter.
 - `kind`: `export` (a list exactly as vendors export it), `reference-library`
-  (a WGS Extract reference-library template) or `composite` (a union of chips,
-  never a real file, so never detected).
+  (a WGS Extract reference-library template), `merged` (the union of a
+  variant's similar minor export layouts, such as Ancestry v2a and v2b: not a
+  single real file, but detected) or `composite` (a union of chips, never a
+  real file, so never detected).
 - `declares_vendor`: whether this vendor's files always name the vendor in
   their header. A file without such a header is not matched to these revisions.
 - `template`: the `--formats` template the revision is (`exact`: identical
@@ -46,6 +55,15 @@ estimate's error, so a closely related revision could be the right one. An
 identical marker list is decisive even on other coordinates (another build, a
 lifted-over file), unless a second revision has that list too. A
 header naming the vendor restricts candidates to that vendor.
+
+## Rebuilding
+
+`python scripts/microarray_chip_catalogue.py build WORKDIR --templates REFLIB`
+rebuilds it from the corpus (see below) and the spec,
+`scripts/microarray_chip_revisions.spec.json`. Without the corpus, `extend
+--templates REFLIB` adds the spec's new template entries (with no public
+exports) and copies every entry's labels from the spec, keeping the corpus
+fingerprints.
 
 ## Sources
 
