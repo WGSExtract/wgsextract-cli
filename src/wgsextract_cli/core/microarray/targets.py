@@ -36,6 +36,7 @@ from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_roots,
     _template_body_paths,
     chr_to_int,
+    delta_bases,
     get_template_format,
     lift_to_grch37,
     template_rows,
@@ -227,9 +228,15 @@ def collect_template_markers(
                     chrom, pos, _inverted = lifted
                 if pos.isdigit() and chrom:
                     position = int(pos)
-                    if position > 0:
-                        markers.setdefault((_chrom_for_liftover(chrom), position), rsid)
-    return markers
+                    site = (_chrom_for_liftover(chrom), position)
+                    if position > 0 and markers.get(site, ".") == ".":
+                        markers[site] = rsid
+    # A site only tellmeGen's "." names gets an ID of its own, so the sites
+    # aren't one marker to readers matching by ID.
+    return {
+        site: f"{site[0]}_{site[1]}" if rsid == "." else rsid
+        for site, rsid in markers.items()
+    }
 
 
 def lifted_builds(template_roots: Sequence[str | None]) -> set[str]:
@@ -290,7 +297,11 @@ def build_genome_wide_target(
     templates = [
         {
             "format": name,
-            "parts": [resource_identity(path, include_path=False) for path in paths],
+            "parts": [
+                resource_identity(part, include_path=False)
+                for path in paths
+                for part in (Path(path), *delta_bases(path))
+            ],
         }
         for name, _build, paths in _template_paths(roots)
     ]
@@ -415,9 +426,10 @@ def lifted_chain(
 
 def fetch_requested_chains(
     reflib_dir: str, format_keys: Iterable[str], search: Sequence[str] = ()
-) -> None:
+) -> dict[str, str]:
     """Install the chains of requested templates whose chain a target build
-    doesn't fetch itself (FTDNA's GRCh38 Y files), so their markers join it."""
+    doesn't fetch itself (FTDNA's GRCh38 Y files), so their markers join it;
+    returns each one's path by build."""
     builds = {
         fmt["build"]
         for key in format_keys
@@ -425,8 +437,7 @@ def fetch_requested_chains(
         and (fmt := get_template_format(name))
         and fmt.get("build") in _OPTIONAL_CHAINS
     }
-    for build in sorted(builds):
-        chain_to_grch37(reflib_dir, build, search)
+    return {build: chain_to_grch37(reflib_dir, build, search) for build in builds}
 
 
 def output_chain_key(build: str) -> str:
@@ -469,11 +480,14 @@ def download_chain(source: ChainSource, dest: str) -> bool:
 def _installed_chain(
     reflib_dir: str, source: ChainSource, search: Sequence[str] = ()
 ) -> str | None:
+    """An installed chain in a search root or the library, or their ref/ and
+    microarray/ subdirectories (as ReferenceLibrary finds them)."""
     return next(
         (
             str(path)
             for directory in (*search, reflib_dir)
-            if (path := Path(directory, source.name)).is_file()
+            for sub in ("", "ref", "microarray")
+            if (path := Path(directory, sub, source.name)).is_file()
         ),
         None,
     )

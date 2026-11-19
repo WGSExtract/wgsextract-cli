@@ -96,6 +96,7 @@ def read_export(
     eol = "\n"
     expected_columns = 5 if name.startswith("Ancestry_") else 4
     schema_seen = name.startswith(_NO_COLUMN_HEADER)
+    header_read = False
     with opener(raw, "rt", encoding="utf-8-sig", newline="") as stream:
         for number, line in enumerate(stream, 1):
             if number == 1 and line.endswith("\r\n"):
@@ -120,9 +121,9 @@ def read_export(
                     raise ValueError(f"Unexpected column header at line {number}")
                 if len(fields) != expected_columns:
                     raise ValueError(f"Unexpected column count at line {number}")
-                schema_seen = True
+                schema_seen = header_read = True
                 continue
-            if not schema_seen and not body and len(fields) == 3:
+            if not header_read and not body and len(fields) == 3:
                 # A marker list without genotypes or column labels.
                 schema_seen, expected_columns = True, 3
             if (
@@ -139,34 +140,76 @@ def read_export(
     return body, eol
 
 
+def _repeated_ids(exports: Sequence[list[Row]]) -> set[str]:
+    return {
+        marker
+        for rows in exports
+        for marker, n in Counter(row[0] for row in rows).items()
+        if n > 1
+    }
+
+
+def _position_sorted(
+    exports: Sequence[list[Row]], repeated: set[str]
+) -> list[Row] | None:
+    """The union sorted by position, or None unless every export is sorted.
+
+    Chromosomes keep the order the exports list them in."""
+    rank: dict[str, int] = {}
+    for rows in exports:
+        for row in rows:
+            rank.setdefault(row[1], len(rank))
+    for rows in exports:
+        keys = [(rank[row[1]], int(row[2])) for row in rows]
+        if any(b < a for a, b in zip(keys, keys[1:], strict=False)):
+            return None
+    union = list(exports[0])
+    seen = {row if row[0] in repeated else row[0] for row in union}
+    for rows in exports[1:]:
+        for row in rows:
+            if (marker := row if row[0] in repeated else row[0]) not in seen:
+                seen.add(marker)
+                union.append(row)
+    return sorted(union, key=lambda row: (rank[row[1]], int(row[2])))
+
+
 def merge_exports(exports: Sequence[list[Row]]) -> list[Row]:
-    """The first export's rows in order, each later export's markers the merged
-    list lacks inserted after the row preceding them in that export.
+    """The union of the exports' markers, the first export's rows in order.
 
     A marker is its ID, so the first export's coordinates win over an older
-    export's; an ID a later export repeats (tellmeGen's ".") is matched by
-    its whole row."""
+    export's; an ID any export repeats (tellmeGen's ".") is matched by its
+    whole row instead. When every export is in position order, so is the
+    union; otherwise a later export's new markers follow the unchanged row
+    preceding them in that export."""
+    repeated = _repeated_ids(exports)
+    if (in_order := _position_sorted(exports, repeated)) is not None:
+        return in_order
     merged = list(exports[0])
     for export in exports[1:]:
-        present = set(merged)
-        repeated = {i for i, n in Counter(row[0] for row in export).items() if n > 1}
-        known = {row[0] for row in merged} - repeated
-        after: dict[Row | None, list[Row]] = defaultdict(list)
-        anchor: Row | None = None
+
+        def key(row: Row) -> Row | str:
+            return row if row[0] in repeated else row[0]
+
+        # Only an unchanged row anchors what follows it: a moved marker's
+        # neighbours stay beside the merged list's own coordinates.
+        exact = set(merged)
+        retained = {key(row) for row in merged}
+        added: set[Row | str] = set()
+        after: dict[Row | str | None, list[Row]] = defaultdict(list)
+        anchor: Row | str | None = None
         for row in export:
-            if row in present:
-                anchor = row
-            elif row[0] in known:
-                continue
-            else:
+            marker = key(row)
+            if row in exact:
+                anchor = marker
+            elif marker not in retained and marker not in added:
+                added.add(marker)
                 after[anchor].append(row)
-                present.add(row)
         if not after:
             continue
         result = after.pop(None, [])
         for row in merged:
             result.append(row)
-            result.extend(after.pop(row, ()))
+            result.extend(after.pop(key(row), ()))
         merged = result
     return merged
 

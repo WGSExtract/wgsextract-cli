@@ -141,6 +141,53 @@ def test_variant_exports_merge_in_vendor_order(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    ("first", "later", "expected"),
+    [
+        # Position-sorted exports merge into position order.
+        (
+            ["rs1@10", "rs3@30"],
+            ["rs1@15", "rs2@20", "rs3@30"],
+            ["rs1@10", "rs2@20", "rs3@30"],
+        ),
+        (
+            ["a@1", "a@2", "rs9@5"],
+            ["a@1", "a@3", "rs9@5"],
+            ["a@1", "a@2", "a@3", "rs9@5"],
+        ),
+        # Otherwise: a repeated marker the later export inserts never hides
+        # the next one,
+        (["rs1@9"], ["rs1@9", "rs2@2", "rs2@2", "rs3@3"], ["rs1@9", "rs2@2", "rs3@3"]),
+        # a moved marker keeps the first export's coordinates,
+        (
+            ["rs0@9", "rs1@1"],
+            ["rs0@9", "rs1@20", "rs2@30"],
+            ["rs0@9", "rs2@30", "rs1@1"],
+        ),
+        # and an ID the first export repeats keeps a distinct site.
+        (
+            ["a@2", "a@1", "rs9@5"],
+            ["a@2", "a@3", "rs9@5"],
+            ["a@2", "a@3", "a@1", "rs9@5"],
+        ),
+    ],
+)
+def test_merge_keeps_every_new_marker(first, later, expected):
+    from scripts.microarray_template_from_raw import merge_exports
+
+    def rows(names):
+        return [(name.split("@")[0], "1", name.split("@")[1]) for name in names]
+
+    assert merge_exports([rows(first), rows(later)]) == rows(expected)
+
+
+@pytest.mark.parametrize("name", ["SelfDecode_V1", "TellMeGen_V1", "FTDNA_V3Y"])
+def test_marker_lists_are_read_for_vendors_without_a_column_header(tmp_path, name):
+    raw = tmp_path / "list.txt"
+    raw.write_text("rs1\t1\t100\nrs2\t2\t200\n")
+    assert build_template([raw], name, tmp_path / "templates") == (2, None)
+
+
 def test_y_snp_names_and_marker_lists_without_genotypes_are_read(tmp_path):
     raw = tmp_path / "y.txt"
     raw.write_text("Z57\tY\t2782660\nFGC7837_SK1172\tY\t2793195\n")

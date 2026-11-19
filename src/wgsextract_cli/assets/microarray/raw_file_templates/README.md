@@ -18,9 +18,12 @@ Variants are named by letter, as h600.org's
 [Microarray File Formats](https://h600.org/wiki/Microarray+File+Formats) names
 them, never by size or date. Exports within a few thousand markers of each
 other are one sub-minor variant; similar minor variants are merged into one
-template (the union: the first export's rows in order, a later export's markers
-after the row preceding them in that export; a marker ID keeps the first
-export's coordinates).
+template (the union, in position order when every export is, as Ancestry's and
+MyHeritage's are; otherwise the first export's rows in order, a later export's
+markers after the unchanged row preceding them in that export, as for
+tellmeGen. A marker ID keeps the first export's coordinates, so a marker the
+older export places differently, even on another chromosome, takes the newer
+export's position).
 
 - Source: private donated exports from the H600 Project's sample set, one or
   two per variant. Only marker IDs and positions are kept, no genotypes,

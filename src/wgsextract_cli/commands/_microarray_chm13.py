@@ -56,6 +56,7 @@ from wgsextract_cli.core.microarray.site_map import SiteProjection
 from wgsextract_cli.core.microarray.targets import (
     CHM13_V1_FORMATS,
     collect_template_markers,
+    lifted_chain,
 )
 from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
@@ -74,12 +75,6 @@ from ._microarray_vcf import _expand_gvcf_targets, _prepare_microarray_vcf
 
 if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
-
-# The installed chains placing a non-GRCh37 template's markers on GRCh37.
-_CHAINS_TO_GRCH37 = {
-    "NCBI36": "hg18ToHg19.over.chain.gz",
-    "GRCh38": "hg38ToHg19.over.chain.gz",
-}
 
 
 def _regions(region: str | None) -> list[tuple[str, int, int]]:
@@ -514,15 +509,9 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
-        chain_name = _CHAINS_TO_GRCH37.get(info.get("build", "") if info else "")
-        lift_chain = next(
-            (
-                str(Path(root, chain_name))
-                for root in roots
-                if chain_name and Path(root, chain_name).is_file()
-            ),
-            None,
-        )
+        build = info.get("build") if info else None
+        # Found in the library or fetched (with consent); else matched by ID.
+        lift_chain = lifted_chain(lib.root, build, roots) if build else None
         kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,

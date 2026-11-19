@@ -203,6 +203,25 @@ def _body_rows(
                 yield parts[0], parts[1], parts[2]
 
 
+def delta_bases(path: str | Path) -> list[Path]:
+    """The shipped bodies a delta body is decoded from, nearest first, so a
+    change to any of them makes what was built from it stale."""
+    bases: list[Path] = []
+    current = str(path)
+    while current.endswith(DELTA_SUFFIX) and len(bases) < _MAX_DELTA_DEPTH:
+        try:
+            with gzip.open(current, "rt") as f:
+                header = f.readline().rstrip("\n").split("\t")
+        except OSError:
+            break
+        info = get_template_format(header[-1]) if header[0] == "#base" else None
+        if len(header) != 2 or info is None or info["parts"] != 1:
+            break
+        (current,) = _template_body_paths(str(_PACKAGED_TEMPLATES), header[1], info)
+        bases.append(Path(current))
+    return bases
+
+
 def _delta_rows(path: str, depth: int) -> Iterator[tuple[str, str, str]]:
     with gzip.open(path, "rt") as f:
         header = f.readline().rstrip("\n").split("\t")
@@ -304,6 +323,7 @@ def template_resource_paths(
     return [
         Path(root, "head", format_name + fmt["suffix"]),
         *(Path(body) for body in bodies),
+        *(base for body in bodies for base in delta_bases(body)),
         _PACKAGED_TEMPLATES / "corrections.tsv",
     ]
 

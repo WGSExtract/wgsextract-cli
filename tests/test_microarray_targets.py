@@ -56,6 +56,18 @@ def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
     assert markers[("chr20", 12345)] == "rs78"
 
 
+def test_placeholder_ids_yield_to_real_ids_or_get_their_own(tmp_path):
+    templates = _templates(tmp_path)
+    body = templates / "raw_file_templates/body"
+    (body / "TellMeGen_V1.csv").write_text(".\t5\t500\n.\t4\t4000\n.\t4\t4100\n")
+    # Later in the template order than tellmeGen.
+    (body / "SelfDecode_V1.txt").write_text("rs50\t5\t500\n")
+    markers = mt.collect_template_markers([str(templates)])
+    assert markers[("chr5", 500)] == "rs50"
+    assert markers[("chr4", 4000)] == "chr4_4000"
+    assert markers[("chr4", 4100)] == "chr4_4100"
+
+
 def test_ncbi36_markers_are_lifted_to_grch37(tmp_path):
     templates = _templates(tmp_path)
     markers = mt.collect_template_markers(
@@ -532,3 +544,17 @@ def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
         mt.HG19_TO_HG38_CHAIN.name,
         mt.HG19_TO_HG38_CHAIN.name + ".lock.guard",
     }
+
+
+@pytest.mark.parametrize("sub", ["", "ref", "microarray"])
+def test_requested_chain_is_found_in_library_subdirectories(tmp_path, monkeypatch, sub):
+    chain = tmp_path / sub / "hg38ToHg19.over.chain.gz"
+    chain.parent.mkdir(parents=True, exist_ok=True)
+    chain.write_bytes(b"")
+    monkeypatch.setattr(
+        mt, "download_chain", lambda *_: pytest.fail("must not download")
+    )
+    assert mt.fetch_requested_chains(str(tmp_path), ["23andme_v5", "ftdna_v4y"]) == {
+        "GRCh38": str(chain)
+    }
+    assert mt.fetch_requested_chains(str(tmp_path), ["23andme_v5"]) == {}

@@ -695,3 +695,21 @@ def test_single_letter_haploid_calls_follow_the_vendor(
     )
 
     assert out.read_text().splitlines() == expected
+
+
+def test_a_delta_templates_bases_are_among_its_freshness_inputs():
+    from wgsextract_cli.core.microarray.templates import (
+        _PACKAGED_TEMPLATES,
+        template_resource_paths,
+    )
+
+    names = [
+        path.name
+        for path in template_resource_paths(
+            str(_PACKAGED_TEMPLATES.parent), "Ancestry_V2ab"
+        )
+    ]
+    assert "Ancestry_V2ab.txt.delta.gz" in names
+    # V2ab is stored against V2cd, itself against V2_2021.
+    assert "Ancestry_V2cd.txt.delta.gz" in names
+    assert "Ancestry_V2_2021.txt.gz" in names

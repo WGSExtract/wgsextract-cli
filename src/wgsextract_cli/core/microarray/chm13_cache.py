@@ -24,6 +24,7 @@ from wgsextract_cli.core.microarray.targets import (
 from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _resolve_templates_roots,
+    delta_bases,
 )
 
 _VERSION = 1
@@ -50,7 +51,8 @@ def cache_directory(
         for _name, _build, paths in _template_paths(
             _resolve_templates_roots(roots), CHM13_V1_FORMATS
         )
-        for path in paths
+        for body in paths
+        for path in (Path(body), *delta_bases(body))
     ]
     files.extend([_MARKERS, _PACKAGED_TEMPLATES / "corrections.tsv"])
     chain = next(

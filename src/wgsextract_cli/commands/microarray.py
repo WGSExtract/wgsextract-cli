@@ -491,7 +491,10 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         # version of the CLI built. A requested GRCh38 template (FTDNA's Y
         # files) needs its chain installed first for its markers to join it.
         keys = [k for k in params.formats.split(",") if aadr_panel(k) is None]
-        fetch_requested_chains(lib.root, keys, lib.resource_roots)
+        fetched = fetch_requested_chains(lib.root, keys, lib.resource_roots)
+        if lib.build and is_hg38_build(lib.build) and not lib.liftover_chain:
+            # hg38 input's own liftover uses the chain just installed.
+            lib.liftover_chain = fetched.get("GRCh38")
         ref_vcf_tab = build_genome_wide_target(
             target_root,
             lib.build,
