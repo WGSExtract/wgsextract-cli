@@ -13,6 +13,62 @@ other folders are not recorded (`info`'s own `<input>.wgse_info.json` cache
 still applies to them), unless you set an override for one of them, which
 creates the workspace there.
 
+## Dataset library
+
+Set `dataset_library` (formerly `genome_library`) to a directory with one
+subfolder per person/sample. The subfolder name is its `--genome` ID:
+
+```text
+/data/datasets/
+  joe/
+    joe.cram
+    joe.vcf.gz
+    raw-fastqs/joe_R1.fastq.gz, joe_R2.fastq.gz
+  ken mcdonald/
+    bam files/sample.bam
+```
+
+Nested IDs use `/`, for example `test-1000genomes/na12878-lowcov-bam`;
+absolute IDs or `.`/`..` parts are forbidden. A genome folder may link to
+another disk, but its leading folders must remain inside the library.
+
+`--genome ID` recursively finds inputs and writes outputs there unless
+`--outdir` is given. It creates `genome-config.toml`; multiple matching
+BAM/CRAMs, VCFs or FASTQ sets fail instead of guessing. Select files there:
+
+```toml
+alignment = "bam files/sample.bam"
+vcf = "variants/sample.vcf.gz"
+fastq_r1 = "raw-fastqs/sample_R1.fastq.gz"
+fastq_r2 = "raw-fastqs/sample_R2.fastq.gz"
+```
+
+```bash
+wgsextract info --genome joe
+wgsextract microarray --genome "ken mcdonald" --formats 23andme_v5
+wgsextract vcf filter --genome joe --expr 'QUAL>30'
+```
+
+## Example genomes
+
+`example-genome` downloads curated 1000 Genomes/HGSVC2 datasets into the
+library. Check size with `--dry-run`: some are very large.
+Interrupted downloads resume; `--force` starts over and bypasses developer
+cache reads/writes. Switching an interrupted segmented HTTP download to
+Aspera discards sparse partial data before resuming.
+
+```bash
+wgsextract example-genome list
+wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam --dry-run
+wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam
+
+pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam align --platform hifi --ref /path/to/hs38.fa
+pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam vcf sv --pacbio --ref /path/to/hs38.fa
+```
+
+See [download safety](reference-genomes.md#download-safety) for partial-file
+identity and checksum handling.
+
 ## What it records
 
 The bundled `assets/schemas/wgsextract.sample.1.schema.json` is generated from

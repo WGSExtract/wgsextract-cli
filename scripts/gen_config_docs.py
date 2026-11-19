@@ -25,6 +25,7 @@ from wgsextract_cli.core.settings_schema import (  # noqa: E402
 )
 
 OUTPUT = ROOT / "docs" / "configuration.md"
+GUIDE = ROOT / "docs" / "data" / "configuration-guide.md"
 TYPES = {
     "bool": "boolean",
     "int": "integer",
@@ -117,6 +118,10 @@ def render() -> str:
         "outside its range or not one of its choices stops the run with an "
         "error that names the setting and what it expects. An unknown setting "
         "is ignored with a warning that suggests the closest name.",
+        "",
+        "<!-- Usage guide: edit docs/data/configuration-guide.md, then regenerate. -->",
+        # The hand-written fragment lives one directory below the output page.
+        GUIDE.read_text(encoding="utf-8").replace("](../", "](").rstrip(),
         "",
         "## Settings",
         "",

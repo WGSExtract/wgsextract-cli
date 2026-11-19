@@ -21,6 +21,8 @@ footer_link_href: 'wgs-guide.html'
 
 A microarray or SNP chip file is not a complete genome. It is a compact table of markers that a downstream service knows how to read. WGS Extract builds these files by looking up target positions in your aligned WGS data and writing the requested vendor-style format.
 
+See the [microarray guide](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/microarray.md){.inline-link} for quality gates, coordinate projection, output reuse and vendor identity/strand policies.
+
 Start with one target format and a small region if you are checking plumbing. Every run writes the combined kit (all chips' markers); `--formats all` writes only that, and a comma-separated list adds vendor files. If a target site has too little coverage or ambiguous data, the simulated result may be missing or no-called depending on the format and command behavior.
 
 Each output gets an `.inputs.json` file beside it recording what made it: the input and reference files, the formats and every option that changes genotypes. Running the same command again reuses outputs whose inputs are unchanged. A changed input, reference or option regenerates them. Adding a format generates only that format, from the kept combined kit.
