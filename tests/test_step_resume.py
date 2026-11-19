@@ -218,7 +218,7 @@ def test_process_exiting_during_the_tag_scan_is_skipped(
 
     from wgsextract_cli.core.steps import RUN_TAG, tagged_processes
 
-    class Process:
+    class FakeProcess:
         def __init__(self, pid: int, environ: dict[str, str] | None) -> None:
             self.pid = pid
             self.info = {"name": f"tool{pid}"}
@@ -232,6 +232,6 @@ def test_process_exiting_during_the_tag_scan_is_skipped(
                 )
             return self._environ
 
-    processes = [Process(101, None), Process(102, {RUN_TAG: "run-1"})]
+    processes = [FakeProcess(101, None), FakeProcess(102, {RUN_TAG: "run-1"})]
     monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: iter(processes))
     assert tagged_processes({"run-1"}) == ["tool102 (pid 102)"]
