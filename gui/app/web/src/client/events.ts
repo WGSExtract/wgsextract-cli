@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { openGenomeViewer } from "./genome-viewer-launcher.js";
+import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
 import { configValueKey } from "../../../shared/rendering.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { clamp } from "./dom.js";
@@ -37,10 +37,7 @@ let bundleLoadInFlight = false;
 let installedGlobalBundleLoadHandler = false;
 let installedGlobalAboutHandler = false;
 export function bindEvents(bootstrap: Bootstrap) {
-    app.querySelector("[data-genome-viewer-open]")?.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels));
-    elements<HTMLButtonElement>("[data-view-reads]").forEach((button) => {
-        button.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels, button.dataset.viewReads ?? ""));
-    });
+    bindGenomeViewerEvents();
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();

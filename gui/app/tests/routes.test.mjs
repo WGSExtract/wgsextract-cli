@@ -115,7 +115,10 @@ function apiFetch(baseURL, route, { body, headers = {}, method } = {}) {
 }
 
 test("#1090: opening viewer library files uses API authentication and cannot grant arbitrary paths", async (t) => {
-  const { baseURL, tempRoot } = await withTestServer(t, { manifest: { id: "wgs-extract", pages: [] } });
+  const manifest = testManifest();
+  manifest.id = "wgs-extract";
+  manifest.pages[0].sections[0].controls[1].id = "wgs_settings";
+  const { baseURL, tempRoot } = await withTestServer(t, { manifest });
   const outside = path.join(tempRoot, "outside.bam");
   await writeFile(outside, "not a library file");
   for (const route of ["/api/viewer/open", "/api/viewer/close"]) {

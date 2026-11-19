@@ -1,5 +1,5 @@
 import { localViewerFiles, localViewerLocus, ViewerFileError, type LocalTrack, type LocalViewerFiles } from "../../../shared/genome-viewer.js";
-import { requestLibraryViewer } from "./genome-viewer-library.js";
+import { releaseLibraryViewer, requestLibraryViewer } from "./genome-viewer-library.js";
 import type { StringMap } from "../../../shared/types.js";
 import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
@@ -139,6 +139,7 @@ async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, hos
             [...(required<HTMLInputElement>('[name="tracks"]').files ?? [])],
         );
         const locus = localViewerLocus(form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "");
+        await releaseLibraryViewer();
         await openTracks(files, locus, navigation, host);
     } catch (error) {
         status(error instanceof ViewerFileError ? error.code : "loadFailed", true, error instanceof ViewerFileError ? error.fileName : "");

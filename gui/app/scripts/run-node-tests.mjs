@@ -32,6 +32,8 @@ const defaultTests = [
   "tests/routes.test.mjs",
   "tests/genome-viewer.test.mjs",
   "tests/viewer-files.test.mjs",
+  "tests/viewer-session.test.mjs",
+  "tests/viewer-library.test.mjs",
   "tests/setup-runner.test.mjs",
   "tests/tauri-updater.test.mjs",
   "tests/developer-cache.test.mjs",

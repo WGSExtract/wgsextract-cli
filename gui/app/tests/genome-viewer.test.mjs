@@ -90,7 +90,7 @@ test("#1090: a selected My Genomes alignment has a localized View reads entry wi
     fieldValues: { bam_path: "/genomes/HG002.bam" },
   });
   const rendered = renderTextControl({ id: "bam_path", kind: "path", label: "BAM" });
-  assert.match(rendered, /data-view-reads="\/genomes\/HG002.bam">Voir les lectures/);
+  assert.match(rendered, /data-view-reads="bam_path">Voir les lectures/);
   assert.doesNotMatch(rendered, /data-action-id/);
   state.fieldValues.bam_path = "/genomes/HG002.bam.bai";
   assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path" }), /data-view-reads/);

@@ -1,10 +1,12 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { LibraryViewerSession } from "../../../shared/genome-viewer.js";
-import { localViewerLocus } from "../../../shared/genome-viewer.js";
+import { localViewerLocus, ViewerFileError } from "../../../shared/genome-viewer.js";
+import { loadBundleState } from "./config-store.js";
 import { parseConfigToml } from "./config-toml.js";
 import { errnoCode, HttpError } from "./errors.js";
-import { bundleEnvironment, resolveUserPath } from "./paths.js";
+import { findConfigEditorControl } from "./manifest-lookup.js";
+import { bundleEnvironment, configPath, expandWorkspaceToken, resolveUserPath } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import type { RequestHandlerContext } from "./routes.js";
 import { usersWorkspaceFor } from "./users-workspace.js";
@@ -16,7 +18,8 @@ export async function viewerLibraries(context: RequestHandlerContext) {
         throw new HttpError(403, "The viewer requires the WGS Extract bundle.");
     }
     const workspace = usersWorkspaceFor(context.bundleRoot);
-    const config = path.join(workspace, "config.toml");
+    const saved = await loadBundleState(context.bundleRoot);
+    const config = configPath(findConfigEditorControl(context.manifest, "wgs_settings"), saved.configFilePaths.wgs_settings, context.bundleRoot);
     let values: Record<string, unknown> = {};
     try {
         values = parseConfigToml(await readFile(config, "utf8"));
@@ -37,6 +40,19 @@ export async function viewerLibraries(context: RequestHandlerContext) {
 }
 
 export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
+    let position: string | undefined;
+    try {
+        position = locus ? localViewerLocus(locus) : undefined;
+    } catch (error) {
+        if (error instanceof ViewerFileError) {
+            return { problem: error.code };
+        }
+        throw error;
+    }
+    if (input.split(/[\\/]/).includes("..")) {
+        throw new HttpError(403, "Viewer path is outside the configured libraries.");
+    }
+    input = expandWorkspaceToken(input, context.bundleRoot);
     const library = await viewerLibraries(context);
     await guardedViewerPath(input, library.genomeRoots);
     const lower = input.toLowerCase();
@@ -82,7 +98,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
     if (gzi && !await firstExisting([gzi])) {
         return { problem: "referenceCompressedIndexMissing", fileName: path.basename(fasta) };
     }
-    const position = localViewerLocus(locus || resolved.locus);
+    position ??= localViewerLocus(resolved.locus);
     const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : [])], library.roots, library.key);
     const url = (file: string) => {
         const value = grant.urls.get(file);
