@@ -15,7 +15,6 @@ import sys
 import tempfile
 import time
 import tomllib
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -297,7 +296,7 @@ def smoke(command: list[str] | None = None) -> None:
                                 )
                                 smoke_url = url
                                 return
-                    except (urllib.error.URLError, TimeoutError):
+                    except OSError:
                         pass
                 time.sleep(0.2)
             raise RuntimeError(f"Server did not become ready:\n{log_path.read_text()}")
@@ -326,7 +325,7 @@ def smoke(command: list[str] | None = None) -> None:
                 while time.monotonic() < deadline:
                     try:
                         LOOPBACK_OPENER.open(smoke_url, timeout=1).close()
-                    except (urllib.error.URLError, TimeoutError):
+                    except OSError:
                         break
                     time.sleep(0.1)
                 else:
