@@ -1093,6 +1093,7 @@
         {
           "id": "vcf-call",
           "title": "actions.vcf.variant-calling.vcf-call.title",
+          "advancedTitle": "actions.vcf.variant-calling.vcf-call.advancedTitle",
           "tooltip": "actions.vcf.variant-calling.vcf-call.tooltip",
           "estimatedDurationMinutes": 68,
           "command": {

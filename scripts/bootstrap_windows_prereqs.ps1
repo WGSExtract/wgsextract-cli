@@ -4,7 +4,11 @@
 param(
     [string]$PixiInstallUrl = $(if ($env:WGSEXTRACT_PIXI_INSTALL_URL) { $env:WGSEXTRACT_PIXI_INSTALL_URL } else { "" }),
     [string]$PixiInstallSha256 = $(if ($env:WGSEXTRACT_PIXI_INSTALL_SHA256) { $env:WGSEXTRACT_PIXI_INSTALL_SHA256 } else { "" }),
-    [switch]$SkipPixiInstall
+    [switch]$SkipPixiInstall,
+    # For a launcher that only reads the exit code (install_windows.bat): on
+    # failure print just the message and exit 1. Without it errors are thrown,
+    # so a calling script (dev_setup.ps1) stops too.
+    [switch]$PlainErrors
 )
 
 $ErrorActionPreference = "Stop"
@@ -262,6 +266,15 @@ function Assert-PixiVersion {
         [version]$Matches[1] -lt [version]$minimum) {
         throw "Pixi >=$minimum is required; found $installed at $Executable. Update that Pixi installation (for example with 'pixi self-update'), then rerun setup. Your Pixi installation was not changed."
     }
+}
+
+# -PlainErrors: show only the error's message, not PowerShell's error record.
+trap {
+    if ($PlainErrors) {
+        [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
+        exit 1
+    }
+    break
 }
 
 Ensure-Pixi

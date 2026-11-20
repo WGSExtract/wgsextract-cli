@@ -45,7 +45,7 @@ jobs:
       os: linux-arm64
       runner: ubuntu-24.04-arm
       timeout-minutes: 21
-      environments: default dev vep
+      environments: default dev vep fastvep
       matrix: '[{"tier": "all", "shard": "all", "label": "native"}]'
       tests: ${{ inputs.tests || 'all' }}
       smoke-only: ${{ inputs.smoke-only == true }}

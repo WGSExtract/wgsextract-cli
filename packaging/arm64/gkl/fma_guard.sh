@@ -55,6 +55,11 @@ fma_guard_selftest() {
         > "$dir/plain_sample.cc"
     "$cxx" "$@" -O2 -c "$dir/fma_sample.cc" -o "$dir/fma_sample.o"
     "$cxx" "$@" -O2 -c "$dir/plain_sample.cc" -o "$dir/plain_sample.o"
+    # Mach-O's temporary ltmp0 label otherwise hides the function name from
+    # llvm-objdump, preventing the exemption self-test from testing its symbol.
+    if [ "$(uname -s)" = Darwin ]; then
+        strip -x "$dir/fma_sample.o" "$dir/plain_sample.o"
+    fi
     reject_fma "$objdump" "$dir/fma_sample.o" 2> /dev/null || status=$?
     if [ "$status" != 1 ]; then
         echo "fma guard self-test: FMA sample not rejected (status $status)" >&2

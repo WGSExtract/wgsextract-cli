@@ -233,10 +233,10 @@ def platform_commands(
     if not smoke:
         environments = {
             "linux-x64": ["default", "dev", "vep-rs", "fastvep"],
-            "macos-arm64": ["default", "dev", "vep-rs"],
-            "macos-x64": ["default", "dev", "vep-rs"],
-            "windows-x64": ["default", "dev", "gatk", "vep-rs"],
-            "linux-arm64": ["default", "dev", "vep"],
+            "macos-arm64": ["default", "dev", "vep-rs", "fastvep"],
+            "macos-x64": ["default", "dev", "vep-rs", "fastvep"],
+            "windows-x64": ["default", "dev", "gatk", "vep-rs", "fastvep"],
+            "linux-arm64": ["default", "dev", "vep", "fastvep"],
         }[host]
         commands.append(
             [
@@ -471,7 +471,7 @@ def required_environments(
     environments = ["default", "dev"]
     if name == "generic" or not cli or not targets:
         return environments
-    environments += ["vep" if host == "linux-arm64" else "vep-rs"]
+    environments += ["vep" if host == "linux-arm64" else "vep-rs", "fastvep"]
     if host == "windows-x64":
         environments.append("gatk")
     if host in {"linux-x64", "windows-x64"} and (

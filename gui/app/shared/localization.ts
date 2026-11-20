@@ -318,7 +318,7 @@ function localizeRow<Row extends { tags?: RowTagSpec[] | undefined }>(row: Row, 
     };
 }
 function localizeAction(action: ActionSpec, table: StringMap): ActionSpec {
-    const localizedAction = localizeFields(action, table, ["title", "tooltip", "disabledTooltip"]);
+    const localizedAction = localizeFields(action, table, ["title", "advancedTitle", "tooltip", "disabledTooltip"]);
     if (action.confirm) {
         localizedAction.confirm = localizeFields(action.confirm, table, ["title", "message", "confirmButtonTitle", "cancelButtonTitle", "requiredText", "prompt"]);
     }

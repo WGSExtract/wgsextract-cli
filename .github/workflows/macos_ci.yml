@@ -45,7 +45,7 @@ jobs:
       os: macos
       runner: macos-latest
       timeout-minutes: 59
-      environments: default dev vep-rs
+      environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
       smoke-only: ${{ inputs.smoke-only == true }}

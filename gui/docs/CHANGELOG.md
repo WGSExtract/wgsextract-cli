@@ -10,6 +10,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An action that needs a missing optional tool (FastQC with MultiQC merging, `vcf gatk`, `score pgs --plink2-check` and the like) opens the missing-prerequisites dialog as a missing genome does, with **Install and Continue** when the app can install the tool.
 - A data source may declare `timeoutSeconds` (15 by default).
 
+### Changed
+- Actions take an `advancedTitle`, shown instead of `title` in Advanced mode. WGSExtract's Variant Calling **Default** button is now **BCFTools** in Basic and **BCFTools, Delly** in Advanced, naming the callers each mode can run (Advanced adds SVs and CNVs, called with Delly).
+
 ## [0.8.8] - 2026-11-18
 
 ### Added
