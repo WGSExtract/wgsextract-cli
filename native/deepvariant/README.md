@@ -221,8 +221,44 @@ these pilots do not justify introducing a new thread default. Eight uses
 less CPU, but takes longer; twelve is effectively tied with ten here.
 macOS scheduled the workers; they were not pinned to P or E cores.
 Weights, inference backend, batch-size policy and CLI thread defaults are
-unchanged. See [resource estimates](../../docs/resource_estimates.md#apple-silicon-cpu-hill-climb)
-for release-build measurements and remaining whole-genome qualification.
+unchanged.
+
+Whole-genome confirmation on **2026-11-20**, HG002 NovaSeq PCR-free 35x on
+the same 32 GiB M1 Pro, ten workers, Metal FP32 batch 1024, gVCF enabled:
+
+| Measurement | Released 0.4.0 | Candidate 0.4.1 |
+| --- | ---: | ---: |
+| Wall seconds | 8,831.4 | 7,984.3 |
+| CPU seconds, user + system | 50,708.6 | 46,455.5 |
+| Peak RSS, GB (`time`) | 11.95 | 13.32 |
+| Peak temporary space, GB (5 s sampling) | 29.4 | 29.5 |
+| Swap growth, bytes | 0 | 0 |
+
+This measured whole-pipeline reduction is **9.6% wall / 8.4% CPU**, with
+approximately **1.4 GB more RSS**. One run per version, M1 Pro only; this
+does not qualify the **16 GB base M1**, whose whole-genome memory/swap
+confirmation remains follow-up. Decimal GB; RSS does not include all Metal
+buffers, and temporary space excludes inputs, reference and final outputs.
+
+The full non-header VCF and gVCF bodies are **exactly identical**, all columns:
+**7,709,239 VCF records**, **72,210,019 gVCF records**, including
+**64,500,780 entire reference blocks**. Matching SHA-256 hashes:
+
+- VCF: `f2f01ee66a6baca00e2d0c43dffb9020f5efaa12519d136f96339aef0a526942`
+- gVCF: `a21d0be63888a41df749ffd37af8ff1ae76a274601be04b2aed4a2a58ccf4b80`
+
+This is native 0.4.0 versus 0.4.1 equality, not byte equality with Google's
+image. [Raw result](https://github.com/WGSExtract/wgsextract-cli/issues/1116#issuecomment-7042830878);
+[resource estimates](../../docs/resource_estimates.md#apple-silicon-cpu-hill-climb)
+retain the measured envelopes and qualification limits.
+
+The 0.4.1 comparison uses a local candidate build. Shipping it requires a
+new `macos-deepvariant-N` release from the **macOS DeepVariant** workflow
+(`workflow_dispatch` with `release_tag`); ordinary main/PR builds do not
+publish it. Mac users install that release's 0.4.1 binary on PATH; the CLI
+discovers it there, so no macOS Pixi binary pin changes. Existing WGS weights
+are unchanged. The Linux Pixi environment remains pinned to 0.4.0 until a
+separate Linux release and checksum/lockfile update.
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 

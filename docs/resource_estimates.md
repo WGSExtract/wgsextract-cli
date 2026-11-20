@@ -999,11 +999,33 @@ record the isolated changes, matched development-build repeats, and
 Protocol and results are tracked in
 [#1116 (native Apple Silicon hill-climb)](https://github.com/WGSExtract/wgsextract-cli/issues/1116).
 
+Whole-genome confirmation on **2026-11-20** used HG002 NovaSeq PCR-free 35x,
+the same M1 Pro, ten workers, Metal FP32 batch 1024 and gVCF, one run per
+version. These are measured whole-pipeline results, not chr20 projections:
+
+| Measurement | Released 0.4.0 | Candidate 0.4.1 |
+| --- | ---: | ---: |
+| Wall seconds | 8,831.4 | 7,984.3 |
+| CPU seconds, user + system | 50,708.6 | 46,455.5 |
+| Peak RSS, GB (`time`) | 11.95 | 13.32 |
+| Peak temporary space, GB (sampled every 5 s) | 29.4 | 29.5 |
+| Swap growth, bytes | 0 | 0 |
+
+Wall time fell **9.6%**, CPU time **8.4%**; RSS grew approximately **1.4 GB**.
+Every non-header column is exactly equal across **7,709,239 VCF records**
+and **72,210,019 gVCF records**, including **64,500,780 entire reference
+blocks**, verified by matching full-body SHA-256 hashes. This compares the
+two native versions, not Google's image. See the
+[raw whole-genome result](https://github.com/WGSExtract/wgsextract-cli/issues/1116#issuecomment-7042830878).
+
 The conservative RAM/disk coefficients are unchanged: the batch-scaled
 inference envelope must still cover Metal buffers, not RSS alone, and gVCF
-needs its additional temporary-space allowance. No 0.4.1 whole-genome or
-16 GiB base-M1 confirmation has run; the older version-labelled measurements
-above are not a qualification of these changes.
+needs its additional temporary-space allowance. Peak temporary space excludes
+the input BAM, reference and final outputs. One run per version on the
+32 GiB M1 Pro does not establish other machines' performance or memory fit.
+**The 16 GB base M1 is not yet qualified for 0.4.1**; whole-genome
+memory/swap confirmation there remains follow-up. The older version-labelled
+measurements above do not qualify these changes on that machine.
 
 ### DeepVariant postprocess_variants
 
