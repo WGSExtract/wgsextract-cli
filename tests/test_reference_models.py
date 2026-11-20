@@ -3,6 +3,7 @@ from importlib import resources
 
 import pytest
 
+from tests.htslib_helpers import needs_tools, write_fasta
 from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.constants import REFERENCE_MODELS
 from wgsextract_cli.core.ref_library.models import identify_reference
@@ -47,7 +48,7 @@ def test_hs38d1_variants_are_hg38_by_signature_and_contig_count(
 ):
     model = identify_reference("", signature)
     assert model is not None
-    assert (model.name, model.fasta, model.mito) == (name, f"{name}.fa.gz", "rCRS")
+    assert (model.name, model.fasta, model.mito) == (name, f"{name}.fa.gz", "")
     assert canonical_build(model.name) == "hg38"
     # A dictionary with the same count but no recognised chr1 still points there.
     by_count = _identify(_header({"MT": 16569}, pad_to=contigs))
@@ -55,9 +56,9 @@ def test_hs38d1_variants_are_hg38_by_signature_and_contig_count(
     assert (by_count.fasta, by_count.evidence) == (f"{name}.fa.gz", "contig count")
 
 
-def test_distributed_t2t_signature():
+def test_1167_distributed_t2t_signature_does_not_identify_mitochondria():
     model = identify_reference("", "ed9f80c8e04c461cba35dd1b85a2e2e8")
-    assert model is not None and model.name == "T2Tv2.0"
+    assert model is not None and (model.name, model.mito) == ("T2Tv2.0", "")
 
 
 @pytest.mark.parametrize(
@@ -166,9 +167,9 @@ def test_vcf_contig_lines_are_read_when_there_are_no_sq_lines():
     assert (model.name, model.naming, model.mito) == ("T2T", "Chr", "")
 
 
+@needs_tools("samtools")
 @pytest.mark.parametrize("vcf", [False, True])
 def test_1167_t2t_mitochondria_are_identified_by_sequence_not_length(tmp_path, vcf):
-    from tests.htslib_helpers import write_fasta
     from wgsextract_cli.core.ref_library.mitochondrial import (
         CHM13_CHRM,
         CHM13_CHRM_MD5,
@@ -195,14 +196,15 @@ def test_1167_t2t_mitochondria_are_identified_by_sequence_not_length(tmp_path, v
         assert model is not None and model.mito == expected
 
 
-def test_1167_rcrs_start_anchor_does_not_confirm_an_insertion_shifted_reference(
+@needs_tools("samtools")
+def test_1167_rcrs_start_anchor_does_not_confirm_a_compensating_indel_reference(
     tmp_path,
 ):
-    from tests.htslib_helpers import write_fasta
     from wgsextract_cli.core.ref_library.mitochondrial import pinned_sequences
 
     rcrs = pinned_sequences()[0]
-    sequence = rcrs[:1000] + "AA" + rcrs[1000:]
+    sequence = rcrs[:1000] + "AA" + rcrs[1000:2000] + rcrs[2002:]
+    assert len(sequence) == len(rcrs)
     reference = write_fasta(tmp_path / "shifted.fa", {"chrM": sequence})
     header = _header({"chr1": 248956422, "chrM": len(sequence)})
     model = identify_reference(header, reference_fasta=str(reference))

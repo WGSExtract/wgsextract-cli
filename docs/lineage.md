@@ -23,8 +23,11 @@ Haplogrep classifies rCRS coordinates. CHM13v2.0's original chrM has the
 same 16,569-base length but is rotated by 576 bases and has three other
 differences. Length alone does not identify rCRS: the sequence dictionary's
 M5/MD5 tag, the matching reference FASTA, or VCF REF alleles identify it.
-Reference metadata leaves mitochondrial identity unknown when sequence
-evidence is unavailable.
+Reference metadata requires a known full-sequence MD5, from the header or
+computed from the FASTA. A matching start anchor alone cannot rule out
+coordinate-shifting indels; unknown digests or unavailable sequence evidence
+leave mitochondrial identity unknown. Contig-name/length signatures identify
+the assembly but do not establish mitochondrial identity.
 
 For a CHM13 BAM or CRAM, supply its matching `--ref`. The command calls
 all mitochondrial sites and maps them to rCRS through the bundled, pinned

@@ -12,7 +12,7 @@ from wgsextract_cli.core.ref_library.mitochondrial import (
     RCRS_MD5,
     fasta_mito,
     header_md5,
-    mito_origin,
+    sequence_md5,
 )
 
 _VCF_CONTIG_RE = re.compile(r"^##contig=<.*?\bID=([^,>]+).*?\blength=(\d+)")
@@ -67,12 +67,10 @@ def _mito(header: str, lengths: dict[str, int], reference: str | None) -> str:
             if lengths[name] != 16569:
                 return ""
             md5 = header_md5(header, name)
-            if md5:
-                return {RCRS_MD5: "rCRS", CHM13_CHRM_MD5: CHM13_CHRM}.get(md5, "")
-            if reference and Path(reference + ".fai").is_file():
+            if not md5 and reference and Path(reference + ".fai").is_file():
                 sequence = fasta_mito(reference, name)
-                return mito_origin(sequence) or "" if sequence else ""
-            return ""
+                md5 = sequence_md5(sequence) if sequence else None
+            return {RCRS_MD5: "rCRS", CHM13_CHRM_MD5: CHM13_CHRM}.get(md5 or "", "")
     return ""
 
 
@@ -94,9 +92,8 @@ def identify_reference(
     naming, contigs = _naming(lengths), len(lengths)
 
     if signature and signature in REFERENCE_MODELS:
-        name, mito, fasta = REFERENCE_MODELS[signature]
-        if lengths:
-            mito = _mito(header, lengths, reference_fasta)
+        name, _catalog_mito, fasta = REFERENCE_MODELS[signature]
+        mito = _mito(header, lengths, reference_fasta)
         return ReferenceModel(name, mito, fasta, naming, contigs, "signature")
 
     count_entry = REFGEN_BY_SNCOUNT.get(contigs)
