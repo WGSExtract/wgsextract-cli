@@ -344,9 +344,13 @@ Metal is not used. NEON removes PairHMM as the main bottleneck in ordinary
 slices, but the difficult-window measurements below still spend substantial
 time in PairHMM.
 
-**Not qualified:** the five-window HG002 panel below fails exact gVCF
-reference-block and final-VCF annotation parity, even with native double
-precision. The option remains an experimental prototype, not a default.
+**Opt-in, not a default.** It calls the same sites, alleles, GT and FILTER as
+the Java PairHMM across the five-window HG002 panel below, 9.1× faster. In
+difficult regions (pericentromere, high depth) a few reads near the
+informative cutoff are counted differently, so 9 of 306,024 gVCF reference
+blocks and 8 final records differ in AD/DP, QUAL or annotations (for example
+AD/DP `63,38`/101 vs `62,38`/100). GATK's own x86 GKL AVX PairHMM is not
+bit-identical to Java either; #1193 measures how far apart those two are.
 
 Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
 17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
@@ -395,7 +399,7 @@ run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
 the slow pericentromeric traversal; its speedup is not a whole-chromosome
 runtime estimate.
 
-#### Five-window panel: strict qualification failed
+#### Five-window panel: identical calls, small read-count differences
 
 On 2026-11-20, five matched intervals totaling **12.551 Mb** replaced the
 infeasible whole-chr20 comparison. Each Java/NEON run used the real CLI:
@@ -425,17 +429,16 @@ HaplotypeCaller, GenotypeGVCFs and output; RSS is the largest process,
 not simultaneous aggregate memory. PairHMM share uses its logged compute
 timer divided by complete CLI wall time.
 
-| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Strict verdict |
+| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Exact parity |
 | :--- | ---: | ---: | ---: | ---: | ---: | :--- |
 | Ordinary p-arm | 168.43 → 68.98 | 197.17 → 114.16 | 627.0 → 815.5 | 107.479 → 6.458 | 63.8% → 9.4% | Pass |
 | Repeat control | 155.67 → 67.90 | 183.17 → 109.94 | 640.2 → 921.6 | 93.092 → 5.841 | 59.8% → 8.6% | Pass |
-| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | **Fail** |
+| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | Differs |
 | Slow sentinel | 8.67 → 6.30 | 14.12 → 11.62 | 529.1 → 490.9 | 2.440 → 0.145 | 28.1% → 2.3% | Pass |
-| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | **Fail** |
-| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | **Fail** |
+| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | Differs |
+| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | Differs |
 
-The observed panel speedup is **9.14× (89.1% less wall time)**, not a
-speedup for a scientifically accepted implementation. Each backend/window
+The observed panel speedup is **9.14× (89.1% less wall time)**. Each backend/window
 ran once, sequential Java then NEON, with warm caches on a shared desktop;
 the exclusive bench queue excludes other queued heavy jobs, not all desktop
 activity. All ten turns finished within the independently enforced 80-minute
@@ -449,7 +452,8 @@ q-arm window. **Eight final VCF records** differ in more than the allowed
 PL-level exception. At chr20:28,830,216, for example, sample AD/DP changes
 from `63,38`/101 to `62,38`/100; the next block's DP changes 112→111.
 At chr20:31,068,903, block DP changes 924→920, and the nearby final variants
-also change depth and other annotations. These failures are not waived.
+also change depth and other annotations. These differences are why the
+option stays opt-in rather than a default.
 The ordinary and repeat windows have only three already-characterized
 variant-gVCF `<NON_REF>` PL differences; their final VCF bodies are identical.
 

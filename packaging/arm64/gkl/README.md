@@ -186,10 +186,13 @@ not automatically accepted because sites and genotypes match. The observed
 10 Mb double-precision exception changes only PL entries involving `<NON_REF>`
 in variant gVCF rows; those alleles are removed by final genotyping.
 Reference blocks must still match line for line.
-The subsequent five-window difficult-region panel **fails** this requirement
-despite double precision: nine reference blocks and eight final-VCF annotation
-rows differ. Do not treat a native likelihood tolerance test, unchanged GT,
-or successful software certification as acceptance of those differences.
+The subsequent five-window difficult-region panel does not meet this strict
+requirement despite double precision: nine reference blocks and eight
+final-VCF annotation rows differ (read-count AD/DP/QUAL changes; sites,
+alleles, GT and FILTER are identical). The owner accepted the sidecar as an
+**opt-in** option with these differences documented; it is not a default.
+Rerun this comparison after kernel or GKL changes, and see #1193 for how far
+GATK's own x86 AVX PairHMM is from Java on the same windows.
 
 Measure wall, CPU and largest-process RSS around the complete CLI (including
 GenotypeGVCFs), and report the logged PairHMM compute timer separately.
