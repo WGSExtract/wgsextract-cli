@@ -74,8 +74,11 @@ jobs:
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id --recipe-dir packaging/windows/recipes `
-            --output-dir out/conda --target-platform win-64
+          foreach ($tool in @("samtools", "minimap2")) {
+            pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id --recipe packaging/windows/recipes/$tool/recipe.yaml `
+              --output-dir out/conda --target-platform win-64
+            if ($LASTEXITCODE -ne 0) { throw "Build failed: $tool" }
+          }
           Move-Item out/msys2-packages-used.txt out/conda/win-64/
 
       - uses: ./.github/actions/compiler-cache

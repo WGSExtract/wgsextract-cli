@@ -6,11 +6,14 @@ package:
   version: ${{ version }}
 
 source:
-  url: https://github.com/lh3/minimap2/archive/refs/tags/v${{ version }}.tar.gz
-  sha256: bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
-  patches:
+  - url: https://github.com/lh3/minimap2/archive/refs/tags/v${{ version }}.tar.gz
+    sha256: bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
+    patches:
     # 64-bit offset when reading a .mmi index (Windows' long is 32-bit).
-    - patches/0001-windows-64-bit-index-offset.patch
+      - patches/0001-windows-64-bit-index-offset.patch
+  - url: https://github.com/microsoft/mimalloc/archive/v3.6.1.tar.gz
+    sha256: 2672e6a99d4579fb4bb32d9de0d63aa424ce600d31fbfaf06eb74d940d2e07a6
+    target_directory: mimalloc
 
 build:
   number: 1
