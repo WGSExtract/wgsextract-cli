@@ -15,12 +15,20 @@ ANNOTATION = "::error title=Upstream package mirror unreachable::"
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX guest script")
 
-# sudo drops the VAR=value words it was given and runs the rest; apt-get prints
-# FAKE_APT_OUTPUT and exits FAKE_APT_RC.
+# sudo drops the VAR=value words it was given and runs the rest; timeout (GNU
+# coreutils on the Ubuntu guest; macOS has none) drops its options and limit
+# and runs the rest; apt-get prints FAKE_APT_OUTPUT and exits FAKE_APT_RC.
 FAKE_SUDO = """#!/bin/sh
 while [ $# -gt 0 ]; do
     case $1 in *=*) shift ;; *) break ;; esac
 done
+exec "$@"
+"""
+FAKE_TIMEOUT = """#!/bin/sh
+while [ $# -gt 0 ]; do
+    case $1 in -*) shift ;; *) break ;; esac
+done
+shift
 exec "$@"
 """
 FAKE_APT_GET = """#!/bin/sh
@@ -40,7 +48,11 @@ def run_user_apt(
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, text in (("sudo", FAKE_SUDO), ("apt-get", FAKE_APT_GET)):
+    for name, text in (
+        ("sudo", FAKE_SUDO),
+        ("timeout", FAKE_TIMEOUT),
+        ("apt-get", FAKE_APT_GET),
+    ):
         (bin_dir / name).write_text(text, newline="\n")
         (bin_dir / name).chmod(0o755)
     env = {
