@@ -154,6 +154,25 @@ the viewer closes the selections. Files are not remembered between visits.
 
 ## Current limits
 
+Locus jumps unsubscribe obsolete ruler-sweep listeners so previous igv viewports
+and their decoded-read/canvas references can be collected. In-flight reads may
+finish before collection. The pinned igv.js 3.8.10 build contains a local repair
+for this upstream lifecycle bug; it does not disable live ruler navigation or
+evict the active locus. Memory still depends
+on the current locus's read depth and igv's bounded decoder/reference caches,
+not the number of earlier jumps.
+
+Developers can check repeated BAM/CRAM jumps in an installed offline Chromium
+with `node gui/app/scripts/verify-viewer-offline.mjs --memory --out out/viewer-memory
+--chromium /usr/bin/chromium` from the repository root. This uses tiny synthetic
+genomes and installed samtools/bcftools; it downloads nothing.
+The Linux GUI CI job provisions cached fixture tools and Chromium and requires
+this check directly, so missing prerequisites fail CI. Unprepared local Node
+test runs skip it with a prerequisite explanation. The browser uses its normal
+temporary directory; fixtures and evidence stay under `--out`. On timeout the
+test freezes new launches, kills the runner, verifier and Chromium process
+groups, and waits for shutdown. Failed checks retain their output for diagnosis.
+
 rsID lookups, individual finding/haplogroup
 links, and authenticated remote range serving remain
 [follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
