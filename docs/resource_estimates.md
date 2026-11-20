@@ -1,5 +1,10 @@
 # CLI resource preflight and reusable estimates
 
+For measured Apple Silicon GATK PairHMM slice timings, see
+[NEON prototype evidence](hardware.md#experimental-apple-silicon-neon-pairhmm).
+These are not full-chromosome or whole-genome measurements and do not
+change the caller's resource-budget formulas.
+
 ## Pipeline benchmarks
 
 `wgsextract benchmark --help` lists datasets and profiles. Start with

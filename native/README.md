@@ -18,6 +18,13 @@ run them in place of their upstream aligners when they're on `PATH`, and
 Silicon build of DeepVariant 1.10.0, published separately as
 `macos-deepvariant-*` prereleases.
 
+[The ARM64 GKL recipe](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117)
+also builds an experimental Apple Silicon PairHMM sidecar for
+`vcf gatk --pair-hmm-neon JAR`. It reuses GKL's native interface, selects
+double precision to preserve reference blocks, and falls back to Java if
+native loading fails. It is separate from the aligner builds and does not
+change `--gpu` (Parabricks).
+
 | Executable | Upstream | Notes |
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |

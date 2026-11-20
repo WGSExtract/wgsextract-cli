@@ -333,6 +333,54 @@ contain this table. Only M1 and the 10-core M1 Pro are available for measurement
 | M6 (10-core) | 2S + 3P + 5E | 10 | 5 | Derived |
 | M6 (12-core) | 2S + 4P + 6E | 12 | 6 | Derived |
 
+### Experimental Apple Silicon NEON PairHMM
+
+`vcf gatk --pair-hmm-neon JAR` opts into the existing native ARM64 GKL
+PairHMM port, built for macOS. It is **not Parabricks**; `--gpu` keeps its
+existing meaning. GATK 4.6.2.0, JDK 17+, Apple Silicon and locally installed
+libomp are required. No dependency is installed or downloaded by calling.
+See [build, fallback and native validation instructions](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117).
+Metal is not used: NEON removes PairHMM as the main bottleneck.
+
+Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
+17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
+four native threads and 4 GiB Java heap. JVM startup is included;
+Smith-Waterman stays Java.
+
+| Backend | Wall seconds | PairHMM timer seconds | Peak process RSS MiB |
+| :--- | ---: | ---: | ---: |
+| Java LOGLESS_CACHING | 396.37 | 238.374 | 658.8 |
+| NEON float (rejected) | 175.61 | 10.094 | 766.7 |
+| NEON double (selected) | 179.75 | 15.373 | 770.8 |
+
+Stock GATK rejects its bundled x86 dylibs and selects Java LOGLESS_CACHING.
+An initial 1 Mb slice showed PairHMM at 51.6% of wall; in this expanded
+region it is 60.1%. NEON double reduces HaplotypeCaller wall by **54.7%**
+and leaves PairHMM at 8.6% of wall, no longer dominant.
+
+All 1,631,572 gVCF records have identical sites, alleles, GT and FILTER;
+all 1,612,162 reference blocks match completely. One variant's non-reference
+PL annotations differ; the final genotyped VCF's 17,107 records match
+byte-for-byte apart from headers. Float was rejected because one block's DP was 50
+instead of Java's 49 at chr20:17778563-17778607. A separate 200 kb control
+reproduces that mismatch with float and matches every gVCF record with
+double. The CLI therefore always requests native double precision.
+
+32,000 synthetic likelihoods per precision/native-thread configuration
+(one and four threads) are within 0.00001 absolute log10 of Java; observed
+maximum errors are 0.00000425 (float) and 0.00000106 (double).
+JVM thread FP-state restoration passes for both thread counts.
+
+Full `vcf gatk --reference-evidence gvcf` timings on the initial 1 Mb slice
+(`--threads 4 --qc-min-depth 0`, JVM default heap) confirm the CLI gate:
+interleaved Java/NEON/NEON/Java runs took **45.29 / 25.00 / 25.61 / 45.38 s**.
+Mean wall falls from 45.34 to 25.31 s (**44.2%**). Every CLI gVCF body
+(25,534 records) and final VCF body (1,779 calls) matches exactly.
+
+These are **bounded-region prototype results**, not full chr20 or
+whole-genome performance/accuracy qualification. Do not extrapolate RSS
+from the slice or treat the sidecar as a qualified default.
+
 ### Around the aligner
 
 Short reads stream from the aligner through samblaster into `samtools sort`
