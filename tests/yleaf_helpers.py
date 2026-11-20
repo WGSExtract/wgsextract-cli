@@ -1,5 +1,6 @@
 """Small synthetic marker/tree tables shared by native lineage tests."""
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -62,6 +63,28 @@ def make_data(root: Path) -> Path:
             f"yfull_v10_positions_{build}",
         ):
             (root / build / f"{name}.txt").write_text(MARKERS)
+    # Synthetic tables have no polarity reversals; still bind their audit to
+    # the exact tables, like the separately downloaded production module.
+    (root / "polarity.json").write_text(
+        json.dumps(
+            {
+                "source": {"name": "synthetic"},
+                "tables": {
+                    f"{tree}/{build}": {
+                        "sha256": hashlib.sha256(
+                            (
+                                root / build / f"{tree}_positions_{build}.txt"
+                            ).read_bytes()
+                        ).hexdigest(),
+                        "alleles": [],
+                        "audit": {},
+                    }
+                    for tree in ("ftdna", "isogg")
+                    for build in ("hg19", "hg38", "t2t")
+                },
+            }
+        )
+    )
     return root
 
 

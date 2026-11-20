@@ -43,3 +43,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   and `ref bootstrap` removes the empty `ref/` its archive leaves behind.
 
 ## Fixes
+
+- `lineage y-haplogroup --tree ftdna` and `--tree isogg` correct independently
+  verified ancestral/derived reversals using a pinned, separately licensed
+  YBrowse polarity module. This fixes inverted backbone evidence and wrong
+  haplogroup calls, including reverse-strand T2T markers. Ancient panels are
+  filtered after correction. First use requires `--download`; custom marker
+  panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).

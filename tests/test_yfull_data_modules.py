@@ -58,12 +58,16 @@ def _pins(files: dict[str, bytes]) -> dict[str, dict]:
 @pytest.fixture
 def served(tmp_path, monkeypatch):
     """The yfull modules on a local server; Yleaf's own data stays synthetic."""
+    yleaf = make_data(tmp_path / "yleaf-data")
     archives = {
         "tree": ("yfull-tree-1.0.tar.gz", TREE_FILES),
         "positions": ("yfull-ybrowse-positions-1.0.tar.gz", POSITIONS_FILES),
+        "polarity": (
+            "y-polarity-1.0.tar.gz",
+            {"polarity.json": (yleaf / "polarity.json").read_bytes()},
+        ),
     }
     blobs = {name: _archive(files) for name, files in archives.values()}
-    yleaf = make_data(tmp_path / "yleaf-data")
     monkeypatch.setattr(trees, "ensure_data", lambda *a, **k: yleaf)
     monkeypatch.setattr(downloads.time, "sleep", lambda s: None)
     library = tmp_path / "reflib"
@@ -85,8 +89,20 @@ def served(tmp_path, monkeypatch):
             for module, (name, files) in archives.items()
         }
         meta = {**trees.MANIFEST["trees"]["yfull"], "version": "1.0"}
-        meta.update(data="modules", modules=modules)
+        meta.update(
+            data="modules",
+            modules={key: modules[key] for key in ("tree", "positions")},
+        )
         monkeypatch.setitem(trees.MANIFEST["trees"], "yfull", meta)
+        for tree in ("ftdna", "isogg"):
+            monkeypatch.setitem(
+                trees.MANIFEST["trees"],
+                tree,
+                {
+                    **trees.MANIFEST["trees"][tree],
+                    "modules": {"polarity": modules["polarity"]},
+                },
+            )
         server.library = library  # type: ignore[attr-defined]
         yield server
 
@@ -124,8 +140,17 @@ def _installed(server) -> set[str]:
 
 
 def test_other_trees_never_fetch_either_yfull_module(served, kit, tmp_path):
-    assert _call(kit, tmp_path / "out", "--tree", "isogg") == "R1b1"
-    assert not served.paths and _installed(served) == set()
+    # Issue #1168: the new independent polarity module still needs explicit
+    # consent. It does not fetch either YFull tree/positions module.
+    with pytest.raises(WGSExtractError, match="--download"):
+        _call(kit, tmp_path / "offline", "--tree", "isogg")
+    assert not served.paths
+    assert _call(kit, tmp_path / "out", "--tree", "isogg", "--download") == "R1b1"
+    assert set(served.paths) == {"y-polarity-1.0.tar.gz"}
+    assert _installed(served) == set()
+    served.paths.clear()
+    assert _call(kit, tmp_path / "cached", "--tree", "isogg") == "R1b1"
+    assert not served.paths
 
 
 def test_yfull_with_own_markers_fetches_only_the_tree_module(served, kit, tmp_path):

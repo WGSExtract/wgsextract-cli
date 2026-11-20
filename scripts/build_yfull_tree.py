@@ -258,6 +258,61 @@ def reference_checked(
     return kept, stats
 
 
+def reference_polarity(
+    markers: list[Marker],
+    sequence: str,
+    children: dict[str, list[str]],
+    haplogroup: str,
+) -> Counter[str]:
+    """Audit a reference lineage without guessing polarity from the FASTA.
+
+    A broad known haplogroup does not resolve its descendants. Recurrence and
+    ambiguous parentage also cannot establish an allele's evolutionary state.
+    """
+    stats: Counter[str] = Counter()
+    if haplogroup not in children:
+        return Counter({"unknown_reference_haplogroup": 1})
+    parents: dict[str, set[str]] = {}
+    for parent, kids in children.items():
+        for child in kids:
+            parents.setdefault(child, set()).add(parent)
+    path = {haplogroup}
+    node = haplogroup
+    while node in parents:
+        if len(parents[node]) != 1:
+            return Counter({"ambiguous_reference_path": 1})
+        node = next(iter(parents[node]))
+        if node in path:
+            raise ValueError("Cycle in reference haplogroup path")
+        path.add(node)
+    descendants: set[str] = set()
+    pending = list(children[haplogroup])
+    while pending:
+        node = pending.pop()
+        if node not in descendants:
+            descendants.add(node)
+            pending.extend(children.get(node, []))
+    recurrent = Counter(marker[2] for marker in markers)
+    for _, branch, pos, anc, der in markers:
+        if recurrent[pos] != 1:
+            stats["recurrent_not_audited"] += 1
+        elif branch in descendants:
+            stats["unresolved_reference_subclade"] += 1
+        elif not 0 < pos <= len(sequence) or sequence[pos - 1] not in (anc, der):
+            stats["reference_mismatch"] += 1
+        elif branch in path:
+            stats[
+                "path_ref_derived" if sequence[pos - 1] == der else "path_ref_ancestral"
+            ] += 1
+        else:
+            stats[
+                "off_path_ref_ancestral"
+                if sequence[pos - 1] == anc
+                else "off_path_ref_derived"
+            ] += 1
+    return stats
+
+
 def position_rows(markers: list[Marker], *, ancient: bool) -> Iterator[str]:
     for name, haplogroup, pos, anc, der in sorted(markers, key=lambda m: (m[2], m[1])):
         mutation = f"{anc}->{der}"
@@ -320,6 +375,12 @@ def main() -> None:
     parser.add_argument("--ref-hg38", type=Path, required=True)
     parser.add_argument("--ref-hg19", type=Path, required=True)
     parser.add_argument("--ref-t2t", type=Path, required=True)
+    for build, haplogroup in (("hg38", "R1b"), ("hg19", "R1b"), ("t2t", "J1")):
+        parser.add_argument(
+            f"--ref-haplogroup-{build}",
+            default=haplogroup,
+            help=f"Known chrY haplogroup for the {build} reference (default: {haplogroup}); an audit, not an allele-flipping rule",
+        )
     parser.add_argument(
         "--major-tables",
         type=Path,
@@ -345,7 +406,7 @@ def main() -> None:
     sites = read_ybrowse(args.ybrowse, aliases)
     hg38, stats = resolve(snps, sites)
     by_build: dict[str, list[Marker]] = {"hg38": hg38}
-    build_stats: dict[str, dict[str, int]] = {}
+    build_stats: dict[str, dict[str, Any]] = {}
     for build, chain in (("hg19", args.chain_hg19), ("t2t", args.chain_t2t)):
         by_build[build], build_stats[build] = lift(hg38, chain)
     build_stats["hg38"] = Counter()
@@ -354,8 +415,17 @@ def main() -> None:
     for build, reference in references.items():
         contig, sequence = chr_y(reference)
         identities[build] = sequence_identity(reference, contig, sequence)
+        identities[build]["haplogroup"] = getattr(args, f"ref_haplogroup_{build}")
         by_build[build], checked = reference_checked(by_build[build], sequence)
         build_stats[build] = dict(Counter(build_stats[build]) + checked)
+        build_stats[build]["polarity"] = dict(
+            reference_polarity(
+                by_build[build],
+                sequence,
+                children,
+                getattr(args, f"ref_haplogroup_{build}"),
+            )
+        )
         build_stats[build]["markers"] = len(by_build[build])
         print(f"{build}: {build_stats[build]}")
 

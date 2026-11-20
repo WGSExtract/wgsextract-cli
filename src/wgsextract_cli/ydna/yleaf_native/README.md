@@ -31,7 +31,9 @@ Outputs in `<outdir>/yleaf/`:
 * `<sample>/<sample>.out`, `.fmf`, `.info`: observed/inferred and filtered markers.
 * `run.json`: upstream code/data tag, commit, build, the tree's id, name,
   version, date, license and source, ancient-panel/QC settings, and the selected
-  marker panel's identifier and SHA-256 (including custom panels).
+  marker panel's identifier and SHA-256 (including custom panels). Built-in
+  FTDNA/ISOGG runs also record the independently verified polarity module,
+  its SHA-256, correction count and build audit.
 
 Calls and QC values preserve v4.1.6 behavior, including recurrent-site and
 approximate-placement exclusions, 60% node consensus, deepest passing node,
@@ -78,6 +80,39 @@ backbone tables still come from the Yleaf data cache. Versions before #503
 used one combined pack in `<reference_library>/yleaf/trees/yfull/<version>/`
 (release `yleaf-tree-yfull-v<version>`); that folder is no longer read and can
 be deleted.
+
+### Independently audited polarity
+
+Yleaf's FTDNA/ISOGG marker tables contain ancestral/derived reversals (#1168).
+Our packager copies those upstream tables byte-for-byte; they are not errors
+in WGS Extract's YFull converter. A separately downloaded `y-polarity` module
+supplies corrections from the pinned 2026-11-05 YBrowse snapshot. No FTDNA or
+ISOGG tree/table is modified or republished.
+
+`scripts/build_y_polarity.py` builds this module offline from the exact Yleaf
+tables and the YBrowse snapshot already published on the YFull data release.
+It requires one independent single-base site with the same SNP name, position
+and reversed allele pair. For hg19/T2T, the lift must reproduce the target
+position and alleles, with reverse-strand complementation. Recurrent sites,
+ambiguous names, missing SNPs, different positions and different allele pairs
+are reported in `build_info.json`, not guessed. The runtime checks the source
+table's SHA-256 before interpreting it. Ancient filtering follows correction,
+so a reversed deamination mutation cannot slip through, and newly eligible
+markers are recovered. `--pos-file` and custom trees bypass this module.
+
+The module is CC-BY-SA (version not stated), Thomas Krahn YSEQ, and contains
+only YBrowse-derived allele corrections, its input digests and attribution.
+First use of FTDNA/ISOGG requires an explicit `--download` if it is missing;
+subsequent runs are offline. `run.json` preserves the original table digest
+and separately records the correction module digest and audit.
+
+The YFull builder also audits polarity against each reference's known lineage:
+R1b for hg19/GRCh38 and J1 for T2T-CHM13v2 chrY. Override these with
+`--ref-haplogroup-hg19`, `--ref-haplogroup-hg38`, or `--ref-haplogroup-t2t`
+for a different FASTA. A broad haplogroup cannot resolve its descendants;
+recurrent positions and ambiguous ancestry cannot establish polarity either.
+This is an audit recorded in `build_info.json`, never a rule to silently
+flip all reference-matching alleles.
 
 Each SNP group on a branch (`/`-separated aliases) becomes one marker when its
 aliases name exactly one GRCh38 chrY single-base substitution in YBrowse.

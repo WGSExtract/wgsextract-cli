@@ -61,6 +61,8 @@ class YleafTree:
     root: Path | None = None
     """The folder marker table identifiers are relative to (None: file names)."""
     ancient_files: dict[str, Path] = field(default_factory=dict)
+    polarity_file: Path | None = None
+    """Separately licensed corrections for an exact upstream marker table."""
     terms: str = ""
     """Where the licence was checked, and what the source's terms say."""
 
@@ -249,4 +251,9 @@ def ensure_tree(
         qc=qc_rules(meta["qc"], data),
         origin="data-module" if modular else "yleaf-data",
         root=root,
+        polarity_file=(
+            ensure_module(tree_id, "polarity", library) / "polarity.json"
+            if panel and "polarity" in meta.get("modules", {})
+            else None
+        ),
     )
