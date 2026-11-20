@@ -60,8 +60,8 @@ computer.
 
 Library files also show the installed RefSeq gene-map for hg19 or hg38. Install
 the tables explicitly with `wgsextract ref gene-map`, then reopen the library
-file. The viewer reads `ref/genes_hg19.tsv` or `ref/genes_hg38.tsv` in the configured
-reference library; the CLI's `microarray/` location is also supported. Missing
+file. The viewer reads `downloads/genes_hg19.tsv` or `downloads/genes_hg38.tsv` in the
+configured reference library; the CLI's `microarray/` location is also supported. Missing
 or invalid tables produce a notice with that command, without hiding the reads.
 
 In **Position or RefSeq gene symbol**, enter an exact symbol such as `BRCA1`
@@ -87,8 +87,8 @@ file as the desktop, then reopen the file. The missing-data notice names the
 required table and this exact command. Reads and coordinate navigation remain
 available without an ideogram.
 
-Only `ref/cytobands_hg19.tsv` or `ref/cytobands_hg38.tsv` under the configured
-reference library is read. Tables load once per open within a 1 MiB/10,000-row
+Only `downloads/cytobands_hg19.tsv` or `downloads/cytobands_hg38.tsv` under the
+configured reference library is read. Tables load once per open within a 1 MiB/10,000-row
 limit. Malformed, truncated, overlapping or incomplete tables are rejected.
 The chromosome 1 length selects the build; `chr`/no-`chr` primary aliases must
 match unambiguously, and bands must cover the full loaded chromosome length.

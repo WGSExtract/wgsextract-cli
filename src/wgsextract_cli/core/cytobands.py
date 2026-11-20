@@ -11,6 +11,7 @@ from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.utils import WGSExtractError
 
 # UCSC cytoBand database snapshots verified 2026-11-20. Data terms, not the
@@ -87,7 +88,7 @@ CHROMOSOME_LENGTHS = {
 def cytoband_path(reflib: str | Path, build: str) -> Path:
     if build not in CYTOBAND_SOURCES:
         raise WGSExtractError("Cytobands are available for hg19 and hg38 only.")
-    return Path(reflib, "ref", f"cytobands_{build}.tsv")
+    return download_path(reflib, f"cytobands_{build}.tsv")
 
 
 def validate_cytobands(data: bytes, build: str, *, source: bool = False) -> bytes:

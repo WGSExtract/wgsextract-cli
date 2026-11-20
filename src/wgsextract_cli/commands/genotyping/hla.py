@@ -6,7 +6,7 @@ MHC, the HLA-* decoys and chromosome 6 ALT contigs (with their unmapped mates)
 are extracted first, which keeps a 30x genome to under two minutes.
 
 With --download permission, a missing allele index is built from the current
-IPD-IMGT/HLA release (45 MB) into <reference library>/ref/t1k_hla.
+IPD-IMGT/HLA release (45 MB) into <reference library>/downloads/t1k_hla.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingHlaParams
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.read_scope import may_follow
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS, download_path
 from wgsextract_cli.core.ref_library.resolver import library_roots
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
@@ -32,7 +33,7 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .common import Alignment, env_tool, open_alignment, write_bed, write_outside_calls
 
-INDEX_DIR = str(Path("ref", "t1k_hla"))
+INDEX_NAME = "t1k_hla"
 INDEX_FASTA = "hla_dna_seq.fa"
 RELEASE_FILE = "release.txt"
 # The MHC (GRCh38 chr6:28,510,120-33,480,577, GRCh37 chr6:28,477,797-33,448,354).
@@ -136,10 +137,17 @@ def _build_index(directory: str) -> None:
 
 def index_folder(ref: PathInput | None) -> str | None:
     """The reference library folder holding (or to hold) the T1K index."""
-    root = library_roots(ref).resource_root(str(Path(INDEX_DIR, INDEX_FASTA)))
+    root = library_roots(ref).resource_root(
+        *(str(Path(d, INDEX_NAME, INDEX_FASTA)) for d in DOWNLOAD_DIRS)
+    )
     if not root or not Path(root).is_dir():
         return None
-    return str(Path(root, INDEX_DIR))
+    # A complete index wins over a folder left by an interrupted build.
+    built = (Path(root, d, INDEX_NAME) for d in DOWNLOAD_DIRS)
+    return str(
+        next((d for d in built if (d / INDEX_FASTA).is_file()), None)
+        or download_path(root, INDEX_NAME)
+    )
 
 
 def hla_index(params: TypingHlaParams) -> str:

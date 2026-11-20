@@ -131,7 +131,7 @@ test("#1112: invalid viewer positions return actionable invalidLocus, not a serv
 async function geneFixture(t, contig = "chr1", length = 248956422) {
     const f = await fixture(t);
     await writeFile(`${f.fasta}.fai`, `${contig}\t${length}\t6\t4\t5\n`);
-    const directory = path.join(path.dirname(f.fasta), "ref");
+    const directory = path.join(path.dirname(f.fasta), "downloads");
     await mkdir(directory);
     const table = path.join(directory, `genes_${length === 249250621 ? "hg19" : "hg38"}.tsv`);
     return { ...f, table };

@@ -15,6 +15,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.reference_assets import n_count_paths, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
@@ -108,7 +109,7 @@ def run_filter(params: VcfFilterParams) -> None:
 
         maps = [
             str(Path(d, f"genes_{canonical_build(lib.build or 'hg38')}.tsv"))
-            for d in ("ref", "microarray")
+            for d in (*DOWNLOAD_DIRS, "microarray")
         ]
         resolved_region = gene_coords(
             lib.resource_root(*maps) or str(absolute_path(input_file).parent),

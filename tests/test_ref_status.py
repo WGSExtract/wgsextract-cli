@@ -11,7 +11,7 @@ def _status(**fields):
 
 def test_ref_status_reports_gui_library_values(tmp_path):
     reflib = tmp_path / "reference"
-    ref_dir = reflib / "ref"
+    ref_dir = reflib / "downloads"
     maps_dir = reflib / "maps"
     datasets = tmp_path / "datasets"
     test_genome = datasets / "wgsextract-benchmark-hg19-mini"
@@ -107,7 +107,7 @@ def test_ref_status_infers_library_from_reference_fasta(tmp_path):
 
 def test_ref_status_reports_every_annotation_vep_cache_and_genome(tmp_path, capsys):
     reflib = tmp_path / "reference"
-    ref_dir = reflib / "ref"
+    ref_dir = reflib / "downloads"
     ref_dir.mkdir(parents=True)
     for name in (
         "gnomad_hg38.vcf.bgz", "clinvar_hg19.vcf.gz", "revel_hg38.tsv.gz",

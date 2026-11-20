@@ -44,6 +44,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_genome_status,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.ncount import write_n_count_files
 from wgsextract_cli.core.ref_library.processing import has_ref_ns
 from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
@@ -316,10 +317,8 @@ def _vep_cache(genome: dict[str, str], reflib_dir: str) -> str | None:
 
 
 def _annotation_resources(reflib_dir: str) -> dict[str, dict[str, bool]]:
-    ref_dir = Path(reflib_dir, "ref")
-
     def any_of(stem: str, *exts: str) -> bool:
-        return any(Path(ref_dir, f"{stem}{ext}").exists() for ext in exts)
+        return any(download_path(reflib_dir, stem + ext).exists() for ext in exts)
 
     return {
         build: {

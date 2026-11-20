@@ -424,7 +424,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref microarray-targets --delete",
     ),
     "ref cytobands": _h(
-        f"{_LIBRARY}/ref/cytobands_hg19.tsv or cytobands_hg38.tsv; "
+        f"{_LIBRARY}/downloads/cytobands_hg19.tsv or cytobands_hg38.tsv; "
         "validated zero-based UCSC primary-chromosome bands for offline viewing.",
         "wgsextract ref cytobands --build hg38 --download",
         "wgsextract ref cytobands --build hg19 --download",
@@ -467,7 +467,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref alphamissense",
     ),
     "ref acmg-data": _h(
-        f"{_LIBRARY}: ref/acmg/ holds the Ensembl GFF3, the downloads in "
+        f"{_LIBRARY}: downloads/acmg/ holds the Ensembl GFF3, the downloads in "
         "sources/ and fastVEP's databases with acmg_data.json in sa/ (or "
         "--sa-dir); --dry-run prints the plan and sizes only.",
         "wgsextract ref acmg-data --dry-run",

@@ -32897,7 +32897,7 @@
    }
   },
   "typing hla": {
-   "help": "usage: wgsextract typing hla [-h] [--download | --no-download] [--hla-index FASTA]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --hla-index FASTA     T1K allele index (hla_dna_seq.fa). Default: <reference\n                        library>/ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if\n                        missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract typing hla [-h] [--download | --no-download] [--hla-index FASTA]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --hla-index FASTA     T1K allele index (hla_dna_seq.fa). Default: <reference\n                        library>/downloads/t1k_hla; --download confirms building it from IPD-\n                        IMGT/HLA if missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -33203,7 +33203,7 @@
       "default": null,
       "dest": "hla_index",
       "exclusive_group": null,
-      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
+      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/downloads/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
       "metavar": "FASTA",
       "nargs": null,
       "option_strings": [
