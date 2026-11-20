@@ -381,6 +381,15 @@ These are **bounded-region prototype results**, not full chr20 or
 whole-genome performance/accuracy qualification. Do not extrapolate RSS
 from the slice or treat the sidecar as a qualified default.
 
+The 2026-11-19 whole-chr20 real-CLI qualification attempt did **not**
+complete: Java's progress meter reached chr20:29,840,219 after 283.6
+traversal minutes before cancellation. No final gVCF or genotyped VCF was
+published, and the NEON comparison was not started. This is an incomplete
+run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
+the slow pericentromeric traversal; its speedup is not a whole-chromosome
+runtime estimate. Full-chr20 reference-block and final-call parity remain
+required before qualification.
+
 ### Around the aligner
 
 Short reads stream from the aligner through samblaster into `samtools sort`
