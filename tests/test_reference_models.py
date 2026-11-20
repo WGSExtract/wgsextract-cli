@@ -70,7 +70,7 @@ def test_unknown_25_contig_dictionary_is_identified_by_chr1(lengths, build, chr_
     assert model is not None
     assert (model.name, model.evidence) == (build, "chr1 length")
     assert model.naming == ("Chr" if chr_prefix else "Num")
-    assert model.mito == "rCRS"
+    assert model.mito == ""
     assert model.fasta == ""
 
 
@@ -110,7 +110,11 @@ def test_reference_fasta_is_the_last_resort():
 
 
 def test_describe():
-    model = _identify(_header(HG38, chr_prefix=True, pad_to=30))
+    from wgsextract_cli.core.ref_library.mitochondrial import RCRS_MD5
+
+    header = _header(HG38, chr_prefix=True, pad_to=30)
+    header = header.replace("SN:chrMT\tLN:16569", f"SN:chrMT\tLN:16569\tM5:{RCRS_MD5}")
+    model = _identify(header)
     assert model is not None and model.describe() == "hg38 (Chr), rCRS, 30 SNs"
 
 
@@ -159,7 +163,50 @@ def test_vcf_contig_lines_are_read_when_there_are_no_sq_lines():
     )
     model = identify_reference(header)
     assert model is not None
-    assert (model.name, model.naming, model.mito) == ("T2T", "Chr", "rCRS")
+    assert (model.name, model.naming, model.mito) == ("T2T", "Chr", "")
+
+
+@pytest.mark.parametrize("vcf", [False, True])
+def test_1167_t2t_mitochondria_are_identified_by_sequence_not_length(tmp_path, vcf):
+    from tests.htslib_helpers import write_fasta
+    from wgsextract_cli.core.ref_library.mitochondrial import (
+        CHM13_CHRM,
+        CHM13_CHRM_MD5,
+        RCRS_MD5,
+        pinned_sequences,
+    )
+
+    for md5, sequence, expected in zip(
+        (RCRS_MD5, CHM13_CHRM_MD5),
+        pinned_sequences(),
+        ("rCRS", CHM13_CHRM),
+        strict=True,
+    ):
+        header = (
+            f'##contig=<ID=chr1,length=248387328>\n##contig=<ID=chrM,length=16569,md5="{md5}">\n'
+            if vcf
+            else f"@SQ\tSN:chr1\tLN:248387328\n@SQ\tSN:chrM\tLN:16569\tM5:{md5}\n"
+        )
+        model = identify_reference(header)
+        assert model is not None and model.mito == expected
+        plain = header.replace(f',md5="{md5}"', "").replace(f"\tM5:{md5}", "")
+        reference = write_fasta(tmp_path / f"{md5}.fa", {"chrM": sequence})
+        model = identify_reference(plain, reference_fasta=str(reference))
+        assert model is not None and model.mito == expected
+
+
+def test_1167_rcrs_start_anchor_does_not_confirm_an_insertion_shifted_reference(
+    tmp_path,
+):
+    from tests.htslib_helpers import write_fasta
+    from wgsextract_cli.core.ref_library.mitochondrial import pinned_sequences
+
+    rcrs = pinned_sequences()[0]
+    sequence = rcrs[:1000] + "AA" + rcrs[1000:]
+    reference = write_fasta(tmp_path / "shifted.fa", {"chrM": sequence})
+    header = _header({"chr1": 248956422, "chrM": len(sequence)})
+    model = identify_reference(header, reference_fasta=str(reference))
+    assert model is not None and model.mito == ""
 
 
 def test_info_reads_the_model_name_with_or_without_a_naming():

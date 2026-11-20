@@ -14,7 +14,7 @@ from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
 
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 RCRS_MD5 = "c68f52674c9fb33aef52dcf399755519"
 CHM13_CHRM_MD5 = "ec493a132ac4823aa696e37109f64972"
@@ -22,6 +22,35 @@ CHM13_CHRM = "CHM13v2.0's chrM"
 # The rCRS's first 40 bases: a rotated copy has them further along.
 RCRS_ORIGIN = "GATCACAGGTCTATCACCCTATTAACCACTCACGGGAGCT"
 _ASSETS = Path(__file__).resolve().parents[2] / "assets/microarray/chm13/v2"
+
+
+def header_md5(header: str, contig: str) -> str | None:
+    """The MD5 a BAM @SQ (M5) or VCF ##contig (md5) line gives ``contig``."""
+    for line in header.splitlines():
+        if line.startswith("@SQ"):
+            tags = dict(f.split(":", 1) for f in line.split("\t")[1:] if ":" in f)
+            if tags.get("SN") == contig:
+                return tags.get("M5", "").lower() or None
+        elif line.startswith("##contig=<"):
+            fields = dict(
+                f.split("=", 1) for f in line[10:].rstrip(">").split(",") if "=" in f
+            )
+            if fields.get("ID") == contig:
+                return fields.get("md5", "").strip("\"'").lower() or None
+    return None
+
+
+def fasta_mito(fasta: str, chr_m: str) -> str | None:
+    """The FASTA's mitochondrial sequence under any of its names, or None."""
+    from wgsextract_cli.core.variant_files import chromosome_aliases
+
+    for name in dict.fromkeys((chr_m, *chromosome_aliases(chr_m))):
+        result = run_command(
+            ["samtools", "faidx", fasta, name], capture_output=True, check=False
+        )
+        if result.returncode == 0 and result.stdout.count("\n") > 1:
+            return "".join(result.stdout.splitlines()[1:])
+    return None
 
 
 def sequence_md5(sequence: str) -> str:

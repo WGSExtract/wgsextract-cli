@@ -17,6 +17,23 @@ testing. `lineage mt-haplogroup --tree-links` adds the YFull mtDNA branch and
 FTDNA's public mtDNA tree (use its branch search); the corresponding Y command
 adds YFull/FTDNA links.
 
+### Mitochondrial reference coordinates
+
+Haplogrep classifies rCRS coordinates. CHM13v2.0's original chrM has the
+same 16,569-base length but is rotated by 576 bases and has three other
+differences. Length alone does not identify rCRS: the sequence dictionary's
+M5/MD5 tag, the matching reference FASTA, or VCF REF alleles identify it.
+Reference metadata leaves mitochondrial identity unknown when sequence
+evidence is unavailable.
+
+For a CHM13 BAM or CRAM, supply its matching `--ref`. The command calls
+all mitochondrial sites and maps them to rCRS through the bundled, pinned
+microarray mitochondrial alignment before running Haplogrep. The result
+records this conversion in `details.mt_reference`. A CHM13 VCF must include
+reference-only calls (all-sites VCF or gVCF); a variants-only VCF is refused
+with instructions to use the alignment or call all sites. Simply rotating
+variant positions would lose sample alleles at reference-difference sites.
+
 ## Y haplogroups and STRs
 
 `lineage y-haplogroup` uses native code derived from
