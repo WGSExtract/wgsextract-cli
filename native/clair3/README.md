@@ -11,7 +11,14 @@ The patch propagates `--device=mps` through both Python pipelines,
 keeps `--use_gpu=False`: upstream's `True` selects CUDA's disk-tensor pipeline
 and different high-depth handling. FP32 prediction, CPU feature generation,
 streaming and high-depth scaling are unchanged. CUDA's existing Docker path
-is untouched. gVCF uses the patched Python/pipe caller too.
+is untouched. Both CFFI streaming and the Python/pipe caller support gVCF.
+MPS uses models from its selected package environment and its verified Clair3
+version for CRAM compatibility, independently of any CPU launcher on `PATH`.
+Missing or unusable packages report `missing_dependency` (exit 3); unavailable
+MPS hardware remains a separate failure.
+The MPS package also finalizes candidate-free pileup exits through Clair3's
+normal merge/gVCF code, rather than copying diploid calls or losing reference
+blocks before haploid handling runs.
 
 ## Packaging and release
 
@@ -63,5 +70,11 @@ Do not upload dependency packages or a resolved environment with this artifact.
 
 See [ONT calling](../../docs/ont.md#clair3-optional) and
 [resource estimates](../../docs/resource_estimates.md#clair3-on-the-gpu).
+Recipe tests run the installed launcher on synthetic reads and synthetic
+PyTorch checkpoints through CFFI streaming and the Python/pipe gVCF pipeline.
+Only MPS availability and device transfers/checkpoint placement are redirected
+to CPU; feature generation, inference, worker dispatch and final VCF/gVCF
+generation are real. They check model-device propagation and haploid output;
+these artificial checkpoints are not an accuracy qualification.
 Whole-genome qualification remains open in #1101 (Clair3 MPS acceleration);
 slice agreement is not a whole-genome speed or accuracy claim.

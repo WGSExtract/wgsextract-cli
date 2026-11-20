@@ -10,11 +10,13 @@ source:
     sha256: 9d5a9cbbe542105ec46d6ff5afa581356b2824537f0e67a2f3749e56469e19f8
     patches:
       - ../../native/clair3/patches/0001-streaming-mps.patch
+      - ../../native/clair3/patches/0002-finalize-mps-ploidy.patch
   - path: ../../native/clair3/wgse-clair3
+  - path: ../../native/clair3/finalize.py
   - path: ../../LICENSE
 
 build:
-  number: 1
+  number: 2
   string: py311_osxarm64_wgse_${{ build_number }}
   skip:
     - not (osx and arm64)
@@ -35,6 +37,11 @@ tests:
   - script:
       - wgse-clair3 --version
       - wgse-clair3 --wgse-device-check
+  - files:
+      recipe:
+        - test_streaming.py
+    script:
+      - python test_streaming.py
 
 about:
   homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native/clair3
