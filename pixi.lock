@@ -567,7 +567,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-hbeba79b_4.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
-      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-1/wgse-clair3-0.1.0-py311_osxarm64_wgse_1.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda
   cyrius:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -34535,16 +34535,16 @@ packages:
   - onnxruntime-cpp >=1.31.1,<1.31.2.0a0
   license: BSD-3-Clause AND GPL-3.0-or-later
   timestamp: 1794830906625
-- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-1/wgse-clair3-0.1.0-py311_osxarm64_wgse_1.conda
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda
   subdir: osx-arm64
-  sha256: 689a1103f7e03cc5f8a0e73b270bb5fd98745849b529f94f71ac6c7df1b00d9e
+  sha256: c7235628d6f74acf547df475f7996211c8bb9cec8f9d015a61df9b2f39ced674
   depends:
   - clair3 ==2.0.5 py311h9aa1f4a_0
   - python >=3.11,<3.12
   - pytorch >=2,<3
   channel: null
   license: BSD-3-Clause AND GPL-3.0-or-later
-  timestamp: 1795111427211
+  timestamp: 1795135781737
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-linux64_wgse_1.conda
   subdir: linux-64
   sha256: ef106d4f34ff5402bd5bdb3ed8c154dfa95e23cddbba60996f8f77d4ad6565c9

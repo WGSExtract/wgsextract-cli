@@ -43,12 +43,17 @@ For local development, add the resulting `.conda` explicitly with
 then `pixi install -e clair3`. Do not commit the local URL or its lockfile.
 
 **Releases.** The pinned build is
-[`macos-clair3-1`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/macos-clair3-1),
+[`macos-clair3-2`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/macos-clair3-2),
 pinned by URL and SHA-256 under `[feature.clair3.target.osx-arm64.dependencies]`
 in `pixi.toml`, so `pixi install -e clair3` installs it alongside Bioconda's
 Clair3 on Apple Silicon. It was built locally from the reviewed source commit
 named in its release notes, because this workflow was not yet on the default
-branch. For later releases, dispatch **macOS Clair3** with a new
+branch. Build 2 adds interpreter isolation, real synthetic-model streaming
+regressions and candidate-free MPS ploidy/gVCF finalization. Its downloaded
+asset was verified as SHA-256
+`c7235628d6f74acf547df475f7996211c8bb9cec8f9d015a61df9b2f39ced674`;
+the previous `macos-clair3-1` release remains available.
+For later releases, dispatch **macOS Clair3** with a new
 `macos-clair3-*` tag (or publish a verified local build to a prerelease
 targeting its reviewed source commit), verify the artifact and SHA-256, update
 the URL/SHA-256 pin and regenerate `pixi.lock`. Never pin a nonexistent release
