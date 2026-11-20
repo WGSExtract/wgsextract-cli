@@ -213,7 +213,7 @@ _TEMP_PER_MB = {"spliceai": 9.4e6, "revel": 2.1e6}
 
 
 def fastvep_version() -> str:
-    """The fastVEP version on PATH: the 0.5 series this was validated with."""
+    """The resolved fastVEP version: the 0.5 series this was validated with."""
     raw = get_tool_version("fastvep") or ""
     match = _SUPPORTED_FASTVEP.search(raw)
     if not match:

@@ -2,7 +2,7 @@ version: 7
 platforms:
 - name: linux-64
   virtual-packages:
-  - __unix=0=0
+  - __unix=0
   - __linux=4.18
   - __glibc=2.28
   - __archspec=0=x86_64
@@ -10,24 +10,24 @@ platforms:
   subdir: linux-64
   virtual-packages:
   - __cuda=12
-  - __unix=0=0
+  - __unix=0
   - __linux=4.18
   - __glibc=2.28
   - __archspec=0=x86_64
 - name: linux-aarch64
   virtual-packages:
-  - __unix=0=0
+  - __unix=0
   - __linux=4.18
   - __glibc=2.28
   - __archspec=0=aarch64
 - name: osx-64
   virtual-packages:
-  - __unix=0=0
+  - __unix=0
   - __osx=13.0
   - __archspec=0=x86_64
 - name: osx-arm64
   virtual-packages:
-  - __unix=0=0
+  - __unix=0
   - __osx=13.0
   - __archspec=0=m1
 - name: win-64
@@ -2402,12 +2402,25 @@ environments:
     - url: https://conda.anaconda.org/bioconda/
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/fastvep-0.5.0-hfa8f182_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgcc-16.2.0-ha9f2e26_7.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/libgomp-16.2.0-he0feb66_7.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linux64_wgse_0.conda
+      linux-aarch64:
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgcc-16.2.0-h205dda4_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgomp-16.2.0-h8acb6b2_7.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linuxaarch64_wgse_0.conda
       osx-64:
-      - conda: https://conda.anaconda.org/bioconda/osx-64/fastvep-0.5.0-h87b00fb_0.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osx64_wgse_0.conda
+      osx-arm64:
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osxarm64_wgse_0.conda
+      win-64:
+      - conda: https://conda.anaconda.org/conda-forge/win-64/ucrt-10.0.26100.0-h57928b3_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vc-14.5-hda273ae_44.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-hb06f545_44.conda
+      - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-h1c3f1cb_44.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-win64_wgse_0.conda
   freebayes:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -8158,21 +8171,6 @@ packages:
     - fasttree >=2.2.0,<3.0a0
   size: 197973
   timestamp: 1764102501456
-- conda: https://conda.anaconda.org/bioconda/linux-64/fastvep-0.5.0-hfa8f182_0.conda
-  sha256: 13b30f2a919064ea93c95bb67e29aaa7295be5ea094cf8e0fd945633ada148a1
-  md5: f3c91893e576e62ddb90f8cdfa63b067
-  depends:
-  - __glibc >=2.17,<3.0.a0
-  - libgcc >=14
-  constrains:
-  - __glibc >=2.17
-  license: Apache-2.0
-  license_family: APACHE
-  run_exports:
-    weak:
-    - fastvep >=0.5.0,<0.6.0a0
-  size: 5594737
-  timestamp: 1794361078006
 - conda: https://conda.anaconda.org/bioconda/linux-64/freebayes-1.3.10-h3752d28_1.conda
   sha256: 5e1f7c753b79c88c7823b09646bb3a721a2a82487ec9e9d426c99b96e496a4ae
   md5: 5dc06794b30835794c911d351a8be85a
@@ -12001,20 +11999,6 @@ packages:
     - fasttree >=2.2.0,<3.0a0
   size: 181656
   timestamp: 1764103227722
-- conda: https://conda.anaconda.org/bioconda/osx-64/fastvep-0.5.0-h87b00fb_0.conda
-  sha256: 0233626c317897592137c529961bad8fed518bcc4c94586d1da8cbb84e772925
-  md5: 240db63e928b74dcfdf0c2bc2fc6698d
-  depends:
-  - __osx >=10.13
-  constrains:
-  - __osx >=10.13
-  license: Apache-2.0
-  license_family: APACHE
-  run_exports:
-    weak:
-    - fastvep >=0.5.0,<0.6.0a0
-  size: 4296225
-  timestamp: 1794362374546
 - conda: https://conda.anaconda.org/bioconda/osx-64/freebayes-1.3.10-h6b87194_1.conda
   sha256: b303ae002464943ebdec973890d0a014cfe254839d203f2efb02e4cf298037be
   md5: a9c72944ebda4717aef6f7aab524d964
@@ -34365,6 +34349,16 @@ packages:
   run_exports: {}
   size: 18006
   timestamp: 1794305234654
+- conda: https://conda.anaconda.org/conda-forge/win-64/vc-14.5-hda273ae_44.conda
+  sha256: 2db82e4c8848e34728776539e0cd40b1eea12858c6135e92326b8e083f204fe4
+  md5: 19a8e2bcc6ec599c4ba2e0dc0fb3475b
+  depends:
+  - vc14_runtime >=14.51.36247
+  license: BSD-3-Clause
+  license_family: BSD
+  run_exports: {}
+  size: 18004
+  timestamp: 1794654419835
 - conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-h072b54c_43.conda
   sha256: 02e21ff2ff06c7e45e10b72953cb2b1739e8dad7a4a8a49c814897cfabefaada
   md5: ca854408249855e70fb371a3b52fa083
@@ -34404,6 +34398,18 @@ packages:
   run_exports: {}
   size: 767099
   timestamp: 1793305684782
+- conda: https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.51.36247-hb06f545_44.conda
+  sha256: 8221fe78686f3b11586a7585f902f1403c923fb3a5040cff59a16db27782db8d
+  md5: a58d73dcc3ff13964b7eaff114227d52
+  depends:
+  - vcomp14 ==14.51.36247 h1c3f1cb_44
+  - ucrt >=10.0.20348.0
+  constrains:
+  - vs2015_runtime 14.51.36247.* *_44
+  license: LicenseRef-MicrosoftVisualCpp2015-2022Runtime
+  run_exports: {}
+  size: 840803
+  timestamp: 1794654419835
 - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-h1c3f1cb_43.conda
   sha256: 159fe1bb304d6a8e82a0e4b71762c05325cff3d472e4a1d49465c9def61a785e
   md5: 872e2bfba57777676f0261c459176afe
@@ -34417,6 +34423,19 @@ packages:
     - vcomp14 >=14.51.36247
   size: 166744
   timestamp: 1794305234654
+- conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-h1c3f1cb_44.conda
+  sha256: 81490037bc6d4843fc83d16019bc113be60c849d21614caa3e2f8ff4389fefca
+  md5: 850f010cadc70412c3e6d6b1181d2e0b
+  depends:
+  - ucrt >=10.0.20348.0
+  constrains:
+  - vs2015_runtime 14.51.36247.* *_44
+  license: LicenseRef-MicrosoftVisualCpp2015-2022Runtime
+  run_exports:
+    strong:
+    - vcomp14 >=14.51.36247
+  size: 166730
+  timestamp: 1794654419835
 - conda: https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.51.36247-habf1de7_41.conda
   sha256: 731e043390c9457299484d39e427221fc868a9249540a498a5a4f6456c7744d1
   md5: 350bb67a5c8e5f1c53347ac544ab6600
@@ -34512,6 +34531,57 @@ packages:
     - zstd >=1.5.7,<1.6.0a0
   size: 387535
   timestamp: 1786599623274
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linux64_wgse_0.conda
+  subdir: linux-64
+  sha256: bdf8079bc3a4269a6bcb6f86fb4e1f22f76e8f5d8af442fdda0b37f7731522f5
+  depends:
+  - libgcc >=16
+  - __glibc >=2.17,<3.0.a0
+  constrains:
+  - __glibc >=2.17
+  channel: null
+  license: Apache-2.0
+  timestamp: 1795194329428
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linuxaarch64_wgse_0.conda
+  subdir: linux-aarch64
+  sha256: d45c2b1d66a1595d389810048b828259e106fdb51d0b2da343958c994ab096bd
+  depends:
+  - libgcc >=16
+  constrains:
+  - __glibc >=2.17
+  channel: null
+  license: Apache-2.0
+  timestamp: 1795194326783
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osx64_wgse_0.conda
+  subdir: osx-64
+  sha256: 1da1a7cdc17af847093d5eee362d85858d9d9af0e115a00cf9f24569846938f8
+  depends:
+  - __osx >=10.13
+  constrains:
+  - __osx >=10.13
+  channel: null
+  license: Apache-2.0
+  timestamp: 1795194338914
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osxarm64_wgse_0.conda
+  subdir: osx-arm64
+  sha256: 69b6147a4f9f2e4ac5b58764940c941540cd8db8242de13cf24d2b8b0c7a5395
+  depends:
+  - __osx >=11.0
+  constrains:
+  - __osx >=11.0
+  channel: null
+  license: Apache-2.0
+  timestamp: 1795194330071
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-win64_wgse_0.conda
+  subdir: win-64
+  sha256: bf295a143ac2fdb65dac60664e3bf62eec9c6693d49eaccfa9ae3cdf819ccc48
+  depends:
+  - vc >=14.3,<15
+  - vc14_runtime >=14.44.35208
+  - ucrt >=10.0.20348.0
+  channel: null
+  license: Apache-2.0
+  timestamp: 1795194332511
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-1/glimpse-bio-2.0.1-win64_wgse_1.conda
   subdir: win-64
   sha256: a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184
@@ -34542,7 +34612,6 @@ packages:
   - clair3 ==2.0.5 py311h9aa1f4a_0
   - python >=3.11,<3.12
   - pytorch >=2,<3
-  channel: null
   license: BSD-3-Clause AND GPL-3.0-or-later
   timestamp: 1795135781737
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-linux64_wgse_1.conda

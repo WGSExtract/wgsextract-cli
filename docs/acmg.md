@@ -67,10 +67,12 @@ warning `acmg_contigs_not_classified`, and listed in the summary's
 ## Requirements
 
 - GRCh38 only, with its reference FASTA (`--ref` or the reference library).
-- fastVEP 0.5: `pixi install -e fastvep` on x86-64 Linux and Intel macOS. On
-  Linux ARM64 and Apple Silicon, put the
-  [fastVEP 0.5 release](https://github.com/Huang-lab/fastVEP/releases) for
-  your system on PATH. There is no Windows build; the command refuses there.
+- fastVEP 0.5.0: `pixi install -e fastvep` on Linux (x86-64 and ARM64),
+  macOS (Intel and Apple Silicon), or Windows x86-64. WGS Extract builds the
+  CLI-only packages from the pinned upstream release, with portable CPU
+  targets and upstream/third-party licence notices, and pins each package by
+  URL and SHA-256. The CLI uses the installed environment automatically; it
+  never installs it or downloads databases during classification.
 - An Ensembl GRCh38 GFF3 of the same release as the vep-rs cache, such as
   `Homo_sapiens.GRCh38.116.gff3.gz` from
   <https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/>. fastVEP

@@ -16,7 +16,6 @@ _WINDOWS_VCF_TOOLS = {
     "cnv": "delly",
     "freebayes": "FreeBayes",
     "deepvariant": "DeepVariant",
-    "acmg": "fastVEP",
 }
 _WINDOWS_TYPING_TOOLS = {
     "cyp2d6": "Cyrius",

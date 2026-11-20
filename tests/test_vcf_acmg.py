@@ -161,6 +161,28 @@ def test_acmg_falls_back_to_fastveps_transcript_and_counts_it(tmp_path):
     assert summary["transcript_choice"]["other_transcript"] >= 3
 
 
+@needs_fastvep
+def test_issue_629_packaged_fastvep_classifies_through_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = _inputs(tmp_path)
+    sa = _sa_dir(tmp_path)
+    outdir = tmp_path / "cli-out"
+    main(
+        ["vcf", "acmg", "--vcf-input", str(inputs["input"]),
+         "--research-acmg", "--ref", str(inputs["ref"]),
+         "--gff3", str(inputs["gff3"]), "--sa-dir", str(sa),
+         "--outdir", str(outdir), "--threads", "2", "--json"]
+    )  # fmt: skip
+    manifest = json.loads(capsys.readouterr().out)
+    assert manifest["exit_code"] == 0
+    assert "acmg_research_only" in {warning["code"] for warning in manifest["warnings"]}
+    annotated = outdir / "acmg_annotated.vcf.gz"
+    assert _acmg(annotated)[1017]["ACMG_CLASS"] == "LP"
+    assert _acmg(annotated)[1150]["ACMG_CLASS"] == "B"
+    assert Path(str(annotated) + ".tbi").is_file()
+
+
 def test_acmg_refuses_without_the_research_opt_in(tmp_path, capsys):
     inputs = _inputs(tmp_path)
     with pytest.raises(SystemExit) as exited:
