@@ -15,6 +15,7 @@ const defaultTests = [
   "tests/paths.test.mjs",
   "tests/config-store.test.mjs",
   "tests/bundle-test-runner.test.mjs",
+  "tests/bundle-test-setup-ready.test.mjs",
   "tests/bundle-uninstall-cli.test.mjs",
   "tests/quick-uninstall.test.mjs",
   "tests/wgsextract-missing-pixi-environment.test.mjs",

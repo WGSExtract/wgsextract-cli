@@ -111,6 +111,7 @@ try {
     window.addEventListener("pagehide", dispose);
     if (labels.inputPath) {
         required<HTMLInputElement>('[name="library-path"]').value = labels.inputPath;
+        required<HTMLInputElement>('[data-library] [name="locus"]').value = labels.locus ?? "";
         void openLibrary(libraryForm, navigation, host);
     }
 } catch (error) {

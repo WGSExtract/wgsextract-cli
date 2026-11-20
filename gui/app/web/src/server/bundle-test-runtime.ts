@@ -1,4 +1,5 @@
 import { checkedOptionsForContext } from "../../../shared/rendering.js";
+import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import type { BundleManifest, Labels, StringMap, ValueMap } from "../../../shared/types.js";
 import { bootstrapConfigFiles, emptyBundleState, initialCheckedOptions, initialConfigFilePaths, initialConfigValues, initialFieldValues } from "./config-store.js";
 import { expandPathTokens, normalizeContext } from "./paths.js";
@@ -31,6 +32,7 @@ export async function makeRuntime(manifest: BundleManifest, workspaceRoot: strin
     const inputs = mergeInputs(baseInputs, expandInputs(planInputs, workspaceRoot));
     return {
         context: normalizeContext({
+            setupReady: !setupStepsForPlatform(manifest.setup?.steps ?? []).length,
             fieldValues: inputs.fieldValues,
             checkedOptions: checkedOptionsForContext(inputs.checkedOptions),
             configValues: inputs.configValues,

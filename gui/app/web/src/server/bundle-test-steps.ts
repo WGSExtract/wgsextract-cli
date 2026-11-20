@@ -14,7 +14,7 @@ export async function runBundleTestStep(
 ): Promise<BundleTestStepReport> {
     switch (step.kind) {
         case "setup":
-            return runSetupTestStep(step, index, manifest, workspaceRoot, options);
+            return runSetupTestStep(step, index, manifest, workspaceRoot, runtime, options);
         case "action":
             return runActionTestStep(step, index, manifest, workspaceRoot, runtime, options);
         case "dataSource":
