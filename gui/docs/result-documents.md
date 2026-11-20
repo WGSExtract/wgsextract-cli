@@ -39,6 +39,13 @@ record; optional historical report fields remain optional.
 
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.
 - **Open** and **Show in Folder** work only for the files a document listed, and for the document's own saved copy (`manifest`). A relative path is relative to the bundle workspace the action ran in.
+- WGS Extract also offers **Show in viewer** for existing BAM/CRAM and bgzip
+  VCF/gVCF outputs. Add `metrics.locus: "chr1:200-400"` to an output to open
+  that interval; a document-level `metrics.locus` applies when the output has
+  none. Use 1-based inclusive coordinates. The viewer ignores invalid loci,
+  gene symbols and rsIDs and opens the first chromosome instead. This link
+  does not grant filesystem access: the existing My Genomes and reference
+  library guards still apply. See [Genome viewer](genome-viewer.md).
 
 ## The last run
 

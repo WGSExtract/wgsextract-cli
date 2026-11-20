@@ -1,4 +1,5 @@
 "language.name" = "Deutsch"  # i18n-source-hash:649df08a
+"viewer.showInViewer" = "Im Genombetrachter anzeigen"  # i18n-source-hash:155bc8f9
 "language.layoutDirection" = "ltr"  # i18n-source-hash:61ac44aa
 "language.code" = "de"  # i18n-source-hash:094b0fe0
 "language.names.de" = "Deutsch (Deutsch)"  # i18n-ignore

@@ -222,3 +222,29 @@ test("the result summary lists outputs to open, warnings and metrics; the notice
   assert.match(renderResultNotice({ kind: "missing_dependency", message: "Run: pixi install -e gpu" }), /data-result-open-setup[\s\S]*Open Setup/);
   assert.doesNotMatch(renderResultNotice({ kind: "usage", message: "Choose --ref." }), /data-result-open-setup/);
 });
+
+test("#1090: genomic results open in the built-in viewer at their own locus, never a remote lookup", () => {
+  Object.assign(state, createInitialState(), {
+    manifest: { id: "wgs-extract" },
+    labels: { viewerStrings: { showInViewer: "Afficher dans le visualiseur" } },
+  });
+  const document = parseResultDocument({
+    schema: "wgsextract.result/1", status: "ok",
+    outputs: [
+      { path: '/genomes/region&"one.bam', metrics: { locus: "chr1:200-400" } },
+      { path: "/genomes/calls.vcf.gz", metrics: { locus: "chr1:250-250" } },
+      { path: "/genomes/missing.cram", exists: false },
+      { path: "/genomes/region.bam.bai" },
+    ],
+  }, "wgsextract.result/1");
+  const summary = renderResultSummary(document);
+  assert.match(summary, /data-result-viewer="\/genomes\/region&amp;&quot;one.bam" data-viewer-locus="chr1:200-400">Afficher dans le visualiseur/);
+  assert.match(summary, /data-result-viewer="\/genomes\/calls.vcf.gz" data-viewer-locus="chr1:250-250"/);
+  assert.doesNotMatch(summary, /data-result-viewer="\/genomes\/(?:missing.cram|region.bam.bai)"/);
+  for (const locus of ["rs429358", "https://example.org", "chr1:0-100", 'chr1:2-1"><img>']) {
+    document.outputs[0].metrics.locus = locus;
+    assert.match(renderResultSummary(document), /region&amp;&quot;one.bam" data-viewer-locus=""/);
+  }
+  state.manifest.id = "git-helper";
+  assert.doesNotMatch(renderResultSummary(document), /data-result-viewer/);
+});

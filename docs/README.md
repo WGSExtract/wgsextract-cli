@@ -38,6 +38,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Lineage](lineage.md) | Extract Y/mtDNA, call haplogroups/STRs, set up yBrowse and review data licences |
 | [Variant workflows](variants.md) | Call/annotate, analyse trios and type pharmacogenes/repeats |
 | [Variant confidence](variant-confidence.md) | Understand technical evidence labels and caller accuracy |
+| [Built-in genome viewer](../gui/docs/genome-viewer.md) | Inspect local reads and variants, or open an extraction result at its locus |
 | [Caller ploidy](caller-ploidy.md) | Handle sex, PARs and policy masks |
 | [Reference evidence](reference-evidence.md) | Distinguish assessed reference from absent calls |
 | [Genotype QC](genotype-qc.md) | Interpret depth, homozygosity and no-call warnings |

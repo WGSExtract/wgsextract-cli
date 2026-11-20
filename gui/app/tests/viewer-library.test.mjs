@@ -1,28 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("#1112: View reads opens the current selection even before the edited form rerenders", async () => {
+test("#1112/#1149: current selection and originating controls survive asynchronous renders", async () => {
     const messages = [];
     class Element extends EventTarget {
         style = {};
         dataset = {};
+        isConnected = true;
         setAttribute() {}
         removeAttribute() {}
-        focus() {}
+        focus() { document.activeElement = this; }
         append() {}
+        remove() {}
     }
     const button = new Element();
     button.dataset.viewReads = "bam_path";
     const app = new Element();
-    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button] : [];
+    const result = new Element();
+    result.dataset.resultViewer = "/genomes/region.bam";
+    result.dataset.viewerLocus = "chr1:200-400";
+    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button] : selector === "[data-result-viewer]" ? [result] : [];
+    let currentInput = button;
+    let currentResult = result;
+    const sidebar = new Element();
+    app.querySelector = (selector) => selector.startsWith("[data-result-viewer=") ? currentResult : selector.startsWith("[data-view-reads=") ? currentInput : sidebar;
     const frameWindow = { postMessage: (message) => messages.push(message) };
     globalThis.localStorage = { getItem: () => null };
     globalThis.window = new EventTarget();
     globalThis.location = { origin: "http://localhost" };
+    globalThis.CSS = { escape: (value) => value.replaceAll("\\", "\\\\").replaceAll('"', '\\"') };
+    globalThis.HTMLElement = Element;
+    const created = [];
     globalThis.document = {
         querySelector: () => app,
         createElement(tag) {
             const element = new Element();
+            created.push({ tag, element });
             if (tag === "iframe") element.contentWindow = frameWindow;
             return element;
         },
@@ -34,11 +47,27 @@ test("#1112: View reads opens the current selection even before the edited form 
     bindGenomeViewerEvents();
     // Saving is asynchronous; the already-rendered button must not capture old.bam.
     state.fieldValues.bam_path = "{{usersWorkspace}}/mygenomes/new.bam";
+    document.activeElement = button;
     button.dispatchEvent(new Event("click"));
     window.dispatchEvent(Object.assign(new Event("message"), {
         origin: location.origin, source: frameWindow, data: { type: "genomeViewerReady" },
     }));
     assert.equal(messages[0].inputPath, "{{usersWorkspace}}/mygenomes/new.bam");
+    currentInput = new Element();
+    button.isConnected = false;
+    created.find((item) => item.tag === "button").element.dispatchEvent(new Event("click"));
+    assert.equal(document.activeElement, currentInput, "Returning focuses the re-rendered input opener.");
+    document.activeElement = document.body;
+    result.dispatchEvent(new Event("click"));
+    window.dispatchEvent(Object.assign(new Event("message"), {
+        origin: location.origin, source: frameWindow, data: { type: "genomeViewerReady" },
+    }));
+    assert.equal(messages[1].inputPath, "/genomes/region.bam");
+    assert.equal(messages[1].locus, "chr1:200-400");
+    currentResult = new Element();
+    result.isConnected = false;
+    created.findLast((item) => item.tag === "button").element.dispatchEvent(new Event("click"));
+    assert.equal(document.activeElement, currentResult, "#1149: body focus and a replaced result opener restore the originating result action.");
 });
 
 test("#1112: standalone grants are revoked on replacement, manual selection and page exit with authentication", async (t) => {
