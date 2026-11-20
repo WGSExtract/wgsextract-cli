@@ -4,7 +4,11 @@
 param(
     [string]$PixiInstallUrl = $(if ($env:WGSEXTRACT_PIXI_INSTALL_URL) { $env:WGSEXTRACT_PIXI_INSTALL_URL } else { "" }),
     [string]$PixiInstallSha256 = $(if ($env:WGSEXTRACT_PIXI_INSTALL_SHA256) { $env:WGSEXTRACT_PIXI_INSTALL_SHA256 } else { "" }),
-    [switch]$SkipPixiInstall
+    [switch]$SkipPixiInstall,
+    # For a launcher that only reads the exit code (install_windows.bat): on
+    # failure print just the message and exit 1. Without it errors are thrown,
+    # so a calling script (dev_setup.ps1) stops too.
+    [switch]$PlainErrors
 )
 
 $ErrorActionPreference = "Stop"
@@ -264,13 +268,9 @@ function Assert-PixiVersion {
     }
 }
 
-# Run with -File (install_windows.bat), show only the error's message, not
-# PowerShell's error record. Called from another script (dev_setup.ps1 uses &),
-# rethrow so the caller stops too. $MyInvocation.PSCommandPath is the calling
-# script, if any; read here because in the trap $MyInvocation is the trap's.
-$RunWithFile = -not $MyInvocation.PSCommandPath
+# -PlainErrors: show only the error's message, not PowerShell's error record.
 trap {
-    if ($RunWithFile) {
+    if ($PlainErrors) {
         [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
         exit 1
     }

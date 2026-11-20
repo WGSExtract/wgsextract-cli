@@ -64,16 +64,12 @@ function Report-Msys2 {
     }
 }
 
-# Run directly (GUI setup), show only the error's message, not PowerShell's
-# error record. Called from another script, rethrow so the caller stops too.
-# $MyInvocation.PSCommandPath is the calling script, if any.
-$RunDirectly = -not $MyInvocation.PSCommandPath
+# Like the rest of this script (exit 1 above, exit 0 below), a failure is
+# reported by exit code: print only the error's message, not PowerShell's
+# error record, and exit 1.
 trap {
-    if ($RunDirectly) {
-        [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
-        exit 1
-    }
-    break
+    [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
+    exit 1
 }
 
 Report-Pixi

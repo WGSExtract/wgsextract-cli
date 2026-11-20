@@ -113,7 +113,7 @@ if not exist "%SCRIPT_DIR%pixi.toml" (
 set "BOOTSTRAP_PREREQ_ARGS="
 if "%SKIP_PIXI_BOOTSTRAP%"=="1" set "BOOTSTRAP_PREREQ_ARGS=-SkipPixiInstall"
 echo Ensuring Pixi is installed...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\bootstrap_windows_prereqs.ps1" !BOOTSTRAP_PREREQ_ARGS!
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\bootstrap_windows_prereqs.ps1" -PlainErrors !BOOTSTRAP_PREREQ_ARGS!
 if errorlevel 1 exit /b 1
 
 rem Where Pixi is: PIXI_HOME (Pixi's own setting), then Pixi's default, ~\.pixi.

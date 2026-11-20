@@ -84,36 +84,80 @@ class PixiPreflightTests(unittest.TestCase):
                     tempfile.TemporaryDirectory() as directory,
                 ):
                     home = Path(directory)
-                    binary = home / "pixi"
-                    binary.write_text(f"#!/bin/sh\nprintf 'pixi {version}\\n'\n")
-                    binary.chmod(0o755)
-                    env = {
-                        **os.environ,
-                        "HOME": str(home),
-                        "USERPROFILE": str(home),
-                        "LOCALAPPDATA": str(home),
-                        "PIXI_HOME": "",
-                        "PIXI": "",
-                        "WGSEXTRACT_MSYS2_ROOT": str(home / "msys64"),
-                        "PATH": str(home) + os.pathsep + os.defpath,
-                    }
-                    result = subprocess.run(
-                        [str(shutil.which("pwsh")), "-NoProfile", "-File", str(script)],
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                        timeout=15,
-                        check=False,
-                    )
+                    env = _fake_pixi_env(home, version)
+                    # As launched: the GUI runs the check with -File;
+                    # install_windows.bat adds -PlainErrors to the bootstrap.
+                    plain = ["-PlainErrors"] if script.name.startswith("bootstrap") else []
+                    result = _pwsh(["-File", str(script), *plain], env)
                     self.assertEqual(
                         result.returncode == 0,
                         version in ("0.82.0", "0.100.0"),
                         result.stderr,
                     )
-                    self.assertIn(f"pixi {version}", binary.read_text())
+                    self.assertIn(f"pixi {version}", (home / "pixi").read_text())
                     if result.returncode:
+                        self.assertEqual(result.returncode, 1, result.stderr)
                         self.assertIn(">=0.82.0", result.stderr)
                         self.assertIn("self-update", result.stderr)
+                        # Just the message, not PowerShell's error record.
+                        lines = result.stderr.strip().splitlines()
+                        self.assertEqual(len(lines), 1, result.stderr)
+                        self.assertTrue(lines[0].startswith("ERROR: "), result.stderr)
+
+    @unittest.skipUnless(shutil.which("pwsh"), "PowerShell is not installed")
+    def test_1138_windows_installer_failure_stops_calling_scripts(self) -> None:
+        bootstrap = str(ROOT / "scripts/bootstrap_windows_prereqs.ps1").replace("'", "''")
+        for version in ("0.69.0", "0.82.0"):
+            for caller in ("script", "command"):
+                with (
+                    self.subTest(version=version, caller=caller),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    home = Path(directory)
+                    env = _fake_pixi_env(home, version)
+                    body = f"& '{bootstrap}'\nWrite-Output 'CALLER CONTINUED'\n"
+                    if caller == "script":
+                        # As dev_setup.ps1 calls it.
+                        wrapper = home / "caller.ps1"
+                        wrapper.write_text("$ErrorActionPreference = 'Stop'\n" + body)
+                        result = _pwsh(["-File", str(wrapper)], env)
+                    else:
+                        result = _pwsh(["-Command", body.replace("\n", "; ")], env)
+                    if version == "0.69.0":
+                        self.assertNotEqual(result.returncode, 0, result.stdout)
+                        self.assertNotIn("CALLER CONTINUED", result.stdout)
+                        self.assertIn("self-update", result.stderr)
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertIn("CALLER CONTINUED", result.stdout)
+
+
+def _fake_pixi_env(home: Path, version: str) -> dict[str, str]:
+    """An environment whose only Pixi is a fake on PATH reporting `version`."""
+    binary = home / "pixi"
+    binary.write_text(f"#!/bin/sh\nprintf 'pixi {version}\\n'\n")
+    binary.chmod(0o755)
+    return {
+        **os.environ,
+        "HOME": str(home),
+        "USERPROFILE": str(home),
+        "LOCALAPPDATA": str(home),
+        "PIXI_HOME": "",
+        "PIXI": "",
+        "WGSEXTRACT_MSYS2_ROOT": str(home / "msys64"),
+        "PATH": str(home) + os.pathsep + os.defpath,
+    }
+
+
+def _pwsh(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [str(shutil.which("pwsh")), "-NoProfile", *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
 
 
 if __name__ == "__main__":
