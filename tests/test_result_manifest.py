@@ -883,12 +883,12 @@ def test_missing_optional_typing_environment_is_a_missing_dependency(monkeypatch
 
 def test_installers_record_only_the_files_they_add_or_change(tmp_path):
     library = tmp_path / "reflib"
-    (library / "ref").mkdir(parents=True)
-    kept = library / "ref" / "kept.vcf.gz"
+    (library / "downloads").mkdir(parents=True)
+    kept = library / "downloads" / "kept.vcf.gz"
     kept.write_text("old")
     (library / ".partial").mkdir()
     before = results.file_snapshot(library)
-    (library / "ref" / "new.vcf.gz").write_text("new")
+    (library / "downloads" / "new.vcf.gz").write_text("new")
     (library / ".partial" / "chunk").write_text("work")
     result = results.CommandResult("ref clinvar")
     with results.collecting(result):
