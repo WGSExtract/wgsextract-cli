@@ -11,7 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.optional_tools import missing_tools, own_environment
+from wgsextract_cli.core.optional_tools import installable, missing_tools
 from wgsextract_cli.core.ref_library.needs import MissingReference, missing_references
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -63,14 +63,14 @@ def check_command(argv: list[str]) -> list[MissingReference]:
 
 
 def _missing_tool(tool: str, args: argparse.Namespace) -> MissingReference:
-    """A missing optional tool, installed by ``deps install`` when it has a
-    Pixi environment of its own; otherwise the user installs it."""
+    """A missing optional tool, installed by ``deps install`` when it can be;
+    otherwise the user installs it."""
     return MissingReference(
         id=tool,
         kind="tool",
         name=tool,
         reason=str(getattr(args, "_command", "")),
-        install_arguments=["deps", "install", tool] if own_environment(tool) else None,
+        install_arguments=["deps", "install", tool] if installable(tool) else None,
     )
 
 

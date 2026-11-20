@@ -243,23 +243,30 @@ def pixi_install_command(tool: str) -> str | None:
 
 def pixi_environment_argv(action: str, env: str) -> list[str] | None:
     """``pixi install --locked`` (action "install") or ``pixi clean`` (action
-    "clean") for this app's environment ``env``, or None without a Pixi."""
+    "clean") for this installation's environment ``env``, or None without a
+    Pixi or without this installation's own manifest: Pixi would otherwise
+    find a workspace from the current directory, and act on another
+    project's environments."""
     pixi_cmd = _resolve_pixi_command()
-    if not pixi_cmd:
+    manifest = _pixi_manifest_args()
+    if not pixi_cmd or not manifest:
         return None
     options = ["--locked"] if action == "install" else []
-    return [pixi_cmd, action, *options, *_pixi_manifest_args(), "-e", env]
+    return [pixi_cmd, action, *options, *manifest, "-e", env]
 
 
 def locked_for_platform(tool: str) -> bool | None:
     """Whether the lockfile gives this platform the package providing
-    ``tool`` in its Pixi environment; None when there's no Pixi to ask or the
-    tool has no environment."""
+    ``tool`` in its Pixi environment; None when that can't be told (no Pixi,
+    no environment, or Pixi failed to answer)."""
     env = PIXI_TOOL_ENVS.get(tool)
     pixi_cmd = _resolve_pixi_command()
     if env is None or not pixi_cmd:
         return None
-    return _locked_package_available(pixi_cmd, env, tool)
+    packages = _locked_packages(pixi_cmd, env)
+    if packages is None:
+        return None
+    return PIXI_TOOL_PACKAGES.get(tool, tool) in packages
 
 
 def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str | None:

@@ -99,3 +99,13 @@ test("a bundle's data source timeoutSeconds must be a positive number", () => {
     }
     assert.doesNotThrow(() => validateDataSource({ path: "scripts/list.sh", timeoutSeconds: 300 }, "dataSource"));
 });
+
+test("the published page schema allows every key the Tools page's data source uses", () => {
+    const schema = JSON.parse(readFileSync(path.join(bundleRoot, "..", "..", "docs", "schema", "page.schema.json"), "utf8"));
+    const allowed = Object.keys(schema.$defs.dataSource.properties);
+
+    assert.deepEqual(Object.keys(control.dataSource).filter((key) => !allowed.includes(key)), []);
+    assert.deepEqual(schema.$defs.dataSource.properties.timeoutSeconds, {
+        type: "number", exclusiveMinimum: 0, description: schema.$defs.dataSource.properties.timeoutSeconds.description,
+    });
+});
