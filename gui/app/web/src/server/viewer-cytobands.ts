@@ -1,5 +1,6 @@
 import { open } from "node:fs/promises";
 import path from "node:path";
+import { shellQuote } from "../../../shared/rendering.js";
 import { cytobandChromosomeLengths, type ViewerCytoband, type ViewerCytobands } from "../../../shared/viewer-cytobands.js";
 import { errnoCode } from "./errors.js";
 import { guardedViewerPath } from "./viewer-files.js";
@@ -10,14 +11,15 @@ const stains = new Set(["gneg", "gpos25", "gpos50", "gpos75", "gpos100", "acen",
 
 export async function installedViewerCytobands(fasta: string, referenceRoot: string): Promise<ViewerCytobands> {
     let fileName = "cytobands";
-    let command = "wgsextract ref cytobands --build hg38 --download";
+    const installCommand = (build: string): string => `wgsextract ref cytobands --build ${build} --ref ${shellQuote(referenceRoot)} --download`;
+    let command = installCommand("hg38");
     const notice = (code: string): ViewerCytobands => ({ features: [], notices: [{ code, fileName, command }] });
     const metadata = await viewerReferenceMetadata(fasta);
     if (!metadata) return notice("cytobandReferenceInvalid");
     const { reference, build } = metadata;
     if (!build) return notice("cytobandBuildUnsupported");
     fileName = `cytobands_${build}.tsv`;
-    command = `wgsextract ref cytobands --build ${build} --download`;
+    command = installCommand(build);
     const file = path.join(referenceRoot, "ref", fileName);
     let text: string;
     try {

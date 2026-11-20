@@ -10,6 +10,8 @@ import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.j
 import { validatedBedGraphTrack } from "../dist/shared/viewer-track-records.js";
 import { viewerGeneLookup, viewerNavigationLocus } from "../dist/shared/viewer-genes.js";
 import { cytobandChromosomeLengths } from "../dist/shared/viewer-cytobands.js";
+import { shellQuote } from "../dist/shared/rendering.js";
+import { installedViewerCytobands } from "../dist/web/src/server/viewer-cytobands.js";
 
 async function fixture(t) {
     const output = path.resolve("../out/tests");
@@ -157,10 +159,19 @@ test("#1148: installed cytobands reach the viewer with reference aliases and zer
         const missing = await (await f.open()).json();
         assert.deepEqual(missing.files.cytobands, { features: [], notices: [{
             code: "cytobandMissing", fileName: `cytobands_${build}.tsv`,
-            command: `wgsextract ref cytobands --build ${build} --download`,
+            command: `wgsextract ref cytobands --build ${build} --ref ${shellQuote(path.dirname(f.fasta))} --download`,
         }] });
         assert.equal(missing.files.tracks[0].name, "sample.bam");
     }
+});
+
+test("#1153: cytoband repair names the selected library with shell-safe quoting", async (t) => {
+    const f = await geneFixture(t);
+    const referenceRoot = path.join(f.root, "a library with 'quotes' and $characters");
+    const result = await installedViewerCytobands(f.fasta, referenceRoot);
+    const command = result.notices[0].command;
+    assert.equal(command, `wgsextract ref cytobands --build hg38 --ref '${referenceRoot.replaceAll("'", "'\\''")}' --download`);
+    assert.equal(result.notices[0].code, "cytobandMissing");
 });
 
 test("#1148: malformed cytobands and ambiguous reference names disable only the ideogram", async (t) => {

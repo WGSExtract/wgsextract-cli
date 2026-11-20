@@ -515,7 +515,13 @@ class RefCytobandsParams(_InLibrary, Params):
         action="store_true",
         writes=True,
     )
-    ref: Path | None = ref_param()
+    ref: Path | None = param(
+        None,
+        doc="Reference library folder (default: config reference_library); an explicit FASTA resolves its library.",
+        flags=("--ref",),
+        path="file_or_directory",
+        shared=True,
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -64,6 +64,10 @@ missing or invalid data produces an error naming it and the explicit command.
 It does not inherit the persistent download opt-in. Tables are installed as
 `ref/cytobands_hg19.tsv` and `ref/cytobands_hg38.tsv` in the configured reference
 library. The viewer never downloads them.
+Validation-only runs record the table as an input and leave its installation
+manifest unchanged. The default is the configured reference library even when
+`reference_fasta` points elsewhere; only an explicit `--ref` FASTA selects its
+containing library. Repair hints retain the selected library and configuration.
 
 The installer checks pinned SHA-256 snapshots of `cytoBand.txt.gz`, gzip
 integrity, five columns, zero-based half-open coordinates, continuous chromosome
@@ -72,6 +76,10 @@ Only primary chromosomes 1–22, X and Y are retained; UCSC's unbanded alternate
 contigs are validated but excluded. Partial downloads use the standard
 URL-bound resume helper. UCSC changing a snapshot requires a reviewed pin update,
 not accepting unchecked replacement bytes.
+Downloads and publication are serialized per assembly. Completed archives use
+private staging without replacing user archives; new public tables follow the
+process umask. Installed tables must stay within the library, use LF or CRLF
+row endings and contain at most 10,000 primary bands, matching viewer validation.
 
 Source URLs are under
 `https://hgdownload.soe.ucsc.edu/goldenPath/{hg19,hg38}/database/cytoBand.txt.gz`.

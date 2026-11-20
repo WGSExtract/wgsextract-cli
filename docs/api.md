@@ -2165,7 +2165,7 @@ offline viewer; no sample data is sent.
 | --- | --- | --- | --- | --- |
 | `build` | `str` | `'hg38'` | `--build` | Cytoband assembly (default: hg38). One of: `hg38`, `hg19` |
 | `download` | `bool` | `False` | `--download` | Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; only the public assembly URL is requested, never sample data. |
-| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder (default: config reference_library); an explicit FASTA resolves its library. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
 

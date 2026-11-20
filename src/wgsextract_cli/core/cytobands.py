@@ -2,10 +2,13 @@
 
 import gzip
 import re
+import shlex
+import uuid
 from pathlib import Path
 
 from wgsextract_cli.core.annotation_resources import CancelEvent
 from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.network_policy import DownloadRequired
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError
@@ -102,8 +105,8 @@ def validate_cytobands(data: bytes, build: str, *, source: bool = False) -> byte
         raise WGSExtractError("Invalid cytoband table: UTF-8 required.") from exc
     ends: dict[str, int] = {}
     names: set[tuple[str, str]] = set()
-    rows = []
-    for line in text.splitlines():
+    rows: list[str] = []
+    for line in text.replace("\r\n", "\n")[:-1].split("\n"):
         columns = line.split("\t")
         if len(columns) != 5:
             raise WGSExtractError("Invalid cytoband table: five columns required.")
@@ -132,6 +135,8 @@ def validate_cytobands(data: bytes, build: str, *, source: bool = False) -> byte
             )
         ends[chrom] = end
         if primary:
+            if len(rows) >= 10_000:
+                raise WGSExtractError("Invalid cytoband table: too many primary bands.")
             names.add((chrom, name))
             rows.append(line)
     expected = dict(
@@ -154,38 +159,82 @@ def install_cytobands(
     *,
     download: bool = False,
     cancel_event: CancelEvent | None = None,
-) -> Path:
-    """Return a validated installed asset; download only with explicit consent."""
+    repair_command: str | None = None,
+) -> tuple[Path, bool]:
+    """Return the validated asset and whether this call published it."""
     target = cytoband_path(reflib, build)
-    try:
-        with target.open("rb") as handle:
-            validate_cytobands(handle.read(MAX_TABLE_BYTES + 1), build)
-        return target
-    except (OSError, WGSExtractError):
-        if not download:
-            raise DownloadRequired(
-                f"Missing or invalid public reference data: {target.name}. "
-                f"Rerun 'wgsextract ref cytobands --build {build} --download' "
-                "to confirm the UCSC download."
-            ) from None
-    target.parent.mkdir(parents=True, exist_ok=True)
-    archive = target.with_suffix(".txt.gz")
-    url, digest = CYTOBAND_SOURCES[build]
-    if not download_file(
-        url, str(archive), cancel_event=cancel_event, expected_sha256=digest
-    ):
-        raise WGSExtractError(
-            f"Failed to download {target.name}; rerun with --download to resume."
+
+    def installed() -> bool:
+        try:
+            if not target.resolve().is_relative_to(Path(reflib).resolve()):
+                return False
+            with target.open("rb") as handle:
+                validate_cytobands(handle.read(MAX_TABLE_BYTES + 1), build)
+            return True
+        except (OSError, WGSExtractError):
+            return False
+
+    if installed():
+        return target, False
+    if not download:
+        command = repair_command or shlex.join(
+            [
+                "wgsextract",
+                "ref",
+                "cytobands",
+                "--build",
+                build,
+                "--ref",
+                str(reflib),
+                "--download",
+            ]
         )
+        raise DownloadRequired(
+            f"Missing or invalid public reference data: {target.name}. "
+            f"Rerun {command} to confirm the UCSC download."
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.parent.resolve().is_relative_to(Path(reflib).resolve()):
+        raise WGSExtractError("Cytoband resource folder escapes the reference library.")
+    with build_lock(str(target) + ".lock"):
+        if installed():
+            return target, False
+        _publish(target, build, cancel_event)
+    return target, True
+
+
+def _publish(target: Path, build: str, cancel_event: CancelEvent | None) -> None:
+    # Only the URL-bound partial persists at the conventional archive path.
+    # Completed archives live in a newly reserved private directory.
+    staging = target.parent / f".cytobands-{uuid.uuid4().hex}"
+    staging.mkdir(mode=0o700)
+    archive = staging / target.with_suffix(".txt.gz").name
+    persistent = target.with_suffix(".txt.gz")
+    suffixes = (".partial", ".partial.source", ".partial.segments")
     try:
+        for suffix in suffixes:
+            saved = Path(str(persistent) + suffix)
+            if saved.exists():
+                saved.replace(str(archive) + suffix)
+        url, digest = CYTOBAND_SOURCES[build]
+        if not download_file(
+            url, str(archive), cancel_event=cancel_event, expected_sha256=digest
+        ):
+            raise WGSExtractError(
+                f"Failed to download {target.name}; rerun with --download to resume."
+            )
         with gzip.open(archive, "rb") as handle:
             data = handle.read(MAX_TABLE_BYTES + 1)
         table = validate_cytobands(data, build, source=True)
         if cancel_event and cancel_event.is_set():
             raise WGSExtractError("Cytoband installation cancelled.")
-        atomic_write(target, table)
+        atomic_write(target, table, new_mode=0o666)
     except (OSError, EOFError) as exc:
         raise WGSExtractError(f"Invalid cytoband archive for {build}: {exc}") from exc
     finally:
+        for suffix in suffixes:
+            partial = Path(str(archive) + suffix)
+            if partial.exists():
+                partial.replace(str(persistent) + suffix)
         archive.unlink(missing_ok=True)
-    return target
+        staging.rmdir()
