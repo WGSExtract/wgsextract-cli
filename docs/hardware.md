@@ -752,6 +752,50 @@ missing patched package; no automatic installation or fallback. Package
 publication/Pixi pinning and whole-genome qualification are pending; see
 [docs/ont.md](ont.md#clair3-optional).
 
+### Native Windows CRAM encoding with mimalloc
+
+[The Windows allocator measurements, #1123](https://github.com/WGSExtract/wgsextract-cli/issues/1123)
+qualified only standalone samtools CRAM **3.1** encoding with a local reference.
+`bam to-cram --cram-version 3.1` selects the installed
+`samtools-mimalloc.exe` beside samtools when `mimalloc = "auto"` (default).
+`--mimalloc off` retains the system build. A startup probe requires matching
+samtools/HTS versions and actual allocator activation; absent or broken
+variants fall back without downloads. The manifest records `samtools_allocator`.
+CRAM 3.0 remains the compatibility default and is not promoted on unmeasured
+results. Sort, markdup, other conversions, minimap2 and macOS/Linux samtools
+retain their existing allocators.
+
+Azure Central US D8ds_v7, Xeon 6973P-C (8 logical CPUs / 4 cores), Windows 11
+Pro 25H2, 32 GiB RAM and local NVMe; samtools/htslib 1.24, minimap2 2.31,
+static mimalloc 3.6.1. Only final linking differs between each allocator pair;
+UCRT itself is not patched. Four AB/BA pairs on public 5M HG002 Illumina pairs
+mapped to hs38, plus 45,622 chr20-derived ONT reads / 912 Mb against full hs38:
+
+| Stage | System / mimalloc median wall s | Change | Median peak RSS MiB system / mimalloc |
+|---|---:|---:|---:|
+| sort | 15.93 / 15.97 | +0.30% | 2018.2 / 2044.8 |
+| markdup | 10.49 / 10.27 | −2.15% | 29.4 / 41.6 |
+| BAM→CRAM 3.1 | 17.72 / 16.53 | −6.70% | 846.5 / 1212.5 |
+| minimap2 map-ont | 152.75 / 151.99 | −0.50% | 11280.6 / 12065.4 |
+
+CRAM alone passed the 5% slice gate. Three AB/BA/AB full-genome pairs then
+encoded the public HG002 NovaSeq PCR-free 30x BAM, **723,327,664 records**, on
+the same VM model with the same executables and hs38. At samtools `-@ 7`,
+median encoding wall time fell from **2168.14 to 443.45 s (79.55% less)**,
+CPU time from 4898.47 to 3193.73 s, and median peak RSS rose from 2425.9 to
+2903.7 MiB. All six exact ordered decoded-record hashes matched:
+`4a71e114f4c505ac9903263a4225eb0757d5a28dc93b3701fb6f3477163e9661`.
+The largest CRAM was 14.90 GiB. Hashing and downloads are outside encoding
+timings; these are not whole-pipeline or CRAM 3.0 speed claims. Native working-set
+high-water counters were polled at 25 ms. Defender remained enabled throughout.
+Reference pages can remain resident, so Windows CRAM preflight includes a
+reference-cache allowance rather than extrapolating the slice's memory.
+
+On the M1 Pro, all four workloads missed the same slice gate (−2.30% at best);
+no macOS allocator change followed. Native Windows sort/markdup/minimap2
+missed it too. These workloads and public subsets do not establish universal
+allocator gains or long-read whole-genome mapping performance.
+
 ## Other GPUs
 
 WGS Extract has no GPU alignment for AMD (ROCm) or Intel (oneAPI) GPUs: we know

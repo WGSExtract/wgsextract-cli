@@ -226,8 +226,9 @@ class Settings:
     mimalloc: str | None = setting(
         None,
         "Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's "
-        "wgse-mimalloc allocator when it's installed (auto, the default) or "
-        "never (off)",
+        "wgse-mimalloc allocator. Native Windows: `bam to-cram --cram-version 3.1` "
+        "with a local reference uses the matching samtools-mimalloc encoder. "
+        "Only validated installed variants run (auto, default), or never (off)",
         choices=AUTO_OFF,
         fold_case=True,
     )

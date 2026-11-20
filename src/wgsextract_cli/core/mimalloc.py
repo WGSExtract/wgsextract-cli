@@ -9,12 +9,17 @@ faster. It is used only on macOS arm64 when the package is installed beside
 bcftools; the CLI never installs it at runtime. A probe checks once per process
 that bcftools actually loads it (macOS drops ``DYLD_*`` variables for protected
 binaries), and anything unexpected falls back to the system allocator.
+
+Native Windows standalone CRAM 3.1 encoding can select the validated static
+samtools variant beside the system build. Other samtools workloads retain their
+allocator; the CLI never downloads either allocator at runtime.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import platform
 import shutil
 import subprocess
 from functools import lru_cache
@@ -106,3 +111,66 @@ def bcftools_environment(value: str | None) -> dict[str, str]:
         extra = _apple_silicon_environment()
     current_result().add_metrics(bcftools_allocator="mimalloc" if extra else "system")
     return extra
+
+
+@lru_cache(maxsize=8)
+def _samtools_variant_loads(system: str, candidate: str) -> bool:
+    """Verify matching tool/HTS versions and activation of the static allocator."""
+    try:
+        baseline = subprocess.run(
+            [system, "--version"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=60,
+        )
+        variant = subprocess.run(
+            [candidate, "--version"],
+            env={**os.environ, "MIMALLOC_SHOW_STATS": "1"},
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return (
+        baseline.returncode == variant.returncode == 0
+        and baseline.stdout.splitlines()[:2] == variant.stdout.splitlines()[:2]
+        and "subproc 0" in variant.stderr
+        and "peak commit:" in variant.stderr
+    )
+
+
+def samtools_cram_executable(
+    value: str | None, *, version: str, reference: str | None
+) -> str:
+    """Select only the measured Windows standalone CRAM 3.1 encoder."""
+    executable = "samtools"
+    allocator = "system"
+    setting = mimalloc_setting(value)
+    if (
+        setting == "auto"
+        and platform.system() == "Windows"
+        and platform.machine().lower() in {"amd64", "x86_64"}
+        and version == "3.1"
+        and reference
+    ):
+        system = shutil.which("samtools")
+        candidate = Path(system).with_name("samtools-mimalloc.exe") if system else None
+        if (
+            system
+            and candidate
+            and candidate.is_file()
+            and _samtools_variant_loads(system, str(candidate))
+        ):
+            executable = str(candidate)
+            allocator = "mimalloc"
+        else:
+            logging.info(
+                "samtools uses the system allocator: the matching native Windows "
+                "mimalloc variant is unavailable or failed its activation probe."
+            )
+    logging.info(f"samtools CRAM {version} uses the {allocator} allocator.")
+    current_result().add_metrics(samtools_allocator=allocator)
+    return executable

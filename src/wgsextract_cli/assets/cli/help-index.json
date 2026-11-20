@@ -116,7 +116,7 @@
 {"path":"bam index","tier":"advanced","summary":"Create a random-access index (.bai/.crai) for your file.","key_flags":[]},
 {"path":"bam unindex","tier":"advanced","summary":"Remove the index file associated with your BAM/CRAM.","key_flags":[]},
 {"path":"bam unsort","tier":"advanced","summary":"Mark the file as 'unsorted' in the header.","key_flags":[]},
-{"path":"bam to-cram","tier":"advanced","summary":"Convert BAM to the modern CRAM format.","key_flags":["--region","--gene","--cram-version"]},
+{"path":"bam to-cram","tier":"advanced","summary":"Convert BAM to the modern CRAM format.","key_flags":["--region","--gene","--cram-version","--mimalloc"]},
 {"path":"bam to-bam","tier":"advanced","summary":"Convert a CRAM file back to the traditional BAM format.","key_flags":["--region","--gene"]},
 {"path":"bam unalign","tier":"advanced","summary":"Extract raw reads from a BAM/CRAM back into FASTQ format.","key_flags":["--r1","--r2","--se","--region","--gene"]},
 {"path":"bam identify","tier":"advanced","summary":"Analyze your BAM header to determine exactly which reference genome was used for the original alignment.","key_flags":[]},

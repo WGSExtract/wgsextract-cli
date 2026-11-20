@@ -102,11 +102,22 @@ inside `_strdup`, retain their original free/realloc/size-query path. No UCRT
 DLL is patched and no allocator DLL is installed or injected. The build tests
 concurrent ownership transfers, real CRAM codecs and single/multisample and
 empty-input variant calls against an otherwise identical UCRT build.
-The CLI's `--mimalloc` setting still controls only Apple Silicon injection.
+samtools additionally ships `samtools-mimalloc.exe`, using the same guarded
+static bridge. Its system `samtools.exe` remains unchanged. The build compares
+exact decoded CRAM 3.1 records and verifies allocator activation in only the
+candidate. `bam to-cram --cram-version 3.1` with a local reference selects the
+matching validated variant under `mimalloc = "auto"`; `--mimalloc off` uses the
+system build. The CLI never installs or downloads a variant at runtime.
+Missing, broken or version-mismatched variants retain the system allocator.
+The manifest records `samtools_allocator`. Other samtools workloads and the
+compatibility-default CRAM 3.0 are unchanged; only standalone CRAM 3.1 encoding
+passed the [Windows measurement gate](https://github.com/WGSExtract/wgsextract-cli/issues/1123)
+and whole-genome confirmation. Apple Silicon bcftools injection is unchanged.
 
-**Release status:** the shared extension kernel, buffered SAM reader and static
-allocator recipe changes require a fresh Windows-tools release and updated
-Pixi pins. They are not in the currently pinned `windows-tools-8` assets.
+**Release status:** `windows-tools-9` contains the shared extension kernel,
+buffered SAM reader and bcftools allocator. The separately pinned
+`windows-tools-10` samtools package adds the qualified CRAM allocator variant;
+other package pins remain unchanged.
 See [the Windows performance track](https://github.com/WGSExtract/wgsextract-cli/issues/673)
 for the matched-machine benchmarks and record hashes.
 
