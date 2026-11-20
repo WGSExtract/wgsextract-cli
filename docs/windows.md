@@ -364,8 +364,9 @@ was a Windows 11 Pro desktop (Intel Core i9-9900, 8 cores / 16 threads,
 | `vcf indel` | 26 min | 3 h 3 min |
 
 The index was built by a chr22 sizing run just before, so the full `realign`
-took 7 h 36 min without it. Alignment ran at the same speed as v0.8.5 on
-this host. The calling steps were about 7× faster because they now call
+took 7 h 36 min without it. Alignment took about as long as v0.8.5 did on
+#554's Azure D16ads_v5. The CPUs differ, so this is not a controlled
+comparison of the bwa kernel. The calling steps were about 7× faster because they now call
 contigs in parallel ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560));
 the "Expected Wait" of 21 minutes for each was close.
 
