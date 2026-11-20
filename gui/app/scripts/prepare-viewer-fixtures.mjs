@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** Tiny synthetic reference from the CLI's VEP tests; all derived files stay in the verification output directory. */
-export async function prepareViewerFixtures(root, output, tools) {
+export async function prepareViewerFixtures(root, output, tools, geneMaps = false) {
     const tool = (name) => path.join(tools, `${name}${process.platform === "win32" ? ".exe" : ""}`);
     const run = (name, args) => {
         const result = spawnSync(tool(name), args, { encoding: "utf8", windowsHide: true });
@@ -18,12 +18,26 @@ export async function prepareViewerFixtures(root, output, tools) {
     await mkdir(reference, { recursive: true });
     const fasta = path.join(reference, "reference.fa");
     await copyFile(path.join(root, "tests/fixtures/vep_rs/genome.fa"), fasta);
-    run("samtools", ["faidx", fasta]);
-    run("samtools", ["dict", "-o", path.join(reference, "reference.dict"), fasta]);
     const source = (await readFile(fasta, "utf8")).replaceAll("\r\n", "\n");
     const record = source.split(/^>/m).find((entry) => entry.startsWith("1\n"));
     if (!record) throw new Error("Synthetic viewer fixture requires contig 1.");
     const sequence = record.split("\n").slice(1).join("").trim();
+    const referenceLength = geneMaps ? 248956422 : sequence.length;
+    if (geneMaps) {
+        let remaining = referenceLength - sequence.length;
+        const chunk = `${"N".repeat(60)}\n`.repeat(10_000);
+        while (remaining >= 600_000) {
+            await appendFile(fasta, chunk);
+            remaining -= 600_000;
+        }
+        await appendFile(fasta, `${"N".repeat(60)}\n`.repeat(Math.floor(remaining / 60))
+            + (remaining % 60 ? `${"N".repeat(remaining % 60)}\n` : ""));
+        const maps = path.join(output, "reference", "ref");
+        await mkdir(maps, { recursive: true });
+        await writeFile(path.join(maps, "genes_hg38.tsv"), "symbol\tchrom\tstart\tend\nREFGENE_DEMO\tchr1\t200\t400\n");
+    }
+    run("samtools", ["faidx", fasta]);
+    run("samtools", ["dict", "-o", path.join(reference, "reference.dict"), fasta]);
     const ref = sequence[249];
     const alt = ref === "A" ? "C" : "A";
     const sam = path.join(library, "reads.sam");
@@ -43,7 +57,7 @@ export async function prepareViewerFixtures(root, output, tools) {
     run("samtools", ["index", cram]);
     const vcf = path.join(library, "variants.vcf");
     await writeFile(vcf, `##fileformat=VCFv4.2
-##contig=<ID=1,length=${sequence.length}>
+##contig=<ID=1,length=${referenceLength}>
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsynthetic
 1\t250\tdemo\t${ref}\t${alt}\t60\tPASS\t.\tGT\t0/1
