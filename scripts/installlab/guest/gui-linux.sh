@@ -82,9 +82,10 @@ user_apt() {
         "$@" > "$apt_log" 2>&1
     apt_rc=$?
     cat "$apt_log"
+    # Only apt's own network errors count: hitting the time limit alone may be
+    # a hung maintainer script, which is the package's failure, not a mirror's.
     if [ "$apt_rc" != 0 ] && ! grep -Eq 'NO_PUBKEY|BADSIG|EXPKEYSIG|signatures' "$apt_log" &&
-        { [ "$apt_rc" = 124 ] || [ "$apt_rc" = 137 ] ||
-            grep -Eq 'Could not resolve|Temporary failure resolving|Could not connect|Unable to connect|Connection failed|timed out|Network is unreachable|No route to host|Failed to fetch' "$apt_log"; }; then
+        grep -Eq 'Could not resolve|Temporary failure resolving|Could not connect|Unable to connect|Connection failed|timed out|Network is unreachable|No route to host|Failed to fetch' "$apt_log"; then
         echo "apt-get $1 could not reach the Ubuntu mirrors ($(cut -f1 /etc/apt/ci-ubuntu-mirrors.txt 2>/dev/null | paste -sd ' ' -))." |
             tee -a "$APT_OUTAGE"
     fi
