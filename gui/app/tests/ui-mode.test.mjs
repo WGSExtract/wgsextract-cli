@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { commandContextFromState, placeholdersIn } from "../dist/shared/rendering.js";
 import { localizeManifest, parseTomlStrings } from "../dist/shared/localization.js";
-import { basicModeHiddenInputs, visibleActions, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
+import { actionTitledForUIMode, basicModeHiddenInputs, visibleActions, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const wgsExtract = path.resolve(appRoot, "..", "examples", "WGSExtract");
@@ -73,6 +73,12 @@ test("WGS Extract names the variant-calling button for the callers each mode can
 test("an action without an advancedTitle keeps its title in Advanced", () => {
   const actions = [{ id: "run", title: "Run", command: { executable: "tool" } }];
   assert.equal(visibleActions(actions, "advanced")[0].title, "Run");
+});
+
+test("a row action shows its advancedTitle in Advanced and its title in Basic", () => {
+  const action = { id: "delete", title: "Delete", advancedTitle: "Delete files", command: { executable: "tool" } };
+  assert.equal(actionTitledForUIMode(action, "basic").title, "Delete");
+  assert.equal(actionTitledForUIMode(action, "advanced").title, "Delete files");
 });
 
 test("Basic runs commands with hidden settings at their defaults and hidden options unchecked, keeping hidden paths", () => {

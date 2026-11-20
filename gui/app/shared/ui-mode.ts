@@ -31,11 +31,14 @@ export function visibleSections(page: BundlePage, mode: UIMode): PageSection[] {
     });
 }
 
-/** The actions a mode shows, each titled for that mode: Advanced uses an action's `advancedTitle` when it has one. */
+/** An action titled for a mode: Advanced uses its `advancedTitle` when it has one. */
+export function actionTitledForUIMode(action: ActionSpec, mode: UIMode): ActionSpec {
+    return mode === "advanced" && action.advancedTitle ? { ...action, title: action.advancedTitle } : action;
+}
+
+/** The actions a mode shows, each titled for that mode. */
 export function visibleActions(actions: ActionSpec[] | undefined, mode: UIMode): ActionSpec[] {
-    return (actions ?? [])
-        .filter((action) => isShownInUIMode(action, mode))
-        .map((action) => (mode === "advanced" && action.advancedTitle ? { ...action, title: action.advancedTitle } : action));
+    return (actions ?? []).filter((action) => isShownInUIMode(action, mode)).map((action) => actionTitledForUIMode(action, mode));
 }
 
 export function visibleControls(section: PageSection, mode: UIMode): ControlSpec[] {

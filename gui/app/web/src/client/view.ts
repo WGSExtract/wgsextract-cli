@@ -11,7 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
-import { isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
+import { actionTitledForUIMode, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting, ValueMap } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -488,7 +488,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
             return `<tr>
                       ${columns.map((column) => `<td>${renderRowCell(row, column)}</td>`).join("")}
                       ${(control.rowActions ?? []).length
-                ? `<td><div class="row-actions">${renderActions(control.rowActions ?? [], contextForRow, location, true)}</div></td>`
+                ? `<td><div class="row-actions">${renderActions((control.rowActions ?? []).map((action) => actionTitledForUIMode(action, state.uiMode)), contextForRow, location, true)}</div></td>`
                 : ""}
                     </tr>`;
         })
