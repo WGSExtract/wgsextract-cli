@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import http.client
 import json
 import os
 import platform
@@ -15,7 +17,7 @@ import sys
 import tempfile
 import time
 import tomllib
-import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -297,7 +299,7 @@ def smoke(command: list[str] | None = None) -> None:
                                 )
                                 smoke_url = url
                                 return
-                    except (urllib.error.URLError, TimeoutError):
+                    except (OSError, http.client.HTTPException):
                         pass
                 time.sleep(0.2)
             raise RuntimeError(f"Server did not become ready:\n{log_path.read_text()}")
@@ -322,12 +324,29 @@ def smoke(command: list[str] | None = None) -> None:
                     process.kill()
                 process.wait()
             if smoke_url:
+                port = urllib.parse.urlsplit(smoke_url).port
                 deadline = time.monotonic() + 5
                 while time.monotonic() < deadline:
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
                     try:
-                        LOOPBACK_OPENER.open(smoke_url, timeout=1).close()
-                    except (urllib.error.URLError, TimeoutError):
-                        break
+                        try:
+                            connection.connect()
+                        except OSError as error:
+                            # Windows may retry a closed port past our timeout.
+                            # Only failure before the TCP handshake proves it down;
+                            # a reset, EOF or timeout after connecting does not.
+                            if (
+                                isinstance(error, TimeoutError)
+                                or error.errno == errno.ECONNREFUSED
+                            ):
+                                break
+                            raise
+                        connection.request("GET", "/")
+                        connection.getresponse().close()
+                    except (OSError, http.client.HTTPException):
+                        pass
+                    finally:
+                        connection.close()
                     time.sleep(0.1)
                 else:
                     raise RuntimeError(

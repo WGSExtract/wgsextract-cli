@@ -163,4 +163,40 @@ Use `native/pairhmm/tests/compare_calls.py JAVA.g.vcf.gz NEON.g.vcf.gz`
 for larger real data: it requires identical ordered sites/alleles/GT/FILTER
 and complete reference blocks, while reporting variant annotation drift.
 
-This is not whole-genome qualification; see [measured slice evidence](../../../docs/hardware.md#experimental-apple-silicon-neon-pairhmm).
+For a matched interval panel, run each backend through the real CLI with
+the same input, reference, interval and scientific settings:
+
+```bash
+pixi run wgsextract vcf gatk --input HG002.bam --ref hs38.fa \
+  --region chr20:17000001-20000000 --threads 4 \
+  --reference-evidence gvcf --qc-min-depth 0 --outdir out/pairhmm/java
+pixi run wgsextract vcf gatk --input HG002.bam --ref hs38.fa \
+  --region chr20:17000001-20000000 --threads 4 \
+  --reference-evidence gvcf --qc-min-depth 0 --outdir out/pairhmm/neon \
+  --pair-hmm-neon out/pairhmm/package/gkl-native-wgse-darwin-aarch64.jar
+pixi run python native/pairhmm/tests/compare_calls.py \
+  out/pairhmm/java/gatk.g.vcf.gz out/pairhmm/neon/gatk.g.vcf.gz
+pixi run python native/pairhmm/tests/compare_calls.py \
+  out/pairhmm/java/gatk.vcf.gz out/pairhmm/neon/gatk.vcf.gz
+```
+
+The canonical comparison alone allows arbitrary variant annotations to differ.
+Also compare complete non-header lines: any difference must be characterized,
+not automatically accepted because sites and genotypes match. The observed
+10 Mb double-precision exception changes only PL entries involving `<NON_REF>`
+in variant gVCF rows; those alleles are removed by final genotyping.
+Reference blocks must still match line for line.
+The subsequent five-window difficult-region panel **fails** this requirement
+despite double precision: nine reference blocks and eight final-VCF annotation
+rows differ. Do not treat a native likelihood tolerance test, unchanged GT,
+or successful software certification as acceptance of those differences.
+
+Measure wall, CPU and largest-process RSS around the complete CLI (including
+GenotypeGVCFs), and report the logged PairHMM compute timer separately.
+Use independent process-group supervision for a hard resource-turn deadline:
+the previous nested timeout/caffeinate wrapper failed to bound a slow Java run.
+Clipping intervals changes assembly context, so matching a panel does not prove
+an unpartitioned chromosome is identical.
+
+This is not whole-genome qualification; see
+[measured interval evidence](../../../docs/hardware.md#experimental-apple-silicon-neon-pairhmm).

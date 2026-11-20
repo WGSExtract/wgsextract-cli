@@ -6,6 +6,7 @@ interface ViewerLabels {
     direction: string;
     strings: StringMap;
     inputPath?: string;
+    locus?: string;
 }
 
 /** Embedded viewers receive labels, never a token: launcher token injection is not portable across subframes. */
@@ -39,6 +40,7 @@ export async function genomeViewerLabels(): Promise<ViewerLabels> {
                 direction: data.direction,
                 strings: Object.fromEntries(Object.entries(data.strings).filter((entry): entry is [string, string] => typeof entry[1] === "string")),
                 ...(typeof data.inputPath === "string" ? { inputPath: data.inputPath } : {}),
+                ...(typeof data.locus === "string" ? { locus: data.locus } : {}),
             });
         };
         window.addEventListener("message", onMessage);

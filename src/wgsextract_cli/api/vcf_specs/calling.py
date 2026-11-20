@@ -464,14 +464,14 @@ class VcfClair3Params(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
-        "Docker; see docs/ont.md).",
+        help="Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU "
+        "in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
         action="store_true",
     )
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
+        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on CUDA; MPS varies"
     )
 
 

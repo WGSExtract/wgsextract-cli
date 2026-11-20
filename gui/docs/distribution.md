@@ -81,6 +81,11 @@ locally on Windows with
 `pwsh -File scripts\validate-windows-tauri-lifecycle.ps1 -AutomatedAdmin` after
 `powershell -ExecutionPolicy Bypass -File .\make.ps1 package`.
 
+Window close must stop both the app and all matched app processes within
+`-ShutdownTimeoutSeconds` (30 seconds by default). The harness waits for
+asynchronous descendant cleanup without killing or ignoring survivors; it logs
+their PIDs, parent PIDs, names, and command lines when waiting or failing.
+
 ## CI / release automation
 
 The repository's `.github/workflows/gui-distribution.yml` builds the Tauri app
@@ -133,6 +138,13 @@ installers, the tests that pin both, and a CHANGELOG entry. It changes nothing i
 any file can't be updated. The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in
 the same release; the release workflow refuses a tag the bundle doesn't pin.
+
+The script also generates `examples/WGSExtract/scripts/pixi-minimum-version.txt`
+from the root `pixi.toml`'s `requires-pixi`. Rerunning it with the current tag
+refreshes this requirement without bumping the release. Setup checks existing
+Pixi versions on POSIX and Windows and stops with update instructions if one is
+too old; it never upgrades the user's Pixi automatically. A missing Pixi is
+installed as before.
 
 ## Self-updates
 

@@ -475,8 +475,8 @@ def _run_gatk(
             + region_args
         )
         if params.pair_hmm_neon is not None:
-            # contract: float PairHMM changes a reference block's DP on HG002;
-            # use double precision to preserve the Java reference evidence.
+            # contract: require double to avoid the known float block-DP
+            # regression; difficult-region exact parity remains unqualified.
             cmd += [
                 "--native-pair-hmm-threads",
                 _threads,

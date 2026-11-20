@@ -71,6 +71,7 @@
 {"path":"ref test-genome","tier":"setup","summary":"Report, install (--install) or delete (--delete) the small hg19 test genome in the dataset library.","key_flags":["--mygenomes-library","--install","--delete"]},
 {"path":"ref needs","tier":"setup","summary":"Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.","key_flags":["--report-json"]},
 {"path":"ref gene-map","tier":"setup","summary":"Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).","key_flags":["--delete"]},
+{"path":"ref cytobands","tier":"setup","summary":"Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download.","key_flags":["--build","--download"]},
 {"path":"ref clinvar","tier":"setup","summary":"Download official ClinVar VCF for hg19 and hg38.","key_flags":[]},
 {"path":"ref revel","tier":"setup","summary":"Download REVEL pathogenicity scores for hg19 and hg38.","key_flags":[]},
 {"path":"ref phylop","tier":"setup","summary":"Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).","key_flags":["--build"]},

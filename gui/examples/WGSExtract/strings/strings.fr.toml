@@ -1215,3 +1215,4 @@
 "controls.cli.confidence_gq_high.tooltip" = "Une qualité de génotype inférieure (et au moins égale à la valeur faible) marque un appel de confiance moyenne."  # i18n-source-hash:b7c21f65
 "prerequisites.kinds.genome" = "génome de référence %{name}"  # i18n-source-hash:1e7c594d
 "prerequisites.kinds.annotation" = "données d'annotation %{name}"  # i18n-source-hash:91bbec91
+"actions.settings.report-issue.setup-required" = "Terminez la configuration avant de créer un rapport de bogue CLI. En cas d’échec de la configuration, copiez sa sortie dans un ticket GitHub."  # i18n-source-hash:c52b8084

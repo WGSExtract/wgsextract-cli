@@ -1,0 +1,147 @@
+--- a/clair3/CallVariantsFromCffi.py
++++ b/clair3/CallVariantsFromCffi.py
+@@ -28,7 +28,13 @@
+     model.load_state_dict(state_dict)
+ 
+ 
+-def _select_device(use_gpu):
++def _select_device(use_gpu, requested="EMPTY"):
++    if requested == "mps":
++        if use_gpu:
++            raise ValueError("MPS requires the streaming pipeline (--use_gpu=False)")
++        if not torch.backends.mps.is_available():
++            raise RuntimeError("Clair3: PyTorch MPS is unavailable; run without --gpu")
++        return torch.device("mps")
+     if use_gpu and torch.cuda.is_available():
+         return torch.device("cuda")
+     return torch.device("cpu")
+@@ -214,11 +220,11 @@
+             sys.exit()
+     elif args.use_gpu:
+         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id) if args.gpu_id else ""
+-        device = _select_device(True)
++        device = _select_device(True, args.device)
+         _limit_gpu_memory(args.max_gpu_memory, device)
+     else:
+         os.environ["CUDA_VISIBLE_DEVICES"] = ""
+-        device = _select_device(False)
++        device = _select_device(False, args.device)
+ 
+     global param
+     if args.pileup:
+@@ -436,6 +442,7 @@
+                         help="EXPERIMENTAL: Keep IUPAC (non ACGTN) reference and alternate bases, default: convert all IUPAC bases to N")
+ 
+     # options for debug purpose
++    parser.add_argument('--device', default="EMPTY")
+     parser.add_argument('--use_gpu', type=str2bool, default=False,
+                         help="DEBUG: Use GPU for calling. Speed up is mostly insignficiant. Only use this for building your own pipeline")
+ 
+--- a/clair3/CallVariants.py
++++ b/clair3/CallVariants.py
+@@ -63,7 +63,13 @@
+     model.load_state_dict(state_dict)
+ 
+ 
+-def _select_device(use_gpu):
++def _select_device(use_gpu, requested="EMPTY"):
++    if requested == "mps":
++        if use_gpu:
++            raise ValueError("MPS requires the streaming pipeline (--use_gpu=False)")
++        if not torch.backends.mps.is_available():
++            raise RuntimeError("Clair3: PyTorch MPS is unavailable; run without --gpu")
++        return torch.device("mps")
+     if use_gpu and torch.cuda.is_available():
+         return torch.device("cuda")
+     return torch.device("cpu")
+@@ -1455,7 +1461,7 @@
+ 
+ def call_variants(args, output_config, output_utilities):
+     use_gpu = args.use_gpu
+-    device = _select_device(use_gpu)
++    device = _select_device(use_gpu, args.device)
+     if use_gpu:
+         _limit_gpu_memory(1024)
+     else:
+@@ -1704,7 +1710,7 @@
+     variant_call_start_time = time()
+     add_indel_length = args.add_indel_length
+ 
+-    device = _select_device(use_gpu)
++    device = _select_device(use_gpu, args.device)
+     if use_gpu:
+         _limit_gpu_memory(1024)
+     else:
+@@ -1888,6 +1894,7 @@
+                         help="EXPERIMENTAL: Enable dwell time feature, which changes tensor shape by adding one dimension")
+ 
+     # options for debug purpose
++    parser.add_argument('--device', default="EMPTY")
+     parser.add_argument('--use_gpu', type=str2bool, default=False,
+                         help="DEBUG: Use GPU for calling. Speed up is mostly insignficiant. Only use this for building your own pipeline")
+ 
+--- a/clair3/CallVarBam.py
++++ b/clair3/CallVarBam.py
+@@ -221,6 +221,7 @@
+         taskSet,
+         pythonBin,
+         CVBin,
++        CommandOption('device', args.device),
+         CommandOption('chkpnt_fn', chkpnt_fn),
+         CommandOption('call_fn', call_fn),
+         CommandOption('sampleName', sampleName),
+@@ -415,6 +416,7 @@
+     parser.add_argument('--temp_file_dir', type=str, default='./',
+                         help="DEBUG: The cache directory for storing temporary non-variant information if --gvcf is enabled, default: %(default)s")
+ 
++    parser.add_argument('--device', default="EMPTY")
+     parser.add_argument('--use_gpu', type=str2bool, default=False,
+                         help="DEBUG: Use GPU for calling. Speed up is mostly insignificant. Only use this for building your own pipeline")
+ 
+--- a/scripts/clair3_c_impl_pipeline.py
++++ b/scripts/clair3_c_impl_pipeline.py
+@@ -260,6 +260,7 @@
+             f"{q(args.parallel)} --retries {retries} -C ' ' --joblog {q(log_path / 'parallel_1_call_var_bam_pileup.log')} "
+             f"-j {parallel_threads} "
+             f"\"{q(args.python_bin)} {q(clair3)} CallVariantsFromCffi "
++            f"--device {q(args.device)} "
+             f"--chkpnt_fn {q(pileup_checkpoint)} "
+             f"--bam_fn {q(args.bam_fn)} "
+             f"--call_fn {q(pileup_vcf_path / 'pileup_{1}_{2}.vcf')} "
+@@ -492,6 +493,7 @@
+             f"{q(args.parallel)} --retries {retries} --joblog {q(log_path / 'parallel_6_call_var_bam_full_alignment.log')} "
+             f"-j {threads_low} "
+             f"\"{q(args.python_bin)} {q(clair3)} CallVariantsFromCffi "
++            f"--device {q(args.device)} "
+             f"--chkpnt_fn {q(full_alignment_checkpoint)} "
+             f"--bam_fn {q(args.bam_fn)} "
+             f"--call_fn {q(full_alignment_output_path / 'full_alignment_{1/}.vcf')} "
+--- a/scripts/clair3_pipeline.py
++++ b/scripts/clair3_pipeline.py
+@@ -248,6 +248,7 @@
+         f"{q(args.parallel)} --retries {retries} -C ' ' --joblog {q(log_path / 'parallel_1_call_var_bam_pileup.log')} "
+         f"-j {threads_low} "
+         f"\"{q(args.python_bin)} {q(clair3)} CallVarBam "
++        f"--device {q(args.device)} "
+         f"--chkpnt_fn {q(pileup_checkpoint)} "
+         f"--bam_fn {q(args.bam_fn)} "
+         f"--call_fn {q(pileup_vcf_path / 'pileup_{1}_{2}.vcf')} "
+@@ -465,6 +466,7 @@
+         f"{q(args.parallel)} --retries {retries} --joblog {q(log_path / 'parallel_6_call_var_bam_full_alignment.log')} "
+         f"-j {threads_low} "
+         f"\"{q(args.python_bin)} {q(clair3)} CallVarBam "
++        f"--device {q(args.device)} "
+         f"--chkpnt_fn {q(full_alignment_checkpoint)} "
+         f"--bam_fn {q(phase_bam_path / '{1/.}.bam')} "
+         f"--call_fn {q(full_alignment_output_path / 'full_alignment_{1/}.vcf')} "
+--- a/run_clair3.py
++++ b/run_clair3.py
+@@ -504,6 +504,8 @@
+             error_exit(f"Failed to check BAM file for 'mv' tag: {e}")
+ 
+     use_gpu = args.use_gpu
++    if args.device == "mps" and use_gpu:
++        error_exit("MPS requires the streaming pipeline (--use_gpu=False)")
+     if not enable_c_impl and use_gpu:
+         warn("GPU calling only support C implement for speedup!")
+         use_gpu = False

@@ -339,8 +339,38 @@ Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
 builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
 command calls from a temporary CRAM 3.0 copy.
 
-Clair3 runs on the CPU by default. `vcf clair3 --gpu` runs its neural
-networks on an NVIDIA GPU instead, from HKU's CUDA image of the same Clair3
+Clair3 runs on the CPU by default. On **Apple Silicon**, `vcf clair3 --gpu`
+selects MPS inference in the WGSE-built **code-only** `wgse-clair3` package.
+It preserves the CPU streaming pipeline and high-depth scaling, including
+gVCF; it does not select upstream's CUDA disk-tensor pipeline. Preflight
+refuses missing/unpatched packages or unavailable PyTorch MPS, even with
+`--no-preflight`, rather than falling back or installing anything. On Apple
+Silicon, `pixi install -e clair3` installs the pinned package
+([release and pin](../native/clair3/README.md#packaging-and-release)).
+Models are resolved and checked exactly as on the CPU; the new package
+redistributes **no weights** (ONT Rerio's licence is research-only).
+Whole-genome MPS qualification is still pending.
+
+On an M1 Pro (10 cores, 32 GiB; four calling threads), the original-alignment
+public HG002 chr20:10-11 Mb slice produced identical **1,830 sites, alleles,
+GT and FILTER** on CPU/MPS, including gVCF calling. QUAL differed by at most
+0.01; sample fields matched exactly. All **32,362 gVCF reference records**
+matched in every column. Through the real CLI, CPU/MPS took **27.43/22.26 s**
+without gVCF and **37.01/32.63 s** with it (2026-11-18). These shared-host,
+startup-heavy slice timings are not whole-genome speed claims. This is not
+the realigned slice behind the older Linux/M1 figures below.
+
+On whole chr20 (64.44 Mb), paired four-thread gVCF calls also matched:
+**142,070 sites/alleles/GT/FILTER** in both VCF and gVCF, and **3,084,277
+reference records identical in every column**. QUAL differed by at most
+0.03; six PL fields and two GQ fields differed by one, without changing GT
+or FILTER. In an awake paired repeat (2026-11-19, `caffeinate`, shared bench
+lock), CPU took **20.36 min** and MPS **15.19 min**: about **1.34x** end to
+end, with the same results. Whole-genome qualification remains pending. See the
+[sizing table and caveats](resource_estimates.md#clair3-on-the-gpu).
+
+On **x86-64 Linux**, `vcf clair3 --gpu` runs its neural networks on an NVIDIA
+GPU from HKU's CUDA image of the same Clair3
 2.0.5, pinned by digest (`docker pull
 hkubal/clair3:v2.0.5_gpu@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb`,
 about 4.5 GB; `clair3_gpu_image` in `config.toml` for another build). It needs
@@ -356,7 +386,7 @@ model still comes from `--model`, `clair3_model` or the reads' metadata, as
 on the CPU, and is checked the same way; a bundled model name needs the
 `clair3` Pixi environment, otherwise pass the model's directory.
 
-The GPU mode needs far more disk than the CPU mode: Clair3 2.0.5 writes every
+The CUDA GPU mode needs far more disk than CPU or MPS: Clair3 2.0.5 writes every
 full-alignment tensor into its work folder in the output directory before the
 GPU predicts any, about 100 GiB for a 43x whole genome and two to four times
 that for 6-15x reads, which send it more low-quality candidates. Clair3 has
@@ -381,10 +411,9 @@ pileup calls matched the CPU's (QUAL within 0.03), but 6 of 360,471 flipped
 near a threshold, which changes WhatsHap's phasing and so about 1,000
 full-alignment calls, with the same F1.
 
-The Pixi environment can't use the GPU itself: Bioconda's Linux Clair3
+Bioconda's unpatched caller cannot select Apple MPS. Its Linux Clair3
 depends on CPU-only PyTorch (`pytorch-cpu`), so its `--use_gpu` falls back to
-the CPU, and Clair3 2.0.5 has no Apple GPU (MPS) path, although the macOS
-PyTorch has MPS. With conda-forge's CUDA PyTorch swapped in by hand,
+the CPU. With conda-forge's CUDA PyTorch swapped in by hand,
 Bioconda's own Clair3 ran on the GPU and gave the same calls (#639).
 
 On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model

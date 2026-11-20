@@ -17,6 +17,7 @@ on:
       - "gui/app/**"
       - "gui/resources/**"
       - "gui/scripts/validate-windows-tauri-lifecycle.ps1"
+      - "gui/scripts/windows-process-cleanup.ps1"
       - "gui/scripts/windows-admin-task-broker.ps1"
       - "gui/tools/packaging/windows/**"
       - "gui/tools/tasks.py"

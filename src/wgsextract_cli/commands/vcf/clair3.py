@@ -75,8 +75,15 @@ from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .basic import CallerSetup, plain_reference, record_variants, setup_caller
 from .callers import write_region_bed
+from .clair3_runtime import (
+    CLAIR3,
+    GPU_CLAIR3,
+    MpsSetup,
+    clair3_command,
+    clair3_env,
+    verify_mps,
+)
 
-CLAIR3 = "run_clair3.sh"
 # HKU's CUDA build of the same Clair3 for --gpu, pinned to the build validated
 # in #639: Bioconda's Linux Clair3 depends on pytorch-cpu, so its --use_gpu
 # falls back to the CPU.
@@ -85,7 +92,6 @@ DEFAULT_GPU_IMAGE = (
     "@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb"
 )
 DEFAULT_GPU_VERSION = (2, 0, 5)
-GPU_CLAIR3 = "/opt/bin/run_clair3.sh"
 _CUDA_PROBE = "import torch; print(torch.cuda.is_available())"
 # Clair3 starts a full-alignment GPU worker only on a GPU with this much free
 # memory (CallVariantsFromCffiGPU); pileup workers need 5000 MiB.
@@ -318,16 +324,19 @@ def _image_clair3_version(image: str) -> tuple[int, ...] | None:
     return _parse_version(named[1]) if named else None
 
 
-def verify_gpu() -> GpuSetup:
+def verify_gpu() -> GpuSetup | MpsSetup:
     """What --gpu runs on, once this host can run Clair3 on a GPU with the
     memory it asks for; else name what's missing."""
     image = clair3_gpu_image()
     setup = _GPU_SETUP.format(image=image)
     machine = platform.machine().lower()
+    if sys.platform == "darwin" and machine in ("arm64", "aarch64"):
+        return verify_mps()
     if not sys.platform.startswith("linux") or machine not in ("x86_64", "amd64"):
         raise UsageError(
-            "vcf clair3 --gpu runs on x86-64 Linux with an NVIDIA GPU only; Clair3 "
-            "has no Apple GPU (MPS) or ARM64 GPU build. Run without --gpu here."
+            "vcf clair3 --gpu needs x86-64 Linux with an NVIDIA GPU, "
+            "or Apple Silicon macOS with the WGSE-built MPS package. "
+            "Run without --gpu here."
         )
     verify_gpu_docker(setup)
     require_image(
@@ -355,9 +364,9 @@ def needs_cram30_staging(version: tuple[int, ...] | None) -> bool:
     return version is None or version < CRAM31_NATIVE
 
 
-def bundled_models_dir() -> Path | None:
+def bundled_models_dir(launcher: Path | None = None) -> Path | None:
     """Bioconda ships its pre-trained models in the package's bin/models."""
-    tool = get_tool_path(CLAIR3)
+    tool = str(launcher) if launcher is not None else get_tool_path(CLAIR3)
     candidates = []
     if tool and Path(tool).is_file():
         candidates += [
@@ -471,11 +480,11 @@ def check_model_matches(model_name: str, detected: set[Chemistry]) -> None:
                 break
 
 
-def select_model(choice: str | None, header: str) -> Path:
+def select_model(choice: str | None, header: str, launcher: Path | None = None) -> Path:
     """``choice`` (--model), then clair3_model in config.toml, then the
     basecaller metadata."""
     detected = basecaller_chemistries(header)
-    bundled = bundled_models_dir()
+    bundled = bundled_models_dir(launcher)
     value = choice or settings.get("clair3_model")
     if not value:
         names = {model_for_chemistry(chemistry) for chemistry in detected}
@@ -533,34 +542,6 @@ def require_ont_read_groups(header: str) -> None:
         )
 
 
-def clair3_command(
-    reads: str,
-    ref: str,
-    model: Path,
-    threads: str,
-    output: str,
-    bed: str | None,
-    sample: str,
-    gpu_devices: tuple[int, ...] = (),
-) -> list[str]:
-    command = [
-        GPU_CLAIR3 if gpu_devices else CLAIR3,
-        f"--bam_fn={reads}",
-        f"--ref_fn={ref}",
-        f"--threads={threads}",
-        "--platform=ont",
-        f"--model_path={model}",
-        f"--sample_name={sample}",
-        f"--output={output}",
-    ]
-    if bed:
-        command.append(f"--bed_fn={bed}")
-    if gpu_devices:
-        devices = ",".join(str(device) for device in gpu_devices)
-        command += ["--use_gpu=True", f"--device=cuda:{devices}"]
-    return command
-
-
 def container_paths(paths: list[str]) -> list[str]:
     """``paths`` and their index files, with each link's chain to its target,
     so a container that mounts their folders opens them all."""
@@ -593,14 +574,6 @@ def space_free_run_paths(
             (work, "work", ()),
         ],
     )
-
-
-def _clair3_env() -> dict[str, str]:
-    # Clair3 runs its own Python; don't leak ours into it.
-    env = dict(os.environ)
-    for var in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
-        env.pop(var, None)
-    return env
 
 
 def clair3_errors(output: Path, limit: int = 8) -> str:
@@ -753,7 +726,9 @@ def run_clair3(params: VcfClair3Params) -> None:
     from .caller_ploidy import GvcfEngine, call_partitioned
 
     require_supported_platform()
-    gpu = verify_gpu() if params.gpu else None
+    accelerator = verify_gpu() if params.gpu else None
+    gpu = accelerator if isinstance(accelerator, GpuSetup) else None
+    mps = accelerator if isinstance(accelerator, MpsSetup) else None
     if gpu:
         verify_dependencies(["samtools", "bcftools", "tabix"])
         logging.info(
@@ -761,13 +736,20 @@ def run_clair3(params: VcfClair3Params) -> None:
             f"{image_record(gpu.image)['image']}."
         )
     else:
-        verify_dependencies([CLAIR3, "samtools", "bcftools", "tabix"])
-        log_dependency_info([CLAIR3])
+        caller = "wgse-clair3" if mps else CLAIR3
+        verify_dependencies([caller, "samtools", "bcftools", "tabix"])
+        log_dependency_info([caller])
+        if mps:
+            logging.info(
+                f"Running Clair3 {mps.version}: MPS inference, CPU streaming/scaling."
+            )
     evidence = None
     if params.reference_evidence == "gvcf":
         version = (
             str(image_record(gpu.image)["image"])
             if gpu
+            else mps.version
+            if mps
             else ".".join(map(str, clair3_version() or ())) or "unknown"
         )
         evidence = GvcfEngine(
@@ -792,8 +774,9 @@ def run_clair3(params: VcfClair3Params) -> None:
         params,
         setup_caller(params),
         "clair3",
-        partial(_run_clair3, gpu=gpu),
+        partial(_run_clair3, gpu=gpu, mps=mps),
         evidence,
+        gpu_ploidy=mps is not None,
     )
 
 
@@ -805,6 +788,7 @@ def _run_clair3(
     gvcf: str | None = None,
     *,
     gpu: GpuSetup | None = None,
+    mps: MpsSetup | None = None,
 ) -> None:
     """``vcf clair3``: Clair3 on Nanopore reads into ``clair3.vcf.gz``, and
     with ``gvcf`` its gVCF there."""
@@ -820,7 +804,7 @@ def _run_clair3(
     header = get_bam_header(input_file, ref)
     require_ont_read_groups(header)
     sample = sample_name(header, input_file)
-    model = select_model(params.model, header)
+    model = select_model(params.model, header, mps.launcher if mps else None)
 
     out_vcf = str(Path(outdir, "clair3.vcf.gz"))
     logging.info(LOG_MESSAGES["vcf_calling_clair3"].format(output=out_vcf))
@@ -842,7 +826,9 @@ def _run_clair3(
         space = temp_space(
             input_file, use_ref, intervals, region, gpu is not None, gvcf is not None
         )
-        stage = needs_cram30_staging(gpu.version if gpu else clair3_version())
+        stage = needs_cram30_staging(
+            gpu.version if gpu else mps.upstream_version if mps else clair3_version()
+        )
         if space:
             # A CRAM 3.0 copy stays beside the tensors while Clair3 runs.
             copy = (
@@ -876,6 +862,7 @@ def _run_clair3(
                 str(Path(run_work, "clair3")),
                 str(Path(run_work, "regions.bed")) if bed else None, sample,
                 gpu.devices if gpu else (),
+                mps=mps is not None,
             )  # fmt: skip
             if sample_ploidy == 1:
                 command.append("--haploid_precise")
@@ -895,7 +882,7 @@ def _run_clair3(
                     )  # fmt: skip
                 else:
                     # stdin closed: Clair3's GNU parallel would read it otherwise.
-                    run_command(command, env=_clair3_env(), stdin=subprocess.DEVNULL)
+                    run_command(command, env=clair3_env(), stdin=subprocess.DEVNULL)
             except (OSError, subprocess.SubprocessError) as e:
                 errors = clair3_errors(Path(output))
                 if not errors or not isinstance(e, subprocess.CalledProcessError):

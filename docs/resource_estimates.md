@@ -8,6 +8,13 @@ The incomplete full-chr20 Java trial reached only chr20:29,840,219 after
 283.6 traversal minutes before cancellation; it supplies neither a completed
 runtime nor peak-RSS estimate. Do not size a full-chromosome run by multiplying
 the 10–20 Mb slice time: slow pericentromeric regions are absent from that slice.
+The replacement 12.551 Mb panel measured **6,632.06 s Java → 725.96 s
+NEON double**, with maximum process RSS **1,883.9 → 1,509.2 MiB**.
+Its **9.14× observed speedup is not scientifically qualified**: nine reference
+blocks and eight final-VCF annotation rows fail the strict parity gate.
+PairHMM still consumes 40.3% and 64.0% of NEON CLI wall in its two difficult
+windows. See the linked per-window evidence and limitations; neither these
+maxima nor the aggregate speedup size an unpartitioned full genome.
 
 ## Pipeline benchmarks
 
@@ -162,7 +169,7 @@ sums what shares one.
 | DeepVariant, Google's CPU image | 60 | 30x: 15 h on 4 threads (projected from chr1 and chr20) |
 | DeepVariant ONT model | 113 | #431: 11.3 h on 10 threads, 51x |
 | wgse-deepvariant, CPU / `--gpu` | 28 / 12 | 30x: 7 h / 3 h on 4 threads (projected) |
-| Clair3, CPU / `--gpu` | 33 / 15 | chr20 in 10.3 min on 4 CPUs (projected) / #431: 2.5 h on 6 threads |
+| Clair3, CPU / CUDA `--gpu` | 33 / 15 | chr20 in 10.3 min on 4 CPUs (projected) / #431: 2.5 h on 6 threads |
 
 The extra 15% covers FASTQ extraction and sorting: the 35x realign on a 16 GB
 M1 spent 23 of its 362 minutes extracting. That run (830 million reads, 125
@@ -564,7 +571,7 @@ and chr20: 823,376 sites, 270,091 call_variants examples. Google's
 
 ### Clair3 on the GPU
 
-`vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
+On x86-64 Linux, `vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks that a
 GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
 8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
 all of chr20 of the HG002 ONT whole-genome CRAM (42x), 4 CPUs, Clair3's own
@@ -580,15 +587,62 @@ start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 (about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
 one-second samples, so the CPUs limit the speed-up.
 
-On a whole genome the GPU mode needs much more disk than the CPU mode: it
+On a whole genome the CUDA mode needs much more disk than the CPU mode: it
 writes every full-alignment tensor before predicting any (below).
+
+On Apple Silicon, the WGSE-built `wgse-clair3` caller instead selects **MPS
+inference with CPU streaming/scaling**, including gVCF. It uses CPU-path
+temporary-space and time estimates, not the CUDA tensor budget or NVIDIA
+memory thresholds. These time estimates are conservative placeholders, not
+measured MPS whole-genome times. MPS availability and the patched package
+are mandatory preflight checks; no automatic fallback or installation.
+Package publication/Pixi pinning is done (`macos-clair3-1`); whole-genome
+qualification is pending; see [the package release](../native/clair3/README.md#packaging-and-release).
+
+**M1 Pro sizing, 2026-11-18/19:** 10 cores, 32 GiB, four calling threads,
+Clair3 2.0.5/PyTorch 2.14.1, original-alignment public HG002 ONT reads,
+`r1041_e82_400bps_sup_v400`, through the real CLI with gVCF. Only chr20 was
+streamed from the public CRAM, once, into a shared 3.7 GiB BAM; the same
+local BAM/reference/model served both runs. No whole-genome run was made.
+The table is the awake paired repeat on 2026-11-19 with the published
+`macos-clair3-1` package: `caffeinate`, CPU then MPS in one turn of the shared
+bench lock (no other timed work; one-minute load 15–33 at the CPU run's start,
+3–7 later, so the CPU figure may be slightly pessimistic).
+
+| chr20, 64.44 Mb (~2.1% of 3,088 Mb) | Wall | Max process RSS / sampled tree RSS | Sampled peak temp | Published output |
+| --- | ---: | ---: | ---: | ---: |
+| CPU + gVCF | 20.36 min | 1.99 / 4.71 GiB | 510.92 MiB | 31.44 MiB |
+| MPS + gVCF | 15.19 min | 2.09 / 5.22 GiB | 512.63 MiB | 31.44 MiB |
+
+Both produced **142,070 identical sites/alleles/GT/FILTER**, in VCF and gVCF,
+and **3,084,277 reference records identical in every column**. QUAL differed
+by at most 0.03; six PL fields and two GQ fields differed by one. Peak system
+swap was 1.55/1.54 GiB (left over from earlier host work); minimum available
+system RAM was 12.0/10.8 GiB. Tree RSS double-counts
+shared pages and is not GPU allocator/unified-memory accounting; 0.5-second
+disk sampling can miss spikes.
+
+MPS was about **1.34x** faster end to end on whole chr20. The first sizing
+pair (2026-11-18) recorded 86.77 min for CPU because the host slept during the
+run, and is superseded by this repeat.
+
+For **capacity planning only**, multiplying chr20 by 47.9 gives about 24 GiB
+temporary space and 1.47 GiB output. The same mechanical scaling gives
+12.1 h for MPS, **not a measured or reliable whole-genome ETA**: chr20's
+depth/candidate mix, including its pericentromere, is not representative.
+Do not scale peak RSS linearly or assume the whole genome fits from this
+slice alone. Its measured temp peak also exceeds the current CPU-path
+preflight estimate (~0.18 GiB); reserve space from measurements, not that
+estimate alone. Before paired whole genomes, check large-contig/gather memory
+and staging disk, and use run-scoped sleep prevention and failure
+notifications.
 
 ### Clair3's temporary space
 
-Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its GPU
+Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its CUDA
 mode, Clair3 2.0.5 first writes a tensor of 89 x 33 x 8 bytes (23.5 kB) for
 every full-alignment candidate (`tmp/full_alignment_output/*.npy`, 10,000 per file),
-then predicts and deletes them; the CPU mode pipes each tensor to the network.
+then predicts and deletes them; CPU and WGSE MPS pipe each tensor to the network.
 Clair3 has no option to stream or batch them: `--chunk_size` changes only how
 the candidates are split into files, and `--var_pct_full`/`--ref_pct_full`
 change which are called, and so the calls. The candidates are a share of the

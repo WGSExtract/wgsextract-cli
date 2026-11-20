@@ -39,6 +39,13 @@ record; optional historical report fields remain optional.
 
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.
 - **Open** and **Show in Folder** work only for the files a document listed, and for the document's own saved copy (`manifest`). A relative path is relative to the bundle workspace the action ran in.
+- WGS Extract also offers **Show in viewer** for existing BAM/CRAM and bgzip
+  VCF/gVCF outputs. Add `metrics.locus: "chr1:200-400"` to an output to open
+  that interval; a document-level `metrics.locus` applies when the output has
+  none. Use 1-based inclusive coordinates. The viewer ignores invalid loci,
+  gene symbols and rsIDs and opens the first chromosome instead. This link
+  does not grant filesystem access: the existing My Genomes and reference
+  library guards still apply. See [Genome viewer](genome-viewer.md).
 
 ## The last run
 
@@ -58,6 +65,16 @@ Each is empty until such a run happens, so put it in `optionalArguments`, or tes
 ```
 
 ## Failures
+
+WGS Extract's report actions need the installed CLI. They remain disabled until
+setup succeeds, with an explanation to copy setup output into a GitHub issue
+when setup itself fails. Setup output is not a CLI run document and cannot be
+reported with `--last-failed`.
+
+Conditions can use `setupReady`: `"true"` after setup completes successfully
+(including warnings), or when a bundle has no setup steps for the current
+platform; `"false"` before, during, or after a failed setup. Headless bundle
+tests apply the same readiness gate and update it after each setup run.
 
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:
 

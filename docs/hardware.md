@@ -340,7 +340,13 @@ PairHMM port, built for macOS. It is **not Parabricks**; `--gpu` keeps its
 existing meaning. GATK 4.6.2.0, JDK 17+, Apple Silicon and locally installed
 libomp are required. No dependency is installed or downloaded by calling.
 See [build, fallback and native validation instructions](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117).
-Metal is not used: NEON removes PairHMM as the main bottleneck.
+Metal is not used. NEON removes PairHMM as the main bottleneck in ordinary
+slices, but the difficult-window measurements below still spend substantial
+time in PairHMM.
+
+**Not qualified:** the five-window HG002 panel below fails exact gVCF
+reference-block and final-VCF annotation parity, even with native double
+precision. The option remains an experimental prototype, not a default.
 
 Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
 17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
@@ -387,8 +393,80 @@ traversal minutes before cancellation. No final gVCF or genotyped VCF was
 published, and the NEON comparison was not started. This is an incomplete
 run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
 the slow pericentromeric traversal; its speedup is not a whole-chromosome
-runtime estimate. Full-chr20 reference-block and final-call parity remain
-required before qualification.
+runtime estimate.
+
+#### Five-window panel: strict qualification failed
+
+On 2026-11-20, five matched intervals totaling **12.551 Mb** replaced the
+infeasible whole-chr20 comparison. Each Java/NEON run used the real CLI:
+`vcf gatk --threads 4 --reference-evidence gvcf --qc-min-depth 0`, default
+JVM heap, the same shared HG002 BAM/hs38, and no scattering. This differs
+from the direct 10 Mb HC microbenchmark's explicit 4 GiB heap; those results
+are not combined. The sidecar and scientific options were unchanged.
+
+| Window, 1-based inclusive | Selection evidence |
+| :--- | :--- |
+| chr20:1,000,001–4,000,000 | Ordinary p-arm control: mean depth 38.15×, only 819 bases at ≥100×. |
+| chr20:17,000,001–20,000,000 | Low complexity: 48-base homopolymer, 72-base GAAA tandem tract at 17,347,788; includes the prior float block-DP regression and double non-reference PL site. |
+| chr20:26,000,001–29,050,000 | Pericentromere: mean 56.71×, maximum 3,432×; 441,098 bases at ≥100×. Prior whole-chr20 Java traversal took roughly 31 minutes through this vicinity. |
+| chr20:29,060,001–29,061,000 | Narrow slow-region sentinel: the previous unpartitioned progress meter advanced 980 bases near here in 12.8 minutes. Mean depth 81.81×. |
+| chr20:31,000,001–34,500,000 | Proximal q-arm high-depth stress: mean 53.91×, maximum 23,756×; 25,326 bases at ≥500×; 60-base homopolymer. |
+
+Depth and repeat evidence comes from the existing BAM and hs38, not downloaded
+stratification tracks. High depth is a duplication-like stress proxy, not proof
+of membership in an annotated segmental duplication. The pericentromeric and
+q-arm windows contain 90,575 and 102,506 reference N bases, respectively.
+Distal q-arm sequence is not sampled. Interval clipping changes assembly
+context: the 1 kb sentinel is much cheaper than the unpartitioned traversal
+and does not reproduce that traversal's full pathological workload.
+
+All values below are **Java → NEON double**. Wall/CPU include CLI startup,
+HaplotypeCaller, GenotypeGVCFs and output; RSS is the largest process,
+not simultaneous aggregate memory. PairHMM share uses its logged compute
+timer divided by complete CLI wall time.
+
+| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Strict verdict |
+| :--- | ---: | ---: | ---: | ---: | ---: | :--- |
+| Ordinary p-arm | 168.43 → 68.98 | 197.17 → 114.16 | 627.0 → 815.5 | 107.479 → 6.458 | 63.8% → 9.4% | Pass |
+| Repeat control | 155.67 → 67.90 | 183.17 → 109.94 | 640.2 → 921.6 | 93.092 → 5.841 | 59.8% → 8.6% | Pass |
+| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | **Fail** |
+| Slow sentinel | 8.67 → 6.30 | 14.12 → 11.62 | 529.1 → 490.9 | 2.440 → 0.145 | 28.1% → 2.3% | Pass |
+| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | **Fail** |
+| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | **Fail** |
+
+The observed panel speedup is **9.14× (89.1% less wall time)**, not a
+speedup for a scientifically accepted implementation. Each backend/window
+ran once, sequential Java then NEON, with warm caches on a shared desktop;
+the exclusive bench queue excludes other queued heavy jobs, not all desktop
+activity. All ten turns finished within the independently enforced 80-minute
+deadline (largest: 75.46 minutes). A forced process-group timeout smoke
+terminated both a TERM-resistant parent and its child without leaks.
+
+Ordered sites, alleles, GT and FILTER match across **340,743 gVCF records**
+and **28,065 final VCF records**. Of **306,024 reference blocks**, **nine
+do not match completely**: six in the pericentromeric window, three in the
+q-arm window. **Eight final VCF records** differ in more than the allowed
+PL-level exception. At chr20:28,830,216, for example, sample AD/DP changes
+from `63,38`/101 to `62,38`/100; the next block's DP changes 112→111.
+At chr20:31,068,903, block DP changes 924→920, and the nearby final variants
+also change depth and other annotations. These failures are not waived.
+The ordinary and repeat windows have only three already-characterized
+variant-gVCF `<NON_REF>` PL differences; their final VCF bodies are identical.
+
+Independent real-CLI **20 kb controls reproduce the failures**. At
+chr20:28,820,001–28,840,000, all twelve differing gVCF rows (six blocks)
+and six final-VCF mismatch pairs reproduce exactly, taking
+214.14→26.08 s Java→NEON. At chr20:31,060,001–31,080,000, two blocks and
+both nearby final variants still differ beyond PL alone, taking
+3,006.57→208.72 s. The q-arm control's absolute annotations change with
+clipped assembly context, but its depth/allele-depth discrepancies recur
+at the same sites. Control timings are excluded from the panel totals.
+
+Double precision fixes the earlier ordinary-slice float regression, but is
+**insufficient for exact difficult-region parity**. Native likelihood/vector
+tolerance tests and passing software certification do not establish this
+scientific gate. Do not infer whole-chromosome/WGS equivalence, extend this
+speedup to other chips, or conclude PairHMM can never remain a bottleneck.
 
 ### Around the aligner
 
@@ -555,9 +633,14 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
+Updating WGS Extract preserves the optional `deepvariant` environment. To
+upgrade an older install, rerun `pixi install -e deepvariant` from the updated
+checkout. Haploid chrX/Y/MT calling requires 0.4.0 or later. Replace any older
+standalone `wgse-deepvariant` on `PATH` too, since it takes precedence.
+
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
-  which installs 0.3.1 from `linux-deepvariant-3`) and `deepvariant_weights`
+  which installs 0.4.0 from `linux-deepvariant-4`) and `deepvariant_weights`
   set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
   models), `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
@@ -797,8 +880,12 @@ showed less than 2% wall-time changes. No full-human-genome allocator
 comparison or Linux packaging/default change followed this gate; these
 measurements do not qualify Linux ARM64 or every glibc version.
 
-`vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
-(MPS) path; see [docs/ont.md](ont.md#clair3-optional).
+`vcf clair3` defaults to the CPU on Apple Silicon. Opt-in `--gpu` uses
+PyTorch MPS with the WGSE-built code-only caller, preserving CPU streaming
+and high-depth scaling (gVCF included). It refuses unavailable MPS or a
+missing patched package; no automatic installation or fallback. Package
+publication/Pixi pinning and whole-genome qualification are pending; see
+[docs/ont.md](ont.md#clair3-optional).
 
 ## Other GPUs
 

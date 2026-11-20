@@ -1215,3 +1215,4 @@
 "controls.cli.confidence_gq_high.tooltip" = "Eine geringere Genotypqualität (mindestens der niedrige Wert) kennzeichnet einen Aufruf als mittel verlässlich."  # i18n-source-hash:b7c21f65
 "prerequisites.kinds.genome" = "Referenzgenom %{name}"  # i18n-source-hash:1e7c594d
 "prerequisites.kinds.annotation" = "Annotationsdaten %{name}"  # i18n-source-hash:91bbec91
+"actions.settings.report-issue.setup-required" = "Schließen Sie die Einrichtung ab, bevor Sie einen CLI-Fehlerbericht erstellen. Kopieren Sie bei Einrichtungsfehlern die Ausgabe der Einrichtung in ein GitHub-Issue."  # i18n-source-hash:c52b8084
