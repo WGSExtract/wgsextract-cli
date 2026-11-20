@@ -30,7 +30,9 @@ status 0 and removes its discovery file, even during the startup announcement.
 The server runs analyses with your permissions, so it only answers programs
 you start yourself:
 
-- It listens on 127.0.0.1 only. There is no option to listen on the network.
+- It listens on loopback by default. You can opt into another numeric
+  interface with `server.listen` or `--listen ADDRESS[:PORT]`; see
+  [Remote HTTP access](#remote-http-access).
 - Every request except `GET /v1/health` needs `Authorization: Bearer <token>`.
   The token is new each time the server starts. It is printed to stderr and
   saved in `<state>/server/server.json` (mode 0600), along with the URL and
@@ -100,7 +102,7 @@ you start yourself:
 
 ## HTTP API
 
-All responses are compact JSON. Errors are
+Responses are compact JSON, except viewer file bytes. Errors are
 `{"error": {"code": "...", "message": "..."}}` with an HTTP status code:
 
 | Status | Meaning |
@@ -131,6 +133,7 @@ A failed analysis is not an HTTP error. Its job finishes with status
 | `GET /v1/manifest?path=&full=1` | A result manifest (`*.manifest.json`); `provenance` only with `full=1` |
 | `GET /v1/variants?path=&gene=&rsid=&region=&clinvar=&min_confidence=&columns=&limit=&cursor=` | Rows of a `vcf table` output; see [Lookups](#lookups) |
 | `GET /v1/report?path=&section=` | A sample's personal report; see [Lookups](#lookups) |
+| `GET` / `HEAD /v1/viewer-file?path=` | Read a guarded file or byte range, only with `server.viewer_files = true` |
 
 Operation names are the CLI command with `/` between words: `info`,
 `info/chip`, `vcf/snp`, `lineage/mt-haplogroup`, `sample/show`. Parameters
@@ -228,6 +231,69 @@ curl -H "Authorization: ******" \
   step. One HTTP server uses a state folder at a time; a second one refuses
   to start.
 
+### Remote HTTP access
+
+You choose the listening interface. The HTTP/JSON listener accepts numeric IPv4
+or IPv6 addresses without DNS resolution. `--listen` overrides `server.listen`;
+an embedded port overrides `--port` / `server_port`. Use `[::1]:8080` for IPv6
+with a port. MCP listeners remain loopback-only.
+
+For a remote connection, configure the HTTP server before starting it:
+
+```toml
+[server]
+listen = "0.0.0.0:8080"
+allowed_hosts = ["genomes.example:8080", "genomes.example"]
+allowed_origins = ["https://app.example"]
+viewer_files = true
+```
+
+Non-loopback binds require a nonempty bearer token and an explicit Host list.
+The CLI generates a fresh token at startup; give it to the remote client through
+a private channel. Remote health requests also require it. The startup warning
+names the interface and exposed API: anyone with this token can start jobs,
+cancel them, read logs and lookups, and read viewer files when enabled.
+Existing destructive-operation and path guards still apply.
+
+Use HTTPS outside a trusted encrypted tunnel. The built-in listener speaks
+HTTP, not TLS: you provide a TLS reverse proxy and its certificate, including
+certificate renewal. For example, keep `listen = "127.0.0.1:8080"` behind a
+loopback proxy, or bind a private backend interface and firewall it so only your
+proxy can reach it. A loopback backend retains strict loopback Host/Origin checks;
+configure the proxy to send the backend's exact loopback Host and omit Origin
+for backend-to-backend requests. For a non-loopback backend, preserve an
+authority in `allowed_hosts`. Neither mode trusts `Forwarded` or
+`X-Forwarded-*` to expand its allowlist. Install your operator-provided
+certificate on the proxy; the CLI does not fetch certificates or configure it.
+Plaintext HTTP exposes tokens and genomic bytes to anyone who can observe
+traffic. Limit network access and proxy logs, especially query strings containing
+genome paths, to your intended clients.
+
+Non-loopback listeners accept only exact `allowed_hosts` entries and configured
+`allowed_origins` when a request includes Origin. List scheme, hostname and port
+(if present) for each origin; no wildcard, userinfo, path or trailing slash.
+Native backend clients can omit Origin. A loopback listener keeps its existing
+same-origin checks for the job API regardless of these lists.
+
+**Viewer files are off by default.** Enable them with `server.viewer_files`.
+Clients send a bearer token in a header, not a URL or cookie. You allow file
+paths through `server.guard.roots`: the same canonical roots established by
+`--allow`, `server_allowed_paths` and existing configured libraries.
+The endpoint rejects `..`, network/device paths, symlink escapes, directories
+and other non-regular files. It provides no directory listing. On systems with
+directory-relative opens, it pins each canonical path component before reading;
+the path guard is not a sandbox against other programs running as you.
+
+Send `Range: bytes=START-END` for a closed byte range. The endpoint supports
+suffix and open-ended ranges too; those and whole-file reads have a 32 MiB
+fallback limit. Closed ranges can exceed that limit and stream in 64 KiB chunks.
+An invalid, multipart, unsatisfiable or oversized fallback range returns 416
+with `Content-Range: bytes */SIZE`. `HEAD` returns the same metadata without
+bytes. For browser requests, only an exact configured app origin receives CORS
+access, including preflight for `Authorization` and `Range`. The endpoint sends
+no wildcard CORS or credential/cookie permission. Keep the general API token in
+your trusted client backend; do not give it to a genome viewer page.
+
 ## MCP
 
 `wgsextract serve --mcp` speaks MCP over stdin and stdout: one JSON-RPC
@@ -323,6 +389,10 @@ running ones and removes the job records, as on stdio.
 | Setting | Option | Default |
 | --- | --- | --- |
 | `server_port` | `--port` | 0: any free port |
+| `server.listen` | `--listen ADDRESS[:PORT]` (HTTP/JSON only) | 127.0.0.1 |
+| `server.allowed_hosts` | | none; required for non-loopback |
+| `server.allowed_origins` | | none; exact app-origin CORS for viewer files |
+| `server.viewer_files` | | false |
 | `server_allowed_paths` | `--allow DIR` (adds) | none, plus the library and output folders |
 | `server_max_jobs` | `--max-jobs` | 1 |
 | `server_mcp_transport` | `--mcp-transport stdio\|http` (implies `--mcp`) | stdio |

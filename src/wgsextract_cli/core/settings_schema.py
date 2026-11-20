@@ -81,6 +81,24 @@ class DevSettings:
 
 
 @dataclass(frozen=True)
+class ServerSettings:
+    """Operator opt-ins for the HTTP/JSON listener."""
+
+    listen: str = setting(
+        "127.0.0.1", "HTTP listen address[:port]; loopback by default"
+    )
+    allowed_hosts: str | tuple[str, ...] | None = setting(
+        None, "Exact external Host headers, including ports; never wildcards"
+    )
+    allowed_origins: str | tuple[str, ...] | None = setting(
+        None, "Exact app origins allowed to read viewer files; never wildcards"
+    )
+    viewer_files: bool = setting(
+        False, "Enable authenticated, guarded viewer byte ranges"
+    )
+
+
+@dataclass(frozen=True)
 class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
@@ -495,6 +513,7 @@ class Settings:
         "Keep palindromic SNPs only with independently verified forward-strand alleles",
     )
     dev: DevSettings = field(default_factory=DevSettings)
+    server: ServerSettings = field(default_factory=ServerSettings)
 
 
 @dataclass(frozen=True)
@@ -629,6 +648,7 @@ def _schema(cls: type) -> Mapping[str, SettingField]:
 
 SETTINGS: Final = _schema(Settings)
 DEV_SETTINGS: Final = _schema(DevSettings)
+SERVER_SETTINGS: Final = _schema(ServerSettings)
 DEV_TABLE: Final = "dev"
 # Dev settings were top-level keys before the [dev] table; name the new place.
 MOVED_TO_DEV: Final = MappingProxyType(

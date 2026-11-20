@@ -111,6 +111,8 @@ def _run(args: argparse.Namespace) -> None:
 
         require_sdk()
     configured = typed_settings()
+    if transport and args.listen:
+        raise UsageError("--listen is for the HTTP/JSON API, not MCP.")
     port = _option_int(
         args.port,
         configured.server_mcp_port if transport == "http" else configured.server_port,
@@ -161,7 +163,12 @@ def _run(args: argparse.Namespace) -> None:
             )
         else:
             _serve_http(
-                manager, guard, port, state / "server.json", ready_json=args.ready_json
+                manager,
+                guard,
+                port,
+                state / "server.json",
+                ready_json=args.ready_json,
+                listen=args.listen or configured.server.listen,
             )
     finally:
         manager.shutdown()
@@ -240,16 +247,40 @@ def _serve_http(
     discovery: Path,
     *,
     ready_json: bool,
+    listen: str = "127.0.0.1",
 ) -> None:
     from wgsextract_cli.server.http_api import Server
+    from wgsextract_cli.server.listener import exact_headers, parse_listener
 
     token = secrets.token_urlsafe(32)
     try:
-        server = Server(port, token, manager, guard)
+        options = typed_settings().server
+        listener = parse_listener(listen, port)
+        server = Server(
+            listener.port,
+            token,
+            manager,
+            guard,
+            listen=listener.address,
+            allowed_hosts=exact_headers(options.allowed_hosts, origins=False),
+            allowed_origins=exact_headers(options.allowed_origins, origins=True),
+            viewer_files=options.viewer_files,
+        )
+    except ValueError as e:
+        raise UsageError(str(e)) from None
     except OSError as e:
-        raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
+        raise UsageError(f"Can't listen on {listen}: {e}") from None
     url = server.url + "/v1"
     try:
+        if not server.loopback:
+            logging.warning(
+                "Listening on %s: exposes the entire authenticated HTTP/JSON API "
+                "(jobs, cancellation, logs, lookups%s) to this interface. "
+                "HTTP is unencrypted; protect tokens and genome data with an "
+                "operator-configured TLS reverse proxy and firewall.",
+                server.url,
+                ", viewer file bytes" if server.viewer_files else "",
+            )
         _announce(
             f"WGS Extract server on {url}",
             url,

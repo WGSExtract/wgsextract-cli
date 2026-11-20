@@ -227,6 +227,17 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 
 Older names still read: `dataset_library` (`mygenomes_library`), `father_vcf` (`father_vcf_path`), `genome_library` (`mygenomes_library`), `genomes` (`mygenomes_library`), `haplocheck_path` (`haplocheck_executable`), `haplogrep_path` (`haplogrep_executable`), `input` (`input_path`), `input_vcf` (`default_input_vcf`), `jar_dir` (`jar_directory`), `memory` (`memory_limit`), `mother_vcf` (`mother_vcf_path`), `outdir` (`output_directory`), `ref` (`reference_fasta`), `reflib` (`reference_library`), `threads` (`cpu_threads`), `vep_cache` (`vep_cache_directory`).
 
+## The [server] table
+
+Operator opt-ins for HTTP/JSON listening and viewer files. See [server mode](server.md#remote-http-access) for exposure and TLS requirements.
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | `"127.0.0.1"` | HTTP listen address[:port]; loopback by default |
+| `allowed_hosts` | string or array of strings | unset | Exact external Host headers, including ports; never wildcards |
+| `allowed_origins` | string or array of strings | unset | Exact app origins allowed to read viewer files; never wildcards |
+| `viewer_files` | boolean | `false` | Enable authenticated, guarded viewer byte ranges |
+
 ## The [dev] table
 
 Developer and test settings live in their own table, at the end of config.toml (after a table header, every key belongs to that table):

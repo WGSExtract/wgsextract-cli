@@ -16,7 +16,12 @@ def register(
         "serve",
         parents=[base_parser],
         help="Serve the WGS Extract API to local apps and AI agents, over HTTP/JSON or MCP.",
-        description="Run the same operations as the CLI (info, vcf snp, ...) for other programs on this computer: as an HTTP/JSON API on 127.0.0.1 with a per-launch token, or as an MCP server (--mcp) on stdio or on 127.0.0.1 over streamable HTTP. Operations run as background jobs with progress, cancelling and result manifests. Requests may only name files inside the folders you allow: --allow, config server_allowed_paths, mygenomes_library, reference_library, reference_genome_library and output_directory.",
+        description="Run the same operations as the CLI (info, vcf snp, ...) for other programs: as an HTTP/JSON API on loopback by default with a per-launch token (explicit --listen for remote access), or as an MCP server (--mcp) on stdio or on 127.0.0.1 over streamable HTTP. Operations run as background jobs with progress, cancelling and result manifests. Requests may only name files inside the folders you allow: --allow, config server_allowed_paths, mygenomes_library, reference_library, reference_genome_library and output_directory.",
+    )
+    parser.add_argument(
+        "--listen",
+        metavar="ADDRESS[:PORT]",
+        help="HTTP/JSON numeric listen address[:port] (default: server.listen, else 127.0.0.1). Non-loopback exposes the job API, requires token auth and exact server.allowed_hosts; use operator-provided TLS.",
     )
     parser.add_argument(
         "--port",
