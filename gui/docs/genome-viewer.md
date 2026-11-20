@@ -27,6 +27,35 @@ Enter an optional **1-based, inclusive** position such as
 reference's filename appears beside the status. The existing browser-file
 workflow below is available for files outside the configured libraries.
 
+### Add panels, regions or coverage
+
+In **Optional panels and coverage**, enter one full file path per line, then
+choose **Open library file**. Put these files in the configured **My Genomes**
+folder too. You can add up to 16 tracks alongside the BAM/CRAM/VCF that selects
+the reference. To remove a track, delete its path and reopen.
+
+- Use plain `.bed` for panels/regions and `.bedgraph` for coverage or methylation
+  values. Plain text tracks have a 32 MiB limit and load in full.
+- For larger BED/bedGraph tracks, use BGZF `.bed.gz` or `.bedgraph.gz` with an
+  adjacent `.tbi` or `.csi` index. Sort by chromosome and start, compress with
+  `bgzip`, then run `tabix -p bed file.bed.gz` (add `-C` for CSI).
+  Use the BED preset for bedGraph too: both use zero-based, half-open intervals.
+  Ordinary gzip, `.bgz` and other compression suffixes are unsupported for these
+  supplemental tracks. Prepare them before opening; the viewer does not install
+  tools or create indexes.
+- Use `.bw` or `.bigwig` for range-indexed coverage/methylation. Do not compress
+  bigWig with gzip or add a tabix index.
+
+Match chromosome names to the loaded FASTA (`chr1` and `1` differ). For bigWig,
+match chromosome lengths too. The app checks all plain-text records and the
+contig tables in tabix/bigWig indexes before granting access. It cannot verify
+the assembly identity of a BED/bedGraph from chromosome names alone: select
+tracks from the same assembly and rebuild indexes after editing their data.
+Keep BED/bedGraph intervals within the reference lengths and use finite numeric
+bedGraph values. You inspect these tracks through the same authenticated,
+loopback-only file grant as the primary reads/variants. Nothing leaves this
+computer.
+
 ## Open an extraction result
 
 After a run, choose **Show in viewer** beside an existing BAM, CRAM or indexed
@@ -80,8 +109,8 @@ the viewer closes the selections. Files are not remembered between visits.
 
 ## Current limits
 
-Installed gene/rsID lookups, individual finding/haplogroup links, BED and coverage
-tracks, and authenticated remote range serving remain
+Installed annotation tracks and gene/rsID lookups, individual finding/haplogroup
+links, and authenticated remote range serving remain
 [follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
 menus and external links inside igv are disabled, including BLAT.
 Read and coverage popups never query ClinVar or other online services. File
@@ -97,8 +126,9 @@ igv.js 3.8.10 is MIT-licensed. Its notice ships alongside the vendored library i
 
 ## Local file endpoint
 
-An authenticated `POST /api/viewer/open` accepts a library file path and optional
-locus. It creates a bounded, idle-expiring grant for that file, its index and
+An authenticated `POST /api/viewer/open` accepts a library file `path`, optional
+`locus` and an optional `tracks` array (up to 16 supplemental local paths).
+It creates a bounded, idle-expiring grant for those files, their indexes and
 the matching installed reference and indexes. The embedded viewer receives
 only that read-only grant, never the main app's API token.
 `GET /viewer-data/<session>/<file>` requires the grant's

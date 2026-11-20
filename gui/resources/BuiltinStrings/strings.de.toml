@@ -1,4 +1,10 @@
 "language.name" = "Deutsch"  # i18n-source-hash:649df08a
+"viewer.extraTracks" = "Optionale Regionen und Abdeckung"  # i18n-source-hash:d1cf2aaa
+"viewer.extraTracksHelp" = "Pro Zeile einen vollständigen Dateipfad aus Meine Genome eingeben: BED, bedGraph oder bigWig (.bw/.bigwig). Komprimierte BED/bedGraph-Dateien benötigen BGZF (.gz) und eine passende .tbi oder .csi daneben. Chromosomennamen müssen exakt zur Referenz passen. Zum Ändern der Spuren die Bibliotheksdatei erneut öffnen."  # i18n-source-hash:79ef0cf9
+"viewer.trackCompression" = "Nicht unterstützte Komprimierung für %{file}. Unkomprimiertes BED/bedGraph verwenden oder mit bgzip als .bed.gz/.bedgraph.gz komprimieren und einen Tabix-Index mit BED-Voreinstellung daneben erstellen. bigWig darf nicht gzip-komprimiert sein."  # i18n-source-hash:06dd70b7
+"viewer.trackContigs" = "Chromosomennamen oder -längen in %{file} passen nicht zur geladenen Referenz. Spuren derselben Genomversion mit identischen Namen verwenden (z. B. chr1 statt 1); Namen korrigieren und bei Bedarf den Index neu erstellen."  # i18n-source-hash:c2936859
+"viewer.trackInvalid" = "%{file} konnte nicht gelesen werden. BED/bedGraph-Intervalle und Zahlenwerte prüfen oder den Tabix-Index mit BED-Voreinstellung neu erstellen (tabix -p bed; für CSI zusätzlich -C). Bei bigWig prüfen, ob die Datei gültig und vollständig ist."  # i18n-source-hash:9dd0905b
+"viewer.trackTooLarge" = "%{file} ist für eine Textspur ohne Index zu groß (maximal 32 MiB). bgzip mit einem Tabix-Index daneben verwenden oder Abdeckung in bigWig umwandeln."  # i18n-source-hash:fa3f9349
 "viewer.showInViewer" = "Im Genombetrachter anzeigen"  # i18n-source-hash:155bc8f9
 "language.layoutDirection" = "ltr"  # i18n-source-hash:61ac44aa
 "language.code" = "de"  # i18n-source-hash:094b0fe0
@@ -206,7 +212,7 @@
 "viewer.empty" = "Wählen Sie eine Referenz, Spuren und eine Position wie chr1:1000-2000."  # i18n-source-hash:e1c28ce6
 "viewer.loading" = "Lokale Dateien werden geöffnet…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Lokale Spuren geladen. Ziehen zum Verschieben, vergrößern für einzelne Basen oder auf einen Read bzw. eine Variante klicken für Details."  # i18n-source-hash:f136d021
-"viewer.limits" = "Unterstützt lokale indizierte BAM-, CRAM- und VCF/gVCF-Dateien. Bei Bibliotheksdateien wird die Referenz anhand des Headers gewählt; bei manuell gewählten Dateien muss auch die Referenz gewählt werden. Gen-/rsID-Suche und weitere Spurformate sind noch nicht verfügbar. Kontextmenüs und externe Links sind deaktiviert. Beim Verlassen der Seite werden die Dateien geschlossen."  # i18n-source-hash:d3ffb817
+"viewer.limits" = "Unterstützt indizierte BAM-, CRAM- und VCF/gVCF-Dateien sowie optionale BED-, bedGraph- und bigWig-Spuren neben einer Bibliotheksdatei. Bei Bibliotheksdateien wird die Referenz automatisch gewählt; manuell gewählte Reads/Varianten benötigen eine Referenzauswahl. Gen-/rsID-Suche, installierte Annotationen und Fernzugriff sind noch nicht verfügbar. Kontextmenüs und externe Links sind deaktiviert. Beim Verlassen werden die Dateien geschlossen."  # i18n-source-hash:016df972
 "viewer.referenceMissing" = "Referenz nicht installiert oder nicht ausgewählt. Installieren Sie die passende Referenz unter Referenzgenome und wählen Sie hier FASTA und .fai sowie .gzi für BGZF-FASTA. Es wird nichts automatisch heruntergeladen."  # i18n-source-hash:094f8319
 "viewer.referenceCompressedIndexMissing" = "Wählen Sie den .gzi-Index zusammen mit %{file} und seiner .fai. Falls er fehlt, indexieren Sie zuerst die BGZF-Referenz und wählen Sie dann alle drei Dateien."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Wählen Sie den .fai-Index zusammen mit %{file}. Erstellen Sie bei Bedarf zuerst den Referenzindex."  # i18n-source-hash:a39bb059

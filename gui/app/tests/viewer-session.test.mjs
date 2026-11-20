@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, open as openFile, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
+import { gzipSync } from "node:zlib";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { parseConfigToml } from "../dist/web/src/server/config-toml.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
@@ -58,11 +59,11 @@ async function fixture(t) {
         await new Promise((resolve) => server.close(resolve));
     });
     const base = `http://127.0.0.1:${server.address().port}`;
-    const open = (file = input, locus = "") => fetch(`${base}/api/viewer/open`, {
+    const open = (file = input, locus = "", tracks = []) => fetch(`${base}/api/viewer/open`, {
         method: "POST", headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
-        body: JSON.stringify({ path: file, locus }),
+        body: JSON.stringify({ path: file, locus, tracks }),
     });
-    return { root, users, config, library, input, base, open };
+    return { root, users, config, library, input, fasta, base, open };
 }
 
 test("#1090: opening and revoking viewer sessions require the app credential, not a byte grant", async (t) => {
@@ -120,4 +121,95 @@ test("#1112: invalid viewer positions return actionable invalidLocus, not a serv
     }
     const response = await f.open(f.input, "chr1:1-4");
     assert.equal((await response.json()).locus, "chr1:1-4");
+});
+
+const supplementalFormats = ["panels.bed", "coverage.bedgraph", "panels.bed.gz", "coverage.bedgraph.gz",
+    "csi-panels.bed.gz", "csi-coverage.bedgraph.gz", "coverage.bw"];
+
+async function trackFixtures(t) {
+    const f = await fixture(t);
+    const source = path.resolve("../../tests/fixtures/viewer_tracks");
+    for (const name of await readdir(source)) await copyFile(path.join(source, name), path.join(f.library, name));
+    return f;
+}
+
+test("#1148: BED, bedGraph, TBI/CSI and bigWig use revocable scoped byte reads", async (t) => {
+    const f = await trackFixtures(t);
+    await writeFile(`${f.fasta}.fai`, "1\t3000\t3\t60\t61\n");
+    const response = await f.open(f.input, "", supplementalFormats.map((name) => path.join(f.library, name)));
+    assert.equal(response.status, 200);
+    const session = await response.json();
+    assert.equal(session.files.tracks.length, 8);
+    for (const track of session.files.tracks.slice(1)) {
+        const file = path.join(f.library, track.name);
+        const data = await readFile(file);
+        const ranged = await fetch(`${f.base}${track.url}`, { headers: { ...track.headers, range: "bytes=0-15" } });
+        assert.equal(ranged.status, 206);
+        assert.deepEqual(Buffer.from(await ranged.arrayBuffer()), data.subarray(0, 16));
+        assert.equal((await fetch(`${f.base}${track.url}`)).status, 401);
+        if (track.indexURL) assert.equal((await fetch(`${f.base}${track.indexURL}`, { headers: track.headers })).status, 200);
+    }
+    await fetch(`${f.base}/api/viewer/close`, {
+        method: "POST", headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
+        body: JSON.stringify({ id: session.id }),
+    });
+    const track = session.files.tracks[1];
+    assert.equal((await fetch(`${f.base}${track.url}`, { headers: track.headers })).status, 401);
+});
+
+test("#1148: every supplemental format reports a reference contig mismatch before rendering", async (t) => {
+    const f = await trackFixtures(t);
+    for (const name of supplementalFormats) {
+        const response = await f.open(f.input, "", [path.join(f.library, name)]);
+        assert.equal(response.status, 200);
+        assert.deepEqual(await response.json(), { problem: "trackContigs", fileName: name }, "chr1 must not silently display tracks from contig 1.");
+    }
+});
+
+test("#1148: missing tabix, unsupported gzip, corrupt data and oversized text give actionable errors", async (t) => {
+    const f = await trackFixtures(t);
+    await writeFile(`${f.fasta}.fai`, "1\t3000\t3\t60\t61\n");
+    const missing = path.join(f.library, "missing.bed.gz");
+    await copyFile(path.join(f.library, "panels.bed.gz"), missing);
+    const gzip = path.join(f.library, "gzip.bed.gz");
+    await writeFile(gzip, gzipSync("1\t200\t230\tpanel\n"));
+    await copyFile(path.join(f.library, "panels.bed.gz.tbi"), `${gzip}.tbi`);
+    const invalid = path.join(f.library, "invalid.bedgraph");
+    await writeFile(invalid, "1\t200\t230\tnot-a-number\n");
+    const large = path.join(f.library, "large.bed");
+    const handle = await openFile(large, "w");
+    await handle.truncate(32 * 1024 * 1024 + 1);
+    await handle.close();
+    for (const [file, problem] of [[missing, "indexMissing"], [gzip, "trackCompression"], [invalid, "trackInvalid"], [large, "trackTooLarge"]]) {
+        assert.deepEqual(await (await f.open(f.input, "", [file])).json(), { problem, fileName: path.basename(file) });
+    }
+});
+
+test("#1148: extra tracks cannot widen library roots or smuggle traversal", async (t) => {
+    const f = await trackFixtures(t);
+    const outside = path.join(f.root, "outside.bed");
+    await writeFile(outside, "1\t200\t230\n");
+    for (const file of [outside, `${f.library}/unused/../panels.bed`, "https://example.com/panel.bed"]) {
+        assert.equal((await f.open(f.input, "", [file])).status, 403);
+    }
+    for (const tracks of ["panel.bed", [1], Array(17).fill(outside)]) {
+        assert.equal((await f.open(f.input, "", tracks)).status, 400);
+    }
+});
+
+test("#1148: supplemental symlinks cannot escape the configured library", async (t) => {
+    const f = await trackFixtures(t);
+    const outside = path.join(f.root, "outside.bed");
+    const escape = path.join(f.library, "escape.bed");
+    await writeFile(outside, "1\t200\t230\n");
+    try {
+        await symlink(outside, escape);
+    } catch (error) {
+        if (process.platform === "win32" && error.code === "EPERM") {
+            t.skip("Windows symlink creation needs elevation or Developer Mode.");
+            return;
+        }
+        throw error;
+    }
+    assert.equal((await f.open(f.input, "", [escape])).status, 403);
 });

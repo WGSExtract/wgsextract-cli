@@ -11,6 +11,7 @@ import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import type { RequestHandlerContext } from "./routes.js";
 import { usersWorkspaceFor } from "./users-workspace.js";
 import { guardedViewerPath, type ViewerFiles } from "./viewer-files.js";
+import { supplementalViewerTracks } from "./viewer-tracks.js";
 
 /** Persistent library settings, never request-provided roots or a whole home directory. */
 export async function viewerLibraries(context: RequestHandlerContext) {
@@ -39,7 +40,7 @@ export async function viewerLibraries(context: RequestHandlerContext) {
     return { config, roots, genomeRoots: [genomes], key: JSON.stringify([context.bundleRoot, config, ...roots]) };
 }
 
-export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
+export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles, trackPaths: string[] = []): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
     let position: string | undefined;
     try {
         position = locus ? localViewerLocus(locus) : undefined;
@@ -99,7 +100,15 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         return { problem: "referenceCompressedIndexMissing", fileName: path.basename(fasta) };
     }
     position ??= localViewerLocus(resolved.locus);
-    const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : [])], library.roots, library.key);
+    let supplemental;
+    try {
+        supplemental = await supplementalViewerTracks(trackPaths, fasta, library.genomeRoots, context.bundleRoot);
+    } catch (error) {
+        if (error instanceof ViewerFileError) return { problem: error.code, fileName: error.fileName };
+        throw error;
+    }
+    const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : []),
+        ...supplemental.flatMap((track) => [track.url, ...(track.indexURL ? [track.indexURL] : [])])], library.roots, library.key);
     const url = (file: string) => {
         const value = grant.urls.get(file);
         if (!value) {
@@ -119,7 +128,9 @@ export async function openLibraryViewer(input: string, locus: string, context: R
                 name: path.basename(input).replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`),
                 format, type: format === "vcf" ? "variant" : "alignment", indexed: true,
                 url: url(input), indexURL: url(index), headers: grant.headers,
-            }],
+            }, ...supplemental.map((track) => ({
+                ...track, url: url(track.url), ...(track.indexURL ? { indexURL: url(track.indexURL) } : {}), headers: grant.headers,
+            }))],
         },
     };
 }

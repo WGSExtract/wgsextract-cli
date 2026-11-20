@@ -1,4 +1,10 @@
 "language.name" = "Français"  # i18n-source-hash:649df08a
+"viewer.extraTracks" = "Régions et couverture facultatives"  # i18n-source-hash:d1cf2aaa
+"viewer.extraTracksHelp" = "Saisissez un chemin complet de Mes génomes par ligne : BED, bedGraph ou bigWig (.bw/.bigwig). Les fichiers BED/bedGraph compressés exigent BGZF (.gz) et un index .tbi ou .csi adjacent. Les noms de chromosomes doivent correspondre exactement à la référence. Rouvrez le fichier de bibliothèque pour modifier les pistes."  # i18n-source-hash:79ef0cf9
+"viewer.trackCompression" = "Compression non prise en charge pour %{file}. Utilisez BED/bedGraph sans compression, ou bgzip au format .bed.gz/.bedgraph.gz avec un index tabix adjacent utilisant le préréglage BED. bigWig ne doit pas être compressé avec gzip."  # i18n-source-hash:06dd70b7
+"viewer.trackContigs" = "Les noms ou longueurs de chromosomes de %{file} ne correspondent pas à la référence. Utilisez des pistes du même assemblage avec des noms identiques (par exemple chr1 ou 1) ; corrigez les noms et reconstruisez l’index si nécessaire."  # i18n-source-hash:c2936859
+"viewer.trackInvalid" = "Impossible de lire %{file}. Vérifiez les intervalles BED/bedGraph et les valeurs numériques, ou reconstruisez l’index avec le préréglage BED (tabix -p bed ; ajoutez -C pour CSI). Pour bigWig, vérifiez que le fichier est valide et complet."  # i18n-source-hash:9dd0905b
+"viewer.trackTooLarge" = "%{file} dépasse la limite des pistes texte sans index (32 MiB). Utilisez bgzip avec un index tabix adjacent ou convertissez la couverture en bigWig."  # i18n-source-hash:fa3f9349
 "viewer.showInViewer" = "Afficher dans le visualiseur"  # i18n-source-hash:155bc8f9
 "language.layoutDirection" = "ltr"  # i18n-source-hash:61ac44aa
 "language.code" = "fr"  # i18n-source-hash:094b0fe0
@@ -206,7 +212,7 @@
 "viewer.empty" = "Choisissez une référence, des pistes et une position telle que chr1:1000-2000."  # i18n-source-hash:e1c28ce6
 "viewer.loading" = "Ouverture des fichiers locaux…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Pistes locales chargées. Faites glisser pour vous déplacer, zoomez pour voir les bases ou cliquez sur une lecture ou un variant pour les détails."  # i18n-source-hash:f136d021
-"viewer.limits" = "Accepte les fichiers locaux indexés BAM, CRAM et VCF/gVCF. Les fichiers de la bibliothèque utilisent une référence choisie d’après l’en-tête ; les fichiers sélectionnés manuellement nécessitent encore un choix de référence. La recherche de gènes/rsID et les autres formats ne sont pas encore disponibles. Les menus contextuels et liens externes sont désactivés. Quitter cette page ferme les fichiers."  # i18n-source-hash:d3ffb817
+"viewer.limits" = "Accepte BAM, CRAM et VCF/gVCF indexés, ainsi que des pistes BED, bedGraph et bigWig facultatives avec un fichier de bibliothèque. La référence est choisie automatiquement pour la bibliothèque ; les lectures/variants sélectionnés manuellement nécessitent un choix de référence. La recherche de gènes/rsID, les annotations installées et l’accès distant ne sont pas encore disponibles. Les menus contextuels et liens externes sont désactivés. Quitter cette page ferme les fichiers."  # i18n-source-hash:016df972
 "viewer.referenceMissing" = "Référence non installée ou non sélectionnée. Installez la référence correspondante dans Génomes de référence, puis sélectionnez son FASTA et son .fai, ainsi que son .gzi pour un FASTA BGZF. Rien ne sera téléchargé automatiquement."  # i18n-source-hash:094f8319
 "viewer.referenceCompressedIndexMissing" = "Sélectionnez l’index .gzi avec %{file} et son .fai. S’il manque, indexez d’abord la référence BGZF, puis sélectionnez les trois fichiers."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Sélectionnez l’index .fai avec %{file}. Indexez d’abord la référence si nécessaire."  # i18n-source-hash:a39bb059

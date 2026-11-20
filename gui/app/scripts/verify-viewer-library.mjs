@@ -8,6 +8,7 @@ const { values } = parseArgs({ options: {
     url: { type: "string" }, fixtures: { type: "string" }, out: { type: "string" },
     "large-bam": { type: "string" }, vcf: { type: "string" }, chromium: { type: "string" },
     config: { type: "string" },
+    tracks: { type: "boolean", default: false },
     "reference-name": { type: "string", default: "hs38DH.fa.gz" },
     locus: { type: "string", default: "chr20:10001200-10001450" },
     "next-locus": { type: "string", default: "chr20:10002400-10002700" },
@@ -101,6 +102,40 @@ try {
     assert.ok(byteLog.some((read) => read.status === 206), "Actual igv range requests must receive 206.");
     assert.ok(byteLog.every((read) => [200, 206].includes(read.status)));
     assert.deepEqual(await page.evaluate(() => window.policyViolations), []);
+    if (values.tracks) {
+        const supplemental = ["panels.bed", "panels.bed.gz", "csi-panels.bed.gz",
+            "coverage.bedgraph", "coverage.bedgraph.gz", "csi-coverage.bedgraph.gz", "coverage.bw"];
+        for (const name of supplemental) {
+            current = name;
+            const opened = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/viewer/open");
+            await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+            await page.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, name));
+            await page.locator('[data-library] [name="locus"]').fill(values.locus);
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            const session = await (await opened).json();
+            assert.ok(session.files, `Track preflight failed: ${session.problem} (${session.fileName ?? ""})`);
+            assert.equal(session.files.tracks.length, 2);
+            await checkDrawing(page, name);
+            const track = page.locator(".igv-viewport").filter({ has: page.locator(".igv-track-label", { hasText: name }) });
+            await track.waitFor();
+            // Check pixels in the data viewport, not the axis or a label.
+            assert.ok(await track.locator("canvas").evaluateAll((canvases) => canvases.some((canvas) => {
+                const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+                return pixels.some((value, i) => i % 4 === 3 && value > 0 && (pixels[i - 3] < 220 || pixels[i - 2] < 220 || pixels[i - 1] < 220));
+            })), `${name} must draw its intervals or values.`);
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.screenshot({ path: path.join(out, `library-${name}.png`), fullPage: true });
+            await Promise.all(byteReads);
+            const urls = session.files.tracks.slice(1).flatMap((track) => [track.url, ...(track.indexURL ? [track.indexURL] : [])]);
+            const reads = byteLog.filter((read) => read.case === name && urls.includes(read.fileID));
+            assert.ok(reads.length, "Supplemental tracks use the scoped endpoint.");
+            if (name.endsWith(".gz") || name.endsWith(".bw")) assert.ok(reads.some((read) => read.status === 206), "Indexed supplemental tracks use ranges.");
+            proofs.push({ case: name, totalBytes: reads.reduce((sum, read) => sum + read.bytes, 0) });
+        }
+        await page.locator('[name="extra-tracks"]').fill("");
+        assert.deepEqual(await page.evaluate(() => window.policyViolations), []);
+    }
     if (values.config) {
         const original = await readFile(values.config, "utf8");
         const missing = path.join(out, "missing-reference-library");

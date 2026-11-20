@@ -11,7 +11,7 @@ export async function prepareViewerFixtures(root, output, tools) {
             throw new Error(`${name}: ${result.error?.message ?? result.stderr}`);
         }
     };
-    for (const name of ["samtools", "bcftools"]) run(name, ["--version"]);
+    for (const name of ["samtools", "bcftools", "bgzip", "tabix"]) run(name, ["--version"]);
     const library = path.join(output, "mygenomes");
     const reference = path.join(output, "reference", "genomes");
     await mkdir(library, { recursive: true });
@@ -59,5 +59,21 @@ export async function prepareViewerFixtures(root, output, tools) {
     } finally {
         await handle.close();
     }
-    return { library, reference, bam, cram, vcf: `${vcf}.gz`, large };
+    const tracks = [];
+    for (const source of ["panels.bed", "coverage.bedgraph"]) {
+        const file = path.join(library, source);
+        await copyFile(path.join(root, "tests/fixtures/viewer_tracks", source), file);
+        tracks.push(file);
+        for (const csi of [false, true]) {
+            const compressed = path.join(library, `${csi ? "csi-" : ""}${source}.gz`);
+            if (compressed.slice(0, -3) !== file) await copyFile(file, compressed.slice(0, -3));
+            run("bgzip", ["-k", "-f", compressed.slice(0, -3)]);
+            run("tabix", [...(csi ? ["-C"] : []), "-p", "bed", compressed]);
+            tracks.push(compressed);
+        }
+    }
+    const bigwig = path.join(library, "coverage.bw");
+    await copyFile(path.join(root, "tests/fixtures/viewer_tracks/coverage.bw"), bigwig);
+    tracks.push(bigwig);
+    return { library, reference, bam, cram, vcf: `${vcf}.gz`, large, tracks };
 }

@@ -50,6 +50,10 @@ try {
           <input type="text" name="library-path" dir="ltr" autocomplete="off" spellcheck="false" required aria-describedby="library-help">
         </label>
         <p id="library-help">${escapeHTML(text("libraryHelp"))}</p>
+        <label>${escapeHTML(text("extraTracks"))}
+          <textarea name="extra-tracks" rows="3" dir="ltr" autocomplete="off" spellcheck="false" aria-describedby="extra-tracks-help"></textarea>
+        </label>
+        <p id="extra-tracks-help">${escapeHTML(text("extraTracksHelp"))}</p>
         <label>${escapeHTML(text("locus"))}<input name="locus" placeholder="chr1:1000-2000" autocomplete="off" spellcheck="false"></label>
         <div><button type="submit" class="action-button primary">${escapeHTML(text("openLibrary"))}</button></div>
       </form>
@@ -157,6 +161,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
         const result = await requestLibraryViewer(
             required<HTMLInputElement>('[name="library-path"]').value,
             form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "",
+            (form.querySelector<HTMLTextAreaElement>('[name="extra-tracks"]')?.value ?? "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         );
         if ("problem" in result) {
             status(result.problem, true, result.fileName ?? "");
@@ -171,7 +176,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
 }
 
 function setBusy(busy: boolean) {
-    root?.querySelectorAll<HTMLInputElement | HTMLButtonElement>("form input, form button").forEach((element) => { element.disabled = busy; });
+    root?.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>("form input, form button, form textarea").forEach((element) => { element.disabled = busy; });
 }
 
 async function openTracks(files: LocalViewerFiles<File | string>, locus: string, navigation: HTMLFormElement, host: HTMLElement) {
