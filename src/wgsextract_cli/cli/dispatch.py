@@ -153,7 +153,9 @@ def _card_path(args: argparse.Namespace, result: CommandResult) -> Path | None:
 
     path = card_path(result, getattr(args, "outdir", None))
     if path is None:
-        logging.warning("No result card written: this run has no output folder.")
+        from wgsextract_cli.core.result_card import NO_CARD
+
+        logging.info(NO_CARD)
     return path
 
 

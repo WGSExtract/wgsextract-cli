@@ -300,9 +300,10 @@ def execute(
     """
     read_only = _runs_concurrently(params)
     with contextlib.nullcontext() if read_only else _LOCK:
-        result, error, created = _run(params, impl, progress, cancel, read_only)
+        result, error, created = _run(
+            params, impl, progress, cancel, read_only, card=write_manifest
+        )
         if write_manifest:
-            _write_card(params, result)
             try:
                 result.write_manifest()
             except OSError as e:
@@ -315,17 +316,18 @@ def execute(
     return result
 
 
-def _write_card(params: Params, result: CommandResult) -> None:
+def _write_card(params: Params, result: CommandResult, requested: bool | None) -> None:
     """Write the run's result card when the caller (``wgsextract serve
-    --card``) or config.toml asks for one, as the CLI does."""
+    --card``) or config.toml asks for one, as the CLI does. ``params`` are the
+    ones the run used, with config defaults filled in."""
     from wgsextract_cli.cli.dispatch import card_wanted
-    from wgsextract_cli.core.result_card import card_path, write_card
+    from wgsextract_cli.core.result_card import NO_CARD, card_path, write_card
 
-    if not card_wanted(params.COMMAND, execution_context.current().result_card):
+    if not card_wanted(params.COMMAND, requested):
         return
     path = card_path(result, getattr(params, "outdir", None))
     if path is None:
-        logging.warning("No result card written: this run has no output folder.")
+        logging.info(NO_CARD)
         return
     try:
         write_card(result, path)
@@ -339,6 +341,8 @@ def _run(
     progress: ProgressCallback | None,
     cancel: CancelToken | None,
     read_only: bool,
+    *,
+    card: bool = False,
 ) -> tuple[CommandResult, BaseException | None, Path | None]:
     """Run ``impl`` in a context of its own; the result, what failed it, and
     the default output folder it created (to remove if the run left it empty)."""
@@ -412,6 +416,11 @@ def _run(
                 unregister()
             proc_registry.accept_new(scope)
     result.finalize(probe_tools=True)
+    if card:
+        # The caller's request; the config the run read (a read-only call's snapshot).
+        requested = execution_context.current().result_card
+        with execution_context.bound(config=config):
+            _write_card(params, result, requested)
     return result, error, created if default_outdir else None
 
 

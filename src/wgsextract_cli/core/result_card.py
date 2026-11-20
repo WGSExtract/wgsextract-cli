@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Final
 
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.download_progress import format_bytes
+from wgsextract_cli.core.download_progress import format_bytes, redact_urls
 from wgsextract_cli.core.results import (
     FINGERPRINT_PREFIX,
     MANIFEST_SUFFIX,
@@ -31,8 +31,11 @@ from wgsextract_cli.core.results import (
 
 CARD_SUFFIX: Final = ".card.html"
 CARD_ROLE: Final = "result_card"
+NO_CARD: Final = "No result card: this run reads no sample and has no outputs."
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# An absolute POSIX or Windows path, up to whitespace or a quote.
+_PATH = re.compile(r"(?<![\w:/.~])(?:[A-Za-z]:)?[\\/][^\s'\"<>|]+")
 _STATUS_LABEL = {"ok": "Completed", "failed": "Failed", "cancelled": "Cancelled"}
 
 
@@ -41,25 +44,26 @@ def card_path(
 ) -> Path | None:
     """Where this run's card goes: beside its manifest, with the same stem.
 
-    A run that writes no manifest (``info``, other report-only commands) gets
-    one named after its input and command, so the card always has its
-    full-path record beside it. It goes in ``outdir`` or, when the command has
+    A report-only run that reads a sample (``info``) writes no manifest of its
+    own; it gets one named after its input and command, so the card always
+    has its full-path record beside it, in ``outdir`` or, when the command has
     none, where outputs go by default: config.toml's output_directory, else
-    ``wgse/`` beside the input. None when there is nowhere to write."""
+    ``wgse/`` beside the input. A report-only run without an input (``ref
+    status``) is about no sample and gets no card. None when there is none."""
     manifest = result.manifest_path()
     if manifest is None:
         from wgsextract_cli.core.config import output_directory
 
-        folder = outdir or output_directory(r.path for r in result.inputs)
+        local = [r.path for r in result.inputs if "://" not in r.path]
+        folder = (outdir or output_directory(local)) if local else None
         if not folder:
             return None
-        stem = "_".join(result.command.split()) or "wgsextract"
-        if result.inputs:
-            stem = f"{_stem(result.inputs[0].path)}_{stem}"
-        folder = Path(folder).expanduser().absolute()
-        result.set_manifest_stem(folder / stem)
-        manifest = folder / (stem + MANIFEST_SUFFIX)
-    return manifest.with_name(manifest.name.removesuffix(MANIFEST_SUFFIX) + CARD_SUFFIX)
+        name = f"{_stem(local[0])}_{'_'.join(result.command.split()) or 'wgsextract'}"
+        manifest = Path(folder).expanduser().absolute() / (name + MANIFEST_SUFFIX)
+    stem = manifest.with_name(manifest.name.removesuffix(MANIFEST_SUFFIX))
+    # Pinned: once the card is an output, it mustn't become the manifest's namesake.
+    result.set_manifest_stem(stem)
+    return stem.with_name(stem.name + CARD_SUFFIX)
 
 
 def write_card(result: CommandResult, path: Path) -> None:
@@ -119,7 +123,9 @@ def render_card(result: CommandResult, *, manifest_name: str | None = None) -> s
     if text:
         body.append(f"<section><h2>Result</h2><pre>{escape(text)}</pre></section>")
     if result.metrics:
-        rows = _rows((_label(k), _scalar(v)) for k, v in result.metrics.items())
+        rows = _rows(
+            (_label(k), _private(_scalar(v), result)) for k, v in result.metrics.items()
+        )
         table = f'<table class="facts">{rows}</table>'
         # Printed results usually show the headline numbers already.
         body.append(
@@ -164,25 +170,47 @@ def _stem(path: str) -> str:
 
 
 def _private(text: str, result: CommandResult) -> str:
-    """``text`` with the run's file paths reduced to names and the home folder
-    to ``~``."""
+    """``text`` without the user's folders: the run's files and option paths,
+    and any other existing path in it, reduced to their names; the home folder
+    to ``~``; URLs without credentials or query strings."""
     paths = {r.path for r in (*result.inputs, *result.outputs)}
     if result.provenance.reference is not None:
         paths.add(result.provenance.reference.path)
+    paths.update(
+        str(Path(v).expanduser())
+        for v in result.provenance.params.values()
+        if isinstance(v, str)
+        and "://" not in v
+        and os.path.isabs(os.path.expanduser(v))
+    )
+    # Whole paths first, so a folder that prefixes one doesn't leave its rest.
+    text = _PATH.sub(_existing_path_name, text)
     for path in sorted(paths, key=len, reverse=True):
-        if "://" not in path:
+        if "://" not in path and len(Path(path).parts) > 1:
             text = text.replace(path, Path(path).name)
     home = str(Path.home())
     if len(home) > 1:
-        text = text.replace(home, "~")
-    return text
+        text = re.sub(re.escape(home) + r"(?=[\\/\s'\"),;:]|$)", "~", text)
+    return redact_urls(text) if "://" in text else text
+
+
+def _existing_path_name(match: re.Match[str]) -> str:
+    """A path the text names, as its name when it exists on this computer."""
+    candidate = match.group(0).rstrip(".,;:)'\"")
+    try:
+        exists = len(Path(candidate).parts) > 2 and Path(candidate).exists()
+    except OSError:
+        exists = False
+    if not exists:
+        return match.group(0)
+    return Path(candidate).name + match.group(0)[len(candidate) :]
 
 
 def _file_fact(record: FileRecord) -> str:
     parts = [
         escape(Path(record.path).name)
         if "://" not in record.path
-        else escape(record.path)
+        else escape(redact_urls(record.path))
     ]
     detail = [_size(record)] if record.size_bytes is not None else []
     if record.fingerprint:

@@ -61,14 +61,17 @@ parser still treats external/compact documents as unvalidated input.
   its status, what the command printed, metrics, warnings and output files,
   with the WGS Extract and tool versions, the input files with their size and
   an abbreviated fingerprint, the reference and when the run happened. Files
-  appear by name only, and paths in the printed text are cut to file names
-  (the home folder to `~`), so sharing a card doesn't reveal your folders;
+  appear by name only. In the printed text, messages and metrics, the run's
+  files, its option paths and any other path that exists on the computer are
+  cut to their names, the home folder to `~`, and URLs lose credentials and
+  query strings, so sharing a card doesn't reveal your folders;
   the manifest beside it keeps the full paths. The page is self-contained: no
-  scripts, nothing loaded from a network. A report-only command such as
-  `info`, which otherwise writes no manifest, writes both into its output
-  folder (with no `--outdir`, where outputs go by default: `output_directory`
-  or `wgse/` beside the input), named after its input and command
-  (`sample_info.card.html` and `sample_info.manifest.json`). The card is
+  scripts, nothing loaded from a network. A report-only command that reads
+  a sample, such as `info`, which otherwise writes no manifest, writes both
+  into its output folder (with no `--outdir`, where outputs go by default:
+  `output_directory` or `wgse/` beside the input), named after its input and
+  command (`sample_info.card.html` and `sample_info.manifest.json`); one
+  that reads no sample, such as `ref status`, writes no card. The card is
   listed in the manifest's `outputs` with role `result_card`. A failed run's
   card shows the error. Help and settings commands (`help`, `config`, `deps`,
   `sample`, `serve`, `report-issue`) write no card. `wgsextract serve --card`

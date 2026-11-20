@@ -79,16 +79,88 @@ def test_card_shows_result_and_provenance_beside_the_manifest(tmp_path):
     assert fingerprint[:12] in html
 
 
-def test_failed_run_card_shows_the_error_escaped(tmp_path):
+def test_failed_attempt_card_shows_the_error_and_keeps_the_manifest_name(tmp_path):
+    """PR #1143 review: the card, registered as an output, became the name the
+    failed attempt's manifest took (s.vcf.failed.card.html.manifest.json), so
+    the card named a manifest that didn't exist."""
+
     def command(args):
+        results.current_result().expect_output(tmp_path / "s.vcf.gz")
         raise WGSExtractError("Bad <b>input</b> & more.")
 
     assert dispatch(command, tmp_path, card=True) == 1
-    (card,) = tmp_path.glob("*.card.html")
+    manifest = tmp_path / "s.vcf.failed.manifest.json"
+    card = tmp_path / "s.vcf.failed.card.html"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [card.name, manifest.name]
     html = card.read_text(encoding="utf-8")
-    assert "Failed" in html
+    assert "Failed" in html and manifest.name in html
     assert "Bad &lt;b&gt;input&lt;/b&gt; &amp; more." in html
     assert "<b>input</b>" not in html
+    document = json.loads(manifest.read_text())
+    assert [o["role"] for o in document["outputs"]] == ["result_card"]
+
+
+def test_directory_output_keeps_its_manifest_name(tmp_path):
+    """PR #1143 review: with only a directory output, the card became the
+    manifest's namesake."""
+    folder = tmp_path / "vep"
+
+    def command(args):
+        folder.mkdir()
+        (folder / "a.txt").write_text("x")
+        results.current_result().add_output(folder, "cache")
+
+    assert dispatch(command, tmp_path, card=True) == 0
+    assert (folder / "vep.card.html").is_file()
+    document = json.loads((folder / "vep.manifest.json").read_text())
+    assert {o["role"] for o in document["outputs"]} == {"cache", "result_card"}
+    assert not list(folder.glob("*.card.html.manifest.json"))
+
+
+def test_report_without_a_sample_writes_nothing(tmp_path):
+    """PR #1143 review: the app passes --card to every run; a report about no
+    sample (`ref status`) must not leave a card or manifest in the output
+    folder."""
+
+    def command(args):
+        results.human_output("Reference library: 3 genomes")
+
+    args = argparse.Namespace(
+        func=command,
+        command="ref",
+        _command="ref status",
+        outdir=str(tmp_path),
+        card=True,
+    )
+    dispatch_command(args, set())
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_card_hides_other_folders_and_url_secrets(tmp_path):
+    """PR #1143 review: folders other than the run's own files (the reference
+    library, a temp folder, a path in a metric) and URL query strings reached
+    the shared card."""
+    library = tmp_path / "private" / "reflib"
+    library.mkdir(parents=True)
+    other = tmp_path / "private" / "scratch" / "x.tmp"
+    other.parent.mkdir()
+    other.write_text("x")
+    output = tmp_path / "out.txt"
+
+    def command(args):
+        result = results.current_result()
+        output.write_text("x")
+        result.add_output(output, "out")
+        result.add_metrics(table=str(other))
+        results.human_output(
+            f"Library {library}\nScratch {other}\nFrom https://example.org/a.bam?token=s3cret"
+        )
+
+    assert dispatch(command, tmp_path, card=True, reflib=str(library)) == 0
+    html = (tmp_path / "out.txt.card.html").read_text(encoding="utf-8")
+    assert str(tmp_path / "private") not in html
+    assert "Library reflib" in html and "Scratch x.tmp" in html
+    assert "s3cret" not in html
 
 
 def test_runs_without_card_write_no_card(tmp_path):
@@ -200,3 +272,29 @@ def test_cli_info_without_outdir_puts_its_card_in_the_default_wgse_folder(tmp_pa
     assert "Avg Read Length" in card.read_text(encoding="utf-8")
     manifest = json.loads((lab / "wgse" / "fake_info.manifest.json").read_text())
     assert [o["path"] for o in manifest["outputs"]] == [str(card)]
+
+
+def test_analyze_does_not_take_its_steps_cards(tmp_path):
+    """PR #1143 review: analyze copied each step's result_card into its own
+    outputs, so the app showed a step's card instead of the analyze card."""
+    from wgsextract_cli.commands._analyze_workflows import record_step_result
+
+    step = tmp_path / "step.json"
+    step.write_text(
+        json.dumps(
+            {
+                "command": "extract mt-bam",
+                "outputs": [
+                    {"path": str(tmp_path / "s_mtDNA.bam"), "role": "mt_bam"},
+                    {
+                        "path": str(tmp_path / "s_mtDNA.bam.card.html"),
+                        "role": "result_card",
+                    },
+                ],
+            }
+        )
+    )
+    result = results.CommandResult(command="analyze")
+    with results.collecting(result):
+        record_step_result(step)
+    assert [o.role for o in result.outputs] == ["mt_bam"]
