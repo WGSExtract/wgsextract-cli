@@ -1,6 +1,7 @@
 import type { ResultDocument, ResultFile, ResultNotice, ResultScalar } from "../../../shared/result-document.js";
 import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
+import { isViewerTrack, viewerResultLocus } from "../../../shared/viewer-result.js";
 import { workspaceRoots } from "./model.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
@@ -33,7 +34,7 @@ export function renderResultSummary(document: ResultDocument | undefined): strin
         </dl>` : ""}
       ${document.outputs.length ? `
         <h4>${escapeHTML(labels.resultOutputsTitle ?? "Output files")}</h4>
-        <ul class="result-outputs">${document.outputs.map(renderOutput).join("")}</ul>` : ""}
+        <ul class="result-outputs">${document.outputs.map((output) => renderOutput(output, document)).join("")}</ul>` : ""}
       ${document.manifestPath ? `
         <p class="result-manifest">${escapeHTML(labels.resultManifestLabel ?? "Result manifest")}: <span class="result-path" title="${escapeAttribute(document.manifestPath)}">${escapeHTML(displayWorkspacePath(document.manifestPath, workspaceRoots()))}</span> ${pathButtons(document.manifestPath)}</p>` : ""}
       <details class="result-document">
@@ -62,13 +63,17 @@ export function renderResultNotice(notice: ResultNotice | undefined): string {
     </span>`;
 }
 
-function renderOutput(output: ResultFile): string {
+function renderOutput(output: ResultFile, document: ResultDocument): string {
     const size = output.sizeBytes == null ? "" : ` <span class="result-size">${escapeHTML(formatBytes(output.sizeBytes))}</span>`;
+    const viewer = state.manifest?.id === "wgs-extract" && output.exists && isViewerTrack(output.path)
+        ? `<button type="button" class="action-button secondary compact" data-result-viewer="${escapeAttribute(output.path)}" data-viewer-locus="${escapeAttribute(viewerResultLocus(document, output))}">${escapeHTML(state.labels.viewerStrings?.showInViewer ?? "")}</button>`
+        : "";
     return `
       <li>
         <span class="result-role">${escapeHTML(output.role || output.kind)}</span>
         <span class="result-path" title="${escapeAttribute(output.path)}">${escapeHTML(displayWorkspacePath(output.path, workspaceRoots()))}</span>${size}
         ${output.exists ? pathButtons(output.path) : ""}
+        ${viewer}
       </li>`;
 }
 

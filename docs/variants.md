@@ -67,7 +67,7 @@ A 30x genome trio took about 70 minutes with 8 threads.
   or Google's `run_deepvariant` on PATH;
 - [wgse-deepvariant](../native/deepvariant/README.md) on Apple Silicon
   (WGS only, GPU call_variants, published weight hashes checked), or Linux
-  x86-64 (`pixi install -e deepvariant`, native 0.3.1, WGS/ONT_R104);
+  x86-64 (`pixi install -e deepvariant`, native 0.4.0, WGS/ONT_R104);
   set `deepvariant_weights` to `wgse-deepvariant-weights-1.10.0`.
   Linux uses CPU or `--gpu` CUDA; `deepvariant_native = "off"` keeps
   Docker/Parabricks;
@@ -83,6 +83,12 @@ package has held no Google DeepVariant since 1.8: the optional native
 Google's x86-only image fails under Apple Silicon Docker emulation (no AVX)
 and is refused. Alternatives are `vcf clair3` for ONT, `vcf snp`/`indel`,
 or x86-64 hardware.
+
+Updating WGS Extract preserves the optional `deepvariant` environment.
+Rerun `pixi install -e deepvariant` from the updated checkout to upgrade an
+older native install to 0.4.0 before calling haploid chrX/Y/MT. If you installed
+`wgse-deepvariant` on PATH instead, replace that binary with 0.4.0 or later;
+it takes precedence over the optional environment.
 
 CPU preflight covers `postprocess_variants`: each worker sorts a partition
 in RAM (~7 GiB for a 30x genome at `-t 5`). It adds partitions/reduces workers
@@ -205,6 +211,13 @@ Linux and Windows. Input must be GRCh38; gVCFs work. CYP2D6/HLA need reads,
 not a VCF: give `typing cyp2d6`'s `<stem>.cyp2d6.pharmcat.tsv` and `typing hla`'s
 `<stem>.hla.pharmcat.tsv` via repeatable `--outside-call`. They merge into
 `<stem>.outside.tsv`, also picked up on later runs.
+The first run also needs PharmCAT's GRCh38 reference from Zenodo record 7288118
+(about 883 MB). Pass `--download` to fetch it. WGS Extract verifies the pinned
+SHA-256 before extraction and installs the FASTA only after both indexes;
+interrupted downloads never become installed references. Later runs stay offline.
+First-use installs share a directory lock. Interrupted or cancelled transfers
+keep their download resume state for the next `--download` run;
+incomplete FASTA indexes are detected and repaired with the same consent.
 
 `typing smn` uses archived SMNCopyNumberCaller 1.1.2 (last Apache-2.0 release)
 for SMN1/SMN2 copy number. One SMN1 copy indicates a carrier, none SMA;

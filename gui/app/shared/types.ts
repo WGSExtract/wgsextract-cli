@@ -391,6 +391,7 @@ export interface BundleManifest {
 }
 
 export interface CommandContext {
+    setupReady?: boolean;
     fieldValues?: ValueMap;
     checkedOptions?: StringMap;
     configValues?: ValueMap;

@@ -31,6 +31,8 @@ from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA as REFERENCE_FASTA
+from wgsextract_cli.core.pharmcat_resources import ensure_reference
 from wgsextract_cli.core.pixi_tools import pixi_env_tool
 from wgsextract_cli.core.reference_resolver import (
     ReferenceLibrary,
@@ -53,8 +55,6 @@ from .pharmcat_evidence import expand
 
 RELEASES_URL = "https://github.com/PharmGKB/PharmCAT/releases"
 PIPELINE_FILES = ("pharmcat_pipeline", "pharmcat.jar", "pharmcat_regions.bed")
-# Shipped with the release's preprocessor; fetched by PharmCAT on first use.
-REFERENCE_FASTA = "reference.fna.bgz"
 
 
 def pharmcat_directory(
@@ -87,21 +87,6 @@ def _python(directory: str) -> list[str]:
             "PharmCAT's environment isn't installed: pixi install --locked -e pharmcat"
         )
     return _tool_command_parts(command)
-
-
-def _ensure_reference(python: list[str], directory: str) -> str:
-    reference = str(Path(directory, REFERENCE_FASTA))
-    if not Path(reference).is_file():
-        from wgsextract_cli.core.network_policy import require_download
-
-        require_download("PharmCAT GRCh38 reference.fna.bgz (Zenodo record 7288118)")
-        logging.info("Fetching PharmCAT's GRCh38 reference (about 1 GB, once)...")
-        fetch = (
-            "import sys; sys.path.insert(0, sys.argv[1]); import pcat; "
-            "pcat.download_reference_fasta_and_index(sys.argv[1])"
-        )
-        run_command([*python, "-c", fetch, directory])
-    return reference
 
 
 def prepare_input(
@@ -359,7 +344,7 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         current_result().add_input(gvcf, reference_evidence.ROLE)
         logging.info(f"Reference evidence for absent PharmCAT sites: {gvcf}")
     input_vcf = ensure_vcf_prepared(input_vcf)  # bgzipped and indexed
-    reference = _ensure_reference(python, directory)
+    reference = ensure_reference(directory)
     stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(input_vcf).name, flags=re.I)
 
     with tempfile.TemporaryDirectory(

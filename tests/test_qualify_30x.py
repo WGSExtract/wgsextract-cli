@@ -124,6 +124,57 @@ def test_1114_relative_roots_follow_powershell_location(tmp_path: Path) -> None:
     assert not (target / "run").exists()
 
 
+@pytest.mark.parametrize(
+    "unavailable_start_time", ["throw-exited", "null-exited", "throw-live", "null-live"]
+)
+def test_798_missing_process_metadata_keeps_logs_exit_status_and_evidence(
+    tmp_path: Path, unavailable_start_time: str
+) -> None:
+    result = subprocess.run(
+        [
+            str(PWSH),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "tests/powershell/qualify_30x.ps1"),
+            "-Helpers",
+            str(HELPERS),
+            "-Root",
+            str(tmp_path),
+            "-UnavailableStartTime",
+            unavailable_start_time,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    evidence = tmp_path / "evidence"
+    summary = json.loads((evidence / "summary.json").read_text())
+    steps = {step["step"]: step for step in summary["steps"]}
+    assert steps["fast_stdout"]["status"] == "complete"
+    assert steps["fast_stdout"]["exit_code"] == 0
+    assert steps["fast_empty"]["status"] == "complete"
+    assert steps["fast_failure"]["status"] == "failed"
+    assert steps["fast_failure"]["exit_code"] == 7
+    if unavailable_start_time.endswith("live"):
+        assert steps["live_metadata_failure"]["status"] == "failed"
+        assert steps["live_metadata_failure"]["exit_code"] is None
+        assert (
+            evidence / "attempts/live_metadata_failure/0001/stderr.log"
+        ).read_text().strip() == "still running"
+    for step, stream, expected in (
+        ("fast_stdout", "stdout", "captured stdout"),
+        ("fast_stdout", "stderr", "captured stderr"),
+        ("fast_empty", "stdout", ""),
+        ("fast_empty", "stderr", ""),
+        ("fast_failure", "stderr", "fast failure"),
+    ):
+        assert (
+            evidence / f"attempts/{step}/0001/{stream}.log"
+        ).read_text().strip() == expected
+
+
 def test_1114_slice_and_full_execute_real_realign_snp_indel(tmp_path: Path) -> None:
     from tests.htslib_helpers import sam_to_bam, vcf_calls, write_fasta
     from wgsextract_cli.core.dependencies import get_tool_path

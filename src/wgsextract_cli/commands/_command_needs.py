@@ -150,7 +150,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         "bcftools",
         "samtools",
         "tabix",
-        optional="docker run_clair3.sh sambamba",
+        optional="docker run_clair3.sh sambamba wgse-clair3",
     ),
     "vcf impute": _n(
         HOURS,
@@ -172,7 +172,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf pharmcat": _n(
-        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip"
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip curl"
     ),
     # Input preparation, including bgzip, belongs to the selected child annotators.
     "vcf chain-annotate": _n(MINUTES, *_VCF, optional="samtools vep vep-rs"),

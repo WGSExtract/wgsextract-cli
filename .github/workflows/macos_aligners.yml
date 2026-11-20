@@ -14,6 +14,7 @@ on:
     paths:
       - native/**
       - '!native/deepvariant/**'
+      - '!native/clair3/**'
       - .github/workflows/macos_aligners.yml
       - "!**/*.md"
   push:
@@ -21,6 +22,7 @@ on:
     paths:
       - native/**
       - '!native/deepvariant/**'
+      - '!native/clair3/**'
       - .github/workflows/macos_aligners.yml
       - "!**/*.md"
   schedule:

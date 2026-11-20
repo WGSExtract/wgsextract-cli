@@ -498,9 +498,14 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
+Updating WGS Extract preserves the optional `deepvariant` environment. To
+upgrade an older install, rerun `pixi install -e deepvariant` from the updated
+checkout. Haploid chrX/Y/MT calling requires 0.4.0 or later. Replace any older
+standalone `wgse-deepvariant` on `PATH` too, since it takes precedence.
+
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
-  which installs 0.3.1 from `linux-deepvariant-3`) and `deepvariant_weights`
+  which installs 0.4.0 from `linux-deepvariant-4`) and `deepvariant_weights`
   set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
   models), `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
@@ -740,8 +745,12 @@ showed less than 2% wall-time changes. No full-human-genome allocator
 comparison or Linux packaging/default change followed this gate; these
 measurements do not qualify Linux ARM64 or every glibc version.
 
-`vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
-(MPS) path; see [docs/ont.md](ont.md#clair3-optional).
+`vcf clair3` defaults to the CPU on Apple Silicon. Opt-in `--gpu` uses
+PyTorch MPS with the WGSE-built code-only caller, preserving CPU streaming
+and high-depth scaling (gVCF included). It refuses unavailable MPS or a
+missing patched package; no automatic installation or fallback. Package
+publication/Pixi pinning and whole-genome qualification are pending; see
+[docs/ont.md](ont.md#clair3-optional).
 
 ## Other GPUs
 

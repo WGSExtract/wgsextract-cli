@@ -567,6 +567,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-hbeba79b_4.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda
   cyrius:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -751,7 +752,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.10.23-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/cuda-cudart_linux-64-12.9.79-h3f2d84a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/cuda-version-12.9-h4f385c5_3.conda
-      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-3/wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-4/wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda
   default:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -34516,25 +34517,34 @@ packages:
   sha256: a7a970ab79957d08a44e1eedbe3cee7f36a86078d9880a84e25bbb06d2906184
   license: MIT
   timestamp: 1794544600560
-- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-3/wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-4/wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda
   subdir: linux-64
-  sha256: f2ab6bad55fb978cf2d674605612f4c78e2cf990b772f8c9f99409e49ff0271f
+  sha256: 77d983c6839cbc9741270d2a5ee059426320646d3fda0bf1c75df3d80a239d85
   depends:
   - onnxruntime-cpp 1.31.1.* *_cuda129
-  - __glibc >=2.28,<3.0.a0
   - libgcc >=16
   - libstdcxx >=16
-  - libabseil >=20260817.0,<20260818.0a0
-  - libabseil * cxx17*
+  - __glibc >=2.28,<3.0.a0
   - libre2-11 >=2025.11.5
   - re2
-  - libzlib >=1.3.2,<2.0a0
-  - libprotobuf >=7.35.1,<7.35.2.0a0
-  - htslib >=1.25,<1.26.0a0
   - onnxruntime-cpp >=1.31.1,<1.31.2.0a0
+  - libprotobuf >=7.35.1,<7.35.2.0a0
+  - libzlib >=1.3.2,<2.0a0
+  - libabseil >=20260817.0,<20260818.0a0
+  - libabseil * cxx17*
+  - htslib >=1.25,<1.26.0a0
+  license: BSD-3-Clause AND GPL-3.0-or-later
+  timestamp: 1795083572634
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda
+  subdir: osx-arm64
+  sha256: c7235628d6f74acf547df475f7996211c8bb9cec8f9d015a61df9b2f39ced674
+  depends:
+  - clair3 ==2.0.5 py311h9aa1f4a_0
+  - python >=3.11,<3.12
+  - pytorch >=2,<3
   channel: null
   license: BSD-3-Clause AND GPL-3.0-or-later
-  timestamp: 1794830906625
+  timestamp: 1795135781737
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/vep-rs-1/vep-rs-0.5.0-linux64_wgse_1.conda
   subdir: linux-64
   sha256: ef106d4f34ff5402bd5bdb3ed8c154dfa95e23cddbba60996f8f77d4ad6565c9

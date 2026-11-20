@@ -20,6 +20,15 @@ research result: before acting on it, confirm it with an accredited clinical
 laboratory (in the US a CLIA/CAP-certified test, ideally on a new sample). A
 first run through these commands is a technical check, not a clinical result.
 
+## Inspect the reads
+
+In the desktop app, open **Genome viewer** or choose **View reads** beside an
+indexed BAM/CRAM input. Enter the variant's 1-based position as
+`chromosome:position-position`, then zoom out to check strand balance, clipping,
+mapping quality and coverage. Use the [built-in viewer guide](../gui/docs/genome-viewer.md)
+for local reference and index requirements. You do not need desktop IGV or an
+online genome service. A visual check does not replace clinical confirmation.
+
 ## Where the labels appear
 
 ### ClinVar review evidence is not sequencing confidence

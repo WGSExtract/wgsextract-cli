@@ -134,6 +134,13 @@ any file can't be updated. The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in
 the same release; the release workflow refuses a tag the bundle doesn't pin.
 
+The script also generates `examples/WGSExtract/scripts/pixi-minimum-version.txt`
+from the root `pixi.toml`'s `requires-pixi`. Rerunning it with the current tag
+refreshes this requirement without bumping the release. Setup checks existing
+Pixi versions on POSIX and Windows and stops with update instructions if one is
+too old; it never upgrades the user's Pixi automatically. A missing Pixi is
+installed as before.
+
 ## Self-updates
 
 The app uses Tauri's v2 updater plugin with GitHub Releases as the release

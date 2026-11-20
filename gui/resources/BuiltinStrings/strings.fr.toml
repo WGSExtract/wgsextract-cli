@@ -1,4 +1,5 @@
 "language.name" = "Français"  # i18n-source-hash:649df08a
+"viewer.showInViewer" = "Afficher dans le visualiseur"  # i18n-source-hash:155bc8f9
 "language.layoutDirection" = "ltr"  # i18n-source-hash:61ac44aa
 "language.code" = "fr"  # i18n-source-hash:094b0fe0
 "language.names.de" = "Deutsch (Allemand)"  # i18n-ignore

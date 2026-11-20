@@ -90,6 +90,8 @@
         {
           "id": "report-issue",
           "title": "actions.settings.v066.report-issue.title",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
             {
@@ -129,6 +131,8 @@
         },
         {
           "id": "report-issue-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue.title",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
@@ -173,6 +177,8 @@
         },
         {
           "id": "report-issue-cli-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue.title",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
@@ -216,6 +222,8 @@
         },
         {
           "id": "report-issue-open",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {
@@ -262,6 +270,8 @@
         },
         {
           "id": "report-issue-open-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {
@@ -312,6 +322,8 @@
         },
         {
           "id": "report-issue-open-cli-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {
