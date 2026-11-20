@@ -681,7 +681,10 @@ function Stop-InstalledApp {
     Start-Sleep -Seconds 2
     $remaining = @(Get-TargetProcesses)
     if ($remaining.Count -gt 0) {
-        throw "Processes remained after close: $($remaining.ProcessId -join ', ')"
+        $details = $remaining | ForEach-Object {
+            "pid=$($_.ProcessId) parent=$($_.ParentProcessId) name=$($_.Name) command=$($_.CommandLine)"
+        }
+        throw "Processes remained after close: $($details -join '; ')"
     }
     return "app exited and processes cleaned up"
 }
