@@ -2,7 +2,20 @@
 
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+
+def check_annotation_sources(stderr: str) -> None:
+    """Allow only the smoke fixture's deliberately absent RepeatMasker track."""
+    for line in stderr.splitlines():
+        if "sources the classifier reads are not loaded:" not in line:
+            continue
+        missing = line.partition("not loaded:")[2].strip()
+        if missing != "RepeatMasker repeat intervals (BP3).":
+            raise SystemExit(
+                f"Required fastVEP annotation source not loaded: {missing}"
+            )
 
 
 def main() -> None:
@@ -29,13 +42,18 @@ def main() -> None:
             check=True,
         )  # fmt: skip
     output = Path("out/annotated.vcf")
-    subprocess.run(
+    annotated = subprocess.run(
         ["fastvep", "annotate", "-i", str(fixtures / "in_vep.vcf"),
          "-o", str(output), "--gff3", str(fixtures / "genes.gff3"),
          "--fasta", str(fixtures / "genome.fa"), "--sa-dir", str(sa),
          "--acmg", "--pick-allele", "--no-progress"],
         check=True,
+        capture_output=True,
+        text=True,
     )  # fmt: skip
+    print(annotated.stdout, end="")
+    print(annotated.stderr, end="", file=sys.stderr)
+    check_annotation_sources(annotated.stderr)
     text = output.read_text()
     header = next(
         line for line in text.splitlines() if line.startswith("##INFO=<ID=CSQ")
