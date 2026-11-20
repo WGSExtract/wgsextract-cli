@@ -9,6 +9,7 @@ const { values } = parseArgs({ options: {
     "large-bam": { type: "string" }, vcf: { type: "string" }, chromium: { type: "string" },
     config: { type: "string" },
     "gene-map": { type: "string" },
+    cytobands: { type: "string" },
     tracks: { type: "boolean", default: false },
     "track-regressions": { type: "boolean", default: false },
     "reference-name": { type: "string", default: "hs38DH.fa.gz" },
@@ -180,6 +181,47 @@ try {
             proofs.push({ case: name, actionable: true, malformedValuesNotRendered: true });
         }
         await page.locator('[name="extra-tracks"]').fill("");
+    }
+    if (values.cytobands) {
+        const table = path.resolve(values.cytobands);
+        assert.ok(table.startsWith(`${out}${path.sep}`), "Only isolated cytoband fixtures may be changed.");
+        current = "cytoband-ideogram";
+        await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+        await page.getByRole("button", { name: "Open library file", exact: true }).click();
+        await checkDrawing(page, "reads.bam");
+        const ideogram = page.locator(".igv-ideogram-canvas");
+        await ideogram.first().waitFor();
+        assert.ok(await ideogram.evaluateAll((canvases) => canvases.some((canvas) => {
+            // Interior pixels distinguish bands from an empty dark outline.
+            const pixels = canvas.getContext("2d").getImageData(
+                Math.floor(canvas.width * 0.75), Math.floor(canvas.height * 0.5), 3, 1,
+            ).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0 && pixels[i - 3] < 128);
+        })), "Installed cytobands must fill the interior of the actual ideogram, not just draw an outline.");
+        assert.ok(await ideogram.evaluateAll((canvases) => canvases.some((canvas) => {
+            const pixels = canvas.getContext("2d").getImageData(
+                Math.floor(canvas.width * 0.45), Math.floor(canvas.height * 0.5), Math.floor(canvas.width * 0.1), 1,
+            ).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0
+                && pixels[i - 3] > 50 && pixels[i - 2] < 50 && pixels[i - 1] < 50);
+        })), "Interleaved chromosome rows must retain centromere bands as well as the final dark arm.");
+        assert.ok(lastGrant.files.cytobands.features.length > 0);
+        await page.screenshot({ path: path.join(out, "library-cytobands.png"), fullPage: true });
+        await rename(table, `${table}.saved`);
+        try {
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await checkDrawing(page, "reads.bam");
+            await page.locator("[data-cytoband-status]").filter({ hasText: "Cytoband resource cytobands_hg38.tsv is not installed" }).waitFor();
+            assert.match(await page.locator("[data-cytoband-status]").innerText(), /wgsextract ref cytobands --build hg38 --download/);
+            assert.equal(await ideogram.count(), 0);
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.locator("[data-viewer-status]").filter({ hasText: "Local tracks loaded" }).waitFor();
+            await page.screenshot({ path: path.join(out, "library-cytobands-missing.png"), fullPage: true });
+        } finally {
+            await rename(`${table}.saved`, table);
+        }
+        proofs.push({ case: "cytoband-ideogram", missingDataActionable: true });
     }
     if (values["gene-map"]) {
         const table = path.resolve(values["gene-map"]);

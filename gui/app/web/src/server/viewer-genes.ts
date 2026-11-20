@@ -1,8 +1,9 @@
-import { open, readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import path from "node:path";
 import { isViewerGeneSymbol, type ViewerGene, type ViewerGenes } from "../../../shared/viewer-genes.js";
 import { errnoCode } from "./errors.js";
 import { guardedViewerPath } from "./viewer-files.js";
+import { viewerContigAliases, viewerReferenceMetadata } from "./viewer-reference-metadata.js";
 
 const maxTableBytes = 8 * 1024 * 1024;
 const maxGenes = 100_000;
@@ -11,19 +12,9 @@ const maxGenes = 100_000;
 export async function installedViewerGenes(fasta: string, referenceRoot: string): Promise<ViewerGenes> {
     let fileName = "gene-map";
     const notice = (code: string): ViewerGenes => ({ features: [], notices: [{ code, fileName }] });
-    const reference = new Map<string, number>();
-    for (const line of (await readFile(`${fasta}.fai`, "utf8")).trim().split(/\r?\n/)) {
-        const [name = "", rawLength = ""] = line.split("\t");
-        const length = Number(rawLength);
-        if (!name || !/^\d+$/.test(rawLength) || !Number.isSafeInteger(length) || length < 1 || reference.has(name)) {
-            return notice("geneReferenceInvalid");
-        }
-        reference.set(name, length);
-    }
-    // The sequence dictionary, not a FASTA filename or user's folder, identifies the assembly.
-    const builds: Record<number, string> = { 249250621: "hg19", 248956422: "hg38" };
-    const chr1 = [...reference].filter(([name]) => name === "chr1" || name === "1");
-    const build = chr1.length === 1 ? builds[chr1[0]?.[1] ?? 0] : undefined;
+    const metadata = await viewerReferenceMetadata(fasta);
+    if (!metadata) return notice("geneReferenceInvalid");
+    const { reference, build } = metadata;
     if (!build) return notice("geneBuildUnsupported");
     fileName = `genes_${build}.tsv`;
     let text: string | undefined;
@@ -71,10 +62,7 @@ export async function installedViewerGenes(fasta: string, referenceRoot: string)
             || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
             || start < 1 || end < start || end - start > 3_000_000) return notice("geneMapInvalid");
         symbols.add(name);
-        const primary = contig.replace(/^chr/, "");
-        const aliases = primary === "M" || primary === "MT"
-            ? ["chrM", "M", "MT", "chrMT"]
-            : /^(?:[1-9]|1\d|2[0-2]|X|Y)$/.test(primary) ? [primary, `chr${primary}`] : [contig];
+        const aliases = viewerContigAliases(contig);
         const matches = aliases.filter((candidate) => reference.has(candidate));
         if (matches.length !== 1) {
             unmatched = true;

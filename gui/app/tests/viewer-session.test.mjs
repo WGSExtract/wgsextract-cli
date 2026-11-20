@@ -9,6 +9,9 @@ import { parseConfigToml } from "../dist/web/src/server/config-toml.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
 import { validatedBedGraphTrack } from "../dist/shared/viewer-track-records.js";
 import { viewerGeneLookup, viewerNavigationLocus } from "../dist/shared/viewer-genes.js";
+import { cytobandChromosomeLengths } from "../dist/shared/viewer-cytobands.js";
+import { shellQuote } from "../dist/shared/rendering.js";
+import { installedViewerCytobands } from "../dist/web/src/server/viewer-cytobands.js";
 
 async function fixture(t) {
     const output = path.resolve("../out/tests");
@@ -133,6 +136,92 @@ async function geneFixture(t, contig = "chr1", length = 248956422) {
     const table = path.join(directory, `genes_${length === 249250621 ? "hg19" : "hg38"}.tsv`);
     return { ...f, table };
 }
+
+function cytobandTable(length = 248956422) {
+    return `chr1\t0\t100\tp36.33\tgneg\nchr1\t100\t${length}\tq44\tgpos100\n`
+        + [...cytobandChromosomeLengths(length === 249250621 ? "hg19" : "hg38")]
+            .filter(([chr]) => chr !== "chr1").map(([chr, size]) => `${chr}\t0\t${size}\t${chr === "chrY" ? "q11.221" : "p11"}\tgneg\n`).join("");
+}
+
+test("#1148: installed cytobands reach the viewer with reference aliases and zero-based edge coordinates", async (t) => {
+    for (const [contig, length, build] of [["chr1", 248956422, "hg38"], ["1", 249250621, "hg19"]]) {
+        const f = await geneFixture(t, contig, length);
+        const table = path.join(path.dirname(f.table), `cytobands_${build}.tsv`);
+        await writeFile(table, cytobandTable(length));
+        const session = await (await f.open()).json();
+        assert.deepEqual(session.files.cytobands.features, [
+            { chr: contig, start: 0, end: 100, name: "p36.33", gieStain: "gneg" },
+            { chr: contig, start: 100, end: length, name: "q44", gieStain: "gpos100" },
+        ]);
+        assert.equal(session.files.cytobands.notices[0].code, "cytobandContigsSkipped");
+        assert.equal(session.files.tracks[0].name, "sample.bam");
+        await rm(table);
+        const missing = await (await f.open()).json();
+        assert.deepEqual(missing.files.cytobands, { features: [], notices: [{
+            code: "cytobandMissing", fileName: `cytobands_${build}.tsv`,
+            command: `wgsextract ref cytobands --build ${build} --ref ${shellQuote(path.dirname(f.fasta))} --download`,
+        }] });
+        assert.equal(missing.files.tracks[0].name, "sample.bam");
+    }
+});
+
+test("#1153: cytoband repair names the selected library with shell-safe quoting", async (t) => {
+    const f = await geneFixture(t);
+    const referenceRoot = path.join(f.root, "a library with 'quotes' and $characters");
+    const result = await installedViewerCytobands(f.fasta, referenceRoot);
+    const command = result.notices[0].command;
+    assert.equal(command, `wgsextract ref cytobands --build hg38 --ref '${referenceRoot.replaceAll("'", "'\\''")}' --download`);
+    assert.equal(result.notices[0].code, "cytobandMissing");
+});
+
+test("#1148: malformed cytobands and ambiguous reference names disable only the ideogram", async (t) => {
+    const f = await geneFixture(t);
+    const table = path.join(path.dirname(f.table), "cytobands_hg38.tsv");
+    for (const body of [
+        cytobandTable().slice(0, -1),
+        cytobandTable().replace("gneg", "bad"),
+        cytobandTable().replace("chr1\t100", "chr1\t99"),
+        cytobandTable().replace("chr1\t100", "chr1\t101"),
+        cytobandTable().replace("\t0\t100", "\t0\t0"),
+        cytobandTable().replace(/chrY[^\n]+\n/, ""),
+        cytobandTable().replace("57227415", "57227414"),
+        cytobandTable().replace("p36.33", "<script>"),
+        Buffer.from([0xff, 0x0a]),
+        "x".repeat(1024 * 1024 + 1),
+    ]) {
+        await writeFile(table, body);
+        const session = await (await f.open()).json();
+        assert.equal(session.files.cytobands.notices[0].code, "cytobandInvalid");
+        assert.deepEqual(session.files.cytobands.features, []);
+        assert.equal(session.files.tracks[0].name, "sample.bam");
+    }
+    await writeFile(table, cytobandTable());
+    await writeFile(`${f.fasta}.fai`, "chr1\t248956422\t6\t4\t5\nchr2\t101\t6\t4\t5\n");
+    assert.equal((await (await f.open()).json()).files.cytobands.notices[0].code, "cytobandMismatch");
+    await writeFile(`${f.fasta}.fai`, "chr1\t248956422\t6\t4\t5\nchr2\t242193529\t6\t4\t5\n2\t242193529\t6\t4\t5\n");
+    let session = await (await f.open()).json();
+    assert.equal(session.files.cytobands.notices[0].code, "cytobandContigsSkipped");
+    assert.equal(session.files.cytobands.features.filter((band) => band.chr === "chr2" || band.chr === "2").length, 0);
+    await writeFile(`${f.fasta}.fai`, "chr1\t3000\t6\t4\t5\n");
+    session = await (await f.open()).json();
+    assert.equal(session.files.cytobands.notices[0].code, "cytobandBuildUnsupported");
+    assert.equal(session.files.tracks[0].name, "sample.bam");
+});
+
+test("#1148: cytobands never follow escaping installed-resource symlinks", async (t) => {
+    const f = await geneFixture(t);
+    const outside = path.join(f.root, "outside-cytobands.tsv");
+    await writeFile(outside, cytobandTable());
+    try {
+        await symlink(outside, path.join(path.dirname(f.table), "cytobands_hg38.tsv"));
+    } catch (error) {
+        if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip("Symlinks unavailable.");
+        throw error;
+    }
+    const session = await (await f.open()).json();
+    assert.equal(session.files.cytobands.notices[0].code, "cytobandInvalid");
+    assert.deepEqual(session.files.cytobands.features, []);
+});
 
 test("#1148: installed gene spans navigate case-insensitively with correct inclusive endpoints and reference naming", async (t) => {
     for (const [contig, length] of [["chr1", 248956422], ["1", 249250621]]) {
