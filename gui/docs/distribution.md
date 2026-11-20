@@ -81,6 +81,11 @@ locally on Windows with
 `pwsh -File scripts\validate-windows-tauri-lifecycle.ps1 -AutomatedAdmin` after
 `powershell -ExecutionPolicy Bypass -File .\make.ps1 package`.
 
+Window close must stop both the app and all matched app processes within
+`-ShutdownTimeoutSeconds` (30 seconds by default). The harness waits for
+asynchronous descendant cleanup without killing or ignoring survivors; it logs
+their PIDs, parent PIDs, names, and command lines when waiting or failing.
+
 ## CI / release automation
 
 The repository's `.github/workflows/gui-distribution.yml` builds the Tauri app
