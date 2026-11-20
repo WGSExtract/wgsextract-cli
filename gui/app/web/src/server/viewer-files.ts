@@ -29,6 +29,9 @@ export async function guardedViewerPath(file: string, roots: string[]): Promise<
         throw new HttpError(403, "Viewer path is outside the configured libraries.");
     }
     const absolute = path.resolve(file);
+    if (!roots.some((root) => inside(absolute, root))) {
+        throw new HttpError(403, "Viewer path is outside the configured libraries.");
+    }
     const canonical = await realpath(absolute);
     for (const root of roots) {
         if (inside(absolute, root) && inside(canonical, await realpath(root))) {

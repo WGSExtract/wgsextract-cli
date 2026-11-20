@@ -423,6 +423,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref microarray-targets",
         "wgsextract ref microarray-targets --delete",
     ),
+    "ref cytobands": _h(
+        f"{_LIBRARY}/downloads/cytobands_hg19.tsv or cytobands_hg38.tsv; "
+        "validated zero-based UCSC primary-chromosome bands for offline viewing.",
+        "wgsextract ref cytobands --build hg38 --download",
+        "wgsextract ref cytobands --build hg19 --download",
+        "wgsextract ref cytobands --build hg38",
+    ),
     "ref gene-map": _h(
         f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
         "wgsextract ref gene-map",

@@ -19,6 +19,12 @@ verified data is reused offline. `--no-download` overrides a persistent opt-in:
 allow_reference_downloads = false
 ```
 
+`ref cytobands` validates installed tables offline and requires its own
+explicit `--download` to fetch missing UCSC `cytoBand` data, even if the
+persistent setting is enabled. The request contains only the hg19/hg38 public
+assembly path on `hgdownload.soe.ucsc.edu`; no sample-derived data is sent.
+The genome viewer uses installed tables only and never requests UCSC data.
+
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.

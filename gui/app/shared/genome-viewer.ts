@@ -1,4 +1,7 @@
-export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound";
+import type { ViewerGenes } from "./viewer-genes.js";
+import type { ViewerCytobands } from "./viewer-cytobands.js";
+
+export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing" | "geneNotFound" | "geneSearchUnavailable";
 
 export class ViewerFileError extends Error {
     constructor(readonly code: ViewerProblem, readonly fileName = "") {
@@ -8,17 +11,20 @@ export class ViewerFileError extends Error {
 
 export interface LocalTrack<Source = File> {
     name: string;
-    type: "alignment" | "variant";
-    format: "bam" | "cram" | "vcf";
+    type: "alignment" | "variant" | "annotation" | "wig";
+    format: "bam" | "cram" | "vcf" | "bed" | "bedgraph" | "bigwig";
     url: Source;
-    indexURL: Source;
+    indexURL?: Source;
     headers?: Record<string, string>;
-    indexed: true;
+    indexed: boolean;
+    referenceLengths?: Record<string, number>;
 }
 
 export interface LocalViewerFiles<Source = File> {
     reference: { id: string; name: string; fastaURL: Source; indexURL: Source; compressedIndexURL?: Source; headers?: Record<string, string>; wholeGenomeView: false };
     tracks: LocalTrack<Source>[];
+    genes?: ViewerGenes;
+    cytobands?: ViewerCytobands;
 }
 
 export interface LibraryViewerSession {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
@@ -8,6 +8,10 @@ const { values } = parseArgs({ options: {
     url: { type: "string" }, fixtures: { type: "string" }, out: { type: "string" },
     "large-bam": { type: "string" }, vcf: { type: "string" }, chromium: { type: "string" },
     config: { type: "string" },
+    "gene-map": { type: "string" },
+    cytobands: { type: "string" },
+    tracks: { type: "boolean", default: false },
+    "track-regressions": { type: "boolean", default: false },
     "reference-name": { type: "string", default: "hs38DH.fa.gz" },
     locus: { type: "string", default: "chr20:10001200-10001450" },
     "next-locus": { type: "string", default: "chr20:10002400-10002700" },
@@ -101,6 +105,40 @@ try {
     assert.ok(byteLog.some((read) => read.status === 206), "Actual igv range requests must receive 206.");
     assert.ok(byteLog.every((read) => [200, 206].includes(read.status)));
     assert.deepEqual(await page.evaluate(() => window.policyViolations), []);
+    if (values.tracks) {
+        const supplemental = ["panels.bed", "panels.bed.gz", "csi-panels.bed.gz",
+            "coverage.bedgraph", "coverage.bedgraph.gz", "csi-coverage.bedgraph.gz", "coverage.bw"];
+        for (const name of supplemental) {
+            current = name;
+            const opened = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/viewer/open");
+            await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+            await page.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, name));
+            await page.locator('[data-library] [name="locus"]').fill(values.locus);
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            const session = await (await opened).json();
+            assert.ok(session.files, `Track preflight failed: ${session.problem} (${session.fileName ?? ""})`);
+            assert.equal(session.files.tracks.length, 2);
+            await checkDrawing(page, name);
+            const track = page.locator(".igv-viewport").filter({ has: page.locator(".igv-track-label", { hasText: name }) });
+            await track.waitFor();
+            // Check pixels in the data viewport, not the axis or a label.
+            assert.ok(await track.locator("canvas").evaluateAll((canvases) => canvases.some((canvas) => {
+                const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+                return pixels.some((value, i) => i % 4 === 3 && value > 0 && (pixels[i - 3] < 220 || pixels[i - 2] < 220 || pixels[i - 1] < 220));
+            })), `${name} must draw its intervals or values.`);
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.screenshot({ path: path.join(out, `library-${name}.png`), fullPage: true });
+            await Promise.all(byteReads);
+            const urls = session.files.tracks.slice(1).flatMap((track) => [track.url, ...(track.indexURL ? [track.indexURL] : [])]);
+            const reads = byteLog.filter((read) => read.case === name && urls.includes(read.fileID));
+            assert.ok(reads.length, "Supplemental tracks use the scoped endpoint.");
+            if (name.endsWith(".gz") || name.endsWith(".bw")) assert.ok(reads.some((read) => read.status === 206), "Indexed supplemental tracks use ranges.");
+            proofs.push({ case: name, totalBytes: reads.reduce((sum, read) => sum + read.bytes, 0) });
+        }
+        await page.locator('[name="extra-tracks"]').fill("");
+        assert.deepEqual(await page.evaluate(() => window.policyViolations), []);
+    }
     if (values.config) {
         const original = await readFile(values.config, "utf8");
         const missing = path.join(out, "missing-reference-library");
@@ -118,6 +156,108 @@ try {
         } finally {
             await writeFile(values.config, original);
         }
+    }
+    if (values["track-regressions"]) {
+        assert.match(await page.locator("#extra-tracks-help").innerText(), /16 tracks/);
+        for (const [paths, expected] of [
+            [Array(17).fill(path.resolve(values.fixtures, "panels.bed")), /at most 16 tracks/],
+            [[path.resolve(values.fixtures, "missing.bed")], /missing\.bed was not found/],
+            [[path.resolve(values.fixtures, "reads.bam")], /Use BED.*bedGraph.*bigWig/],
+        ]) {
+            await page.locator('[name="extra-tracks"]').fill(paths.join("\n"));
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: expected }).waitFor();
+        }
+        for (const name of ["malformed.bedgraph.gz", "csi-malformed.bedgraph.gz"]) {
+            current = name;
+            await page.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, name));
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: `Could not read ${name}` }).waitFor();
+            await page.locator('[data-locus]:not([hidden])').waitFor();
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: `Could not read ${name}` }).waitFor();
+            await page.screenshot({ path: path.join(out, `library-invalid-${name}.png`), fullPage: true });
+            proofs.push({ case: name, actionable: true, malformedValuesNotRendered: true });
+        }
+        await page.locator('[name="extra-tracks"]').fill("");
+    }
+    if (values.cytobands) {
+        const table = path.resolve(values.cytobands);
+        assert.ok(table.startsWith(`${out}${path.sep}`), "Only isolated cytoband fixtures may be changed.");
+        current = "cytoband-ideogram";
+        await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+        await page.getByRole("button", { name: "Open library file", exact: true }).click();
+        await checkDrawing(page, "reads.bam");
+        const ideogram = page.locator(".igv-ideogram-canvas");
+        await ideogram.first().waitFor();
+        assert.ok(await ideogram.evaluateAll((canvases) => canvases.some((canvas) => {
+            // Interior pixels distinguish bands from an empty dark outline.
+            const pixels = canvas.getContext("2d").getImageData(
+                Math.floor(canvas.width * 0.75), Math.floor(canvas.height * 0.5), 3, 1,
+            ).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0 && pixels[i - 3] < 128);
+        })), "Installed cytobands must fill the interior of the actual ideogram, not just draw an outline.");
+        assert.ok(await ideogram.evaluateAll((canvases) => canvases.some((canvas) => {
+            const pixels = canvas.getContext("2d").getImageData(
+                Math.floor(canvas.width * 0.45), Math.floor(canvas.height * 0.5), Math.floor(canvas.width * 0.1), 1,
+            ).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0
+                && pixels[i - 3] > 50 && pixels[i - 2] < 50 && pixels[i - 1] < 50);
+        })), "Interleaved chromosome rows must retain centromere bands as well as the final dark arm.");
+        assert.ok(lastGrant.files.cytobands.features.length > 0);
+        await page.screenshot({ path: path.join(out, "library-cytobands.png"), fullPage: true });
+        await rename(table, `${table}.saved`);
+        try {
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await checkDrawing(page, "reads.bam");
+            await page.locator("[data-cytoband-status]").filter({ hasText: "Cytoband resource cytobands_hg38.tsv is not installed" }).waitFor();
+            assert.match(await page.locator("[data-cytoband-status]").innerText(), /wgsextract ref cytobands --build hg38 --download/);
+            assert.equal(await ideogram.count(), 0);
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.locator("[data-viewer-status]").filter({ hasText: "Local tracks loaded" }).waitFor();
+            await page.screenshot({ path: path.join(out, "library-cytobands-missing.png"), fullPage: true });
+        } finally {
+            await rename(`${table}.saved`, table);
+        }
+        proofs.push({ case: "cytoband-ideogram", missingDataActionable: true });
+    }
+    if (values["gene-map"]) {
+        const table = path.resolve(values["gene-map"]);
+        assert.ok(table.startsWith(`${out}${path.sep}`), "Only isolated gene fixtures may be changed.");
+        current = "gene-navigation";
+        await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+        await page.getByRole("button", { name: "Open library file", exact: true }).click();
+        await checkDrawing(page, "RefSeq gene spans");
+        const genes = page.locator(".igv-viewport").filter({ has: page.locator(".igv-track-label", { hasText: "RefSeq gene spans" }) });
+        assert.ok(await genes.locator("canvas").evaluateAll((canvases) => canvases.some((canvas) => {
+            const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0 && (pixels[i - 3] < 220 || pixels[i - 2] < 220 || pixels[i - 1] < 220));
+        })), "Gene spans must draw in the data viewport.");
+        await page.locator('[data-locus] [name="locus"]').fill("refgene_demo");
+        await page.getByRole("button", { name: "Go", exact: true }).click();
+        await page.locator('[data-locus] [name="locus"]').filter({ visible: true }).waitFor();
+        await page.waitForFunction(() => document.querySelector('[data-locus] [name="locus"]').value === "1:200-400");
+        await page.screenshot({ path: path.join(out, "library-gene-navigation.png"), fullPage: true });
+        await page.locator('[data-locus] [name="locus"]').fill("UNKNOWN");
+        await page.getByRole("button", { name: "Go", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: "Gene symbol not found" }).waitFor();
+        await rename(table, `${table}.saved`);
+        try {
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await checkDrawing(page, "reads.bam");
+            await page.locator("[data-gene-status]").filter({ hasText: "Gene-map genes_hg38.tsv is not installed" }).waitFor();
+            assert.match(await page.locator("[data-gene-status]").innerText(), /wgsextract ref gene-map/);
+            assert.equal(await page.locator(".igv-track-label").filter({ hasText: "RefSeq gene spans" }).count(), 0);
+            await page.screenshot({ path: path.join(out, "library-gene-missing.png"), fullPage: true });
+            await page.locator('[data-locus] [name="locus"]').fill("REFGENE_DEMO");
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: "Gene search is unavailable" }).waitFor();
+        } finally {
+            await rename(`${table}.saved`, table);
+        }
+        proofs.push({ case: "gene-navigation", locus: "1:200-400", missingDataActionable: true });
     }
     // The real tool page's selected file enters the sibling pane, not a document navigation.
     current = "entry-point";

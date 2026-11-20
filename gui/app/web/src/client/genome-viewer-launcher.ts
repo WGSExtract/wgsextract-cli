@@ -40,7 +40,7 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
         }
         if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerOpenLibrary"
             && typeof event.data.requestID === "string" && typeof event.data.path === "string" && typeof event.data.locus === "string") {
-            void api<LibraryViewerResult>("/api/viewer/open", { body: { path: event.data.path, locus: event.data.locus } })
+            void api<LibraryViewerResult>("/api/viewer/open", { body: { path: event.data.path, locus: event.data.locus, tracks: event.data.tracks ?? [] } })
                 .catch((): LibraryViewerResult => ({ problem: "libraryUnavailable" }))
                 .then((result) => {
                     if ("id" in result) {

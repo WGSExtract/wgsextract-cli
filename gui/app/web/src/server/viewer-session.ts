@@ -11,6 +11,9 @@ import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import type { RequestHandlerContext } from "./routes.js";
 import { usersWorkspaceFor } from "./users-workspace.js";
 import { guardedViewerPath, type ViewerFiles } from "./viewer-files.js";
+import { supplementalViewerTracks } from "./viewer-tracks.js";
+import { installedViewerGenes } from "./viewer-genes.js";
+import { installedViewerCytobands } from "./viewer-cytobands.js";
 
 /** Persistent library settings, never request-provided roots or a whole home directory. */
 export async function viewerLibraries(context: RequestHandlerContext) {
@@ -36,10 +39,10 @@ export async function viewerLibraries(context: RequestHandlerContext) {
     const reference = configured("reference_library", path.join(workspace, "reference"));
     const referenceGenomes = configured("reference_genome_library", path.join(reference, "genomes"));
     const roots = [genomes, reference, referenceGenomes];
-    return { config, roots, genomeRoots: [genomes], key: JSON.stringify([context.bundleRoot, config, ...roots]) };
+    return { config, roots, referenceRoot: reference, genomeRoots: [genomes], key: JSON.stringify([context.bundleRoot, config, ...roots]) };
 }
 
-export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
+export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles, trackPaths: string[] = []): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
     let position: string | undefined;
     try {
         position = locus ? localViewerLocus(locus) : undefined;
@@ -99,7 +102,19 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         return { problem: "referenceCompressedIndexMissing", fileName: path.basename(fasta) };
     }
     position ??= localViewerLocus(resolved.locus);
-    const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : [])], library.roots, library.key);
+    await guardedViewerPath(fasta, library.roots);
+    await guardedViewerPath(fai, library.roots);
+    const genes = await installedViewerGenes(fasta, library.referenceRoot);
+    const cytobands = await installedViewerCytobands(fasta, library.referenceRoot);
+    let supplemental;
+    try {
+        supplemental = await supplementalViewerTracks(trackPaths, fasta, library.genomeRoots, context.bundleRoot);
+    } catch (error) {
+        if (error instanceof ViewerFileError) return { problem: error.code, fileName: error.fileName };
+        throw error;
+    }
+    const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : []),
+        ...supplemental.flatMap((track) => [track.url, ...(track.indexURL ? [track.indexURL] : [])])], library.roots, library.key);
     const url = (file: string) => {
         const value = grant.urls.get(file);
         if (!value) {
@@ -111,6 +126,8 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         id: grant.id,
         locus: position,
         files: {
+            genes,
+            cytobands,
             reference: {
                 id: "local", name: path.basename(fasta), fastaURL: url(fasta), indexURL: url(fai),
                 ...(gzi ? { compressedIndexURL: url(gzi) } : {}), headers: grant.headers, wholeGenomeView: false,
@@ -119,7 +136,9 @@ export async function openLibraryViewer(input: string, locus: string, context: R
                 name: path.basename(input).replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`),
                 format, type: format === "vcf" ? "variant" : "alignment", indexed: true,
                 url: url(input), indexURL: url(index), headers: grant.headers,
-            }],
+            }, ...supplemental.map((track) => ({
+                ...track, url: url(track.url), ...(track.indexURL ? { indexURL: url(track.indexURL) } : {}), headers: grant.headers,
+            }))],
         },
     };
 }
