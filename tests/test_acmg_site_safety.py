@@ -96,7 +96,7 @@ def test_629_normalization_skips_contigs_missing_from_reference(
         + "decoy\t10\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n"
     )
     extra = tmp_path / "decoy.vcf"
-    extra.write_text(plain)
+    extra.write_text(plain, newline="\n")
     extra = _bgzf(extra)
     run_command([get_tool_path("tabix"), "-p", "vcf", str(extra)])
     result = _acmg_run(lib, extra, tmp_path / "out", "per-run")

@@ -77,7 +77,7 @@ def _inputs(tmp_path: Path, vcf_text: str | None = None) -> dict[str, Path]:
     for name in ("genome.fa", "genes.gff3"):
         shutil.copy(GENE / name, tmp_path / name)
     plain = tmp_path / "in_vep.vcf"
-    plain.write_text(vcf_text or (FIXTURES / "in_vep.vcf").read_text())
+    plain.write_text(vcf_text or (FIXTURES / "in_vep.vcf").read_text(), newline="\n")
     return {
         "input": Path(bgzip_index(plain)),
         "ref": tmp_path / "genome.fa",

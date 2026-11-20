@@ -5,13 +5,14 @@ the real fastVEP and bcftools. The sources are the one-gene fixtures of
 tests/test_vcf_acmg.py on chromosome 1; gnomAD's is in the joint release's
 shape. Skipped without fastVEP (`pixi install -e fastvep`)."""
 
+import _thread
 import base64
 import gzip
 import hashlib
 import io
 import json
+import re
 import shutil
-import signal
 import threading
 import time
 import zipfile
@@ -60,7 +61,7 @@ GFF3 = "Homo_sapiens.GRCh38.116.gff3.gz"
 
 
 def _write(path: Path, text: str) -> Path:
-    path.write_text(text)
+    path.write_text(text, newline="\n")
     return path
 
 
@@ -506,7 +507,9 @@ def test_the_library_drive_is_checked_when_the_databases_go_elsewhere(
 
     monkeypatch.setattr(acmg_data.shutil, "disk_usage", usage)
 
-    with pytest.raises(api.CommandFailed, match=f"needs about .* free for {lib}"):
+    with pytest.raises(
+        api.CommandFailed, match=rf"needs about .* free for {re.escape(str(lib))}"
+    ):
         api.ref.acmg_data(_params(library, sa_dir=tmp_path / "external"))
     assert _gets(publishers) == 0
 
@@ -516,14 +519,13 @@ def test_ctrl_c_stops_the_queued_builds_and_the_preparation(publishers, library)
     """#1010 review: on Ctrl-C or SIGTERM the executors waited for every
     queued chromosome, so builds kept starting after the user stopped."""
     publishers.delays["gnomad/chr1.vcf.bgz"] = 2.0
-    main = threading.get_ident()
 
     def interrupt_once_streaming() -> None:
         # The signal arrives as gnomAD's stream starts (after the plan's and
         # the step's HEAD), the other builds queued behind it.
         while publishers.paths.count("gnomad/chr1.vcf.bgz") < 2:
             time.sleep(0.05)
-        signal.pthread_kill(main, signal.SIGINT)
+        _thread.interrupt_main()
 
     watcher = threading.Thread(target=interrupt_once_streaming, daemon=True)
     watcher.start()
