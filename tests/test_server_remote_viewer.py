@@ -6,11 +6,12 @@ import json
 import os
 import queue
 import secrets
+import socket
 import subprocess
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import pytest
 
@@ -24,14 +25,23 @@ from wgsextract_cli.core.config import (
 from wgsextract_cli.server.http_api import Server
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import PathGuard
+from wgsextract_cli.server.viewer_files import safe_viewer_reads
 
 ORIGIN = "https://app.example"
 HOST = "genomes.example"
+requires_safe_reads = pytest.mark.skipif(
+    not safe_viewer_reads(), reason="safe directory-relative viewer reads unavailable"
+)
 
 
 @contextlib.contextmanager
 def remote_server(
-    tmp_path: Path, *, enabled: bool = True, listen: str = "0.0.0.0"
+    tmp_path: Path,
+    *,
+    enabled: bool = True,
+    listen: str = "0.0.0.0",
+    max_connections: int = 32,
+    header_timeout_seconds: float = 10,
 ) -> Iterator[Server]:
     manager = JobManager(tmp_path / secrets.token_hex(8), config_path=get_config_path())
     server = Server(
@@ -43,6 +53,9 @@ def remote_server(
         allowed_hosts=frozenset({HOST}),
         allowed_origins=frozenset({ORIGIN}),
         viewer_files=enabled,
+        public_url=f"https://{HOST}",
+        max_connections=max_connections,
+        header_timeout_seconds=header_timeout_seconds,
     )
     thread = threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True)
     thread.start()
@@ -142,6 +155,7 @@ def test_issue_1160_viewer_is_disabled_by_default(tmp_path: Path) -> None:
         ("bytes=0-1,3-4", 416, b""),
     ],
 )
+@requires_safe_reads
 def test_issue_1160_viewer_ranges_match_file_bytes(
     tmp_path: Path, range_header: str | None, expected_status: int, expected: bytes
 ) -> None:
@@ -165,31 +179,47 @@ def test_issue_1160_viewer_ranges_match_file_bytes(
         assert request(server, target, token=False)[0] == 401
 
 
-def test_issue_1160_viewer_rejects_traversal_symlink_escape_and_nonregular(
+def test_issue_1160_viewer_rejects_traversal_and_nonregular(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / secrets.token_hex(12)
     root.mkdir()
     outside = tmp_path / "outside"
     outside.write_bytes(b"private")
-    link = root / "escape"
-    link.symlink_to(outside)
     with remote_server(root) as server:
-        for file in (root / ".." / "outside", link, root):
+        for file in (root / ".." / "outside", root):
             status, _, body = request(
                 server, "/v1/viewer-file?" + urlencode({"path": str(file)})
             )
-            assert status == 403
+            assert status == (403 if safe_viewer_reads() else 503)
             assert b"private" not in body
         if hasattr(os, "mkfifo"):
             fifo = root / "fifo"
             os.mkfifo(fifo)
-            assert (
-                request(server, "/v1/viewer-file?" + urlencode({"path": str(fifo)}))[0]
-                == 403
-            )
+            assert request(server, "/v1/viewer-file?" + urlencode({"path": str(fifo)}))[
+                0
+            ] == (403 if safe_viewer_reads() else 503)
 
 
+def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
+    root = tmp_path / secrets.token_hex(12)
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"private")
+    link = root / "escape"
+    try:
+        link.symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    with remote_server(root) as server:
+        status, _, body = request(
+            server, "/v1/viewer-file?" + urlencode({"path": str(link)})
+        )
+        assert status == (403 if safe_viewer_reads() else 503)
+        assert b"private" not in body
+
+
+@requires_safe_reads
 def test_issue_1160_explicit_large_range_streams_and_fallback_is_bounded(
     tmp_path: Path,
 ) -> None:
@@ -227,6 +257,7 @@ def test_issue_1160_server_table_config_round_trip(tmp_path: Path) -> None:
         assert "server" not in config.read_text()
 
 
+@requires_safe_reads
 def test_issue_1160_allowed_viewer_origin_can_read_errors(tmp_path: Path) -> None:
     missing = tmp_path / secrets.token_hex(12)
     with remote_server(tmp_path) as server:
@@ -278,10 +309,17 @@ def test_issue_1160_preflight_is_exact_origin_without_general_token(
 def test_issue_1160_cli_listen_override_binds_chosen_interface_and_warns(
     tmp_path: Path, listen: str
 ) -> None:
+    if listen == "127.0.0.2":
+        with socket.socket() as probe:
+            try:
+                probe.bind((listen, 0))
+            except OSError:
+                pytest.skip("alternate loopback address is unavailable")
     config = tmp_path / "config.toml"
     config.write_text(
         state_directory_setting(tmp_path)
         + '[server]\nlisten="127.0.0.1"\nallowed_hosts=["genomes.example"]\n'
+        + ('public_url="https://genomes.example"\n' if listen == "0.0.0.0" else "")
     )
     with (tmp_path / "server.log").open("w+") as log:
         process = subprocess.Popen(
@@ -309,8 +347,12 @@ def test_issue_1160_cli_listen_override_binds_chosen_interface_and_warns(
         reader.start()
         try:
             address = json.loads(lines.get(timeout=30))
-            assert address["url"].startswith(f"http://{listen}:")
-            port = int(address["url"].split(":")[-1].split("/")[0])
+            bind = address.get("bind_url", address["url"])
+            assert bind.startswith(f"http://{listen}:")
+            if listen == "0.0.0.0":
+                assert address["url"] == "https://genomes.example/v1"
+            port = urlsplit(bind).port
+            assert port is not None
             connection = http.client.HTTPConnection(
                 "127.0.0.2" if listen == "127.0.0.2" else "127.0.0.1", port, timeout=5
             )

@@ -147,7 +147,7 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `quiet_mode` | boolean | `false` | Enable quiet mode (errors only) |
 | `log_dir` | string, path (`~` expands) | unset | Opt-in directory for unique persistent DEBUG run logs and provenance; it keeps the newest 100 runs |
 | `state_directory` | string, path (`~` expands) | unset | Folder for the last-run record and saved bug reports (report-issue); default: state/ in the data folder |
-| `server_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port) |
+| `server_port` | integer, 0 to 65535 | `0` | Default HTTP/JSON listen port (0: any free port); an embedded server.listen port overrides this default, and explicit --port wins |
 | `server_allowed_paths` | string or array of strings, path (`~` expands) | unset | Folders (a string or an array) `wgsextract serve` requests may read and write, besides mygenomes_library, reference_library, reference_genome_library and output_directory |
 | `server_mcp_transport` | `stdio` or `http` | `"stdio"` | How `wgsextract serve --mcp` speaks MCP: stdio, or http (streamable HTTP on 127.0.0.1 with a per-launch token; needs the optional 'mcp' package) |
 | `server_mcp_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 (0: any free port) |
@@ -233,10 +233,13 @@ Operator opt-ins for HTTP/JSON listening and viewer files. See [server mode](ser
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
-| `listen` | string | `"127.0.0.1"` | HTTP listen address[:port]; loopback by default |
+| `listen` | string | `"127.0.0.1"` | HTTP listen address[:port]; explicit --port overrides the embedded port; loopback by default |
 | `allowed_hosts` | string or array of strings | unset | Exact external Host headers, including ports; never wildcards |
 | `allowed_origins` | string or array of strings | unset | Exact app origins allowed to read viewer files; never wildcards |
 | `viewer_files` | boolean | `false` | Enable authenticated, guarded viewer byte ranges |
+| `public_url` | string | unset | Advertised HTTP/HTTPS client origin; required for non-loopback listening, with its authority in allowed_hosts |
+| `max_connections` | integer, 1 to 256 | `32` | Maximum accepted HTTP connections, including unauthenticated peers |
+| `header_timeout_seconds` | number, 0.1 to 60 | `10.0` | Absolute request-header and keep-alive idle deadline; does not limit authenticated responses |
 
 ## The [dev] table
 

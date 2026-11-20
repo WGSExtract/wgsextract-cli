@@ -18,6 +18,7 @@ from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
 
+from .config_view import configuration_rows
 from .help import (
     advanced_note,
     apply_help_metadata,
@@ -692,16 +693,7 @@ def run_config(args: argparse.Namespace) -> None:
     print(f"{'Variable':<20} {'Value':<30} {'Status'}")
     print("-" * 65)
 
-    from wgsextract_cli.core.settings_schema import DEV_SETTINGS, DEV_TABLE, SETTINGS
-
-    dev = settings.get(DEV_TABLE)
-    dev_values = dev if isinstance(dev, dict) else {}
-    rows = [(key, item.default, settings.get(key)) for key, item in SETTINGS.items()]
-    rows += [
-        (f"{DEV_TABLE}.{key}", item.default, dev_values.get(key))
-        for key, item in DEV_SETTINGS.items()
-    ]
-    for key, default, current_val in rows:
+    for key, default, current_val in configuration_rows(settings):
         if current_val is not None:
             status = "[SET]"
             val_str = _display_config_value(key, current_val)

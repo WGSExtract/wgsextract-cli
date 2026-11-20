@@ -16,8 +16,22 @@ MAX_FALLBACK_BYTES = 32 * 1024 * 1024
 CHUNK_BYTES = 64 * 1024
 
 
+def safe_viewer_reads() -> bool:
+    return (
+        os.open in os.supports_dir_fd
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+    )
+
+
 @contextmanager
 def open_viewer_file(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
+    if not safe_viewer_reads():
+        raise RequestError(
+            503,
+            "viewer_unavailable",
+            "This platform lacks safe directory-relative file opens; viewer files are unavailable.",
+        )
     if "\0" in value or ".." in re.split(r"[\\/]", value):
         raise RequestError(403, "path_not_allowed", "Viewer traversal is refused.")
     guard.check_path("path", value)
@@ -32,8 +46,10 @@ def open_viewer_file(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
             403, "path_not_allowed", "Viewer path is outside allowed roots."
         )
     descriptor = -1
+    file_descriptor = -1
+    file: BinaryIO | None = None
     try:
-        if os.open in os.supports_dir_fd:
+        try:
             # Pin each directory: a concurrent rename or symlink retarget cannot
             # redirect the final open outside the configured root.
             descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -44,35 +60,41 @@ def open_viewer_file(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
                     os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                     dir_fd=descriptor,
                 )
-                os.close(descriptor)
+                previous = descriptor
                 descriptor = child
+                os.close(previous)
             file_descriptor = os.open(
                 parts[-1] if parts else ".",
                 os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                 dir_fd=descriptor,
             )
-        else:
-            file_descriptor = os.open(
-                canonical, os.O_RDONLY | getattr(os, "O_BINARY", 0)
-            )
-        with os.fdopen(file_descriptor, "rb") as file:
-            if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+            if not stat.S_ISREG(os.fstat(file_descriptor).st_mode):
                 raise RequestError(
                     403, "not_regular", "Viewer paths must be regular files."
                 )
+            file = os.fdopen(file_descriptor, "rb")
+            file_descriptor = -1
             guard.check_path("path", path)
             if not os.path.samestat(os.fstat(file.fileno()), canonical.stat()):
                 raise RequestError(
                     409, "file_changed", "Viewer file changed; open it again."
                 )
-            yield file
-    except (OSError, ValueError):
-        raise RequestError(
-            403, "path_not_allowed", "Viewer file cannot be opened safely."
-        ) from None
+        except (OSError, ValueError):
+            raise RequestError(
+                403, "path_not_allowed", "Viewer file cannot be opened safely."
+            ) from None
+        yield file
     finally:
-        if descriptor >= 0:
-            os.close(descriptor)
+        try:
+            if file is not None:
+                file.close()
+        finally:
+            try:
+                if file_descriptor >= 0:
+                    os.close(file_descriptor)
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
 
 
 def byte_range(header: str | None, size: int) -> tuple[int, int, bool] | None:

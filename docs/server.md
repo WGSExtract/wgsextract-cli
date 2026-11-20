@@ -92,6 +92,12 @@ you start yourself:
   config.toml, aren't offered.
 - Request bodies are limited to 1 MB and must be `application/json`. Unknown
   parameters are rejected rather than ignored.
+- HTTP connection admission includes unauthenticated peers and defaults to 32
+  concurrent sockets (`server.max_connections`). Excess connections close
+  without allocating a request thread. Request headers and keep-alive idle
+  connections have an absolute 10-second deadline (`server.header_timeout_seconds`);
+  dripping bytes does not extend it. Completed headers cancel this deadline,
+  so long job waits, event streams and file responses can continue.
 - Over MCP, only read-only queries are offered unless you pass
   `--allow-jobs`. Without it, they save nothing: parameters that would save
   files (`outdir`, `table_format`, and `info`'s `detailed`, which saves the
@@ -234,21 +240,39 @@ curl -H "Authorization: ******" \
 ### Remote HTTP access
 
 You choose the listening interface. The HTTP/JSON listener accepts numeric IPv4
-or IPv6 addresses without DNS resolution. `--listen` overrides `server.listen`;
-an embedded port overrides `--port` / `server_port`. Use `[::1]:8080` for IPv6
-with a port. MCP listeners remain loopback-only.
+or IPv6 addresses without forward or reverse DNS resolution. `--listen` overrides
+`server.listen`. An explicit `--port` overrides any port embedded in either
+listen value. Without `--port`, an embedded listen port overrides `server_port`.
+Use `[::1]:8080` for IPv6 with a port. MCP listeners remain loopback-only.
 
 For a remote connection, configure the HTTP server before starting it:
 
 ```toml
 [server]
 listen = "0.0.0.0:8080"
+public_url = "https://genomes.example"
 allowed_hosts = ["genomes.example:8080", "genomes.example"]
 allowed_origins = ["https://app.example"]
 viewer_files = true
 ```
 
-Non-loopback binds require a nonempty bearer token and an explicit Host list.
+Non-loopback binds require a nonempty bearer token, an explicit Host list and
+`server.public_url` (or `--public-url`). Set this advertised origin to the
+connectable URL clients should use, including HTTPS and the external port when
+you have a TLS proxy. Its canonical authority must appear in `allowed_hosts`.
+It cannot be a wildcard bind address. The setting publishes an address; it does
+not configure TLS or expand the request Host allowlist. Discovery, ready JSON,
+curl hints and OpenAPI use this public URL; `bind_url` in non-loopback discovery
+and the startup warning identify the actual listening interface separately.
+The public URL option is for non-loopback listeners only. A loopback bind with
+a saved public URL refuses to start rather than advertise an authority its
+strict Host policy would reject. An explicit loopback `--listen` selects local
+mode and ignores the saved public URL unless you also pass `--public-url`.
+The bundled desktop server pins `--listen 127.0.0.1 --port 0`; its client accepts
+only numeric loopback ready URLs and refuses redirects before sending tokens
+or sample parameters. The separately configured remote viewer is an explicit
+opt-in and does not change ordinary job destinations.
+
 The CLI generates a fresh token at startup; give it to the remote client through
 a private channel. Remote health requests also require it. The startup warning
 names the interface and exposed API: anyone with this token can start jobs,
@@ -280,16 +304,21 @@ Clients send a bearer token in a header, not a URL or cookie. You allow file
 paths through `server.guard.roots`: the same canonical roots established by
 `--allow`, `server_allowed_paths` and existing configured libraries.
 The endpoint rejects `..`, network/device paths, symlink escapes, directories
-and other non-regular files. It provides no directory listing. On systems with
-directory-relative opens, it pins each canonical path component before reading;
-the path guard is not a sandbox against other programs running as you.
+and other non-regular files. It provides no directory listing. It pins each
+canonical path component with directory-relative, no-follow opens before reading.
+On platforms without these safe primitives, including Windows, file serving
+fails closed with 503 `viewer_unavailable`; the job API remains available.
+Windows desktop clients can view files served by a supported Unix host.
+The path guard is not a sandbox against other programs running as you.
 
 Send `Range: bytes=START-END` for a closed byte range. The endpoint supports
 suffix and open-ended ranges too; those and whole-file reads have a 32 MiB
 fallback limit. Closed ranges can exceed that limit and stream in 64 KiB chunks.
 An invalid, multipart, unsatisfiable or oversized fallback range returns 416
 with `Content-Range: bytes */SIZE`. `HEAD` returns the same metadata without
-bytes. For browser requests, only an exact configured app origin receives CORS
+bytes. Read/seek failures after response headers abort the connection instead
+of inserting an error response into the genomic bytes. Clients must reject an
+incomplete body. For browser requests, only an exact configured app origin receives CORS
 access, including preflight for `Authorization` and `Range`. The endpoint sends
 no wildcard CORS or credential/cookie permission. Keep the general API token in
 your trusted client backend; do not give it to a genome viewer page.
@@ -390,6 +419,9 @@ running ones and removes the job records, as on stdio.
 | --- | --- | --- |
 | `server_port` | `--port` | 0: any free port |
 | `server.listen` | `--listen ADDRESS[:PORT]` (HTTP/JSON only) | 127.0.0.1 |
+| `server.public_url` | `--public-url ORIGIN` | unset; required for non-loopback |
+| `server.max_connections` | | 32 |
+| `server.header_timeout_seconds` | | 10 seconds, headers and keep-alive idle only |
 | `server.allowed_hosts` | | none; required for non-loopback |
 | `server.allowed_origins` | | none; exact app-origin CORS for viewer files |
 | `server.viewer_files` | | false |

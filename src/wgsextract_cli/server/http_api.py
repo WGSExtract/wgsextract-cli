@@ -8,6 +8,7 @@ another origin are refused, and so are POST bodies that aren't JSON.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import logging
 import math
@@ -16,12 +17,12 @@ import socket
 import sys
 from collections.abc import Callable
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from wgsextract_cli import __version__
 
+from .http_limits import LimitedHandler, LimitedHTTPServer
 from .jobs import Job, JobManager
 from .listener import exact_headers, parse_listener
 from .operations import PathGuard, RequestError, find, operations, params_from_json
@@ -34,7 +35,7 @@ MAX_WAIT_SECONDS = 600.0
 SSE_KEEPALIVE_SECONDS = 15.0
 
 
-class Server(ThreadingHTTPServer):
+class Server(LimitedHTTPServer):
     daemon_threads = True
 
     def __init__(
@@ -48,6 +49,9 @@ class Server(ThreadingHTTPServer):
         allowed_hosts: frozenset[str] = frozenset(),
         allowed_origins: frozenset[str] = frozenset(),
         viewer_files: bool = False,
+        public_url: str | None = None,
+        max_connections: int = 32,
+        header_timeout_seconds: float = 10.0,
     ) -> None:
         listener = parse_listener(listen, port)
         if (not listener.loopback or viewer_files) and not token.strip():
@@ -60,9 +64,49 @@ class Server(ThreadingHTTPServer):
         self.allowed_hosts = exact_headers(tuple(allowed_hosts), origins=False)
         self.allowed_origins = exact_headers(tuple(allowed_origins), origins=True)
         self.viewer_files = viewer_files
+        self.public_url: str | None = None
+        if public_url is not None:
+            if self.loopback:
+                raise ValueError(
+                    "server.public_url is only for non-loopback listeners."
+                )
+            origin = exact_headers((public_url,), origins=True)
+            advertised = urlsplit(next(iter(origin)))
+            try:
+                address = ipaddress.ip_address(advertised.hostname or "")
+            except ValueError:
+                address = None
+            if address is not None and address.is_unspecified:
+                raise ValueError(
+                    "server.public_url cannot advertise a wildcard address."
+                )
+            host = (
+                str(address)
+                if address is not None
+                else (advertised.hostname or "").encode("idna").decode("ascii")
+            )
+            authority = f"[{host}]" if ":" in host else host
+            if advertised.port is not None and advertised.port != (
+                443 if advertised.scheme == "https" else 80
+            ):
+                authority += f":{advertised.port}"
+            if authority not in self.allowed_hosts:
+                raise ValueError(
+                    "server.public_url authority must be in server.allowed_hosts."
+                )
+            self.public_url = f"{advertised.scheme}://{authority}"
+        elif not self.loopback:
+            raise ValueError(
+                "Non-loopback listening requires a connectable server.public_url."
+            )
         if ":" in listener.address:
             self.address_family = socket.AF_INET6
-        super().__init__((listener.address, listener.port), Handler)
+        super().__init__(
+            (listener.address, listener.port),
+            Handler,
+            max_connections=max_connections,
+            header_timeout_seconds=header_timeout_seconds,
+        )
         self.token = token
         self.manager = manager
         self.guard = guard
@@ -76,6 +120,10 @@ class Server(ThreadingHTTPServer):
 
     @property
     def url(self) -> str:
+        return self.public_url or self.bind_url
+
+    @property
+    def bind_url(self) -> str:
         host = str(self.server_address[0])
         host = f"[{host}]" if ":" in host else host
         return f"http://{host}:{self.server_address[1]}"
@@ -85,7 +133,7 @@ class Server(ThreadingHTTPServer):
         if not self.loopback:
             return self.allowed_hosts
         return local_hosts(self.server_address[1]) | frozenset(
-            {self.url.removeprefix("http://")}
+            {self.bind_url.removeprefix("http://")}
         )
 
 
@@ -149,15 +197,32 @@ def local_hosts(port: int) -> frozenset[str]:
 Route = Callable[["Handler", re.Match[str], dict[str, list[str]]], None]
 
 
-class Handler(BaseHTTPRequestHandler):
+class Handler(LimitedHandler):
     server: Server
     protocol_version = "HTTP/1.1"
     server_version = f"wgsextract/{__version__}"
+    _response_status = 200
 
     # Plumbing ---------------------------------------------------------------
 
     def log_message(self, format: str, *args: Any) -> None:
         logging.debug("HTTP %s", format % args)
+
+    def end_headers(self) -> None:
+        if self._response_status >= 200:
+            self.response_started = True
+        super().end_headers()
+
+    def send_response_only(self, code: int, message: str | None = None) -> None:
+        self._response_status = code
+        super().send_response_only(code, message)
+
+    def abort_response(self) -> None:
+        self.close_connection = True
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def _send_json(self, status: int, body: object, **headers: str) -> None:
         data = json.dumps(body, separators=(",", ":"), default=str).encode()
@@ -172,6 +237,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
     def _send_error(self, error: RequestError) -> None:
+        if self.response_started:
+            self.abort_response()
+            return
         # The request's body may be unread: don't parse it as the next request.
         self.close_connection = True
         headers = {"Connection": "close"}

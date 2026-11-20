@@ -61,6 +61,15 @@ def preflight(handler: Handler) -> None:
 
 
 def serve_file(handler: Handler, query: dict[str, list[str]]) -> None:
+    try:
+        _serve_file(handler, query)
+    except (OSError, ValueError, RequestError):
+        if not handler.response_started:
+            raise
+        handler.abort_response()
+
+
+def _serve_file(handler: Handler, query: dict[str, list[str]]) -> None:
     if not handler.server.viewer_files:
         raise RequestError(404, "not_found", "Viewer files are disabled.")
     values = query.get("path", [])
@@ -101,7 +110,7 @@ def serve_file(handler: Handler, query: dict[str, list[str]]) -> None:
         while remaining:
             chunk = file.read(min(CHUNK_BYTES, remaining))
             if not chunk:
-                handler.close_connection = True
+                handler.abort_response()
                 return
             handler.wfile.write(chunk)
             remaining -= len(chunk)
@@ -148,6 +157,7 @@ def openapi_path() -> dict[str, object]:
                     ("404", "Disabled or missing file"),
                     ("409", "File changed"),
                     ("416", "Unsatisfiable range"),
+                    ("503", "Safe viewer file opens unavailable on this platform"),
                 )
             },
         }

@@ -1,6 +1,7 @@
 import type { LooseRecord } from "../../../shared/types.js";
 import type { Job as TransportJob } from "../../../shared/generated/server-transport.js";
 import { errorMessage } from "./errors.js";
+import { localJobServerURL } from "./local-job-server-url.js";
 
 /** Where a running job server listens, as it announced on stdout. */
 export interface JobServerAddress {
@@ -85,8 +86,11 @@ export async function jobLog(address: JobServerAddress, id: string): Promise<str
 }
 
 function request(address: JobServerAddress, method: string, path: string, body?: LooseRecord, signal?: AbortSignal): Promise<Response> {
-    return fetch(`${address.url}${path}`, {
+    const local = localJobServerURL(address.url);
+    if (!local) return Promise.reject(new Error("Local job server requires a numeric loopback URL."));
+    return fetch(`${local}${path}`, {
         method,
+        redirect: "error",
         headers: {
             authorization: `Bearer ${address.token}`,
             ...(body ? { "content-type": "application/json" } : {}),

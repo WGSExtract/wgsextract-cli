@@ -85,7 +85,8 @@ class ServerSettings:
     """Operator opt-ins for the HTTP/JSON listener."""
 
     listen: str = setting(
-        "127.0.0.1", "HTTP listen address[:port]; loopback by default"
+        "127.0.0.1",
+        "HTTP listen address[:port]; explicit --port overrides the embedded port; loopback by default",
     )
     allowed_hosts: str | tuple[str, ...] | None = setting(
         None, "Exact external Host headers, including ports; never wildcards"
@@ -95,6 +96,22 @@ class ServerSettings:
     )
     viewer_files: bool = setting(
         False, "Enable authenticated, guarded viewer byte ranges"
+    )
+    public_url: str | None = setting(
+        None,
+        "Advertised HTTP/HTTPS client origin; required for non-loopback listening, with its authority in allowed_hosts",
+    )
+    max_connections: int = setting(
+        32,
+        "Maximum accepted HTTP connections, including unauthenticated peers",
+        minimum=1,
+        maximum=256,
+    )
+    header_timeout_seconds: float = setting(
+        10.0,
+        "Absolute request-header and keep-alive idle deadline; does not limit authenticated responses",
+        minimum=0.1,
+        maximum=60,
     )
 
 
@@ -170,7 +187,7 @@ class Settings:
     )
     server_port: int = setting(
         0,
-        "Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port)",
+        "Default HTTP/JSON listen port (0: any free port); an embedded server.listen port overrides this default, and explicit --port wins",
         minimum=0,
         maximum=65535,
     )

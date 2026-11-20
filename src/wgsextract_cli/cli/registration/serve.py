@@ -21,12 +21,17 @@ def register(
     parser.add_argument(
         "--listen",
         metavar="ADDRESS[:PORT]",
-        help="HTTP/JSON numeric listen address[:port] (default: server.listen, else 127.0.0.1). Non-loopback exposes the job API, requires token auth and exact server.allowed_hosts; use operator-provided TLS.",
+        help="HTTP/JSON numeric listen address[:port] (default: server.listen, else 127.0.0.1). Explicit loopback selects local mode and ignores saved server.public_url. Non-loopback exposes the job API, requires token auth and exact server.allowed_hosts; use operator-provided TLS.",
+    )
+    parser.add_argument(
+        "--public-url",
+        metavar="ORIGIN",
+        help="Advertised HTTP/HTTPS client origin, with its authority in server.allowed_hosts (default: server.public_url). Required for non-loopback; does not change Host validation or configure TLS.",
     )
     parser.add_argument(
         "--port",
         type=int,
-        help="Port on 127.0.0.1 (default: config server_port, or server_mcp_port for MCP over HTTP, else any free port).",
+        help="Listen port; overrides any port in server.listen or --listen (default: config server_port, or server_mcp_port for MCP over HTTP, else any free port).",
     )
     parser.add_argument(
         "--allow",

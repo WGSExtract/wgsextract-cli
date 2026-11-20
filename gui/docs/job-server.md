@@ -44,6 +44,14 @@ A bundle can declare such a server in `manifest.json`. Its actions can then run 
 
 **Ready line.** Once the server is listening, it must print one line of JSON on stdout with its base URL and a bearer token: `{"url": "http://127.0.0.1:PORT/v1", "token": "..."}`. Other lines before it are ignored. A server that can't start may print `{"error": {"message": "..."}}` instead; the app logs that it refused to start, with the message, and falls back.
 
+Locally launched job servers must advertise a numeric loopback URL, such as
+`127.0.0.1` or `::1`. The app rejects external destinations and hostnames before
+sending bearer credentials or sample parameters. Requests refuse redirects,
+including redirects to another local service. WGS Extract's bundled command
+pins `--listen 127.0.0.1 --port 0`, overriding any saved server listen port or
+public URL. Explicit remote viewer connections use a separate consented path;
+they do not redirect ordinary jobs.
+
 **Restarts.** If the server exits, the next action starts it again. It stops with the app and when another bundle is loaded, like every other process the app started.
 
 **Fallback.** The app runs the action's `command` instead when:
