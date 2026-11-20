@@ -1,0 +1,11 @@
+##gff-version 3
+##sequence-region   1 1 3000
+1	Ensembl	chromosome	1	3000	.	.	.	ID=chromosome:1;Alias=chr1
+1	ensembl_havana	gene	1001	1300	.	+	.	ID=gene:ENSG00000000001;Name=TINY1;biotype=protein_coding;gene_id=ENSG00000000001;version=1
+1	ensembl_havana	mRNA	1001	1300	.	+	.	ID=transcript:ENST00000000001;Parent=gene:ENSG00000000001;Name=TINY1-201;biotype=protein_coding;tag=basic,Ensembl_canonical,MANE_Select;transcript_id=ENST00000000001;version=1;ccdsid=CCDS1.1
+1	ensembl_havana	exon	1001	1100	.	+	.	Parent=transcript:ENST00000000001;Name=ENSE00000000001;constitutive=1;ensembl_end_phase=0;ensembl_phase=-1;exon_id=ENSE00000000001;rank=1;version=1
+1	ensembl_havana	CDS	1011	1100	.	+	0	ID=CDS:ENSP00000000001;Parent=transcript:ENST00000000001;protein_id=ENSP00000000001
+1	ensembl_havana	five_prime_UTR	1001	1010	.	+	.	Parent=transcript:ENST00000000001
+1	ensembl_havana	exon	1201	1300	.	+	.	Parent=transcript:ENST00000000001;Name=ENSE00000000002;constitutive=1;ensembl_end_phase=-1;ensembl_phase=0;exon_id=ENSE00000000002;rank=2;version=1
+1	ensembl_havana	CDS	1201	1290	.	+	0	ID=CDS:ENSP00000000001;Parent=transcript:ENST00000000001;protein_id=ENSP00000000001
+1	ensembl_havana	three_prime_UTR	1291	1300	.	+	.	Parent=transcript:ENST00000000001

@@ -28,7 +28,7 @@ import time
 import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from concurrent.futures import Future, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -214,7 +214,7 @@ _TEMP_PER_MB = {"spliceai": 9.4e6, "revel": 2.1e6}
 
 
 def fastvep_version() -> str:
-    """The fastVEP version on PATH: the 0.5 series this was validated with."""
+    """The resolved fastVEP version: the 0.5 series this was validated with."""
     raw = get_tool_version("fastvep") or ""
     match = _SUPPORTED_FASTVEP.search(raw)
     if not match:
@@ -1371,6 +1371,13 @@ def build(
             lambda step, part: submit(attempt, step.name, run.build_revel, step, part),
         )
 
+    def finish(future: Future[Any]) -> None:
+        # An unbounded Future.result() cannot deliver pending Python signals
+        # while its lock is waiting on Windows.
+        while not future.done():
+            wait((future,), timeout=0.1)
+        future.result()
+
     try:
         for step in by_source.pop("", []):
             attempt(step.name, run.run, step)
@@ -1386,10 +1393,10 @@ def build(
             if steps
         ]
         for future in prepared:
-            future.result()
+            finish(future)
         # Every build is submitted once the preparations are done.
         for future in list(futures):
-            future.result()
+            finish(future)
         succeeded = not failed
     except BaseException:
         run.cancel.set()
