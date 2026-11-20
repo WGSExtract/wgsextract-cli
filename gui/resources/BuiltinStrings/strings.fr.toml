@@ -152,6 +152,10 @@
 "app.result.usage.title" = "Vérifiez les options sélectionnées"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Un outil requis n’est pas installé"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Ouvrir la configuration"  # i18n-source-hash:0ddb2086
+"app.result.card.title" = "Fiche de résultat"  # i18n-source-hash:d8b66952
+"app.result.card.sourceFormat" = "Affiché depuis %{file}"  # i18n-source-hash:5aaf5fdf
+"app.result.card.view.title" = "Voir la fiche"  # i18n-source-hash:73cd1bf6
+"app.result.card.close.title" = "Fermer"  # i18n-source-hash:bbfa773e
 "app.prerequisites.title" = "Il manque quelque chose à cette commande"  # i18n-source-hash:560fc1a9
 "app.prerequisites.message" = "Cette commande a besoin de données ou d’outils qui ne sont pas encore installés :"  # i18n-source-hash:93ca8e45
 "app.prerequisites.stillMissing" = "Ce n’est toujours pas installé. Installez-le ici ou vous-même, puis cliquez de nouveau sur Continuer."  # i18n-source-hash:09498e32

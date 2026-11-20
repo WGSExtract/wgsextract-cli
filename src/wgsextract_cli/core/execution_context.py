@@ -59,6 +59,7 @@ class ExecutionContext:
     config: ConfigState | None = None
     process_scope: object | None = None
     allow_downloads: bool | None = None
+    result_card: bool | None = None  # None: config.toml's result_card
 
 
 _EMPTY = ExecutionContext()  # frozen, so a safe shared default

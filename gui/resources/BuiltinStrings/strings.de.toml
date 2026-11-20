@@ -152,6 +152,10 @@
 "app.result.usage.title" = "Prüfen Sie die gewählten Optionen"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Ein benötigtes Werkzeug ist nicht installiert"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Einrichtung öffnen"  # i18n-source-hash:0ddb2086
+"app.result.card.title" = "Ergebniskarte"  # i18n-source-hash:d8b66952
+"app.result.card.sourceFormat" = "Angezeigt aus %{file}"  # i18n-source-hash:5aaf5fdf
+"app.result.card.view.title" = "Karte anzeigen"  # i18n-source-hash:73cd1bf6
+"app.result.card.close.title" = "Schließen"  # i18n-source-hash:bbfa773e
 "app.prerequisites.title" = "Etwas, das dieser Befehl benötigt, fehlt"  # i18n-source-hash:560fc1a9
 "app.prerequisites.message" = "Dieser Befehl benötigt Daten oder Werkzeuge, die noch nicht installiert sind:"  # i18n-source-hash:93ca8e45
 "app.prerequisites.stillMissing" = "Es ist noch immer nicht installiert. Installieren Sie es hier oder selbst und klicken Sie erneut auf Fortfahren."  # i18n-source-hash:09498e32

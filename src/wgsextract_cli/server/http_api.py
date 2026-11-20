@@ -251,7 +251,8 @@ class Handler(BaseHTTPRequestHandler):
         body = self._body()
         params = params_from_json(op, body)
         params = self.server.guard.check(params)
-        job = self.server.manager.submit(op, op.request_values(params))
+        card = _flag(query, "card") if "card" in query else None
+        job = self.server.manager.submit(op, op.request_values(params), card=card)
         if wait:
             job = self.server.manager.wait(job.id, wait) or job
         self._send_json(200 if job.done else 202, job_view(job, query))
@@ -292,7 +293,7 @@ class Handler(BaseHTTPRequestHandler):
         job = self._job(match)
         op = find(job.op)
         params = self.server.guard.check(params_from_json(op, job.params))
-        new = self.server.manager.submit(op, op.request_values(params))
+        new = self.server.manager.submit(op, op.request_values(params), card=job.card)
         self._send_json(202, job_view(new, query))
 
     def job_log(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
@@ -398,6 +399,13 @@ _FULL = {
     "description": "Include the params and the result's provenance.",
     "schema": {"type": "boolean"},
 }
+_CARD = {
+    "name": "card",
+    "in": "query",
+    "description": "Write this job's result card (<name>.card.html), or not; "
+    "without it, as `serve --card` or result_card says.",
+    "schema": {"type": "boolean"},
+}
 _JOB_ID = {"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}
 
 
@@ -432,7 +440,7 @@ def openapi_document(server_url: str = "http://127.0.0.1") -> dict[str, Any]:
                 "summary": op.summary,
                 "description": f"Runs `wgsextract {op.command}` as a {op.kind}."
                 + (_DELETES if op.may_delete else ""),
-                "parameters": [_WAIT, _FULL],
+                "parameters": [_WAIT, _FULL, _CARD],
                 "requestBody": {
                     "required": True,
                     "content": {

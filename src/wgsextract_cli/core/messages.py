@@ -6,6 +6,9 @@ This file centralizes all messages to facilitate future localization.
 CLI_HELP = {
     "description": "WGS Extract Command-Line Interface (CLI)",
     "arg_debug": "Enable verbose debug logging.",
+    "arg_card": "Also write <name>.card.html beside the result manifest: a "
+    "self-contained page of the result, versions and input to view, print or "
+    "share (overrides result_card).",
     "arg_full_help": "Print help info for all subcommands.",
     "arg_vcf_input": "Input VCF file path.",
     "arg_mother": "The mother's VCF, or BAM/CRAM, for trio analysis.",

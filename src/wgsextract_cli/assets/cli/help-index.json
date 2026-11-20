@@ -10,6 +10,7 @@
 {"flags":["--memory","-m"],"dest":"memory","type":"string","help":"Memory per thread, e.g. '2G' (sorts: at most half the RAM in all)."},
 {"flags":["--tmp-dir"],"dest":"tmp_dir","type":"string","help":"Use an existing writable directory for every temporary file this run makes: sort spills, staging and scratch (overrides temp_directory)."},
 {"flags":["--json"],"dest":"json","type":"flag","help":"Print the result manifest (wgsextract.result/1) as JSON on stdout instead of human-readable output; logs stay on stderr."},
+{"flags":["--card","--no-card"],"dest":"card","type":"flag","help":"Also write <name>.card.html beside the result manifest: a self-contained page of the result, versions and input to view, print or share (overrides result_card)."},
 {"flags":["--quiet"],"dest":"quiet","type":"flag","help":"Suppress all informational logs."},
 {"flags":["--debug"],"dest":"debug","type":"flag","help":"Enable verbose debug logging."},
 {"flags":["--log-file"],"dest":"log_file","type":"string","help":"Write a DEBUG run log and companion provenance JSON (must be a new file)."},
