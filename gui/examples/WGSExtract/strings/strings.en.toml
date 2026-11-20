@@ -180,7 +180,7 @@
 "actions.vcf.variant-calling.vcf-call.advancedTitle" = "BCFTools, Delly"
 "actions.vcf.variant-calling.vcf-call.tooltip" = "Call the checked variant types: SNPs and InDels with bcftools, SVs (Delly, or Sniffles/pbsv for long reads) and CNVs with Delly. Each type gets its own VCF unless gVCF or Merged is checked."
 "controls.vcf.variant-calling.vcf_call_types.label" = "Variant Types"
-"controls.vcf.variant-calling.vcf_call_types.tooltip" = "The variant types the BCFTools button calls."
+"controls.vcf.variant-calling.vcf_call_types.tooltip" = "The variant types to call."
 "options.vcf.variant-calling.vcf_call_types.snp.title" = "SNP"
 "options.vcf.variant-calling.vcf_call_types.indel.title" = "InDel"
 "options.vcf.variant-calling.vcf_call_types.sv.title" = "SV"

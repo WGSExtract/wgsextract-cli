@@ -179,7 +179,7 @@
 "actions.vcf.variant-calling.vcf-call.advancedTitle" = "BCFTools, Delly"  # i18n-ignore
 "actions.vcf.variant-calling.vcf-call.tooltip" = "Chamar os tipos de variantes marcados: SNPs e InDels com bcftools, SVs (Delly, ou Sniffles/pbsv para leituras longas) e CNVs com Delly. Cada tipo recebe seu próprio VCF, a menos que gVCF ou Mesclado esteja marcado."  # i18n-source-hash:646a369e
 "controls.vcf.variant-calling.vcf_call_types.label" = "Tipos de variantes"  # i18n-source-hash:2af2a286
-"controls.vcf.variant-calling.vcf_call_types.tooltip" = "Os tipos de variantes que o botão BCFTools chama."  # i18n-source-hash:b7cdcd04
+"controls.vcf.variant-calling.vcf_call_types.tooltip" = "Os tipos de variantes a chamar."  # i18n-source-hash:4bab1743
 "options.vcf.variant-calling.vcf_call_types.snp.title" = "SNP"  # i18n-ignore
 "options.vcf.variant-calling.vcf_call_types.indel.title" = "InDel"  # i18n-ignore
 "options.vcf.variant-calling.vcf_call_types.sv.title" = "SV"  # i18n-ignore
