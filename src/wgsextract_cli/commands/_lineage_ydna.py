@@ -8,7 +8,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.lineage import YHaplogroupParams
 from wgsextract_cli.commands.info.metrics import sample_sex
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
     build_from_path,
@@ -23,8 +23,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genotype_qc import CHR_Y, warn_low_depth
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem, read_fai_lengths
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.utils import (
     MissingDependencyError,

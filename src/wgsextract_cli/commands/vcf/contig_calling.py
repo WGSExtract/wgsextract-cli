@@ -44,16 +44,17 @@ from pathlib import Path
 from threading import Event
 from typing import IO
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
 from wgsextract_cli.core.progress import ContigProgress
-from wgsextract_cli.core.reference_assets import read_fai_lengths
-from wgsextract_cli.core.reference_resolver import header_contig_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .call_cleanup import indel_cleanup_pipeline
@@ -672,7 +673,7 @@ def call_small_variants(
         f"with {caller.workers} workers."
     )
     with tempfile.TemporaryDirectory(
-        dir=Path(output).parent, prefix=".wgse_call_"
+        dir=scratch_parent(Path(output).parent), prefix=".wgse_call_"
     ) as work:
         parts, listings, tasks = [], [], []
         progress = ContigProgress(contigs, contigs)
@@ -727,6 +728,6 @@ def call_small_variants(
         )
         if caller.bands:
             merged = _drop_band_header(merged, work)
-        Path(merged).replace(output)
+        move_file(merged, output)
         for suffix in (".tbi", ".csi"):
             Path(output + suffix).unlink(missing_ok=True)

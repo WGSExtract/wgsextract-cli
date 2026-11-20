@@ -24,6 +24,8 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
     "gui/app/shared/generated/server-transport.ts",
+    "gui/app/shared/generated/result-records.ts",
+    "gui/app/shared/generated/report-records.ts",
 )
 
 
@@ -55,9 +57,9 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "docs/data/configuration-guide.md",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
-        "scripts/schema_sources/wgsextract.report.1.json",
         "scripts/gen_server_contracts.py",
         "scripts/server_transport_typescript.py",
         "tests/cli_snapshot.py",

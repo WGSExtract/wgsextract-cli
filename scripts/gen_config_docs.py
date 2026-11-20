@@ -25,6 +25,7 @@ from wgsextract_cli.core.settings_schema import (  # noqa: E402
 )
 
 OUTPUT = ROOT / "docs" / "configuration.md"
+GUIDE = ROOT / "docs" / "data" / "configuration-guide.md"
 TYPES = {
     "bool": "boolean",
     "int": "integer",
@@ -89,10 +90,38 @@ def render() -> str:
         "picks another file for one run. Command-line options override "
         "settings for a run.",
         "",
+        "config.toml lives in the users workspace, `~/wgs-extract` "
+        "(`%USERPROFILE%\\wgs-extract` on Windows), beside the default My "
+        "Genomes library (`mygenomes/`): the folders you manage and may want "
+        "on another disk. An install that "
+        "already keeps config.toml where earlier versions did (the per-user "
+        "config folder, `~/.config/wgsextract` on macOS) keeps using it. "
+        "Reference data, reference genomes and temporary files stay in the "
+        "CLI's own data folder unless config.toml names other folders. The "
+        "WGS Extract desktop app keeps its settings in the same folder, so "
+        "the two share them.",
+        "",
+        "If both a legacy CLI config and a users-workspace config exist, the "
+        "CLI keeps using the legacy file and warns with both paths. Use "
+        "`--config PATH` to select the other explicitly. Opening the desktop "
+        "app does not change this precedence or erase saved advanced settings.",
+        "",
+        "Without output_directory, a command writes to a `wgse/` folder beside "
+        "its input from the lab (a BAM or CRAM, else FASTQs, else a VCF, else "
+        "a raw microarray file), or beside an input already in a `wgse/` "
+        "folder. The folder of the lab's original files stays untouched: only "
+        "indexes that must sit beside their files are written there, and "
+        "writing a BAM, CRAM, FASTQ, VCF or microarray file into it warns "
+        "(`primary_overwrite`).",
+        "",
         "Every value is checked when the file loads: a value of the wrong type, "
         "outside its range or not one of its choices stops the run with an "
         "error that names the setting and what it expects. An unknown setting "
         "is ignored with a warning that suggests the closest name.",
+        "",
+        "<!-- Usage guide: edit docs/data/configuration-guide.md, then regenerate. -->",
+        # The hand-written fragment lives one directory below the output page.
+        GUIDE.read_text(encoding="utf-8").replace("](../", "](").rstrip(),
         "",
         "## Settings",
         "",

@@ -72,8 +72,8 @@
     learn: "Groups sequencing and variant files in a folder by filename stem to prepare a multi-sample table: for example, sample1.bam and sample1_sv.vcf.gz belong to sample1. Review the CSV before using it, especially when filenames are ambiguous.\n\nWriting the CSV neither launches analyses nor generates an executable script.",
     accepts: ["reads"], file: "reginald", button: "Make batch list",
     fields: [
-      f.param("directory", "Folder to scan", "Includes subfolders, on the connected computer", { def: "{{bundleWorkspace}}/genomes", send: true, width: 420 }),
-      f.param("output", "CSV to write", "", { def: "{{bundleWorkspace}}/batch.csv", send: true, width: 420 }),
+      f.param("directory", "Folder to scan", "Includes subfolders, on the connected computer", { def: "{{usersWorkspace}}/mygenomes", send: true, width: 420 }),
+      f.param("output", "CSV to write", "", { def: "{{usersWorkspace}}/batch.csv", send: true, width: 420 }),
     ],
     run: function (c) {
       return { timeText: "seconds", blocked: !c.v.directory || !c.v.output ? "Choose the scan folder and output CSV." : null,
@@ -89,7 +89,7 @@
     accepts: ["reads"], file: "reginald", button: "Build report",
     fields: [
       O.action("quality_output", [["qc/multiqc", "MultiQC HTML report"], ["qc/multiqc-metrics", "Export metrics only"]], "qc/multiqc"),
-      f.param("input", "Results folder", "A folder containing reports and result manifests", { def: "{{bundleWorkspace}}/genomes", send: true, width: 420 }),
+      f.param("input", "Results folder", "A folder containing reports and result manifests", { def: "{{usersWorkspace}}/mygenomes", send: true, width: 420 }),
       f.param("force", "Replace an existing report", "Allow overwriting MultiQC’s previous report"),
     ],
     requests: O.selected("quality_output"),

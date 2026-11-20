@@ -16,8 +16,9 @@ from typing import TYPE_CHECKING
 
 from wgsextract_cli.cli.registration.serve import register as register
 from wgsextract_cli.core.config import (
-    dataset_library,
+    configured_mygenomes_library,
     get_config_path,
+    mygenomes_library,
     settings,
     typed_settings,
 )
@@ -44,11 +45,14 @@ def allowed_roots(extra: Iterable[str]) -> list[Path]:
         if not root.is_dir():
             raise UsageError(f"Allowed folder {root} doesn't exist.")
     configured_roots = {
-        "dataset_library": dataset_library(),
+        "mygenomes_library": configured_mygenomes_library(),
         "reference_library": settings.get("reference_library"),
         "reference_genome_library": settings.get("reference_genome_library"),
         "output_directory": settings.get("output_directory"),
     }
+    # The users workspace folder a command writes to when nothing is set.
+    defaults = [Path(mygenomes_library())]
+    roots += [root for root in defaults if root.is_dir()]
     for key, value in configured_roots.items():
         if not value:
             continue

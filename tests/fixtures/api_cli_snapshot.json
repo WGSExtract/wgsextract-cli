@@ -462,7 +462,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags.",
+      "help": "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -5545,7 +5545,7 @@
    }
   },
   "basecall": {
-   "help": "usage: wgsextract basecall [-h] [--model MODEL] [--modified-bases CODES] [--device DEVICE]\n                           [--read-ids FILE] [--regions-bed BED] [--alignment BAM]\n                           [--models-dir MODELS_DIR] [--dorado-path DORADO_PATH]\n\nBasecall Nanopore POD5 signal with ONT's Dorado (optional; install it yourself) into an unaligned\nBAM that keeps the MM/ML methylation tags and feeds `align --r1`. Picks the GPU (Apple silicon,\nelse NVIDIA) or CPU, downloads hac/sup models into the wgsextract cache, and can re-basecall only\na panel's reads with sup.\n\noptions:\n  -h, --help            show this help message and exit\n  --model MODEL         Dorado model: fast, hac or sup (optionally pinned, e.g. sup@v5.2.0; picked\n                        for the run's chemistry), or a model folder (default: hac)\n  --modified-bases CODES\n                        Also call base modifications, e.g. 5mCG_5hmCG (CpG methylation) or\n                        5mC_5hmC; comma-separated for several. Writes MM/ML tags.\n  --device DEVICE       auto (Apple silicon GPU, else an NVIDIA GPU nvidia-smi lists, else CPU),\n                        cpu, metal, cuda:all or cuda:<id>[,<id>...] (default: auto)\n  --read-ids FILE       Basecall only the reads named in this file (one read ID per line).\n  --regions-bed BED     Re-basecall only the reads --alignment places in these regions (a panel\n                        BED), e.g. with --model sup.\n  --alignment BAM       Aligned BAM/CRAM of the same run whose reads in --regions-bed are re-\n                        basecalled.\n  --models-dir MODELS_DIR\n                        Folder Dorado downloads models into and reuses them from (default: config\n                        dorado_models_directory, else the wgsextract cache's dorado-models)\n  --dorado-path DORADO_PATH\n                        Path to the dorado executable (optional if in PATH)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract basecall --input pod5/ --modified-bases 5mCG_5hmCG\n  wgsextract basecall --input pod5/ --model sup --regions-bed panel.bed --alignment sample_aligned.bam\n  wgsextract basecall --input reads.pod5 --device cpu --model fast\n\noutputs (in the output directory unless noted):\n  <POD5 file or folder stem>.<model>[.<modifications>][.subset].bam: unaligned\n  reads with Dorado's tags (MM/ML with --modified-bases), beside the POD5\n  input or in --outdir.\n\nneeds:\n  dorado, samtools; hours for a MinION flow cell on a GPU.\n",
+   "help": "usage: wgsextract basecall [-h] [--download | --no-download] [--model MODEL]\n                           [--modified-bases CODES] [--device DEVICE] [--read-ids FILE]\n                           [--regions-bed BED] [--alignment BAM] [--models-dir MODELS_DIR]\n                           [--dorado-path DORADO_PATH]\n\nBasecall Nanopore POD5 signal with ONT's Dorado (optional; install it yourself) into an unaligned\nBAM that keeps the MM/ML methylation tags and feeds `align --r1`. Picks the GPU (Apple silicon,\nelse NVIDIA) or CPU, downloads hac/sup models into the wgsextract cache, and can re-basecall only\na panel's reads with sup.\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --model MODEL         Dorado model: fast, hac or sup (optionally pinned, e.g. sup@v5.2.0; picked\n                        for the run's chemistry), or a model folder (default: hac)\n  --modified-bases CODES\n                        Also call base modifications, e.g. 5mCG_5hmCG (CpG methylation) or\n                        5mC_5hmC; comma-separated for several. Writes MM/ML tags.\n  --device DEVICE       auto (Apple silicon GPU, else an NVIDIA GPU nvidia-smi lists, else CPU),\n                        cpu, metal, cuda:all or cuda:<id>[,<id>...] (default: auto)\n  --read-ids FILE       Basecall only the reads named in this file (one read ID per line).\n  --regions-bed BED     Re-basecall only the reads --alignment places in these regions (a panel\n                        BED), e.g. with --model sup.\n  --alignment BAM       Aligned BAM/CRAM of the same run whose reads in --regions-bed are re-\n                        basecalled.\n  --models-dir MODELS_DIR\n                        Folder Dorado downloads models into and reuses them from (default: config\n                        dorado_models_directory, else the wgsextract cache's dorado-models)\n  --dorado-path DORADO_PATH\n                        Path to the dorado executable (optional if in PATH)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract basecall --input pod5/ --modified-bases 5mCG_5hmCG\n  wgsextract basecall --input pod5/ --model sup --regions-bed panel.bed --alignment sample_aligned.bam\n  wgsextract basecall --input reads.pod5 --device cpu --model fast\n\noutputs (in the output directory unless noted):\n  <POD5 file or folder stem>.<model>[.<modifications>][.subset].bam: unaligned\n  reads with Dorado's tags (MM/ML with --modified-bases), beside the POD5\n  input or in --outdir.\n\nneeds:\n  dorado, samtools; hours for a MinION flow cell on a GPU.\n",
    "parser": {
     "actions": [
      {
@@ -5826,6 +5826,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -7528,7 +7545,7 @@
    }
   },
   "example-genome download": {
-   "help": "usage: wgsextract example-genome download [-h] [--tag TAG] [--all] [--method {auto,https,aspera}]\n                                          [--force] [--dry-run] [--help-all]\n                                          [EXAMPLE_ID ...]\n\npositional arguments:\n  EXAMPLE_ID            Example IDs to download. Defaults to a small starter set.\n\noptions:\n  -h, --help            show this help message and exit\n  --tag TAG             Download every example with this tag. May be repeated (e.g. --tag pacbio).\n  --all                 Download every curated example, including large full-genome data.\n  --method {auto,https,aspera}\n                        Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use\n                        --method aspera explicitly for Aspera.\n  --force               Discard existing and partially downloaded files and download again.\n                        Without it, completed files are kept and interrupted downloads resume.\n  --dry-run             Print the planned downloads without creating files.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract example-genome download --help-all' lists them.\n\nexamples:\n  wgsextract example-genome download na12878-lowcov-bam\n  wgsextract example-genome download na12878-lowcov-bam --dry-run\n\noutputs (in the output directory unless noted):\n  Into <dataset_library>/test-1000genomes/<example id>/, with a genome config\n  file.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
+   "help": "usage: wgsextract example-genome download [-h] [--tag TAG] [--all] [--method {auto,https,aspera}]\n                                          [--force] [--dry-run] [--help-all]\n                                          [EXAMPLE_ID ...]\n\npositional arguments:\n  EXAMPLE_ID            Example IDs to download. Defaults to a small starter set.\n\noptions:\n  -h, --help            show this help message and exit\n  --tag TAG             Download every example with this tag. May be repeated (e.g. --tag pacbio).\n  --all                 Download every curated example, including large full-genome data.\n  --method {auto,https,aspera}\n                        Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use\n                        --method aspera explicitly for Aspera.\n  --force               Discard existing and partially downloaded files and download again.\n                        Without it, completed files are kept and interrupted downloads resume.\n  --dry-run             Print the planned downloads without creating files.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract example-genome download --help-all' lists them.\n\nexamples:\n  wgsextract example-genome download na12878-lowcov-bam\n  wgsextract example-genome download na12878-lowcov-bam --dry-run\n\noutputs (in the output directory unless noted):\n  Into <mygenomes_library>/test-1000genomes/<example id>/, with a genome\n  config file.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; depends on\n  download speed.\n",
    "parser": {
     "actions": [
      {
@@ -7899,7 +7916,7 @@
       "default": null,
       "dest": "target_root",
       "exclusive_group": null,
-      "help": "Dataset library root. Defaults to config dataset_library, or datasets/ in the source checkout (or user data directory) when unset.",
+      "help": "My Genomes library root. Defaults to config mygenomes_library, else mygenomes/ in the users workspace (~/wgs-extract).",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -7967,7 +7984,7 @@
    }
   },
   "example-genome list": {
-   "help": "usage: wgsextract example-genome list [-h] [--target-root TARGET_ROOT] [--tag TAG]\n\noptions:\n  -h, --help            show this help message and exit\n  --target-root TARGET_ROOT\n                        Dataset library root. Defaults to config dataset_library, or datasets/ in\n                        the source checkout (or user data directory) when unset.\n  --tag TAG             Only list examples with this tag. May be repeated (e.g. --tag pacbio).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract example-genome list\n  wgsextract example-genome list --tag pacbio\n\noutputs (in the output directory unless noted):\n  Prints the curated examples; writes no files.\n\nneeds:\n  no external tools; instant.\n",
+   "help": "usage: wgsextract example-genome list [-h] [--target-root TARGET_ROOT] [--tag TAG]\n\noptions:\n  -h, --help            show this help message and exit\n  --target-root TARGET_ROOT\n                        My Genomes library root. Defaults to config mygenomes_library, else\n                        mygenomes/ in the users workspace (~/wgs-extract).\n  --tag TAG             Only list examples with this tag. May be repeated (e.g. --tag pacbio).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract example-genome list\n  wgsextract example-genome list --tag pacbio\n\noutputs (in the output directory unless noted):\n  Prints the curated examples; writes no files.\n\nneeds:\n  no external tools; instant.\n",
    "parser": {
     "actions": [
      {
@@ -8256,7 +8273,7 @@
       "default": null,
       "dest": "target_root",
       "exclusive_group": null,
-      "help": "Dataset library root. Defaults to config dataset_library, or datasets/ in the source checkout (or user data directory) when unset.",
+      "help": "My Genomes library root. Defaults to config mygenomes_library, else mygenomes/ in the users workspace (~/wgs-extract).",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -13459,7 +13476,7 @@
    }
   },
   "lineage mt-haplogroup": {
-   "help": "usage: wgsextract lineage mt-haplogroup [-h]\n                                        [--tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}]\n                                        [--contamination] [--haplogrep-path HAPLOGREP_PATH]\n                                        [--haplocheck-path HAPLOCHECK_PATH] [--tree-links]\n                                        [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}\n                        Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs,\n                        PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-\n                        rcrs is FamilyTreeDNA Mitotree (non-commercial use only).\n  --contamination       Also check for mtDNA contamination with haplocheck. VCF input needs\n                        heteroplasmy levels (FORMAT/AF).\n  --haplogrep-path HAPLOGREP_PATH\n                        Path to the Haplogrep 3 executable or JAR (optional if in PATH)\n  --haplocheck-path HAPLOCHECK_PATH\n                        Path to the haplocheck executable or JAR (optional if in PATH)\n  --tree-links          Print YFull and FamilyTreeDNA mtDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract lineage mt-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage mt-haplogroup --input sample.cram\n  wgsextract lineage mt-haplogroup --input sample.cram --contamination\n  wgsextract lineage mt-haplogroup --input sample.vcf.gz --tree mitotree-rcrs\n\noutputs (in the output directory unless noted):\n  haplogrep_results.txt; prints the mtDNA haplogroup and Haplogrep 3 tree.\n  With --contamination, also haplocheck_contamination.txt (+ .raw.txt, .html).\n\nneeds:\n  bcftools, haplogrep3, java, samtools; depending on options and inputs, also:\n  curl, haplocheck, tabix; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract lineage mt-haplogroup [-h] [--download | --no-download]\n                                        [--tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}]\n                                        [--contamination] [--haplogrep-path HAPLOGREP_PATH]\n                                        [--haplocheck-path HAPLOCHECK_PATH] [--tree-links]\n                                        [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}\n                        Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs,\n                        PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-\n                        rcrs is FamilyTreeDNA Mitotree (non-commercial use only).\n  --contamination       Also check for mtDNA contamination with haplocheck. VCF input needs\n                        heteroplasmy levels (FORMAT/AF).\n  --haplogrep-path HAPLOGREP_PATH\n                        Path to the Haplogrep 3 executable or JAR (optional if in PATH)\n  --haplocheck-path HAPLOCHECK_PATH\n                        Path to the haplocheck executable or JAR (optional if in PATH)\n  --tree-links          Print YFull and FamilyTreeDNA mtDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract lineage mt-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage mt-haplogroup --input sample.cram\n  wgsextract lineage mt-haplogroup --input sample.cram --contamination\n  wgsextract lineage mt-haplogroup --input sample.vcf.gz --tree mitotree-rcrs\n\noutputs (in the output directory unless noted):\n  haplogrep_results.txt; prints the mtDNA haplogroup and Haplogrep 3 tree.\n  With --contamination, also haplocheck_contamination.txt (+ .raw.txt, .html).\n\nneeds:\n  bcftools, haplogrep3, java, samtools; depending on options and inputs, also:\n  curl, haplocheck, tabix; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -13740,6 +13757,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": [
@@ -13868,7 +13902,7 @@
    }
   },
   "lineage y-haplogroup": {
-   "help": "usage: wgsextract lineage y-haplogroup [-h] [--build {hg19,hg38,t2t}] [--tree TREE] [--ancient]\n                                       [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n8 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract lineage y-haplogroup [-h] [--download | --no-download] [--build {hg19,hg38,t2t}]\n                                       [--tree TREE] [--ancient] [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n8 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -14149,6 +14183,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -15494,7 +15545,7 @@
    }
   },
   "microarray": {
-   "help": "usage: wgsextract microarray [-h] [--formats FORMATS] [--format {tsv,parquet}] [--sample SAMPLE]\n                             [-r REGION] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --formats FORMATS     Comma-separated list of formats to generate (default: all).\n                        Available formats:\n                          Combined kit only (always written):\n                            all (every chip's markers in one 23andMe-style file, e.g. for GEDmatch;\n                            writes no vendor files: list the vendor formats to get them)\n                          23andMe:\n                            23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4, 23andme_v5,\n                            23andme_v5_2025 (v5 chip as exported in 2025), 23andme_v3+v5, 23andme_api\n                          AncestryDNA:\n                            ancestry_v1, ancestry_v2, ancestry_v2_2021 (2021 V2.0 layout),\n                            ancestry_v2_2024 (V2.0 chip as exported in 2024-25)\n                          Family Tree DNA:\n                            ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3\n                          Living DNA:\n                            ldna_v1, ldna_v2\n                          MyHeritage:\n                            myheritage_v1, myheritage_v2,\n                            myheritage_gsa_2025 (609,346 markers), myheritage_gsa_2025_609424\n                          Nucleus:\n                            nucleus (array export, 2025)\n                          AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):\n                            aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)\n                            aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances\n                              differ from legacy 1240K/HO at 1,200,251 sites; maps are never mixed)\n  --format {tsv,parquet}\n                        Also save the genotypes as <input>_genotypes.tsv or .parquet (needs pyarrow): rsID, chrom, pos (in the input's build) and genotype\n  --sample SAMPLE       Sample to use from a multi-sample VCF (e.g. a joint-called nf-core/sarek VCF); required when the VCF has more than one\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json,\n  --quiet, --debug, --config and the other global options are accepted before\n  or after the command; 'wgsextract --help' lists them all.\n\n15 advanced options not shown; 'wgsextract microarray --help-all' lists them.\n\nexamples:\n  wgsextract microarray --input sample.cram --formats 23andme_v5\n  wgsextract microarray --input sample.cram --formats 23andme_v5,ancestry_v2\n\noutputs (in the output directory unless noted):\n  <input stem>_<format>.txt (or the vendor's extension) per format, such as\n  sample_23andMe_V5.txt, and <input stem>_CombinedKit.txt; with --format also\n  <input stem>_genotypes.tsv or .parquet. Each output gets an\n  <output>.inputs.json of the inputs and options that made it; a rerun reuses\n  outputs whose inputs are unchanged.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  curl; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract microarray [-h] [--download | --no-download] [--formats FORMATS]\n                             [--format {tsv,parquet}] [--sample SAMPLE] [-r REGION] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.\n  --formats FORMATS     Comma-separated list of formats to generate (default: all).\n                        Variants are named by letter (h600.org's Microarray File Formats); similar\n                        minor variants are merged into one file, e.g. ancestry_v2ab.\n                        Available formats:\n                          Combined kit only (always written):\n                            all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.\n                            for GEDmatch; writes no vendor files: list the vendor formats to get them)\n                          23andMe:\n                            23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),\n                            23andme_v5, 23andme_v3+v5, 23andme_api\n                          AncestryDNA:\n                            ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),\n                            ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)\n                          Family Tree DNA:\n                            ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4\n                            ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)\n                          Living DNA:\n                            ldna_v1, ldna_v2\n                          MyHeritage:\n                            myheritage_v1, myheritage_v2, myheritage_v3\n                          Other vendors:\n                            tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,\n                            selfdecode, nucleus\n                          Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,\n                          23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are\n                          accepted: they are exact sub-minor export layouts of v2d, v5 and v2.\n                          AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):\n                            aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)\n                            aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances\n                              differ from legacy 1240K/HO at 1,200,251 sites; maps are never mixed)\n  --format {tsv,parquet}\n                        Also save the genotypes as <input>_genotypes.tsv or .parquet (needs pyarrow): rsID, chrom, pos (in the input's build) and genotype\n  --sample SAMPLE       Sample to use from a multi-sample VCF (e.g. a joint-called nf-core/sarek VCF); required when the VCF has more than one\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json,\n  --quiet, --debug, --config and the other global options are accepted before\n  or after the command; 'wgsextract --help' lists them all.\n\n15 advanced options not shown; 'wgsextract microarray --help-all' lists them.\n\nexamples:\n  wgsextract microarray --input sample.cram --formats 23andme_v5\n  wgsextract microarray --input sample.cram --formats 23andme_v5,ancestry_v2\n\noutputs (in the output directory unless noted):\n  <input stem>_<format>.txt (or the vendor's extension) per format, such as\n  sample_23andMe_V5.txt, and <input stem>_CombinedKit.txt; with --format also\n  <input stem>_genotypes.tsv or .parquet. Each output gets an\n  <output>.inputs.json of the inputs and options that made it; a rerun reuses\n  outputs whose inputs are unchanged.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  curl; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -15778,12 +15829,29 @@
      },
      {
       "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_StoreAction",
       "const": null,
       "default": "all",
       "dest": "formats",
       "exclusive_group": null,
-      "help": "Comma-separated list of formats to generate (default: all).\nAvailable formats:\n  Combined kit only (always written):\n    all (every chip's markers in one 23andMe-style file, e.g. for GEDmatch;\n    writes no vendor files: list the vendor formats to get them)\n  23andMe:\n    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4, 23andme_v5,\n    23andme_v5_2025 (v5 chip as exported in 2025), 23andme_v3+v5, 23andme_api\n  AncestryDNA:\n    ancestry_v1, ancestry_v2, ancestry_v2_2021 (2021 V2.0 layout),\n    ancestry_v2_2024 (V2.0 chip as exported in 2024-25)\n  Family Tree DNA:\n    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3\n  Living DNA:\n    ldna_v1, ldna_v2\n  MyHeritage:\n    myheritage_v1, myheritage_v2,\n    myheritage_gsa_2025 (609,346 markers), myheritage_gsa_2025_609424\n  Nucleus:\n    nucleus (array export, 2025)\n  AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):\n    aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)\n    aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances\n      differ from legacy 1240K/HO at 1,200,251 sites; maps are never mixed)\n",
+      "help": "Comma-separated list of formats to generate (default: all).\nVariants are named by letter (h600.org's Microarray File Formats); similar\nminor variants are merged into one file, e.g. ancestry_v2ab.\nAvailable formats:\n  Combined kit only (always written):\n    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.\n    for GEDmatch; writes no vendor files: list the vendor formats to get them)\n  23andMe:\n    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),\n    23andme_v5, 23andme_v3+v5, 23andme_api\n  AncestryDNA:\n    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),\n    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)\n  Family Tree DNA:\n    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4\n    ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)\n  Living DNA:\n    ldna_v1, ldna_v2\n  MyHeritage:\n    myheritage_v1, myheritage_v2, myheritage_v3\n  Other vendors:\n    tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,\n    selfdecode, nucleus\n  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,\n  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are\n  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.\n  AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):\n    aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)\n    aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances\n      differ from legacy 1240K/HO at 1,200,251 sites; maps are never mixed)\n",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -16866,7 +16934,7 @@
    }
   },
   "qc ancestry": {
-   "help": "usage: wgsextract qc ancestry [-h] [--sample NAME] [--build {hg19,hg38,t2t}] [--bootstrap N]\n\noptions:\n  -h, --help            show this help message and exit\n  --sample NAME         The sample of a multi-sample VCF\n  --build {hg19,hg38,t2t}\n                        The input's build, when its header doesn't tell\n  --bootstrap N         Bootstrap replicates for the 95% intervals; 0 skips them\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc ancestry --input sample.cram\n  wgsextract qc ancestry --input 23andme_raw.txt\n\noutputs (in the output directory unless noted):\n  <stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, curl; minutes on\n  a 30x genome.\n",
+   "help": "usage: wgsextract qc ancestry [-h] [--download | --no-download] [--sample NAME]\n                              [--build {hg19,hg38,t2t}] [--bootstrap N]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --sample NAME         The sample of a multi-sample VCF\n  --build {hg19,hg38,t2t}\n                        The input's build, when its header doesn't tell\n  --bootstrap N         Bootstrap replicates for the 95% intervals; 0 skips them\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc ancestry --input sample.cram\n  wgsextract qc ancestry --input 23andme_raw.txt\n\noutputs (in the output directory unless noted):\n  <stem>.ancestry.tsv: K=7 and K=12 proportions with confidence intervals.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, curl; minutes on\n  a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -17147,6 +17215,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -20449,7 +20534,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags.",
+      "help": "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -20753,7 +20838,7 @@
    }
   },
   "ref": {
-   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome or annotation data a command line needs that\n                        isn't installed, and how to install it.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome or annotation data a command line needs that\n                        isn't installed, and how to install it.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    cytobands           Validate installed hg19/hg38 UCSC cytobands; download missing data only\n                        with --download.\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -20791,6 +20876,7 @@
        "test-genome",
        "needs",
        "gene-map",
+       "cytobands",
        "clinvar",
        "revel",
        "phylop",
@@ -20868,6 +20954,10 @@
        [
         "gene-map",
         "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1)."
+       ],
+       [
+        "cytobands",
+        "Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download."
        ],
        [
         "clinvar",
@@ -25529,7 +25619,7 @@
    }
   },
   "ref index": {
-   "help": "usage: wgsextract ref index [-h] [--aligner {bwa,bwa-mem2}]\n\noptions:\n  -h, --help            show this help message and exit\n  --aligner {bwa,bwa-mem2}\n                        Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory\n                        for a human genome; hs38DH's is downloaded, others need ~90 GB of memory\n                        to build.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref index --ref hs38.fa\n  wgsextract ref index --ref hs38.fa --aligner bwa-mem2\n\noutputs (in the output directory unless noted):\n  Beside the FASTA: .fai, .dict and the aligner's index files.\n\nneeds:\n  samtools; depending on options and inputs, also: bwa, bwa-mem2, curl; hours,\n  once per reference.\n",
+   "help": "usage: wgsextract ref index [-h] [--download | --no-download] [--aligner {bwa,bwa-mem2}]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --aligner {bwa,bwa-mem2}\n                        Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory\n                        for a human genome; --download permits fetching hs38DH's, others need ~90\n                        GB of memory to build.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref index --ref hs38.fa\n  wgsextract ref index --ref hs38.fa --aligner bwa-mem2\n\noutputs (in the output directory unless noted):\n  Beside the FASTA: .fai, .dict and the aligner's index files.\n\nneeds:\n  samtools; depending on options and inputs, also: bwa, bwa-mem2, curl; hours,\n  once per reference.\n",
    "parser": {
     "actions": [
      {
@@ -25812,6 +25902,23 @@
       "type": "int"
      },
      {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
       "choices": [
        "bwa",
        "bwa-mem2"
@@ -25821,7 +25928,7 @@
       "default": "bwa",
       "dest": "aligner",
       "exclusive_group": null,
-      "help": "Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; hs38DH's is downloaded, others need ~90 GB of memory to build.",
+      "help": "Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; --download permits fetching hs38DH's, others need ~90 GB of memory to build.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -27858,7 +27965,7 @@
    }
   },
   "ref status": {
-   "help": "usage: wgsextract ref status [-h] [--dataset-library DATASET_LIBRARY]\n                             [--annotation-vcf ANNOTATION_VCF] [--values]\n\noptions:\n  -h, --help            show this help message and exit\n  --dataset-library DATASET_LIBRARY\n                        Dataset library directory used for test dataset status.\n  --annotation-vcf ANNOTATION_VCF\n                        Custom annotation VCF path to include in readiness checks.\n  --values              Emit a compact values JSON object for GUI data-source consumers.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref status\n\noutputs (in the output directory unless noted):\n  Prints the reference library's status; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
+   "help": "usage: wgsextract ref status [-h] [--mygenomes-library MYGENOMES_LIBRARY]\n                             [--annotation-vcf ANNOTATION_VCF] [--values]\n\noptions:\n  -h, --help            show this help message and exit\n  --mygenomes-library MYGENOMES_LIBRARY\n                        My Genomes library folder used for the test genome status.\n  --annotation-vcf ANNOTATION_VCF\n                        Custom annotation VCF path to include in readiness checks.\n  --values              Emit a compact values JSON object for GUI data-source consumers.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref status\n\noutputs (in the output directory unless noted):\n  Prints the reference library's status; writes no files.\n\nneeds:\n  no external tools; seconds.\n",
    "parser": {
     "actions": [
      {
@@ -28145,13 +28252,13 @@
       "class": "_StoreAction",
       "const": null,
       "default": null,
-      "dest": "dataset_library",
+      "dest": "mygenomes_library",
       "exclusive_group": null,
-      "help": "Dataset library directory used for test dataset status.",
+      "help": "My Genomes library folder used for the test genome status.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
-       "--dataset-library"
+       "--mygenomes-library"
       ],
       "required": false,
       "type": null
@@ -28161,12 +28268,13 @@
       "class": "_StoreAction",
       "const": null,
       "default": null,
-      "dest": "dataset_library",
+      "dest": "mygenomes_library",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
       "metavar": null,
       "nargs": null,
       "option_strings": [
+       "--dataset-library",
        "--genome-library"
       ],
       "required": false,
@@ -29873,7 +29981,7 @@
    }
   },
   "report": {
-   "help": "usage: wgsextract report [-h] [--workspace DIR] [--results DIR] [--format {tsv,parquet}]\n                         [--gene-list LIST]\n\nSummarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar\npathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown\nand JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs\nno analysis; its only network call downloads a built-in gene list once. Technical results, not\ndiagnosis.\n\noptions:\n  -h, --help            show this help message and exit\n  --workspace DIR       Sample folder whose results are reported (default: the --genome folder,\n                        else the --input's folder).\n  --results DIR         Also read result manifests from this folder (repeatable); only runs on\n                        this sample's files are used. The --outdir is always read.\n  --format {tsv,parquet}\n                        Format of the findings table, <sample>_personal_report_findings.tsv or\n                        .parquet (needs pyarrow) (default: tsv)\n  --gene-list LIST      Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2;\n                        downloaded once into the reference library), or a TSV (column gene;\n                        optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file\n                        (gene symbol in column 4) (default: config report_gene_list, else acmg-\n                        sf-3.3)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract report --genome HG002\n  wgsextract report --input sample.cram\n  wgsextract report --genome HG002 --gene-list acmg-sf-3.2\n  wgsextract report --genome HG002 --gene-list my_genes.bed\n  wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet\n\noutputs (in the output directory unless noted):\n  <sample>_personal_report.html, .md and .json and\n  <sample>_personal_report_findings.tsv (or .parquet with --format parquet) in\n  the sample folder (or --outdir); evidence links are relative to the sample\n  folder.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; seconds from\n  existing results.\n",
+   "help": "usage: wgsextract report [-h] [--download | --no-download] [--workspace DIR] [--results DIR]\n                         [--format {tsv,parquet}] [--gene-list LIST]\n\nSummarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar\npathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown\nand JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs\nno analysis; its only network call downloads a built-in gene list once. Technical results, not\ndiagnosis.\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --workspace DIR       Sample folder whose results are reported (default: the --genome folder,\n                        else the --input's folder).\n  --results DIR         Also read result manifests from this folder (repeatable); only runs on\n                        this sample's files are used. The --outdir is always read.\n  --format {tsv,parquet}\n                        Format of the findings table, <sample>_personal_report_findings.tsv or\n                        .parquet (needs pyarrow) (default: tsv)\n  --gene-list LIST      Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2;\n                        missing lists need --download), or a TSV (column gene; optional\n                        hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene\n                        symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract report --genome HG002\n  wgsextract report --input sample.cram\n  wgsextract report --genome HG002 --gene-list acmg-sf-3.2\n  wgsextract report --genome HG002 --gene-list my_genes.bed\n  wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet\n\noutputs (in the output directory unless noted):\n  <sample>_personal_report.html, .md and .json and\n  <sample>_personal_report_findings.tsv (or .parquet with --format parquet) in\n  the sample folder (or --outdir); evidence links are relative to the sample\n  folder.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; seconds from\n  existing results.\n",
    "parser": {
     "actions": [
      {
@@ -30157,6 +30265,23 @@
      },
      {
       "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_StoreAction",
       "const": null,
       "default": null,
@@ -30213,7 +30338,7 @@
       "default": null,
       "dest": "gene_list",
       "exclusive_group": null,
-      "help": "Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; downloaded once into the reference library), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)",
+      "help": "Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)",
       "metavar": "LIST",
       "nargs": null,
       "option_strings": [
@@ -30570,7 +30695,7 @@
    }
   },
   "score pgs": {
-   "help": "usage: wgsextract score pgs [-h] --build {GRCh37,GRCh38} [--pgs-id PGS_ID | --trait TRAIT]\n                            [--scoring-file SCORING_FILE] [--sample SAMPLE] [--plink2-check]\n                            [--keep-ambiguous | --no-keep-ambiguous]\n                            [--confident-bed CONFIDENT_BED] [--min-match MIN_MATCH]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {GRCh37,GRCh38}\n                        Input/scoring coordinate build (must match).\n  --pgs-id PGS_ID       Catalog PGS ID; uncurated IDs carry a warning.\n  --trait TRAIT         Curated trait (see docs/pgs.md).\n  --scoring-file SCORING_FILE\n                        Own scoring TSV[.gz], overriding Catalog selection.\n  --sample SAMPLE       VCF sample name (required for multi-sample files).\n  --plink2-check        Cross-check the matched-set sum with installed plink2 (no imputation).\n  --keep-ambiguous, --no-keep-ambiguous\n                        Keep A/T and C/G SNPs only if their forward strand was independently\n                        verified.\n  --confident-bed CONFIDENT_BED\n                        Same-sample/build confident BED: absent SNPs within it are reference calls\n                        (needs --ref).\n  --min-match MIN_MATCH\n                        Minimum matched fraction for percentile eligibility (default 0.75).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018\n\noutputs (in the output directory unless noted):\n  <input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate,\n  licence and citation; for curated GRCh38 scores, an ancestry-adjusted\n  percentile.\n\nneeds:\n  bcftools; depending on options and inputs, also: plink2, curl; minutes on a\n  30x genome.\n",
+   "help": "usage: wgsextract score pgs [-h] [--download | --no-download] --build {GRCh37,GRCh38}\n                            [--pgs-id PGS_ID | --trait TRAIT] [--scoring-file SCORING_FILE]\n                            [--sample SAMPLE] [--plink2-check]\n                            [--keep-ambiguous | --no-keep-ambiguous]\n                            [--confident-bed CONFIDENT_BED] [--min-match MIN_MATCH]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {GRCh37,GRCh38}\n                        Input/scoring coordinate build (must match).\n  --pgs-id PGS_ID       Catalog PGS ID; uncurated IDs carry a warning.\n  --trait TRAIT         Curated trait (see docs/pgs.md).\n  --scoring-file SCORING_FILE\n                        Own scoring TSV[.gz], overriding Catalog selection.\n  --sample SAMPLE       VCF sample name (required for multi-sample files).\n  --plink2-check        Cross-check the matched-set sum with installed plink2 (no imputation).\n  --keep-ambiguous, --no-keep-ambiguous\n                        Keep A/T and C/G SNPs only if their forward strand was independently\n                        verified.\n  --confident-bed CONFIDENT_BED\n                        Same-sample/build confident BED: absent SNPs within it are reference calls\n                        (needs --ref).\n  --min-match MIN_MATCH\n                        Minimum matched fraction for percentile eligibility (default 0.75).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height\n  wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018\n\noutputs (in the output directory unless noted):\n  <input stem>_<PGS ID>_pgs.json and .tsv: raw score, variant match rate,\n  licence and citation; for curated GRCh38 scores, an ancestry-adjusted\n  percentile.\n\nneeds:\n  bcftools; depending on options and inputs, also: plink2, curl; minutes on a\n  30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -30851,6 +30976,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": [
@@ -32740,7 +32882,7 @@
    }
   },
   "typing hla": {
-   "help": "usage: wgsextract typing hla [-h] [--hla-index FASTA]\n\noptions:\n  -h, --help         show this help message and exit\n  --hla-index FASTA  T1K allele index (hla_dna_seq.fa). Default: <reference library>/ref/t1k_hla,\n                     built from IPD-IMGT/HLA on first use.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract typing hla [-h] [--download | --no-download] [--hla-index FASTA]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --hla-index FASTA     T1K allele index (hla_dna_seq.fa). Default: <reference\n                        library>/downloads/t1k_hla; --download confirms building it from IPD-\n                        IMGT/HLA if missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -33024,12 +33166,29 @@
      },
      {
       "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_StoreAction",
       "const": null,
       "default": null,
       "dest": "hla_index",
       "exclusive_group": null,
-      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/ref/t1k_hla, built from IPD-IMGT/HLA on first use.",
+      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/downloads/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
       "metavar": "FASTA",
       "nargs": null,
       "option_strings": [
@@ -33738,7 +33897,7 @@
    }
   },
   "vcf": {
-   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -33762,6 +33921,7 @@
       "choices": [
        "snp",
        "indel",
+       "call",
        "annotate",
        "filter",
        "table",
@@ -33797,6 +33957,10 @@
        [
         "indel",
         "Call Small Insertions and Deletions (InDels) using bcftools. Used to find small gaps or extra bases in the DNA sequence."
+       ],
+       [
+        "call",
+        "Call several variant types in one run: SNPs and InDels (bcftools), SVs and CNVs, each into its own VCF, and with --merge also into one combined VCF."
        ],
        [
         "annotate",
@@ -35284,7 +35448,7 @@
    }
   },
   "vcf chain-annotate": {
-   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCF files generated during the chain process.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools,\n  vep, vep-rs; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCF files generated during the chain process.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: samtools, vep, vep-\n  rs; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -35642,7 +35806,7 @@
    }
   },
   "vcf clair3": {
-   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--gpu]\n                             [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR      Clair3 model directory, or the name of a bundled model, matching the\n                        reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config\n                        clair3_model; default: chosen from the basecaller metadata.\n  --gpu                 Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see\n                        docs/ont.md).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on a\n                        GPU), or not (none). Default: config reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: docker,\n  run_clair3.sh, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--gpu]\n                             [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR      Clair3 model directory, or the name of a bundled model, matching the\n                        reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config\n                        clair3_model; default: chosen from the basecaller metadata.\n  --gpu                 Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's\n                        Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on\n                        CUDA; MPS varies), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: docker,\n  run_clair3.sh, sambamba, wgse-clair3; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -35964,7 +36128,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
+      "help": "Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -36015,7 +36179,7 @@
       "default": null,
       "dest": "reference_evidence",
       "exclusive_group": null,
-      "help": "Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on a GPU), or not (none). Default: config reference_evidence, else none.",
+      "help": "Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on CUDA; MPS varies), or not (none). Default: config reference_evidence, else none.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -36806,7 +36970,7 @@
    }
   },
   "vcf deepvariant": {
-   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu]\n                                  [--reference-evidence {none,gvcf}] [--force] [--force-step STEP]\n                                  [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (README).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, deepvariant.g.vcf.gz (+ .tbi),\n                        beside the unchanged variant VCF (gvcf; costs ~5 percent more time, ~25\n                        with Parabricks), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n6 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with\n  --reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu]\n                                  [--reference-evidence {none,gvcf}] [--force] [--force-step STEP]\n                                  [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-\n                        parabricks).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, deepvariant.g.vcf.gz (+ .tbi),\n                        beside the unchanged variant VCF (gvcf; costs ~5 percent more time, ~25\n                        with Parabricks), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n6 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with\n  --reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37215,7 +37379,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README).",
+      "help": "NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-parabricks).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -38105,7 +38269,7 @@
    }
   },
   "vcf gatk": {
-   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--reference-evidence {none,gvcf}]\n                           [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--reference-evidence {none,gvcf}]\n                           [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see\n                        docs/hardware.md#nvidia-gpus-parabricks).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -38427,7 +38591,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
+      "help": "Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -40087,7 +40251,7 @@
    }
   },
   "vcf pharmcat": {
-   "help": "usage: wgsextract vcf pharmcat [-h] [--vcf-input VCF_INPUT] [--pharmcat-dir PHARMCAT_DIR]\n                               [--absent-to-ref] [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf pharmcat [-h] [--download | --no-download] [--vcf-input VCF_INPUT]\n                               [--pharmcat-dir PHARMCAT_DIR] [--absent-to-ref]\n                               [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip, curl; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -40368,6 +40532,23 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "BooleanOptionalAction",
+      "const": null,
+      "default": null,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download",
+       "--no-download"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -48591,6 +48772,7 @@
    "command": "lineage",
    "contamination": false,
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_mtdna",
    "genome": null,
@@ -48623,6 +48805,7 @@
    "command": "lineage",
    "contamination": false,
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_mtdna",
    "genome": null,
@@ -48666,6 +48849,7 @@
    "build": "hg38",
    "command": "lineage",
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_ydna",
    "genome": null,
@@ -48893,6 +49077,7 @@
    "call_reasons": null,
    "command": "microarray",
    "debug": false,
+   "download": null,
    "exclude_filtered": null,
    "formats": "all",
    "full_help": false,
@@ -48953,6 +49138,7 @@
    "call_reasons": true,
    "command": "microarray",
    "debug": false,
+   "download": null,
    "exclude_filtered": true,
    "formats": "23andme_v5,ancestry_v2",
    "full_help": false,
@@ -49931,6 +50117,7 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_index",
    "genome": null,
@@ -50136,12 +50323,11 @@
    "_command": "ref status",
    "_explicit_dests": [
     "annotation_vcf",
-    "dataset_library"
+    "mygenomes_library"
    ],
    "annotation_vcf": "a.vcf.gz",
    "atomic_output": false,
    "command": "ref",
-   "dataset_library": "g",
    "debug": false,
    "full_help": false,
    "func": "cmd_ref_status",
@@ -50152,6 +50338,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mygenomes_library": "g",
    "outdir": null,
    "parent_pid": null,
    "quiet": false,
@@ -50170,7 +50357,6 @@
    "annotation_vcf": null,
    "atomic_output": false,
    "command": "ref",
-   "dataset_library": null,
    "debug": false,
    "full_help": false,
    "func": "cmd_ref_status",
@@ -50181,6 +50367,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mygenomes_library": null,
    "outdir": null,
    "parent_pid": null,
    "quiet": false,
@@ -50334,6 +50521,7 @@
    "atomic_output": false,
    "command": "report",
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "run_report",
    "gene_list": null,
@@ -50367,6 +50555,7 @@
    "atomic_output": false,
    "command": "report",
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "run_report",
    "gene_list": null,
@@ -50401,6 +50590,7 @@
    "command": "score",
    "confident_bed": null,
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "run_pgs",
    "genome": null,
@@ -50437,6 +50627,7 @@
    "command": "score",
    "confident_bed": null,
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "run_pgs",
    "genome": null,
@@ -50656,6 +50847,7 @@
    "atomic_output": false,
    "command": "typing",
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_hla",
    "genome": null,
@@ -51676,6 +51868,7 @@
     2.0
    ],
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_pharmcat",
    "genome": null,
@@ -51713,6 +51906,7 @@
    "confidence_depth": null,
    "confidence_gq": null,
    "debug": false,
+   "download": null,
    "full_help": false,
    "func": "cmd_pharmcat",
    "genome": null,

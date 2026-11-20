@@ -142,7 +142,7 @@ def get_genome_status(final_name: str, reflib_dir: str) -> str:
     """Returns 'installed', 'unindexed', 'incomplete', or 'missing'."""
     if not reflib_dir:
         return "missing"
-    from wgsextract_cli.core.reference_assets import reference_genomes_dir
+    from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 
     target_dir = reference_genomes_dir(reflib_dir)
     final_path = str(Path(target_dir, final_name))
@@ -162,7 +162,7 @@ def get_genome_status(final_name: str, reflib_dir: str) -> str:
 def catalog_genome_for(header: str, signature: str) -> dict[str, Any] | None:
     """The catalog genome an alignment was made against: the one whose
     sequence-dictionary signature matches, else the FASTA its header names."""
-    from wgsextract_cli.core.reference_models import identify_reference
+    from wgsextract_cli.core.ref_library.models import identify_reference
 
     genomes = get_available_genomes()
     genome = next((g for g in genomes if g["md5"] == signature), None)

@@ -115,10 +115,12 @@ Pick another list with `--gene-list` or `report_gene_list` in config.toml:
 - **A built-in list**: `acmg-sf-3.3` (the default) or `acmg-sf-3.2`. Built-in
   lists are assets of the GitHub release `report-gene-lists-v3`, pinned by
   SHA-256 in `src/wgsextract_cli/assets/report/gene_lists.json`. The report
-  downloads one the first time it has ClinVar calls to place, into
+  downloads a missing list only with `--download` permission, into
   `report/gene_lists/` of the reference library, and checks it against the
-  pinned SHA-256 whenever it reads it. Offline, without a downloaded list,
-  the section warns (`gene_list_unavailable`) and places no calls; the other
+  pinned SHA-256 whenever it reads it. Without a local list and permission,
+  the command errors without connecting and asks for `--download` (see
+  [privacy](privacy.md)). If an explicitly permitted download fails, the
+  section warns (`gene_list_unavailable`) and places no calls; the other
   sections are unaffected.
 - **A TSV file** with a `gene` column, and optionally `category`,
   `inheritance` (`AD`, `AR`, `SD`, `XL`; see below), `note`, and
@@ -302,10 +304,12 @@ newest-attempt, warning, missing-command, external-link, finding, evidence,
 variant, pharmacogenomics, fact and QC components come from the writer-used
 types in `core/report_documents.py` and `core/clinical_evidence.py`; their
 HTML and Markdown renderers use the same types.
-The remaining section/root rules are still handwritten in
-`scripts/schema_sources/wgsextract.report.1.json`, separate from the generated
-artifact, while those writer models are migrated. This does not add runtime
-validation or change how old reports render.
+The sample, section map, section-specific records and root also come from
+writer-used Python types: no handwritten structural schema template remains.
+This does not add runtime validation or change how old reports render.
+The HTML, Markdown and findings-table consumers use those document types too;
+the complete raw TypeScript contract is generated into
+`gui/app/shared/generated/report-records.ts` by `scripts/gen_server_contracts.py`.
 
 ```json
 {
@@ -382,6 +386,11 @@ followed.
 ## Implementation layout
 
 The internal `core/personal_report/` package keeps the existing import interface.
-Its initializer collects evidence and builds the JSON document and findings
-table; `rendering.py` formats the offline HTML/Markdown documents and evidence
-links. Confidence and clinical rules are independent of presentation.
+Its initializer assembles the JSON document and findings table, re-exporting
+existing helper paths. `context.py` collects manifests and workspace evidence
+and provides shared finding/confidence support. `overview.py` builds sample,
+lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
+carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`variant_sections.py` handles automated ACMG and structural-variant evidence.
+`rendering.py` formats the offline HTML/Markdown documents and evidence links.
+Confidence and clinical rules remain independent of presentation.

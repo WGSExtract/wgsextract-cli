@@ -21,6 +21,7 @@
     "bam/to-cram": ["job", "Convert to CRAM", 55, "Convert a BAM to CRAM"],
     "vcf/snp": ["job", "Call SNPs", 40, "Call SNPs with bcftools"],
     "vcf/indel": ["job", "Call indels", 45, "Call indels with bcftools"],
+    "vcf/call": ["job", "Variant calling", 45, "Call the selected variant types"],
     "vcf/deepvariant": ["job", "DeepVariant", 190, "Call variants with DeepVariant"],
     "vcf/gatk": ["job", "GATK HaplotypeCaller", 420, "Call variants with GATK"],
     "vcf/phase": ["job", "Phase", 70, "Phase variants"],
@@ -187,9 +188,11 @@
 
   /* Default outputs: [{path, gb, kind, role, library}] */
   function outputsFor(op, p, file, machine) {
-    var source = p.input || p.r1 || (p.inputs && p.inputs[0]) || p.manifest || (p.paths && p.paths[0]);
+    var source = p.input || p.vcf_input || p.r1 || (p.inputs && p.inputs[0]) || p.manifest || (p.paths && p.paths[0]);
     var stem = file ? file.stem : base(source || "output").replace(/\..*$/, "");
-    var dir = p.outdir ? String(p.outdir).replace(/[\\/]$/, "") : file ? dirOf(file.path) : source ? dirOf(source) : machine.workspace + "/output";
+    var folder = file ? dirOf(file.path) : source ? dirOf(source) : machine.workspace;
+    var configured = p.outdir || machine.outputDirectory;
+    var dir = configured ? String(configured).replace(/[\\/]$/, "") : /(^|[\\/])wgse$/i.test(folder) ? folder : folder + "/wgse";
     var size = file ? file.size || 1 : 1;
     var ext = String(p.format || (p.output_profile && p.output_profile !== "default" ? "CRAM" : "BAM")).toLowerCase();
     switch (op) {
@@ -212,6 +215,14 @@
       case "vcf/deepvariant":
       case "vcf/gatk":
         return [{ path: dir + "/" + stem + "." + op.split("/")[1] + ".vcf.gz", gb: 0.15, kind: "vcf", role: "calls" }];
+      case "vcf/call":
+        var types = (p.types || "snp,indel").split(",");
+        var gvcf = p.reference_evidence === "gvcf";
+        var names = p.merge ? [gvcf ? "variants.g" : "variants"] : (gvcf ? ["bcftools.g"].concat(types.filter(function (t) { return t === "sv" || t === "cnv"; })) : types.map(function (t) { return t === "snp" ? "snps" : t === "indel" ? "indels" : t; }));
+        return names.reduce(function (list, name) {
+          return list.concat([{ path: dir + "/" + name + ".vcf.gz", gb: 0.15, kind: "vcf", role: gvcf && /\.g$/.test(name) ? "reference_evidence" : "calls" },
+            { path: dir + "/" + name + ".vcf.gz.tbi", gb: 0.001, kind: "tbi", role: "index" }]);
+        }, []);
       default:
         if (has(OPS, op) && OPS[op][0] === "net") return netOutputs(op, p, machine);
         var result = operationOutputs(op, p, file, dir, stem, size);
@@ -333,6 +344,8 @@
     var o = known(op);
     if (!o) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + ".");
     var p = params || {};
+    if (op === "vcf/acmg" && !p.research_acmg) M.fail(400, "acmg_research_only", "Explicit research-only acknowledgement is required.");
+    if (op === "vcf/acmg" && machine.os === "windows") M.fail(400, "acmg_windows_coming", "Windows fastVEP support is coming, not merged yet.");
     var hint = p._mock || {};
     var file = fileFor(config, p.input || p.vcf_input || p.r1 || (p.inputs && p.inputs[0]));
     var personId = hint.person !== undefined ? hint.person : file ? file.person : null;

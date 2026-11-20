@@ -21,13 +21,15 @@ footer_link_href: 'wgs-guide.html'
 
 A microarray or SNP chip file is not a complete genome. It is a compact table of markers that a downstream service knows how to read. WGS Extract builds these files by looking up target positions in your aligned WGS data and writing the requested vendor-style format.
 
+See the [microarray guide](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/microarray.md){.inline-link} for quality gates, coordinate projection, output reuse and vendor identity/strand policies.
+
 Start with one target format and a small region if you are checking plumbing. Every run writes the combined kit (all chips' markers); `--formats all` writes only that, and a comma-separated list adds vendor files. If a target site has too little coverage or ambiguous data, the simulated result may be missing or no-called depending on the format and command behavior.
 
 Each output gets an `.inputs.json` file beside it recording what made it: the input and reference files, the formats and every option that changes genotypes. Running the same command again reuses outputs whose inputs are unchanged. A changed input, reference or option regenerates them. Adding a format generates only that format, from the kept combined kit.
 
 Consumer exports use hg19 coordinates. hg38 input needs the liftover chain from `ref bootstrap`; the command fails early if it is missing. Native CHM13v2 input can also project to GRCh37/rCRS exports, but only with the exact **original chrM, masked-Y** analysis reference and required installed assets. Other CHM13 variants are rejected; ambiguous mappings stay no-calls. See [CHM13 requirements](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/microarray-chm13.md){.inline-link}.
 
-Haploid calls follow vendor conventions: 23andMe writes chrY, chrM, and male non-PAR chrX as one letter (`A`); the other formats double them (`AA`). Heterozygous calls are alphabetical. Updated MyHeritage GSA and Ancestry layouts are separately selectable without removing older IDs. Optional quality thresholds, `--strand-ambiguous no-call`, `--resolve-rsids` and `--call-reasons` add conservative filtering and diagnostics without changing defaults. Calls are written on the GRCh37 forward strand; `--quirks vendor` instead writes the markers a template's vendor revision is publicly known to have reported on the reverse strand that way.
+Haploid calls follow vendor conventions: 23andMe and SelfDecode write chrY, chrM, and male non-PAR chrX as one letter (`A`), Genera only chrY and chrM; the other formats double them (`AA`). Heterozygous calls are alphabetical. Chip variants are named by letter (`ancestry_v2ab`, `ancestry_v2cd`, `ancestry_v2e`, `ftdna_v4`, `myheritage_v3`), merging similar minor variants; FTDNA's separate Y files (`ftdna_v2y`, `ftdna_v3y`, `ftdna_v4y`) keep their GRCh38 positions. Older date- or size-named IDs still work. Optional quality thresholds, `--strand-ambiguous no-call`, `--resolve-rsids` and `--call-reasons` add conservative filtering and diagnostics without changing defaults. Calls are written on the GRCh37 forward strand; `--quirks vendor` instead writes the markers a template's vendor revision is publicly known to have reported on the reverse strand that way.
 
 AADR 1240K, HO and 1240K+HO research panels write both PLINK and EIGENSTRAT files. The opt-in `aadr_2m` panel needs an explicit `ref aadr --install --ref LIBRARY` first; it is not included in `all`, requires an installed forward chain for hg38, and does not support CHM13/T2T. See [AADR coordinates and allele conventions](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/aadr.md){.inline-link}.
 
@@ -38,7 +40,7 @@ Insertion/deletion probes are opt-in with `--indel-manifest FORMAT=PATH`, using 
 ```
 wgsextract --input sample.bam microarray --formats all
 wgsextract --input sample.bam microarray --formats 23andme_v5
-wgsextract --input sample.bam microarray --formats 23andme_v5_2025,ancestry_v2_2024,ftdna_v3
+wgsextract --input sample.bam microarray --formats 23andme_v5,ancestry_v2cd,ftdna_v3
 wgsextract --input sample.bam microarray --formats aadr_1240k,aadr_ho
 ```
 :::
@@ -167,7 +169,7 @@ Annotation tools such as VEP add biological context. Download annotation data wi
 :::
 
 ::: callout
-{{ text: **NVIDIA GPU option:** `align`, `realign`, `vcf gatk` and `vcf deepvariant` accept `--gpu` for Parabricks on Linux x86_64. Prepare Docker, NVIDIA Container Toolkit, a suitable GPU (16 GB+), and the Parabricks image yourself; the CLI only validates them. Native Windows/macOS and Linux ARM64 GPU paths are unsupported; WSL2 is untested. Ultima flow workflows are not supported by this path. See [GPU setup](https://github.com/WGSExtract/wgsextract-cli#nvidia-gpus-parabricks){.inline-link} and [hardware and acceleration](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md){.inline-link}. }}
+{{ text: **NVIDIA GPU option:** `align`, `realign`, `vcf gatk` and `vcf deepvariant` accept `--gpu` for Parabricks on Linux x86_64. Prepare Docker, NVIDIA Container Toolkit, a suitable GPU (16 GB+), and the Parabricks image yourself; the CLI only validates them. Native Windows/macOS and Linux ARM64 GPU paths are unsupported; WSL2 is untested. Ultima flow workflows are not supported by this path. See [GPU setup](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md#nvidia-gpus-parabricks){.inline-link} and [hardware and acceleration](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md){.inline-link}. }}
 :::
 :::
 :::

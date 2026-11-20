@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import subprocess
 import tempfile
@@ -16,8 +17,13 @@ from wgsextract_cli.core.output_checks import (
     warn_if_nothing_annotated,
 )
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.temp_directory import (
+    input_scratch_directory,
+    move_file,
+    scratch_parent,
+)
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -104,7 +110,7 @@ def _staged_output(final: str) -> Iterator[str]:
 
 def _move_into_place(path: str, final: str) -> None:
     """Rename path onto final, dropping final's now-stale indexes."""
-    Path(path).replace(final)
+    move_file(path, final)
     for index in (final + ".tbi", final + ".csi"):
         Path(index).unlink(missing_ok=True)
 
@@ -123,7 +129,12 @@ def prepare_tabix_annotation(
 
     prepared_path = annotation_path
     if not annotation_path.lower().endswith((".gz", ".bgz")):
-        prepared_path = annotation_path + ".gz"
+        key = hashlib.sha256(str(Path(annotation_path).resolve()).encode()).hexdigest()[
+            :16
+        ]
+        copies = Path(input_scratch_directory(), f"annotation-{key}")
+        copies.mkdir(exist_ok=True)
+        prepared_path = str(copies / (Path(annotation_path).name + ".gz"))
         if (
             not Path(prepared_path).exists()
             or Path(prepared_path).stat().st_mtime
@@ -234,6 +245,7 @@ def annotate_vcf(
     reference: str | None = None,
     compose_mnvs: bool = False,
     compose_thresholds: Thresholds | None = None,
+    annotation_source: str | None = None,
 ) -> None:
     """Run bcftools annotate after matching the input's contig naming to the
     resource, first removing the input's ``remove`` annotations."""
@@ -244,7 +256,9 @@ def annotate_vcf(
         )
     n_threads = int(get_resource_defaults(threads)[0])
     original_chromosomes = vcf_chromosomes(input_vcf)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_annotate_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_annotate_"
+    ) as work:
         cmd = ["bcftools", "annotate", "-a", annotation, "-c", columns]
         # No resource value can apply to gVCF reference blocks, and looking up
         # every resource line under their END spans makes whole genomes ~25x
@@ -276,6 +290,7 @@ def annotate_vcf(
                     columns,
                     header_lines,
                     label in {"CADD", "REVEL", "AlphaMissense"},
+                    annotation_source,
                 )
                 cmd[cmd.index("-a") + 1] = annotation
                 cmd[cmd.index("-c") + 1] = columns

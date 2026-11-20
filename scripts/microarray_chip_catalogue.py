@@ -6,10 +6,14 @@
           no genotypes, names, IDs or header text.
   build   Group the corpus by marker multiset, merge it with the installed
           templates and write ``assets/microarray/revisions/catalogue.json``.
+  extend  Without the corpus: add the spec's new template entries to the
+          catalogue and copy every entry's labels (vendor, chip, variant,
+          revision, kind) from the spec; corpus fingerprints are kept.
 
 Usage:
   python scripts/microarray_chip_catalogue.py corpus WORKDIR
   python scripts/microarray_chip_catalogue.py build WORKDIR --templates REFLIB
+  python scripts/microarray_chip_catalogue.py extend --templates REFLIB
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ import zlib
 from pathlib import Path
 from typing import Any, TextIO
 
-from wgsextract_cli.core.microarray_revisions import (
+from wgsextract_cli.core.microarray.revisions import (
     _COLUMN_LABELS,
     CATALOGUE,
     Fingerprint,
@@ -42,7 +46,7 @@ from wgsextract_cli.core.microarray_revisions import (
     fingerprint,
     parse_raw_export,
 )
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_for_format,
     get_template_format,
     template_rows,
@@ -60,6 +64,7 @@ DUMP_SOURCE = (
 # openSNP's upload labels; the file's own header decides the vendor.
 DUMP_LABELS = ("23andme", "ancestry", "ftdna-illumina")
 MIN_EXPORTS = 3
+SPEC = Path(__file__).with_name("microarray_chip_revisions.spec.json")
 # Chip exports are under 40 MB; larger uploads are imputed or sequencing data.
 MAX_MEMBER_BYTES = 64 << 20
 
@@ -325,6 +330,54 @@ def build(workdir: Path, roots: list[str], spec_path: Path, output: Path) -> Non
     print(f"{output}: {len(entries)} revisions")
 
 
+_LABELS = ("vendor", "chip", "variant", "revision", "kind", "declares_vendor")
+
+
+def extend(roots: list[str], spec_path: Path, output: Path) -> None:
+    """Update the catalogue from SPEC without the corpus: template entries it
+    lacks are fingerprinted (no public exports), and every entry's labels come
+    from SPEC. A new corpus entry needs ``build``."""
+    spec = json.loads(spec_path.read_text())
+    catalogue = json.loads(output.read_text())
+    current = {entry["id"]: entry for entry in catalogue["revisions"]}
+    templates: dict[str, tuple[Fingerprint, frozenset[str]]] = {}
+    for name in spec["templates"]:
+        fp = _template_fingerprint(name, roots)
+        if fp is None:
+            raise SystemExit(f"Template {name} is not installed under {roots}")
+        templates[name] = (fp, fp.ids)
+    entries = []
+    for entry in spec["revisions"]:
+        out = current.get(entry["id"])
+        if out is None:
+            if "template" not in entry:
+                raise SystemExit(f"{entry['id']}: corpus entries need `build`")
+            fp, ids = templates[entry["template"]]
+            out = {"id": entry["id"]}
+            out.update(
+                build=entry["build"],
+                markers=fp.markers,
+                ids_sha256=fp.ids_sha256,
+                sites_sha256=fp.sites_sha256,
+                sketch=encode_sketch(fp.sketch),
+                source=entry.get("source")
+                or f"raw_file_templates/{entry['template']} (see its README)",
+                exports=0,
+                period=None,
+            )
+            out["template"] = _closest_template(out, ids, templates, entry["template"])
+        for key in _LABELS:
+            if key in entry:
+                out[key] = entry[key]
+            else:
+                out.pop(key, None)
+        # Labels first, as build() writes them.
+        entries.append({k: out[k] for k in ("id", *_LABELS) if k in out} | out)
+    catalogue["revisions"] = entries
+    output.write_text(json.dumps(catalogue, indent=1, sort_keys=False) + "\n")
+    print(f"{output}: {len(entries)} revisions")
+
+
 def _one(values: set[str | None], name: str) -> str:
     values.discard(None)
     if len(values) != 1:
@@ -354,7 +407,7 @@ def _closest_template(
 
 
 def _relation(name: str, relation: str, added: int, removed: int) -> dict[str, Any]:
-    from wgsextract_cli.core.microarray_utils import FORMAT_ALIASES
+    from wgsextract_cli.core.microarray.formats import FORMAT_ALIASES
 
     keys = sorted(k for k, v in FORMAT_ALIASES.items() if v == name)
     return {
@@ -381,7 +434,7 @@ def survey(workdir: Path, roots: list[str], names: list[str]) -> None:
     for digest, members in sorted(groups.items(), key=lambda kv: -len(kv[1])):
         first = members[0]
         sketch = re.sub(r"\s", "", first["sketch"])
-        from wgsextract_cli.core.microarray_revisions import decode_sketch
+        from wgsextract_cli.core.microarray.revisions import decode_sketch
 
         near = sorted(
             (
@@ -414,12 +467,13 @@ def main() -> None:
     sub = parser.add_subparsers(dest="cmd", required=True)
     corpus_cmd = sub.add_parser("corpus")
     corpus_cmd.add_argument("workdir", type=Path)
-    for name in ("survey", "build"):
+    for name in ("survey", "build", "extend"):
         cmd = sub.add_parser(name)
-        cmd.add_argument("workdir", type=Path)
+        if name != "extend":
+            cmd.add_argument("workdir", type=Path)
         cmd.add_argument("--templates", action="append", default=[])
-        if name == "build":
-            cmd.add_argument("--spec", type=Path, required=True)
+        if name != "survey":
+            cmd.add_argument("--spec", type=Path, default=SPEC)
             cmd.add_argument("--output", type=Path, default=CATALOGUE)
     args = parser.parse_args()
     packaged = str(CATALOGUE.parents[1] / "raw_file_templates")
@@ -429,6 +483,8 @@ def main() -> None:
         from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
 
         survey(args.workdir, [*args.templates, packaged], list(CONSUMER_FORMATS))
+    elif args.cmd == "extend":
+        extend([*args.templates, packaged], args.spec, args.output)
     else:
         build(args.workdir, [*args.templates, packaged], args.spec, args.output)
 

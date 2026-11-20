@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.7"
+version = "0.8.8"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
@@ -190,6 +190,10 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 [feature.clair3.dependencies]
 clair3 = ">=2.0.5,<3"
 
+[feature.clair3.target.osx-arm64.dependencies]
+# Code-only Clair3 caller with Apple MPS for `vcf clair3 --gpu` (native/clair3/README.md).
+wgse-clair3 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda", sha256 = "c7235628d6f74acf547df475f7996211c8bb9cec8f9d015a61df9b2f39ced674" }
+
 # wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
 # DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with
 # call_variants on an NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in
@@ -197,13 +201,13 @@ clair3 = ">=2.0.5,<3"
 # an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
 # other environment takes feature.standard-platforms). WGS Extract's build from
 # packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
-# linux-deepvariant-3 and pinned by URL
+# linux-deepvariant-4 and pinned by URL
 # and SHA-256; its weights are a separate download (deepvariant_weights).
 [feature.deepvariant]
 platforms = ["linux-64-cuda"]
 
 [feature.deepvariant.dependencies]
-wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-3/wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda", sha256 = "f2ab6bad55fb978cf2d674605612f4c78e2cf990b772f8c9f99409e49ff0271f" }
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-4/wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda", sha256 = "77d983c6839cbc9741270d2a5ee059426320646d3fda0bf1c75df3d80a239d85" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
@@ -407,7 +411,7 @@ smoke-test = "pytest tests/test_smoke.py tests/test_smoke_real_basics.py tests/t
 smoke-test-full = "pytest tests/test_smoke.py tests/test_smoke_real_basics.py tests/test_smoke_real_vcf.py tests/test_smoke_real_vcf_ann.py tests/test_smoke_real_expert.py tests/test_smoke_real_ref.py tests/test_smoke_real_full.py tests/test_smoke_real_pet.py"
 actionlint = "actionlint"
 validate-actions = "python scripts/validate_github_actions.py"
-lint = "ruff check . && python scripts/validate_site_sources.py && actionlint && python scripts/validate_github_actions.py"
+lint = "ruff check . && python scripts/check_python_size.py && python scripts/validate_site_sources.py && actionlint && python scripts/validate_github_actions.py"
 format = "ruff format ."
 typecheck = "mypy src/wgsextract_cli"
 test-smells = { cmd = "python scripts/test_smells.py", description = "Advisory: flag change-detector patterns in test lines added since origin/main." }

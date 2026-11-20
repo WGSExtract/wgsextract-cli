@@ -28,7 +28,12 @@ DOCS_TEST_TARGETS = (
     "tests/test_bump_version.py",
     "tests/test_build_mockup_previews.py",
     "tests/test_ci_changes.py",
+    "tests/test_ci_landing.py",
+    "tests/test_ci_required.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_workflow_readiness.py",
+    "tests/test_workflow_paths.py",
+    "tests/test_python_size.py",
 )
 DOCS_TEST_MODULES = frozenset(
     target for target in DOCS_TEST_TARGETS if "::" not in target
@@ -38,6 +43,8 @@ GENERATED_DOCS = frozenset(
         "docs/api.md",
         "docs/commands.md",
         "docs/configuration.md",
+        # Hand-written generator input also requires configuration freshness.
+        "docs/data/configuration-guide.md",
         "site_src/cli.md",
         "tests/fixtures/api_cli_snapshot.json",
         "src/wgsextract_cli/assets/cli/help-index.json",
@@ -54,6 +61,7 @@ DOCS_TARGET_INPUTS = {
         "src/wgsextract_cli/core/settings_schema.py",
         "scripts/gen_config_docs.py",
         "docs/configuration.md",
+        "docs/data/configuration-guide.md",
     ),
     "tests/test_api_cli_parity.py": (
         "src/wgsextract_cli/**",
@@ -71,6 +79,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "docs/data/configuration-guide.md",
         "tests/cli_snapshot.py",
         "justfile",
     ),
@@ -94,7 +103,17 @@ DOCS_TARGET_INPUTS = {
         "scripts/validate_github_actions.py",
         ".github/**",
     ),
+    "tests/test_python_size.py": (
+        "scripts/check_python_size.py",
+        "scripts/python_size_baseline.json",
+    ),
 }
+for _target in ("tests/test_ci_landing.py", "tests/test_ci_required.py"):
+    DOCS_TARGET_INPUTS[_target] = DOCS_TARGET_INPUTS["tests/test_ci_changes.py"]
+for _target in ("tests/test_workflow_readiness.py", "tests/test_workflow_paths.py"):
+    DOCS_TARGET_INPUTS[_target] = DOCS_TARGET_INPUTS[
+        "tests/test_github_actions_policy.py"
+    ]
 DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
@@ -134,7 +153,12 @@ def docs_test_targets(
                 and module
                 not in {
                     "tests/test_ci_changes.py",
+                    "tests/test_ci_landing.py",
+                    "tests/test_ci_required.py",
                     "tests/test_github_actions_policy.py",
+                    "tests/test_workflow_readiness.py",
+                    "tests/test_workflow_paths.py",
+                    "tests/test_python_size.py",
                     "tests/test_api.py",
                 }
             )

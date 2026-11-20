@@ -61,6 +61,7 @@ jobs:
       - name: Lint, workflow validation and strict type check
         run: |
           pixi run -e lint -x ruff check .
+          pixi run -e lint -x python scripts/check_python_size.py
           pixi run -e lint -x python scripts/validate_site_sources.py
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py

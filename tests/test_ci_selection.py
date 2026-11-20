@@ -17,7 +17,7 @@ from scripts.ci_select_tests import (
     os_selection,
     select_tests,
 )
-from scripts.ci_test_dependencies import ROOT
+from scripts.ci_test_dependencies import ROOT, docs_test_targets
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,8 @@ from scripts.ci_test_dependencies import ROOT
     [
         "src/wgsextract_cli/core/report_documents.py",
         "scripts/gen_report_schema.py",
-        "scripts/schema_sources/wgsextract.report.1.json",
+        "src/wgsextract_cli/core/personal_report/overview.py",
+        "src/wgsextract_cli/core/gene_lists.py",
         "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     ],
 )
@@ -53,6 +54,8 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
     [
         "scripts/server_transport_typescript.py",
         "gui/app/shared/generated/server-transport.ts",
+        "gui/app/shared/generated/result-records.ts",
+        "gui/app/shared/generated/report-records.ts",
     ],
 )
 def test_989_transport_changes_select_committed_contract_freshness(path: str) -> None:
@@ -288,6 +291,17 @@ def test_914_mixed_product_and_generated_docs_cannot_skip_freshness() -> None:
     selected = select_tests(["tests/test_table_writer.py", "docs/api.md"])
     assert "tests/test_table_writer.py" in selected
     assert "tests/test_api.py" in selected
+
+
+def test_1132_config_guide_changes_run_generated_reference_freshness() -> None:
+    paths = ["docs/data/configuration-guide.md"]
+    assert routes(paths)["docs"]
+    assert not routes(paths)["cli"]
+    assert docs_test_targets(paths) == [
+        "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
+        "tests/test_regen.py",
+    ]
+    assert "tests/test_core_cli.py" in select_tests(paths)
 
 
 def test_914_ci_observer_change_keeps_its_actual_readers() -> None:

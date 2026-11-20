@@ -14,19 +14,24 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
+from tests.smoke_utils import state_directory_setting
 from tests.test_pharmcat import FAKE_PIPELINE
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
+    Provenance,
     ReferenceEvidence,
     Span,
     State,
 )
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
+from wgsextract_cli.main import main
 
+# The woman's chr20 SNP at 500 (her reference base there is never T).
+SNP_ALT = "T"
 THRESHOLDS = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
 
 
@@ -39,18 +44,21 @@ def _read(name: str, chrom: str, start: int, mapq: int, cigar: str, bases: str) 
 
 @pytest.fixture(scope="module")
 def woman(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:
-    """chr20: 1-1000 at 30x with a homozygous 2 bp deletion after 700, no
-    reads over 1001-1500, then 1501-2000 mostly at MAPQ 0 (30x) with 3x
+    """chr20: 1-1000 at 30x with a homozygous SNP at 500 and a homozygous
+    2 bp deletion after 700, no reads over 1001-1500, then 1501-2000 mostly at MAPQ 0 (30x) with 3x
     unique; chrY has reads but ploidy 0 for a woman."""
     root = tmp_path_factory.mktemp("reference evidence")
     rng = random.Random(863)
     seq = "".join(rng.choice("ACGT") for _ in range(3000))
+    seq = seq[:499] + "G" + seq[500:]
     ref = write_fasta(root / "ref.fa", {"chr20": seq, "chrY": seq})
     reads = []
     for chrom in ("chr20", "chrY"):
         for i in range(300):
             start = 1 + i * 3
             bases, cigar = seq[start - 1 : start + 99], "100M"
+            if chrom == "chr20" and start <= 500 < start + 100:
+                bases = bases[: 500 - start] + SNP_ALT + bases[501 - start :]
             if start < 700 < start + 97:
                 left = 700 - start + 1
                 cigar = f"{left}M2D{100 - left}M"
@@ -195,6 +203,57 @@ _DV_HEADER = """##fileformat=VCFv4.2
 
 
 @needs_htslib
+@pytest.mark.parametrize("engine", ["deepvariant", "clair3"])
+def test_1103_native_diploid_encoded_haploid_blocks_use_policy_depth(tmp_path, engine):
+    """#1103: native 0/0 blocks at 6x are callable off PAR, not inside PAR."""
+    header = Provenance(
+        engine,
+        "wgse-deepvariant 0.4.0",
+        "gq",
+        ploidy="chrX:1-40=1,chrX:61-100=1",
+    ).header()
+    plain = tmp_path / "native.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("#CHROM", header + "\n#CHROM")
+        + "chrX\t1\t.\tA\t<*>\t0\tPASS\tEND=40\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t41\t.\tA\t<*>\t0\tPASS\tEND=60\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t61\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:6\n"
+    )
+    assert list(
+        ReferenceEvidence(bgzip_index(plain)).spans(THRESHOLDS, [("chrX", 1, 100)])
+    ) == [
+        Span("chrX", 1, 40, State.CALLABLE_REFERENCE),
+        Span("chrX", 41, 60, State.LOW_QUALITY_REFERENCE),
+        Span("chrX", 61, 100, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_1103_normalized_haploid_evidence_preserves_policy_and_quality(tmp_path):
+    """#1103/#1026: alias normalization keeps haploid floors and GQ eligibility."""
+    header = Provenance(
+        "deepvariant", "0.4.0", "gq", ploidy="chrX:1-40=1,chrX:61-100=1"
+    ).header()
+    plain = tmp_path / "native.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("#CHROM", header + "\n#CHROM")
+        + "chrX\t1\t.\tA\t<*>\t0\tPASS\tEND=40\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t41\t.\tA\t<*>\t0\tPASS\tEND=60\tGT:GQ:MIN_DP\t0/0:50:6\n"
+        + "chrX\t61\t.\tA\t<*>\t0\tPASS\tEND=80\tGT:GQ:MIN_DP\t0/0:10:6\n"
+        + "chrX\t81\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:6\n"
+    )
+    reference = write_fasta(tmp_path / "ref.fa", {"X": "A" * 100})
+    work = tmp_path / "normalized"
+    work.mkdir()
+    evidence = ReferenceEvidence(bgzip_index(plain)).normalized(reference, work)
+    assert list(evidence.spans(THRESHOLDS, [("X", 1, 100)])) == [
+        Span("X", 1, 40, State.CALLABLE_REFERENCE),
+        Span("X", 41, 80, State.LOW_QUALITY_REFERENCE),
+        Span("X", 81, 100, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
 def test_gq_gvcf_blocks_read_by_genotype_quality_and_minimum_depth(
     tmp_path: Path,
 ) -> None:
@@ -226,6 +285,208 @@ def test_gq_gvcf_blocks_read_by_genotype_quality_and_minimum_depth(
     assert list(evidence.spans(THRESHOLDS, [("chr1", 95, 105)])) == [
         Span("chr1", 95, 100, State.CALLABLE_REFERENCE),
         Span("chr1", 101, 105, State.UNCOVERED),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_deletion_shadow_keeps_overlapping_calls_1028(
+    tmp_path: Path, split: bool
+) -> None:
+    """Issue #1028 review: another tool's Clair3 gVCF (``##source=Clair3``)
+    gets the missed-deletion rule too, and a call overlapping a demoted
+    block keeps its own state rather than reading as low quality."""
+    rows = [
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\tEND=10\tGT:GQ:MIN_DP\t./.:0:40",
+        f"chr1\t11\t.\tA\t<*>\t0\tPASS\tEND={16 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t15\t.\tA\tC\t30\tPASS\t.\tGT:GQ:DP\t0/1:30:20",
+        *(
+            ["chr1\t17\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
+        "chr1\t31\t.\tA\t<*>\t0\tPASS\tEND=100\tGT:GQ:MIN_DP\t0/0:50:40",
+    ]
+    plain = tmp_path / "clair3.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace(
+            "##fileformat=VCFv4.2\n", "##fileformat=VCFv4.2\n##source=Clair3\n"
+        )
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 40)])) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 14, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 15, 15, State.VARIANT),
+        Span("chr1", 16, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 40, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_long_anchor_chain_point_query_matches_full_region_1028(
+    tmp_path: Path,
+) -> None:
+    rows = ["chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60"]
+    rows += [
+        f"chr1\t{pos}\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20"
+        for pos in range(101, 131)
+    ]
+    rows += ["chr1\t131\t.\tA\t<*>\t0\tPASS\tEND=150\tGT:GQ:MIN_DP\t0/0:50:20"]
+    plain = tmp_path / "chain.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 130, State.NO_CALL),
+        Span("chr1", 131, 140, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 141, 150, State.CALLABLE_REFERENCE),
+    ]
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 150)])) == expected
+    for pos in (131, 140, 141):
+        assert list(evidence.spans(THRESHOLDS, [("chr1", pos, pos)])) == [
+            Span("chr1", pos, pos, _state_at(expected, "chr1", pos))
+        ]
+    assert list(
+        evidence.spans(
+            THRESHOLDS, [("chr1", 60, 60), ("chr1", 131, 131), ("chr1", 260, 260)]
+        )
+    ) == [
+        Span("chr1", 60, 60, State.UNCOVERED),
+        Span("chr1", 131, 131, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 260, 260, State.UNCOVERED),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("split", [False, True])
+def test_clair3_anchor_demotes_preceding_reference_block_tail_1028(
+    tmp_path: Path,
+    split: bool,
+) -> None:
+    rows = [
+        f"chr1\t1\t.\tA\t<*>\t0\tPASS\tEND={9 if split else 30}\tGT:GQ:MIN_DP\t0/0:50:20",
+        "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40",
+        *(
+            ["chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20"]
+            if split
+            else []
+        ),
+    ]
+    plain = tmp_path / "overlap.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "\n".join(rows)
+        + "\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 1, 30)])) == [
+        Span("chr1", 1, 9, State.CALLABLE_REFERENCE),
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 20, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 21, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_separated_anchors_do_not_inherit_depth_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "separated.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=109\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + "chr1\t110\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:30\n"
+        + "chr1\t111\t.\tA\t<*>\t0\tPASS\tEND=130\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 130)])) == [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 109, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 110, 110, State.NO_CALL),
+        Span("chr1", 111, 130, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+def test_clair3_nested_anchor_preserves_furthest_end_1028(tmp_path: Path) -> None:
+    plain = tmp_path / "nested.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t10\t.\tAAAA\tA\t0\tRefCall\t.\tGT:GQ:DP\t0/1:0:60\n"
+        + "chr1\t12\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:20\n"
+        + "chr1\t14\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:25\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 10, 30)])) == [
+        Span("chr1", 10, 13, State.FILTERED),
+        Span("chr1", 14, 23, State.LOW_QUALITY_REFERENCE),
+        Span("chr1", 24, 30, State.CALLABLE_REFERENCE),
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("recovery", [False, True])
+def test_clair3_deletion_shadow_stops_at_gap_or_depth_recovery_1028(
+    tmp_path: Path, recovery: bool
+) -> None:
+    plain = tmp_path / "interrupted.g.vcf"
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", "##source=Clair3\n##contig=", 1)
+        + "chr1\t100\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:60\n"
+        + "chr1\t101\t.\tA\t<*>\t0\tPASS\tEND=103\tGT:GQ:MIN_DP\t0/0:50:20\n"
+        + (
+            "chr1\t104\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t0/0:50:42\n"
+            if recovery
+            else ""
+        )
+        + "chr1\t105\t.\tA\t<*>\t0\tPASS\tEND=110\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    evidence = ReferenceEvidence(bgzip_index(plain))
+    expected = [
+        Span("chr1", 100, 100, State.NO_CALL),
+        Span("chr1", 101, 103, State.LOW_QUALITY_REFERENCE),
+    ]
+    expected += (
+        [Span("chr1", 104, 110, State.CALLABLE_REFERENCE)]
+        if recovery
+        else [
+            Span("chr1", 104, 104, State.UNCOVERED),
+            Span("chr1", 105, 110, State.CALLABLE_REFERENCE),
+        ]
+    )
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 100, 110)])) == expected
+    assert list(evidence.spans(THRESHOLDS, [("chr1", 105, 105)])) == [
+        Span("chr1", 105, 105, State.CALLABLE_REFERENCE)
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    "engine", ["deepvariant", "gatk", "bcftools", "parabricks-deepvariant"]
+)
+def test_other_engines_do_not_inherit_clair3_deletion_rule_1028(
+    tmp_path: Path,
+    engine: str,
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    plain = tmp_path / "other.g.vcf"
+    provenance = Provenance(engine, "test", "gq").header()
+    plain.write_text(
+        _DV_HEADER.replace("##contig=", f"{provenance}\n##contig=", 1)
+        + "chr1\t10\t.\tA\t<*>\t0\tPASS\t.\tGT:GQ:DP\t./.:0:40\n"
+        + "chr1\t11\t.\tA\t<*>\t0\tPASS\tEND=30\tGT:GQ:MIN_DP\t0/0:50:20\n"
+    )
+    assert list(
+        ReferenceEvidence(bgzip_index(plain)).spans(THRESHOLDS, [("chr1", 10, 30)])
+    ) == [
+        Span("chr1", 10, 10, State.NO_CALL),
+        Span("chr1", 11, 30, State.CALLABLE_REFERENCE),
     ]
 
 
@@ -334,7 +595,12 @@ def test_863_pharmcat_fills_absent_sites_only_where_the_gvcf_read_reference(
         summary = next(
             c for c in result.details["confidence"] if c["role"] == "pgx_calls"
         )
-        states = {str(f["pos"]): f["PGX_STATE"] for f in summary["findings"]}
+        # The definition sites; the woman's own SNP at 500 is a call.
+        states = {
+            str(f["pos"]): f["PGX_STATE"]
+            for f in summary["findings"]
+            if f["pos"] in (300, 1200, 1700)
+        }
         return seen, states
 
     seen, states = run()
@@ -348,3 +614,173 @@ def test_863_pharmcat_fills_absent_sites_only_where_the_gvcf_read_reference(
         (tmp_path / name).unlink()
     seen, _ = run()
     assert seen == {}
+
+
+def _clinvar(path: Path, seq: str) -> Path:
+    """A ClinVar VCF ("20", as ClinVar names it) over the woman's chr20: a
+    pathogenic SNP on callable reference (300), a benign one (400), her SNP
+    (500), a deletion she carries (700), and pathogenic SNPs in the gap
+    (1200) and the MAPQ-0 stretch (1700)."""
+
+    def snv(pos: int, alt: str = "") -> tuple[int, str, str]:
+        ref = seq[pos - 1]
+        return pos, ref, alt or ("C" if ref != "C" else "G")
+
+    rows = [
+        (*snv(300), "Pathogenic"),
+        (*snv(400), "Benign"),
+        (*snv(500, SNP_ALT), "Pathogenic"),
+        (700, seq[699:702], seq[699], "Likely_pathogenic"),
+        (*snv(1200), "Pathogenic"),
+        (*snv(1700), "Pathogenic"),
+    ]
+    path.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=20,length=3000>\n"
+        '##INFO=<ID=CLNSIG,Number=.,Type=String,Description="CLNSIG">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(f"20\t{p}\t.\t{r}\t{a}\t.\t.\tCLNSIG={c}\n" for p, r, a, c in rows)
+    )
+    return path
+
+
+# The gVCF's states at _clinvar's five pathogenic sites.
+CLINVAR_SITE_STATES = {
+    "sites": 5,
+    "states": {
+        "callable_reference": 1,
+        "low_quality_reference": 1,
+        "uncovered": 1,
+        "variant": 2,
+    },
+}
+
+
+def _evidence_of(result: api.Result, role: str) -> dict | None:
+    summary = next(c for c in result.details["confidence"] if c["role"] == role)
+    return summary.get("reference_evidence")
+
+
+@needs_htslib
+def test_863_clinvar_reports_the_gvcf_state_of_pathogenic_sites_not_carried(
+    woman: tuple[str, str], tmp_path: Path
+) -> None:
+    """Issue #863: `vcf clinvar` on a variant-only VCF listed only the
+    pathogenic calls, so a site it doesn't list read as "not carried" even
+    where nobody looked. With the caller's gVCF beside the VCF it reports each
+    ClinVar pathogenic site's state and warns about those neither called nor
+    confident reference; without the gVCF the result is as before."""
+    _, ref = woman
+    _snp(woman, tmp_path, "gvcf")
+    clinvar = _clinvar(tmp_path / "clinvar.vcf", _seq(ref))
+
+    def run() -> api.Result:
+        return api.vcf.clinvar(
+            api.VcfClinvarParams(
+                vcf_input=tmp_path / "snps.vcf.gz", clinvar_file=clinvar,
+                ref=Path(ref), outdir=tmp_path / "clinvar", threads=1,
+            )
+        )  # fmt: skip
+
+    result = run()
+    evidence = _evidence_of(result, "clinvar_pathogenic")
+    assert evidence is not None
+    assert evidence["checked"]["clinvar_pathogenic_sites"] == CLINVAR_SITE_STATES
+    assert evidence["checked"]["calls"] == {"sites": 1, "states": {"variant": 1}}
+    warning = next(
+        w for w in result.warnings if w.code == "reference_evidence_unassessed_sites"
+    )
+    assert (warning.details["count"], warning.details["total"]) == (2, 5)
+    assert any(i.role == ROLE for i in result.inputs)
+
+    for name in ("bcftools.g.vcf.gz", "bcftools.g.vcf.gz.tbi"):
+        (tmp_path / name).unlink()
+    without = run()
+    assert _evidence_of(without, "clinvar_pathogenic") is None
+    assert all(
+        w.code != "reference_evidence_unassessed_sites" for w in without.warnings
+    )
+
+
+@needs_htslib
+def test_863_gnomad_rare_calls_report_their_gvcf_state(
+    woman: tuple[str, str], tmp_path: Path
+) -> None:
+    """Issue #863: `vcf gnomad --max-af` reports the gVCF's state at the rare
+    calls it labelled, when the caller published one beside the VCF."""
+    _, ref = woman
+    _snp(woman, tmp_path, "gvcf")
+    gnomad = tmp_path / "gnomad.vcf"
+    gnomad.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr20,length=3000>\n"
+        '##INFO=<ID=AF,Number=A,Type=Float,Description="AF">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    result = api.vcf.gnomad(
+        api.VcfGnomadParams(
+            vcf_input=tmp_path / "snps.vcf.gz", gnomad_file=gnomad, max_af=0.01,
+            ref=Path(ref), outdir=tmp_path / "gnomad", threads=1,
+        )
+    )  # fmt: skip
+    evidence = _evidence_of(result, "rare_variants")
+    assert evidence is not None
+    assert evidence["checked"] == {"calls": {"sites": 1, "states": {"variant": 1}}}
+
+
+@needs_htslib
+def test_863_analyze_reports_the_gvcf_state_of_clinvar_pathogenic_sites(
+    woman: tuple[str, str], tmp_path: Path
+) -> None:
+    """Issue #863: `analyze` on a caller's VCF reports, with the gVCF beside
+    it, the state of the ClinVar pathogenic sites its discovery filter looked
+    for, not only of the significant calls it found."""
+    _, ref = woman
+    _snp(woman, tmp_path, "gvcf")
+    clinvar = _clinvar(tmp_path / "clinvar.vcf", _seq(ref))
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"clinvar_vcf_path = {json.dumps(str(clinvar))}\n"
+        + state_directory_setting(tmp_path)
+    )
+    out = tmp_path / "out"
+    args = [
+        "--config", str(config), "analyze", "comprehensive", "--vcf-inputs",
+        str(tmp_path / "snps.vcf.gz"), "--ref", ref, "--outdir", str(out),
+        "--threads", "1",
+    ]  # fmt: skip
+
+    def run() -> dict:
+        main(args)
+        return next(
+            json.loads(p.read_text())
+            for p in out.glob("*.manifest.json")
+            if "confidence" in (json.loads(p.read_text()).get("details") or {})
+        )
+
+    manifest = run()
+    summary = next(
+        c
+        for c in manifest["details"]["confidence"]
+        if c["role"] == "significant_variants"
+    )
+    checked = summary["reference_evidence"]["checked"]
+    assert checked["clinvar_pathogenic_sites"] == CLINVAR_SITE_STATES
+    assert checked["calls"] == {"sites": 1, "states": {"variant": 1}}
+    assert "reference_evidence_unassessed_sites" in {
+        w["code"] for w in manifest["warnings"]
+    }
+    # Issue #863 review: skipping discovery must not drop its confidence
+    # details or coverage-gap warning from the next result manifest.
+    cached = run()
+    assert cached["details"]["confidence"] == manifest["details"]["confidence"]
+    assert "reference_evidence_unassessed_sites" in {
+        w["code"] for w in cached["warnings"]
+    }
+    assert any(i["role"] == ROLE for i in cached["inputs"])
+
+    # Removing the companion must invalidate the cached evidence report.
+    (tmp_path / "bcftools.g.vcf.gz.tbi").unlink()
+    without = run()
+    assert all("reference_evidence" not in c for c in without["details"]["confidence"])
+    assert "reference_evidence_unassessed_sites" not in {
+        w["code"] for w in without["warnings"]
+    }

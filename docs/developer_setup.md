@@ -34,6 +34,35 @@ manifest; it never updates them automatically. If yours is older, run
 
 `deps check` marks tools in optional Pixi environments (GATK, VEP, DeepVariant, ...) as missing. That's expected: install one when you need it with the `pixi install` command `deps check` prints. When the script installs Pixi or `just`, open a new terminal before using them (or add `~/.pixi/bin`, `%USERPROFILE%\.pixi\bin` on Windows, to `PATH`). Rerun the script at any time; `just setup` does the same once `just` is installed. `--skip-tests` (`-SkipTests` on Windows) skips the smoke tests.
 
+### Pixi environments
+
+Optional tools live in separate environments. From a source checkout or the
+installed `wgsextract-cli/app/`, run
+`pixi install --locked -e <environment>` explicitly before use.
+Feature commands never install dependencies: missing tools name the exact
+install command, including the app manifest path so it works from any directory.
+Installed tools outside PATH launch with `pixi run --no-install -e <environment>`.
+You may also run a whole command inside its installed environment.
+
+| Environment | Used for |
+| :--- | :--- |
+| `default` | Standard commands |
+| `pacbio` | pbmm2, pbsv, Sniffles; `pixi run -e pacbio wgsextract vcf sv --pacbio` |
+| `vep-rs` | Default `vep run` / `vep download`, all platforms; [engines](vep-engines.md) |
+| `vep` | `vep run --engine ensembl`, not native Windows |
+| `cyrius`, `smn`, `t1k`, `expansionhunter`, `longtr`, `strkit` | CYP2D6, SMN, HLA and repeat typing, Linux/macOS; [requirements/licences](variants.md#pharmacogenomics-and-repeat-typing) |
+| `pharmcat` | PharmCAT Python/Java/bcftools runtime |
+| `modkit` | Methylation pileup, Linux/macOS |
+| `verifybamid2` | Contamination QC, Linux/macOS |
+| `parquet` | pyarrow for `--format parquet`, e.g. `pixi run -e parquet wgsextract vcf table ... --format parquet`; no Windows ARM64; [details](parquet.md) |
+| `dev` | pytest, Ruff, mypy; automatically selected by development tasks |
+
+Other optional environments are documented with their features:
+[hardware](hardware.md), [ONT](ont.md), [MultiQC](interop.md#multiqc),
+[relatedness](relate.md), [imputation](imputation.md) and [ACMG](acmg.md).
+Cyrius permits noncommercial use only, no distribution/modification, and
+is not bundled.
+
 ### Benchmarking on macOS
 
 Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
@@ -56,6 +85,76 @@ gh pr create --fill
 ```
 
 `just` lists every recipe. Each wraps a `pixi run` task, so `pixi run test` and friends work without `just`.
+
+### Checks and test data
+
+Developer tasks select `dev` automatically:
+
+| Task | What it runs |
+| :--- | :--- |
+| `pixi run test` | Unit/integration tests, excluding end-to-end suites |
+| `pixi run test-ci` | Parallel tests, timings/JUnit and non-gating coverage under `out/` |
+| `pixi run smoke-test` | CLI smoke; `smoke-test-full` adds full-genome/pet tests |
+| `pixi run test-e2e` | Real-data end-to-end suites |
+| `pixi run test-e2e-fake` | Generated-data end-to-end (`pytest --fake-data`), also CI on Linux/macOS/Windows |
+| `pixi run test-remote` | Weekly live download availability, SpliceAI format and HG00096 kit/Omni concordance |
+| `pixi run lint` | Ruff, site-source and GitHub Actions validation |
+| `pixi run format` | `ruff format .` |
+| `pixi run typecheck` | Strict mypy on `src/wgsextract_cli` |
+| `pixi run site-build` | Rebuild [site](site_generation.md) |
+| `pixi run benchmark-dataset` | Rebuild release-backed mini-genome |
+| `pixi run stats` | Statistics; install [cloc](https://github.com/AlDanial/cloc) separately |
+
+With [just](https://github.com/casey/just), `just run <args>` runs the CLI.
+`just test`, `lint`, `fmt`, `typecheck`
+and `check` (all four) are aliases; `just ci` runs lint/type checks,
+regular tests and generated small/full-genome integration without formatting,
+keeping pytest scratch under `out/`.
+
+PR/main CI is bounded and cancels superseded runs. A separate lint-only
+environment runs Ruff, workflows and strict mypy without reference downloads;
+genomic jobs cache public hs38. Action updates retain full commit SHAs and
+version comments from allow-listed sources, not a duplicate validator SHA
+table. See [CI routing](ci_routing.md).
+
+The weekly **Pixi refresh** resolves within manifest pins, restores declared
+archive digests and validates the lock candidate with a read-only token.
+It force-pushes validated changes to fixed `automation/pixi-refresh` and
+opens/updates one PR; no change opens none and closes a superseded PR.
+CI waits for maintainer approval (“Approve workflows to run” or the PR-body
+command), then runs normal checks. It never auto-merges dependencies.
+Numerical-tool updates still need public small/full-genome byte-parity checks.
+
+Real-data tests use pytest options or config:
+
+```bash
+pixi run pytest tests/test_smoke_real_basics.py \
+  --real-input /data/HG002.cram --real-ref /data/reference/hs38.fa --real-region chr20
+```
+
+Options include `--real-input`, `--real-ref`, `--real-vcf`, `--real-region`,
+`--real-targets`, `--real-fastq-r1`/`--real-fastq-r2`, `--fake-data` and
+`--full-data` (see `tests/conftest.py`). Or set `real_genome_test_path` and
+`real_genome_tests_enabled = true` in `[dev]` at the end of config.toml.
+`download_cache = true` caches downloads under
+`$XDG_CACHE_HOME/wgsextract/downloads` (default `~/.cache/wgsextract/downloads`),
+pruned after `download_cache_ttl_seconds` (default one week).
+Former top-level settings, including `dev_download_cache` and
+`dev_download_cache_ttl_seconds`, now fail with their `[dev]` replacement.
+
+`wgsextract qc fake-data` generates BAM/CRAM/VCF/FASTQ for tests and reports;
+see [testing workflows](https://wgsextract.github.io/wgsextract-cli/workflows.html#testing).
+
+### Filesystem paths
+
+Use `pathlib.Path`. Shared helpers accept strings/`os.PathLike[str]`
+(`core.paths.PathInput`); keep Paths during manipulation, converting at
+string-based CLI/config/tool-wrapper/public-return boundaries.
+Use `input_stem`/`fasta_prefix` for compound genomic extensions and
+`append_suffix` for `.vcf.gz.tbi`/`.cram.crai` sidecars.
+`absolute_path` normalizes `..` without following symlinks; `Path.resolve()`
+compares real targets. Wrapper commands and samtools `out##idx##index`
+arguments stay strings; do not convert native Windows paths to POSIX spelling.
 
 ### The desktop app
 
@@ -95,6 +194,16 @@ the benchmark is not a karyotype or genotype-accuracy validation. This override
 is passed only to those child commands and does not change the sample's
 declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 `real-1x`/`real-30x` runs retain build-specific ploidy.
+
+### VCF API specifications
+
+`api/vcf.py` remains the public import and dispatch facade. Its parameter
+declarations live in `api/vcf_specs/`: shared field helpers, calling, file
+operations and annotations. Update the responsible specification module when
+adding fields, and retain its explicit facade export. Parameter types keep
+their physical source modules for introspection; facade aliases keep pre-split
+pickle lookups working. Facade declaration order keeps the generated API
+reference stable without duplicating parameter descriptions beside their handlers.
 
 ### Generated references and parallel PRs
 
@@ -210,9 +319,85 @@ text, `runs.py` loads local run records and discovers sensitive names, and
 assembles reports and fits GitHub links; existing `core.issue_report` and
 `api.support` imports remain unchanged.
 
+### Alignment pipeline
+
+The `commands/align.py` command retains orchestration and existing job/helper
+imports. Its `alignment/` package separates shared jobs/reference primitives
+(`common.py`), native BWA/memory planning (`short_reads.py`), read/reference
+preflight (`preparation.py`), Parabricks dispatch (`gpu.py`) and Ultima,
+minimap2 and pbmm2 execution (`backends.py`). Existing read-source, read-group,
+selection and output helpers remain in the same package.
+
+### Realignment pipeline
+
+The `commands/realign.py` command retains orchestration and existing job/helper
+imports. Its `realignment/` package separates job/input qualification and FASTQ
+discovery (`preparation.py`), memory/disk/time planning (`resources.py`), journaled
+alignment/index publication (`mapping.py`), single-pass/chunked long-read execution
+(`long_reads.py`) and extraction/streaming/resumption (`steps.py`). The resumable
+workflow bodies remain intact; helper dependencies flow through these layers
+without importing the realign facade.
+
+### DeepVariant pipeline
+
+The `commands/vcf/deepvariant.py` command keeps orchestration and its existing
+helper import paths. Its `deepvariant_pipeline/` package separates model/image
+selection (`models.py`), host/postprocess resource planning (`resources.py`) and
+resumable stage execution (`stages.py`).
+
+### Python module size ratchet
+
+`pixi run lint` checks Python files under `src/`, `tests/` and `scripts/`.
+New modules must stay at or below 800 physical lines. The desktop app (`gui/`)
+keeps its own policy; generated run outputs, scratch work and environments are
+not scanned.
+
+Existing oversized files have fixed, reviewable ceilings in
+`scripts/python_size_baseline.json`; exceeding one fails with
+`python_size_exceeded`. Split responsibilities rather than add or raise an
+exemption. The initial ceilings include the bounded positive growth already
+present in pinned, open pre-policy PRs, so introducing the guard does not break
+those in-flight changes.
+
+After shortening, splitting or deleting an outlier, run
+`pixi run python scripts/check_python_size.py --refresh` and commit the reduced
+baseline. Refresh only lowers/removes existing ceilings: it cannot grandfather
+a new megafile or increase a budget, and refuses to write while a new/growing
+module violates its ceiling. Removed files require their obsolete entries to be
+removed (`python_size_stale_baseline`); remove only that entry if other budgets
+still reserve in-flight work. Global refresh also removes exemptions for files
+reduced to 800 lines or less.
+Wait for reserved pre-policy versions to land before globally refreshing their
+budgets; individual ceilings may be edited downward in the meantime.
+
+The same guard runs in pre-commit, PR/main lint and exact-head generic
+certification. It uses no network, extra dependencies or environment settings.
+For a separate checkout, use the run-specific `--root`/`--baseline` arguments.
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.
+
+Large DeepVariant, native-aligner, realign, personal-report and server/path suites
+are divided into focused `test_<family>_<topic>.py` modules.
+Their original `test_<family>.py` modules
+keep shared helpers and function-scoped fixtures, so existing imports and fixture
+behavior remain stable. New integration modules must retain their CI tier.
+Imported fixture aliases preserve autouse behavior too: report siblings retain
+`served_lists` so their gene-list downloads stay isolated behind the fake network.
+Modules using the shared `out/fake_30x` fixtures also retain a direct
+`ensure_fake_data` import: the loadgroup scheduler uses it to keep shared-data
+generation on one worker, even when the fixture itself is imported.
+The standalone `test_server_shared_data.py` guard names its source inputs with
+explicit repository-relative paths, so affected-test selection runs it whenever
+those consumer modules change.
+Its companion `test_server_shared_data_routing.py` checks that selection and runs
+when the worker guard changes; both guards stay outside the CI-only test list.
+
+CI routing and workflow-policy tests also have focused landing/required-gate and
+readiness/path-filter siblings. Original modules retain shared helper owners;
+all siblings stay in the CI-only and documentation selections, so splitting
+tests never removes their checks from readiness or certification.
 
 - **Assert observable behaviour.** That means:
   - output files and their content

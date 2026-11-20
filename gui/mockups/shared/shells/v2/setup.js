@@ -7,5 +7,6 @@
     W.v2machine.localize();
     W.v2edge.start();
     W.v2edgeViews.start();
+    W.v2current.start();
   };
 })();

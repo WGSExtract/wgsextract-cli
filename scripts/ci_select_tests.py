@@ -17,8 +17,13 @@ from scripts.ci_test_dependencies import (
 
 CI_TESTS = (
     "tests/test_ci_changes.py",
+    "tests/test_ci_landing.py",
+    "tests/test_ci_required.py",
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_workflow_readiness.py",
+    "tests/test_workflow_paths.py",
+    "tests/test_python_size.py",
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
@@ -37,6 +42,7 @@ OS_WORKFLOWS = {
 def ci_path(path: str) -> bool:
     return not path.endswith(".md") and (
         path in CI_TESTS
+        or path in {"scripts/check_python_size.py", "scripts/python_size_baseline.json"}
         or path.startswith(".github/")
         or (path.startswith("scripts/ci_") and path.endswith(".py"))
     )

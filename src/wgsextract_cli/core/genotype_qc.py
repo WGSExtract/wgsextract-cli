@@ -21,12 +21,12 @@ from wgsextract_cli.core.alignment.cram_counts import (
     cram_container_totals,
     multi_ref_contigs,
 )
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
-from wgsextract_cli.core.microarray_utils import GenotypeTally, is_autosome
+from wgsextract_cli.core.microarray.templates import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -156,9 +156,9 @@ def _counted_depths(
         parse_idxstats,
     )
     from wgsextract_cli.commands.info.render import sampled_mapped_bases
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.builds import build_from_chr1_length
-    from wgsextract_cli.core.reference_models import sequence_lengths
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     unknown: set[str] = set()
     # Contigs that multi-reference containers are known to hold reads on.
@@ -401,8 +401,8 @@ def _region_intervals(region: str, lengths: Mapping[str, int]) -> list[Interval]
 def contigs_with_reads(alignment: str, ref: str | None) -> dict[str, int]:
     """Length of each contig the index places mapped reads on."""
     from wgsextract_cli.commands.info.metrics import parse_idxstats
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
-    from wgsextract_cli.core.reference_models import sequence_lengths
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     index = alignment_index(alignment)
     if not index:
@@ -460,8 +460,8 @@ def covered_depths(
     count, and when no window has any, every read on the target's contigs is
     counted. A target with no reads there has depth 0."""
     from wgsextract_cli.commands.info.render import _sample_windows
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
-    from wgsextract_cli.core.reference_models import sequence_lengths
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     wanted = set(targets)
     if alignment.lower().endswith(".cram") and not (ref and Path(ref).is_file()):

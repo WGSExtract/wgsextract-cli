@@ -21,7 +21,9 @@ from typing import Any
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
+from ._network import DownloadParams
 from ._params import Params, param
+from ._ref_library import _InLibrary, _library_named
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
 
@@ -52,44 +54,6 @@ def _delete_param(what: str) -> Any:
         action="store_true",
         deletes=True,
     )
-
-
-def _library_named(ref: Path) -> Path:
-    """The library ``ref`` names, ``~`` expanded and ``..`` collapsed as the
-    command does: the one above a FASTA's ``genomes`` folder, else ``ref``
-    itself."""
-    from wgsextract_cli.core.reference_assets import reference_library_of
-
-    # Lexically, without absolutising, so a Windows request is checked as such.
-    ref = Path(os.path.normpath(ref.expanduser()))
-    return Path(reference_library_of(ref)) if ref.is_file() else ref
-
-
-class _InLibrary:
-    """An operation on the library ``ref`` names, or the one above a FASTA's
-    ``genomes`` folder."""
-
-    ref: Path | None
-
-    def library(self) -> Path:
-        """The library folder the operation installs into or reads."""
-        from wgsextract_cli.core.reference_assets import (
-            reference_library_of,
-            resolve_reference_library,
-        )
-
-        ref = reference_library_of(self.ref) if self.ref else None
-        return Path(resolve_reference_library(ref))
-
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        if self.ref is not None:
-            yield "ref", _library_named(self.ref)
-
-    def write_folders(self) -> Iterator[Path]:
-        from wgsextract_cli.core.reference_assets import reference_genomes_dir
-
-        library = self.library()
-        yield from (library, Path(reference_genomes_dir(library)))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -226,7 +190,7 @@ class RefDownloadParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
-class RefIndexParams(Params):
+class RefIndexParams(DownloadParams):
     """Index a FASTA: ``.fai`` (and ``.gzi``), the ``.dict`` sequence
     dictionary and the aligner's index, written beside it."""
 
@@ -237,7 +201,7 @@ class RefIndexParams(Params):
     aligner: str = param(
         "bwa",
         help="Aligner index to make. bwa-mem2's maps faster but takes 17 GB of "
-        "memory for a human genome; hs38DH's is downloaded, others need ~90 GB "
+        "memory for a human genome; --download permits fetching hs38DH's, others need ~90 GB "
         "of memory to build.",
         choices=ALIGNER_INDEXES,
     )
@@ -445,27 +409,16 @@ def _status_ref_param() -> Any:
     )
 
 
-def _dataset_library_param(help: str) -> Any:
+def _mygenomes_library_param(help: str) -> Any:
     return param(
         None,
         help=help,
-        doc="Dataset library folder for the test genome (default: config "
-        "dataset_library, else ``datasets`` beside the reference library).",
+        doc="My Genomes library folder for the test genome (default: config "
+        "mygenomes_library, else mygenomes/ in the users workspace).",
         path="directory",
-        hidden_flags=("--genome-library",),
+        hidden_flags=("--dataset-library", "--genome-library"),
+        former_names=("dataset_library",),
     )
-
-
-def _datasets_beside(ref: Path | None, datasets: Path | None) -> Iterator[Path]:
-    """The ``datasets`` folder beside the library ``ref`` names, which a
-    command uses with neither ``datasets`` nor config dataset_library set."""
-    from wgsextract_cli.core.config import dataset_library
-
-    if ref is None or datasets is not None or dataset_library():
-        return
-    library = _library_named(ref)
-    if library.is_absolute():  # a relative ref is refused as it is
-        yield library.parent / "datasets"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -480,8 +433,8 @@ class RefStatusParams(Params):
     input: Path | None = optional_input_param(
         "A BAM/CRAM or VCF whose build picks the annotation files to report."
     )
-    dataset_library: Path | None = _dataset_library_param(
-        "Dataset library directory used for test dataset status."
+    mygenomes_library: Path | None = _mygenomes_library_param(
+        "My Genomes library folder used for the test genome status."
     )
     annotation_vcf: Path | None = param(
         None,
@@ -493,22 +446,20 @@ class RefStatusParams(Params):
         if self.ref is None:
             return
         yield "ref", _library_named(self.ref)
-        for datasets in _datasets_beside(self.ref, self.dataset_library):
-            yield "ref", datasets
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefTestGenomeParams(Params):
     """The test genome: the small hg19 benchmark dataset (1000 Genomes
-    HG00096) in the dataset library. Reports whether it is installed;
+    HG00096) in the My Genomes library. Reports whether it is installed;
     ``install`` downloads it (SHA-256 pinned) and ``delete`` deletes it."""
 
     COMMAND = "ref test-genome"
 
     ref: Path | None = _status_ref_param()
-    dataset_library: Path | None = _dataset_library_param(
-        "Dataset library to install into (default: config dataset_library, "
-        "else datasets beside the reference library)."
+    mygenomes_library: Path | None = _mygenomes_library_param(
+        "My Genomes library to install into (default: config "
+        "mygenomes_library, else mygenomes/ in the users workspace)."
     )
     install: bool = param(
         False,
@@ -533,22 +484,44 @@ class RefTestGenomeParams(Params):
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         if self.ref is not None:
             yield "ref", _library_named(self.ref)
-        for datasets in _datasets_beside(self.ref, self.dataset_library):
-            yield "ref", datasets
-        unset = self.ref is None and self.dataset_library is None
-        if (self.install or self.delete) and unset:
-            # The folder written is then config's dataset_library or the one
-            # beside the default library, which must be allowed too.
-            yield "dataset_library", self._datasets()
+        if (self.install or self.delete) and self.mygenomes_library is None:
+            # The folder written is then config's mygenomes_library or the
+            # default one, which must be allowed too.
+            yield "mygenomes_library", self._datasets()
 
     def _datasets(self) -> Path:
-        from wgsextract_cli.commands.ref.status import dataset_library_for
+        from wgsextract_cli.commands.ref.status import mygenomes_library_for
 
-        return dataset_library_for(self.ref, self.dataset_library)
+        return mygenomes_library_for(self.mygenomes_library)
 
     def write_folders(self) -> Iterator[Path]:
         if self.install or self.delete:
             yield self._datasets()
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefCytobandsParams(_InLibrary, Params):
+    """Validate installed UCSC cytobands; fetch a missing table only with
+    ``--download``. Installs primary-chromosome hg19/hg38 ideograms for the
+    offline viewer; no sample data is sent."""
+
+    COMMAND = "ref cytobands"
+
+    build: str = _build_param("Cytoband assembly (default: hg38).")
+    download: bool = param(
+        False,
+        help="Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; "
+        "only the public assembly URL is requested, never sample data.",
+        action="store_true",
+        writes=True,
+    )
+    ref: Path | None = param(
+        None,
+        doc="Reference library folder (default: config reference_library); an explicit FASTA resolves its library.",
+        flags=("--ref",),
+        path="file_or_directory",
+        shared=True,
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -679,7 +652,7 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     )
     sa_dir: Path | None = param(
         None,
-        help="Folder to build the databases in (default: ref/acmg/sa in the library).",
+        help="Folder to build the databases in (default: downloads/acmg/sa in the library).",
         path="directory",
         config_key="acmg_sa_dir",
     )
@@ -691,6 +664,13 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     )
     ensembl_release: str = param(
         "116", help="Ensembl release of the GFF3; match your vep-rs cache."
+    )
+    site_data: str | None = param(
+        None,
+        help="per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB "
+        "downloaded for a genome); vcf acmg reads each input's own sites of "
+        "them. library builds them. Default: as the folder was built, else library.",
+        choices=("library", "per-run"),
     )
     dry_run: bool = param(
         False,
@@ -742,10 +722,10 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         # The library (configured when ref is omitted), then everything written
         # in it and in sa_dir: a server checks each with links resolved, so a
-        # linked ref/acmg or sa folder can't lead outside the allowed ones.
+        # linked downloads/acmg or sa folder can't lead outside the allowed ones.
         yield from super().implied_paths()
         folders, files = self._destinations()
-        databases = folders[3]  # destinations(): ref/acmg, sources, ref, sa_dir, ...
+        databases = folders[3]  # destinations(): acmg, sources, downloads, sa_dir, ...
         for path in (*folders, *files):
             yield "sa_dir" if path.is_relative_to(databases) else "ref", path
 
@@ -1021,6 +1001,20 @@ def test_genome(
     return execute(
         params, run_test_genome, progress=progress, cancel=cancel, check=check
     )
+
+
+def cytobands(
+    params: RefCytobandsParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Validate/install UCSC cytobands (output role ``reference_resource``).
+    Missing or invalid tables require explicit ``download=True``."""
+    from wgsextract_cli.commands.ref.cytobands import run_cytobands
+
+    return execute(params, run_cytobands, progress=progress, cancel=cancel, check=check)
 
 
 def gene_map(

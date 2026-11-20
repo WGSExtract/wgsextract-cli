@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools
-from wgsextract_cli.core import microarray_targets as mt
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.microarray import targets as mt
 
 
 def _templates(root: Path) -> Path:
@@ -32,7 +32,7 @@ def _templates(root: Path) -> Path:
 # NCBI36 chr3:999000-1000000 sits 1000 bp later on GRCh37.
 _HG18_CHAIN_NAME = "hg18ToHg19.over.chain.gz"
 _HG18_CHAIN = "chain 1000 chr3 2000000 + 999000 1000000 chr3 2000000 + 1000000 1001000 1\n1000\n\n"
-_VERSION = "##wgsextract_microarray_target_version=3"
+_VERSION = f"##wgsextract_microarray_target_version={mt.TARGET_VERSION}"
 
 
 def test_markers_are_the_union_of_the_grch37_templates(tmp_path):
@@ -56,13 +56,43 @@ def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
     assert markers[("chr20", 12345)] == "rs78"
 
 
+def test_placeholder_ids_yield_to_real_ids_or_get_their_own(tmp_path):
+    templates = _templates(tmp_path)
+    body = templates / "raw_file_templates/body"
+    (body / "TellMeGen_V1.csv").write_text(".\t5\t500\n.\t4\t4000\n.\t4\t4100\n")
+    # Later in the template order than tellmeGen.
+    (body / "SelfDecode_V1.txt").write_text("rs50\t5\t500\n")
+    markers = mt.collect_template_markers([str(templates)])
+    assert markers[("chr5", 500)] == "rs50"
+    assert markers[("chr4", 4000)] == "chr4_4000"
+    assert markers[("chr4", 4100)] == "chr4_4100"
+
+
 def test_ncbi36_markers_are_lifted_to_grch37(tmp_path):
     templates = _templates(tmp_path)
     markers = mt.collect_template_markers(
-        [str(templates)], str(tmp_path / _HG18_CHAIN_NAME)
+        [str(templates)], {"NCBI36": str(tmp_path / _HG18_CHAIN_NAME)}
     )
     assert markers[("chr3", 1000999)] == "rs6"
     assert ("chr3", 999999) not in markers
+
+
+def test_grch38_y_markers_are_lifted_to_grch37(tmp_path):
+    templates = _templates(tmp_path)
+    (templates / "raw_file_templates/body/FTDNA_V2Y.csv").write_text("Z57\tY\t2500\n")
+    # GRCh38 chrY:2000-3000 sits 500 bp later on GRCh37.
+    chain = tmp_path / "hg38ToHg19.over.chain"
+    chain.write_text(
+        "chain 1000 chrY 9000 + 2000 3000 chrY 9000 + 2500 3500 1\n1000\n\n"
+    )
+    assert mt.lifted_builds([str(templates)]) == {"NCBI36", "GRCh38"}
+    markers = mt.collect_template_markers(
+        [str(templates)],
+        {"NCBI36": str(tmp_path / _HG18_CHAIN_NAME), "GRCh38": str(chain)},
+    )
+    assert markers[("chrY", 3000)] == "Z57"
+    # Without its chain, a GRCh38 template contributes nothing.
+    assert ("chrY", 3000) not in mt.collect_template_markers([str(templates)])
 
 
 @needs_tools("bgzip", "tabix")
@@ -306,13 +336,19 @@ def test_a_current_target_in_a_read_only_library_is_used(tmp_path):
 
 
 def _pre_inputs_target(root: Path) -> str:
-    # Output of the pre-#1051 v3 builder (81313d8b), indexed with real tools.
+    # Output of the pre-#1051 v3 builder (81313d8b), indexed with real tools,
+    # stamped with the current version: a sidecar-less target of this version.
     source = Path(__file__).parent / "fixtures" / "microarray-target-pre-inputs.tab"
+    stamped = root / "pre-inputs.tab"
+    root.mkdir(parents=True, exist_ok=True)
+    stamped.write_text(
+        mt._VERSION_LINE + source.read_text().split("\n", 1)[1], newline="\n"
+    )
     target = mt.genome_wide_target_path(str(root), "hg38")
     Path(target).parent.mkdir(parents=True, exist_ok=True)
     with open(target, "wb") as output:
         subprocess.run(
-            [get_tool_path("bgzip"), "-c", str(source)], stdout=output, check=True
+            [get_tool_path("bgzip"), "-c", str(stamped)], stdout=output, check=True
         )
     subprocess.run(
         [get_tool_path("tabix"), "-s", "1", "-b", "2", "-e", "2", target], check=True
@@ -467,6 +503,32 @@ def test_no_chain_is_installed_when_no_source_has_the_pinned_checksum(
     assert sorted(p.name for p in tmp_path.iterdir()) == [name + ".lock.guard"]
 
 
+def test_the_pinned_chain_wins_over_an_earlier_same_named_copy(tmp_path, chain_servers):
+    # A FASTA folder searched first holds a different hg19ToHg38; the library's
+    # pinned copy is the one that places the markers.
+    primary, _mirror, data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    fasta_dir, library = tmp_path / "fasta", tmp_path / "library"
+    fasta_dir.mkdir()
+    library.mkdir()
+    (fasta_dir / name).write_bytes(gzip.compress(b"another release"))
+    (library / name).write_bytes(data)
+    assert mt.hg19_to_hg38_chain(str(library), [str(fasta_dir)]) == str(library / name)
+    assert primary.requests == []
+
+
+def test_an_unpinned_chain_is_still_used_but_named_when_nothing_matches(
+    tmp_path, chain_servers, caplog
+):
+    primary, _mirror, _data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    (tmp_path / name).write_bytes(gzip.compress(b"another release"))
+    with caplog.at_level("WARNING"):
+        assert mt.hg19_to_hg38_chain(str(tmp_path)) == str(tmp_path / name)
+    assert f"{tmp_path / name} is not UCSC's pinned {name}" in caplog.text
+    assert primary.requests == []
+
+
 def _cut_off_with_a_partial(server, data: bytes) -> None:
     """Every GET and every resume is cut off half-way, leaving a partial."""
     server.drops = 1
@@ -508,3 +570,17 @@ def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
         mt.HG19_TO_HG38_CHAIN.name,
         mt.HG19_TO_HG38_CHAIN.name + ".lock.guard",
     }
+
+
+@pytest.mark.parametrize("sub", ["", "downloads", "ref", "microarray"])
+def test_requested_chain_is_found_in_library_subdirectories(tmp_path, monkeypatch, sub):
+    chain = tmp_path / sub / "hg38ToHg19.over.chain.gz"
+    chain.parent.mkdir(parents=True, exist_ok=True)
+    chain.write_bytes(b"")
+    monkeypatch.setattr(
+        mt, "download_chain", lambda *_: pytest.fail("must not download")
+    )
+    assert mt.fetch_requested_chains(str(tmp_path), ["23andme_v5", "ftdna_v4y"]) == {
+        "GRCh38": str(chain)
+    }
+    assert mt.fetch_requested_chains(str(tmp_path), ["23andme_v5"]) == {}

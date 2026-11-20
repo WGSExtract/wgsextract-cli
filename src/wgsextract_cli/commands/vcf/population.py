@@ -1,6 +1,7 @@
 import logging
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfGnomadParams, VcfPhylopParams
@@ -93,6 +94,7 @@ def _annotate_from_phylop_table(
             "PhyloP",
             threads=params.threads,
             reference=reference,
+            annotation_source=phylop_file,
         )
     else:
         # Annovar PhyloP TSV: #Chr, Start, End, Score
@@ -144,6 +146,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         header,
         threads=params.threads,
         reference=lib.fasta,
+        annotation_source=gnomad_file,
     )
 
     record_annotated(ann_out)
@@ -166,6 +169,10 @@ def run_gnomad(params: VcfGnomadParams) -> None:
             summary_columns=GNOMAD_COLUMNS,
             samples=(input_file,),
         )
+        with tempfile.TemporaryDirectory(prefix=".wgse_evidence_", dir=outdir) as work:
+            variant_confidence.add_reference_evidence(
+                summary, input_file, work, reference=lib.fasta
+            )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"gnomAD filtering failed: {e}") from e
     table = re.sub(r"\.vcf\.gz$", ".confidence.tsv", filter_out)

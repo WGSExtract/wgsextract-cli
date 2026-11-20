@@ -1,6 +1,7 @@
 import logging
 import subprocess
-from collections.abc import Iterable
+import tempfile
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfClinvarParams, VcfRevelParams
@@ -71,7 +72,8 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     # Transfer CLNSIG (significance), CLNDN (disease name) and, when the
     # ClinVar file has it, GENEINFO. The input's own GENEINFO is dropped, so
     # any left names ClinVar's genes.
-    clinvar_vcf = ensure_vcf_prepared(clinvar_vcf)
+    clinvar_source = clinvar_vcf
+    clinvar_vcf = ensure_vcf_prepared(clinvar_source)
     input_vcf = ensure_vcf_prepared(input_file)
     header = _vcf_header(clinvar_vcf)
     input_header = _vcf_header(input_vcf)
@@ -90,6 +92,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         "ClinVar",
         threads=params.threads,
         reference=lib.fasta,
+        annotation_source=clinvar_source,
         compose_mnvs=True,
         compose_thresholds=variant_confidence.thresholds_from(params),
         remove=tuple(
@@ -112,6 +115,14 @@ def run_clinvar(params: VcfClinvarParams) -> None:
             summary_columns=CLINVAR_TABLE_COLUMNS,
             samples=(input_file,),
         )
+        with tempfile.TemporaryDirectory(prefix=".wgse_evidence_", dir=outdir) as work:
+            variant_confidence.add_reference_evidence(
+                summary,
+                input_file,
+                work,
+                clinvar_sites=pathogenic_sites(clinvar_vcf, include, lib.fasta, work),
+                reference=lib.fasta,
+            )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"ClinVar filtering failed: {e}") from e
     table = str(Path(outdir, "clinvar_pathogenic.confidence.tsv"))
@@ -177,6 +188,24 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     logging.info(LOG_MESSAGES["vcf_clinvar_done"].format(output=path_out))
 
 
+def pathogenic_sites(
+    clinvar_vcf: str, include: str, reference: str, work: str
+) -> Iterator[tuple[str, int, int]]:
+    """The ClinVar records ``include`` selects, as (contig, start, end)."""
+    from .matching import normalized_clinvar_resource
+
+    clinvar_vcf = normalized_clinvar_resource(clinvar_vcf, reference, work)
+    query = ["bcftools", "query", "--allow-undef-tags", "-i", include,
+             "-f", "%CHROM\t%POS\t%REF\t%INFO/END\n", clinvar_vcf]  # fmt: skip
+    for line in run_command(query, capture_output=True).stdout.splitlines():
+        contig, pos, ref, end = line.split("\t")
+        yield (
+            contig,
+            int(pos),
+            max(int(pos) + max(len(ref), 1) - 1, int(end) if end.isdigit() else 0),
+        )
+
+
 def _vcf_header(vcf: str) -> str:
     return run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
 
@@ -204,6 +233,7 @@ def run_revel(params: VcfRevelParams) -> None:
             "REVEL",
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=revel_file,
         )
     else:
         # Annovar REVEL TSV: #Chr, Start, End, Ref, Alt, REVEL
@@ -217,6 +247,7 @@ def run_revel(params: VcfRevelParams) -> None:
             ['##INFO=<ID=REVEL,Number=1,Type=Float,Description="REVEL score">'],
             threads=params.threads,
             reference=lib.fasta,
+            annotation_source=revel_file,
         )
 
     run_min_score_filter(

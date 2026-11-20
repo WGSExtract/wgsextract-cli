@@ -31,12 +31,15 @@ from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
 from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA as REFERENCE_FASTA
+from wgsextract_cli.core.pharmcat_resources import ensure_reference
 from wgsextract_cli.core.pixi_tools import pixi_env_tool
 from wgsextract_cli.core.reference_resolver import (
     ReferenceLibrary,
     header_contig_lengths,
 )
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import (
@@ -52,8 +55,6 @@ from .pharmcat_evidence import expand
 
 RELEASES_URL = "https://github.com/PharmGKB/PharmCAT/releases"
 PIPELINE_FILES = ("pharmcat_pipeline", "pharmcat.jar", "pharmcat_regions.bed")
-# Shipped with the release's preprocessor; fetched by PharmCAT on first use.
-REFERENCE_FASTA = "reference.fna.bgz"
 
 
 def pharmcat_directory(
@@ -86,18 +87,6 @@ def _python(directory: str) -> list[str]:
             "PharmCAT's environment isn't installed: pixi install --locked -e pharmcat"
         )
     return _tool_command_parts(command)
-
-
-def _ensure_reference(python: list[str], directory: str) -> str:
-    reference = str(Path(directory, REFERENCE_FASTA))
-    if not Path(reference).is_file():
-        logging.info("Fetching PharmCAT's GRCh38 reference (about 1 GB, once)...")
-        fetch = (
-            "import sys; sys.path.insert(0, sys.argv[1]); import pcat; "
-            "pcat.download_reference_fasta_and_index(sys.argv[1])"
-        )
-        run_command([*python, "-c", fetch, directory])
-    return reference
 
 
 def prepare_input(
@@ -316,6 +305,27 @@ def _vcf_build(vcf: str) -> str | None:
     return None
 
 
+def _depth_only_gvcf(vcf: str) -> bool:
+    """Whether ``vcf`` is a WGS Extract gVCF whose reference blocks carry
+    depth but no genotype quality (bcftools'), which the direct-input path,
+    needing GQ, would turn into no-calls."""
+    source = reference_evidence.ReferenceEvidence(vcf)
+    return (
+        source.provenance is not None
+        and source.quality_model == reference_evidence.DEPTH_ONLY
+    )
+
+
+def _variant_records(vcf: str, work: str) -> str:
+    """``vcf``'s records with an alternate genotype, without its reference
+    blocks and the unseen ``<*>`` allele."""
+    variants = str(Path(work, "variants.vcf.gz"))
+    run_command(["bcftools", "view", "-i", 'GT="alt"', "--trim-alt-alleles",
+                 "-Oz", "-o", variants, vcf])  # fmt: skip
+    ensure_vcf_indexed(variants)
+    return variants
+
+
 def run_pharmcat(params: VcfPharmcatParams) -> None:
     verify_dependencies(["bcftools", "tabix", "samtools"])
     input_vcf = require_vcf_input(params)
@@ -334,13 +344,23 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         current_result().add_input(gvcf, reference_evidence.ROLE)
         logging.info(f"Reference evidence for absent PharmCAT sites: {gvcf}")
     input_vcf = ensure_vcf_prepared(input_vcf)  # bgzipped and indexed
-    reference = _ensure_reference(python, directory)
+    reference = ensure_reference(directory)
     stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(input_vcf).name, flags=re.I)
 
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pharmcat_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_pharmcat_"
+    ) as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
-        prepared = prepare_input(input_vcf, directory, reference, work, params, gvcf)
-        confidence = label_pgx_calls(input_vcf, work, params)
+        calls = input_vcf
+        if gvcf is None and _depth_only_gvcf(input_vcf):
+            # vcf call --reference-evidence gvcf writes SNPs and indels only
+            # as this gVCF: read its variants as the calls, and its depth-only
+            # blocks as their reference evidence, as for a companion gVCF.
+            logging.info(f"{input_vcf} is a depth-only gVCF: using its blocks as "
+                         "the reference evidence for absent PharmCAT sites.")  # fmt: skip
+            gvcf, calls = input_vcf, _variant_records(input_vcf, work)
+        prepared = prepare_input(calls, directory, reference, work, params, gvcf)
+        confidence = label_pgx_calls(calls, work, params)
         run_out = Path(work, "outputs")
         run_out.mkdir()
         command = [
@@ -380,7 +400,7 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
             if path.is_dir():
                 shutil.copytree(path, target, dirs_exist_ok=True)
             else:
-                os.replace(path, target)
+                move_file(path, target)
         if used_outside_calls:
             current_result().add_output(
                 Path(outdir, f"{stem}.outside.tsv"), "pharmcat_outside_calls"

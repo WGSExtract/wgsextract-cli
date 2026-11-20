@@ -15,7 +15,7 @@
       var windows = os === "windows";
       var home = windows ? "C:/Users/you" : os === "macos" ? "/Users/you" : "/home/you";
       function normalize(p) {
-        p = p.replace(/\\/g, "/").replace(/^\{\{bundleWorkspace\}\}/, home + "/wgs-extract").replace(/^~(?=\/)/, home);
+        p = p.replace(/\\/g, "/").replace(/^\{\{usersWorkspace\}\}/, home + "/wgs-extract").replace(/^~(?=\/)/, home);
         return windows ? p.toLowerCase() : p;
       }
       var paths = path ? [path] : Object.keys(mock.ctx().files).filter(function (id) {
@@ -102,7 +102,7 @@
       var s = settings();
       if (b.max_concurrent_jobs !== undefined && [1, 2].indexOf(b.max_concurrent_jobs) < 0) M.fail(400, "usage", "Allow one or two concurrent analysis jobs.");
       if (b.max_concurrent_jobs !== undefined && b.max_concurrent_jobs !== s.max_concurrent_jobs) mock.doc().freeAt = Math.max(mock.doc().freeAt, mock.clock.now());
-      ["workspace", "allowed_paths", "phone_access", "max_concurrent_jobs", "prevent_sleep", "notifications", "menu_bar"].forEach(function (key) {
+      ["workspace", "output_directory", "allowed_paths", "phone_access", "max_concurrent_jobs", "prevent_sleep", "notifications", "menu_bar"].forEach(function (key) {
         if (b[key] !== undefined) s[key] = b[key];
       });
       mock.doc().settings = s;

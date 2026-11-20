@@ -25,17 +25,27 @@ A command can describe its run as a JSON result document: the files it wrote, wa
 
 **`format`** is the only format the app reads today: [`wgsextract.result/1`](../../docs/result-manifest.md), the document every `wgsextract` command writes with `--json` or `--result-file PATH`.
 
-The raw file, warning and error record types are generated from the Python
-writer dataclasses by `scripts/gen_server_contracts.py` into
-`app/shared/generated/server-transport.ts`. The normalized UI types and tolerant
-parser in `app/shared/result-document.ts` remain handwritten: they accept omitted
-compact fields and unknown future error kinds, rather than asserting that loaded
-JSON is a validated writer record.
+The complete canonical result and report records are generated from their Python
+writer dataclasses/TypedDicts by `scripts/gen_server_contracts.py` into
+`app/shared/generated/result-records.ts` and `report-records.ts`. HTTP/job
+envelopes remain in `server-transport.ts`. The result adapter derives shared field
+types from the canonical records, while its normalized UI shape and tolerant
+parser remain handwritten: they accept omitted compact fields and unknown future
+statuses/error kinds, rather than asserting that loaded JSON is a validated
+writer record. Nullable/defaulted dataclass fields are required in the canonical
+record; optional historical report fields remain optional.
 
 ## Running a covered action
 
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.
 - **Open** and **Show in Folder** work only for the files a document listed, and for the document's own saved copy (`manifest`). A relative path is relative to the bundle workspace the action ran in.
+- WGS Extract also offers **Show in viewer** for existing BAM/CRAM and bgzip
+  VCF/gVCF outputs. Add `metrics.locus: "chr1:200-400"` to an output to open
+  that interval; a document-level `metrics.locus` applies when the output has
+  none. Use 1-based inclusive coordinates. The viewer ignores invalid loci,
+  gene symbols and rsIDs and opens the first chromosome instead. This link
+  does not grant filesystem access: the existing My Genomes and reference
+  library guards still apply. See [Genome viewer](genome-viewer.md).
 
 ## The last run
 
@@ -55,6 +65,16 @@ Each is empty until such a run happens, so put it in `optionalArguments`, or tes
 ```
 
 ## Failures
+
+WGS Extract's report actions need the installed CLI. They remain disabled until
+setup succeeds, with an explanation to copy setup output into a GitHub issue
+when setup itself fails. Setup output is not a CLI run document and cannot be
+reported with `--last-failed`.
+
+Conditions can use `setupReady`: `"true"` after setup completes successfully
+(including warnings), or when a bundle has no setup steps for the current
+platform; `"false"` before, during, or after a failed setup. Headless bundle
+tests apply the same readiness gate and update it after each setup run.
 
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:
 

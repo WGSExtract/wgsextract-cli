@@ -10,12 +10,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.commands._extract_helpers import cleanup_files
+from wgsextract_cli.core.alignment.fastq import check_primary_reads
+from wgsextract_cli.core.alignment.profiles import output_profile_options
+from wgsextract_cli.core.alignment.samtools_commands import (
+    indexed_output,
+    written_index,
+)
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
-from wgsextract_cli.core.fastq_validation import check_primary_reads
 from wgsextract_cli.core.output_checks import record_alignment_output
-from wgsextract_cli.core.output_profiles import output_profile_options
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import indexed_output, written_index
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     get_sam_index_cmd,

@@ -11,7 +11,12 @@ from typing import IO
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
 from wgsextract_cli.core.alignment.cram_staging import stage_bam
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    pacbio_platform,
+    refuse_mixed_platforms,
+)
 from wgsextract_cli.core.dependencies import PIXI_TOOL_ENVS, get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -20,13 +25,9 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.pixi_tools import pixi_install_command
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.sequencing import (
-    input_platform,
-    pacbio_platform,
-    refuse_mixed_platforms,
-)
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -57,7 +58,9 @@ def _region_input_bam(
         yield input_file
         return
 
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_region_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_region_"
+    ) as tmp:
         temp_bam = str(Path(tmp, "region.bam"))
         logging.info(f"Extracting region {region} to temporary BAM...")
         try:
@@ -243,7 +246,9 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
 
     logging.info(LOG_MESSAGES["vcf_calling_sv"].format(caller="pbsv", output=out_vcf))
     with (
-        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_pbsv_") as work,
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_pbsv_"
+        ) as work,
         # pbsv call does not accept .fa.gz input.
         plain_reference(ref, outdir) as pbsv_ref,
     ):
@@ -316,7 +321,9 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
     logging.info(
         LOG_MESSAGES["vcf_calling_sv"].format(caller="sniffles", output=out_vcf)
     )
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_sniffles_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_sniffles_"
+    ) as work:
         raw_vcf = str(Path(work, "sniffles.vcf"))
         # --reference is needed to decode CRAM and to emit deletion sequences.
         input_file = str(params.input)

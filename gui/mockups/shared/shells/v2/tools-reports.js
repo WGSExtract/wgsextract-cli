@@ -16,17 +16,14 @@
       f.select("gene_list", "Health genes", "The ClinVar section looks only at these genes, where a finding is medically actionable",
         [["", "ACMG SF v3.3 (81 genes)"], ["acmg-sf-3.2", "ACMG SF v3.2"]], "", { width: 260 }),
       f.param("table_format", "Findings table", "", { labels: { tsv: "TSV", parquet: "Parquet" } }),
+      f.param("download", "Download missing public gene list", "Explicit --download confirmation; no genome information is sent. Off by default."),
     ],
-    requests: function (c, base) {
-      var req = base("report", { workspace: c.m.realPath(c.m.outdir(c.file)) });
-      delete req.params.input;
-      return [req];
-    },
     run: function (c) {
       return {
         hours: 0.005, makes: "Opens " + c.name + "’s report when it’s done.",
-        notes: [{ tone: "info", icon: "download", id: "acmg", title: "The gene list downloads the first time",
-          text: "A small public list, checked against its pinned SHA-256, into the reference library. Nothing about " + c.name + " is sent." }],
+        blocked: !c.flag("data-gene-list") && !c.v.download ? "The public gene list is not installed. Rerun with --download to confirm the fetch." : null,
+        notes: [{ tone: "info", icon: "download", id: "acmg", title: "Offline until you confirm",
+          text: "Missing public data is never fetched silently. --download opts in to the gene list, checked against its pinned SHA-256. No genome information is sent." }],
       };
     },
   });
@@ -47,6 +44,7 @@
         },
       }),
       f.param("keep_ambiguous", "Keep A/T and C/G sites", "Only when their strand was checked independently"),
+      f.param("download", "Download missing public scoring file", "Explicit --download confirmation. Only the score ID and build are sent to the PGS Catalog, never genotypes."),
     ],
     more: [f.param("min_match", "Minimum match", "Share of the score’s sites found, below which no percentile is given. Empty: 0.75", { width: 90 })],
     requests: function (c, base) {
@@ -57,8 +55,9 @@
     run: function (c) {
       return {
         hours: null, timeText: "minutes", makes: "The score and percentile appear on " + c.name + "’s page.",
+        blocked: !c.flag("data-pgs") && !c.v.download ? "The public scoring file is not installed. Rerun with --download to confirm the fetch." : null,
         notes: [{ tone: "info", icon: "download", id: "scoring", title: "The scoring file comes from the PGS Catalog",
-          text: "A public file of weights, fetched by the run. Only the score’s ID is requested; nothing about " + c.name + " is sent." }],
+          text: "Use installed weights offline. If missing, explicitly enable --download; only the score’s ID and build are requested, never genotypes." }],
       };
     },
   });

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import shutil
 import subprocess
@@ -23,6 +24,8 @@ from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
+from wgsextract_cli.core.ref_library.layout import download_path
+from wgsextract_cli.core.resource_mirrors import mirror_chunks, mirror_for
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -54,6 +57,8 @@ _GNOMAD_V4_HEADER = (
 
 
 def _remote_size(url: str) -> int:
+    if entry := mirror_for(url):
+        return int(entry["size"])
     with urlopen(Request(url, method="HEAD"), timeout=60) as response:
         return int(response.headers.get("Content-Length") or 0)
 
@@ -63,6 +68,8 @@ def _stream_gnomad_contig(
     part: str,
     cancel_event: CancelEvent | None,
     on_bytes: Callable[[int], None],
+    *,
+    use_mirrors: bool = True,
 ) -> str | None:
     """Write one contig's AF rows to part (BGZF); return an error message or None.
 
@@ -70,6 +77,8 @@ def _stream_gnomad_contig(
     exact, and so a cut-off download fails instead of leaving a short table.
     """
     partial = part + ".partial"
+    mirror = mirror_for(url) if use_mirrors else None
+    reported = 0
     download_error: list[str] = []
     with open(partial, "wb") as out, tempfile.TemporaryFile() as err:
         query = popen(
@@ -84,11 +93,34 @@ def _stream_gnomad_contig(
         sink = query.stdin
 
         def feed() -> None:
+            nonlocal reported
             try:
-                with urlopen(url, timeout=120) as response:
-                    while chunk := response.read(1 << 20):
+                if mirror:
+                    staging = Path(part + ".mirror")
+                    for chunk in mirror_chunks(mirror, staging, cancel_event):
                         sink.write(chunk)
                         on_bytes(len(chunk))
+                        reported += len(chunk)
+                    shutil.rmtree(staging)
+                else:
+                    pinned = mirror_for(url)
+                    digest = hashlib.sha256()
+                    received = 0
+                    with urlopen(url, timeout=120) as response:
+                        while chunk := response.read(1 << 20):
+                            sink.write(chunk)
+                            on_bytes(len(chunk))
+                            if pinned:
+                                digest.update(chunk)
+                            received += len(chunk)
+                    if pinned:
+                        if (
+                            digest.hexdigest() != pinned["sha256"]
+                            or received != pinned["size"]
+                        ):
+                            raise OSError(
+                                "upstream differs from the pinned gnomAD snapshot"
+                            )
             except BrokenPipeError:
                 pass  # bcftools exited; its status says why
             except (OSError, HTTPException) as e:
@@ -113,6 +145,16 @@ def _stream_gnomad_contig(
         Path(partial).replace(part)
         return None
     Path(partial).unlink()
+    if mirror and not (cancel_event and cancel_event.is_set()):
+        logging.warning(
+            "MIRROR_FALLBACK: gnomAD mirror failed; discarding partial AF rows "
+            "and restarting %s from upstream.",
+            url,
+        )
+        on_bytes(-reported)
+        return _stream_gnomad_contig(
+            url, part, cancel_event, on_bytes, use_mirrors=False
+        )
     return (
         "; ".join(download_error + detail) or f"bcftools exited with {query.returncode}"
     )
@@ -126,17 +168,19 @@ def build_gnomad_af(
     attempts: int = 3,
 ) -> bool:
     """
-    Build <library>/ref/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
+    Build <library>/downloads/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
 
     Contigs stream in parallel (the build is network-bound) into resumable
     per-contig parts, which are then concatenated (BGZF allows that) and indexed.
     """
-    target_dir = str(Path(reflib_dir, "ref"))
-    dest = str(Path(target_dir, GNOMAD_AF_TABLE))
+    dest = str(download_path(reflib_dir, GNOMAD_AF_TABLE))
     if Path(dest).is_file() and Path(dest + ".tbi").is_file():
         logging.info(f"{GNOMAD_AF_TABLE} is already installed.")
         return True
-    parts_dir = str(Path(target_dir, ".gnomad_hg38_parts"))
+    # An older library's interrupted build resumes where its parts are.
+    parts_dir = str(download_path(reflib_dir, ".gnomad_hg38_parts"))
+    if not Path(dest).exists():
+        dest = str(Path(parts_dir).parent / GNOMAD_AF_TABLE)
     Path(parts_dir).mkdir(parents=True, exist_ok=True)
 
     def part_path(contig: str) -> str:

@@ -86,7 +86,7 @@ def _prepare_fake_data() -> tuple[str, str]:
     ensure_fake_data(str(FAKE_DIR))
     ref = FAKE_DIR / "fake_ref.fa"
     # A gene map for `vcf filter --gene`.
-    gene_map = FAKE_DIR / "ref" / "genes_hg38.tsv"
+    gene_map = FAKE_DIR / "downloads" / "genes_hg38.tsv"
     if not gene_map.exists():
         gene_map.parent.mkdir(parents=True, exist_ok=True)
         gene_map.write_text("symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t1000000\n")

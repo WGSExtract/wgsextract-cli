@@ -318,7 +318,8 @@ def fake_aadr_download(monkeypatch: pytest.MonkeyPatch) -> bytes:
     it) instead of fetching them; returns the panel's bytes."""
     import hashlib
 
-    from wgsextract_cli.core import aadr_resources, microarray_targets
+    from wgsextract_cli.core import aadr_resources
+    from wgsextract_cli.core.microarray import targets as microarray_targets
 
     data = b"rs1 1 0.001 100 A G\n"
     monkeypatch.setattr(

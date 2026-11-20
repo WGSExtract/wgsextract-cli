@@ -5,20 +5,142 @@ src/wgsextract_cli/core/settings_schema.py; run `just regen`. -->
 
 WGS Extract reads its settings from config.toml: `wgsextract config` prints where it is and every setting's value, and `--config PATH` picks another file for one run. Command-line options override settings for a run.
 
+config.toml lives in the users workspace, `~/wgs-extract` (`%USERPROFILE%\wgs-extract` on Windows), beside the default My Genomes library (`mygenomes/`): the folders you manage and may want on another disk. An install that already keeps config.toml where earlier versions did (the per-user config folder, `~/.config/wgsextract` on macOS) keeps using it. Reference data, reference genomes and temporary files stay in the CLI's own data folder unless config.toml names other folders. The WGS Extract desktop app keeps its settings in the same folder, so the two share them.
+
+If both a legacy CLI config and a users-workspace config exist, the CLI keeps using the legacy file and warns with both paths. Use `--config PATH` to select the other explicitly. Opening the desktop app does not change this precedence or erase saved advanced settings.
+
+Without output_directory, a command writes to a `wgse/` folder beside its input from the lab (a BAM or CRAM, else FASTQs, else a VCF, else a raw microarray file), or beside an input already in a `wgse/` folder. The folder of the lab's original files stays untouched: only indexes that must sit beside their files are written there, and writing a BAM, CRAM, FASTQ, VCF or microarray file into it warns (`primary_overwrite`).
+
 Every value is checked when the file loads: a value of the wrong type, outside its range or not one of its choices stops the run with an error that names the setting and what it expects. An unknown setting is ignored with a warning that suggests the closest name.
+
+<!-- Usage guide: edit docs/data/configuration-guide.md, then regenerate. -->
+## Choosing and editing a config
+
+`--config FILE` works anywhere on the command line and selects the file for
+both reading and saving, before validation. An invalid unused default cannot
+block a valid alternate file; a bundling tool can choose a separate config.
+The CLI and desktop app otherwise share the users-workspace config described
+above. Former per-user locations, still recognized for existing installs, are:
+
+- macOS: `~/.config/wgsextract/config.toml` if that file exists, otherwise
+  `~/Library/Application Support/wgsextract/config.toml` if present;
+- Linux: `~/.config/wgsextract/config.toml`;
+- Windows: `%LocalAppData%\theontho\wgsextract\config.toml`.
+
+Saves are atomic; `wgsextract config` prompts only in an interactive terminal.
+Boolean values must be unquoted `true`/`false`, never `"false"`.
+Threads accept a positive integer or `"auto"`; legacy numeric strings such
+as `"4"` still work. Integer thresholds/TTLs require integers, not quoted
+numbers or booleans. Memory (`"2G"`), paths and image names are strings;
+`vcf_input_paths`/`server_allowed_paths` also accept string arrays.
+Ports, job counts and thresholds must be in range; choice settings
+(`server_mcp_transport`, `microarray_quirks`, `native_aligners`) must match
+their listed choices. Aliases obey the same rules as canonical keys.
+
+Invalid configured thread counts warn and use automatic threads, unless
+explicit `--threads` overrides them; saves still require a valid count.
+Other invalid types stop startup with one concise line naming key, file and
+expected type. There is no `config set` or `config show` repair command:
+edit the file, or choose a valid `--config PATH`, before rerunning even help
+or `config`. Missing-setting defaults and valid values are unchanged.
+
+## Example
+
+```toml
+# Defaults for --input and --outdir
+input = "/data/genomes/joe/joe.cram"
+outdir = "/data/wgse-out"
+
+# FASTA (--ref); reference library; reference genomes only
+ref = "/data/reference/genomes/hs38.fa.gz"
+reflib = "/data/reference"
+reference_genome_library = "/data/reference/genomes"
+
+# One folder per person/sample, selected by --genome
+dataset_library = "/data/datasets"
+
+threads = "auto"  # Apple Silicon per-stage core plan; all cores elsewhere
+memory = "auto"   # sort memory per thread; see hardware guide
+
+# Optional external-tool overrides (otherwise use PATH)
+haplogrep_path = "/path/to/haplogrep3"
+haplogrep_tree = "phylotree-fu-rcrs"  # or phylotree-rcrs, mitotree-rcrs
+y_tree = "yfull"                    # or yfull_v10, ftdna, isogg, [y_trees] id
+vep_cache = "~/.vep"
+```
+
+Short keys are aliases: `wgsextract config` displays `input_path`,
+`output_directory`, `reference_fasta`, `reference_library`, `cpu_threads`,
+`memory_limit` and the other canonical names. Either spelling works;
+explicit command-line options win for that run. Other settings include
+annotation paths (`clinvar_vcf_path`, `gnomad_vcf_path`, `gnomad_sv_path`,
+`gnomad_lr_sv_path`, `revel_tsv_path`, …), `mother_vcf`/`father_vcf`, and
+the `[dev]` settings below.
+
+By default the reference library is `reference/` in the app data folder;
+reference genomes are its `genomes/`. A `--ref` FASTA chooses sequence.
+When it is in the configured library's `reference_genome_library` (else
+`genomes/`), that library supplies other assets. Only genomes and their derived
+files go there; datasets belong in `dataset_library`. Otherwise the FASTA's
+folder is searched first, then configured `reference_library`, for chains,
+ploidy files, chip templates and annotations. Missing-file errors name the
+searched folders. See [dataset discovery and example genomes](sample-workspace.md#dataset-library).
+
+For resource defaults, `memory = "auto"` starts from 25% of RAM split across
+threads, subject to floors/caps; `"2G"` sets a per-thread budget. See
+[threads and memory](hardware.md#threads-and-memory) rather than treating it
+as a whole-pipeline RAM cap.
+
+## Temporary files and atomic outputs
+
+Set `temp_directory = "/data/scratch"` or pass `--tmp-dir DIRECTORY` for
+samtools/sambamba sort spills, GATK temp files and realign staging.
+It must exist and be writable. Each run owns a workspace, normally removed
+on success/failure; final files stay in `--outdir`. If realign fails after
+extracting FASTQs, it retains the workspace and prints `--r1`/`--r2` reuse
+paths; remove it after recovery. `--keep-fastq` instead keeps extracted reads
+in the output directory. Unset defaults/tool arguments are unchanged.
+Native pbmm2's sorter cannot honor this option: omit it or use minimap2.
+This controls placement/capacity, not promised speed.
+
+BWA/bwa-mem2 indexes require all nonempty index files, build under an exclusive
+lock with a staged prefix, and rebuild after interruption rather than trusting
+partial files. See [hardware-specific index requirements](hardware.md#cpu-aligners)
+for native versions that do not need `.0123`.
+
+`align` always validates and publishes atomically, even with `--no-atomic-output`,
+so validation failure preserves previous alignments. `--atomic-output` (or
+`atomic_outputs = true`) opts realign, SNP/InDel/GATK/FreeBayes callers and
+main extract writers into rename publication, with indexes generated afterward.
+Failed writes preserve previous files. Other commands keep the opt-in default:
+staged paths alter tool provenance headers and can need extra disk.
+`--no-atomic-output` disables their configured opt-in, never alignment safety.
+This adds no resume/skip behaviour; see [step journals](step-resume.md).
+
+## Keep-awake
+
+`--keep-awake` or `keep_awake = true` requests idle/sleep inhibition until
+exit. `--no-keep-awake` overrides config, including delegated analyze,
+annotation-chain and benchmark commands; `keep_awake = false` is the default.
+macOS uses `caffeinate`, Linux uses already-installed/permitted
+`systemd-inhibit`, and native Windows uses `SetThreadExecutionState`.
+Missing helpers, denied permissions or cleanup errors never fail the run.
+This prevents automatic sleep, not shutdown or forced/manual suspension;
+display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 
 ## Settings
 
 | Setting | Type | Default | Description |
 | --- | --- | --- | --- |
+| `allow_reference_downloads` | boolean | `false` | Allow first-use public reference/model downloads for commands with --download (hosts and request data: docs/privacy.md); no sample uploads |
 | `input_path` | string, path (`~` expands) | unset | Default input BAM/CRAM or FASTQ file |
-| `output_directory` | string, path (`~` expands) | unset | Default output directory |
-| `temp_directory` | string, path (`~` expands) | unset | Optional volume for sort spills, GATK and realign staging |
+| `output_directory` | string, path (`~` expands) | unset | Default output directory (default: wgse/ beside the primary input BAM, CRAM, FASTQ, VCF or microarray file, or that folder if already wgse/) |
+| `temp_directory` | string, path (`~` expands) | unset | Temporary Workload directory: every command's temporary work (sort spills, staging, scratch files) |
 | `atomic_outputs` | boolean | `false` | Publish completed main outputs by rename (changes tool provenance paths) |
 | `reference_fasta` | string, path (`~` expands) | unset | Path to the reference genome FASTA |
 | `reference_library` | string, path (`~` expands) | unset | Reference data directory (annotation data, gene maps, VEP caches) |
 | `reference_genome_library` | string, path (`~` expands) | unset | Folder holding only the reference genomes (FASTAs) and the files made from them, for reference_library (default: genomes/ in it) |
-| `dataset_library` | string, path (`~` expands) | unset | Directory of user datasets, one folder per person or sample (formerly genome_library) |
+| `mygenomes_library` | string, path (`~` expands) | unset | My Genomes library: one folder per person or sample (default: mygenomes/ in the users workspace; formerly dataset_library) |
 | `cpu_threads` | integer or `auto` | `"auto"` | CPU threads: a positive integer for every stage, or auto (per-stage core-layout plan on Apple Silicon; all cores elsewhere) |
 | `memory_limit` | string | `"auto"` | Memory limit per thread, e.g. 2G (auto: 25% of RAM split across threads) |
 | `debug_mode` | boolean | `false` | Enable verbose debug logging |
@@ -26,7 +148,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `log_dir` | string, path (`~` expands) | unset | Opt-in directory for unique persistent DEBUG run logs and provenance; it keeps the newest 100 runs |
 | `state_directory` | string, path (`~` expands) | unset | Folder for the last-run record and saved bug reports (report-issue); default: state/ in the data folder |
 | `server_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port) |
-| `server_allowed_paths` | string or array of strings, path (`~` expands) | unset | Folders (a string or an array) `wgsextract serve` requests may read and write, besides dataset_library, reference_library, reference_genome_library and output_directory |
+| `server_allowed_paths` | string or array of strings, path (`~` expands) | unset | Folders (a string or an array) `wgsextract serve` requests may read and write, besides mygenomes_library, reference_library, reference_genome_library and output_directory |
 | `server_mcp_transport` | `stdio` or `http` | `"stdio"` | How `wgsextract serve --mcp` speaks MCP: stdio, or http (streamable HTTP on 127.0.0.1 with a per-launch token; needs the optional 'mcp' package) |
 | `server_mcp_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 (0: any free port) |
 | `server_max_jobs` | integer, at least 1 | `1` | Long `wgsextract serve` jobs that run at once; more wait in a queue |
@@ -103,7 +225,7 @@ Every value is checked when the file loads: a value of the wrong type, outside i
 | `pgs_min_match` | number, 0 to 1 | `0.75` | Minimum PGS match fraction for percentile eligibility |
 | `pgs_keep_ambiguous` | boolean | `false` | Keep palindromic SNPs only with independently verified forward-strand alleles |
 
-Older names still read: `father_vcf` (`father_vcf_path`), `genome_library` (`dataset_library`), `genomes` (`dataset_library`), `haplocheck_path` (`haplocheck_executable`), `haplogrep_path` (`haplogrep_executable`), `input` (`input_path`), `input_vcf` (`default_input_vcf`), `jar_dir` (`jar_directory`), `memory` (`memory_limit`), `mother_vcf` (`mother_vcf_path`), `outdir` (`output_directory`), `ref` (`reference_fasta`), `reflib` (`reference_library`), `threads` (`cpu_threads`), `vep_cache` (`vep_cache_directory`).
+Older names still read: `dataset_library` (`mygenomes_library`), `father_vcf` (`father_vcf_path`), `genome_library` (`mygenomes_library`), `genomes` (`mygenomes_library`), `haplocheck_path` (`haplocheck_executable`), `haplogrep_path` (`haplogrep_executable`), `input` (`input_path`), `input_vcf` (`default_input_vcf`), `jar_dir` (`jar_directory`), `memory` (`memory_limit`), `mother_vcf` (`mother_vcf_path`), `outdir` (`output_directory`), `ref` (`reference_fasta`), `reflib` (`reference_library`), `threads` (`cpu_threads`), `vep_cache` (`vep_cache_directory`).
 
 ## The [dev] table
 

@@ -97,7 +97,7 @@ if (-not (Get-Command copilot -ErrorAction SilentlyContinue) -and -not (Get-Comm
 }
 if (-not $missing) { Note "All present." }
 
-$justOnOrigPath = $OrigPath -split ";" | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ "just.exe")) }
+$justOnOrigPath = $OrigPath -split [IO.Path]::PathSeparator | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ "just.exe")) }
 if (-not $justOnOrigPath) {
     Write-Host "`nOpen a new terminal before running the commands below (or add $env:USERPROFILE\.pixi\bin to PATH)."
 }

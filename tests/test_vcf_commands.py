@@ -210,7 +210,6 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
         patch.object(chain, "verify_dependencies"),
         patch.object(chain, "get_tool_path", return_value="bcftools"),
         patch.object(chain, "ReferenceLibrary", Lib),
-        patch.object(chain, "ensure_vcf_prepared", side_effect=lambda p: p),
         patch.object(chain, "run_command", side_effect=fake_run_command),
     ):
         chain.cmd_chain_annotate(args)
@@ -269,7 +268,6 @@ def test_chain_fails_instead_of_copying_unannotated_input(tmp_path, scenario):
         patch.object(chain, "verify_dependencies"),
         patch.object(chain, "get_tool_path", return_value="bcftools"),
         patch.object(chain, "ReferenceLibrary", Lib),
-        patch.object(chain, "ensure_vcf_prepared", side_effect=lambda p: p),
         patch.object(chain, "run_command", side_effect=failing_step),
         pytest.raises(WGSExtractError),
     ):
@@ -438,9 +436,20 @@ def test_report_of_another_sample_leaves_out_a_run_on_vcf_input(tmp_path, capsys
     results = tmp_path / "results"
     _cli_json(capsys, "vcf", "clinvar", "--input", other, "--vcf-input", sample,
               *_clinvar(tmp_path, sample), "--outdir", str(results))  # fmt: skip
+    genes = tmp_path / "genes.tsv"
+    genes.write_text("gene\nBRCA1\n")
 
     def sources(vcf: str) -> list[str]:
-        report = _cli_json(capsys, "report", "--input", vcf, "--results", str(results))
+        report = _cli_json(
+            capsys,
+            "report",
+            "--input",
+            vcf,
+            "--results",
+            str(results),
+            "--gene-list",
+            str(genes),
+        )
         return [name for role, name in _inputs(report) if role == "manifest"]
 
     assert sources(other) == []
@@ -480,7 +489,7 @@ def test_trio_on_a_vcf_only_genome_is_the_genomes_report_vcf(tmp_path, capsys):
     genome = tmp_path / "genomes" / "child"
     genome.mkdir(parents=True)
     config = tmp_path / "config.toml"
-    config.write_text(f"dataset_library = {json.dumps(str(genome.parent))}\n")
+    config.write_text(f"mygenomes_library = {json.dumps(str(genome.parent))}\n")
     _write_vcf(genome / "child.vcf.gz", body, sample="S", header=gq)
     mom, dad = (
         _write_vcf(tmp_path / f"{name}.vcf.gz", body, sample="S", header=gq)
@@ -617,7 +626,6 @@ def test_clinvar_normalizes_contigs_and_leaves_no_temporaries(tmp_path):
     assert _query(str(outdir / "clinvar_pathogenic.vcf.gz"), "%POS\n") == ["10"]
     assert sorted(os.listdir(inputs)) == ["sample.vcf.gz", "sample.vcf.gz.tbi"]
     assert sorted(os.listdir(outdir)) == [
-        ".wgse_normalized_resources",
         "clinvar_annotated.vcf.gz",
         "clinvar_annotated.vcf.gz.tbi",
         "clinvar_conflicts.confidence.tsv",
@@ -786,7 +794,7 @@ def test_phylop_download_keeps_a_bigwig_and_removes_anything_else(tmp_path):
 
     with patch.object(bigwig_resources, "download_file", side_effect=real_bigwig):
         assert bigwig_resources.download_phylop(str(tmp_path), "hg19")
-    assert (tmp_path / "ref" / "phylop_hg19.bw").is_file()
+    assert (tmp_path / "downloads" / "phylop_hg19.bw").is_file()
 
     def error_page(url, dest, *_args):
         Path(dest).write_text("<html>404 Not Found</html>")
@@ -794,7 +802,7 @@ def test_phylop_download_keeps_a_bigwig_and_removes_anything_else(tmp_path):
 
     with patch.object(bigwig_resources, "download_file", side_effect=error_page):
         assert not bigwig_resources.download_phylop(str(tmp_path), "hg38")
-    assert not (tmp_path / "ref" / "phylop_hg38.bw").exists()
+    assert not (tmp_path / "downloads" / "phylop_hg38.bw").exists()
 
 
 def test_phylop_download_without_pybigwig_downloads_nothing(tmp_path):
@@ -841,15 +849,18 @@ def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
     ):
         # chr3 doesn't exist: the build fails but keeps the finished contigs.
         assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
-        parts = reflib / "ref" / ".gnomad_hg38_parts"
+        parts = reflib / "downloads" / ".gnomad_hg38_parts"
         assert sorted(os.listdir(parts)) == ["chr1.tsv.gz", "chr2.tsv.gz"]
 
         _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
         os.remove(src / "chr1.vcf.bgz")  # resumed, so never read again
         assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
 
-    table = reflib / "ref" / "gnomad_hg38.tsv.gz"
-    assert not parts.exists() and (reflib / "ref" / "gnomad_hg38.tsv.gz.tbi").exists()
+    table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
+    assert (
+        not parts.exists()
+        and (reflib / "downloads" / "gnomad_hg38.tsv.gz.tbi").exists()
+    )
     with gzip.open(table, "rt") as f:
         assert f.read().splitlines()[1:] == [
             "#CHROM\tPOS\tREF\tALT\tAF",
@@ -1042,10 +1053,10 @@ def test_spliceai_downloads_hg38_with_its_index_and_hg19_is_optional(tmp_path):
         assert ar.download_spliceai(str(tmp_path)) is True
     hg38 = ar.SPLICEAI_URLS["hg38"]
     assert urls == [hg38, f"{hg38}.tbi"]  # the data before its index
-    dest = tmp_path / "ref" / "spliceai_hg38.vcf.gz"
+    dest = tmp_path / "downloads" / "spliceai_hg38.vcf.gz"
     run.assert_called_once_with(["tabix", "-l", str(dest)], capture_output=True)
     assert query.call_args.args[0] == ["tabix", str(dest), "Y"]
-    assert (tmp_path / "ref" / "spliceai_hg38.vcf.gz.tbi").is_file()
+    assert (tmp_path / "downloads" / "spliceai_hg38.vcf.gz.tbi").is_file()
 
 
 def test_spliceai_download_that_fails_its_check_is_removed(tmp_path):
@@ -1061,7 +1072,7 @@ def test_spliceai_download_that_fails_its_check_is_removed(tmp_path):
         ),
     ):
         assert ar.download_spliceai(str(tmp_path)) is False
-    assert os.listdir(tmp_path / "ref") == []
+    assert os.listdir(tmp_path / "downloads") == []
 
 
 def test_spliceai_without_tabix_downloads_nothing(tmp_path):
@@ -1099,18 +1110,18 @@ def test_spliceai_check_reads_a_real_index(tmp_path):
         patch.object(ar, "download_file", side_effect=copy),
     ):
         ar.download_spliceai(str(tmp_path / "lib"))
-    assert (tmp_path / "lib" / "ref" / "spliceai_hg38.vcf.gz.tbi").is_file()
+    assert (tmp_path / "lib" / "downloads" / "spliceai_hg38.vcf.gz.tbi").is_file()
 
     # Truncated: the index points past the end of the data.
     Path(remote).write_bytes(Path(remote).read_bytes()[:40])
     for name in ("spliceai_hg38.vcf.gz", "spliceai_hg38.vcf.gz.tbi"):
-        (tmp_path / "lib" / "ref" / name).unlink()
+        (tmp_path / "lib" / "downloads" / name).unlink()
     with (
         patch.dict(ar.SPLICEAI_URLS, {"hg38": remote, "hg19": None}),
         patch.object(ar, "download_file", side_effect=copy),
     ):
         ar.download_spliceai(str(tmp_path / "lib"))
-    assert not (tmp_path / "lib" / "ref" / "spliceai_hg38.vcf.gz").exists()
+    assert not (tmp_path / "lib" / "downloads" / "spliceai_hg38.vcf.gz").exists()
 
 
 @pytest.mark.skipif(
@@ -1119,7 +1130,7 @@ def test_spliceai_check_reads_a_real_index(tmp_path):
 def test_spliceai_keeps_files_the_user_put_in_place(tmp_path):
     from wgsextract_cli.core import annotation_resources as ar
 
-    ref = tmp_path / "ref"
+    ref = tmp_path / "downloads"
     ref.mkdir()
     # Illumina's file, saved by hand without an index: indexed, not replaced.
     plain = ref / "spliceai_hg38.vcf"
@@ -1165,7 +1176,7 @@ def test_resource_download_rejects_html_payload(tmp_path):
 
     with patch.object(ar, "download_file", side_effect=fake_download):
         assert ar.download_alphamissense(str(tmp_path)) is False
-    assert os.listdir(tmp_path / "ref") == []
+    assert os.listdir(tmp_path / "downloads") == []
 
 
 @pytest.mark.skipif(not shutil.which("gzip"), reason="gzip missing")

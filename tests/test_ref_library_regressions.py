@@ -10,7 +10,7 @@ import pytest
 
 from wgsextract_cli import api
 from wgsextract_cli.commands.ref import core_commands
-from wgsextract_cli.core import genome_library, reference_resolver
+from wgsextract_cli.core import genome_library
 from wgsextract_cli.core.gene_map import (
     GeneMap,
     _merge_gene_range,
@@ -20,13 +20,14 @@ from wgsextract_cli.core.gene_map import (
 )
 from wgsextract_cli.core.ref_library import downloads
 from wgsextract_cli.core.ref_library import ncount as reference_ncount
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library import resolver as reference_resolver
+from wgsextract_cli.core.ref_library.assets import (
     fasta_signature,
     n_count_paths,
     reference_dict_path,
 )
-from wgsextract_cli.core.reference_processing import extract_archive_keep_existing
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.processing import extract_archive_keep_existing
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -118,7 +119,7 @@ def test_genome_config_rewrite_keeps_unknown_keys(tmp_path):
 
 
 def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg19.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t41196312\t41277500\n"
@@ -135,8 +136,8 @@ def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
 def test_gene_coords_says_why_a_gene_cant_be_found(tmp_path):
     with pytest.raises(WGSExtractError, match="ref gene-map"):
         gene_coords(str(tmp_path), "BRCA1", "hg38")
-    (tmp_path / "ref").mkdir()
-    (tmp_path / "ref" / "genes_hg38.tsv").write_text(
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t43044295\t43125483\n"
     )
     assert gene_coords(str(tmp_path), "brca1", "hg38") == "chr17:43044295-43125483"
@@ -159,7 +160,7 @@ def test_gene_ranges_never_merge_across_contigs():
 
 
 def test_gene_map_ignores_stale_merged_alt_rows(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\n"
@@ -204,7 +205,7 @@ def test_annotation_data_resolves_in_a_library_without_a_genome(tmp_path):
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
-    ref = tmp_path / "lib" / "ref"
+    ref = tmp_path / "lib" / "downloads"
     ref.mkdir(parents=True)
     for name in ("spliceai_hg38.vcf.gz", "clinvar_hg38.vcf.gz"):
         (ref / name).write_bytes(b"")
@@ -550,7 +551,7 @@ def test_microarray_target_prefers_all_snps_tab_over_ysnp_vcf(
 
 
 def test_target_tab_never_uses_another_builds_file(tmp_path):
-    from wgsextract_cli.core.reference_assets import find_reference_target_tab
+    from wgsextract_cli.core.ref_library.assets import find_reference_target_tab
 
     microarray = tmp_path / "microarray"
     microarray.mkdir()
@@ -566,7 +567,7 @@ def test_target_tab_never_uses_another_builds_file(tmp_path):
 
 
 def test_fasta_inside_library_genomes_dir_uses_library_root(tmp_path):
-    from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+    from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
     genomes = tmp_path / "genomes"
     genomes.mkdir()

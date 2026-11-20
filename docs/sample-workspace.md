@@ -13,6 +13,62 @@ other folders are not recorded (`info`'s own `<input>.wgse_info.json` cache
 still applies to them), unless you set an override for one of them, which
 creates the workspace there.
 
+## Dataset library
+
+Set `dataset_library` (formerly `genome_library`) to a directory with one
+subfolder per person/sample. The subfolder name is its `--genome` ID:
+
+```text
+/data/datasets/
+  joe/
+    joe.cram
+    joe.vcf.gz
+    raw-fastqs/joe_R1.fastq.gz, joe_R2.fastq.gz
+  ken mcdonald/
+    bam files/sample.bam
+```
+
+Nested IDs use `/`, for example `test-1000genomes/na12878-lowcov-bam`;
+absolute IDs or `.`/`..` parts are forbidden. A genome folder may link to
+another disk, but its leading folders must remain inside the library.
+
+`--genome ID` recursively finds inputs and writes outputs there unless
+`--outdir` is given. It creates `genome-config.toml`; multiple matching
+BAM/CRAMs, VCFs or FASTQ sets fail instead of guessing. Select files there:
+
+```toml
+alignment = "bam files/sample.bam"
+vcf = "variants/sample.vcf.gz"
+fastq_r1 = "raw-fastqs/sample_R1.fastq.gz"
+fastq_r2 = "raw-fastqs/sample_R2.fastq.gz"
+```
+
+```bash
+wgsextract info --genome joe
+wgsextract microarray --genome "ken mcdonald" --formats 23andme_v5
+wgsextract vcf filter --genome joe --expr 'QUAL>30'
+```
+
+## Example genomes
+
+`example-genome` downloads curated 1000 Genomes/HGSVC2 datasets into the
+library. Check size with `--dry-run`: some are very large.
+Interrupted downloads resume; `--force` starts over and bypasses developer
+cache reads/writes. Switching an interrupted segmented HTTP download to
+Aspera discards sparse partial data before resuming.
+
+```bash
+wgsextract example-genome list
+wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam --dry-run
+wgsextract example-genome download hgsvc2-hg00733-pacbio-hifi-bam
+
+pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam align --platform hifi --ref /path/to/hs38.fa
+pixi run -e pacbio wgsextract --genome test-1000genomes/hgsvc2-hg00733-pacbio-hifi-bam vcf sv --pacbio --ref /path/to/hs38.fa
+```
+
+See [download safety](reference-genomes.md#download-safety) for partial-file
+identity and checksum handling.
+
 ## What it records
 
 The bundled `assets/schemas/wgsextract.sample.1.schema.json` is generated from
@@ -66,7 +122,18 @@ at = "2026-11-04T22:31:02+00:00"
 - `[detected."<file>"]`: what commands detected from each file. The file is
   named relative to the workspace, or absolute if it lies elsewhere. Each fact
   has its value, the method that found it, a confidence (`high`, `medium`,
-  `low`), the detector's version, the command and the time.
+  `low`), the detector's version, the command and the time. Platform facts
+  inferred from FASTQ samples also carry a `statistics` table: sampled read
+  and byte counts, median/N50 length, mean/max Q and p90/p10 length spread. These
+  statistics contain no read names, sequences or header tag values.
+  An inconclusive FASTQ sample is recorded as detected `Unknown` (low
+  confidence), not an override choice. Its evidence is retained when you
+  choose `--platform`; an ambiguous long-read sample still requires that
+  explicit choice on subsequent runs.
+  FASTQ platform facts also include an `evidence_fingerprint` of the bounded
+  sampled prefix, checked in addition to the generic file fingerprint. Edits
+  anywhere in that prefix invalidate the detection, including same-size edits
+  outside the generic fingerprint's three windows.
 - `fingerprint`: the file's [content fingerprint](result-manifest.md) when its
   facts were detected. If the file is replaced or changed (for example by
   `realign` into the same name), its facts no longer match and are detected
@@ -78,7 +145,7 @@ at = "2026-11-04T22:31:02+00:00"
 | Fact | Detected by | Used by |
 | :--- | :--- | :--- |
 | `sex` | `info --detailed`, or sampled non-PAR/autosomal depth on first use | `lineage y-haplogroup`, `extract ydna`, chrX/chrY ploidy in `vcf snp`/`indel`, `microarray` and `vep`, `typing str`, `vcf trio` (proband) |
-| `platform` | read-group `PL` tag, else the first read name | `vcf snp`, `vcf deepvariant`, `vcf sv`, `methylation`, `align` |
+| `platform` | read-group `PL` tag, else the first read name or a bounded FASTQ header/length/quality sample (see [platform detection](ont.md)) | `vcf snp`, `vcf deepvariant`, `vcf sv`, `methylation`, `align` |
 | `build` | header contig MD5s or lengths | reference resolution for every command |
 | `target_depths` | `info --detailed`, else a read count on first use | the low-depth warning of `vcf snp`/`indel`, `microarray` and `lineage` |
 | `read_length`, `mean_coverage` | `info` | `target_depths`; shown by `sample show` |

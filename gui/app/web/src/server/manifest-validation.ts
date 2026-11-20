@@ -11,6 +11,7 @@ export class BundleValidationError extends Error {
 const CONFIG_FILE_PREFIXES = [
     "{{bundleRoot}}/",
     "{{bundleWorkspace}}/",
+    "{{usersWorkspace}}/",
     "{{home}}/",
     "{{configHome}}/",
     "{{userConfig}}/",

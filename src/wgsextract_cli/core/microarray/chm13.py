@@ -17,7 +17,7 @@ from wgsextract_cli.core.microarray.site_map import (
     SiteMap,
     load_site_map,
 )
-from wgsextract_cli.core.mito_reference import CHM13_CHRM_MD5
+from wgsextract_cli.core.ref_library.mitochondrial import CHM13_CHRM_MD5
 from wgsextract_cli.core.utils import WGSExtractError, popen
 
 
@@ -69,7 +69,7 @@ def load_chm13_catalogue(
     if manifest_path is None:
         manifest_path = (
             Path(__file__).resolve().parents[2]
-            / "assets/microarray/chm13/v1/manifest.json"
+            / "assets/microarray/chm13/v2/manifest.json"
         )
     try:
         with manifest_path.open("rb") as source:
@@ -87,7 +87,9 @@ def load_chm13_catalogue(
             or sum(_coordinate(row["rows"]) for row in manifest["source_contigs"])
             > 3_000_000
         ):
-            raise ValueError("CHM13 v1 asset exceeds its measured size/row budget")
+            raise ValueError(
+                "CHM13 site-map asset exceeds its measured size/row budget"
+            )
         profile = manifest["provenance"]["native_reference"]
         bridge = manifest["provenance"]["mitochondria"]
         filename = bridge["alignment_file"]

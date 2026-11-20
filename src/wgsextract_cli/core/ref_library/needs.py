@@ -38,6 +38,7 @@ GENOME_COMMANDS = frozenset(
         "qc contamination",
         "typing cyp2d6",
         "typing str",
+        "vcf call",
         "vcf clair3",
         "vcf cnv",
         "vcf deepvariant",
@@ -205,7 +206,7 @@ def _usable_fasta(fasta: str | None, input_path: str, header: str) -> bool:
     if not fasta or not Path(fasta).is_file():
         return False
     if input_path.lower().endswith(".cram"):
-        from wgsextract_cli.core.alignment_metadata import cram_encoded_with
+        from wgsextract_cli.core.alignment.metadata import cram_encoded_with
 
         return cram_encoded_with(fasta, input_path)
     return _fits_bam(fasta, header)
@@ -234,9 +235,9 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
         return None
     library = _explicit_library(ref)
 
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.ref_library.catalog import catalog_genome_for
-    from wgsextract_cli.core.reference_models import identify_reference
+    from wgsextract_cli.core.ref_library.models import identify_reference
     from wgsextract_cli.core.reference_resolver import ReferenceLibrary
     from wgsextract_cli.core.variant_files import calculate_bam_md5
 

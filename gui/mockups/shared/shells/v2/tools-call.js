@@ -24,51 +24,47 @@
   var READS = ["reads"];
 
   T.define({
-    slug: "call-variants", label: "Call SNPs and indels", ops: ["vcf/snp", "vcf/indel"], group: "Call variants", keywords: "bcftools vcf",
+    slug: "call-variants", label: "Variant calling", ops: ["vcf/call"], group: "Call variants", keywords: "bcftools vcf snp indel delly sv cnv",
     lesson: { href: "learn-variants.html", label: "Variants & confidence" },
     example: { href: "viewer.html?spot=smalldel", label: "a 4-letter deletion Helen passed to Reginald" },
-    desc: "bcftools scans the reads against the reference for single-letter changes (SNPs) and small insertions and deletions (indels), writing them to a VCF. It is the quickest caller here and suits most uses, though DeepVariant is more accurate.",
+    desc: "Call selected variant types in one run: bcftools for SNPs and indels, a caller matched to the reads for structural variants, and Delly for copy-number changes. Keep separate VCFs or merge them; a gVCF also records reference evidence.",
     learn: "Start here when you have a BAM or CRAM and want a VCF for annotation, health-related lookups or a small file to share. It handles a 30× genome well, though if your lab already sent a VCF you may not need to call variants again.\n\n" +
       "DeepVariant makes fewer mistakes, especially with indels, but takes far longer; GATK matches what many labs run; FreeBayes is a second opinion. Ask for a gVCF too if you’ll combine family members’ genomes later.",
     accepts: READS, file: "reginald", button: "Call variants",
     checklist: { key: "kinds", title: "What to call", items: [
       { value: "snp", label: "SNPs", desc: "Single-letter changes, about 4 million in a genome", on: true },
       { value: "indel", label: "Indels", desc: "Small insertions and deletions, about 0.8 million", on: true },
+      { value: "sv", label: "Structural variants", desc: "Delly for short reads; pbsv or Sniffles for long reads" },
+      { value: "cnv", label: "Copy-number changes", desc: "Delly compares read depth" },
     ] },
-    fields: [f.region(), EVIDENCE("takes a second pass over the reads")],
+    fields: [f.region(), EVIDENCE("writes SNPs and indels together as bcftools.g.vcf.gz"), f.param("merge", "One merged VCF", "Write variants.vcf.gz, or variants.g.vcf.gz with reference evidence")],
     requests: function (c, base) {
-      return c.v.kinds.map(function (k) {
-        return base("vcf/" + k);
-      });
+      return [base("vcf/call", { types: c.v.kinds.join(",") })];
     },
     moreTitle: "Resources",
     more: [
-      f.param("parallel", "Call chromosomes in parallel", "Uses every thread; the calls are the same", { def: true }),
-      f.param("mimalloc", "Faster memory allocator", "wgse-mimalloc: about a quarter faster on Apple Silicon, the same calls", {
-        def: "auto", labels: { auto: "Auto", off: "Off" },
-        when: function (c) {
-          return c.M.appleSilicon;
-        },
-      }),
-      f.param("baq", "Base alignment quality (BAQ)", "Recomputes base quality near indels to cut false SNPs there; slower, and may miss a few calls at low depth. Empty: the setting, else off"),
+      f.param("sv_caller", "Structural-variant caller", "Auto: match the reads", { unset: "Auto", labels: { delly: "Delly", pbsv: "pbsv", sniffles: "Sniffles" } }),
+      f.param("ploidy", "SNP/indel ploidy", "Empty: inferred sex and build"),
+      f.param("cnv_ploidy", "Copy-number baseline", "Empty: 2"),
       f.param("qc_min_depth", "Warn below depth", "Warns when the mean depth is lower; 0 turns it off. Empty: 15 (3 on Y and mtDNA)", { width: 90 }),
       f.threads(),
     ],
     run: function (c) {
       var kinds = c.v.kinds;
-      var threads = c.v.parallel ? c.v.threads || c.M.cores : 1;
-      var fast = c.v.mimalloc === "auto" && c.M.tools["wgse-mimalloc"];
+      var threads = c.v.threads || c.M.cores;
+      var fast = c.M.tools["wgse-mimalloc"];
       var perGb = { snp: (fast ? 102 : 132) * 9 / 1.5 / 3600, indel: (fast ? 155 : 193) * 9 / 1.5 / 3600 };
       var hours = kinds.reduce(function (sum, k) {
-        return sum + perGb[k] * c.file.gb * regionShare(c) / threads;
+        return sum + (perGb[k] || 0) * c.file.gb * regionShare(c) / threads;
       }, 0);
-      if (c.v.baq) hours *= 1.3;
       if (c.v.reference_evidence === "gvcf" && kinds.length) hours += (perGb.snp + perGb.indel) * c.file.gb * regionShare(c) / threads;
       return {
-        count: kinds.length + (kinds.length === 1 ? " VCF" : " VCFs"),
-        hours: hours, memGB: 0.35 * threads + 1, disk: [[c.m.diskName(c.file), 1.2 * regionShare(c)]],
+        count: c.v.merge ? "1 merged VCF" : kinds.length + (kinds.length === 1 ? " called type" : " called types"),
+        hours: kinds.indexOf("sv") >= 0 || kinds.indexOf("cnv") >= 0 ? null : hours, timeText: "minutes to hours",
+        memGB: 0.35 * threads + 1, disk: [[c.m.diskName(c.file), 1.2 * regionShare(c)]],
         checks: [["bcftools", "1.21" + (fast ? ", with wgse-mimalloc" : ", system allocator"), "ok", "Found"]],
-        blocked: kinds.length ? null : "Choose SNPs, indels or both.",
+        blocked: kinds.length ? null : "Choose at least one variant type.",
+        button: "Call with " + [kinds.some(function (k) { return k === "snp" || k === "indel"; }) ? "bcftools" : "", kinds.indexOf("sv") >= 0 ? c.v.sv_caller || (c.file.platform === "ont" ? "Sniffles" : "Delly") : "", kinds.indexOf("cnv") >= 0 ? "Delly CNV" : ""].filter(Boolean).join(", "),
         makes: "Saved in " + c.name + "’s folder.", jobName: "SNPs and indels for " + c.name,
       };
     },
@@ -123,6 +119,8 @@
       EVIDENCE("adds about 5% to run time, or a quarter with Parabricks"),
     ],
     more: [
+      f.show("Sex and PAR policy", "The native caller requires wgse-deepvariant 0.4.0 or later; inferred from sex and the verified reference build",
+        "Haploid X/Y outside pseudoautosomal regions; diploid inside PAR. Reference blocks split at PAR boundaries."),
       f.param("batch_size", "Inference batch", "Smaller uses less memory; the same calls. Empty: 512 on Apple Silicon, 1024 elsewhere", { width: 90 }),
       f.threads(),
       f.param("restart", "Start over", "Ignore stages an earlier run finished"),
@@ -135,6 +133,7 @@
       var hours = th === null ? null : th * regionShare(c) / threads;
       if (hours && c.v.reference_evidence === "gvcf") hours *= 1.05;
       var mem = engine === "parabricks" ? 25 : 1 + Number(c.v.batch_size || (c.M.metal ? 512 : 1024)) * 12 / 1024 + 1 + threads * (c.M.arch === "arm64" ? 2 : 1) * 0.5;
+      if (c.v.reference_evidence === "gvcf" && engine === "native") mem = Math.max(mem, 20);
       var out = {
         hours: hours, timeText: engine === "parabricks" ? "about a minute per chromosome the size of chr20" : "hours on a 30x genome",
         memGB: mem, disk: [[c.m.diskName(c.file), 17.3 * regionShare(c) + 0.4]], notes: [],
@@ -204,7 +203,10 @@
     accepts: READS, file: "reginald", button: "Start Clair3", requires: ["clair3"],
     fields: [
       f.param("model", "Model", "Empty: chosen from the reads’ basecaller, such as r1041_e82_400bps_sup_v500", { width: 300 }),
-      f.region(), EVIDENCE("about 4 times the CPU time"),
+      f.param("gpu", "Use GPU inference", "Explicit opt-in: Apple Silicon uses streaming MPS with the WGSE-built caller; Linux NVIDIA uses the Clair3 GPU image", {
+        disabled: function (c) { return c.M.appleSilicon || c.M.nvidia && c.M.os === "linux" ? null : "Needs Apple Silicon MPS or Linux with NVIDIA and Docker"; },
+      }),
+      f.region(), EVIDENCE("about 2.4× CPU time, or 4.3× in the measured GPU run"),
     ],
     run: function (c) {
       var hours = 33 * regionShare(c) / (c.v.threads || c.M.cores);

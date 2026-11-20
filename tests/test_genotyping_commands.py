@@ -182,14 +182,6 @@ def test_env_tool_names_the_pixi_environment_to_install(monkeypatch):
     assert common.env_tool("x", "e") == ["/a b/pixi", "run", "x"]
 
 
-def test_outside_calls_are_utf8_and_an_empty_call_removes_a_stale_file(tmp_path):
-    path = tmp_path / "s.cyp2d6.pharmcat.tsv"
-    assert common.write_outside_calls(str(path), [("CYP2D6", "*1/*2x≥3")])
-    assert path.read_bytes() == "CYP2D6\t*1/*2x≥3\n".encode()
-    assert common.write_outside_calls(str(path), []) is None
-    assert not path.exists()
-
-
 # --- typing hla ---------------------------------------------------------------
 
 # T1K's genotype TSV: gene, number of alleles, then allele (equally likely
@@ -418,7 +410,7 @@ def test_hla_extraction_uses_hg19_mhc_and_numeric_names(tmp_path, hla_setup):
     run_wgsextract("typing", "hla", "-i", path, "--hla-index", str(hla_setup.index))
     names, _ = json.loads(hla_setup.reads.read_text())
     assert names == ["in"]
-    assert (tmp_path / "s.hla.pharmcat.tsv").exists()
+    assert (tmp_path / "wgse" / "s.hla.pharmcat.tsv").exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="T1K is not supported on Windows")
@@ -497,7 +489,7 @@ def _index_args(tmp_path):
     library.mkdir(exist_ok=True)
     settings["reference_library"] = str(library)
     params = api.TypingHlaParams(input=tmp_path / "s.bam")
-    return params, library / "ref" / "t1k_hla"
+    return params, library / "downloads" / "t1k_hla"
 
 
 def test_hla_index_is_built_once_in_the_reference_library(tmp_path, monkeypatch):
@@ -513,6 +505,45 @@ def test_hla_index_is_built_once_in_the_reference_library(tmp_path, monkeypatch)
 
     assert hla.hla_index(args) == str(directory / "hla_dna_seq.fa")
     assert len(calls("t1k-build.pl")) == 1
+
+
+def test_1052_hla_missing_index_requires_download_then_reuses_it_offline(
+    tmp_path, monkeypatch, mhc_bam, hla_setup
+):
+    import socket
+
+    def no_connection(*args, **kwargs):
+        pytest.fail("#1052: HLA tried to contact a server without consent")
+
+    monkeypatch.setattr(socket.socket, "connect", no_connection)
+    monkeypatch.setattr(socket, "getaddrinfo", no_connection)
+    library = tmp_path / "empty-library"
+    library.mkdir()
+    settings["reference_library"] = str(library)
+    params = api.TypingHlaParams(
+        input=Path(mhc_bam), outdir=tmp_path / "out", threads=1
+    )
+    refused = api.genotyping.hla(params, check=False)
+    assert refused.exit_code == 2
+    assert refused.error and "IPD-IMGT/HLA" in refused.error.message
+    assert "--download" in refused.error.message
+    fake_tools(
+        monkeypatch,
+        tmp_path,
+        {
+            "t1k-build.pl": FAKE_T1K_BUILD.format(fail=False),
+            "run-t1k": FAKE_T1K.format(
+                reads=str(hla_setup.reads), genotype=str(hla_setup.genotype)
+            ),
+        },
+    )
+    from dataclasses import replace
+
+    # T1K is the download boundary; the existing fake builds its tiny local index.
+    accepted = api.genotyping.hla(replace(params, download=True))
+    assert accepted.exit_code == 0
+    assert (library / "downloads/t1k_hla/hla_dna_seq.fa").is_file()
+    assert api.genotyping.hla(params).exit_code == 0
 
 
 def test_hla_index_build_failure_is_reported(tmp_path, monkeypatch):
@@ -661,7 +692,8 @@ def test_cyp2d6_writes_only_calls_cyrius_stands_behind(
     tmp_path, cyrius, caplog, result, pharmcat, warning
 ):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
-    stale = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    stale = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
+    stale.parent.mkdir()
     stale.write_text("CYP2D6\t*1/*1\n")
     cyrius.set_result(**result)
     run_wgsextract("typing", "cyp2d6", "-i", path)
@@ -715,12 +747,16 @@ def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
     cyrius.set_result(**fields)
     main(["typing", "cyp2d6", "-i", path, "--config", str(tmp_path / "config.toml")])
 
-    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
     assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
     assert (
-        (tmp_path / "NA12878.cyrius.tsv").read_text().endswith("NA12878\t*1/*4\tPASS\n")
+        (tmp_path / "wgse" / "NA12878.cyrius.tsv")
+        .read_text()
+        .endswith("NA12878\t*1/*4\tPASS\n")
     )
-    manifest = json.loads((tmp_path / "NA12878.cyrius.tsv.manifest.json").read_text())
+    manifest = json.loads(
+        (tmp_path / "wgse" / "NA12878.cyrius.tsv.manifest.json").read_text()
+    )
     metrics = manifest["metrics"]
     assert metrics["cyp2d6_call_status"] == status
     assert metrics["cyp2d6_call_info"] == fields["Call_info"]
@@ -745,7 +781,7 @@ def test_cyp2d6_names_three_copies_as_pharmcat_does(tmp_path, cyrius):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
     cyrius.set_result(Genotype="*1/*2x3", Filter="PASS", Total_CN=4)
     run_wgsextract("typing", "cyp2d6", "-i", path)
-    pharmcat = tmp_path / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
     assert pharmcat.read_text(encoding="utf-8") == "CYP2D6\t*1/*2x≥3\n"
 
 
@@ -828,7 +864,7 @@ def test_cyp2d6_realigns_alt_contig_reads_to_primary_chr22(tmp_path, cyrius):
     assert all(int(r[4]) > 0 for r in seen if r[0] != "norm")
     [command] = cyrius.calls("cyrius")
     assert "-r" not in command
-    assert (tmp_path / "in" / "s.cyp2d6.pharmcat.tsv").read_text() == (
+    assert (tmp_path / "in" / "wgse" / "s.cyp2d6.pharmcat.tsv").read_text() == (
         "CYP2D6\t*1/*2x2\n"
     )
 

@@ -4,7 +4,11 @@
 param(
     [string]$PixiInstallUrl = $(if ($env:WGSEXTRACT_PIXI_INSTALL_URL) { $env:WGSEXTRACT_PIXI_INSTALL_URL } else { "" }),
     [string]$PixiInstallSha256 = $(if ($env:WGSEXTRACT_PIXI_INSTALL_SHA256) { $env:WGSEXTRACT_PIXI_INSTALL_SHA256 } else { "" }),
-    [switch]$SkipPixiInstall
+    [switch]$SkipPixiInstall,
+    # For a launcher that only reads the exit code (install_windows.bat): on
+    # failure print just the message and exit 1. Without it errors are thrown,
+    # so a calling script (dev_setup.ps1) stops too.
+    [switch]$PlainErrors
 )
 
 $ErrorActionPreference = "Stop"
@@ -194,18 +198,17 @@ function Add-PixiToUserPath {
 }
 
 function Ensure-Pixi {
-    if ($SkipPixiInstall) {
-        Write-Step "Skipping Pixi bootstrap."
-        return
-    }
-
     # A Pixi already in ~\.pixi still counts when PIXI_HOME names another folder.
     Add-PathForCurrentProcess (Join-Path $env:USERPROFILE ".pixi\bin")
     Add-PathForCurrentProcess (Get-PixiBinDirectory)
     $pixi = Get-Command pixi -ErrorAction SilentlyContinue
     if ($pixi) {
+        Assert-PixiVersion -Executable $pixi.Source
         Write-Step "Pixi found: $($pixi.Source)"
         return
+    }
+    if ($SkipPixiInstall) {
+        throw "Pixi was not found. Install Pixi or rerun without --skip-pixi-bootstrap."
     }
 
     Write-Step "Pixi was not found; installing Pixi..."
@@ -244,11 +247,34 @@ function Ensure-Pixi {
         if (-not $pixi) {
             throw "Pixi installation completed, but pixi was not found on PATH."
         }
+        Assert-PixiVersion -Executable $pixi.Source
         Write-Step "Pixi installed: $($pixi.Source)"
     }
     finally {
         Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Assert-PixiVersion {
+    param([string]$Executable)
+    $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\pixi.toml") -Raw
+    $requirement = [regex]::Match($manifest, '(?m)^requires-pixi = ">=([0-9]+\.[0-9]+\.[0-9]+)"\r?$')
+    if (-not $requirement.Success) { throw "Cannot read the minimum Pixi version from pixi.toml." }
+    $minimum = $requirement.Groups[1].Value
+    $installed = & $Executable --version
+    if ($LASTEXITCODE -ne 0 -or "$installed" -notmatch '^pixi ([0-9]+\.[0-9]+\.[0-9]+)$' -or
+        [version]$Matches[1] -lt [version]$minimum) {
+        throw "Pixi >=$minimum is required; found $installed at $Executable. Update that Pixi installation (for example with 'pixi self-update'), then rerun setup. Your Pixi installation was not changed."
+    }
+}
+
+# -PlainErrors: show only the error's message, not PowerShell's error record.
+trap {
+    if ($PlainErrors) {
+        [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
+        exit 1
+    }
+    break
 }
 
 Ensure-Pixi

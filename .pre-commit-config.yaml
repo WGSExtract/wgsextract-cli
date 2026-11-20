@@ -11,14 +11,14 @@ repos:
         exclude: ^src/wgsextract_cli/ydna/yleaf_native/UCSC-liftOver-README\.txt$|^packaging/(windows/recipes|arm64)/.*\.patch$
       - id: check-yaml
       - id: check-added-large-files
-        # Shipped coordinate data; the CHM13 v1 loader enforces its 7 MiB cap.
+        # Shipped coordinate data; the CHM13 site-map loader enforces its 7 MiB cap.
         # The panel gene spans (about 1.3 MB per build) let `panel bed` work offline.
         # The mockup genome viewer: vendored igv.js and its demo data, which
         # gui/mockups/build_igv_demo.py keeps to about 1.4 MB in all.
         exclude: |
           (?x)^(src/wgsextract_cli/assets/(
             microarray/raw_file_templates/body/|
-            microarray/chm13/v1/chm13-sites-v1-[0-9a-f]{16}\.bin\.gz$|
+            microarray/chm13/v2/chm13-sites-v1-[0-9a-f]{16}\.bin\.gz$|
             panel/genes_(hg38|t2t|hg19)\.tsv\.gz$
           )|gui/mockups/shared/(vendor/igv/igv\.min\.js|data/igv/[^/]+)$)
   - repo: https://github.com/gitleaks/gitleaks
@@ -52,6 +52,12 @@ repos:
         language: system
         pass_filenames: false
         files: ^\.github/workflows/.*\.ya?ml$
+      - id: python-size
+        name: Python module size ratchet
+        entry: python scripts/check_python_size.py
+        language: python
+        pass_filenames: false
+        files: ^((src|tests|scripts)/.*\.py|scripts/python_size_baseline\.json)$
       - id: validate-github-actions
         name: validate GitHub Actions versions
         entry: python scripts/validate_github_actions.py

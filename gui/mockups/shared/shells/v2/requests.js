@@ -93,6 +93,7 @@
     var fields = (ctx.def.fields || []).concat(ctx.def.more || []);
     fields.forEach(function (field) {
       if (field.ui || !Object.prototype.hasOwnProperty.call(s.fields, field.key)) return;
+      if (field.key === "outdir" && ctx.def.hasAdvancedOutput && !ctx.v._advanced_output) return;
       var f = s.fields[field.key];
       var value = coerce(f, ctx.v[field.key]);
       if (value === undefined) return;
@@ -106,7 +107,6 @@
     if (!ctx.def.noInput) {
       if (file.kind === "vcf" && s.fields.vcf_input) out.vcf_input = M.realPath(M.path(file));
       else if (s.fields.input && file.kind !== "fastq") out.input = M.realPath(M.path(file));
-      if (s.fields.outdir && !out.outdir) out.outdir = M.realPath(M.outdir(file));
     }
     return Object.assign(out, extra || {});
   }

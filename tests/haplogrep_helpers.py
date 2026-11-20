@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from wgsextract_cli.core import haplogrep_trees
-from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.config import get_config_path, reload_settings, settings
 
 # Each haplogroup's defining positions; A1 and B1 descend from A and B.
 TREE = {"A": (100, 200), "A1": (300,), "B": (400, 500), "B1": (600,)}
@@ -74,6 +74,10 @@ def mini_tree(
     """Every pinned tree serves this tree, version 1.0; downloads are counted.
     Trees install into a fresh reference library."""
     library = tmp_path_factory.mktemp("library")
+    monkeypatch.setitem(settings, "reference_library", str(library))
+    config = get_config_path()
+    config.write_text("allow_reference_downloads = true\n" + config.read_text())
+    reload_settings()
     monkeypatch.setitem(settings, "reference_library", str(library))
     rng = random.Random(7)
     tree = MiniTree("".join(rng.choice("ACGT") for _ in range(MT_LENGTH)), [])

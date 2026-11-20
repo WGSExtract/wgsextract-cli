@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "inputs",
+      "collapsible": false,
       "title": "sections.info-bam.inputs.title",
       "iconName": "alignment-import",
       "textIcon": "📥",
@@ -14,7 +15,7 @@
           "id": "bam_path",
           "label": "controls.info-bam.inputs.bam_path.label",
           "kind": "path",
-          "defaultDirectory": "{{dataset_library}}",
+          "defaultDirectory": "{{mygenomes_library}}",
           "tooltip": "controls.info-bam.inputs.bam_path.tooltip"
         },
         {

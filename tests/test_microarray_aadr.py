@@ -12,8 +12,9 @@ from scripts.microarray_aadr_markers import build_markers
 from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.microarray_helpers import microarray_params
 from wgsextract_cli.commands import microarray
-from wgsextract_cli.core import aadr_resources, microarray_targets
+from wgsextract_cli.core import aadr_resources
 from wgsextract_cli.core.microarray import aadr
+from wgsextract_cli.core.microarray import targets as microarray_targets
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -622,6 +623,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     other panels must not be reused."""
     library = tmp_path / "library"
     fasta = _fasta(library / "genomes" / "hg19.fa")
+    (library / "hg18ToHg19.over.chain.gz").write_bytes(
+        gzip.compress(b"chain 1 chr1 600 + 0 600 chr1 600 + 0 600 1\n600\n\n")
+    )
     templates = library / "microarray" / "raw_file_templates"
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)

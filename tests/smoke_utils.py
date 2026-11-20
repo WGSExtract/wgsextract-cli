@@ -47,7 +47,7 @@ def vep_cache_dir(ref: str | Path | None) -> Path:
 
 def yleaf_tables_cached(build: str, tree: str = "yfull") -> bool:
     """Keep optional real-data smoke tests from downloading large tables."""
-    from wgsextract_cli.core.reference_assets import resolve_reference_library
+    from wgsextract_cli.core.ref_library.assets import resolve_reference_library
     from wgsextract_cli.ydna.yleaf_native.data import manifest
     from wgsextract_cli.ydna.yleaf_native.trees import module_root, tree_metadata
 
@@ -317,7 +317,7 @@ def copy_resource_files(src_dir: str, dst_dir: str, build: str) -> None:
     if not os.path.exists(src_dir):
         return
 
-    os.makedirs(os.path.join(dst_dir, "ref"), exist_ok=True)
+    os.makedirs(os.path.join(dst_dir, "downloads"), exist_ok=True)
 
     # Common resource patterns
     patterns = [
@@ -331,7 +331,9 @@ def copy_resource_files(src_dir: str, dst_dir: str, build: str) -> None:
 
     for pattern in patterns:
         for file in glob.glob(os.path.join(src_dir, pattern + "*")):
-            shutil.copy(file, os.path.join(dst_dir, "ref", os.path.basename(file)))
+            shutil.copy(
+                file, os.path.join(dst_dir, "downloads", os.path.basename(file))
+            )
 
 
 def prepare_vcf_for_test(vcf_src: str, outdir: str, ref: str) -> None:

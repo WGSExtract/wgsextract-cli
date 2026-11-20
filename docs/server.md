@@ -82,6 +82,10 @@ you start yourself:
 - Parameters that name programs to run, such as `haplogrep_path`, or that
   hide paths inside other text, such as `indel_manifest`, can't be set by a
   request. They come from config.toml as usual.
+- Supplied paths are checked before output inference can inspect an input
+  archive. The effective output folder is then checked too, including its
+  real path. Other host-only config defaults stay trusted execution settings;
+  they do not become client-supplied paths.
 - `ref download`, which fetches any URL, and `ref bootstrap`, which saves
   config.toml, aren't offered.
 - Request bodies are limited to 1 MB and must be `application/json`. Unknown
@@ -157,6 +161,10 @@ an allowed folder.
 Manifest and report readers check the document identifier and the object
 containers they use, not the complete writer schema. Returned field values remain
 opaque rather than being coerced or cast to canonical writer models.
+Canonical result/report writer records are generated separately for clients in
+`gui/app/shared/generated/result-records.ts` and `report-records.ts`; those
+complete contracts must not be substituted for compact or unvalidated loaded
+documents in server responses.
 Manifest lookups preserve unknown fields and their values, except that
 `provenance` is omitted unless `full=1`. Report responses project a header with
 the report file's `path` plus `generated`, `sample` and `disclaimer`; other

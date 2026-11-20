@@ -5,8 +5,8 @@ DPB1, ...) by aligning reads to every IPD-IMGT/HLA allele. Reads aligned to the
 MHC, the HLA-* decoys and chromosome 6 ALT contigs (with their unmapped mates)
 are extracted first, which keeps a 30x genome to under two minutes.
 
-The allele index is built on first use from the current IPD-IMGT/HLA release
-(a 45 MB download) into <reference library>/ref/t1k_hla.
+With --download permission, a missing allele index is built from the current
+IPD-IMGT/HLA release (45 MB) into <reference library>/downloads/t1k_hla.
 """
 
 from __future__ import annotations
@@ -25,13 +25,15 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.genotyping import TypingHlaParams
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.read_scope import may_follow
-from wgsextract_cli.core.reference_resolver import library_roots
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS, download_path
+from wgsextract_cli.core.ref_library.resolver import library_roots
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .common import Alignment, env_tool, open_alignment, write_bed, write_outside_calls
 
-INDEX_DIR = str(Path("ref", "t1k_hla"))
+INDEX_NAME = "t1k_hla"
 INDEX_FASTA = "hla_dna_seq.fa"
 RELEASE_FILE = "release.txt"
 # The MHC (GRCh38 chr6:28,510,120-33,480,577, GRCh37 chr6:28,477,797-33,448,354).
@@ -135,10 +137,17 @@ def _build_index(directory: str) -> None:
 
 def index_folder(ref: PathInput | None) -> str | None:
     """The reference library folder holding (or to hold) the T1K index."""
-    root = library_roots(ref).resource_root(str(Path(INDEX_DIR, INDEX_FASTA)))
+    root = library_roots(ref).resource_root(
+        *(str(Path(d, INDEX_NAME, INDEX_FASTA)) for d in DOWNLOAD_DIRS)
+    )
     if not root or not Path(root).is_dir():
         return None
-    return str(Path(root, INDEX_DIR))
+    # A complete index wins over a folder left by an interrupted build.
+    built = (Path(root, d, INDEX_NAME) for d in DOWNLOAD_DIRS)
+    return str(
+        next((d for d in built if (d / INDEX_FASTA).is_file()), None)
+        or download_path(root, INDEX_NAME)
+    )
 
 
 def hla_index(params: TypingHlaParams) -> str:
@@ -155,6 +164,9 @@ def hla_index(params: TypingHlaParams) -> str:
             "reference_library in config.toml, or pass --hla-index."
         )
     if not Path(directory, INDEX_FASTA).is_file():
+        from wgsextract_cli.core.network_policy import require_download
+
+        require_download("IPD-IMGT/HLA T1K allele index")
         _build_index(directory)
     return str(Path(directory, INDEX_FASTA))
 
@@ -242,7 +254,9 @@ def run_hla(params: TypingHlaParams, *, debug: bool = False) -> None:
         "_allele.tsv": f"{aln.stem}.t1k_allele.tsv",
         "_allele.vcf": f"{aln.stem}.t1k_allele.vcf",
     }
-    with tempfile.TemporaryDirectory(dir=aln.outdir, prefix=".wgse_hla_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(aln.outdir), prefix=".wgse_hla_"
+    ) as work:
         r1, r2 = extract_reads(aln, work)
         logging.info("Genotyping HLA genes with T1K...")
         try:
@@ -257,7 +271,7 @@ def run_hla(params: TypingHlaParams, *, debug: bool = False) -> None:
         for suffix, name in outputs.items():
             source = str(Path(work, "t1k" + suffix))
             if Path(source).exists():
-                shutil.move(source, str(Path(aln.outdir, name)))
+                move_file(source, str(Path(aln.outdir, name)))
 
     genotype_tsv = str(Path(aln.outdir, outputs["_genotype.tsv"]))
     if not Path(genotype_tsv).is_file():

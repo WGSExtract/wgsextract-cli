@@ -18,10 +18,11 @@ from wgsextract_cli.core import (
     somalier_resources,
 )
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
-from wgsextract_cli.core.config import dataset_library, settings
+from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.reference_assets import (
     build_hint,
     default_reference_library,
@@ -75,15 +76,14 @@ def build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         return _build_ref_status(params)
 
 
-def dataset_library_for(ref: Path | None, datasets: Path | None) -> Path:
-    """``datasets``, else config dataset_library, else ``datasets`` beside the
-    reference library ``ref`` names (``_resolve_reference_library``)."""
-    return Path(_resolve_dataset_library(datasets, _resolve_reference_library(ref)))
+def mygenomes_library_for(library: Path | None) -> Path:
+    """``library``, else config mygenomes_library, else its default."""
+    return Path(_resolve_mygenomes_library(library))
 
 
 def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     reflib = _resolve_reference_library(params.ref)
-    datasets = _resolve_dataset_library(params.dataset_library, reflib)
+    datasets = _resolve_mygenomes_library(params.mygenomes_library)
     input_path = fspath(params.input) if params.input else None
     annotation_vcf = fspath(params.annotation_vcf) if params.annotation_vcf else ""
     lib = ReferenceLibrary(reflib, input_path=input_path)
@@ -112,7 +112,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "path": reference_genomes_dir(reflib),
             "exists": Path(reference_genomes_dir(reflib)).is_dir(),
         },
-        "datasetLibrary": {
+        "mygenomesLibrary": {
             "path": datasets,
             "exists": Path(datasets).is_dir(),
         },
@@ -237,7 +237,13 @@ def print_ref_status(status: dict[str, Any]) -> None:
     human_output(
         "ACMG data (vcf acmg): "
         + (
-            f"installed for {_chromosome_span(acmg['chromosomes'])} ({acmg['folder']})"
+            f"installed for {_chromosome_span(acmg['chromosomes'])}"
+            + (
+                ", gnomAD and SpliceAI read per run"
+                if acmg["siteData"] == "per-run"
+                else ""
+            )
+            + f" ({acmg['folder']})"
             if acmg["installed"]
             else f"unusable: {acmg['problem']}"
             if acmg.get("problem")
@@ -286,11 +292,15 @@ def _annotation_status(reflib: str) -> dict[str, dict[str, dict[str, Any]]]:
     for key, _label, extensions, builds in ANNOTATION_DATA:
         status[key] = {}
         for build in builds:
+            # downloads/ and ref/ as one place, ranked by extension, then the root.
             path = first_existing_file(
                 [
-                    str(Path(directory, f"{key}_{build}{extension}"))
-                    for directory in (str(Path(reflib, "ref")), reflib)
-                    for extension in extensions
+                    *(
+                        str(Path(directory, f"{key}_{build}{extension}"))
+                        for extension in extensions
+                        for directory in download_dirs(reflib)
+                    ),
+                    *(str(Path(reflib, f"{key}_{build}{e}")) for e in extensions),
                 ]
             )
             # bigWig files carry their own index; the rest need a tabix sidecar.
@@ -432,11 +442,8 @@ def _library_of(ref: str | os.PathLike[str]) -> str | None:
     return None
 
 
-def _resolve_dataset_library(datasets: Path | None, reflib: str) -> str:
-    library = datasets or dataset_library()
-    if library:
-        return str(absolute_path(str(library)))
-    return str(Path(reflib).parent / "datasets")
+def _resolve_mygenomes_library(library: Path | None) -> str:
+    return str(absolute_path(str(library or mygenomes_library())))
 
 
 def _ploidy_status(reflib: str) -> dict[str, Any]:
@@ -444,14 +451,14 @@ def _ploidy_status(reflib: str) -> dict[str, Any]:
         "hg19": first_existing_file(
             [
                 str(Path(reflib, "ploidy_hg19.txt")),
-                str(Path(reflib, "ref", "ploidy_hg19.txt")),
+                *(str(Path(d, "ploidy_hg19.txt")) for d in download_dirs(reflib)),
                 str(Path(reflib, "microarray", "ploidy_hg19.txt")),
             ]
         ),
         "hg38": first_existing_file(
             [
                 str(Path(reflib, "ploidy_hg38.txt")),
-                str(Path(reflib, "ref", "ploidy_hg38.txt")),
+                *(str(Path(d, "ploidy_hg38.txt")) for d in download_dirs(reflib)),
                 str(Path(reflib, "microarray", "ploidy_hg38.txt")),
             ]
         ),

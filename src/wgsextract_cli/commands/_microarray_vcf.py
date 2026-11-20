@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.core import ultima
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import (
@@ -26,6 +26,7 @@ from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -330,7 +331,7 @@ def _recall_deep_contigs(
         with open(merged, "w", newline="\n") as destination:
             destination.writelines([*header, *by_chrom[chrom], *records[tail:]])
         run_command(["bgzip", "-f", merged])
-        Path(merged + ".gz").replace(chunks[chrom])
+        move_file(merged + ".gz", chunks[chrom])
 
 
 # Reference-block ALTs: GATK, DeepVariant/bcftools, DRAGEN.
@@ -369,7 +370,9 @@ def _expand_gvcf_targets(
     fasta_chroms = _fasta_chromosomes(ref_fasta)
     fasta_names: dict[str, str | None] = {}
     expanded = 0
-    with tempfile.TemporaryDirectory(prefix="gVCF_", dir=outdir) as work:
+    with tempfile.TemporaryDirectory(
+        prefix="gVCF_", dir=scratch_parent(outdir)
+    ) as work:
         overlapping = Path(work, "overlapping.vcf")
         records = Path(work, "records.vcf")
         regions = Path(work, "regions.txt")
@@ -602,7 +605,7 @@ def _prepare_microarray_vcf(
             f"Calling {len(contigs)} chromosomes in parallel with {workers} workers..."
         )
         with tempfile.TemporaryDirectory(
-            prefix="chrom_chunks_", dir=outdir
+            prefix="chrom_chunks_", dir=scratch_parent(outdir)
         ) as chrom_tmp_dir:
             chrom_snps = split_snps_by_chrom(ref_vcf_tab, chrom_tmp_dir)
             # Workers only drive bcftools, so threads suffice and library

@@ -124,6 +124,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),
     "vcf snp": _n(HOURS, *_CALL),
     "vcf indel": _n(HOURS, *_CALL),
+    "vcf call": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
@@ -149,7 +150,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         "bcftools",
         "samtools",
         "tabix",
-        optional="docker run_clair3.sh sambamba",
+        optional="docker run_clair3.sh sambamba wgse-clair3",
     ),
     "vcf impute": _n(
         HOURS,
@@ -171,9 +172,10 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf pharmcat": _n(
-        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip"
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip curl"
     ),
-    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
+    # Input preparation, including bgzip, belongs to the selected child annotators.
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="samtools vep vep-rs"),
     # Minutes with vep-rs, the default; hours with Ensembl VEP.
     "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
     "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),
@@ -207,6 +209,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
+    "ref cytobands": _n(DOWNLOAD, optional="curl"),
     "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref phylop": _n(DOWNLOAD, optional="curl"),

@@ -1,59 +1,13 @@
 """Stand-in executables written in Python that run on every platform."""
 
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
 
-import pytest
-
-
-def require_bare_name_fakes() -> None:
-    """Skip on Windows, where a tool the CLI starts by bare name (`gatk`,
-    `bcftools`) can't be faked: CreateProcess finds only .exe files, not
-    python_tool's .cmd launcher, and killing a launcher leaves its Python
-    child running."""
-    if sys.platform == "win32":
-        pytest.skip("a .cmd fake can't stand in for a tool started by bare name")
-
-
-def only_tools(request: pytest.FixtureRequest, *tools: str) -> Path:
-    """Leave PATH with just the real ``tools`` and a pixi without environments
-    (the ``fake_pixi`` fixture), so every other tool is missing. Returns the
-    bin directory, for fakes. POSIX only: it links the tools."""
-    if sys.platform == "win32":
-        pytest.skip("links the real tools into a bin directory")
-    paths = {tool: shutil.which(tool) for tool in tools}
-    bindir: Path = request.getfixturevalue("fake_pixi").host_bin
-    for tool, path in paths.items():
-        if not path:
-            pytest.skip(f"{tool} missing")
-        os.symlink(path, bindir / tool)
-        # bwa-mem2's Linux build runs bwa-mem2.<SIMD level> from beside itself.
-        for variant in Path(path).parent.glob(f"{tool}.*"):
-            if variant.name not in paths and not (bindir / variant.name).exists():
-                os.symlink(variant, bindir / variant.name)
-    return bindir
-
-
-def python_tool(bindir: Path, name: str, source: str) -> Path:
-    """An executable `name` in bindir that runs the Python ``source``.
-
-    POSIX runs the script by its shebang; Windows can't, so it gets
-    ``name.py`` and a ``name.cmd`` launcher, which PATH lookups find too.
-    """
-    bindir.mkdir(parents=True, exist_ok=True)
-    if sys.platform != "win32":
-        path = bindir / name
-        path.write_text(f"#!{sys.executable}\n{source}")
-        path.chmod(0o755)
-        return path
-    (bindir / f"{name}.py").write_text(source)
-    launcher = bindir / f"{name}.cmd"
-    launcher.write_text(f'@"{sys.executable}" "%~dp0{name}.py" %*\r\n', newline="")
-    return launcher
-
+from tests.fake_tool_launchers import only_tools as only_tools
+from tests.fake_tool_launchers import python_tool as python_tool
+from tests.fake_tool_launchers import require_bare_name_fakes as require_bare_name_fakes
 
 _FAKE_PIXI = """\
 import json, os, shutil, subprocess, sys
@@ -233,10 +187,13 @@ _GVCF_BLOCKS = r"""
 import os as _os, subprocess as _subprocess
 
 
-def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samtools):
+def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samtools,
+                      missed=()):
     # As GATK -ERC GVCF and Clair3 --gvcf: the VCF's records with <NON_REF>
     # added, and <NON_REF> blocks over every other base of ``bed``, by GQ
     # band: GQ 99 at 10 reads or more, 15 below, and 0 (MIN_DP 0) without.
+    # Depth leaves out reads deleting a base, as Clair3's does; the anchors
+    # of indels it saw but didn't call (``missed``) are no-calls.
     sequence, name = {}, None
     for line in open(ref):
         if line.startswith(">"):
@@ -262,13 +219,17 @@ def write_caller_gvcf(vcf, reads, ref, out, bed, bands, haploid, bcftools, samto
             continue
         gq = 99 if here >= 10 else 15 if here else 0
         band = max([b for b in bands if b <= gq], default=0)
+        if (chrom, pos) in missed:
+            gq, band = 0, None
         last = blocks[-1] if blocks else None
-        if last and last[0] == chrom and last[2] == pos - 1 and last[5] == band:
+        if (last and last[0] == chrom and last[2] == pos - 1 and last[5] == band
+                and band is not None):
             last[2], last[3], last[4] = pos, min(last[3], here), min(last[4], gq)
         else:
             blocks.append([chrom, pos, pos, here, gq, band])
     rows = [f"{c}\t{a}\t.\t{sequence[c][a - 1]}\t<NON_REF>\t.\t.\tEND={b}\t"
-            f"GT:DP:GQ:MIN_DP\t{genotype}:{d}:{gq}:{d}" for c, a, b, d, gq, _ in blocks]
+            f"GT:DP:GQ:MIN_DP\t{genotype if band is not None else './.'}:{d}:{gq}:{d}"
+            for c, a, b, d, gq, band in blocks]
     variants = []
     for record in records:
         fields = record.split("\t")
@@ -532,6 +493,16 @@ mpileup = subprocess.Popen(
 ploidy = "1" if "haploid_precise" in opts else "2"
 subprocess.run([{bcftools!r}, "call", "--ploidy", ploidy, "-mv", "-Oz", "-o", calls],
                stdin=mpileup.stdout, check=True)
+missed = set()
+if os.path.exists({miss_indels!r}):
+    # Like Clair3 on an indel it sees but doesn't call: no record in the VCF,
+    # a no-call at its anchor in the gVCF.
+    indels = subprocess.run([{bcftools!r}, "view", "-H", "-v", "indels", calls],
+                            capture_output=True, text=True, check=True).stdout
+    missed = {{(row.split("\t")[0], int(row.split("\t")[1])) for row in indels.splitlines()}}
+    snps = os.path.join(out, "snps.vcf.gz")
+    subprocess.run([{bcftools!r}, "view", "-V", "indels", "-Oz", "-o", snps, calls], check=True)
+    os.replace(snps, calls)
 with open(os.path.join(out, "sample.txt"), "w") as names:
     names.write(opts["sample_name"] + "\\n")
 # Like Clair3, name its inputs in the header.
@@ -570,7 +541,7 @@ elif "gvcf" in opts:
     write_caller_gvcf(os.path.join(out, "merge_output.vcf.gz"), opts["bam_fn"],
                       opts["ref_fn"], os.path.join(out, "merge_output.gvcf.gz"), bed,
                       list(range(0, 100, 5)), "haploid_precise" in opts,
-                      {bcftools!r}, {samtools!r})
+                      {bcftools!r}, {samtools!r}, missed)
 """
 
 
@@ -585,7 +556,7 @@ class FakeClair3:
     reads. With ``--use_gpu=True`` it needs a container started with
     ``--gpus`` (FakeDocker), as in HKU's GPU image. Like Clair3 it calls
     nothing, yet exits 0, when a path it is given contains a space; ``lose_gvcf``
-    makes it skip the gVCF it was asked for. Each run's options, resolved model, reads' CRAM
+    makes it skip the gVCF it was asked for, and ``miss_indels`` call no indels. Each run's options, resolved model, reads' CRAM
     version, region BED, stdin state and PYTHONPATH go to ``runs``.
     """
 
@@ -602,9 +573,11 @@ class FakeClair3:
         self.failure = bindir / "clair3-failure.json"
         self.no_gvcf = bindir / "clair3-no-gvcf"
         self.block_padding = bindir / "clair3-block-padding"
+        self.missed_indels = bindir / "clair3-miss-indels"
         python_tool(bindir, "run_clair3.sh", _GVCF_BLOCKS + _FAKE_CLAIR3.format(
             log=str(self.log), bcftools=bcftools, failure=str(self.failure),
             no_gvcf=str(self.no_gvcf), block_padding=str(self.block_padding),
+            miss_indels=str(self.missed_indels),
             samtools=samtools or shutil.which("samtools") or "samtools",
             version=version,
             old_htslib=not version[:1].isdigit()
@@ -627,6 +600,11 @@ class FakeClair3:
         """Later --gvcf runs write reference blocks ``padding`` bases past
         the regions asked for, as Clair3 calls its regions extended."""
         self.block_padding.write_text(str(padding))
+
+    def miss_indels(self) -> None:
+        """Later runs call no indels, writing a no-call at each one's anchor
+        in the gVCF, as Clair3 does for an indel it sees but doesn't call."""
+        self.missed_indels.touch()
 
     def lose_gvcf(self) -> None:
         """Later --gvcf runs write the VCF but no gVCF, and still exit 0."""
@@ -964,16 +942,20 @@ if command == "run":
     examples, small = f"{work}/examples.tfrecord@{shards}.gz", f"{work}/small_cvo.tfrecord@{shards}"
     regions = f" '--regions={opts['regions']}'" if "regions" in opts else ""
     batch = f" --batch_size={opts['batch_size']}" if "batch_size" in opts else ""
+    ploidy = "".join(
+        f" '--{flag}={opts[flag]}'" for flag in ("haploid_contigs", "par_regions_bed")
+        if flag in opts
+    )
     for flag in ("inference_backend", "cpu_threads"):
         if flag in opts:
             batch += f" --{flag}={opts[flag]}"
     commands = [
         f"{self} make_examples --reads={opts['reads']} --ref={opts['ref']} --examples={examples} "
-        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}",
+        f"--threads={shards} --small_model={opts['small_model_path']} --small_model_cvo_outfile={small}{regions}{ploidy}",
         f"{self} call_variants --examples={examples} --outfile={work}/cvo.tfrecord "
         f"--checkpoint={opts['checkpoint']}{batch}",
         f"{self} postprocess_variants --infile={small},{work}/cvo.tfrecord --ref={opts['ref']} "
-        f"--output_vcf_outfile={opts['output_vcf']}"
+        f"--output_vcf_outfile={opts['output_vcf']}{ploidy}"
         + (f" --gvcf_outfile={opts['output_gvcf']}" if "output_gvcf" in opts else ""),
     ]
     print("".join(f"\n***** Running the command:*****\n{c}\n\n" for c in commands))
@@ -981,6 +963,8 @@ elif command == "make_examples":
     reads, ref = opts["reads"], opts["ref"]
     if not any(os.path.exists(reads + s) for s in (".bai", ".crai", ".csi")):
         sys.exit(f"[E::idx_find_and_load] Could not retrieve index file for '{reads}'")
+    # Native make_examples doesn't use --ref for CRAM decoding (#1061).
+    subprocess.run([SAMTOOLS, "view", reads], stdout=subprocess.DEVNULL, check=True)
     for selection in (opts.get("regions") or "").split():
         if selection.endswith((".bed", ".bed.gz")):
             if not os.path.isfile(selection):
@@ -992,7 +976,7 @@ elif command == "make_examples":
     def write():
         for shard in shard_names(opts["examples"]):
             with open(shard, "w") as out:
-                json.dump({"ref": ref, "reads": reads}, out)
+                json.dump({"ref": ref, "reads": reads, "regions": opts.get("regions")}, out)
         stem, n = opts["small_model_cvo_outfile"].split("@")
         for i in range(int(n)):
             open(f"{stem}-{i:05d}-of-{int(n):05d}", "w").close()
@@ -1019,13 +1003,24 @@ elif command == "postprocess_variants":
 
 
     def write():
+        regions = []
+        if called.get("regions"):
+            from wgsextract_cli.core.region_selection import selected_intervals
+            lengths = dict((r.split()[0], int(r.split()[1]))
+                           for r in open(called["ref"] + ".fai"))
+            bed = opts["output_vcf_outfile"] + ".bed"
+            with open(bed, "w") as out:
+                for chrom, spans in selected_intervals(called["regions"], lengths, commas=False).items():
+                    for start, end in spans:
+                        out.write(f"{chrom}\t{start}\t{end}\n")
+            regions = ["-R", bed]
         mpileup = subprocess.Popen(
-            [BCFTOOLS, "mpileup", "-f", called["ref"], "-Ou", called["reads"]], stdout=subprocess.PIPE
+            [BCFTOOLS, "mpileup", "-f", called["ref"], *regions, "-Ou", called["reads"]], stdout=subprocess.PIPE
         )
         subprocess.run([BCFTOOLS, "call", "-mv", "-Oz", "-o", opts["output_vcf_outfile"]], stdin=mpileup.stdout, check=True)
         if opts.get("gvcf_outfile"):
             write_gvcf(opts["output_vcf_outfile"], called["reads"], called["ref"],
-                       opts["gvcf_outfile"])
+                       opts["gvcf_outfile"], regions[1] if regions else None)
 
 
     fail_here("postprocess_variants", None, write)

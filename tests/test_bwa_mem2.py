@@ -19,9 +19,10 @@ from tests.htslib_helpers import (
 )
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli.commands import align
+from wgsextract_cli.commands.alignment import short_reads
 from wgsextract_cli.core import bwa_mem2
 from wgsextract_cli.core.alignment import memory as alignment_memory
-from wgsextract_cli.core.read_counts import fastq_input_reads
+from wgsextract_cli.core.alignment.read_counts import fastq_input_reads
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.warnings import warn_alignment_sort_space
 
@@ -85,7 +86,7 @@ def test_auto_takes_bwa_mem2_when_its_index_is_there_and_fits(
 ):
     ref = _reference(tmp_path, bases=3_000_000_000, index=index)
     monkeypatch.setattr(
-        align, "get_tool_path", lambda tool: tool if installed else None
+        short_reads, "get_tool_path", lambda tool: tool if installed else None
     )
     ram(128 * GB, memory)
     assert align.short_read_aligner("auto", ref) == expected
@@ -100,7 +101,7 @@ def test_auto_memory_budget_counts_sort_threads_and_available_not_total(
     high = bwa_mem2.mapping_memory(ref, threads="6", memory="2G")
     assert high > low
     ram(128 * GB, low)
-    monkeypatch.setattr(align, "get_tool_path", lambda tool: tool)
+    monkeypatch.setattr(short_reads, "get_tool_path", lambda tool: tool)
     assert (
         align.short_read_aligner("auto", ref, threads="6", memory="256M") == "bwa-mem2"
     )
@@ -385,7 +386,7 @@ def test_input_count_scales_memory_auto_selection_and_sort_disk(
     assert high.samblaster == 2 * low.samblaster
     assert high.total > low.total
     ram(128 * GB, low.total)
-    monkeypatch.setattr(align, "get_tool_path", lambda tool: tool)
+    monkeypatch.setattr(short_reads, "get_tool_path", lambda tool: tool)
     kwargs = {"threads": "6", "memory": "256M"}
     assert align.short_read_aligner("auto", ref, reads=count, **kwargs) == "bwa-mem2"
     assert align.short_read_aligner("auto", ref, reads=count * 2, **kwargs) == "bwa"

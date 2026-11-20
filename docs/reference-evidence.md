@@ -81,8 +81,17 @@ published (`bcftools reheader`), so every record stays as DeepVariant wrote
 it. Bases a sex/PAR ploidy of 0 leaves out of calling (a woman's chrY) are
 recorded in `PloidyZero`. Parabricks calls a man's haploid chrX and chrY
 apart from the rest and its gVCF is gathered from the parts (see
-[Sex and PAR](#sex-and-par)); `wgse-deepvariant` calls diploid genomes only,
-as without the gVCF. `wgse-deepvariant`'s gVCF agrees
+[Sex and PAR](#sex-and-par)); `wgse-deepvariant` requires 0.4.0 or later
+for non-diploid policies. Like Google's pipeline it accepts PAR intervals
+directly, preserving one resumable run; its reference blocks split at PAR
+boundaries and use haploid likelihoods outside PAR. Haploid GT and PL retain
+Google's diploid encoding, with heterozygous likelihoods suppressed.
+The readers use the published ploidy intervals, not GT length, for haploid
+depth thresholds; PAR remains diploid. The variant-only VCF carries the same
+policy under `##wgsePloidyPolicy` (not a reference-evidence declaration).
+PAR BEDs describe the full policy on the selected haploid contigs, even for
+a bounded selection, so deletions reaching into PAR keep diploid treatment.
+`wgse-deepvariant`'s diploid gVCF agrees
 with Google's in every field the states read; before 0.3.1 its variant
 records lacked the PL values of genotypes with `<*>` (#999).
 
@@ -161,8 +170,24 @@ gVCF's `Region` lists those and other contigs read as `not_assessed`.
 
 Measured on HG002 ONT R10.4.1 chr20:10-15 Mb, 4 threads: on the CPU 75 s
 for the VCF and 179 s with the gVCF (2.4x); with `--gpu` on an RTX 3090
-106 s and 452 s (4.3x). The gVCF was 1.6 MB. The calls and filters were identical. Of 7,055
-truth variants, 2 sit on bases the gVCF calls callable reference.
+106 s and 452 s (4.3x). The gVCF was 1.6 MB. The calls and filters were identical.
+
+Clair3 builds a reference base's depth and GQ from the reads that show a base
+there; a read that deletes the base counts for neither. A deletion it saw but
+didn't call is a no-call (or a filtered record) at its first base, followed
+by confident `0/0` blocks over the deleted bases, with the deleting reads
+missing from their depth (#1028). So in a Clair3 gVCF (its `Engine`, or a
+`##source=Clair3` line), reference bases directly after a no-call or filtered
+record, within 10 bases of it, read as `low_quality_reference` while their
+depth stays below 70% of that record's. Consecutive or overlapping no-call
+and filtered records use the deepest depth and the furthest end of that
+anchor chain; disjoint anchors separated by reference start separate chains. Queries include
+the complete contributing chain, so a point lookup and a full-region scan
+agree. Overlapping calls keep their own state, regardless of reference-block
+boundaries. In the initial qualification, of the 7,055 truth variants in the
+confident regions, 41 (40 deletions) had a base of their REF on callable
+reference before this rule (2 at their position) and 3 after; it took
+0.4% of the callable bases (4,879,943 to 4,862,257).
 
 ## Sex and PAR
 
@@ -193,7 +218,7 @@ state higher in this table wins.
 | `variant` | Inside the REF span of a called non-reference allele. |
 | `filtered` | A record with a failing FILTER (DeepVariant's `RefCall`, for example) or sample filter (`FORMAT/FT`). |
 | `no_call` | A missing genotype (`.` or `./.`). |
-| `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`. |
+| `low_quality_reference` | Reference, but with depth below `confidence_min_depth` (halved for a haploid call) or, for the `gq` model, GQ below `confidence_min_gq`; in a Clair3 gVCF, also the bases a deletion it didn't call may remove (see [Clair3](#clair3)). |
 | `uncovered` | Assessed, but no reads: no record (bcftools, Clair3, or DeepVariant over reference N) or a block with MIN_DP 0 (DeepVariant, GATK). |
 | `callable_reference` | Reference, with enough depth (and GQ). |
 | `not_assessed` | Outside the region the caller assessed. |
@@ -230,6 +255,26 @@ command works as before.
   with one ploidy; otherwise it is passed as a no-call (so `--absent-to-ref`
   can't make it reference) with the state as its `PGX_STATE`. See
   [variant-confidence.md](variant-confidence.md).
+- `vcf clinvar`, `vcf gnomad --max-af` and `analyze` add the gVCF's state at
+  the sites they checked to their confidence details
+  (`details.confidence[].reference_evidence`): at the calls they labelled
+  (`calls`), and for `vcf clinvar` and `analyze` at every ClinVar
+  pathogenic/likely pathogenic site (`clinvar_pathogenic_sites`), so a site
+  the sample doesn't carry reads as confident reference, uncovered,
+  low-quality, filtered or not assessed. Sites that are neither a call nor
+  callable reference (policy exclusions aside) raise a
+  `reference_evidence_unassessed_sites` warning. A site's state is
+  `callable_reference` only when every base of it is. See
+  [variant-confidence.md](variant-confidence.md#reference-evidence-at-the-sites-checked).
+- The ancestry projection (`qc ancestry` on a VCF, and `score pgs`'s PCA
+  projection) fills an ancestry site the VCF doesn't list as hom-ref only
+  where the gVCF calls it `callable_reference`, instead of assuming every
+  missing site of a whole-genome variants-only VCF is reference. A
+  variants-only VCF of part of the genome is then usable too, and a gVCF
+  given as the input itself. The missing sites' states are reported
+  (`ancestry_missing_sites_<state>` metrics,
+  `ancestry_calibration.pca_missing_site_states`). See
+  [ancestry.md](ancestry.md#inputs).
 
 Measured on HG002 chr20 (35x Illumina), with PGS000018 (CAD, 1.75 million
 sites, about 44,000 on chr20): `score pgs` matched 12,723 sites from the

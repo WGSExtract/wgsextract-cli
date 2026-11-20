@@ -12,6 +12,7 @@ on:
       - pixi.toml
       - pixi.lock
       - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pharmcat_resources.py
       - src/wgsextract_cli/commands/vcf/basic.py
       - src/wgsextract_cli/commands/_deps_status.py
       - src/wgsextract_cli/cli/platform_support.py
@@ -34,6 +35,7 @@ on:
       - pixi.toml
       - pixi.lock
       - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pharmcat_resources.py
       - src/wgsextract_cli/commands/vcf/basic.py
       - src/wgsextract_cli/commands/_deps_status.py
       - src/wgsextract_cli/cli/platform_support.py
@@ -97,7 +99,7 @@ jobs:
         run: |
           mkdir -p "out/pharmcat e2e/HG002 input"
           cp tests/fixtures/pharmcat_hg002/hg002_pgx.vcf.gz "out/pharmcat e2e/HG002 input/"
-          pixi run wgsextract vcf pharmcat \
+          pixi run wgsextract vcf pharmcat --download \
             --vcf-input "out/pharmcat e2e/HG002 input/hg002_pgx.vcf.gz" \
             --pharmcat-dir "$RUNNER_TEMP/Pharm CAT" \
             --outdir "out/pharmcat e2e/My Results" 2>&1 | tee "out/pharmcat e2e/run.log"

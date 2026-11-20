@@ -55,12 +55,21 @@
     desc: "Classifies variants in a vep-rs-annotated VCF using fastVEP’s automated ACMG/AMP research rules.",
     learn: "Built strictly for research into automated variant interpretation. Input has to be a GRCh38 VCF from vep-rs along with the matching fastVEP annotation databases and GFF3; plain VCFs and Ensembl VEP outputs lack the fields it expects.\n\nAutomated rules miss evidence that a clinical ACMG review weighs, so do not use these labels to guide medical care or reproductive decisions. Any finding of concern must be assessed by a clinical laboratory and genetics professional.",
     accepts: ["vcf"], file: "helen", button: "Classify for research",
-    fields: [f.param("research_acmg", "I understand this is research only", "Explicit opt-in: not a diagnosis or clinical interpretation")],
+    fields: [f.param("research_acmg", "I understand this is research only", "Explicit opt-in: not a diagnosis or clinical interpretation"),
+      f.param("site_data", "gnomAD and SpliceAI data", "Library is offline. Per-run sends input-derived variant positions to Google Cloud Storage and Ensembl, and caches site data in sites/.", {
+        labels: { auto: "Offline (library)", library: "Installed library · offline", "per-run": "Per-run remote lookups · opt-in" },
+      }),
+      f.toggle("site_consent", "Allow these variant-position lookups", "I agree to send this sample’s variant positions to Google Cloud Storage and Ensembl for gnomAD and SpliceAI. Other databases must already be installed.", false, {
+        ui: true, when: function (c) { return c.v.site_data === "per-run"; },
+      })],
     more: [f.param("sa_dir", "fastVEP data folder", "Empty: configured ACMG databases"),
       f.param("gff3", "Ensembl GRCh38 GFF3", "Empty: the GFF3 recorded with the installed data"), f.threads()],
     run: function (c) {
       return { timeText: "minutes", memGB: 8,
-        blocked: !c.v.research_acmg ? "Acknowledge the research-only limits first." : c.file.build !== "GRCh38" ? "Needs a GRCh38 vep-rs VCF." : null,
+        blocked: !c.v.research_acmg ? "Acknowledge the research-only limits first." : c.M.os === "windows" ? "Windows fastVEP support is coming; not merged yet." :
+          c.v.site_data === "per-run" && !c.v.site_consent ? "Confirm the variant-position disclosure before remote lookups." :
+          c.file.build !== "GRCh38" ? "Needs a GRCh38 vep-rs VCF." :
+          !c.flag("data-acmg") && !c.v.sa_dir ? "ACMG databases are not installed. Run wgsextract ref acmg-data explicitly, then reopen. Nothing downloads automatically." : null,
         notes: [{ tone: "warn", icon: "triangle-alert", title: "Requires a vep-rs-annotated VCF",
           text: "The demo VCF is a placeholder without verified vep-rs annotations. Confirm your input’s provenance and the installed fastVEP data before using real results." }],
         makes: "Makes acmg_annotated.vcf.gz and acmg_summary.json; research only." };

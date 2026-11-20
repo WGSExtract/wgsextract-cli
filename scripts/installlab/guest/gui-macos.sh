@@ -29,10 +29,14 @@ MODE="${LAB_MODE:-install}"
 DMG="$HOME/Downloads/WGSExtract.dmg"
 APP="/Applications/WGSExtract.app"
 BUNDLE_ID="dev.guiforcli.embed.wgsextract"
-# Apps since PR #531 keep the workspace in the home folder; released apps
-# before it keep it in their app data (OLD_WORKSPACE). use_workspace picks
+# Apps since the users workspace split keep the bundle workspace in APP_DATA and
+# the user's settings and folders in USERS_WORKSPACE; 0.8.5 to 0.8.7 kept both in
+# the home folder (WORKSPACE); released apps before them in their app data
+# (OLD_WORKSPACE). use_workspace picks
 # the one setup made.
-WORKSPACE="$HOME/wgs-extract"
+USERS_WORKSPACE="$HOME/wgs-extract"
+WORKSPACE="$USERS_WORKSPACE"
+USERS_ARGS=""
 OLD_WORKSPACE="$HOME/Library/Application Support/$BUNDLE_ID/BundleWorkspaces/wgs-extract"
 # Apps after 0.8.6 install the CLI runtime in their data folder and read
 # WGSEXTRACT_GUI_* variables; released apps up to 0.8.6 read GUI_FOR_CLI_*. The
@@ -197,7 +201,10 @@ install_runner() {
 }
 
 use_workspace() {
-    if [ ! -e "$WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
+    if [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$APP_DATA/BundleWorkspaces/wgs-extract/.bundle-workspace" ]; then
+        WORKSPACE="$APP_DATA/BundleWorkspaces/wgs-extract"
+        USERS_ARGS="--users-workspace"
+    elif [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$OLD_WORKSPACE/.bundle-workspace" ]; then
         WORKSPACE="$OLD_WORKSPACE"
     fi
 }
@@ -208,7 +215,7 @@ app_actions() {
         resources="$APP/Contents/Resources"
         GUI_FOR_CLI_APP_SUPPORT_NAME="$BUNDLE_ID" "$resources/node/bin/node" \
             "$resources/app/dist/web/src/server/bundle-test-cli.js" \
-            --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" \
+            --plan "$HERE/gui-plan.json" --workspace "$WORKSPACE" ${USERS_ARGS:+"$USERS_ARGS" "$USERS_WORKSPACE"} \
             --report "$R/bundle-report.json" --log "$R/bundle-test.log" \
             "$resources/examples/EmbeddedBundle"
     else
@@ -228,7 +235,7 @@ app_actions() {
     fi
     mkdir -p "$R/workload/info"
     # info has no --outdir; it writes to the configured output directory.
-    find "$WORKSPACE/output" "$WORKSPACE/datasets" -name '*.wgse_info.json' \
+    find "$USERS_WORKSPACE/output" "$USERS_WORKSPACE/mygenomes" "$WORKSPACE/output" "$WORKSPACE/datasets" "$WORKSPACE/genomes" -name '*.wgse_info.json' \
         -exec cp {} "$R/workload/info/" \; 2>/dev/null
     return $rc
 }

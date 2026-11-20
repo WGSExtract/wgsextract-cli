@@ -54,6 +54,7 @@ CLI_HELP = {
     "cmd_snp": "Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard ancestry analysis and finding simple point mutations.",
     "cmd_indel": "Call Small Insertions and Deletions (InDels) using bcftools. Used to find small gaps or extra bases in the DNA sequence.",
     "cmd_sv": "Call Structural Variants (SVs) using Delly for short reads, Sniffles for Nanopore (ONT, auto-detected) or other long reads, or pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).",
+    "cmd_call": "Call several variant types in one run: SNPs and InDels (bcftools), SVs and CNVs, each into its own VCF, and with --merge also into one combined VCF.",
     "cmd_cnv": "Call Copy Number Variants (CNVs) using Delly. Detects large regions of DNA that have been duplicated or deleted, affecting gene dosage. (Not tested on macOS.)",
     "cmd_freebayes": "A Bayesian genetic variant detector. Excellent for finding small variants in complex regions or when you have variable sequencing depth.",
     "cmd_gatk": "Industry-standard GATK HaplotypeCaller. Best for high-accuracy clinical-grade SNP and InDel calling using local de novo assembly.",
@@ -109,25 +110,31 @@ CLI_HELP = {
     "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).",
     "cmd_ref-library": "Opens the interactive reference manager to help you organize and download genomic data.",
     "micro_formats_help": """Comma-separated list of formats to generate (default: all).
+Variants are named by letter (h600.org's Microarray File Formats); similar
+minor variants are merged into one file, e.g. ancestry_v2ab.
 Available formats:
   Combined kit only (always written):
-    all (every chip's markers in one 23andMe-style file, e.g. for GEDmatch;
-    writes no vendor files: list the vendor formats to get them)
+    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.
+    for GEDmatch; writes no vendor files: list the vendor formats to get them)
   23andMe:
-    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4, 23andme_v5,
-    23andme_v5_2025 (v5 chip as exported in 2025), 23andme_v3+v5, 23andme_api
+    23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
+    23andme_v5, 23andme_v3+v5, 23andme_api
   AncestryDNA:
-    ancestry_v1, ancestry_v2, ancestry_v2_2021 (2021 V2.0 layout),
-    ancestry_v2_2024 (V2.0 chip as exported in 2024-25)
+    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),
+    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)
   Family Tree DNA:
-    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3
+    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4
+    ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)
   Living DNA:
     ldna_v1, ldna_v2
   MyHeritage:
-    myheritage_v1, myheritage_v2,
-    myheritage_gsa_2025 (609,346 markers), myheritage_gsa_2025_609424
-  Nucleus:
-    nucleus (array export, 2025)
+    myheritage_v1, myheritage_v2, myheritage_v3
+  Other vendors:
+    tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,
+    selfdecode, nucleus
+  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,
+  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are
+  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.
   AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):
     aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)
     aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances
@@ -234,20 +241,20 @@ LOG_MESSAGES = {
     "vcf_clinvar_done": "ClinVar annotation and filtering complete: {output}",
     "vcf_revel_start": "Annotating VCF with REVEL scores: {input}",
     "vcf_revel_resolve": "Auto-resolved REVEL file: {path}",
-    "vcf_revel_missing": "REVEL data file not found. Please provide with --revel-file or place it in your 'ref/' directory as revel_hg38.tsv.gz.",
+    "vcf_revel_missing": "REVEL data file not found. Please provide with --revel-file or place it in the reference library's 'downloads/' folder as revel_hg38.tsv.gz.",
     "vcf_revel_done": "REVEL annotation and filtering complete: {output}",
     "vcf_phylop_start": "Annotating VCF with PhyloP conservation scores: {input}",
     "vcf_phylop_resolve": "Auto-resolved PhyloP file: {path}",
-    "vcf_phylop_missing": "PhyloP data file not found. Please provide with --phylop-file or run 'wgsextract ref phylop' to download phylop_<build>.bw into your 'ref/' directory.",
+    "vcf_phylop_missing": "PhyloP data file not found. Please provide with --phylop-file or run 'wgsextract ref phylop' to download phylop_<build>.bw into the reference library's 'downloads/' folder.",
     "vcf_phylop_done": "PhyloP annotation and filtering complete: {output}",
     "vcf_cadd_start": "Annotating VCF with CADD scores: {input}",
     "vcf_cadd_resolve": "Auto-resolved CADD file: {path}",
-    "vcf_cadd_missing": "CADD data file not found. Please provide with --cadd-file or place it in your 'ref/' directory as cadd_hg38.tsv.gz.",
+    "vcf_cadd_missing": "CADD data file not found. Please provide with --cadd-file or place it in the reference library's 'downloads/' folder as cadd_hg38.tsv.gz.",
     "vcf_cadd_no_indels": "No CADD indel file (cadd_indel_<build>.tsv.gz) found; only SNVs will be scored.",
     "vcf_cadd_done": "CADD annotation and filtering complete: {output}",
     "vcf_gerp_start": "Annotating VCF with GERP++ conservation scores: {input}",
     "vcf_gerp_resolve": "Auto-resolved GERP file: {path}",
-    "vcf_gerp_missing": "GERP data file not found. Please provide with --gerp-file or place it in your 'ref/' directory as gerp_hg38.bw.",
+    "vcf_gerp_missing": "GERP data file not found. Please provide with --gerp-file or place it in the reference library's 'downloads/' folder as gerp_hg38.bw.",
     "vcf_gerp_done": "GERP annotation and filtering complete: {output}",
     "vcf_gnomad_missing": "gnomAD data file not found. Please run 'ref gnomad' first.",
     "vcf_gnomad_done": "gnomAD annotation complete: {output}",

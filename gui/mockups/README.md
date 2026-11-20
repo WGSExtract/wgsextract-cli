@@ -89,6 +89,29 @@ kept in this browser until you reset it.
   Dorado model downloads require explicit acknowledgement.
   File-housekeeping estimates are illustrative, scaled to file size and CPU
   threads, not benchmark claims.
+- **Current-main review (2026-11-20):** `vcf call` combines the selected variant
+  types; DeepVariant shows its native haploid/PAR policy and Clair3 has an
+  explicit GPU/MPS opt-in. Public-data downloads default off. Research ACMG
+  defaults to installed library data; per-run site lookups disclose variant
+  positions sent to Google Cloud Storage and Ensembl. Windows fastVEP and
+  remote viewing remain **Coming** while their PRs are open.
+  Settings separates the movable `usersWorkspace` from the hidden app-managed
+  `bundleWorkspace`; results default to `wgse/` beside lab inputs and scratch
+  work stays separate. The viewer has tiny simulated panel and coverage tracks,
+  illustrative chromosome bands (not real cytoband measurements), and missing
+  reference, index, gene-map, cytoband and 16-track-limit review states.
+  `?lang=de`, `?lang=fr` and `?lang=pt-BR` localize these viewer error messages.
+  It uses the same pinned igv viewport-lifecycle repair as the desktop.
+  The added `panel.bed` and `coverage.bedgraph` contain only hand-written
+  simulated intervals and depths; their `.gz`/`.tbi` pairs were built with
+  `bgzip -c` and `tabix -p bed`. `coverage.bw` (767 bytes) contains those same
+  coverage rows, written with pyBigWig and the GRCh38 chr19/chrM lengths.
+  `node gui/mockups/build_coverage_demo.mjs` embeds the plain coverage and
+  bigWig fixtures in a static JavaScript data file (`--check` verifies it).
+  The Pages publisher on main does not allow `.bedgraph` or `.bw`; the
+  preview creates native browser Files from those embedded bytes, as in manual
+  local-file viewing. Indexed `.bedgraph.gz`/`.tbi` tracks use same-origin
+  Range reads. No publishing allowlist or security setting is changed.
 - **Demo state** (`shared/shells/v2/state.js`): rename or remove a person,
   say whose the unassigned reads are, pick files and options, fix Alex's
   BAM or download bwa-mem2's index. Pages mark what changes with
@@ -254,7 +277,8 @@ How it’s built: pushing or deleting a `mockups/*` branch runs
 `.github/workflows/mockup_previews.yml`, which only starts the Pages workflow
 (`pages.yml`) on `main`; the `github-pages` environment deploys from `main`
 alone. That workflow runs `scripts/build_mockup_previews.py` from `main`,
-which copies just the static files (HTML, CSS, JS, JSON, images, Markdown)
+which copies just the static files (HTML, CSS, JS, JSON, images, Markdown,
+and small demo genome files such as BAM, CRAM, FASTA and their indexes)
 under `gui/mockups/` of each branch, read from `git archive` and never run.
 Only branches of this repository count, so only people with write access can
 publish a preview; forks can’t. Pages also republishes on every push to

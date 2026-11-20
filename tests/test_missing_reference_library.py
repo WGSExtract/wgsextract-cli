@@ -1,9 +1,9 @@
 import logging
 
 from wgsextract_cli.commands.ref import library_commands
-from wgsextract_cli.core import reference_resolver
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library import resolver as reference_resolver
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
 
 def test_a_missing_configured_library_is_reported_once(tmp_path, monkeypatch, caplog):

@@ -84,12 +84,24 @@ class DevSettings:
 class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
+    allow_reference_downloads: bool = setting(
+        False,
+        "Allow first-use public reference/model downloads for commands with "
+        "--download (hosts and request data: docs/privacy.md); no sample uploads",
+    )
     input_path: str | None = setting(
         None, "Default input BAM/CRAM or FASTQ file", path=True
     )
-    output_directory: str | None = setting(None, "Default output directory", path=True)
+    output_directory: str | None = setting(
+        None,
+        "Default output directory (default: wgse/ beside the primary input BAM, "
+        "CRAM, FASTQ, VCF or microarray file, or that folder if already wgse/)",
+        path=True,
+    )
     temp_directory: str | None = setting(
-        None, "Optional volume for sort spills, GATK and realign staging", path=True
+        None,
+        "Temporary Workload directory: every command's temporary work (sort spills, staging, scratch files)",
+        path=True,
     )
     atomic_outputs: bool = setting(
         False,
@@ -109,10 +121,10 @@ class Settings:
         "from them, for reference_library (default: genomes/ in it)",
         path=True,
     )
-    dataset_library: str | None = setting(
+    mygenomes_library: str | None = setting(
         None,
-        "Directory of user datasets, one folder per person or sample "
-        "(formerly genome_library)",
+        "My Genomes library: one folder per person or sample (default: "
+        "mygenomes/ in the users workspace; formerly dataset_library)",
         path=True,
     )
     cpu_threads: int | str = setting(
@@ -147,7 +159,7 @@ class Settings:
     server_allowed_paths: str | tuple[str, ...] | None = setting(
         None,
         "Folders (a string or an array) `wgsextract serve` requests may read "
-        "and write, besides dataset_library, reference_library, "
+        "and write, besides mygenomes_library, reference_library, "
         "reference_genome_library and output_directory",
         path=True,
     )

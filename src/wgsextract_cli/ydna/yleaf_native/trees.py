@@ -24,8 +24,8 @@ from typing import Any, Literal
 
 from wgsextract_cli.core.dev_download_cache import process_umask
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 from .data import ensure_data, extract_archive, verified
@@ -159,6 +159,9 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
     files: dict[str, Any] = spec["files"]
     if verified(root, files):
         return root
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"{tree_id} {module} data")
     root.parent.mkdir(parents=True, exist_ok=True)
     with build_lock(str(root.parent / f"{version}.lock")):
         if verified(root, files):

@@ -228,6 +228,7 @@
     WGSM.v2edge.start();
     WGSM.v2edgeViews.start();
     WGSM.v2viewer.start();
+    WGSM.v2current.start();
     WGSM.v2terms.start();
     WGSM.qs("[data-v2-mock-slot]").appendChild(WGSM.v2clock.control());
     /* The Jobs count: running, queued, and what needs you */

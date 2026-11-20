@@ -121,11 +121,12 @@ test("does not invoke install without both updater resources", async () => {
   assert.equal(state.update.status, "idle");
 });
 
-test("applies updater progress events from Tauri", async () => {
+test("#1052 startup stays offline while subscribing to local updater progress", async () => {
   resetState();
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
-  globalThis.window.setTimeout = () => 0;
+  let scheduled = 0;
+  globalThis.window.setTimeout = () => { scheduled += 1; return 0; };
   globalThis.window.__TAURI__ = {
     core: {
       invoke: async () => {
@@ -147,6 +148,8 @@ test("applies updater progress events from Tauri", async () => {
 
     assert.equal(state.update.supported, true);
     assert.equal(typeof progressHandler, "function");
+    assert.equal(scheduled, 0, "startup must not schedule an update server request");
+    assert.equal(state.update.checked, false);
 
     progressHandler({
       payload: {

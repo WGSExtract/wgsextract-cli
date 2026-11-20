@@ -23,7 +23,7 @@
     }));
     var move = W.qs('[data-edge="workspace"]');
     if (move) {
-      /* The seed keeps {{bundleWorkspace}}; show it as a real folder, home as ~ */
+      /* The seed keeps {{usersWorkspace}}; show it as a real folder, home as ~ */
       var M = W.v2machine;
       var real = M.realPath(s.workspace);
       var home = M.realPath("~/x").slice(0, -2);

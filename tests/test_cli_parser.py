@@ -194,7 +194,7 @@ def test_every_default_config_entry_is_a_setting_once_uncommented():
 @pytest.fixture
 def genome(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "wgsextract_cli.core.alignment_input.validate_alignment_input",
+        "wgsextract_cli.core.alignment.input.validate_alignment_input",
         lambda path: None,
     )
     library = tmp_path / "genomes"

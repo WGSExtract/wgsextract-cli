@@ -22,7 +22,7 @@ from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.commands import _microarray_reuse as reuse
-from wgsextract_cli.core.microarray_targets import build_genome_wide_target
+from wgsextract_cli.core.microarray.targets import build_genome_wide_target
 from wgsextract_cli.core.results import CommandResult, collecting
 
 pytestmark = needs_htslib

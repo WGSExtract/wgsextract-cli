@@ -23,9 +23,9 @@ from wgsextract_cli.commands import _microarray_combined, _microarray_vcf, micro
 from wgsextract_cli.core import variant_files
 from wgsextract_cli.core.builds import ploidy_for_build
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.templates import (
     liftover_hg38_to_hg19,
-    resolve_format_key,
     write_formatted_line,
 )
 from wgsextract_cli.core.results import CommandResult, collecting
@@ -85,7 +85,7 @@ def test_convert_microarray_outputs_preserves_vendor_wgsextract_error(tmp_path):
     lib = SimpleNamespace(root=str(tmp_path), build="GRCh37")
 
     with patch(
-        "wgsextract_cli.core.microarray_utils.convert_to_vendor_format",
+        "wgsextract_cli.core.microarray.templates.convert_to_vendor_format",
         side_effect=WGSExtractError("Template body not found: specific-template"),
     ):
         with pytest.raises(WGSExtractError, match="specific-template"):

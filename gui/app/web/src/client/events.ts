@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
 import { configValueKey } from "../../../shared/rendering.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { clamp } from "./dom.js";
@@ -15,6 +16,7 @@ import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob, rese
 import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-visibility.js";
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
+import { bindCollapsibleSections } from "./view/collapsible.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec, PathPickResponse } from "../../../shared/types.js";
 import { normalizeUIMode } from "../../../shared/ui-mode.js";
@@ -35,6 +37,7 @@ let bundleLoadInFlight = false;
 let installedGlobalBundleLoadHandler = false;
 let installedGlobalAboutHandler = false;
 export function bindEvents(bootstrap: Bootstrap) {
+    bindGenomeViewerEvents();
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();
@@ -108,6 +111,7 @@ export function bindEvents(bootstrap: Bootstrap) {
         await openBundleWorkspace();
     });
     bindWorkspaceLocationEvents(app);
+    bindCollapsibleSections(app);
     app.querySelector("[data-load-bundle]")?.addEventListener("click", async () => {
         await loadBundleFromPicker(bootstrap);
     });
@@ -258,6 +262,19 @@ export function bindEvents(bootstrap: Bootstrap) {
     app.querySelector("[data-sidebar-toggle]")?.addEventListener("click", () => {
         state.isSidebarVisible = !state.isSidebarVisible;
         localStorage.setItem("wgsextractGui.sidebarVisible", state.isSidebarVisible ? "true" : "false");
+        scheduleRender();
+    });
+    elements("[data-section-toggle]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const key = requiredDataset(button, "sectionToggle");
+            if (!state.toggledSections.delete(key)) {
+                state.toggledSections.add(key);
+            }
+            scheduleRender();
+        });
+    });
+    app.querySelector("[data-setup-toggle]")?.addEventListener("click", (event) => {
+        state.setupExpanded = (event.currentTarget as HTMLElement).getAttribute("aria-expanded") !== "true";
         scheduleRender();
     });
     elements("[data-retry-source]").forEach((button) => {

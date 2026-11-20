@@ -5,12 +5,15 @@ of alleles, not an absolute disease risk. Do not change treatment or screening
 based on it. Clinical disease scores carry this warning too.
 
 ```bash
-wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height
-wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018 --json
+wgsextract score pgs --input sample.vcf.gz --build GRCh38 --trait height --download
+wgsextract score pgs --input sample.vcf.gz --build GRCh38 --pgs-id PGS000018 --download --json
 ```
 
-Genotypes stay on your machine. Only the score ID/build is sent to the
-PGS Catalog, to download its metadata and harmonized weights. No scoring
+Genotypes stay on your machine. Only with `--download` is the score ID/build sent to the
+PGS Catalog, to download its metadata and harmonized weights. Without it, cached
+files are reused and missing public data causes an error naming `--download`.
+Explicit download permission also permits refreshing cached Catalog files.
+See [privacy](privacy.md) for destinations and persistent configuration. No scoring
 files are bundled or mirrored. Downloads retry transient failures three times.
 Each attempt checks the advertised byte count (when present) and validates
 the complete gzip stream or metadata JSON before replacing a cached file.
@@ -145,16 +148,20 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
    published reference file holds those rows, their reference allele
    frequencies, the reference samples' scores and the fitted models, not
    genotypes or scoring files. It is the GitHub release `pgs-ref-1`
-   (38 MB), downloaded into `<library>/pgs/` the first time a
-   curated score is run, and checked against a pinned SHA-256. Each score is
+   (38 MB), downloaded into `<library>/pgs/` only with `--download`,
+   and checked against a pinned SHA-256. Each score is
    tied to the SHA-256 of the Catalog file it was built from; if the Catalog
    changes that file, or you supply your own, there is no percentile.
 2. **Your ancestry.** Your genotypes at the ~187,000 ancestry sites are
    projected onto the reference's 10 principal components (the `qc ancestry`
    PCA; `qc ancestry` reports the same `ancestry_pc1`…`ancestry_pc10`).
-   Site- or sample-filtered calls are left out. For a whole-genome
-   variants-only VCF, absent sites count as homozygous reference, only
-   inside `--confident-bed` when one is given.
+   Site- or sample-filtered calls are left out. With reference evidence (a
+   gVCF input, or the gVCF the VCF's caller published), an absent site is
+   homozygous reference only where the gVCF calls it callable reference;
+   `ancestry_calibration.pca_missing_site_states` counts the absent sites'
+   states. Without it, a whole-genome variants-only VCF's absent sites count
+   as homozygous reference. Either way, only inside `--confident-bed` when
+   one is given.
 3. **The adjustment** (`pgscatalog.calc`'s methods, reimplemented):
    - **Adjusted percentile** (headline): `Z_norm2`, your score minus a mean
      and divided by an SD that both depend on PCs 1-4, fitted jointly on the
@@ -188,7 +195,7 @@ warning saying why) when:
 | `reference_calibration_unavailable` | not a curated Catalog file on GRCh38 (custom files, uncurated IDs, GRCh37) |
 | `reference_unavailable` | a curated file, but the HGDP+1KG reference couldn't be downloaded or verified (the reason says why) |
 | `calibration_coverage_too_low` | more than 5% of the calibrated score's variance would be filled in |
-| `ancestry_projection_unavailable` | the VCF can't give ancestry genotypes (a gVCF, or variants-only but not a whole genome) |
+| `ancestry_projection_unavailable` | the VCF can't give ancestry genotypes (variants-only, not a whole genome, and without reference evidence) |
 | `ancestry_projection_incomplete` | under 90% of the ancestry sites have a genotype |
 | `ancestry_outside_reference` | your PCs are outside the reference samples' range (p < 1e-10) |
 

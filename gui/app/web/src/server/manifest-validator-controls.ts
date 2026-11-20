@@ -14,6 +14,9 @@ import {
 export function validateAction(action: ActionSpec, basePath: string): void {
     requireNonEmpty(action.id, `${basePath}.id`);
     requireNonEmpty(action.title, `${basePath}.title`);
+    if (action.advancedTitle != null) {
+        requireNonEmpty(action.advancedTitle, `${basePath}.advancedTitle`);
+    }
     validateTextIcon(action.textIcon, `${basePath}.textIcon`);
     if (typeof action.command?.executable !== "string" || !action.command.executable.trim()) {
         throw new BundleValidationError(`Action '${action.id}' must define a command executable.`);

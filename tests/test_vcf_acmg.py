@@ -40,13 +40,14 @@ SOURCES = {
 
 def _sa_dir(
     tmp_path: Path,
-    skip: str = "",
+    skip: str | tuple[str, ...] = (),
     gnomad_contig: str = "1",
     assembly: str = "GRCh38",
     repeatmasker: bool = False,
 ) -> Path:
     sa = tmp_path / "sa"
     sa.mkdir()
+    skips = (skip,) if isinstance(skip, str) else skip
     fastvep = get_tool_path("fastvep") or "fastvep"
     if repeatmasker:
         bed = tmp_path / "repeats.bed"
@@ -57,7 +58,7 @@ def _sa_dir(
             capture_output=True,
         )  # fmt: skip
     for source, name in SOURCES.items():
-        if source == skip:
+        if source in skips:
             continue
         src = FIXTURES / name
         if source == "gnomad" and gnomad_contig != "1":
@@ -84,9 +85,15 @@ def _inputs(tmp_path: Path, vcf_text: str | None = None) -> dict[str, Path]:
     }
 
 
-def _params(tmp_path: Path, sa: Path, **inputs: Path) -> VcfAcmgParams:
+def _params(
+    tmp_path: Path, sa: Path, site_data: str = "auto", out: str = "out", **inputs: Path
+) -> VcfAcmgParams:
     return VcfAcmgParams(
-        research_acmg=True, sa_dir=sa, outdir=tmp_path / "out", **inputs
+        research_acmg=True,
+        sa_dir=sa,
+        outdir=tmp_path / out,
+        site_data=site_data,
+        **inputs,
     )
 
 
@@ -177,7 +184,8 @@ def test_acmg_refuses_without_the_research_opt_in(tmp_path, capsys):
 )
 def test_acmg_refuses_databases_missing_a_source(tmp_path, sa_args, named):
     sa = _sa_dir(tmp_path, **sa_args)
-    result = api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path)), check=False)
+    params = _params(tmp_path, sa, site_data="library", **_inputs(tmp_path))
+    result = api.vcf.acmg(params, check=False)
     assert result.exit_code == 1
     assert result.error is not None and named in result.error.message
     assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()
@@ -234,7 +242,8 @@ def test_acmg_refuses_a_chromosome_the_gnomad_database_lacks(tmp_path):
     )
     text += "Y\t2781480\t.\tC\tT\t50\tPASS\t.\tGT\t0/1\n"
     sa = _sa_dir(tmp_path)
-    result = api.vcf.acmg(_params(tmp_path, sa, **_inputs(tmp_path, text)), check=False)
+    params = _params(tmp_path, sa, site_data="library", **_inputs(tmp_path, text))
+    result = api.vcf.acmg(params, check=False)
     assert result.exit_code == 1
     assert result.error is not None
     assert "gnomAD database holds nothing of Y" in result.error.message
@@ -276,10 +285,16 @@ def test_acmg_refuses_databases_of_another_assembly(tmp_path):
 
 
 @needs_fastvep
-def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(tmp_path):
+@pytest.mark.parametrize("explicit_outdir", [True, False])
+def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(
+    tmp_path, explicit_outdir
+):
     # Review of #988: the classified VCF replaced an input of the same name.
     inputs = _inputs(tmp_path)
-    named = tmp_path / "acmg_annotated.vcf.gz"
+    # Force a real collision, including the default for inputs already in wgse/.
+    destination = tmp_path if explicit_outdir else tmp_path / "wgse"
+    destination.mkdir(exist_ok=True)
+    named = destination / "acmg_annotated.vcf.gz"
     inputs["input"].rename(named)
     Path(f"{inputs['input']}.tbi").rename(f"{named}.tbi")
     before = named.read_bytes()
@@ -289,9 +304,34 @@ def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(tmp_path):
         input=named,
         ref=inputs["ref"],
         gff3=inputs["gff3"],
+        outdir=destination if explicit_outdir else None,
     )
     result = api.vcf.acmg(params, check=False)
     assert result.error is not None and "would overwrite" in result.error.message
+    assert named.read_bytes() == before
+
+
+@needs_fastvep
+def test_1087_acmg_default_output_preserves_same_named_lab_input(tmp_path):
+    inputs = _inputs(tmp_path)
+    named = tmp_path / "acmg_annotated.vcf.gz"
+    inputs["input"].rename(named)
+    Path(f"{inputs['input']}.tbi").rename(f"{named}.tbi")
+    before = named.read_bytes()
+
+    result = api.vcf.acmg(
+        VcfAcmgParams(
+            research_acmg=True,
+            sa_dir=_sa_dir(tmp_path),
+            input=named,
+            ref=inputs["ref"],
+            gff3=inputs["gff3"],
+        )
+    )
+
+    annotated = Path(next(o.path for o in result.outputs if o.role == "annotated_vcf"))
+    assert annotated == tmp_path / "wgse" / named.name
+    assert any(info.get("ACMG_CLASS") for info in _acmg(annotated).values())
     assert named.read_bytes() == before
 
 

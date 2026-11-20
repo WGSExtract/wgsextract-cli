@@ -116,12 +116,15 @@
 
   /* --formats items: [value, label, aside, desc, on] */
   var KITS = [
-    ["all", "GEDmatch (combined)", "1 file", "Every marker any company's chip reads, in one file that GEDmatch takes", true],
+    ["all", "GEDmatch · CombinedKit v5", "1 file", "The current combined marker set; includes the CHM13 v2 target map", true],
     ["myheritage_v2", "MyHeritage", "1 file", "Their current chip (v2, Illumina GSA); matches and ethnicity after upload", true],
     ["ftdna_v3", "FamilyTreeDNA", "1 file", "Family Finder transfer (v3 chip)"],
     ["ldna_v2", "Living DNA", "1 file", "Regional breakdown, strongest for Britain and Ireland"],
     ["23andme_v5", "23andMe format", "1 file", "For tools that read a 23andMe file; 23andMe itself takes no uploads"],
     ["ancestry_v2", "AncestryDNA format", "1 file", "For tools that read an AncestryDNA file; Ancestry takes no uploads"],
+    ["ancestry_v2ab", "AncestryDNA V2a / V2b", "1 file", "Letter-named vendor variant, merged into one template"],
+    ["ancestry_v2cd", "AncestryDNA V2c / V2d", "1 file", "Letter-named vendor variant, merged into one template"],
+    ["ancestry_v2e", "AncestryDNA V2e", "1 file", "Vendor marker layout for revision e"],
     ["nucleus", "Nucleus format", "1 file", "Nucleus's 2025 array export"],
     ["aadr_1240k", "AADR 1240K (research)", "PLINK and EIGENSTRAT", "Ancient-DNA researchers' marker set, GRCh37; for admixture tools"],
   ];
@@ -142,6 +145,7 @@
       f.param("min_gq", "Minimum quality (GQ)", "Blank below this; empty uses the setting (20), 0 is off", { width: 90 }),
       f.param("min_dp", "Minimum depth", "Blank below this many reads; empty uses the setting (10)", { width: 90 }),
       f.param("call_reasons", "Explain blanks", "Also write a table of why each blank marker is blank"),
+      f.param("download", "Download missing public data", "Explicit opt-in: fetch missing public target data. Nothing about this genome is sent; off by default."),
     ],
     moreTitle: "More options",
     more: [
@@ -172,7 +176,7 @@
       if (!vcf && c.file.depth && c.file.depth < 15) notes.push({ tone: "warn", icon: "triangle-alert", id: "low-depth", title: "Low depth: " + c.file.depth + "\u00d7",
         text: "Below 15\u00d7 many positions can't be read confidently and stay blank; matching sites may find fewer relatives." });
       if (c.v.kits.indexOf("aadr_1240k") >= 0) notes.push({ tone: "info", icon: "download", id: "aadr", title: "AADR uses its own marker list",
-        text: "The first run fetches the AADR v66 marker list (ref aadr) into Reference data. Outputs are on GRCh37, whatever this file's build." });
+        text: "AADR v66 markers must already be installed, or you must explicitly enable Download missing public data (--download). Outputs use GRCh37." });
       return {
         count: n + (n === 1 ? " file" : " files"),
         hours: vcf ? null : 0.2 * ((c.file.depth || 30) / 30), timeText: "minutes",

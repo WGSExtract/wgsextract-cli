@@ -52,6 +52,7 @@ async function bootstrap(locale?: string) {
         state.workspaceLocation = bundle.workspaceLocation ?? null;
         state.exitCodeReference = new Map((bundle.manifest.exitCodeReference ?? []).map((entry) => [Number(entry.code), entry]));
         state.bundleRootPath = bundle.bundleRootPath;
+        state.usersWorkspacePath = bundle.usersWorkspacePath ?? "";
         state.sourceRootPath = bundle.sourceRootPath;
         state.lastResultDocumentPaths = bundle.lastResultDocumentPaths ?? {};
         ensureMainTerminal();

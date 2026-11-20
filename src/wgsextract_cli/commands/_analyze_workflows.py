@@ -13,12 +13,16 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from wgsextract_cli.commands.lineage import alignment_mito_problem
-from wgsextract_cli.core import variant_confidence
+from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, StepRun
+from wgsextract_cli.core.temp_directory import (
+    configured_temp_directory,
+    scratch_parent,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -90,6 +94,11 @@ def _captured(handle: StepRun) -> Iterator[None]:
     result = current_result()
     before = {record.path for record in result.outputs}
     metrics = dict(result.metrics)
+    confidence = (result.details or {}).get("confidence", [])
+    assert isinstance(confidence, list)
+    confidence_before = len(confidence)
+    warnings_before = len(result.warnings)
+    inputs_before = {record.path for record in result.inputs}
     token = _RUNNING.set(handle)
     try:
         yield
@@ -107,6 +116,17 @@ def _captured(handle: StepRun) -> Iterator[None]:
         name: value for name, value in result.metrics.items()
         if metrics.get(name, object()) != value
     }  # fmt: skip
+    confidence = (result.details or {}).get("confidence", [])
+    assert isinstance(confidence, list)
+    handle.metrics["result_confidence"] = confidence[confidence_before:]
+    handle.metrics["result_warnings"] = [
+        dataclasses.asdict(warning) for warning in result.warnings[warnings_before:]
+    ]
+    handle.metrics["result_inputs"] = [
+        {"path": record.path, "role": record.role}
+        for record in result.inputs
+        if record.path not in inputs_before
+    ]
 
 
 def _replay(journal: StepJournal, decision: Decision) -> None:
@@ -121,6 +141,19 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
                 metrics=_scalars(item.get("result_metrics")),
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
+    confidence = decision.metrics.get("result_confidence")
+    if confidence:
+        details = dict(result.details or {})
+        previous = details.get("confidence", [])
+        assert isinstance(previous, list)
+        details["confidence"] = [*previous, *confidence]
+        result.set_details(details)
+    for warning in decision.metrics.get("result_warnings", []):
+        result.warn(
+            warning["code"], warning["message"], **_scalars(warning.get("details"))
+        )
+    for record in decision.metrics.get("result_inputs", []):
+        result.add_input(journal.resolve(record["path"]), record["role"])
 
 
 def run_step(
@@ -185,6 +218,9 @@ def detect_vcf_type(vcf_path: str) -> str:
 DISCOVERY_COLUMNS = (
     "CLNSIG", "CLNDN", "GNOMAD_AF", "REVEL", "SpliceAI", "am_pathogenicity",
 )  # fmt: skip
+CLINVAR_PATHOGENIC_EXPR = (
+    'INFO/CLNSIG ~ "Pathogenic" || INFO/CLNSIG ~ "Likely_pathogenic"'
+)
 SPLICEAI_HIGH_EXPR = 'INFO/SpliceAI ~ "[|]0[.][89]" || INFO/SpliceAI ~ "[|]1[.]0"'
 
 
@@ -194,6 +230,9 @@ def run_discovery_filter(
     out_vcf: str,
     thresholds: variant_confidence.Thresholds | None = None,
     samples: Sequence[str | None] = (),
+    called: str | None = None,
+    clinvar: str | None = None,
+    reference: str | None = None,
 ) -> int:
     """Dynamically builds filter based on type and headers."""
     try:
@@ -222,9 +261,7 @@ def run_discovery_filter(
 
     # Pathogenic
     if has_info("CLNSIG"):
-        filters.append(
-            'INFO/CLNSIG ~ "Pathogenic" || INFO/CLNSIG ~ "Likely_pathogenic"'
-        )
+        filters.append(CLINVAR_PATHOGENIC_EXPR)
 
     if v_type == "snp-indel":
         if has_info("REVEL"):
@@ -280,6 +317,22 @@ def run_discovery_filter(
             summary_columns=columns,
             samples=samples,
         )
+        if called is not None:
+            # The reference evidence of the caller's VCF: at the significant
+            # calls, and at the ClinVar pathogenic sites the filter looked for.
+            from wgsextract_cli.commands.vcf.clinvar_revel import pathogenic_sites
+
+            with tempfile.TemporaryDirectory(
+                prefix=".wgse_evidence_", dir=Path(out_vcf).parent
+            ) as work:
+                sites = (
+                    pathogenic_sites(clinvar, CLINVAR_PATHOGENIC_EXPR, reference, work)
+                    if clinvar and reference and has_info("CLNSIG")
+                    else None
+                )
+                variant_confidence.add_reference_evidence(
+                    summary, called, work, clinvar_sites=sites, reference=reference
+                )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Discovery filter failed for {v_type}: {e}") from e
     count = summary.records
@@ -358,7 +411,10 @@ def _stage_dir(outdir: Path | None) -> Iterator[str]:
     one a killed run left is removed when that step reruns."""
     running = _RUNNING.get()
     if running is None or outdir is None:
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse-step-") as temp:
+        with tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir) if outdir else configured_temp_directory(),
+            prefix=".wgse-step-",
+        ) as temp:
             yield temp
         return
     name = re.sub(r"[^A-Za-z0-9_.-]", "_", running.decision.step.name)
@@ -500,9 +556,13 @@ def run_vcf_workflow(
 
     discovery_vcf = str(Path(outdir, f"significant_{v_type}_{base_name}.vcf.gz"))
     thresholds = variant_confidence.thresholds_from(job)
+    discovery_inputs = {"annotated": actual_ann_vcf}
+    # A gVCF published (or replaced) since redoes the step's evidence counts.
+    if gvcf := reference_evidence.companion(vcf_path):
+        discovery_inputs["reference_evidence"] = gvcf
     discovery_step = Step(
         f"discovery:{tag}",
-        inputs={"annotated": actual_ann_vcf},
+        inputs=discovery_inputs,
         outputs=[discovery_vcf],
         params={"type": v_type, "thresholds": dataclasses.asdict(thresholds)},
         tools=["bcftools"],
@@ -527,6 +587,9 @@ def run_vcf_workflow(
             discovery_vcf,
             thresholds,
             samples=(job.input, vcf_path),
+            called=vcf_path,
+            clinvar=dataset("clinvar", lib) if "clinvar" in available else None,
+            reference=lib.fasta,
         )
         handle.metrics["variants"] = count
         for index in (".tbi", ".csi"):

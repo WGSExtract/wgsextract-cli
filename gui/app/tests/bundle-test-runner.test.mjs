@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -85,6 +85,27 @@ test("web bundle test runner streams setup and action progress", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("1087 direct usersWorkspace action placeholders use the separate users directory", async () => {
+  await withWebBundleTestFixture(
+    'import {writeFileSync} from "node:fs"; writeFileSync(process.argv[2], "user output");\n',
+    async ({ bundleRoot, workspaceRoot }) => {
+      const file = path.join(bundleRoot, "manifest.json");
+      const manifest = JSON.parse(await readFile(file, "utf8"));
+      manifest.pages[0].sections[0].actions[0].command.arguments[1] = "{{usersWorkspace}}/result.txt";
+      await writeFile(file, JSON.stringify(manifest));
+      const users = path.join(path.dirname(workspaceRoot), "UserData");
+
+      const report = await runBundleTest(bundleRoot, {
+        steps: [{ kind: "action", actionID: "say-hello" }],
+      }, { workspaceURL: workspaceRoot, usersWorkspaceURL: users });
+
+      assert.equal(report.status, "passed", JSON.stringify(report.steps));
+      assert.equal(await readFile(path.join(users, "result.txt"), "utf8"), "user output");
+      await assert.rejects(stat(path.join(workspaceRoot, "result.txt")), { code: "ENOENT" });
+    },
+  );
 });
 
 test("web bundle test runner reports missing required inputs", async () => {

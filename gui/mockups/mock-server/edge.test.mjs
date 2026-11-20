@@ -37,6 +37,48 @@ test("disk-full starts no job; reservations, alternate volumes and partial resum
   assert.equal(mock.doc().jobs.filter(j => j.status === "running").length, 1);
 });
 
+test("current calling writes requested types and evidence into wgse beside lab input", () => {
+  const { request } = setup();
+  request("POST", "/v1/mock/scenario", { name: "empty-jobs" });
+  const files = request("POST", "/v1/mock/files", { template: "seqcom-30x-cram", count: 1 }).body.files;
+  const response = request("POST", "/v1/ops/vcf/call", { input: files[0].path, types: "snp,indel", merge: true, reference_evidence: "gvcf" });
+  assert.equal(response.status, 202);
+  const outputs = response.body.ui.outputs;
+  assert.ok(outputs.some(o => o.path.endsWith("/wgse/variants.g.vcf.gz")));
+  assert.ok(outputs.some(o => o.path.endsWith("/wgse/variants.g.vcf.gz.tbi")));
+  assert.ok(outputs.every(o => !o.path.includes("/wgse/wgse/")));
+});
+
+test("research ACMG refuses silent classification and unmerged Windows support", () => {
+  const local = setup();
+  const missingConsent = local.request("POST", "/v1/ops/vcf/acmg", { vcf_input: "/demo/input.vcf.gz" });
+  assert.equal(missingConsent.body.error.code, "acmg_research_only");
+  const windows = setup("windows");
+  const pending = windows.request("POST", "/v1/ops/vcf/acmg", { vcf_input: "C:/demo/input.vcf.gz", research_acmg: true });
+  assert.equal(pending.body.error.code, "acmg_windows_coming");
+});
+
+test("shared CLI output setting still applies when Basic sends no outdir", () => {
+  const { request } = setup();
+  request("POST", "/v1/mock/scenario", { name: "empty-jobs" });
+  request("PATCH", "/v1/mock/settings", { output_directory: "/Users/you/wgs-extract/results" });
+  const files = request("POST", "/v1/mock/files", { template: "seqcom-30x-cram", count: 1 }).body.files;
+  const result = request("POST", "/v1/ops/vcf/call", { input: files[0].path, types: "snp,indel" });
+  assert.equal(result.status, 202);
+  assert.ok(result.body.ui.outputs.every(o => o.path.startsWith("/Users/you/wgs-extract/results/")));
+});
+
+test("an input already in wgse reuses that output folder, including Windows casing", () => {
+  for (const [machine, input] of [["mac-pro", "/Users/you/wgse/sample.bam"], ["windows", "C:/Users/you/WGSE/sample.bam"]]) {
+    const { request } = setup(machine);
+    request("POST", "/v1/mock/scenario", { name: "empty-jobs" });
+    const result = request("POST", "/v1/ops/vcf/call", { input, types: "snp,indel" });
+    assert.equal(result.status, 202);
+    const folder = input.slice(0, input.lastIndexOf("/"));
+    assert.ok(result.body.ui.outputs.every(o => o.path.startsWith(folder + "/") && !o.path.toLowerCase().includes("/wgse/wgse/")));
+  }
+});
+
 for (const machineKey of ["mac-pro", "windows"]) {
   test(`removing a secondary merge input or its owner is atomic on ${machineKey} until cancellation`, () => {
     const { request } = setup(machineKey);

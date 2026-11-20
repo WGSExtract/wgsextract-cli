@@ -124,7 +124,8 @@ def defined_in(module: ModuleType, predicate: typing.Callable[[object], bool]) -
         and predicate(obj)
         and getattr(obj, "__module__", None) == module.__name__
     ]
-    return sorted(members, key=lambda obj: inspect.getsourcelines(obj)[1])
+    # Facade declarations retain their order even when their source moves.
+    return members
 
 
 def group_section(module: ModuleType) -> Iterator[str]:
@@ -133,6 +134,7 @@ def group_section(module: ModuleType) -> Iterator[str]:
     yield ""
     yield docstring(module)
     yield ""
+    documented_params: set[type[Params]] = set()
     for function in defined_in(module, inspect.isfunction):
         cls = typing.get_type_hints(function).get("params")
         if cls is None:
@@ -142,6 +144,7 @@ def group_section(module: ModuleType) -> Iterator[str]:
             yield docstring(function)
             yield ""
             continue
+        documented_params.add(cls)
         yield f"### `api.{short}.{function.__name__}({cls.__name__})`"
         yield ""
         yield f"CLI: `wgsextract {cls.CLI_COMMAND or cls.COMMAND}`."
@@ -154,7 +157,11 @@ def group_section(module: ModuleType) -> Iterator[str]:
         yield ""
     for name in getattr(module, "__all__", ()):
         obj = getattr(module, name)
-        if inspect.isclass(obj) and getattr(obj, "__module__", None) != module.__name__:
+        if (
+            inspect.isclass(obj)
+            and obj not in documented_params
+            and getattr(obj, "__module__", None) != module.__name__
+        ):
             yield f"### `api.{short}.{name}`"
             yield ""
             yield docstring(obj)

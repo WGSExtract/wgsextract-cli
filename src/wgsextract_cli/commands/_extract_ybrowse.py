@@ -4,13 +4,14 @@ import json
 import tempfile
 from pathlib import Path
 
-from wgsextract_cli.core.alignment_metadata import get_bam_header
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     resolve_reference_library,
 )
-from wgsextract_cli.core.reference_models import sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
 from wgsextract_cli.core.ybrowse import (
@@ -47,7 +48,9 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
     directory, manifest = installed_snapshot(Path(resolve_reference_library()))
     _warn_if_female(input_path, base.outdir)
     output = derive_output_path(input_path, base.outdir, "_Y_ybrowse.vcf.gz")
-    with tempfile.TemporaryDirectory(prefix=".ybrowse_", dir=base.outdir) as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix=".ybrowse_", dir=scratch_parent(base.outdir)
+    ) as temporary:
         work = Path(temporary)
         normalized = work / "sites.vcf.gz"
         rename = work / "rename.tsv"

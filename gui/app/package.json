@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-viewer-assets.mjs",
     "check": "npm run build",
     "test": "npm run build && node scripts/run-node-tests.mjs",
     "tauri": "cd web/packagers/tauri && tauri",
@@ -12,6 +12,7 @@
     "tauri:dist": "npm run tauri:prepare-node && npm run build && node scripts/tauri-build-dist.mjs",
     "tauri:dev": "npm run tauri:prepare-node && npm run build && node scripts/run-tauri.mjs dev",
     "vendor-icons": "npm run build && node scripts/update-bootstrap-icons.mjs",
+    "vendor-igv": "node scripts/update-igv.mjs",
     "dev": "npm run build && node scripts/dev.mjs",
     "start": "npm run build && node dist/web/src/server/main.js",
     "bundle:test": "npm run build && node dist/web/src/server/bundle-test-cli.js",
@@ -30,5 +31,9 @@
   "overrides": {
     "tar": "^7.5.22",
     "postcss": "^8.5.31"
+  },
+  "dependencies": {
+    "igv": "3.8.10",
+    "smol-toml": "^1.6.0"
   }
 }

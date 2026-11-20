@@ -8,6 +8,7 @@ import json
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -84,6 +85,21 @@ def pr_head() -> tuple[str, dict[str, Any], str]:
     return repository, pr, sha
 
 
+def pytest_basetemp(directory: Path, sha: str, name: str, index: int) -> Path:
+    """Where a layer's pytest run keeps its temporary files.
+
+    samtools, bcftools and other native Windows tools fail on paths over 260
+    characters, which a worktree's out/certify/<sha>/<layer> folder plus
+    pytest's per-test folders exceed, so on Windows tests run under the
+    system temporary folder, as on CI's runners.
+    """
+    if sys.platform == "win32":
+        root = Path(tempfile.gettempdir(), "wgse-certify", sha[:12])
+        root.mkdir(parents=True, exist_ok=True)  # pytest makes only the leaf.
+        return Path(tempfile.mkdtemp(prefix=f"{name}-{index}-", dir=root))
+    return directory / f"tmp-{index}"
+
+
 def run_layer(
     name: str,
     commands: list[list[str]],
@@ -126,7 +142,7 @@ def run_layer(
                     "-n",
                     str(workers),
                     f"--junitxml={xml}",
-                    f"--basetemp={directory / f'tmp-{index}'}",
+                    f"--basetemp={pytest_basetemp(directory, sha, name, index)}",
                 ]
             cwd = (
                 "gui"
@@ -253,7 +269,8 @@ def platform_commands(
                 [
                     "cmd",
                     "/c",
-                    "install_windows.bat",
+                    # .\ so cmd finds it with NoDefaultCurrentDirectoryInExePath set.
+                    r".\install_windows.bat",
                     "--dry-run",
                     "--msys2-root",
                     r"C:\msys64",
@@ -351,6 +368,7 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     commands = [
         [*pixi, "ruff", "check", "."],
         [*pixi, "mypy", "src/wgsextract_cli"],
+        [*pixi, "python", "scripts/check_python_size.py"],
         [*pixi, "actionlint"],
         [*pixi, "python", "scripts/validate_github_actions.py"],
         [*pixi, "python", "scripts/validate_site_sources.py"],

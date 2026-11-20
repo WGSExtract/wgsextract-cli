@@ -1,3 +1,6 @@
+import builtins
+import errno
+import io
 import json
 import os
 import random
@@ -36,6 +39,29 @@ def _wgsextract(capsys, *argv: str) -> dict:
 
 
 @contextmanager
+def _python_writes(monkeypatch) -> Iterator[set[Path]]:
+    """Observe successful Python write opens synchronously: short-lived
+    scratch files can disappear before a directory-polling thread runs."""
+    paths: set[Path] = set()
+
+    def observe(open_file):
+        def opened(file, mode="r", *args, **kwargs):
+            stream = open_file(file, mode, *args, **kwargs)
+            if isinstance(file, (str, os.PathLike)) and any(
+                flag in mode for flag in "wax+"
+            ):
+                paths.add(Path(file).resolve())
+            return stream
+
+        return opened
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", observe(builtins.open))
+        patch.setattr(io, "open", observe(io.open))
+        yield paths
+
+
+@contextmanager
 def _files_seen_under(*folders: Path) -> Iterator[dict[Path, set[str]]]:
     """Record every file that appears under each folder while the block runs.
     Sort and collate spills live until their tool finishes, a few hundred ms
@@ -61,7 +87,7 @@ def _files_seen_under(*folders: Path) -> Iterator[dict[Path, set[str]]]:
 
 
 # The temporary files samtools sort and collate, and sambamba sort, spill.
-_SPILL = re.compile(r"((\.tmp|^collate)\.\d+\.bam|^stdin\.\d+)$")
+_SPILL = re.compile(r"((\.tmp|^collate|^sort)\.\d+\.bam|^stdin\.\d+)$")
 
 
 def _spills(names: set[str]) -> set[str]:
@@ -114,8 +140,9 @@ def _failure(result: dict) -> str:
     [
         (["sort", "--memory", "1M"], 8, 4),
         (["unalign", "--r1", "a.fq.gz", "--r2", "b.fq.gz", "--memory", "1G"], 9, 4),
+        (["to-ubam", "--memory", "1M"], 9, 4),
     ],
-    ids=["coordinate", "name"],
+    ids=["coordinate", "name", "ubam"],
 )
 @pytest.mark.parametrize("short", [None, "scratch", "output"])
 def test_bam_sort_budgets_spills_on_the_tmp_dir_volume_separately(
@@ -358,3 +385,99 @@ def test_native_pbmm2_rejects_an_unsupported_internal_sort_override(tmp_path):
         pytest.raises(WGSExtractError, match="internal sorter"),
     ):
         align_pbmm2(AlignJob(gpu=False))
+
+
+def _tree(folder: Path) -> dict[str, tuple[int, int]]:
+    return {
+        str(path.relative_to(folder)): (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in folder.rglob("*")
+    }
+
+
+@needs_tools("samtools", "bcftools")
+def test_tmp_dir_keeps_command_scratch_out_of_the_output(capsys, tmp_path, folders):
+    """A command's own scratch (extract region's calls, made only to build a
+    consensus FASTA) goes to --tmp-dir: the output holds only kept files."""
+    rng = random.Random(3)
+    chrm = "".join(rng.choices("ACGT", k=2_000))
+    ref = write_fasta(tmp_path / "ref.fa", {"chrM": chrm})
+    reads = [f"r{i}\t0\tchrM\t{s + 1}\t60\t100M\t*\t0\t0\t{chrm[s : s + 100]}\t{'I' * 100}"
+             for i, s in enumerate(range(0, 1_900, 20))]  # fmt: skip
+    (tmp_path / "in").mkdir()
+    bam = sam_to_bam(["@SQ\tSN:chrM\tLN:2000", *reads], tmp_path / "in" / "sample.bam")
+    output, scratch = folders
+    with _files_seen_under(scratch, output) as seen:
+        result = _wgsextract(capsys, "extract", "region", "--input", bam, "--ref", str(ref),
+                             "--target", "mt", "--formats", "fasta",
+                             "--outdir", str(output), "--tmp-dir", str(scratch))  # fmt: skip
+    assert result["status"] == "ok", result["error"]
+    assert any(name.endswith("calls.vcf.gz") for name in seen[scratch])
+    assert not any("calls.vcf" in name for name in seen[output])
+    assert sorted(p.name for p in output.iterdir()) == [
+        "sample_MT.fasta",
+        "sample_MT.fasta.manifest.json",
+    ]
+    assert list(scratch.iterdir()) == []
+
+
+@pytest.mark.parametrize("cross_volume", [False, True], ids=["rename", "copy"])
+def test_move_file_publishes_from_a_tmp_dir_on_another_volume(
+    tmp_path, monkeypatch, cross_volume
+):
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "result.vcf.gz").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "result.vcf.gz", ns=(modified, modified))
+    (output / "result.vcf.gz").write_bytes(b"previous")
+    if cross_volume:
+        real = os.replace
+
+        def across(source, destination):
+            # OS boundary: Windows' ERROR_NOT_SAME_DEVICE (17) maps to EXDEV.
+            if Path(source).parent != Path(destination).parent:
+                raise OSError(errno.EXDEV, "Invalid cross-device link", str(source), 17)
+            real(source, destination)
+
+        monkeypatch.setattr(temp_directory.os, "replace", across)
+    temp_directory.move_file(work / "result.vcf.gz", output / "result.vcf.gz")
+    assert (output / "result.vcf.gz").read_bytes() == b"new"
+    assert (output / "result.vcf.gz").stat().st_mtime_ns == modified
+    assert list(work.iterdir()) == []
+    assert [p.name for p in output.iterdir()] == ["result.vcf.gz"]
+
+
+@pytest.mark.parametrize("cross_volume", [False, True], ids=["link", "copy"])
+def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
+    tmp_path, monkeypatch, cross_volume
+):
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "report.html", ns=(modified, modified))
+    if cross_volume:
+        real = os.link
+
+        def across(source, destination):
+            # OS boundary: Windows' ERROR_NOT_SAME_DEVICE (17) maps to EXDEV.
+            if Path(source).parent != Path(destination).parent:
+                raise OSError(errno.EXDEV, "Invalid cross-device link", str(source), 17)
+            real(source, destination)
+
+        monkeypatch.setattr(temp_directory.os, "link", across)
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert (output / "report.html").stat().st_mtime_ns == modified
+    (work / "report.html").unlink()  # a hard link shares the published file
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert [p.name for p in output.iterdir()] == ["report.html"]

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
-from wgsextract_cli.core.microarray_utils import vendor_chrom
+from wgsextract_cli.core.microarray.templates import vendor_chrom
 from wgsextract_cli.core.utils import WGSExtractError
 
 _CONTEXT = re.compile(r"^([ACGT]{15,})\[([ACGT]+|-)/([ACGT]+|-)\]([ACGT]{15,})$")

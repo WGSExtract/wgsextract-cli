@@ -9,7 +9,7 @@ from tests.htslib_helpers import needs_tools
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.commands.vcf.annotation_helpers import prepare_tabix_annotation
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import run_command
 
 
@@ -73,7 +73,7 @@ def _library(root: Path) -> ReferenceLibrary:
 
 def test_annotation_resources_are_found_under_any_build_spelling(tmp_path):
     revel = tmp_path / "revel_GRCh38.tsv.gz"
-    clinvar = tmp_path / "ref" / "clinvar_hs38.vcf.gz"
+    clinvar = tmp_path / "downloads" / "clinvar_hs38.vcf.gz"
     clinvar.parent.mkdir()
     revel.touch()
     clinvar.touch()
@@ -86,7 +86,7 @@ def test_annotation_resources_are_found_under_any_build_spelling(tmp_path):
 
 def test_empty_resource_settings_discover_installed_library_data(monkeypatch, tmp_path):
     """Settings left empty in config.toml don't hide the library's own data."""
-    ref = tmp_path / "ref"
+    ref = tmp_path / "downloads"
     ref.mkdir()
     clinvar = ref / "clinvar_hg38.vcf.gz"
     pharmgkb = ref / "pharmgkb_hg38.tsv.gz"

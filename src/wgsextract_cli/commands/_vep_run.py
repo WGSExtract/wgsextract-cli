@@ -13,7 +13,8 @@ from typing import Any
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.core import read_scope
-from wgsextract_cli.core.alignment_metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import (
     build_from_path,
     canonical_build,
@@ -27,13 +28,14 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_vep_run,
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_defaults,
@@ -366,7 +368,9 @@ def _run_vep_on_input(
                 )
             )
 
-        with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_vep_") as work:
+        with tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_vep_"
+        ) as work:
             vep_input_vcf = current_input
             if not is_bam:
                 vep_input_vcf = _prepare_vcf_input(params, current_input, work, threads)
@@ -403,12 +407,14 @@ def _run_vep_on_input(
 
             if params.format == "vcf":
                 run_command(["tabix", "-f", "-p", "vcf", vep_output])
-                Path(vep_output + ".tbi").replace(final_output + ".tbi")
+            with atomic_output(final_output) as staged:
+                move_file(vep_output, staged)
+                if params.format == "vcf":
+                    move_file(vep_output + ".tbi", staged + ".tbi")
             # VEP's report files go beside the output.
             for suffix in ("_summary.html", "_warnings.txt"):
                 if Path(vep_output + suffix).exists():
-                    Path(vep_output + suffix).replace(output_file + suffix)
-            Path(vep_output).replace(final_output)
+                    move_file(vep_output + suffix, output_file + suffix)
     except (OSError, subprocess.SubprocessError, WGSExtractError, ValueError) as e:
         checkpoint()  # a cancelled run stops here, not at the next input
         logging.error(f"VEP failed for {current_input}: {e}")

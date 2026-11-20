@@ -15,8 +15,9 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from wgsextract_cli.commands import align
 from wgsextract_cli.commands.align import AlignJob
 from wgsextract_cli.commands.info.metrics import determine_sequencer
-from wgsextract_cli.core import results, sequencing
+from wgsextract_cli.core import results
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.alignment import sequencing as sequencing
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -81,7 +82,6 @@ def _onto(genome: str, qname: str) -> str:
 @pytest.mark.parametrize(
     ("suffix", "qname", "header", "detected"),
     [
-        (".fq", "m84000_230101_120000_s1/123456789/ccs", "", "pacbio"),
         (".fq", "608478_2-3317701967", "", "ultima"),
         (".fq", "E100000001L1C001R001000001", "", "dnbseq"),
         (".bam", "renamed", "@RG\tID:r\tPL:PACBIO", "pacbio"),

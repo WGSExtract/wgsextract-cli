@@ -5,7 +5,7 @@
 (function (root) {
   "use strict";
   var M = root.WGSMMock;
-  var WORKSPACE = "{{bundleWorkspace}}";
+  var WORKSPACE = "{{usersWorkspace}}";
 
   /* input: {profiles, machineKey, files, people: [{id, name, note}]} */
   M.buildConfig = function (input) {

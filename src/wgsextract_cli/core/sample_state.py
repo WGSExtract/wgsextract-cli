@@ -39,7 +39,12 @@ class WorkspaceState:
         if entry.get("fingerprint") != fingerprint:
             entry = {"fingerprint": fingerprint}
         old = table(entry.get(name))
-        if old.get("value") == fact["value"] and old.get("version") == fact["version"]:
+        if (
+            old.get("value") == fact["value"]
+            and old.get("version") == fact["version"]
+            and old.get("statistics") == fact.get("statistics")
+            and old.get("evidence_fingerprint") == fact.get("evidence_fingerprint")
+        ):
             return False
         entry[name] = fact
         detected[key] = entry

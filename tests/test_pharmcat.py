@@ -1,23 +1,29 @@
+import hashlib
 import json
 import logging
 import os
 import sys
 from argparse import Namespace
+from contextlib import closing
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
+from tests.http_server import RangeServer
+from tests.test_pharmcat_resources import reference_archive
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.commands.vcf.pharmcat import (
-    REFERENCE_FASTA,
     merge_outside_calls,
     pharmcat_directory,
     prepare_input,
     summarize,
 )
+from wgsextract_cli.core import pharmcat_resources as resources
 from wgsextract_cli.core import runtime
+from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -778,18 +784,37 @@ def test_pharmcat_without_its_environment_says_how_to_install_it(tmp_path, monke
                        str(release))  # fmt: skip
 
 
-def test_pharmcats_reference_is_fetched_once_with_its_own_downloader(tmp_path):
-    (tmp_path / "pcat").mkdir()
-    (tmp_path / "pcat" / "__init__.py").write_text(
-        "from pathlib import Path\n"
-        "def download_reference_fasta_and_index(d):\n"
-        f"    Path(d, {REFERENCE_FASTA!r}).write_text('fetched ' + d)\n"
+@needs_htslib
+def test_1052_pharmcat_reference_requires_consent_and_cached_runs_stay_offline(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    release = _release(tmp_path / "pharmcat")
+    archive = reference_archive(
+        {name: (release / name).read_bytes() for name in resources.REFERENCE_FILES}
     )
-    reference = pharmcat._ensure_reference([sys.executable], str(tmp_path))
-    assert reference == str(tmp_path / REFERENCE_FASTA)
-    assert Path(reference).read_text() == f"fetched {tmp_path}"
-    (tmp_path / "pcat" / "__init__.py").write_text("raise SystemExit(1)\n")
-    assert pharmcat._ensure_reference([sys.executable], str(tmp_path)) == reference
+    for name in resources.REFERENCE_FILES:
+        (release / name).unlink()
+    monkeypatch.setattr(
+        resources, "REFERENCE_SHA256", hashlib.sha256(archive).hexdigest()
+    )
+    sample = Path(_vcf(tmp_path / "sample.vcf.gz", SNPS))
+    params = api.VcfPharmcatParams(
+        vcf_input=sample, pharmcat_dir=release, outdir=tmp_path / "out"
+    )
+    refused = api.vcf.pharmcat(params, check=False)
+    assert refused.exit_code == 2
+    assert refused.error and "reference.fna.bgz" in refused.error.message
+    assert "--download" in refused.error.message
+    assert not (release / REFERENCE_FASTA).exists()
+
+    with closing(RangeServer(archive)) as server:
+        monkeypatch.setattr(resources, "REFERENCE_URL", server.url)
+        permitted = api.vcf.pharmcat(replace(params, download=True), check=False)
+    assert permitted.exit_code == 0, permitted.error
+    assert (tmp_path / "out" / "sample.phenotype.json").is_file()
+    cached = api.vcf.pharmcat(replace(params, outdir=tmp_path / "cached"), check=False)
+    assert cached.exit_code == 0, cached.error
+    assert (tmp_path / "cached" / "sample.phenotype.json").is_file()
 
 
 @needs_htslib
@@ -820,3 +845,38 @@ def test_863_definition_partly_outside_the_gvcfs_region_is_not_reference(tmp_pat
     assert row[9] == "./."
     evidence = (work / "evidence.vcf").read_text()
     assert "PGX_STATE=not_assessed" in evidence
+
+
+@needs_htslib
+def test_a_depth_only_gvcf_given_directly_reads_its_blocks_as_reference_evidence(
+    tmp_path, pharmcat_env, monkeypatch
+):
+    """PR 1060 review: vcf call --reference-evidence gvcf writes SNPs and
+    indels only as bcftools' depth-only gVCF. Given to vcf pharmcat directly,
+    its variants are the calls and its blocks the reference evidence, so a
+    covered definition is reference, not a no-call for want of GQ."""
+    from wgsextract_cli.core.reference_evidence import DEPTH_ONLY, Provenance
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    release = _release(tmp_path / "pharmcat")
+    _span_definition(release)
+    provenance = Provenance("bcftools", "1.21", DEPTH_ONLY).header()
+    gvcf = _vcf(
+        tmp_path / "bcftools.g.vcf.gz",
+        # Blocks as bcftools writes them: INFO/MIN_DP is the depth floor.
+        "{c}\t100\t.\tA\t<*>\t.\tPASS\tEND=104;MIN_DP=30\tGT:DP\t0/0:30\n"
+        f"{{c}}\t103\t.\t{_base(103)}\tT,<*>\t50\tPASS\t.\tGT:DP\t0/1:30\n"
+        "{c}\t105\t.\tA\t<*>\t.\tPASS\tEND=110;MIN_DP=30\tGT:DP\t0/0:30\n",
+        contig="chr1",
+        header='##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">\n'
+        '##INFO=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
+        + provenance
+        + "\n",
+    )
+    run_wgsextract("vcf", "pharmcat", "--vcf-input", gvcf, "--pharmcat-dir",
+                   str(release), "--outdir", str(tmp_path / "out"))  # fmt: skip
+
+    rows = [r.split("\t") for r in _view(release / "seen.vcf.gz", "-H")]
+    by_pos = {row[1]: row for row in rows}
+    assert by_pos["103"][4] == "T" and by_pos["103"][9] == "0/1"
+    assert by_pos["105"][9] == "0/0"

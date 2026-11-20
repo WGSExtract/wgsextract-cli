@@ -22,6 +22,7 @@ from wgsextract_cli.core.download_progress import (
 )
 from wgsextract_cli.core.gnomad_af import build_gnomad_af
 from wgsextract_cli.core.pharmgkb import download_pharmgkb
+from wgsextract_cli.core.ref_library.layout import download_path, downloads_dir
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -51,7 +52,7 @@ def genome_bytes(final_name: str, reflib_dir: str) -> int:
     """Bytes on disk of a library genome, its partial download and indexes."""
     if not reflib_dir:
         return 0
-    from wgsextract_cli.core.reference_assets import reference_genomes_dir
+    from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 
     base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
     return sum(
@@ -180,7 +181,7 @@ def _download_resource(
     """Download (or pick up a manual copy of) each build (of ``builds``, else
     all), then BGZF + tabix it."""
     urls = {b: u for b, u in resource.urls.items() if builds is None or b in builds}
-    target_dir = str(Path(reflib_dir, "ref"))
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
     def cancelled() -> bool:
@@ -194,7 +195,9 @@ def _download_resource(
         if cancelled():
             return False
         label = f"{resource.label} {build}"
-        dest_path = str(Path(target_dir, resource.dest_name.format(build=build)))
+        dest_path = str(
+            download_path(reflib_dir, resource.dest_name.format(build=build))
+        )
 
         if url is None:
             if not Path(dest_path).exists():
@@ -381,14 +384,14 @@ def download_cadd(
 ) -> bool:
     """Downloads CADD v1.7 SNV and gnomAD-indel scores, with their tabix indexes."""
     remote_dir, indel_name = CADD_FILES[build]
-    target_dir = str(Path(reflib_dir, "ref"))
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     files = [
         (indel_name, f"cadd_indel_{build}.tsv.gz"),
         (CADD_SNV_FILE, f"cadd_{build}.tsv.gz"),
     ]
     for remote_name, local_name in files:
-        dest = str(Path(target_dir, local_name))
+        dest = str(download_path(reflib_dir, local_name))
         if Path(dest).is_file() and Path(dest + ".tbi").is_file():
             logging.info(f"{local_name} is already installed.")
             continue

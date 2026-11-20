@@ -16,7 +16,8 @@ import pytest
 
 from tests.fake_tools import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam
-from wgsextract_cli.core import bwa_index, config
+from wgsextract_cli.core import config
+from wgsextract_cli.core.alignment import bwa_index as bwa_index
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.file_lock import build_lock, exclusive_lock
@@ -169,6 +170,7 @@ def test_atomic_special_alignment_failure_preserves_the_existing_bam(
 ):
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
     from wgsextract_cli.commands import align
+    from wgsextract_cli.commands.alignment import backends, gpu
     from wgsextract_cli.core import parabricks
     from wgsextract_cli.core.atomic_output import atomic_output_mode
 
@@ -177,8 +179,8 @@ def test_atomic_special_alignment_failure_preserves_the_existing_bam(
     setup = align._AlignSetup(
         "1", "256M", str(tmp_path), "reference", "sample", "reads"
     )
-    monkeypatch.setattr(align, "get_tool_path", lambda tool: tool)
-    monkeypatch.setattr(align, "run_pipeline", lambda *args, **kwargs: None)
+    monkeypatch.setattr(backends, "get_tool_path", lambda tool: tool)
+    monkeypatch.setattr(backends, "run_pipeline", lambda *args, **kwargs: None)
     monkeypatch.setattr(parabricks, "host_path", str)
 
     def interrupted(command, *args, **kwargs):
@@ -188,7 +190,9 @@ def test_atomic_special_alignment_failure_preserves_the_existing_bam(
         raise RuntimeError("interrupted")
 
     monkeypatch.setattr(parabricks, "run_pbrun", interrupted)
-    monkeypatch.setattr(align, "run_command", interrupted)
+    monkeypatch.setattr(
+        gpu if backend == "parabricks" else backends, "run_command", interrupted
+    )
     with atomic_output_mode(True), pytest.raises(RuntimeError):
         if backend == "parabricks":
             align._gpu_align(

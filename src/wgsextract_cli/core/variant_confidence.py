@@ -37,6 +37,10 @@ from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.variant_confidence_header import detect_caller as detect_caller
+from wgsextract_cli.core.variant_confidence_header import (
+    mapping_quality_kind as mapping_quality_kind,
+)
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 SCHEME = "wgsextract.confidence/1"
@@ -163,60 +167,6 @@ GQ_HELP = (
 )
 
 
-_CALLER_MARKERS = (
-    (
-        "mutect2",
-        re.compile(r'^##source="?Mutect2\b', re.I),
-    ),
-    ("deepvariant", re.compile(r"^##DeepVariant_version", re.I)),
-    ("dragen", re.compile(r"^##(DRAGENCommandLine|source=DRAGEN)", re.I)),
-    ("clair3", re.compile(r"^##source=Clair3|^##clair3", re.I)),
-    (
-        "gatk",
-        re.compile(
-            r"^##(GATKCommandLine|source=(HaplotypeCaller|GenotypeGVCFs))", re.I
-        ),
-    ),  # fmt: skip
-    ("freebayes", re.compile(r"^##source=freeBayes", re.I)),
-    ("strelka", re.compile(r"^##source=strelka", re.I)),
-    ("bcftools", re.compile(r"^##bcftools_callCommand")),
-)
-
-
-def mapping_quality_kind(header_lines: Iterable[str]) -> str:
-    """ "mean" when the header declares INFO/MQ as an average, else "rms"."""
-    for line in header_lines:
-        if line.startswith("##INFO=<ID=MQ,"):
-            text = line.lower()
-            rms = "rms" in text or "root mean square" in text
-            if not rms and ("average" in text or "mean" in text):
-                return "mean"
-    return "rms"
-
-
-def detect_caller(header_lines: Iterable[str]) -> str:
-    """The variant caller named in a VCF header, or "unknown"."""
-    lines = list(header_lines)
-    for line in lines:
-        if line.lower().startswith("##gatkcommandline=<") and line.endswith(">"):
-            # Consume quoted values whole, so text such as ",ID=Mutect2"
-            # inside CommandLine is not mistaken for an attribute.
-            attributes = re.findall(
-                r'(?:^|,)\s*([^=,]+)=(?:"((?:\\.|[^"\\])*)"|([^,]*))',
-                line.partition("<")[2][:-1],
-            )
-            if any(
-                key.strip().lower() == "id"
-                and (quoted or plain).strip().lower() == "mutect2"
-                for key, quoted, plain in attributes
-            ):
-                return "mutect2"
-    for caller, marker in _CALLER_MARKERS:
-        if any(marker.match(line) for line in lines):
-            return caller
-    return "unknown"
-
-
 def _confidence_policy(caller: str) -> str:
     return "unsupported_somatic" if caller == "mutect2" else "germline"
 
@@ -333,6 +283,7 @@ def classify(
     samples: int = 1,
     contaminated: bool = False,
     reference: bool = False,
+    ploidy: int | None = None,
 ) -> CallConfidence | None:
     """The confidence of ALT number ``alt`` (1-based), or None when the sample
     doesn't carry it."""
@@ -341,7 +292,9 @@ def classify(
     if not copies and not no_call:
         return None
     zygosity = (
-        "haploid" if len(alleles) == 1 else ("hom" if copies == len(alleles) else "het")
+        "haploid"
+        if (ploidy if ploidy is not None else len(alleles)) == 1
+        else ("hom" if copies == len(alleles) else "het")
     )
     kind = "snv" if len(ref) == len(alt_allele) == 1 else "indel"
     low: list[str] = []
@@ -525,6 +478,8 @@ class ConfidenceSummary:
     not_carried: int = 0
     rare_imputed: int = 0
     findings: list[Finding] = field(default_factory=list)
+    # The gVCF's states at the sites checked (add_reference_evidence).
+    reference_evidence: dict[str, Any] | None = None
 
     @property
     def carried(self) -> int:
@@ -553,6 +508,11 @@ class ConfidenceSummary:
             "reasons": dict(sorted(self.reasons.items())),
             "findings": [finding.manifest() for finding in listed],
             "findings_truncated": len(self.findings) > len(listed),
+            **(
+                {"reference_evidence": self.reference_evidence}
+                if self.reference_evidence
+                else {}
+            ),
             "disclaimer": DISCLAIMER,
             "guide": GUIDE,
         }
@@ -619,12 +579,16 @@ def label_records(
     ``summary_columns`` are INFO keys copied into each finding; region_names
     are (chrom, start0, end, name) intervals naming a finding's ``gene``.
     """
+    from wgsextract_cli.core.reference_evidence import parse_provenance
+
+    provenance = None
     header: list[str] = []
     summary: ConfidenceSummary | None = None
     mq_kind = "rms"
     for line in lines:
         line = line.rstrip("\r\n")
         if line.startswith("##"):
+            provenance = parse_provenance(line) or provenance
             if not _OWN_HEADER.match(line):
                 header.append(line)
             continue
@@ -703,6 +667,18 @@ def label_records(
                     samples=max(len(fields) - 9, 1),
                     contaminated=contamination is not None,
                     reference=reference_record,
+                    ploidy=(
+                        provenance.record_ploidy(
+                            fields[0],
+                            int(fields[1]),
+                            int(
+                                _number(info.get("END"))
+                                or (int(fields[1]) + len(fields[3]) - 1)
+                            ),
+                        )
+                        if provenance
+                        else None
+                    ),
                 )
             )
             if reference_record and index > 1:
@@ -1005,6 +981,8 @@ def record(
         None if output is None else str(output), role
     )]  # fmt: skip
     result.set_details(details)
+    if summary.reference_evidence:
+        _record_reference_evidence(summary.reference_evidence)
 
     if summary.rare_imputed:
         warn(
@@ -1057,3 +1035,87 @@ def is_pathogenic(clnsig: str) -> bool:
 
 def clinical_count(summary: ConfidenceSummary) -> int:
     return sum(is_pathogenic(f.annotations.get("CLNSIG", "")) for f in summary.findings)
+
+
+CALL_SITES, CLINVAR_SITES = "calls", "clinvar_pathogenic_sites"
+_CHECKED = {
+    CALL_SITES: "labelled calls",
+    CLINVAR_SITES: "ClinVar pathogenic/likely pathogenic sites",
+}
+
+
+def add_reference_evidence(
+    summary: ConfidenceSummary,
+    vcf: PathInput,
+    work: PathInput,
+    clinvar_sites: Iterable[tuple[str, int, int]] | None = None,
+    reference: str | None = None,
+) -> None:
+    """Add companion gVCF states at calls/ClinVar spans, aligned to ``reference``."""
+    from wgsextract_cli.core import reference_evidence as evidence
+
+    gvcf = evidence.companion(vcf)
+    if gvcf is None:
+        return
+    read = evidence.readable(gvcf, summary.sample, Path(work))
+    if read is None:
+        warn(
+            "reference_evidence_other_sample",
+            "The gVCF beside the input holds another sample; it was not used.",
+            reference_evidence=gvcf,
+        )
+        return
+    source = evidence.ReferenceEvidence(read)
+    if reference:
+        source = source.normalized(reference, Path(work))
+    checked: dict[str, Iterable[tuple[str, int, int]]] = {
+        CALL_SITES: [
+            (f.chrom, f.pos, f.pos + max(len(f.ref), 1) - 1) for f in summary.findings
+        ]
+    }
+    if clinvar_sites is not None:
+        checked[CLINVAR_SITES] = clinvar_sites
+    report: dict[str, Any] = {}
+    for name, sites in checked.items():
+        counts = Counter(
+            state.value
+            for _, state in evidence.site_states(source, sites, summary.thresholds)
+        )
+        report[name] = {"sites": sum(counts.values()), "states": dict(sorted(counts.items()))}  # fmt: skip
+    current_result().add_input(gvcf, evidence.ROLE)
+    summary.reference_evidence = {
+        "file": gvcf,
+        "engine": source.provenance.engine if source.provenance else None,
+        "quality_model": source.quality_model,
+        "checked": report,
+    }
+
+
+def _record_reference_evidence(report: Mapping[str, Any]) -> None:
+    for name, checked in report["checked"].items():
+        states = ", ".join(f"{n} {state}" for state, n in checked["states"].items())
+        logging.info(
+            f"Reference evidence at the {checked['sites']} {_CHECKED[name]}: "
+            f"{states or 'none'} ({Path(report['file']).name})."
+        )
+    sites = report["checked"].get(CLINVAR_SITES)
+    if not sites:
+        return
+    open_states = {
+        state: n
+        for state, n in sites["states"].items()
+        if state not in {"callable_reference", "variant", "excluded_by_policy"}
+    }
+    if open_states:
+        count = sum(open_states.values())
+        warn(
+            "reference_evidence_unassessed_sites",
+            f"{count} of {sites['sites']} ClinVar pathogenic/likely pathogenic "
+            "sites have neither a call nor confident reference in the gVCF ("
+            + ", ".join(f"{n} {state}" for state, n in open_states.items())
+            + "): the sample may carry a variant there that was not called.",
+            count=count,
+            total=sites["sites"],
+            reference_evidence=str(report["file"]),
+            **{f"sites_{state}": n for state, n in open_states.items()},
+        )

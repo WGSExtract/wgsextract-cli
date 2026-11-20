@@ -3,8 +3,43 @@
 `align` and `realign` detect ONT from `@RG PL:ONT` or UUID read names in
 BAM/CRAM/FASTQ (including gzipped FASTQ). Read groups take precedence; mixed
 platforms are not assigned one platform. An explicit `--platform` overrides
-detection. Unknown input still defaults to Illumina. SRA-renamed FASTQs without
-platform metadata need `--platform ont`.
+detection.
+
+For FASTQs with inconclusive names (including SRA-renamed reads), detection
+samples at most 4096 reads, 4 MiB compressed and 16 MiB decoded, including
+gzip/BGZF files. A median length below 1 kb keeps the previous short-read
+defaults, including renamed 301 bp Illumina and 400/600 bp Ion Torrent reads.
+FASTQ and compression are recognized by content, not filename; wrapped
+sequence and quality lines are supported. Named pipes are left untouched until
+alignment stages them. Longer reads use ONT header tags (`runid=`, `ch=`, `start_time=`,
+`basecall_model_version_id=`), or PacBio consensus tags (`rq=` of at least
+0.99; otherwise `np=` of at least 2). Conflicting tags are not resolved by
+guessing. Without tags, a HiFi-like quality profile (mean Q30 or higher,
+at least 90% of bases Q30+, some qualities above ONT's Q50 cap) selects PacBio
+HiFi. A short-read tail does not disqualify an otherwise high-quality HiFi
+sample. These are conservative heuristics,
+not instrument identification: low-quality ONT and PacBio CLR can overlap.
+Ambiguous long reads are refused: pass `--platform ont`, `--platform hifi`
+or `--platform clr`. Both paired FASTQs are checked; conflicting evidence is
+refused. Explicit `--platform` still wins.
+For known short-read data above the conservative 1 kb cutoff,
+choose `--platform illumina` explicitly.
+
+The sample workspace's platform fact records the method, confidence and sampled
+statistics (median and N50 length, mean/max Q, p90/p10 length spread and sample size).
+The result manifest includes the same evidence under
+`provenance.params.platform_detection`. Samples are cached per file revision;
+replacing a FASTQ invalidates its evidence. BAM/CRAM detection is unchanged.
+FASTQ facts also hash the entire bounded input prefix used for detection, so
+same-size edits outside the usual first/middle/last-MiB fingerprint windows
+invalidate the cached evidence.
+An override is recorded separately as `effective_platform`; it never erases
+the detected method or statistics, including inconclusive (`Unknown`) samples.
+Native read-name evidence is independent of parsing the sequence/quality sample,
+so empty or malformed sample records cannot erase a recognized ONT UUID.
+Conclusive names do not require a length/quality sample.
+Zero-length records are excluded from sampled statistics; full FASTQ validation
+still reports invalid input before mapping.
 
 A BAM/CRAM whose read groups name several platforms (ONT and Illumina reads
 merged, say) is reported by `info` (the `Platforms` line, `platforms` in the
@@ -17,8 +52,10 @@ or `--pacbio`), `vcf sv` (`--caller`, `--ont` or `--pacbio`) and `typing str`
 warn `mixed_platforms` and carry on. Or split the reads by read group with `samtools split` and process
 each platform separately.
 
-Only ONT gains new automatic alignment defaults, and `realign` of single-end
-PacBio BAM/CRAM. Revio/PacBio-, Ultima- and MGI-named FASTQs, paired
+ONT and PacBio FASTQs gain automatic long-read alignment defaults, as does
+`realign` of single-end PacBio BAM/CRAM. Native PacBio `m84…/…/ccs` names
+select HiFi/CCS (`map-hifi` with minimap2), not CLR; `align` may use pbmm2
+when installed, just as for PacBio BAM input. Ultima- and MGI-named FASTQs, paired
 `PL:PACBIO` and `PL:DNBSEQ` BAMs retain the previous Illumina alignment
 defaults unless `--platform` is explicit. The pre-existing
 BAM/CRAM `PL:ULTIMA` automatic path is unchanged. Other detected platforms
@@ -302,8 +339,38 @@ Clair3 2.0.5 bundles htslib 1.24 and reads CRAM 3.1 itself. Older Clair3
 builds on `PATH` can't decode some CRAM 3.1 blocks (#604), so for them the
 command calls from a temporary CRAM 3.0 copy.
 
-Clair3 runs on the CPU by default. `vcf clair3 --gpu` runs its neural
-networks on an NVIDIA GPU instead, from HKU's CUDA image of the same Clair3
+Clair3 runs on the CPU by default. On **Apple Silicon**, `vcf clair3 --gpu`
+selects MPS inference in the WGSE-built **code-only** `wgse-clair3` package.
+It preserves the CPU streaming pipeline and high-depth scaling, including
+gVCF; it does not select upstream's CUDA disk-tensor pipeline. Preflight
+refuses missing/unpatched packages or unavailable PyTorch MPS, even with
+`--no-preflight`, rather than falling back or installing anything. On Apple
+Silicon, `pixi install -e clair3` installs the pinned package
+([release and pin](../native/clair3/README.md#packaging-and-release)).
+Models are resolved and checked exactly as on the CPU; the new package
+redistributes **no weights** (ONT Rerio's licence is research-only).
+Whole-genome MPS qualification is still pending.
+
+On an M1 Pro (10 cores, 32 GiB; four calling threads), the original-alignment
+public HG002 chr20:10-11 Mb slice produced identical **1,830 sites, alleles,
+GT and FILTER** on CPU/MPS, including gVCF calling. QUAL differed by at most
+0.01; sample fields matched exactly. All **32,362 gVCF reference records**
+matched in every column. Through the real CLI, CPU/MPS took **27.43/22.26 s**
+without gVCF and **37.01/32.63 s** with it (2026-11-18). These shared-host,
+startup-heavy slice timings are not whole-genome speed claims. This is not
+the realigned slice behind the older Linux/M1 figures below.
+
+On whole chr20 (64.44 Mb), paired four-thread gVCF calls also matched:
+**142,070 sites/alleles/GT/FILTER** in both VCF and gVCF, and **3,084,277
+reference records identical in every column**. QUAL differed by at most
+0.03; six PL fields and two GQ fields differed by one, without changing GT
+or FILTER. In an awake paired repeat (2026-11-19, `caffeinate`, shared bench
+lock), CPU took **20.36 min** and MPS **15.19 min**: about **1.34x** end to
+end, with the same results. Whole-genome qualification remains pending. See the
+[sizing table and caveats](resource_estimates.md#clair3-on-the-gpu).
+
+On **x86-64 Linux**, `vcf clair3 --gpu` runs its neural networks on an NVIDIA
+GPU from HKU's CUDA image of the same Clair3
 2.0.5, pinned by digest (`docker pull
 hkubal/clair3:v2.0.5_gpu@sha256:3f660a693142db0aa8361a58fb6379fc6e3eeead20916eaae5614bd00d21cbeb`,
 about 4.5 GB; `clair3_gpu_image` in `config.toml` for another build). It needs
@@ -319,7 +386,7 @@ model still comes from `--model`, `clair3_model` or the reads' metadata, as
 on the CPU, and is checked the same way; a bundled model name needs the
 `clair3` Pixi environment, otherwise pass the model's directory.
 
-The GPU mode needs far more disk than the CPU mode: Clair3 2.0.5 writes every
+The CUDA GPU mode needs far more disk than CPU or MPS: Clair3 2.0.5 writes every
 full-alignment tensor into its work folder in the output directory before the
 GPU predicts any, about 100 GiB for a 43x whole genome and two to four times
 that for 6-15x reads, which send it more low-quality candidates. Clair3 has
@@ -344,10 +411,9 @@ pileup calls matched the CPU's (QUAL within 0.03), but 6 of 360,471 flipped
 near a threshold, which changes WhatsHap's phasing and so about 1,000
 full-alignment calls, with the same F1.
 
-The Pixi environment can't use the GPU itself: Bioconda's Linux Clair3
+Bioconda's unpatched caller cannot select Apple MPS. Its Linux Clair3
 depends on CPU-only PyTorch (`pytorch-cpu`), so its `--use_gpu` falls back to
-the CPU, and Clair3 2.0.5 has no Apple GPU (MPS) path, although the macOS
-PyTorch has MPS. With conda-forge's CUDA PyTorch swapped in by hand,
+the CPU. With conda-forge's CUDA PyTorch swapped in by hand,
 Bioconda's own Clair3 ran on the GPU and gave the same calls (#639).
 
 On the HG002 chr20:10-11 Mb slice (R10.4.1 sup v4.0.0 reads, model

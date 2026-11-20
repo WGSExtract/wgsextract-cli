@@ -1,4 +1,13 @@
-export const workspaceToken = "{{bundleWorkspace}}";
+/** The app's own, hidden copy of the bundle and its state: in the app's data folder, never moved by the user. */
+export const bundleWorkspaceToken = "{{bundleWorkspace}}";
+/** The user's visible folder (~/wgs-extract) for the settings file and the folders they manage; they may move it. */
+export const usersWorkspaceToken = "{{usersWorkspace}}";
+
+/** The workspaces a path may be shown relative to. Without a users workspace, the bundle's stands in for it. */
+export interface WorkspaceRoots {
+    bundle: string;
+    users?: string | undefined;
+}
 
 /** Forward slashes, with no `.` or `..` segments, repeated slashes or trailing slash. */
 function normalizePath(candidate: string) {
@@ -30,13 +39,32 @@ function pathRelativeToRoot(value: string, root: string): string | null {
     return comparable(normalizedValue).startsWith(`${comparable(normalizedRoot)}/`) ? normalizedValue.slice(normalizedRoot.length + 1) : null;
 }
 
-/** How the GUI shows a path: anything in the workspace is written relative to {{bundleWorkspace}}. */
-export function displayWorkspacePath(value: string, workspaceRoot: string): string {
-    const relative = pathRelativeToRoot(value, workspaceRoot);
-    if (relative == null) {
+/**
+ * How the GUI shows a path: anything in a workspace is written relative to its token, the innermost
+ * workspace when one holds the other.
+ */
+export function displayWorkspacePath(value: string, roots: WorkspaceRoots): string {
+    const candidates: Array<[string, string]> = [[bundleWorkspaceToken, roots.bundle]];
+    if (roots.users) {
+        candidates.push([usersWorkspaceToken, roots.users]);
+    }
+    let shown: { token: string; relative: string; depth: number } | null = null;
+    for (const [token, root] of candidates) {
+        const relative = pathRelativeToRoot(value, root);
+        const depth = normalizePath(root).length;
+        if (relative != null && (!shown || depth > shown.depth)) {
+            shown = { token, relative, depth };
+        }
+    }
+    if (!shown) {
         return value;
     }
-    return relative ? `${workspaceToken}/${relative}` : workspaceToken;
+    return shown.relative ? `${shown.token}/${shown.relative}` : shown.token;
+}
+
+/** Whether `candidate` is `parent` itself or inside it. */
+export function isSameOrInsidePath(parent: string, candidate: string): boolean {
+    return pathRelativeToRoot(candidate, parent) != null;
 }
 
 /** The same path after `from` moved to `to`; a path outside `from` is returned unchanged. */

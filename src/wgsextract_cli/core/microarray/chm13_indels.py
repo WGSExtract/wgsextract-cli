@@ -28,7 +28,7 @@ from wgsextract_cli.core.microarray.indels import (
     _query_lines,
 )
 from wgsextract_cli.core.microarray.quality import quality_policy
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _resolve_templates_for_format,
     get_template_format,
     template_rows,
@@ -450,7 +450,7 @@ def call_chm13_indels(
             raise WGSExtractError(f"No verified I/D output encoding for {format_name}.")
         _, bodies = _resolve_templates_for_format(roots, format_name, info)
         output[format_name] = {}
-        if info.get("ncbi36"):
+        if info.get("build"):
             continue
         for body in bodies:
             for marker, chrom, pos in template_rows(format_name, body):

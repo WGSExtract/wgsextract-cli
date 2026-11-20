@@ -35,9 +35,13 @@ $UninstallKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$Prod
 $AppIdentifier = "dev.guiforcli.web.embed.wgsextract"
 $AppData = Join-Path $env:LOCALAPPDATA "WGSExtract-gui"
 $AppProcess = "wgsextract-gui"
-# Apps since PR #531 keep the workspace in the home folder; released apps
-# before it keep it in their app data. The actions use the one setup made.
-$Workspace = Join-Path $env:USERPROFILE "wgs-extract"
+# Apps since the users workspace split keep the bundle workspace in $AppData and
+# the user's settings and folders in $UsersWorkspace; 0.8.5 to 0.8.7 kept both in
+# the home folder; released apps before them in their app data. The actions use
+# the one setup made.
+$UsersWorkspace = Join-Path $env:USERPROFILE "wgs-extract"
+$Workspace = $UsersWorkspace
+$UsersArgs = @()
 $OldWorkspace = Join-Path $env:LOCALAPPDATA "$AppIdentifier\BundleWorkspaces\wgs-extract"
 
 function Save-Snapshot([string]$Name) {
@@ -310,7 +314,12 @@ foreach ($identifier in "dev.wgsextract-gui", $AppIdentifier) {
 # The real actions through the app's own runtime: its bundled Node and its
 # bundle-test runner, on its bundle and workspace. Clicking isn't simulated;
 # everything a click would start is.
-if (-not (Test-Path -LiteralPath (Join-Path $Workspace ".bundle-workspace")) -and
+$NewWorkspace = Join-Path $AppData "BundleWorkspaces\wgs-extract"
+if (-not (Test-Path -LiteralPath (Join-Path $UsersWorkspace ".bundle-workspace")) -and
+    (Test-Path -LiteralPath (Join-Path $NewWorkspace ".bundle-workspace"))) {
+    $Workspace = $NewWorkspace
+    $UsersArgs = @("--users-workspace", $UsersWorkspace)
+} elseif (-not (Test-Path -LiteralPath (Join-Path $Workspace ".bundle-workspace")) -and
     (Test-Path -LiteralPath (Join-Path $OldWorkspace ".bundle-workspace"))) {
     $Workspace = $OldWorkspace
 }
@@ -320,19 +329,20 @@ $BundleRunner = Join-Path $InstallDir "app\dist\web\src\server\bundle-test-cli.j
 if (-not (Test-Path -LiteralPath $BundleRunner)) {
     $BundleRunner = Join-Path $InstallDir "platform\typescript\dist\web\src\server\bundle-test-cli.js"
 }
-Step "actions" @((Join-Path $InstallDir "node\node.exe"),
+$ActionArgs = @((Join-Path $InstallDir "node\node.exe"),
     $BundleRunner,
-    "--plan", (Join-Path (Split-Path $PSScriptRoot) "gui-plan.json"), "--workspace", $Workspace,
+    "--plan", (Join-Path (Split-Path $PSScriptRoot) "gui-plan.json"), "--workspace", $Workspace) + $UsersArgs + @(
     "--report", (Join-Path $R "bundle-report.json"), "--log", (Join-Path $R "bundle-test.log"),
-    (Join-Path $InstallDir "examples\EmbeddedBundle")) $InstallDir
+    (Join-Path $InstallDir "examples\EmbeddedBundle"))
+Step "actions" $ActionArgs $InstallDir
 Remove-Item Env:GUI_FOR_CLI_APP_SUPPORT_NAME
 # The oracle reads outputs where the CLI lab keeps them.
 if (Test-Path -LiteralPath (Join-Path $Workspace "lab-output")) {
     Copy-Item -Path (Join-Path $Workspace "lab-output\*") -Destination (Join-Path $R "workload") -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $R "workload\info") | Out-Null
-foreach ($dir in "output", "datasets") {
-    Get-ChildItem -LiteralPath (Join-Path $Workspace $dir) -Recurse -Filter "*.wgse_info.json" -ErrorAction SilentlyContinue |
+foreach ($dir in (Join-Path $UsersWorkspace "output"), (Join-Path $UsersWorkspace "mygenomes"), (Join-Path $Workspace "output"), (Join-Path $Workspace "datasets"), (Join-Path $Workspace "genomes")) {
+    Get-ChildItem -LiteralPath $dir -Recurse -Filter "*.wgse_info.json" -ErrorAction SilentlyContinue |
         Copy-Item -Destination (Join-Path $R "workload\info")
 }
 Save-Snapshot "after_install"
@@ -343,6 +353,7 @@ if ($Sabotage -ne "skip-uninstall") {
         Invoke-InSession "uninstall" @{
             uninstallString = $key.UninstallString; displayName = $key.DisplayName
             deleteAppDataLabel = "Delete the application data"
+            removeUsersWorkspace = $true
             env = @{
                 GUI_FOR_CLI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")
                 WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE = (Join-Path $R "uninstall-result.json")

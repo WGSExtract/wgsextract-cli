@@ -9,7 +9,7 @@
   var M = root.WGSMMock;
   var U = M.util;
   var KEY = "v2-api";
-  var VERSION = 4;
+  var VERSION = 5;
   var MAX_JOBS = 1;
   var MAX_DOWNLOADS = 3;
   var FINISHED = ["succeeded", "failed", "cancelled", "interrupted"];
@@ -35,6 +35,7 @@
     function ctx() {
       var machine = doc.machine ? M.machineFrom(config, doc.machine, doc.machineCustom) : M.machineFrom(config, opts.machineKey, opts.machineCustom);
       if (doc.settings && doc.settings.workspace) machine.workspace = doc.settings.workspace;
+      if (doc.settings && doc.settings.output_directory) machine.outputDirectory = doc.settings.output_directory;
       var people = {};
       Object.keys(config.people).concat(Object.keys(doc.people)).forEach(function (id) {
         people[id] = Object.assign({ name: id, note: "" }, config.people[id], doc.people[id]);

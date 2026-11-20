@@ -22,12 +22,12 @@ import pytest
 from tests.htslib_helpers import needs_htslib, needs_tools
 from tests.http_server import serving
 from wgsextract_cli.commands.ref import library_commands
-from wgsextract_cli.core import library_removal
-from wgsextract_cli.core import reference_processing as rp
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.ref_library import downloads
+from wgsextract_cli.core.ref_library import processing as rp
+from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -196,7 +196,7 @@ def test_failed_download_installs_nothing(tmp_path, monkeypatch):
 def test_catalog_signature_rejects_wrong_mirror_and_accepts_matching_one(
     tmp_path, monkeypatch, caplog
 ):
-    from wgsextract_cli.core.reference_assets import sequence_signature
+    from wgsextract_cli.core.ref_library.assets import sequence_signature
 
     first = _genome(url="https://example.org/wrong.fa.gz")
     second = _genome(url="https://example.org/right.fa.gz")
@@ -618,13 +618,13 @@ def test_gnomad_downloads_are_indexed_and_failures_reported(tmp_path, monkeypatc
         monkeypatch, {"https://x/38.bgz": _bgzip(_VCF), "https://x/19.bgz": None}
     )
     assert not rp.download_gnomad(str(tmp_path))
-    assert (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").is_file()
-    assert not (tmp_path / "ref" / "gnomad_hg19.vcf.bgz").exists()
+    assert (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").is_file()
+    assert not (tmp_path / "downloads" / "gnomad_hg19.vcf.bgz").exists()
 
     _fake_download(monkeypatch, {"https://x/38.bgz": _VCF, "https://x/19.bgz": None})
-    (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").unlink()
+    (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").unlink()
     assert not rp.download_gnomad(str(tmp_path))  # plain VCF: tabix refuses it
-    assert not (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").exists()
+    assert not (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").exists()
 
     cancel = threading.Event()
     cancel.set()

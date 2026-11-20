@@ -11,11 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from wgsextract_cli.core.alignment.samtools_commands import parse_memory
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.resource_volumes import reference_evidence_demands
+
 from .alignment import memory as alignment_memory
 from .native_support import is_arm64_docker_host
-from .reference_assets import read_fai_lengths
 from .region_selection import selected_intervals
-from .samtools_commands import parse_memory
 
 Operation = Literal[
     "align",
@@ -909,7 +911,7 @@ def estimate_resources(
                 # Per-contig parts coexist with the merged gVCF until it's published.
                 demands += [
                     (output_dir, "reference_evidence", gvcf),
-                    (output_dir, "reference_evidence_parts", gvcf),
+                    (temp_dir or output_dir, "reference_evidence_parts", gvcf),
                 ]
             notes.append(
                 "bcftools compressed VCF disk uses the HG002 30x envelope "
@@ -926,14 +928,14 @@ def estimate_resources(
         gvcf_bytes = None if size is None else math.ceil(size * DV_GVCF_PER_INPUT_BYTE)
         demands.append((output_dir, "reference_evidence", gvcf_bytes))
     if operation == "gatk" and reference_evidence:
-        # HaplotypeCaller's raw gVCF per ploidy partition, its cut and
-        # gathered copies and the published gVCF.
         gvcf_bytes = (
             None
             if disk_reads is None
-            else math.ceil(disk_reads * GATK_GVCF_BYTES_PER_READ * GVCF_COPIES)
+            else math.ceil(disk_reads * GATK_GVCF_BYTES_PER_READ)
         )
-        demands.append((output_dir, "reference_evidence", gvcf_bytes))
+        demands += reference_evidence_demands(
+            output_dir, gatk_staging_dir, gvcf_bytes, GVCF_COPIES
+        )
     indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
     if operation == "gatk" and gatk_workers > 1:
         # Shards coexist with the gathered output.
@@ -945,9 +947,7 @@ def estimate_resources(
         (output_dir, "output", output),
         (output_dir, "indexes", indexes),
         (
-            output_dir
-            if operation in _BCFTOOLS_VCF_BYTES_PER_READ
-            else temp_dir or output_dir,
+            temp_dir or output_dir,
             "temporary",
             temporary,
         ),

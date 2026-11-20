@@ -33,6 +33,69 @@ Installers before this one set up MSYS2 (by default at `C:\msys64`) for their
 tools. Nothing uses it now; `uninstall_windows.bat --remove-msys2` removes it if
 you have no other use for it.
 
+## Qualifying a whole genome on your own PC
+
+The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
+HG002 data through chr22 extraction, BWA realignment and SNP/indel calling,
+then repeats processing on the whole genome. Before calling variants it declares
+HG002's known Male sex with `sample set --input <aligned.bam> --sex Male` in
+both phases and uses GRCh38 ploidy; the chr22 slice cannot infer sex from
+coverage. Use native x64 Windows and
+PowerShell 7.2 or newer (`pwsh`). Install the CLI as above first; the script
+checks dependencies and does not install or upgrade software.
+
+Allow **400 GiB of free space on a local SSD** and **48 GiB RAM minimum
+(64 GiB recommended, with 40 GiB available)**. This conservative disk budget
+allows for a 100+ GB input, reference/indexes, both sets of outputs and temporary
+files. Existing files from the same run count toward the budget on resume.
+In the earlier qualification, chr22 extraction took 46 seconds and used
+4.2 GiB of system memory. That measures extraction only, not chr22 processing.
+The older full-genome baseline took about **14.4 hours on 16 vCPUs** and peaked
+at 35.8 GiB; allow longer for downloads, indexing or a slower PC.
+
+From your installed CLI folder, use a dedicated workspace on your chosen drive:
+
+```powershell
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -DryRun
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -Download
+```
+
+`-Download` permits only the documented public inputs: HG002 BAM/BAI from
+Google's `brain-genomics-public` bucket, the reference bootstrap archive from
+GitHub releases, and `hs38` from the CLI reference catalog's public mirrors.
+The script prints these sources before work starts. Without `-Download`,
+missing preparation steps stop with instructions to opt in. Processing runs
+locally; the script does not upload data or send results anywhere.
+
+`-Root` defaults to `$HOME\wgse-30x`; `-Threads` defaults to your logical CPU
+count. Use `-InstallDir` if you run outside your installed CLI folder.
+Select `-Phase prepare`, `-Phase slice` or `-Phase full` to run in stages;
+the default `all` runs them in order and requires a passing slice before full
+processing. Preparation downloads the whole BAM before making the slice.
+Close other workloads, keep the PC awake, and leave the PowerShell window open.
+After interruption, repeat the same command: completed steps remain skipped
+and curl resumes partial downloads. The CLI's realignment checkpoints resume
+an interrupted realignment.
+
+To select a version, install the desired release with `install_windows.bat`
+in that release's folder first. `-Version 0.9.0` checks the installed version;
+`-Commit <40-character SHA>` checks an existing Git checkout (and requires Git).
+Neither option downloads source or changes your installation. Keep the same
+script, installation, root and thread count when resuming; choose a fresh
+root to compare versions. Do not edit the workspace's generated `config.toml`
+or delete completed outputs.
+
+Attach `evidence\summary.md` and `evidence.zip` from the workspace to
+[#1024 (Windows 30x qualification)](https://github.com/WGSExtract/wgsextract-cli/issues/1024).
+The summary includes wall times, sampled process-tree and whole-system memory
+peaks, alignment/VCF record counts, CPU/RAM and disk details. The zip contains
+logs, installation manifests and summaries, including failed steps. Each retry
+keeps its own logs and measurements under `evidence\attempts`; summary wall
+times sum all attempts and peaks take the maximum, so checkpoint reuse does
+not hide earlier work. Time between retries is excluded. It excludes
+BAM/VCF/FASTQ files. Review it for local paths and machine details before posting.
+Failures print the evidence location and return a nonzero exit code.
+
 ## Where the tools come from
 
 Bioconda publishes no Windows packages, so WGS Extract builds its own:
@@ -281,6 +344,42 @@ Bugs found, fixed on `main` after v0.8.5:
 - [#586](https://github.com/WGSExtract/wgsextract-cli/pull/586): the `vcf snp`
   and `vcf indel` "Expected Wait" was divided by the thread count even when
   calling ran in one stream.
+
+## 30x genome with windows-tools-9 (v0.8.8)
+
+The same HG002 30x BAM was rerun with v0.8.8 and the pinned `windows-tools-9`
+packages (bwa with the SSE2 extension kernel, samblaster with a buffered SAM
+reader, bcftools with static mimalloc) in
+[#1024](https://github.com/WGSExtract/wgsextract-cli/issues/1024). The host
+was a Windows 11 Pro desktop (Intel Core i9-9900, 8 cores / 16 threads,
+96 GiB RAM, NVMe `C:`), with default settings and `--threads 16`:
+
+| step | v0.8.8, windows-tools-9 | v0.8.5 ([#554](https://github.com/WGSExtract/wgsextract-cli/issues/554)) |
+| --- | --- | --- |
+| build the BWA index for hs38 | 40 min | 58 min |
+| `realign`: unpack the reads | 22 min | 23 min |
+| `realign`: align, mark duplicates and sort | 7 h 13 min | 7 h 10 min |
+| `info` on the realigned BAM | 2 s | 2 s |
+| `vcf snp` | 25 min | 2 h 48 min |
+| `vcf indel` | 26 min | 3 h 3 min |
+
+The index was built by a chr22 sizing run just before, so the full `realign`
+took 7 h 36 min without it. Alignment took about as long as v0.8.5 did on
+#554's Azure D16ads_v5. The CPUs differ, so this is not a controlled
+comparison of the bwa kernel. The calling steps were about 7× faster because they now call
+contigs in parallel ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560));
+the "Expected Wait" of 21 minutes for each was close.
+
+Memory peaked at 28.8 GiB above the desktop's idle use (44.7 GiB in use in
+total; the preflight estimate was 40.0 GiB), with `samtools` the largest
+process at 24.4 GiB. `realign` used at most 144 GiB of disk beyond its input,
+and the calling steps used under 4 GiB of memory.
+
+The results agree with v0.8.5 to the precision it published: 99.70% of reads
+mapped and 97.76% properly paired; a 37.2 GiB BAM; 4,406,363 SNPs (3,907,801
+with QUAL ≥ 30 and depth ≥ 10, Ti/Tv 1.99); and 916,621 indels (842,400 with
+QUAL ≥ 30 and depth ≥ 10). v0.8.5 published only rounded counts, so this run
+does not show record-for-record identity.
 
 # Windows ARM64
 

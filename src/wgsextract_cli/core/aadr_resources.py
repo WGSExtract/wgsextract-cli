@@ -3,8 +3,8 @@
 import hashlib
 from pathlib import Path
 
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 AADR_2M_URL = "https://dataverse.harvard.edu/api/access/datafile/13994517"

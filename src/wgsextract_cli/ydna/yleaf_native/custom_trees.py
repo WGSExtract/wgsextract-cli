@@ -22,8 +22,8 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 from wgsextract_cli.core.download_progress import redact_urls
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.utils import WGSExtractError
 
 from .data import file_sha256
@@ -291,6 +291,9 @@ def fetch(ref: FileRef, library: Path | None = None) -> Path:
     path = folder / name
     if path.is_file() and file_sha256(path) == ref.sha256:
         return path
+    from wgsextract_cli.core.network_policy import require_download
+
+    require_download(f"custom Y tree file {name}")
     folder.mkdir(parents=True, exist_ok=True)
     with build_lock(str(folder / "download.lock")):
         if path.is_file() and file_sha256(path) == ref.sha256:

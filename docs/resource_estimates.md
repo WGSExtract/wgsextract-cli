@@ -1,5 +1,25 @@
 # CLI resource preflight and reusable estimates
 
+## Pipeline benchmarks
+
+`wgsextract benchmark --help` lists datasets and profiles. Start with
+generated chrM and the lighter core operation suite:
+
+```bash
+pixi run wgsextract benchmark --profile smoke --suite core --outdir out/benchmark-smoke
+```
+
+The default is synthetic; `--dataset real` is the release-backed mini-genome,
+while `real-1x`/`real-30x` use public WGS data. HTTP downloads resume
+`.partial` files and publish only after completion and available checksum
+verification. `example-genome download` shares this downloader; FTP/Aspera
+keep their specialized transports. See [download safety](reference-genomes.md#download-safety).
+Keep larger runs last and budget CPU, RAM and disk first.
+
+Runtime/workspace depend on coverage, input, hardware and toolchain.
+Help and realignment stages promise no fixed times; thread-based estimates
+are advisory. Choose a reproducible dataset/profile before comparing hosts.
+
 ## Imputation
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
@@ -133,7 +153,7 @@ sums what shares one.
 | DeepVariant, Google's CPU image | 60 | 30x: 15 h on 4 threads (projected from chr1 and chr20) |
 | DeepVariant ONT model | 113 | #431: 11.3 h on 10 threads, 51x |
 | wgse-deepvariant, CPU / `--gpu` | 28 / 12 | 30x: 7 h / 3 h on 4 threads (projected) |
-| Clair3, CPU / `--gpu` | 33 / 15 | chr20 in 10.3 min on 4 CPUs (projected) / #431: 2.5 h on 6 threads |
+| Clair3, CPU / CUDA `--gpu` | 33 / 15 | chr20 in 10.3 min on 4 CPUs (projected) / #431: 2.5 h on 6 threads |
 
 The extra 15% covers FASTQ extraction and sorting: the 35x realign on a 16 GB
 M1 spent 23 of its 362 minutes extracting. That run (830 million reads, 125
@@ -535,7 +555,7 @@ and chr20: 823,376 sites, 270,091 call_variants examples. Google's
 
 ### Clair3 on the GPU
 
-`vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks only that a
+On x86-64 Linux, `vcf clair3 --gpu` runs HKU's Clair3 2.0.5 GPU image and checks that a
 GPU has 7.8 GiB free: Clair3 starts a full-alignment GPU worker for each
 8,000 MiB free and a pileup worker for each 5,000 MiB. On the same RTX 3090,
 all of chr20 of the HG002 ONT whole-genome CRAM (42x), 4 CPUs, Clair3's own
@@ -551,15 +571,62 @@ start-up checks (about 130 s on a whole-genome CRAM) and WhatsHap phasing
 (about 205 s) stay on the CPU, and the GPU was busy in only about 5% of
 one-second samples, so the CPUs limit the speed-up.
 
-On a whole genome the GPU mode needs much more disk than the CPU mode: it
+On a whole genome the CUDA mode needs much more disk than the CPU mode: it
 writes every full-alignment tensor before predicting any (below).
+
+On Apple Silicon, the WGSE-built `wgse-clair3` caller instead selects **MPS
+inference with CPU streaming/scaling**, including gVCF. It uses CPU-path
+temporary-space and time estimates, not the CUDA tensor budget or NVIDIA
+memory thresholds. These time estimates are conservative placeholders, not
+measured MPS whole-genome times. MPS availability and the patched package
+are mandatory preflight checks; no automatic fallback or installation.
+Package publication/Pixi pinning is done (`macos-clair3-1`); whole-genome
+qualification is pending; see [the package release](../native/clair3/README.md#packaging-and-release).
+
+**M1 Pro sizing, 2026-11-18/19:** 10 cores, 32 GiB, four calling threads,
+Clair3 2.0.5/PyTorch 2.14.1, original-alignment public HG002 ONT reads,
+`r1041_e82_400bps_sup_v400`, through the real CLI with gVCF. Only chr20 was
+streamed from the public CRAM, once, into a shared 3.7 GiB BAM; the same
+local BAM/reference/model served both runs. No whole-genome run was made.
+The table is the awake paired repeat on 2026-11-19 with the published
+`macos-clair3-1` package: `caffeinate`, CPU then MPS in one turn of the shared
+bench lock (no other timed work; one-minute load 15–33 at the CPU run's start,
+3–7 later, so the CPU figure may be slightly pessimistic).
+
+| chr20, 64.44 Mb (~2.1% of 3,088 Mb) | Wall | Max process RSS / sampled tree RSS | Sampled peak temp | Published output |
+| --- | ---: | ---: | ---: | ---: |
+| CPU + gVCF | 20.36 min | 1.99 / 4.71 GiB | 510.92 MiB | 31.44 MiB |
+| MPS + gVCF | 15.19 min | 2.09 / 5.22 GiB | 512.63 MiB | 31.44 MiB |
+
+Both produced **142,070 identical sites/alleles/GT/FILTER**, in VCF and gVCF,
+and **3,084,277 reference records identical in every column**. QUAL differed
+by at most 0.03; six PL fields and two GQ fields differed by one. Peak system
+swap was 1.55/1.54 GiB (left over from earlier host work); minimum available
+system RAM was 12.0/10.8 GiB. Tree RSS double-counts
+shared pages and is not GPU allocator/unified-memory accounting; 0.5-second
+disk sampling can miss spikes.
+
+MPS was about **1.34x** faster end to end on whole chr20. The first sizing
+pair (2026-11-18) recorded 86.77 min for CPU because the host slept during the
+run, and is superseded by this repeat.
+
+For **capacity planning only**, multiplying chr20 by 47.9 gives about 24 GiB
+temporary space and 1.47 GiB output. The same mechanical scaling gives
+12.1 h for MPS, **not a measured or reliable whole-genome ETA**: chr20's
+depth/candidate mix, including its pericentromere, is not representative.
+Do not scale peak RSS linearly or assume the whole genome fits from this
+slice alone. Its measured temp peak also exceeds the current CPU-path
+preflight estimate (~0.18 GiB); reserve space from measurements, not that
+estimate alone. Before paired whole genomes, check large-contig/gather memory
+and staging disk, and use run-scoped sleep prevention and failure
+notifications.
 
 ### Clair3's temporary space
 
-Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its GPU
+Clair3 works in a `.wgse_clair3_*` folder in the output directory. In its CUDA
 mode, Clair3 2.0.5 first writes a tensor of 89 x 33 x 8 bytes (23.5 kB) for
 every full-alignment candidate (`tmp/full_alignment_output/*.npy`, 10,000 per file),
-then predicts and deletes them; the CPU mode pipes each tensor to the network.
+then predicts and deletes them; CPU and WGSE MPS pipe each tensor to the network.
 Clair3 has no option to stream or batch them: `--chunk_size` changes only how
 the candidates are split into files, and `--var_pct_full`/`--ref_pct_full`
 change which are called, and so the calls. The candidates are a share of the
@@ -688,7 +755,7 @@ clients can validate them. CLI callers use
 `preflight_resources(lambda: estimate_resources(...))` instead.
 
 For alignments, callers can obtain `reads` using the existing bounded
-`core.read_counts.fastq_input_reads` or indexed
+`core.alignment.read_counts.fastq_input_reads` or indexed
 `core.warnings.indexed_read_count`. Omitting it leaves the D3 model's explicit
 680-million-read RAM fallback; disk uses input bytes and format (12 bytes/read
 for compact CRAM, 80 for BAM, 70 for FASTQ). A missing reference uses the human
@@ -696,6 +763,29 @@ reference RAM fallback, and adds a structured `UNKNOWN` disk row with no guessed
 filesystem for reference-index storage.
 
 ## Calibration and limitations
+
+Native short-read preflight checks available, not installed, RAM on Linux,
+macOS and Windows. It includes resident indexes, working buffers, samblaster,
+per-thread sort plus overhead and pipeline bookkeeping. Read-dependent
+headroom scales with input count, not reference length. FASTQ counts use
+size and a bounded prefix (up to 4 MiB compressed/16 MiB decoded per mate,
+plain/gzip/BGZF); realign uses indexed `idxstats` before extraction.
+Unreadable/unsupported samples or missing indexes use the explicit
+680-million-read fallback, not a guarantee for larger inputs.
+Changing length/compressibility later in a FASTQ can affect extrapolation.
+Swap/pagefile does not count as available RAM.
+
+Component and per-read spill estimates are logged. Low spill space warns
+for align; realign retains its refusal. Auto falls back to BWA if MEM2
+cannot fit; explicit MEM2 fails before alignment/extraction, including when
+its proposed native MEM3 stand-in does not fit. BWA warns and continues.
+Free RAM, lower `--memory`/`--threads`, or choose `--aligner bwa`.
+In a 339.8-million-pair genome, BWA's working set was 17–17.5 GiB including
+paged-out memory: the resident peak alone is not the requirement.
+At six threads/256M, the historical conservative budgets were ~18 GiB BWA
+and ~29 GiB MEM2 including transient headroom; smaller inputs scale down,
+deeper/shorter-read inputs up. Newer platform/read-length calibration below
+also applies.
 
 - Ordinary 150-bp, up-to-six-thread alignment RAM retains the #179/#194 model:
   resident reference indexes, aligner working set, read-scaled samblaster and
@@ -807,13 +897,15 @@ filesystem for reference-index storage.
   storage. Regional GATK CRAM conversion
   also budgets a whole-input BAM upper bound on the output volume.
   GATK scattering additionally charges retained shard VCFs and their indexes to
-  the **output volume**, where they coexist with the gathered output; JVM
-  temporary storage remains a separate demand on the system temporary volume.
+  caller staging (`--tmp-dir` when configured, otherwise the output volume).
+  JVM temporary storage has its own demand (`--tmp-dir`, otherwise system temp).
   With `--reference-evidence gvcf` the gVCF (GQ bands 10,20,30,60) is
   budgeted at 3% of the input's BAM-equivalent bytes (its read count, so a
   CRAM of the same reads gets the same budget), three times over for its
   partition parts, gathered copy and published file (2.6% of the BAM
-  measured on HG002 chr20, #863); GenotypeGVCFs runs after HaplotypeCaller, within its memory.
+  measured on HG002 chr20, #863). One copy is charged to the output volume
+  and the other two to caller staging, combined when they share a filesystem.
+  GenotypeGVCFs runs after HaplotypeCaller, within its memory.
 - Sort RAM is threads × `--memory` plus 25% and 256 MiB overhead; conversion
   allows 64 MiB per codec thread plus 256 MiB overhead. bcftools allows 1 GiB per
   active contig worker plus 256 MiB. With more than one thread, contigs
@@ -873,6 +965,67 @@ The [16 GB benchmark](apple-silicon-16gb.md#native-deepvariant) projects
 0.1.1 whole-genome wall time from measured 0.1.0 whole-genome time and the
 0.1.1/0.1.0 chr20 timing ratio. It is not a measured 0.1.1 whole-genome run;
 the estimator does not promise a wall time.
+
+#### Apple Silicon CPU hill-climb
+
+Measured 2026-11-19 on an M1 Pro (eight P cores, two E cores, 32 GiB),
+HG002 NovaSeq 35x chr20, ten workers, Metal FP32 batch 1024, gVCF enabled.
+The exact self-contained **0.4.1** superbuild, linking only macOS system
+libraries, was compared with released **0.4.0**. Three unprofiled
+make_examples observations per build gave median wall **137.62 → 122.84 s**
+(10.7% less) and CPU **1,272.61 → 1,148.23 s** (9.8% less).
+
+One complete staged observation per build, excluding CLI overhead:
+
+| Stage | 0.4.0 wall s | 0.4.1 wall s | 0.4.0 CPU s | 0.4.1 CPU s | Peak RSS GB, 0.4.0 / 0.4.1 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| make_examples | 136.93 | 124.95 | 1,283.43 | 1,140.75 | 0.458 / 0.469 |
+| call_variants | 101.58 | 103.34 | 33.06 | 34.31 | 4.400 / 4.883 |
+| postprocess_variants | 13.86 | 13.71 | 13.75 | 13.62 | 0.811 / 0.814 |
+
+The stage sum was **252.37 → 242.00 seconds** (4.1% less), not a 10.7%
+whole-pipeline speedup. Inference and postprocessing are unchanged.
+CPU means user + system; memory figures are decimal GB, not GiB.
+Inference's GPU-inclusive footprint was **13.679 / 14.025 GB**; RSS alone
+still understates it. The two runs wrote **745.466 / 745.655 MB** of gzip
+examples across ten shards and peaked at **1.097 / 1.094 GB** of allocated
+intermediate space, including reference evidence.
+
+All **210,390 VCF calls** match in sites, alleles, GT and FILTER, as do
+**1,743,980 gVCF records** and all **1,533,590 complete reference-block rows**.
+The [native build notes](../native/deepvariant/README.md#apple-silicon-cpu-hill-climb-041)
+record the isolated changes, matched development-build repeats, and
+8/10/12-worker pilots; those pilots do not justify a new thread default.
+Protocol and results are tracked in
+[#1116 (native Apple Silicon hill-climb)](https://github.com/WGSExtract/wgsextract-cli/issues/1116).
+
+Whole-genome confirmation on **2026-11-20** used HG002 NovaSeq PCR-free 35x,
+the same M1 Pro, ten workers, Metal FP32 batch 1024 and gVCF, one run per
+version. These are measured whole-pipeline results, not chr20 projections:
+
+| Measurement | Released 0.4.0 | Candidate 0.4.1 |
+| --- | ---: | ---: |
+| Wall seconds | 8,831.4 | 7,984.3 |
+| CPU seconds, user + system | 50,708.6 | 46,455.5 |
+| Peak RSS, GB (`time`) | 11.95 | 13.32 |
+| Peak temporary space, GB (sampled every 5 s) | 29.4 | 29.5 |
+| Swap growth, bytes | 0 | 0 |
+
+Wall time fell **9.6%**, CPU time **8.4%**; RSS grew approximately **1.4 GB**.
+Every non-header column is exactly equal across **7,709,239 VCF records**
+and **72,210,019 gVCF records**, including **64,500,780 entire reference
+blocks**, verified by matching full-body SHA-256 hashes. This compares the
+two native versions, not Google's image. See the
+[raw whole-genome result](https://github.com/WGSExtract/wgsextract-cli/issues/1116#issuecomment-7042830878).
+
+The conservative RAM/disk coefficients are unchanged: the batch-scaled
+inference envelope must still cover Metal buffers, not RSS alone, and gVCF
+needs its additional temporary-space allowance. Peak temporary space excludes
+the input BAM, reference and final outputs. One run per version on the
+32 GiB M1 Pro does not establish other machines' performance or memory fit.
+**The 16 GB base M1 is not yet qualified for 0.4.1**; whole-genome
+memory/swap confirmation there remains follow-up. The older version-labelled
+measurements above do not qualify these changes on that machine.
 
 ### DeepVariant postprocess_variants
 

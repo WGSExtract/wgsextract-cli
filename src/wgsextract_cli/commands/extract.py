@@ -18,7 +18,7 @@ from wgsextract_cli.api.extract import (
     _ExtractParams,
 )
 from wgsextract_cli.cli.registration.extract import register as register
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -55,6 +55,7 @@ from ._extract_helpers import (
     derive_output_path,
     region_or_gene,
 )
+from ._extract_locus import extracted_locus
 from ._extract_region import run_region
 
 _SAMTOOLS = ["samtools"]
@@ -303,8 +304,8 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
     logging.info(LOG_MESSAGES["extracting_y"].format(chr_y=chr_y, output=out_bam))
     try:
         if use_poz:
-            from wgsextract_cli.core.alignment_metadata import get_bam_header
-            from wgsextract_cli.core.reference_models import sequence_lengths
+            from wgsextract_cli.core.alignment.metadata import get_bam_header
+            from wgsextract_cli.core.ref_library.models import sequence_lengths
 
             from ._extract_poz import poz_bed
 
@@ -478,7 +479,10 @@ def run_custom(params: CustomParams) -> None:
             )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Custom extraction failed: {e}") from e
-    _published(out_bam, "region_bam")
+    locus = extracted_locus(region, out_bam)
+    current_result().add_output(
+        out_bam, "region_bam", metrics={"locus": locus} if locus else None
+    )
 
 
 cmd_mito_fasta = cli_handler(MitoFastaParams, run_mito_fasta)

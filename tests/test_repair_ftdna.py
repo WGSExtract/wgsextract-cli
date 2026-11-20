@@ -19,6 +19,7 @@ from wgsextract_cli.commands import repair
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.main import main
 
 pytestmark = needs_htslib
 
@@ -138,17 +139,19 @@ def test_repair_bam_requires_existing_input(tmp_path):
         run_wgsextract("repair", "ftdna-bam", "--input", str(tmp_path / "x.bam"))
 
 
-def test_repair_streams_stdin_to_stdout_without_input(monkeypatch):
+def test_1087_repair_cli_streams_stdin_to_stdout_without_input(monkeypatch, tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text("")
     sam = "@SQ\tSN:chrY\tLN:300\nA B C\t4\t*\t0\t0\t*\t*\t0\t0\tAC\tII\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(sam))
     monkeypatch.setattr(sys, "stdout", out := io.StringIO())
-    run_wgsextract("repair", "ftdna-bam")
+    main(["--config", str(config), "repair", "ftdna-bam"])
     assert out.getvalue() == sam.replace("A B C", "A:B:C")
 
     vcf = "##x=a b\n#CHROM\tPOS\nchr1\t5\t.\tA\tG\t9\tLow Qual\t.\n"
     monkeypatch.setattr(sys, "stdin", io.StringIO(vcf))
     monkeypatch.setattr(sys, "stdout", out := io.StringIO())
-    run_wgsextract("repair", "ftdna-vcf")
+    main(["--config", str(config), "repair", "ftdna-vcf"])
     assert out.getvalue() == vcf.replace("Low Qual", "LowQual")
 
 
@@ -178,19 +181,59 @@ def test_repair_vcf_cleans_filter_column_so_bcftools_reads_it(tmp_path, suffix):
     if suffix == ".vcf.gz":
         src = Path(bgzip_index(src))
     run_wgsextract("repair", "ftdna-vcf", "--input", str(src))
-    out = tmp_path / "kit_repaired.vcf"
+    out = tmp_path / "wgse" / "kit_repaired.vcf"
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual;q10 2 1"]
     assert out.read_text().splitlines()[:7] == _VCF.splitlines()[:7]
 
 
-def test_repair_vcf_converts_bcf_input(tmp_path):
+@pytest.mark.parametrize("configured_temp", [False, True])
+@pytest.mark.parametrize("aliased", [False, True], ids=["direct", "symlink"])
+def test_1093_repair_vcf_keeps_its_bcf_working_copy_off_system_temp(
+    tmp_path, capsys, monkeypatch, configured_temp, aliased
+):
+    from tests.test_temp_directory import _python_writes, _wgsextract
+
     plain = tmp_path / "kit.vcf"
     plain.write_text(_VCF.replace("Low Qual;q<10", "LowQual"))
     bcf = tmp_path / "kit.bcf"
     _tool("bcftools", "view", "-Ob", "-o", str(bcf), str(plain))
     out = tmp_path / "fixed" / "kit.vcf"
-    run_wgsextract("repair", "ftdna-vcf", "--input", str(bcf), "--output", str(out))
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    out.parent.mkdir()
+    if aliased:
+        for folder in (scratch, out.parent):
+            actual = folder.with_name(folder.name + "-actual")
+            folder.rename(actual)
+            try:
+                folder.symlink_to(actual, target_is_directory=True)
+            except OSError as error:
+                pytest.skip(f"Symlinks unavailable: {error}")
+    options = ["--tmp-dir", str(scratch)] if configured_temp else []
+    selected = scratch if configured_temp else out.parent
+    with _python_writes(monkeypatch) as written:
+        result = _wgsextract(
+            capsys,
+            "repair",
+            "ftdna-vcf",
+            "--input",
+            str(bcf),
+            "--output",
+            str(out),
+            *options,
+        )
+    assert result["status"] == "ok", result["error"]
     assert _filters(out) == ["101 PASS 7 1", "105 LowQual 2 1"]
+    relative = [
+        path.relative_to(selected.resolve())
+        for path in written
+        if path.is_relative_to(selected.resolve())
+    ]
+    assert any(path.suffix == ".vcf" and len(path.parts) > 1 for path in relative), (
+        sorted(map(str, written))
+    )
+    assert not any(p.name.startswith(".wgse") for p in out.parent.iterdir())
+    assert list(scratch.iterdir()) == []
 
 
 def test_repair_vcf_leaves_short_lines_and_headers_alone(tmp_path):
@@ -231,4 +274,4 @@ def test_repair_cram_finds_the_reference_beside_it(tmp_path, monkeypatch):
     (tmp_path / "library").mkdir()
     monkeypatch.setitem(settings, "reference_library", str(tmp_path / "library"))
     run_wgsextract("repair", "ftdna-bam", "--input", cram)
-    assert _records(str(kit / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"
+    assert _records(str(kit / "wgse" / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"

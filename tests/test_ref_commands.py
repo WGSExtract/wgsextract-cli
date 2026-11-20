@@ -58,7 +58,7 @@ from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.gene_map import GENE_MAP_URLS
 from wgsextract_cli.core.ref_library import remote_sizes
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     reference_dict_path,
     sequence_signature,
@@ -331,7 +331,7 @@ def _rows(output: str) -> dict[str, list[str]]:
 
 
 def _fake_library(root: Path) -> Path:
-    gdir, ref_dir = root / "genomes", root / "ref"
+    gdir, ref_dir = root / "genomes", root / "downloads"
     gdir.mkdir(parents=True)
     ref_dir.mkdir()
     (gdir / "hg38.fa.gz").write_bytes(b"x" * 2 * 1024 * 1024)
@@ -974,7 +974,7 @@ def ucsc(monkeypatch, server):
 
 
 def _gene_maps(lib: Path) -> list[str]:
-    return sorted(p.name for p in (lib / "ref").glob("genes_*.tsv"))
+    return sorted(p.name for p in (lib / "downloads").glob("genes_*.tsv"))
 
 
 def test_gene_map_command_installs_and_deletes_both_builds(tmp_path, ucsc, capsys):
@@ -984,7 +984,7 @@ def test_gene_map_command_installs_and_deletes_both_builds(tmp_path, ucsc, capsy
     assert _gene_maps(tmp_path) == ["genes_hg19.tsv", "genes_hg38.tsv"]
     assert (
         "BRCA1\tchr17\t43044295\t43125364"
-        in (tmp_path / "ref" / "genes_hg38.tsv").read_text()
+        in (tmp_path / "downloads" / "genes_hg38.tsv").read_text()
     )
 
     with patch.object(
@@ -1014,7 +1014,7 @@ def test_gene_map_command_reports_failures(tmp_path, ucsc):
     ):
         api.ref.gene_map(RefGeneMapParams(ref=tmp_path, delete=False))
 
-    (tmp_path / "ref" / "genes_hg19.tsv").mkdir()  # can't be unlinked
+    (tmp_path / "downloads" / "genes_hg19.tsv").mkdir()  # can't be unlinked
     with pytest.raises(api.CommandFailed, match="Failed to delete Gene Maps"):
         api.ref.gene_map(RefGeneMapParams(ref=tmp_path, delete=True))
 
@@ -1119,7 +1119,7 @@ def test_resource_commands_install_indexed_files(
 
     tabix = get_tool_path("tabix")
     for build in builds:
-        path = str(lib / "ref" / dest.format(build))
+        path = str(lib / "downloads" / dest.format(build))
         listed = run_command([tabix, "-l", path], capture_output=True).stdout
         assert listed.split() == ["1"]
 
@@ -1135,7 +1135,7 @@ def test_library_menu_installs_clinvar(tmp_path, monkeypatch, server, catalog):
     _menu(monkeypatch, tmp_path, ["c"])
 
     for build in ("hg19", "hg38"):
-        vcf = tmp_path / "ref" / f"clinvar_{build}.vcf.gz"
+        vcf = tmp_path / "downloads" / f"clinvar_{build}.vcf.gz"
         assert vcf_calls(vcf) == [("1", "100", "A", "G")]
 
 
@@ -1163,7 +1163,7 @@ def test_pharmgkb_command_builds_its_table(tmp_path, monkeypatch, server):
 
     api.ref.pharmgkb(api.RefPharmgkbParams(ref=tmp_path))
 
-    with gzip.open(tmp_path / "ref" / "pharmgkb_hg38.tsv.gz", "rt") as f:
+    with gzip.open(tmp_path / "downloads" / "pharmgkb_hg38.tsv.gz", "rt") as f:
         assert "chr16\t31096368\tC\tT\trs200|VKORC1|1A|Dosage|warfarin" in f.read()
 
 
@@ -1207,9 +1207,9 @@ def test_installed_resources_are_found_for_the_requested_build_or_release(
             monkeypatch.setitem(urls, build, server.url_for(build))
     monkeypatch.setattr(annotation_resources, "CADD_BASE_URL", server.base)
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}"))
-    (tmp_path / "ref").mkdir()
+    (tmp_path / "downloads").mkdir()
     for file in installed:
-        (tmp_path / "ref" / file).write_bytes(b"installed")
+        (tmp_path / "downloads" / file).write_bytes(b"installed")
 
     _resource(command, ref=tmp_path, **extra)
 

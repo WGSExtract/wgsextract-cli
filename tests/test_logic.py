@@ -80,19 +80,24 @@ class TestExamplesDownload(unittest.TestCase):
             else:
                 settings["genome_library"] = old_value
 
-    def test_default_target_root_is_repo_datasets(self):
+    def test_default_target_root_is_the_users_workspace_mygenomes(self):
         from wgsextract_cli.commands import _examples_catalog as examples
         from wgsextract_cli.core.config import settings
 
         saved = {
             k: settings.pop(k)
-            for k in ("genome_library", "dataset_library")
+            for k in ("genome_library", "dataset_library", "mygenomes_library")
             if k in settings
         }
         try:
-            self.assertEqual(
-                examples._target_root(None), examples.runtime.repo_root() / "datasets"
-            )
+            with patch(
+                "wgsextract_cli.core.runtime.repo_root",
+                return_value=Path(self.test_dir),
+            ):
+                self.assertEqual(
+                    examples._target_root(None),
+                    (Path.home() / "wgs-extract" / "mygenomes").resolve(),
+                )
         finally:
             settings.update(saved)
 
@@ -331,7 +336,7 @@ class TestResourceDefaults(unittest.TestCase):
 
 class TestSamtoolsCommands(unittest.TestCase):
     def test_sambamba_memory_parser_accepts_suffixes_and_decimals(self):
-        from wgsextract_cli.core import samtools_commands
+        from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
 
         with (
             patch.object(samtools_commands, "get_tool_path", return_value="sambamba"),
@@ -352,7 +357,7 @@ class TestSamtoolsCommands(unittest.TestCase):
         self.assertEqual(mb_cmd[mb_cmd.index("-m") + 1], "1024M")
 
     def test_sam_input_sort_never_uses_sambamba(self):
-        from wgsextract_cli.core import samtools_commands
+        from wgsextract_cli.core.alignment import samtools_commands as samtools_commands
 
         with (
             patch.object(samtools_commands, "get_tool_path", return_value="sambamba"),
@@ -399,8 +404,8 @@ class TestCLILogic(unittest.TestCase):
         Path(ref_path).write_text(">chr1\nACGT\n")
         configured_reflib = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, configured_reflib)
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
 
@@ -416,12 +421,12 @@ class TestCLILogic(unittest.TestCase):
         self.addCleanup(shutil.rmtree, configured_reflib)
         ref_path = os.path.join(ref_root, "fake_ref_hg38.fa")
         Path(ref_path).write_text(">chr1\nACGT\n")
-        os.makedirs(os.path.join(ref_root, "ref"))
-        Path(os.path.join(ref_root, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(ref_root, "downloads"))
+        Path(os.path.join(ref_root, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t3\t4\n"
         )
 
@@ -438,8 +443,8 @@ class TestCLILogic(unittest.TestCase):
         os.makedirs(os.path.join(ref_root, "ref"))
         ref_path = os.path.join(ref_root, "ref", "fake_ref_hg38.fa")
         Path(ref_path).write_text(">chr1\nACGT\n")
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
 
@@ -1001,7 +1006,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         shutil.rmtree(self.test_dir)
 
     def test_reference_library_resolves_support_assets_from_input_build_hint(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         os.makedirs(os.path.join(self.test_dir, "genomes"))
         nested_ref = os.path.join(
@@ -1028,7 +1033,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.ref_vcf_tab, targets)
 
     def test_reference_library_resolves_input_manifest_reference_fasta(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         genome_dir = os.path.join(self.test_dir, "genome")
         os.makedirs(genome_dir)
@@ -1049,7 +1054,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         )
 
     def test_reference_library_resolves_generic_reference_fasta(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         fasta = os.path.join(self.test_dir, "my.grch38.reference.fasta")
         Path(fasta).touch()
@@ -1059,7 +1064,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.build, "hg38")
 
     def test_reference_library_manifest_fallback_for_relative_input(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         input_dir = os.path.join(self.test_dir, "input")
         os.makedirs(input_dir)
@@ -1087,7 +1092,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(lib.build, "hg38")
 
     def test_reference_library_detects_hs_build_aliases_from_reference_path(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         hs38_ref = os.path.join(self.test_dir, "GCA_hs38d1_analysis_set.fa")
         hs37_ref = os.path.join(self.test_dir, "hs37d5.fa")
@@ -1098,7 +1103,7 @@ class TestReferenceSupportAssets(unittest.TestCase):
         self.assertEqual(ReferenceLibrary(hs37_ref, None).build, "hg19")
 
     def test_reference_resolver_resolves_support_assets_from_input_build_hint(self):
-        from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+        from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 
         nested_ref = os.path.join(
             self.test_dir, "microarray", "raw_file_templates", "body", "head", "ref"

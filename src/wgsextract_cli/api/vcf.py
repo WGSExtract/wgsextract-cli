@@ -11,133 +11,51 @@ field, else config.toml, else the reference library (``ref``); see
 
 from __future__ import annotations
 
-import dataclasses
-from collections.abc import Callable, Iterator
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, TypeVar
+# Keep facade declarations ordered for stable public API documentation.
+# ruff: noqa: E402
+import dataclasses as dataclasses
+from collections.abc import Callable as Callable
+from collections.abc import Iterator as Iterator
+from dataclasses import dataclass as dataclass
+from pathlib import Path as Path
+from typing import Any as Any
+from typing import TypeVar as TypeVar
 
-from wgsextract_cli.core.messages import CLI_HELP
-from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS
-from wgsextract_cli.core.results import CommandResult
-from wgsextract_cli.core.settings_schema import REFERENCE_EVIDENCE_MODES
-from wgsextract_cli.core.table_writer import FORMATS, table_format_type
-from wgsextract_cli.core.utils import UsageError
-
-from ._params import Params, param
-from ._runtime import CancelToken, ProgressCallback, execute
-from ._shared import (
-    check_confidence,
-    confidence_depth_param,
-    confidence_gq_param,
-    depth_param,
-    dry_run_param,
-    force_steps_param,
-    input_param,
-    memory_param,
-    no_gpu_memory_check_param,
-    no_preflight_param,
-    optional_input_param,
-    outdir_param,
-    ref_param,
-    restart_param,
-    threads_param,
+from wgsextract_cli.core.messages import CLI_HELP as CLI_HELP
+from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS  # noqa: F401
+from wgsextract_cli.core.results import CommandResult as CommandResult
+from wgsextract_cli.core.settings_schema import (
+    REFERENCE_EVIDENCE_MODES as REFERENCE_EVIDENCE_MODES,
 )
+from wgsextract_cli.core.table_writer import FORMATS as FORMATS
+from wgsextract_cli.core.table_writer import table_format_type as table_format_type
+from wgsextract_cli.core.utils import UsageError as UsageError
 
-
-def reference_evidence_param(gvcf: str, cost: str) -> Any:
-    """``--reference-evidence``: every caller's opt-in gVCF (#863)."""
-    return param(
-        None,
-        help=f"Also write reference evidence: a gVCF, {gvcf} (+ .tbi), beside "
-        f"the unchanged variant VCF (gvcf; costs {cost}), or not (none). "
-        "Default: config reference_evidence, else none.",
-        doc=f"gvcf also writes {gvcf} and its index (output roles "
-        "reference_evidence, reference_evidence_index); the variant VCF is "
-        "unchanged. None uses config reference_evidence, else none. See "
-        "docs/reference-evidence.md.",
-        choices=REFERENCE_EVIDENCE_MODES,
-        config_key="reference_evidence",
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class _SmallVariantParams(Params):
-    input: Path = input_param("BAM or CRAM to call.")
-    ref: Path | None = ref_param()
-    outdir: Path | None = outdir_param()
-    threads: int | None = threads_param()
-    ploidy_file: Path | None = param(
-        None,
-        help="File defining ploidy per chromosome (auto-resolved from --ref if possible)",
-        path="file",
-        exclusive="ploidy",
-    )
-    ploidy: str | None = param(
-        None, help="Predefined ploidy name or value", exclusive="ploidy"
-    )
-    region: str | None = param(
-        None,
-        help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
-        flags=("-r", "--region"),
-    )
-    parallel: bool | None = param(
-        None,
-        help="Call contigs in parallel with up to --threads workers (default: on "
-        "with --threads above 1). SNP calling recalls the stretches with sites "
-        "deeper than 255 reads in one stream, because bcftools subsamples them "
-        "with one random stream per process, so the calls match a single stream.",
-        action="boolean_optional",
-    )
-    baq: bool | None = param(
-        None,
-        help="Enable heuristic base alignment quality (BAQ) in bcftools mpileup "
-        "(slower; may reduce low-depth recall). Default: config baq, else off.",
-        doc="Omit mpileup -B for both variant calls and optional reference "
-        "evidence. This is heuristic BAQ, not full BAQ (-D) or redo BAQ (-E). "
-        "Ultima input is rejected because its profile disables BAQ. "
-        "Requires bcftools 1.13 or newer. None uses config baq, else off. "
-        "See docs/variant-confidence.md.",
-        action="boolean_optional",
-        config_key="baq",
-    )
-    qc_min_depth: float | None = depth_param()
-    reference_evidence: str | None = reference_evidence_param(
-        "bcftools.g.vcf.gz", "a second, SNP+indel bcftools pass"
-    )
-    mimalloc: str | None = param(
-        None,
-        help="Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or "
-        "not (off). Default: config mimalloc, else auto.",
-        doc="auto: bcftools uses wgse-mimalloc on Apple Silicon if installed.",
-        choices=MIMALLOC_SETTINGS,
-        config_key="mimalloc",
-    )
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if self.ploidy is not None and self.ploidy_file is not None:
-            raise UsageError("Use either --ploidy or --ploidy-file, not both.")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfSnpParams(_SmallVariantParams):
-    """Call SNPs from a BAM/CRAM into ``snps.vcf.gz``.
-
-    Ploidy comes from ``ploidy`` or ``ploidy_file``, else the reference
-    library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
-    the build of the input, or of a FASTA outside any library (its chr1
-    length, ``.dict`` assembly, header description or file name).
-    """
-
-    COMMAND = "vcf snp"
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfIndelParams(_SmallVariantParams):
-    """Call indels from a BAM/CRAM into ``indels.vcf.gz``; ploidy as for SNPs."""
-
-    COMMAND = "vcf indel"
+from ._network import DownloadParams as DownloadParams
+from ._params import Params as Params
+from ._params import param as param
+from ._runtime import CancelToken as CancelToken
+from ._runtime import ProgressCallback as ProgressCallback
+from ._runtime import execute as execute
+from ._shared import check_confidence as check_confidence
+from ._shared import confidence_depth_param as confidence_depth_param
+from ._shared import confidence_gq_param as confidence_gq_param
+from ._shared import depth_param as depth_param
+from ._shared import dry_run_param as dry_run_param
+from ._shared import force_steps_param as force_steps_param
+from ._shared import input_param as input_param
+from ._shared import memory_param as memory_param
+from ._shared import no_gpu_memory_check_param as no_gpu_memory_check_param
+from ._shared import no_preflight_param as no_preflight_param
+from ._shared import optional_input_param as optional_input_param
+from ._shared import outdir_param as outdir_param
+from ._shared import ref_param as ref_param
+from ._shared import restart_param as restart_param
+from ._shared import threads_param as threads_param
+from .vcf_specs.calling import VcfIndelParams as VcfIndelParams
+from .vcf_specs.calling import VcfSnpParams as VcfSnpParams
+from .vcf_specs.calling import _SmallVariantParams as _SmallVariantParams
+from .vcf_specs.shared import reference_evidence_param as reference_evidence_param
 
 
 def snp(
@@ -170,562 +88,34 @@ def indel(
     )
 
 
-# How ``to_fasta`` applies genotypes (``bcftools consensus`` options).
-HAPLOTYPES = ("iupac", "alt", "1", "2")
-_OVERRIDE_HELP = "Optional override for VCF input file."
-
-
-def _vcf_input_param(help: str = _OVERRIDE_HELP) -> Any:
-    return param(
-        None,
-        help=help,
-        path="file",
-        doc="The VCF to read; wins over ``input``. On the CLI, --vcf-input "
-        "defaults to config default_input_vcf when --input isn't given.",
-    )
-
-
-def _resource_param(help: str, config_key: str, **kwargs: Any) -> Any:
-    return param(None, help=help, path="file", config_key=config_key, **kwargs)
-
-
-def _min_score_param(label: str, example: str) -> Any:
-    return param(
-        None,
-        help=f"Minimum {label} score to filter for (e.g., {example}).",
-        doc=f"Also write the calls with a {label} score of at least this.",
-    )
-
-
-def _comma_items(params: Any, text: str) -> list[str]:
-    from wgsextract_cli.core.region_selection import region_items
-
-    return region_items(text, commas=True)
-
-
-def _deepvariant_items(params: Any, text: str) -> list[str]:
-    """Parabricks (``gpu``) splits on commas, DeepVariant on whitespace."""
-    from wgsextract_cli.core.region_selection import region_items
-
-    return region_items(text, commas=params.gpu)
-
-
-def _region_param(help: str = "Chromosomal region") -> Any:
-    return param(None, help=help, flags=("-r", "--region"))
-
-
-@dataclass(frozen=True, kw_only=True)
-class _VcfFileParams(Params):
-    input: Path | None = optional_input_param(
-        "The VCF to read when ``vcf_input`` is unset."
-    )
-    vcf_input: Path | None = _vcf_input_param()
-    outdir: Path | None = outdir_param("the VCF's folder")
-
-
-@dataclass(frozen=True, kw_only=True)
-class _AnnotatorParams(_VcfFileParams):
-    ref: Path | None = ref_param()
-    threads: int | None = threads_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfAnnotateParams(_VcfFileParams):
-    """Copy columns from an annotation VCF or tab file into ``annotated.vcf.gz``."""
-
-    COMMAND = "vcf annotate"
-
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    ref: Path | None = ref_param()
-    ann_vcf: Path | None = param(
-        None,
-        help="Annotation VCF file (auto-resolved from --ref if possible)",
-        path="file",
-    )
-    cols: str | None = param(
-        None,
-        help="Columns to annotate (e.g. ID,INFO/HG)",
-        doc="bcftools annotate -c columns; default: inferred from the "
-        "annotation file's header.",
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfFilterParams(_VcfFileParams):
-    """Keep the calls in a region or gene, matching an expression, into
-    ``filtered.vcf.gz``."""
-
-    COMMAND = "vcf filter"
-
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    ref: Path | None = ref_param()
-    expr: str | None = param(
-        None, help="bcftools filter expression (e.g. 'QUAL>30')", expression=True
-    )
-    gene: str | None = param(None, help="Filter by Gene Name (e.g. BRCA1, KCNQ2)")
-    exclude_near_gaps: bool = param(
-        False,
-        help="Exclude variants in or near genomic gaps (requires Count Ns output)",
-        action="store_true",
-    )
-    region: str | None = _region_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfTableParams(_VcfFileParams):
-    """One row per variant with its annotations, as ``<stem>_variants.tsv``
-    (or ``.parquet``) and an SQLite database."""
-
-    COMMAND = "vcf table"
-
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    region: str | None = _region_param("Only export this region (e.g. chr22).")
-    sample: str | None = param(
-        None, help="Sample whose genotypes to use (default: the first)."
-    )
-    all_alleles: bool = param(
-        False,
-        help="Also export ALT alleles the sample doesn't carry (0/0 calls, "
-        "no-calls, the other ALT of a 0/1 multi-allelic site).",
-        action="store_true",
-    )
-    pharmcat_json: Path | None = param(
-        None,
-        help="PharmCAT's <stem>.phenotype.json (from 'vcf pharmcat'), to add its "
-        "diplotype and phenotype to rows in those genes.",
-        metavar="FILE",
-        path="file",
-    )
-    no_sqlite: bool = param(
-        False, help="Write only the table file.", action="store_true"
-    )
-    table_format: str = param(
-        "tsv",
-        help="Table file format: tsv, or parquet (needs pyarrow) (default: tsv)",
-        flags=("--format",),
-        choices=FORMATS,
-        cli_type=table_format_type(),
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfToFastaParams(_VcfFileParams):
-    """The reference with the VCF's variants applied, as
-    ``<stem>_consensus.fa.gz`` (and optionally a liftover chain)."""
-
-    COMMAND = "vcf to-fasta"
-
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    ref: Path | None = ref_param()
-    threads: int | None = threads_param()
-    region: str | None = _region_param(
-        "Only build this region (e.g. chr21 or 21:30000000-31000000); "
-        "default: the whole reference."
-    )
-    sample: str | None = param(None, help="Sample to use from a multi-sample VCF.")
-    haplotype: str = param(
-        "iupac",
-        help="How genotypes are applied: iupac (default) writes heterozygous "
-        "SNVs as IUPAC codes (e.g. R for A/G) and applies homozygous ALTs; alt "
-        "applies every ALT; 1 or 2 applies that haplotype of a phased VCF (for "
-        "unphased genotypes, the first or second allele, so 1 keeps the "
-        "reference at heterozygous sites).",
-        choices=HAPLOTYPES,
-    )
-    uncalled: str = param(
-        "auto",
-        help="What to write where the VCF has no passing call: n (an N), ref "
-        "(the reference base), or auto (default): n for a gVCF, whose reference "
-        "blocks say which positions were called, ref for a variant-only VCF.",
-        choices=("auto", "n", "ref"),
-    )
-    include_filtered: bool = param(
-        False,
-        help="Also apply variants whose FILTER is not PASS.",
-        action="store_true",
-    )
-    mask: Path | None = param(
-        None,
-        help="BED file of regions to replace with N (e.g. low coverage).",
-        path="file",
-    )
-    chain: bool = param(
-        False,
-        help="Also write a chain file mapping reference coordinates to the "
-        "consensus (indels shift positions).",
-        action="store_true",
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfTrioParams(_VcfFileParams):
-    """Calls matching an inheritance mode in a child and both parents, as
-    ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first
-    genotyped jointly from the reads (``trio_joint.vcf.gz``), which de novo
-    calls need. VCF de novo and comphet classification requires complete
-    parental genotypes with GQ >=20 and no failed FORMAT/FT filter; missing,
-    filtered or weak evidence is written to
-    ``trio_<mode>_inconclusive.vcf.gz``, preserving the parental genotypes.
-    Sparse variant-only VCFs do not establish parental reference calls.
-    Covering gVCF reference blocks are assessed when a matching --ref is given."""
-
-    COMMAND = "vcf trio"
-
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    ref: Path | None = ref_param()
-    threads: int | None = threads_param()
-    mother: Path | None = _resource_param(CLI_HELP["arg_mother"], "mother_vcf_path")
-    father: Path | None = _resource_param(CLI_HELP["arg_father"], "father_vcf_path")
-    proband: Path | None = param(
-        None,
-        help="The child's VCF or BAM/CRAM; overrides --vcf-input/--input and "
-        "configured defaults. With the parents' BAM/CRAMs, genotyped jointly "
-        "from the reads, which de novo calls need.",
-        path="file",
-    )
-    mode: str = param(
-        "denovo",
-        help="Inheritance mode to filter for",
-        choices=("denovo", "recessive", "comphet", "all"),
-    )
-    min_depth: int | None = param(
-        None,
-        help="BAM/CRAM input: minimum read depth in each person at a reported site "
-        "(default 15)",
-    )
-    proband_sex: str | None = param(
-        None,
-        help="BAM/CRAM input: the child's sex, for chrX ploidy (default: inferred "
-        "from chrX/chrY coverage)",
-        choices=("male", "female"),
-    )
-    region: str | None = _region_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfClinvarParams(_AnnotatorParams):
-    """ClinVar significance and disease (CLNSIG, CLNDN) as
-    ``clinvar_annotated.vcf.gz``; the pathogenic and likely pathogenic calls,
-    with sequencing confidence labels, as ``clinvar_pathogenic.vcf.gz``.
-    Matching requires an indexed reference FASTA (``ref``, else the library).
-    Both copies are reference-normalized; phase-supported SNVs can match MNVs.
-    Review status, stars and ClinVar identity remain separate from sequencing
-    confidence. Conflicting assertions go to ``clinvar_conflicts.vcf.gz`` and
-    their own confidence table, not the consensus pathogenic subset."""
-
-    COMMAND = "vcf clinvar"
-
-    clinvar_file: Path | None = _resource_param(
-        "Path to ClinVar VCF data file.", "clinvar_vcf_path"
-    )
-    confidence_depth: tuple[float, float] | None = confidence_depth_param()
-    confidence_gq: tuple[float, float] | None = confidence_gq_param()
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        check_confidence(self)
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfRevelParams(_AnnotatorParams):
-    """REVEL missense pathogenicity scores as ``revel_annotated.vcf.gz``."""
-
-    COMMAND = "vcf revel"
-
-    revel_file: Path | None = _resource_param(
-        "Path to REVEL TSV or VCF data file.", "revel_tsv_path"
-    )
-    min_score: float | None = _min_score_param("REVEL", "0.5")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfPhylopParams(_AnnotatorParams):
-    """PhyloP conservation scores as ``phylop_annotated.vcf.gz``."""
-
-    COMMAND = "vcf phylop"
-
-    phylop_file: Path | None = _resource_param(
-        "Path to a PhyloP bigWig (phylop_<build>.bw), or a TSV/VCF of scores.",
-        "phylop_tsv_path",
-    )
-    min_score: float | None = _min_score_param("PhyloP", "2.0")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfCaddParams(_AnnotatorParams):
-    """CADD deleteriousness scores (CADD_RAW, CADD_PHRED) as
-    ``cadd_annotated.vcf.gz``."""
-
-    COMMAND = "vcf cadd"
-
-    cadd_file: Path | None = _resource_param(
-        "Path to the CADD whole-genome SNV TSV (cadd_<build>.tsv.gz).",
-        "cadd_tsv_path",
-    )
-    cadd_indel_file: Path | None = _resource_param(
-        "Path to a CADD indel TSV (cadd_indel_<build>.tsv.gz); used when present.",
-        "cadd_indel_tsv_path",
-    )
-    min_score: float | None = _min_score_param("CADD PHRED", "20")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfGerpParams(_AnnotatorParams):
-    """GERP++ conservation scores as ``gerp_annotated.vcf.gz``."""
-
-    COMMAND = "vcf gerp"
-
-    gerp_file: Path | None = _resource_param(
-        "Path to a GERP++ RS bigWig (gerp_<build>.bw).", "gerp_bigwig_path"
-    )
-    min_score: float | None = _min_score_param("GERP", "2.0")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfGnomadParams(_AnnotatorParams):
-    """gnomAD allele frequencies (GNOMAD_AF) as ``gnomad_annotated.vcf.gz``."""
-
-    COMMAND = "vcf gnomad"
-
-    gnomad_file: Path | None = _resource_param(
-        "Path to gnomAD data: a sites VCF, or the allele-frequency table "
-        "from 'ref gnomad --release 4.1'.",
-        "gnomad_vcf_path",
-    )
-    max_af: float | None = param(
-        None,
-        help="Maximum Allele Frequency to filter for (e.g., 0.01 for 1%%).",
-        doc="Also write the calls rarer than this gnomAD allele frequency "
-        "(or absent from gnomAD), with confidence labels.",
-    )
-    confidence_depth: tuple[float, float] | None = confidence_depth_param()
-    confidence_gq: tuple[float, float] | None = confidence_gq_param()
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        check_confidence(self)
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfSvFreqParams(_AnnotatorParams):
-    """Population frequencies of structural variants (SV_AF, SV_POPMAX_AF,
-    SV_FREQ, SV_COMMON, ...) from gnomAD-SV and gnomAD-LR as
-    ``sv_freq_annotated.vcf.gz``, and one row per SV in ``sv_freq.tsv``.
-
-    For the SV calls of ``vcf sv`` (Delly, Sniffles, pbsv) and ``vcf cnv``,
-    or any VCF of SVs. A call matches a gnomAD SV of the same type by
-    reciprocal overlap (deletions, duplications, inversions) or by
-    breakpoint distance and size similarity (insertions). Nondirectional
-    CNV carrier frequencies and cross-type INS/DUP matches are excluded."""
-
-    COMMAND = "vcf sv-freq"
-
-    gnomad_sv_file: Path | None = _resource_param(
-        "gnomAD-SV table (default: the library's, from 'ref gnomad-sv').",
-        "gnomad_sv_path",
-    )
-    gnomad_lr_file: Path | None = _resource_param(
-        "gnomAD-LR table (default: the library's; GRCh38).",
-        "gnomad_lr_sv_path",
-    )
-    min_overlap: float = param(
-        0.5,
-        help="Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
-    )
-    max_distance: int = param(
-        500,
-        help="Maximum insertion breakpoint distance, bp (default 500).",
-    )
-    min_size_similarity: float = param(
-        0.5,
-        help="Minimum insertion size similarity (default 0.5).",
-    )
-    common_af: float = param(
-        0.01,
-        help="AF from which an SV is common (default 0.01).",
-    )
-    rare_af: float = param(
-        0.001,
-        help="AF below which an SV is rare (default 0.001).",
-    )
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if not 0 < self.min_overlap <= 1:
-            raise UsageError("--min-overlap must be above 0 and at most 1.")
-        if not 0 <= self.min_size_similarity <= 1:
-            raise UsageError("--min-size-similarity must be between 0 and 1.")
-        if self.max_distance < 0:
-            raise UsageError("--max-distance must be at least 0.")
-        if not 0 < self.rare_af <= self.common_af <= 1:
-            raise UsageError(
-                "--rare-af and --common-af must satisfy 0 < rare <= common <= 1."
-            )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfSpliceaiParams(_AnnotatorParams):
-    """SpliceAI splicing scores as ``spliceai_annotated.vcf.gz``."""
-
-    COMMAND = "vcf spliceai"
-
-    spliceai_file: Path | None = _resource_param(
-        "Path to SpliceAI VCF data file.", "spliceai_vcf_path"
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfAcmgParams(_AnnotatorParams):
-    """Research-only ACMG/AMP classes from fastVEP for a ``vep run`` (vep-rs)
-    VCF, as ``acmg_annotated.vcf.gz`` (INFO ACMG_CLASS, ACMG_CRITERIA,
-    ACMG_TRANSCRIPT) and ``acmg_summary.json``. Not a diagnosis. Refused
-    unless ``research_acmg`` is set; GRCh38 only."""
-
-    COMMAND = "vcf acmg"
-
-    research_acmg: bool = param(
-        False,
-        help="Required: confirm these automated classes are for research "
-        "only, not a diagnosis.",
-        action="store_true",
-    )
-    sa_dir: Path | None = param(
-        None,
-        help="Folder of fastVEP databases (fastvep sa-build): ClinVar, its "
-        "protein index, gnomAD, gene constraint, ClinGen, REVEL, SpliceAI, phyloP.",
-        path="directory",
-        config_key="acmg_sa_dir",
-    )
-    gff3: Path | None = _resource_param(
-        "Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz).", "acmg_gff3"
-    )
-
-    def preflight(self) -> None:
-        from wgsextract_cli.commands.vcf.acmg import require_opt_in
-
-        require_opt_in(self.research_acmg)
-
-    def _acmg_inputs(self) -> Iterator[tuple[str, Path]]:
-        """The databases folder and GFF3 the run reads, configured or found
-        through the library as the command finds them: the folder first, so
-        a server refuses it before the manifest in it is read."""
-        from wgsextract_cli.core import acmg_data
-        from wgsextract_cli.core.paths import expand_path
-        from wgsextract_cli.core.reference_resolver import library_roots
-        from wgsextract_cli.core.utils import WGSExtractError
-
-        from ._params import with_config_defaults
-
-        filled = with_config_defaults(self)
-        sa_dir = acmg_data.acmg_sa_dir(library_roots(filled.ref).root, filled.sa_dir)
-        if sa_dir is not None:
-            yield "sa_dir", sa_dir
-        if filled.gff3 is not None:
-            yield "gff3", Path(expand_path(filled.gff3))
-        elif sa_dir is not None:
-            try:
-                gff3 = acmg_data.recorded_gff3(sa_dir)
-            except WGSExtractError:
-                gff3 = None  # the run reports the unreadable manifest
-            if gff3 is not None:
-                yield "gff3", gff3
-
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        yield from super().implied_paths()
-        for name, path in self._acmg_inputs():
-            if getattr(self, name) is None:
-                yield name, path
-
-    def write_folders(self) -> Iterator[Path]:
-        # fastVEP saves its transcript cache beside the GFF3.
-        for name, path in self._acmg_inputs():
-            if name == "gff3":
-                yield path.parent
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfAlphamissenseParams(_AnnotatorParams):
-    """AlphaMissense pathogenicity scores as ``alphamissense_annotated.vcf.gz``."""
-
-    COMMAND = "vcf alphamissense"
-
-    am_file: Path | None = _resource_param(
-        "Path to AlphaMissense VCF data file.", "alphamissense_vcf_path"
-    )
-    min_score: float | None = _min_score_param("AlphaMissense", "0.5")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfPharmgkbParams(_AnnotatorParams):
-    """PharmGKB drug-response annotations as ``pharmgkb_annotated.vcf.gz``
-    (GRCh38 only)."""
-
-    COMMAND = "vcf pharmgkb"
-
-    pharmgkb_file: Path | None = _resource_param(
-        "Path to PharmGKB VCF or data file.", "pharmgkb_vcf_path"
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfPharmcatParams(_VcfFileParams):
-    """Star-allele diplotypes and drug-response phenotypes from a GRCh38 VCF
-    with PharmCAT: ``<stem>.report.html``, ``.report.json`` and
-    ``.phenotype.json``."""
-
-    COMMAND = "vcf pharmcat"
-
-    # Local only: <ref>/pharmcat holds the pipeline it runs.
-    ref: Path | None = ref_param(local_only=True)
-    pharmcat_dir: Path | None = param(
-        None,
-        help="Extracted PharmCAT pipeline release (default: <reference "
-        "library>/pharmcat).",
-        path="directory",
-        config_key="pharmcat_directory",
-        local_only=True,
-    )
-    absent_to_ref: bool = param(
-        False,
-        help="Treat positions absent from the VCF as reference. Only for a "
-        "whole-genome VCF that lists variants only (not a gVCF).",
-        action="store_true",
-    )
-    outside_call: tuple[Path, ...] | None = param(
-        None,
-        help="PharmCAT outside-call file (gene<TAB>diplotype), e.g. from "
-        "`typing cyp2d6` or `typing hla`. Repeatable; one call per gene.",
-        metavar="FILE",
-        path="file",
-        action="append",
-    )
-    confidence_depth: tuple[float, float] | None = confidence_depth_param()
-    confidence_gq: tuple[float, float] | None = confidence_gq_param()
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        check_confidence(self)
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfChainAnnotateParams(_VcfFileParams):
-    """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
-    steps whose tool or data is missing are skipped with a warning."""
-
-    COMMAND = "vcf chain-annotate"
-
-    ref: Path | None = ref_param()
-    annotations: str = param(
-        "clinvar,revel,phylop,gnomad,vep",
-        help="Comma-separated list of annotations to apply in order (default: "
-        "clinvar,revel,phylop,gnomad,vep).",
-    )
-    keep_intermediates: bool = param(
-        False,
-        help="Keep intermediate VCF files generated during the chain process.",
-        action="store_true",
-    )
-
+from .vcf_specs.annotations import VcfAcmgParams as VcfAcmgParams
+from .vcf_specs.annotations import VcfAlphamissenseParams as VcfAlphamissenseParams
+from .vcf_specs.annotations import VcfCaddParams as VcfCaddParams
+from .vcf_specs.annotations import VcfChainAnnotateParams as VcfChainAnnotateParams
+from .vcf_specs.annotations import VcfClinvarParams as VcfClinvarParams
+from .vcf_specs.annotations import VcfGerpParams as VcfGerpParams
+from .vcf_specs.annotations import VcfGnomadParams as VcfGnomadParams
+from .vcf_specs.annotations import VcfPharmcatParams as VcfPharmcatParams
+from .vcf_specs.annotations import VcfPharmgkbParams as VcfPharmgkbParams
+from .vcf_specs.annotations import VcfPhylopParams as VcfPhylopParams
+from .vcf_specs.annotations import VcfRevelParams as VcfRevelParams
+from .vcf_specs.annotations import VcfSpliceaiParams as VcfSpliceaiParams
+from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
+from .vcf_specs.files import HAPLOTYPES as HAPLOTYPES
+from .vcf_specs.files import VcfAnnotateParams as VcfAnnotateParams
+from .vcf_specs.files import VcfFilterParams as VcfFilterParams
+from .vcf_specs.files import VcfTableParams as VcfTableParams
+from .vcf_specs.files import VcfToFastaParams as VcfToFastaParams
+from .vcf_specs.files import VcfTrioParams as VcfTrioParams
+from .vcf_specs.shared import _OVERRIDE_HELP as _OVERRIDE_HELP
+from .vcf_specs.shared import _AnnotatorParams as _AnnotatorParams
+from .vcf_specs.shared import _comma_items as _comma_items
+from .vcf_specs.shared import _deepvariant_items as _deepvariant_items
+from .vcf_specs.shared import _min_score_param as _min_score_param
+from .vcf_specs.shared import _region_param as _region_param
+from .vcf_specs.shared import _resource_param as _resource_param
+from .vcf_specs.shared import _vcf_input_param as _vcf_input_param
+from .vcf_specs.shared import _VcfFileParams as _VcfFileParams
 
 _P = TypeVar("_P", bound=_VcfFileParams)
 
@@ -1040,382 +430,23 @@ __all__ = [
 
 
 # The stages of a CPU DeepVariant run, and of its step journal.
-DEEPVARIANT_STEPS = (
-    "stage_reads",
-    "make_examples",
-    "call_variants",
-    "postprocess_variants",
-)
-DEEPVARIANT_MODELS = (
-    "WGS",
-    "WES",
-    "PACBIO",
-    "HYBRID_PACBIO_ILLUMINA",
-    "ULTIMA",
-    "ONT_R104",
-)
-SV_CALLERS = ("delly", "pbsv", "sniffles")
-
-
-@dataclass(frozen=True, kw_only=True)
-class _CallerParams(Params):
-    input: Path = input_param("BAM or CRAM to call.")
-    ref: Path | None = ref_param()
-    outdir: Path | None = outdir_param()
-    threads: int | None = threads_param()
-    region: str | None = _region_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfCnvParams(_CallerParams):
-    """Call copy-number variants with delly into ``cnv.vcf.gz``."""
-
-    COMMAND = "vcf cnv"
-
-    map: str | None = param(
-        None,
-        help="Deprecated and ignored: Delly 2 no longer uses mappability maps.",
-        flags=("-M", "--map"),
-    )
-    ploidy: int | None = param(None, help="Baseline ploidy for delly cnv (default: 2)")
-    qc_min_depth: float | None = depth_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfSvParams(_CallerParams):
-    """Call structural variants into ``sv.vcf.gz`` (delly), ``pbsv.vcf.gz``
-    or ``sniffles.vcf.gz``.
-
-    ``caller`` picks the tool; otherwise Sniffles for ONT input (detected or
-    ``ont``) and long reads, pbsv (else Sniffles) for PacBio input (detected
-    or ``pacbio``), else delly. The ``caller_reason`` metric says why.
-    """
-
-    COMMAND = "vcf sv"
-
-    caller: str | None = param(
-        None,
-        help="SV caller to use (default: sniffles for ONT or --long-read, "
-        "pbsv/sniffles for PacBio, detected or flagged; else delly). "
-        "pbsv is PacBio-only and is refused for ONT reads.",
-        choices=SV_CALLERS,
-    )
-    pacbio: bool = param(
-        False,
-        help="PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) "
-        "with CCS thresholds. Detected PacBio gets this automatically, without "
-        "CCS thresholds for subreads (CLR).",
-        action="store_true",
-    )
-    ont: bool = param(
-        False,
-        help="Oxford Nanopore data: use Sniffles (detected ONT input selects it "
-        "automatically).",
-        action="store_true",
-    )
-    long_read: bool = param(
-        False,
-        help="Long-read data from any platform: use Sniffles unless --caller "
-        "selects pbsv for PacBio reads.",
-        action="store_true",
-    )
-    ccs: bool = param(
-        False,
-        help="Use pbsv CCS/HiFi thresholds when --caller pbsv is selected.",
-        action="store_true",
-    )
-    tandem_repeats: Path | None = param(
-        None,
-        help="Optional tandem-repeat BED for pbsv discover or Sniffles "
-        "(recommended for long-read SV calling).",
-        path="file",
-    )
-    qc_min_depth: float | None = depth_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfFreebayesParams(_CallerParams):
-    """Call small variants with FreeBayes into ``freebayes.vcf.gz``."""
-
-    COMMAND = "vcf freebayes"
-
-    region: str | None = param(
-        None,
-        help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
-        flags=("-r", "--region"),
-        splits=_comma_items,
-    )
-    qc_min_depth: float | None = depth_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfGatkParams(_CallerParams):
-    """Call small variants with GATK HaplotypeCaller into ``gatk.vcf.gz``
-    (flow mode for Ultima reads), or with Parabricks on a GPU."""
-
-    COMMAND = "vcf gatk"
-
-    region: str | None = param(
-        None,
-        help="Chromosomal region (e.g. chrM)",
-        flags=("-r", "--region"),
-        doc="Comma-separated region(s) to call (e.g. chrM), or a BED file.",
-        splits=_comma_items,
-    )
-    scatter: bool = param(
-        False,
-        help="Opt-in Ultima flow-mode interval scattering, bounded by --threads "
-        "and available RAM (6 GiB per worker, 4 GiB Java heap). "
-        "Can change genotypes/annotations away from interval boundaries; "
-        "default: one unscattered process.",
-        action="store_true",
-    )
-    gpu: bool = param(
-        False,
-        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
-        action="store_true",
-    )
-    no_gpu_memory_check: bool = no_gpu_memory_check_param()
-    qc_min_depth: float | None = depth_param()
-    reference_evidence: str | None = reference_evidence_param(
-        "gatk.g.vcf.gz",
-        "little time; the VCF is then genotyped from it; not with --gpu or --scatter",
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfDeepvariantParams(_CallerParams):
-    """Call small variants with DeepVariant into ``deepvariant.vcf.gz``.
-
-    The model follows ``ont``, ``pacbio``, ``model_type`` and ``wes``, else the
-    reads (ONT_R104 for ONT, ULTIMA for flow-tagged Ultima reads, else WGS).
-    DeepVariant's own pipeline runs in stages that a rerun resumes. ``gpu``
-    runs Parabricks in one step, except for ULTIMA, which Parabricks lacks:
-    Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
-    """
-
-    COMMAND = "vcf deepvariant"
-
-    region: str | None = param(
-        None,
-        help="Chromosomal region (e.g. chrM)",
-        flags=("-r", "--region"),
-        doc="Region(s) to call (e.g. chrM) or BED files of them, separated by "
-        "spaces (commas with gpu).",
-        splits=_deepvariant_items,
-    )
-    wes: bool = param(
-        False, help="Set model type to WES (default: WGS)", action="store_true"
-    )
-    model_type: str | None = param(
-        None,
-        help="DeepVariant model type (default: ONT_R104 for detected ONT, "
-        "ULTIMA for Ultima reads with their flow tags, else WGS). "
-        "ONT_R104 supports R10.4.1 only and requires x86-64; "
-        "Linux ARM64 supports WGS only. Use PACBIO for PacBio HiFi/CCS alignments.",
-        choices=DEEPVARIANT_MODELS,
-    )
-    ont: bool = param(
-        False,
-        help="Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).",
-        action="store_true",
-    )
-    pacbio: bool = param(
-        False, help="Alias for --model-type PACBIO.", action="store_true"
-    )
-    checkpoint: Path | None = param(
-        None,
-        help="Path to DeepVariant model checkpoint",
-        doc="A custom model: its directory, or a checkpoint prefix.",
-        path="file_or_directory",
-    )
-    batch_size: int | None = param(
-        None,
-        help="call_variants batch size (upstream default: 1024; not Parabricks). "
-        "Use 256 to lower TensorFlow peak RAM without changing models or precision; "
-        "--threads controls make_examples shards, not this batch.",
-    )
-    gpu: bool = param(
-        False,
-        help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
-        "else Parabricks; Ultima: Google's GPU image (README).",
-        action="store_true",
-    )
-    no_gpu_memory_check: bool = no_gpu_memory_check_param()
-    no_preflight: bool = no_preflight_param()
-    qc_min_depth: float | None = depth_param()
-    reference_evidence: str | None = reference_evidence_param(
-        "deepvariant.g.vcf.gz", "~5 percent more time, ~25 with Parabricks"
-    )
-    restart: bool = restart_param()
-    force_steps: tuple[str, ...] | None = force_steps_param(DEEPVARIANT_STEPS)
-    dry_run: bool = dry_run_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfClair3Params(_CallerParams):
-    """Call small variants in Nanopore reads with Clair3 into
-    ``clair3.vcf.gz``."""
-
-    COMMAND = "vcf clair3"
-
-    region: str | None = param(
-        None,
-        help="Chromosomal region (e.g. chr20:1-1000000)",
-        flags=("-r", "--region"),
-        splits=_comma_items,
-    )
-    model: str | None = param(
-        None,
-        help="Clair3 model directory, or the name of a bundled model, matching the "
-        "reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config "
-        "clair3_model; default: chosen from the basecaller metadata.",
-        metavar="NAME|DIR",
-        may_name_file=True,
-    )
-    gpu: bool = param(
-        False,
-        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
-        "Docker; see docs/ont.md).",
-        action="store_true",
-    )
-    no_preflight: bool = no_preflight_param()
-    qc_min_depth: float | None = depth_param()
-    reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
-    )
-
-
-PHASERS = ("whatshap", "longphase")
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfPhaseParams(_CallerParams):
-    """Phase one sample's heterozygous calls with its reads into
-    ``phased.vcf.gz``, with WhatsHap or LongPhase.
-
-    ``input`` is the sample's BAM/CRAM and ``vcf_input`` its calls. The phase
-    blocks go to ``phased.blocks.tsv``; ``haplotag`` also writes the reads with
-    HP/PS tags to ``haplotagged.bam`` (or ``.cram``).
-    """
-
-    COMMAND = "vcf phase"
-
-    input: Path = input_param("BAM or CRAM of the sample's reads.")
-    vcf_input: Path | None = param(
-        None,
-        help="VCF of the sample's calls to phase (default: config default_input_vcf)",
-        path="file",
-        config_key="default_input_vcf",
-        doc="The calls to phase, read with ``input`` (not instead of it).",
-    )
-    region: str | None = _region_param(
-        "Phase only these regions (e.g. chr20 or chr20:1-1000000, comma-separated)"
-    )
-    phaser: str | None = param(
-        None,
-        help="Phasing tool (default: longphase for Nanopore and PacBio reads when "
-        "it is installed, else whatshap). LongPhase is refused for other reads.",
-        choices=PHASERS,
-    )
-    haplotag: bool = param(
-        False,
-        help="Also write the reads tagged with their haplotype (HP) and phase "
-        "block (PS) to haplotagged.bam (.cram for CRAM input).",
-        action="store_true",
-    )
-    qc_min_depth: float | None = depth_param()
-
-    def write_folders(self) -> Iterator[Path]:
-        # With no outdir, the outputs go beside the reads, not the VCF.
-        if self.outdir is None:
-            yield Path(self.input).expanduser().absolute().parent
-
-
-@dataclass(frozen=True, kw_only=True)
-class VcfImputeParams(Params):
-    """Impute one GRCh38 sample's genotypes from the 1000 Genomes 30x panel
-    into ``imputed.vcf.gz``: low-coverage reads (``input``) with GLIMPSE2, or
-    a genotype-only VCF such as microarray calls (``vcf_input``) with Beagle 5.
-
-    Every imputed record carries INFO/IMP, the header a
-    ``##wgsextract_imputation`` line, and records whose most likely genotype
-    has GP below ``min_gp`` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
-    ``ImpLowConf``. Site INFO/DR2 is not a single-sample confidence measure:
-    ``min_info`` is an explicit opt-in site filter, meaningful only for
-    multi-sample cohorts. Install panel chromosomes with ``ref imputation``.
-    """
-
-    COMMAND = "vcf impute"
-
-    input: Path | None = optional_input_param(
-        "Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x)."
-    )
-    vcf_input: Path | None = param(
-        None,
-        help="Genotype-only VCF (e.g. chip calls) to impute with Beagle instead.",
-        path="file",
-    )
-    ref: Path | None = ref_param()
-    outdir: Path | None = outdir_param()
-    threads: int | None = threads_param()
-    memory: str | None = memory_param()
-    chromosomes: str | None = param(
-        None,
-        help="Chromosomes, e.g. chr20 or chr1-22 (default: every installed one).",
-    )
-    min_gp: float | None = param(
-        None,
-        help="Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95).",
-        minimum=0.0,
-    )
-    min_info: float | None = param(
-        None,
-        help="Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts.",
-        minimum=0.0,
-    )
-
-    @property
-    def gp_threshold(self) -> float:
-        """Effective per-genotype threshold, including explicit zero."""
-        if self.min_gp is not None:
-            return self.min_gp
-        return 0.9 if self.input is not None else 0.95
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if (self.input is None) == (self.vcf_input is None):
-            raise UsageError(
-                "Give either --input (low-coverage reads) or --vcf-input "
-                "(genotype-only VCF) to impute."
-            )
-
-    def write_folders(self) -> Iterator[Path]:
-        if self.outdir is None:
-            source = self.input or self.vcf_input
-            assert source is not None
-            yield Path(source).expanduser().absolute().parent
-
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        from wgsextract_cli.core import imputation_panel
-        from wgsextract_cli.core.reference_assets import (
-            resolve_reference_library,
-        )
-
-        from ._params import with_config_defaults
-        from .ref import _library_named
-
-        ref = with_config_defaults(self).ref
-        if ref is not None:
-            yield "ref", ref.expanduser()
-        library = (
-            _library_named(ref)
-            if ref is not None
-            else Path(resolve_reference_library())
-        )
-        yield "ref", library
-        for path in imputation_panel.guarded_paths(str(library), self.chromosomes):
-            yield "ref", path
+from .vcf_specs.calling import CALL_TYPES as CALL_TYPES
+from .vcf_specs.calling import DEEPVARIANT_MODELS as DEEPVARIANT_MODELS
+from .vcf_specs.calling import DEEPVARIANT_STEPS as DEEPVARIANT_STEPS
+from .vcf_specs.calling import PHASERS as PHASERS
+from .vcf_specs.calling import SV_CALLERS as SV_CALLERS
+from .vcf_specs.calling import VcfCallParams as VcfCallParams
+from .vcf_specs.calling import VcfClair3Params as VcfClair3Params
+from .vcf_specs.calling import VcfCnvParams as VcfCnvParams
+from .vcf_specs.calling import VcfDeepvariantParams as VcfDeepvariantParams
+from .vcf_specs.calling import VcfFreebayesParams as VcfFreebayesParams
+from .vcf_specs.calling import VcfGatkParams as VcfGatkParams
+from .vcf_specs.calling import VcfPhaseParams as VcfPhaseParams
+from .vcf_specs.calling import VcfSvParams as VcfSvParams
+from .vcf_specs.calling import _call_types_arg as _call_types_arg
+from .vcf_specs.calling import _CallerParams as _CallerParams
+from .vcf_specs.calling import call_types as call_types
+from .vcf_specs.files import VcfImputeParams as VcfImputeParams
 
 
 def cnv(
@@ -1443,6 +474,20 @@ def sv(
     from wgsextract_cli.commands.vcf.structural import run_sv
 
     return execute(params, run_sv, progress=progress, cancel=cancel, check=check)
+
+
+def call(
+    params: VcfCallParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Call the chosen types; each type's output carries its own role, and
+    ``merge`` adds ``merged_variants``."""
+    from wgsextract_cli.commands.vcf.call import run_call
+
+    return execute(params, run_call, progress=progress, cancel=cancel, check=check)
 
 
 def freebayes(

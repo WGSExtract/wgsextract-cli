@@ -18,7 +18,6 @@ import base64
 import csv
 import hashlib
 import io
-import json
 import logging
 import re
 import shutil
@@ -40,6 +39,12 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core import read_scope
+from wgsextract_cli.core.acmg_manifest import MANIFEST as MANIFEST
+from wgsextract_cli.core.acmg_manifest import SITE_DATA as SITE_DATA
+from wgsextract_cli.core.acmg_manifest import load_manifest as load_manifest
+from wgsextract_cli.core.acmg_manifest import record_site_data as record_site_data
+from wgsextract_cli.core.acmg_manifest import save_manifest
+from wgsextract_cli.core.acmg_manifest import site_data_of as site_data_of
 from wgsextract_cli.core.builds import CHR1_LENGTH_BUILDS
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version
@@ -47,6 +52,7 @@ from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -56,7 +62,10 @@ from wgsextract_cli.core.utils import (
     wait_with_cancel,
 )
 
-MANIFEST = "acmg_data.json"
+# The sources vcf acmg can read per run, at only the input's sites.
+PER_RUN = ("gnomad", "spliceai")
+# vcf acmg's cache of per-run databases, in the databases folder.
+SITES_CACHE = "sites"
 ASSEMBLY = "GRCh38"
 CHROMOSOMES = tuple(f"chr{c}" for c in (*range(1, 23), "X", "Y"))
 # GRCh38 lengths in megabases, to scale the estimates of the per-chromosome
@@ -218,7 +227,7 @@ def fastvep_version() -> str:
 
 def folder(reflib: str | Path) -> Path:
     """The library's ACMG folder: the GFF3, ``sources/`` and ``sa/``."""
-    return Path(reflib, "ref", "acmg")
+    return download_path(reflib, "acmg")
 
 
 def default_sa_dir(reflib: str | Path) -> Path:
@@ -229,7 +238,7 @@ def acmg_sa_dir(
     library_root: str | Path | None, sa_dir: str | Path | None
 ) -> Path | None:
     """The databases ``vcf acmg`` reads: ``sa_dir`` when given (or
-    configured), else the library's ``ref/acmg/sa`` when it is there."""
+    configured), else the library's ``downloads/acmg/sa`` when it is there."""
     if sa_dir:
         return Path(expand_path(sa_dir))
     built = default_sa_dir(library_root) if library_root else None
@@ -276,17 +285,6 @@ def parse_chromosomes(text: str | None) -> list[str]:
     return sorted(names, key=CHROMOSOMES.index)
 
 
-def load_manifest(sa_dir: str | Path) -> dict[str, Any]:
-    path = Path(sa_dir, MANIFEST)
-    try:
-        data = json.loads(path.read_text())
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as e:
-        raise WGSExtractError(f"Can't read {path}: {e}") from e
-    return data if isinstance(data, dict) else {}
-
-
 def _built(sa_dir: Path, manifest: dict[str, Any]) -> set[str]:
     """The databases the manifest records that are still in place, unchanged in
     size; one a source has no data for counts as built."""
@@ -309,12 +307,15 @@ def installed(sa_dir: str | Path) -> dict[str, Any]:
         entry = manifest["databases"][name]
         by_source[entry["source"]].add(entry.get("chromosome") or "")
     gff3 = str((manifest.get("gff3") or {}).get("file") or "")
-    per_chromosome = [s.key for s in SOURCES if s.per_chromosome]
+    site_data = site_data_of(manifest)
+    built = [s for s in SOURCES if site_data == "library" or s.key not in PER_RUN]
+    per_chromosome = [s.key for s in built if s.per_chromosome]
     return {
         "installed": bool(
-            gff3 and Path(gff3).is_file() and all(by_source[s.key] for s in SOURCES)
+            gff3 and Path(gff3).is_file() and all(by_source[s.key] for s in built)
         ),
         "folder": str(sa_dir),
+        "siteData": site_data,
         "gff3": gff3,
         "chromosomes": [
             c for c in CHROMOSOMES if all(c in by_source[k] for k in per_chromosome)
@@ -346,6 +347,7 @@ class Plan:
     release: str
     chromosomes: list[str]
     spliceai: Path | None  # an existing SpliceAI VCF; None downloads Ensembl's
+    site_data: str = "library"  # per-run: gnomAD and SpliceAI aren't built
     steps: list[Step] = field(default_factory=list)
     done: list[str] = field(default_factory=list)
     # Genome-wide files the per-chromosome steps are cut from, still to fetch.
@@ -395,12 +397,23 @@ def make_plan(
     release: str,
     spliceai: Path | None,
     *,
+    site_data: str | None = None,
     probe: bool = True,
 ) -> Plan:
     """What a build of ``chromosomes`` still has to do; ``probe`` asks the
-    servers for download sizes."""
-    plan = Plan(Path(reflib), Path(sa_dir), release, chromosomes, spliceai)
+    servers for download sizes. ``site_data`` per-run leaves gnomAD and
+    SpliceAI out (None: as the folder was built, else library)."""
     manifest = load_manifest(sa_dir)
+    if spliceai is None and manifest.get("spliceai_file"):
+        spliceai = Path(manifest["spliceai_file"])
+    plan = Plan(
+        Path(reflib),
+        Path(sa_dir),
+        release,
+        chromosomes,
+        spliceai,
+        site_data or site_data_of(manifest),
+    )
     built = _built(plan.sa_dir, manifest)
 
     def size(url: str) -> int | None:
@@ -419,6 +432,8 @@ def make_plan(
         url = ENSEMBL.format(release=release) + plan.gff3.name
         plan.steps.append(Step("gff3", "gff3", download=size(url)))
     for source in SOURCES:
+        if plan.site_data == "per-run" and source.key in PER_RUN:
+            continue
         if not source.per_chromosome:
             if source.key in built:
                 plan.done.append(source.key)
@@ -455,17 +470,17 @@ def make_plan(
     todo = {s.source for s in plan.steps}
     if "revel" in todo and not (plan.sources_dir / Path(REVEL_URL).name).is_file():
         plan.downloads["revel"] = size(REVEL_URL)
-    if "spliceai" in todo and spliceai is None and not _library_spliceai(reflib):
+    if "spliceai" in todo and spliceai is None and not library_spliceai(reflib):
         plan.downloads["spliceai"] = size(SPLICEAI_URL)
     return plan
 
 
 def library_spliceai_path(reflib: str | Path) -> Path:
     """Where ``ref spliceai`` installs the library's GRCh38 SpliceAI VCF."""
-    return Path(reflib, "ref", "spliceai_hg38.vcf.gz")
+    return download_path(reflib, "spliceai_hg38.vcf.gz")
 
 
-def _library_spliceai(reflib: str | Path) -> Path | None:
+def library_spliceai(reflib: str | Path) -> Path | None:
     """The library's GRCh38 SpliceAI VCF, when installed and indexed."""
     path = library_spliceai_path(reflib)
     return path if path.is_file() and Path(f"{path}.tbi").is_file() else None
@@ -564,7 +579,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-class _Stop:
+class Stop:
     """Set when the run stops (Ctrl-C, SIGTERM) or its caller cancels it: the
     builds still running stop at their next check and their tools are killed."""
 
@@ -579,6 +594,53 @@ class _Stop:
         return self.event.is_set() or bool(self.outer and self.outer.is_set())
 
 
+def run_tool(command: list[str], cancel: CancelEvent | None) -> str:
+    """Run a tool, cancellably: its output, or its failure."""
+    with tempfile.TemporaryFile() as log:
+        process = popen(command, stdout=log, stderr=subprocess.STDOUT)
+        ok = wait_with_cancel(process, cancel)
+        log.seek(0)
+        output = log.read().decode(errors="replace")
+    if not ok:
+        raise WGSExtractError(
+            "Cancelled."
+            if cancel and cancel.is_set()
+            else f"{Path(command[0]).name} {command[1]} failed "
+            f"(exit {process.returncode}): {output.strip()[-1500:]}"
+        )
+    return output
+
+
+def sa_build(
+    fastvep: str,
+    key: str,
+    inputs: Path,
+    work: Path,
+    name: str,
+    cancel: CancelEvent | None,
+) -> tuple[list[Path], int]:
+    """``fastvep sa-build`` of source ``key`` from ``inputs`` into a fresh
+    ``work`` folder as ``name``: the files it wrote, and its record count."""
+    source = BY_KEY[key]
+    shutil.rmtree(work, ignore_errors=True)
+    work.mkdir(parents=True)
+    command = [
+        fastvep, "sa-build", "--source", source.key, "-i", str(inputs),
+        "-o", str(work / name), "--assembly", ASSEMBLY, "--no-progress",
+    ]  # fmt: skip
+    if source.chunk_bits:
+        command += ["--chunk-bits", str(source.chunk_bits)]
+    logging.info("Building %s...", name)
+    output = run_tool(command, cancel)
+    records = re.findall(r"Wrote: .*\(([\d,]+) (?:records|genes)", output)
+    built = sorted(work.iterdir())
+    if not records or not built:
+        raise WGSExtractError(
+            f"fastvep sa-build wrote no {name} database: {output[-500:]}"
+        )
+    return built, int(records[-1].replace(",", ""))
+
+
 class _Build:
     """A run of a plan: the manifest is saved as each step completes."""
 
@@ -591,11 +653,13 @@ class _Build:
     ) -> None:
         self.plan = plan
         self.fastvep = get_tool_path("fastvep") or "fastvep"
-        self.cancel = _Stop(cancel)
+        self.cancel = Stop(cancel)
         self.on_output = on_output
         self.lock = threading.Lock()
         self.manifest = load_manifest(plan.sa_dir)
-        self.manifest.update(format=1, assembly=ASSEMBLY)
+        self.manifest.update(format=1, assembly=ASSEMBLY, site_data=plan.site_data)
+        if plan.spliceai is not None:
+            self.manifest["spliceai_file"] = str(plan.spliceai.resolve())
         self.manifest.setdefault("sources", {})
         self.manifest.setdefault("databases", {})
         self.staging = plan.sa_dir / ".building"
@@ -607,9 +671,7 @@ class _Build:
     def _save(self) -> None:
         self.manifest["updated"] = _now()
         path = self.plan.sa_dir / MANIFEST
-        partial = path.with_name(path.name + ".partial")
-        partial.write_text(json.dumps(self.manifest, indent=1) + "\n", newline="\n")
-        partial.replace(path)
+        save_manifest(path, self.manifest)
 
     def record_source(
         self,
@@ -696,24 +758,10 @@ class _Build:
 
     def database(self, step: Step, inputs: Path, *, keep_input: bool = True) -> None:
         """``fastvep sa-build`` into the staging folder, then moved in."""
-        source = BY_KEY[step.source]
         work = self.staging / step.name
-        shutil.rmtree(work, ignore_errors=True)
-        work.mkdir(parents=True)
-        command = [
-            self.fastvep, "sa-build", "--source", source.key, "-i", str(inputs),
-            "-o", str(work / step.name), "--assembly", ASSEMBLY, "--no-progress",
-        ]  # fmt: skip
-        if source.chunk_bits:
-            command += ["--chunk-bits", str(source.chunk_bits)]
-        logging.info("Building %s...", step.name)
-        output = self._run(command)
-        records = re.findall(r"Wrote: .*\(([\d,]+) (?:records|genes)", output)
-        built = sorted(work.iterdir())
-        if not records or not built:
-            raise WGSExtractError(
-                f"fastvep sa-build wrote no {step.name} database: {output[-500:]}"
-            )
+        built, records = sa_build(
+            self.fastvep, step.source, inputs, work, step.name, self.cancel
+        )
         for path in built:
             path.replace(self.plan.sa_dir / path.name)
             self.on_output(self.plan.sa_dir / path.name)
@@ -726,28 +774,12 @@ class _Build:
             {
                 "file": main.name,
                 "files": [p.name for p in built],
-                "records": int(records[-1].replace(",", "")),
+                "records": records,
                 "bytes": main.stat().st_size,
                 "sha256": _digests(main)[0],
                 "built": _now(),
             },
         )
-
-    def _run(self, command: list[str]) -> str:
-        """Run a tool, cancellably: its output, or its failure."""
-        with tempfile.TemporaryFile() as log:
-            process = popen(command, stdout=log, stderr=subprocess.STDOUT)
-            ok = wait_with_cancel(process, self.cancel)
-            log.seek(0)
-            output = log.read().decode(errors="replace")
-        if not ok:
-            raise WGSExtractError(
-                "Cancelled."
-                if self.cancel and self.cancel.is_set()
-                else f"{Path(command[0]).name} {command[1]} failed "
-                f"(exit {process.returncode}): {output.strip()[-1500:]}"
-            )
-        return output
 
     def absent(self, step: Step, reason: str) -> None:
         logging.warning("No %s database: %s.", step.name, reason)
@@ -922,14 +954,14 @@ class _Build:
             from wgsextract_cli.core.annotation_resources import download_spliceai
 
             reflib = self.plan.reflib
-            if not _library_spliceai(reflib):
+            if not library_spliceai(reflib):
                 # An unindexed file already there is indexed, not downloaded.
                 downloaded = not library_spliceai_path(reflib).is_file()
                 if not download_spliceai(str(reflib), self.cancel, builds=("hg38",)):
                     raise WGSExtractError(
                         "Downloading the SpliceAI scores failed; rerun to resume."
                     )
-            self.spliceai = _library_spliceai(reflib)
+            self.spliceai = library_spliceai(reflib)
             if self.spliceai is None:
                 raise WGSExtractError("The SpliceAI download left no indexed file.")
         path = self.spliceai
@@ -1180,28 +1212,34 @@ def tabix_contigs(path: Path) -> set[str]:
 
 
 def require_grch38_vcf(path: Path) -> list[str]:
-    """Refuse a VCF whose header says another assembly: its chromosome 1
-    length, else a ``##reference`` line naming GRCh38 or hg38. Returns the
-    header."""
+    """Refuse a VCF whose header says another assembly (see
+    ``require_grch38_header``). Returns the header."""
     header = run_command(["bcftools", "view", "-h", str(path)], capture_output=True)
     lines = header.stdout.splitlines()
+    require_grch38_header(lines, str(path))
+    return lines
+
+
+def require_grch38_header(lines: list[str], name: str) -> None:
+    """Refuse a SpliceAI VCF header that says another assembly: its chromosome
+    1 length, else a ``##reference`` line naming GRCh38 or hg38."""
     for line in lines:
         match = re.match(r"##contig=<ID=(?:chr)?1,.*length=(\d+)", line)
         if match:
             build = CHR1_LENGTH_BUILDS.get(int(match.group(1)))
             if build == "hg38":
-                return lines
+                return
             raise WGSExtractError(
-                f"{path} is for {build or 'an unknown assembly'}; the databases "
+                f"{name} is for {build or 'an unknown assembly'}; the databases "
                 "are GRCh38, so give a GRCh38 SpliceAI VCF."
             )
     if any(
         line.startswith("##reference") and re.search(r"GRCh38|hg38", line)
         for line in lines
     ):
-        return lines
+        return
     raise WGSExtractError(
-        f"{path}'s header doesn't say it is GRCh38 (no chromosome 1 length or "
+        f"{name}'s header doesn't say it is GRCh38 (no chromosome 1 length or "
         "##reference line); give a GRCh38 SpliceAI VCF."
     )
 
@@ -1403,13 +1441,18 @@ def describe(plan: Plan, workers: int) -> Iterator[str]:
     yield f"    {GFF3_TERMS}"
     for source in SOURCES:
         steps = by_source.get(source.key, [])
-        if not steps:
+        if plan.site_data == "per-run" and source.key in PER_RUN:
+            yield (
+                f"  {source.label}: not built; vcf acmg reads each input's own "
+                "sites per run"
+            )
+        elif not steps:
             yield f"  {source.label}: built"
         else:
             if source.key == "gnomad":
                 fetch = f"stream {total([s.stream for s in steps])}"
             elif source.key == "spliceai" and "spliceai" not in plan.downloads:
-                fetch = f"read {plan.spliceai or _library_spliceai(plan.reflib)}"
+                fetch = f"read {plan.spliceai or library_spliceai(plan.reflib)}"
             elif source.key in plan.downloads:
                 fetch = f"download {total([plan.downloads[source.key]])}"
             else:

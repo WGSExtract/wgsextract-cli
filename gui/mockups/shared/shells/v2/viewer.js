@@ -60,6 +60,7 @@
 
   var VIEW = { colorBy: "unexpectedPair", displayMode: "SQUISHED", height: 200 };
   var root, browser, view = VIEW, spot = "intro", loading = null;
+  var geneSpans = {};
   var on = { reginald: true };
 
   function demo() {
@@ -67,7 +68,7 @@
   }
 
   function noRef() {
-    return demo() === "noref" || WGSM.v2state.doc.flags["ref-hs38"] === false;
+    return demo() === "noref" || demo() === "wrongbuild" || WGSM.v2state.doc.flags["ref-hs38"] === false;
   }
 
   function first(id) {
@@ -90,7 +91,6 @@
   function trackConfig(id) {
     var p = PEOPLE[id];
     var url = WGSM.link(DATA + p.file);
-    if (demo() === "error" && id === "reginald") url = WGSM.link(DATA + "missing-" + p.file);
     var base = { name: trackName(id), url: url, indexURL: WGSM.link(DATA + p.file + p.index), format: p.format, order: ORDER.indexOf(id) + 10 };
     if (p.format === "vcf") return Object.assign(base, { type: "variant", displayMode: "EXPANDED", height: 50, visibilityWindow: 100000 });
     return Object.assign(base, {
@@ -145,15 +145,17 @@
         have = false;
       }
       if (want && !have) {
+        if (demo() === "error" || demo() === "index") {
+          showError(WGSM.v2viewerTracks.text(demo() === "index" ? "index" : "file"));
+          return null;
+        }
         var config = trackConfig(id);
         return reachable([config.url, config.indexURL])
           .then(function () {
             return browser.loadTrack(config);
           })
           .catch(function (err) {
-            showError(err && err.missing
-              ? first(id) + "’s " + PEOPLE[id].file + " isn’t where it was added from. If you moved it, add it again from its new place."
-              : first(id) + "’s file: " + (err && err.message ? err.message : err));
+            showError(WGSM.v2viewerTracks.text(err && err.missing ? "file" : "invalid"));
           });
       }
       return null;
@@ -251,7 +253,10 @@
   function parse(text) {
     var q = text.trim().replace(/,/g, "");
     if (!q) return null;
+    var gene = geneSpans[q.toUpperCase()];
+    if (gene) return { chrom: gene.chrom, start: gene.start, end: gene.end, gene: q.toUpperCase() };
     var name = NAMES[q.toUpperCase()];
+    if (name && demo() === "genemap" && !/^RS[0-9]+$/i.test(q)) return { missingGenes: true };
     if (name) return { spot: name };
     var m = /^(chr)?([0-9]{1,2}|X|Y|M|MT)[: ]([0-9]+)(?:-([0-9]+))?$/i.exec(q);
     if (!m) return { unknown: q };
@@ -269,6 +274,7 @@
   function search(text) {
     var hit = parse(text);
     if (!hit) return;
+    if (hit.missingGenes) return message(WGSM.v2viewerTracks.text("genes"));
     if (hit.spot) return select(hit.spot);
     if (hit.unknown) {
       message("“" + hit.unknown + "” isn’t a gene or position the demo knows. Try APOE, rs429358 or chr19:44908684.");
@@ -276,13 +282,13 @@
     }
     var locus = hit.chrom + ":" + hit.start + "-" + hit.end;
     pick("");
-    if (!inWindow(hit.chrom, hit.start, hit.end)) {
+    if (!hit.gene && !inWindow(hit.chrom, hit.start, hit.end)) {
       note("outside");
       message(locus + " is outside the demo data.");
       return;
     }
-    message("");
-    note(spot);
+    message(hit.gene && !inWindow(hit.chrom, hit.start, hit.end) ? "The local gene span is shown in full. This demo has reads only in short windows; zoom in near a demo spot to inspect them." : "");
+    note(hit.gene ? NAMES[hit.gene] || "intro" : spot);
     if (browser) browser.search(locus);
     updateUrl({ locus: locus, spot: null });
   }
@@ -314,7 +320,7 @@
 
   function startLocus() {
     var hit = WGSM.params.get("locus") && parse(WGSM.params.get("locus"));
-    if (hit && hit.chrom && inWindow(hit.chrom, hit.start, hit.end)) return hit.chrom + ":" + hit.start + "-" + hit.end;
+    if (hit && hit.chrom && (hit.gene || inWindow(hit.chrom, hit.start, hit.end))) return hit.chrom + ":" + hit.start + "-" + hit.end;
     return SPOTS[spot].locus;
   }
 
@@ -326,7 +332,18 @@
       showError("The demo reads need the mockups served over HTTP: run just mockups and open the page from there.");
       return Promise.resolve();
     }
-    return loadScript().then(function (igv) {
+    var genes = demo() === "genemap" ? Promise.resolve() : fetch(WGSM.link(DATA + "genes.bed")).then(function (res) {
+      if (!res.ok) throw new Error(WGSM.v2viewerTracks.text("genes"));
+      return res.text();
+    }).then(function (text) {
+      text.trim().split(/\r?\n/).forEach(function (line) {
+        var fields = line.split("\t");
+        if (fields.length < 4 || !Number.isFinite(Number(fields[1])) || !Number.isFinite(Number(fields[2]))) return;
+        geneSpans[fields[3].toUpperCase()] = { chrom: fields[0], start: Number(fields[1]) + 1, end: Number(fields[2]) };
+      });
+    });
+    return Promise.all([loadScript(), genes]).then(function (loaded) {
+      var igv = loaded[0];
       var wait = WGSM.qs("[data-v2-viewer-loading]", host);
       return igv.createBrowser(host, {
         reference: {
@@ -334,20 +351,21 @@
           name: "GRCh38 (demo stretches)",
           fastaURL: WGSM.link(DATA + "GRCh38-demo.fa"),
           indexed: false,
-          tracks: [{ name: "Genes", url: WGSM.link(DATA + "genes.bed"), format: "bed", type: "annotation", displayMode: "EXPANDED", height: 36, order: 1 }],
+          tracks: demo() === "genemap" ? [] : [{ name: "RefSeq gene spans (demo)", url: WGSM.link(DATA + "genes.bed"), format: "bed", type: "annotation", displayMode: "EXPANDED", height: 36, order: 1 }],
         },
         locus: startLocus(),
         loadDefaultGenomes: false,
         search: false,
         blatServerURL: WGSM.link(DATA + "no-blat"),
-        showCytobandIdeogram: false,
+        showIdeogram: demo() !== "cytobands",
+        wholeGenomeView: false,
         showChromosomeWidget: false,
         showSampleNames: false,
       }).then(function (b) {
         if (wait) wait.remove();
         browser = b;
         stripBlat(host);
-        return sync();
+        return WGSM.v2viewerTracks.attach(root, browser, showError).then(function () { return sync(); });
       });
     }).catch(function (err) {
       showError(err && err.message ? err.message : String(err));
@@ -367,6 +385,7 @@
   function start() {
     root = WGSM.qs("[data-v2-viewer]");
     if (!root) return;
+    WGSM.v2viewerTracks.mount(root);
     var asked = WGSM.params.get("spot");
     if (asked && SPOTS[asked]) spot = asked;
     var person = WGSM.params.get("person");
@@ -416,6 +435,10 @@
     WGSM.on("v2-flags", function () {
       names();
       sync();
+    });
+    window.addEventListener("pagehide", function () {
+      if (browser && window.igv) window.igv.removeBrowser(browser);
+      browser = null;
     });
     create();
   }

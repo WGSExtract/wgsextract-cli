@@ -1,13 +1,14 @@
 import { displayWorkspacePath } from "../../../../shared/workspace-paths.js";
+import { workspaceRoots } from "../model.js";
 import { escapeAttribute } from "../dom.js";
-import { state } from "../state.js";
+
 
 /**
  * A path field's shared attributes. Paths stay left-to-right in RTL locales, and the full path is the field's
  * hover text, because a long path is cut off in the field.
  */
 export function pathInputAttributes(path: unknown, extraClass = ""): string {
-    const shown = displayWorkspacePath(String(path ?? ""), state.bundleRootPath);
+    const shown = displayWorkspacePath(String(path ?? ""), workspaceRoots());
     return `class="${extraClass ? `${extraClass} ` : ""}path-input" dir="ltr" value="${escapeAttribute(shown)}"${shown ? ` title="${escapeAttribute(shown)}"` : ""}`;
 }
 

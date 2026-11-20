@@ -20,7 +20,6 @@ from __future__ import annotations
 import json
 import logging
 import re
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -31,6 +30,7 @@ from wgsextract_cli.api.genotyping import TypingCyp2d6Params
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 from .common import (
@@ -247,7 +247,9 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
         aln.require_reference()
 
     prefix = f"{aln.stem}.cyrius"
-    with tempfile.TemporaryDirectory(dir=aln.outdir, prefix=".wgse_cyp2d6_") as work:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(aln.outdir), prefix=".wgse_cyp2d6_"
+    ) as work:
         reads = rescue_alt_reads(aln, region_bed, alts, work) if alts else aln.path
         manifest = str(Path(work, "manifest.txt"))
         with open(manifest, "w", newline="\n") as f:
@@ -265,7 +267,7 @@ def run_cyp2d6(params: TypingCyp2d6Params) -> None:
                 raise WGSExtractError(
                     f"Cyrius finished without writing {prefix}{suffix}."
                 )
-            shutil.move(
+            move_file(
                 str(Path(work, prefix + suffix)),
                 str(Path(aln.outdir, prefix + suffix)),
             )

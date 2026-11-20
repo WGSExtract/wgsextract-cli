@@ -344,6 +344,15 @@ write_pixi_exports() {
     fi
 }
 
+write_cli_environment_check() {
+    cat <<'SH'
+if [ ! -f "$install_dir/app/.pixi/envs/default/conda-meta/pixi" ]; then
+    printf 'Error: WGS Extract CLI setup is incomplete. Run the installer again.\n' >&2
+    exit 127
+fi
+SH
+}
+
 write_cli_launcher() {
     if [ "$BIN_DIR" = "$DEFAULT_BIN_DIR" ]; then
         {
@@ -353,7 +362,8 @@ write_cli_launcher() {
             printf 'script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)\n'
             printf 'install_dir="$script_dir"\n'
             write_pixi_exports
-            printf 'exec %s run --manifest-path "$install_dir/app/pixi.toml" wgsextract "$@"\n' "$(quote_sh "$PIXI")"
+            write_cli_environment_check
+            printf 'exec %s run --no-install --frozen --manifest-path "$install_dir/app/pixi.toml" wgsextract "$@"\n' "$(quote_sh "$PIXI")"
         } > "$LAUNCHER"
     else
         {
@@ -362,7 +372,8 @@ write_cli_launcher() {
             printf 'set -eu\n'
             printf 'install_dir=%s\n' "$(quote_sh "$INSTALL_DIR")"
             write_pixi_exports
-            printf 'exec %s run --manifest-path %s wgsextract "$@"\n' "$(quote_sh "$PIXI")" "$(quote_sh "$APP_DIR/pixi.toml")"
+            write_cli_environment_check
+            printf 'exec %s run --no-install --frozen --manifest-path %s wgsextract "$@"\n' "$(quote_sh "$PIXI")" "$(quote_sh "$APP_DIR/pixi.toml")"
         } > "$LAUNCHER"
     fi
     chmod +x "$LAUNCHER"
@@ -578,6 +589,26 @@ if [ -z "$PIXI" ]; then
                 log "To use Pixi directly, add this to your shell profile: export PATH=$(quote_sh "$PIXI_BIN_DIR"):\"\$PATH\""
                 ;;
         esac
+    fi
+fi
+
+if grep -Eq '^[[:space:]]*requires-pixi([[:space:]]|=)' "$SOURCE_DIR/pixi.toml"; then
+    minimum_pixi="$(sed -n 's/^[[:space:]]*requires-pixi[[:space:]]*=[[:space:]]*">=\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"[[:space:]]*$/\1/p' "$SOURCE_DIR/pixi.toml")"
+    [ -n "$minimum_pixi" ] || fail "Cannot read the minimum Pixi version from pixi.toml."
+    installed_pixi="$("$PIXI" --version)" || fail "Could not run Pixi at $PIXI. Repair this installation and rerun setup."
+    if ! printf '%s\n' "$installed_pixi" | awk -v minimum="$minimum_pixi" '
+        /^pixi [0-9]+\.[0-9]+\.[0-9]+$/ {
+            split($2, actual, ".")
+            split(minimum, required, ".")
+            for (i = 1; i <= 3; i++) {
+                if (actual[i] + 0 > required[i] + 0) exit 0
+                if (actual[i] + 0 < required[i] + 0) exit 1
+            }
+            exit 0
+        }
+        { exit 1 }
+    '; then
+        fail "Pixi >=$minimum_pixi is required; found $installed_pixi at $PIXI. Update that Pixi installation (for example with '$PIXI self-update'), then rerun setup. Your Pixi installation was not changed."
     fi
 fi
 

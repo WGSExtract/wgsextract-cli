@@ -38,18 +38,22 @@ releases these data under CC0 1.0.
 The reference is one file (about 16 MB). It holds the sites, the component
 allele frequencies for K=7 and K=12, and a PCA of the reference samples, which
 [polygenic scores](pgs.md) use for their ancestry-adjusted percentiles. It is downloaded from this project's GitHub
-release `ancestry-ref-1` into `<library>/ancestry/` on first use, or with
+release `ancestry-ref-1` into `<library>/ancestry/` only with `--download`, or with
 `wgsextract ref ancestry --install`. Its SHA-256 is pinned and checked before
 every use. `ref ancestry --delete` removes it. It covers GRCh38, GRCh37/hg19
 (186,306 of the sites lift over) and T2T-CHM13 (140,020).
 `scripts/ancestry_reference/` rebuilds it from gnomAD.
+
+Without a verified local reference, the default command errors without a
+connection attempt and asks for `--download`. See [privacy](privacy.md) for
+hosts, request data and the `allow_reference_downloads` config setting.
 
 ## Inputs
 
 | Input | Genotypes | Notes |
 | :--- | :--- | :--- |
 | BAM/CRAM | read counts at the sites (`bcftools mpileup`, MAPQ and base quality 20), as genotype likelihoods | Low coverage gives wider intervals, not biased proportions. Needs its index, and the reference FASTA for a CRAM. |
-| VCF | the sample's calls (REF and the site's ALT; site- or sample-filtered (`FORMAT/FT`) and other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. gVCFs are refused. |
+| VCF | the sample's calls (REF and the site's ALT; site- or sample-filtered (`FORMAT/FT`) and other-allele calls are unknown) | `--sample` picks one sample of a multi-sample VCF. A gVCF is read through its reference evidence (below). |
 | Microarray raw data | the genotypes at the chip's markers that are reference sites | 23andMe, AncestryDNA, FTDNA, MyHeritage and similar layouts (`.txt`, `.csv`, `.zip`, `.gz`). The build is found from the positions. |
 
 A variants-only VCF omits hom-ref sites. For a whole-genome call set, a
@@ -57,6 +61,21 @@ missing site is hom-ref, and it is filled in as `qc relate` does (see
 [relate.md](relate.md)). A variants-only VCF of part of the genome (one
 chromosome, an exome, a panel) is refused: from its variants alone the
 proportions would be biased. An all-sites VCF's missing sites stay unknown.
+
+With reference evidence (a gVCF given as the input, or one the VCF's caller
+published beside it, found through its result manifest; see
+[reference-evidence.md](reference-evidence.md)) a site the VCF doesn't list
+is hom-ref only where the gVCF calls it `callable_reference`; elsewhere
+(uncovered, low quality, filtered, no-call, not assessed) it stays missing,
+whether or not the VCF is a whole genome. The manifest counts the missing
+sites in each state as `ancestry_missing_sites_<state>`.
+An indexed `--ref` supplies contig lengths omitted from the gVCF header.
+Reference fills must also match the panel's REF: an indexed `--ref` verifies
+bases inside blocks; without it, only bases explicitly spelled in a gVCF
+record's REF can be filled. Incompatible or unverifiable bases stay unknown.
+With gVCF evidence, observed variants and reference fills use the same
+minimum depth and, for GQ-based evidence, genotype-quality thresholds.
+These rules also apply to the ancestry PCs used by `score pgs`.
 
 `--build` gives the input's build when its header doesn't tell it.
 

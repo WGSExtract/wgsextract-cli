@@ -1,6 +1,7 @@
 """Typed report components used at both construction and presentation boundaries."""
 
-from typing import Annotated, Literal, TypedDict
+from collections.abc import ItemsView, Mapping
+from typing import Annotated, Literal, TypedDict, cast
 
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
@@ -156,3 +157,354 @@ class ReportFindingRequired(TypedDict):
 
 class ReportFindingDocument(ReportFindingRequired, total=False):
     pgx: ReportPgxDocument
+
+
+class ReportGeneListRequired(TypedDict):
+    name: str
+    version: Annotated[str, Constraints(description="Empty for a user's file.")]
+    citation: Annotated[str, Constraints(description="Empty for a user's file.")]
+    url: Annotated[
+        str,
+        Constraints(
+            description="The published gene table a built-in list was checked against; empty for a user's file."
+        ),
+    ]
+    genes: Annotated[int, Constraints(minimum=1)]
+
+
+class ReportGeneListDocument(ReportGeneListRequired, total=False):
+    id: Annotated[
+        str,
+        Constraints(
+            description="A built-in list's id (acmg-sf-3.3), or the name of the user's TSV or BED file."
+        ),
+    ]
+
+
+class ReportSectionRequired(TypedDict):
+    title: str
+    status: Annotated[
+        Literal["ok", "not_run", "failed"],
+        Constraints(
+            description="ok: at least one source run succeeded; not_run: no run found (see missing); failed: only failed runs found (see error)."
+        ),
+    ]
+    summary: str
+    findings: list[ReportFindingDocument]
+    missing: Annotated[
+        list[ReportMissingDocument],
+        Constraints(
+            description="Parts of the section not run yet, with the command that produces each (relative to the sample folder)."
+        ),
+    ]
+    warnings: list[ReportWarningDocument]
+    sources: Annotated[
+        list[ReportSourceDocument],
+        Constraints(
+            description="The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer."
+        ),
+    ]
+
+
+class ReportSectionDocument(ReportSectionRequired, total=False):
+    error: str
+
+
+class ReportOverviewDocument(ReportSectionDocument):
+    facts: list[ReportFactDocument]
+    qc: list[ReportMetricDocument]
+
+
+class ReportAncestryComponentDocument(TypedDict):
+    k: Annotated[int, Constraints(minimum=1)]
+    name: str
+    region: str
+    proportion: Annotated[float, Constraints(minimum=0, maximum=1)]
+    lower: Annotated[float, Constraints(minimum=0, maximum=1)]
+    upper: Annotated[float, Constraints(minimum=0, maximum=1)]
+    reference_populations: str
+
+
+class ReportAncestryRequired(ReportSectionDocument):
+    note: str
+    components: list[ReportAncestryComponentDocument]
+
+
+# Optional fragments let writers compose sections without inserting default keys.
+class ReportAncestryFields(TypedDict, total=False):
+    evidence: str | None
+    metrics: dict[str, object]
+
+
+class ReportAncestryDocument(ReportAncestryRequired, ReportAncestryFields):
+    pass
+
+
+NonnegativeCount = Annotated[int, Constraints(minimum=0)]
+ReportBuild = Annotated[str | None, Constraints(enum=("hg19", "hg38", None))]
+
+
+class ReportGeneDocument(TypedDict):
+    gene: str
+    inheritance: Annotated[
+        str | None,
+        Constraints(
+            description="The gene list's mode of inheritance (AD, AR, SD, XL); null when it gives none."
+        ),
+    ]
+    heterozygous: NonnegativeCount
+    homozygous: NonnegativeCount
+    hemizygous: Annotated[
+        NonnegativeCount,
+        Constraints(description="Haploid calls (one allele in the genotype)."),
+    ]
+    partial: Annotated[
+        NonnegativeCount,
+        Constraints(description="Calls whose other allele was not called (1/.)."),
+    ]
+    phase: Annotated[
+        str | None,
+        Constraints(
+            enum=("trans", "cis", "unknown", None),
+            description="The phase of two or more heterozygous calls: trans when two are on opposite copies (two ALTs of one call such as 1/2, or phased in one phase set), cis when all are phased on one copy in one phase set, else unknown (unphased, phased without a PS, or in different phase sets). Null for fewer than two, and when the calls are incomplete (calls_truncated) unless trans.",
+        ),
+    ]
+    confidence: Annotated[
+        str,
+        Constraints(
+            enum=("high", "moderate", "low", "not_assessed"),
+            description="The weakest confidence label of the gene's calls.",
+        ),
+    ]
+    status: Annotated[
+        str | None,
+        Constraints(
+            enum=("biallelic", "possible_biallelic", "carrier", None),
+            description="For a gene the list reports only when biallelic (AR): biallelic (a homozygous call, or two heterozygous calls in trans), possible_biallelic (two or more heterozygous calls not all phased together, or a hemizygous or partly called genotype) or carrier (one heterozygous call, or several in cis). Null for other genes, and when the calls are incomplete (calls_truncated) unless biallelic.",
+        ),
+    ]
+    status_text: Annotated[
+        str, Constraints(description="The status explained; empty when status is null.")
+    ]
+
+
+class ReportClinvarCountsRequired(TypedDict):
+    carried: NonnegativeCount
+    in_gene_list: NonnegativeCount
+    outside_gene_list: NonnegativeCount
+    high: NonnegativeCount
+    moderate: NonnegativeCount
+    low: NonnegativeCount
+
+
+class ReportClinvarCountsDocument(ReportClinvarCountsRequired, total=False):
+    unplaced: NonnegativeCount
+    conflicts_for_review: NonnegativeCount
+
+
+class ReportGeneSectionDocument(ReportSectionDocument):
+    gene_list: ReportGeneListDocument
+
+
+class ReportClinvarFields(TypedDict, total=False):
+    build: ReportBuild
+    all_calls: Annotated[
+        str | None,
+        Constraints(
+            description="Every carried ClinVar P/LP call (confidence TSV), relative to the folder."
+        ),
+    ]
+    all_conflicts: Annotated[
+        str | None,
+        Constraints(
+            description="Conflicting ClinVar assertions for review, not consensus P/LP, relative to the folder."
+        ),
+    ]
+    counts: ReportClinvarCountsDocument
+    genes: Annotated[
+        list[ReportGeneDocument],
+        Constraints(
+            description="Each listed gene with P/LP calls, counted by zygosity."
+        ),
+    ]
+
+
+class ReportClinvarDocument(ReportGeneSectionDocument, ReportClinvarFields):
+    pass
+
+
+class ReportAcmgCountsDocument(TypedDict):
+    p: NonnegativeCount
+    lp: NonnegativeCount
+    vus: NonnegativeCount
+    lb: NonnegativeCount
+    b: NonnegativeCount
+    in_gene_list: NonnegativeCount
+    outside_gene_list: NonnegativeCount
+    unplaced: NonnegativeCount
+
+
+class ReportAcmgRequired(ReportGeneSectionDocument):
+    disclaimer: Annotated[
+        str,
+        Constraints(
+            description="The research-only disclaimer, shown at the top of the section."
+        ),
+    ]
+
+
+class ReportAcmgFields(TypedDict, total=False):
+    tool: Annotated[
+        str | None,
+        Constraints(
+            description="The classifier and its version, e.g. 'fastVEP 0.5.0'."
+        ),
+    ]
+    criteria_not_evaluated: Annotated[
+        list[str],
+        Constraints(description="ACMG/AMP criteria the classifier never evaluated."),
+    ]
+    build: ReportBuild
+    all_calls: Annotated[
+        str | None,
+        Constraints(
+            description="The classified VCF (acmg_annotated.vcf.gz), relative to the folder."
+        ),
+    ]
+    counts: Annotated[
+        ReportAcmgCountsDocument,
+        Constraints(
+            description="Carried alleles by automated class (p, lp, vus, lb, b), and the carried P/LP calls in_gene_list (the findings), outside_gene_list and unplaced."
+        ),
+    ]
+
+
+class ReportAcmgDocument(ReportAcmgRequired, ReportAcmgFields):
+    pass
+
+
+class ReportSvThresholdsDocument(TypedDict, total=False):
+    common_af: float
+    rare_af: float
+
+
+class ReportSvFields(TypedDict, total=False):
+    all_svs: Annotated[
+        str | None,
+        Constraints(
+            description="Every SV with its frequency class (sv_freq.tsv), relative to the folder."
+        ),
+    ]
+    thresholds: ReportSvThresholdsDocument
+    counts: Annotated[
+        dict[str, NonnegativeCount],
+        Constraints(
+            description="Carried SVs by frequency class (common, low, rare, novel), and listed: the rare SVs shown as findings."
+        ),
+    ]
+
+
+class ReportSvDocument(ReportSectionDocument, ReportSvFields):
+    pass
+
+
+class ReportMicroarrayFileDocument(TypedDict):
+    file: str | None
+    role: str
+    format: str | None
+    exists: bool
+    sites: int | None
+    called: int | None
+    no_call_rate: float | None
+
+
+class ReportMicroarrayRequired(ReportSectionDocument):
+    files: list[ReportMicroarrayFileDocument]
+
+
+class ReportMicroarrayFields(TypedDict, total=False):
+    metrics: dict[str, object]
+
+
+class ReportMicroarrayDocument(ReportMicroarrayRequired, ReportMicroarrayFields):
+    pass
+
+
+class ReportSectionsRequired(TypedDict):
+    overview: ReportOverviewDocument
+    lineage: ReportSectionDocument
+    pharmacogenomics: ReportSectionDocument
+    clinvar: ReportClinvarDocument
+    structural_variants: ReportSvDocument
+    microarray: ReportMicroarrayDocument
+
+
+class ReportResearchSection(TypedDict, total=False):
+    acmg_research: Annotated[
+        ReportAcmgDocument,
+        Constraints(
+            description="fastVEP's automated ACMG/AMP classes (vcf acmg), research use only and not a diagnosis. Present only when vcf acmg ran."
+        ),
+    ]
+
+
+class ReportSectionsDocument(
+    ReportSectionsRequired, ReportResearchSection, total=False
+):
+    ancestry: ReportAncestryDocument
+    carrier_screening: ReportSectionDocument
+
+
+class ReportSampleDocument(TypedDict):
+    name: Annotated[
+        str,
+        Constraints(
+            description="The sample's name: its alignment's (or VCF's) file name without extensions."
+        ),
+    ]
+    folder: Annotated[
+        str,
+        Constraints(
+            description="The sample folder's name (not its full path). Every file path in the report is relative to this folder."
+        ),
+    ]
+    alignment: Annotated[
+        str | None,
+        Constraints(
+            description="The BAM/CRAM the report describes, relative to the folder."
+        ),
+    ]
+    vcf: Annotated[
+        str | None,
+        Constraints(
+            description="The sample's VCF used in hints, relative to the folder."
+        ),
+    ]
+    workspace: Annotated[
+        str | None,
+        Constraints(description="The sample workspace file, when there is one."),
+    ]
+
+
+class ReportDocument(TypedDict):
+    schema: Literal["wgsextract.report/1"]
+    generated: Annotated[
+        str,
+        Constraints(format="date-time", description="When the report was built (UTC)."),
+    ]
+    wgsextract_version: str
+    sample: ReportSampleDocument
+    disclaimer: str
+    guide: str
+    confidence_reasons: Annotated[
+        dict[str, str],
+        Constraints(description="Reason code -> plain-language explanation."),
+    ]
+    sections: ReportSectionsDocument
+
+
+def section_items(
+    sections: ReportSectionsDocument,
+) -> ItemsView[str, ReportSectionDocument]:
+    # This closed, writer-built map has a shared base that TypedDict.items erases.
+    return cast(Mapping[str, ReportSectionDocument], sections).items()

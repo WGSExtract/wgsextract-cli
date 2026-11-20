@@ -507,9 +507,12 @@ def bwa_mem3_crash_cause(detail: str) -> str:
     mimalloc, crashes at startup with glibc 2.44 (#727)."""
     if "crashed" not in detail or platform.system() != "Linux":
         return ""
+    confstr = getattr(os, "confstr", None)  # POSIX only; absent on Windows.
+    if confstr is None:
+        return ""
     try:
-        library = os.confstr("CS_GNU_LIBC_VERSION") or ""
-    except (AttributeError, ValueError, OSError):
+        library = confstr("CS_GNU_LIBC_VERSION") or ""
+    except (ValueError, OSError):
         return ""
     name, _, version = library.partition(" ")
     parsed = tuple(int(part) for part in re.findall(r"\d+", version)[:2])

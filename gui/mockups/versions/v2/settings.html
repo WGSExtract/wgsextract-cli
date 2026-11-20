@@ -14,7 +14,7 @@
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
       <h1>Settings</h1>
-      <p class="v2-head__sub">Saved in one settings file in the workspace, which the command line reads too. <code class="v2-cmd">{{bundleWorkspace}}/config.toml</code></p>
+      <p class="v2-head__sub">The app and CLI share your settings file. <code class="v2-mono">{{usersWorkspace}}/config.toml</code></p>
     </div>
   </header>
 
@@ -27,7 +27,10 @@
   <section class="v2-section" id="folders" data-annot-id="folders">
     <h2>Folders</h2>
     <div class="v2-sheet"><div class="v2-sheet__pad v2-fields">
-      <div class="v2-field"><span class="v2-field__label">Workspace<small>Results, reference genomes and logs</small><code class="v2-cmd">bundleWorkspace</code></span><div class="v2-field__control"><span class="v2-grow"><span class="v2-mono">~/wgs-extract</span><br><span class="v2-dim v2-small">412 GB free on Macintosh HD</span></span><button class="v2-btn v2-btn--sm" type="button" data-toast="Choose a new place; everything moves together">Move…</button></div></div>
+      <div class="v2-field"><span class="v2-field__label">Users workspace<small>Settings, My Genomes, reference libraries and temporary folder. Moving it moves the folders inside it.</small><code class="v2-cmd">usersWorkspace</code></span><div class="v2-field__control"><span class="v2-grow"><span class="v2-mono">~/wgs-extract</span><br><span class="v2-dim v2-small">412 GB free on Macintosh HD</span></span><button class="v2-btn v2-btn--sm" type="button" data-toast="Choose a new place for the user-managed folders">Move…</button></div></div>
+      <div class="v2-field"><span class="v2-field__label">Bundle workspace<small>Hidden app-managed bundle, state and run logs in Application Support. Not movable here; uninstall preserves user data.</small><code class="v2-cmd">{{bundleWorkspace}}</code></span><div class="v2-field__control"><button class="v2-btn v2-btn--sm" type="button" data-toast="Opens the hidden app-managed workspace">Open Bundle Workspace</button></div></div>
+      <div class="v2-field"><span class="v2-field__label">Outputs<small>A wgse/ folder beside lab BAM, CRAM, FASTQ, VCF or microarray input. Already inside wgse/? Reuse it, never nest another. Lab files remain unchanged except required adjacent indexes. An output override is available only in Advanced.</small></span><div class="v2-field__control"><code class="v2-mono">input-folder/wgse/</code></div></div>
+      <div class="v2-field"><span class="v2-field__label">Temporary work<small>Keep on an SSD, separate from lab inputs and output folders</small><code class="v2-cmd">temp_directory</code></span><div class="v2-field__control"><code class="v2-mono">{{usersWorkspace}}/tmp/</code></div></div>
       <div class="v2-field"><span class="v2-field__label">Folders WGS Extract may read<small>Your genome files stay where they are</small><code class="v2-cmd">server_allowed_paths</code></span>
         <div class="v2-field__control v2-field__list">
           <div data-edge-folders></div>
@@ -58,13 +61,13 @@
   <section class="v2-section" data-annot-id="privacy">
     <h2>Privacy</h2>
     <div class="v2-sheet"><div class="v2-sheet__pad v2-section">
-      <p><strong>Your genome files never leave this computer.</strong> WGS Extract goes online only for downloads you start:</p>
+      <p><strong>Default operations stay offline.</strong> Public data is downloaded only when you ask:</p>
       <ul class="v2-plain-list v2-muted">
         <li><abbr class="v2-term" data-term="reference">reference genomes</abbr> and the extra data for <abbr class="v2-term" data-term="annotation">annotation</abbr></li>
         <li>example genomes, when you ask to try one</li>
         <li>new versions of WGS Extract, when you choose to update</li>
       </ul>
-      <p class="v2-small v2-muted">Nothing about your files is sent with these requests. Phone access stays on your local network; see <a class="v2-link" href="phone.html">Phone access</a>.</p>
+      <p class="v2-small v2-muted">Public downloads do not send your genome. ACMG per-run site lookups are a separate opt-in: they send variant positions to Google Cloud Storage and Ensembl. Coming remote viewing has its own destination and transfer disclosure. Phone access is a mockup proposal, not the production local viewer endpoint.</p>
     </div></div>
   </section>
 
@@ -86,6 +89,8 @@
         <span class="v2-item__desc">Versions, settings and recent logs, with paths shortened. No genome data.</span>
         <span class="v2-item__aside"><button class="v2-btn v2-btn--sm" type="button" data-toast="Report copied to the clipboard">Copy report</button></span>
       </div>
+      <p class="v2-small v2-muted">A missing or unusable CLI disables problem reports. Preinstalled Pixi must be 0.82.0 or later; unsupported versions block setup, with instructions to update Pixi yourself.</p>
+      <div class="v2-row v2-row--wrap"><a class="v2-link" href="settings.html?demo=pixi">Review unsupported Pixi</a><a class="v2-link" href="settings.html?demo=nocli">Review missing CLI</a></div>
     </div>
   </section>
 

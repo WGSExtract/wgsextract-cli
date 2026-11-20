@@ -1,5 +1,14 @@
 # VEP engines
 
+## Assembly and download mirror
+
+`vep run --assembly GRCh37` and deprecated `--vep-assembly GRCh37`
+select the same build. Conflict warnings use canonical `--assembly` for
+either spelling. `vep download --assembly` selects the cache build;
+`--mirror uk` (default) or `--mirror ebi` chooses its download mirror.
+
+## Choosing an engine
+
 `wgsextract vep run` annotates with one of two engines:
 
 | | `vep-rs` (default) | `ensembl` |

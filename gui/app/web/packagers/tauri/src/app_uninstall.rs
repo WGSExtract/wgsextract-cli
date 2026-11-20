@@ -29,7 +29,7 @@ pub(crate) fn request_uninstall<R: Runtime>(app: &AppHandle<R>) {
             .dialog()
             .message(format!(
                 "This runs {name}'s uninstall steps and deletes its data and what its setup \
-                 installed. You choose next whether to keep its workspace folder. Files you saved \
+                 installed. You choose next whether to keep its users workspace. Files you saved \
                  elsewhere are kept.\n\n{}",
                 app_removal_note(&name)
             ))
@@ -52,7 +52,7 @@ pub(crate) fn auto_run_uninstall<R: Runtime>(app: &AppHandle<R>) {
     thread::spawn(move || run_uninstall(&app, false, true));
 }
 
-/// The workspace holds the user's libraries and outputs, wherever they moved it, so it goes only if they say so.
+/// The users workspace holds the user's settings, libraries and outputs, wherever they moved it, so it goes only if they say so.
 fn ask_to_remove_workspace<R: Runtime>(app: &AppHandle<R>, name: &str) -> bool {
     let paths = app.state::<AppPaths>();
     let workspace = Command::new(&paths.node_path)
@@ -71,9 +71,9 @@ fn ask_to_remove_workspace<R: Runtime>(app: &AppHandle<R>, name: &str) -> bool {
     }
     app.dialog()
         .message(format!(
-            "Also delete {name}'s workspace folder?\n\n{workspace}\n\nThis deletes the Reference \
-             and Genome Libraries, your outputs, logs and settings kept there, including any \
-             shared with other users."
+            "Also delete {name}'s users workspace?\n\n{workspace}\n\nThis deletes the settings \
+             file, outputs and libraries kept there (My Genomes, Reference Data, Reference \
+             Genomes), including any shared with other users."
         ))
         .title(format!("Uninstall {name}"))
         .kind(MessageDialogKind::Warning)

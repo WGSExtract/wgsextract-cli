@@ -1,7 +1,11 @@
+import json
+import runpy
+import sys
 from pathlib import Path
 
 from wgsextract_cli import api
-from wgsextract_cli.core import config, reference_processing
+from wgsextract_cli.core import config
+from wgsextract_cli.core.ref_library import processing as reference_processing
 
 
 def _bootstrap(path: str) -> bool:
@@ -46,6 +50,42 @@ def test_bootstrap_keeps_existing_reference_library(
 
     config.reload_settings()
     assert config.settings["reference_library"] == str(existing_reflib)
+
+
+def test_1087_gui_bootstrap_uses_library_not_last_selected_fasta(
+    tmp_path, monkeypatch, fake_aadr_download
+):
+    workspace = tmp_path / "users"
+    workspace.mkdir()
+    library = tmp_path / "selected-library"
+    fasta = tmp_path / "external-fasta" / "genome.fa"
+    fasta.parent.mkdir()
+    fasta.write_text(">chr1\nACGT\n")
+    (workspace / "config.toml").write_text(
+        f"reference_library = {json.dumps(str(library))}\n"
+        f"reference_fasta = {json.dumps(str(fasta))}\n"
+    )
+    monkeypatch.setenv("WGSEXTRACT_GUI_USERS_WORKSPACE", str(workspace))
+    monkeypatch.delenv("WGSEXTRACT_GUI_CONFIG_PATH", raising=False)
+    monkeypatch.setattr(sys, "argv", ["bootstrap_reference_library.py"])
+
+    def download(folder):
+        destination = Path(folder)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "bootstrap.txt").write_text("downloaded")
+        return True
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.reference_processing.download_bootstrap", download
+    )
+    helper = (
+        Path(__file__).resolve().parents[1]
+        / "gui/examples/WGSExtract/scripts/bootstrap_reference_library.py"
+    )
+    runpy.run_path(str(helper), run_name="__main__")
+
+    assert (library / "bootstrap.txt").read_text() == "downloaded"
+    assert list(fasta.parent.iterdir()) == [fasta]
 
 
 def test_download_bootstrap_normalizes_existing_assets_and_installs_ploidy(

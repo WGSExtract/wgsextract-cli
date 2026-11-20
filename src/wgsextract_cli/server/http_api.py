@@ -250,8 +250,8 @@ class Handler(BaseHTTPRequestHandler):
         wait = _wait(query)
         body = self._body()
         params = params_from_json(op, body)
-        self.server.guard.check(params)
-        job = self.server.manager.submit(op, body if isinstance(body, dict) else {})
+        params = self.server.guard.check(params)
+        job = self.server.manager.submit(op, op.request_values(params))
         if wait:
             job = self.server.manager.wait(job.id, wait) or job
         self._send_json(200 if job.done else 202, job_view(job, query))
@@ -291,8 +291,8 @@ class Handler(BaseHTTPRequestHandler):
     def rerun_job(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         job = self._job(match)
         op = find(job.op)
-        self.server.guard.check(params_from_json(op, job.params))
-        new = self.server.manager.submit(op, job.params)
+        params = self.server.guard.check(params_from_json(op, job.params))
+        new = self.server.manager.submit(op, op.request_values(params))
         self._send_json(202, job_view(new, query))
 
     def job_log(self, match: re.Match[str], query: dict[str, list[str]]) -> None:

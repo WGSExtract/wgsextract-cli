@@ -24,7 +24,7 @@ from wgsextract_cli.commands.benchmark.chip import (
     score_chip,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.microarray_utils import get_template_format
+from wgsextract_cli.core.microarray.templates import get_template_format
 from wgsextract_cli.core.utils import run_command
 
 pytestmark = [
@@ -46,6 +46,9 @@ REGION_HG38 = "chr20:10000000-12000000"
 REGION_HG19 = "20:9900000-12100000"
 MIN_MARKERS = 200
 MIN_CONCORDANCE = 0.98
+Y_ONLY_FORMATS = {
+    n for n in CONSUMER_FORMATS if n.startswith("FTDNA_") and n.endswith("Y")
+}
 
 
 def _run(cmd: list[str], cwd: Path) -> str:
@@ -92,6 +95,8 @@ def _score_all_exports(
     report_file.write_text(json.dumps(reports, indent=2) + "\n", newline="\n")
     print(json.dumps(reports, indent=2))
     for name, report in reports.items():
+        if name in Y_ONLY_FORMATS:
+            continue  # No Y markers in a chr20 slice.
         matched = report["matched_sample"]["total"]
         negative = report["different_sample"]["total"]
         minimum = (
@@ -136,7 +141,7 @@ def test_kit_from_hg00096_matches_its_omni_chip(tmp_path: Path) -> None:
     )
     outdir = tmp_path / "kit"
     _run(
-        [*cli, "--config", str(config), "microarray", "--formats"]
+        [*cli, "--config", str(config), "microarray", "--download", "--formats"]
         + [
             ",".join(
                 name.lower().replace("23andme_snps_api", "23andme_api")

@@ -114,7 +114,7 @@ jobs:
       - name: Pinned hg19ToHg38 chain checksum
         if: inputs.reference
         id: chain
-        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray_targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
+        run: pixi run python -c 'import os; from wgsextract_cli.core.microarray.targets import HG19_TO_HG38_CHAIN as c; open(os.environ["GITHUB_OUTPUT"], "a").write(f"sha256={c.sha256}\n")'
       - name: Restore the hg19ToHg38 liftOver chain
         if: inputs.reference
         id: chain-cache

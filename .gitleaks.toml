@@ -7,7 +7,10 @@ description = "Microarray vendor format key is not a secret"
 condition = "AND"
 paths = [
     '''src/wgsextract_cli/commands/microarray\.py''',
+    # Keep the old path for full-history scans.
     '''src/wgsextract_cli/core/microarray_utils\.py''',
+    '''src/wgsextract_cli/core/microarray/templates\.py''',
+    '''src/wgsextract_cli/core/microarray/formats\.py''',
     '''tests/test_microarray_pr43_regressions\.py''',
 ]
 regexes = ['''23andMe_SNPs_API''']

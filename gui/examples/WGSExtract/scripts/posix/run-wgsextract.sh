@@ -59,9 +59,8 @@ fi
 
 # Refusals above exit 2, the CLI's usage-error code, so the app shows them next to the form.
 
-# The bundle's settings file is this runtime's config.toml, so what the CLI saves
-# (ref bootstrap's reference_library, for one) stays in the workspace instead of
-# the user's own CLI config, and leaves with the app.
+# The bundle's settings file, in the users workspace, is this runtime's config.toml,
+# so what the CLI saves (ref bootstrap's reference_library, for one) goes there.
 workspace="${WGSEXTRACT_GUI_BUNDLE_WORKSPACE:-$(CDPATH= cd "$script_dir/../.." && pwd)}"
-config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-$workspace/config.toml}"
+config_path="${WGSEXTRACT_GUI_CONFIG_PATH:-${WGSEXTRACT_GUI_USERS_WORKSPACE:-$workspace}/config.toml}"
 exec sh "$script_dir/run-wgsextract-env.sh" wgsextract --config "$config_path" "$@"

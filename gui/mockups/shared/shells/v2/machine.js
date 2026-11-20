@@ -133,7 +133,7 @@
    * by. disk: "system" or "genomes" */
   var FILES = {
     reginald: { person: "reginald", kind: "reads", tag: "CRAM", name: "reginald-mcdonald.GRCh38.30x.cram", stem: "reginald-mcdonald",
-      dir: "{{bundleWorkspace}}/genomes/reginald-mcdonald", disk: "system", build: "GRCh38", ref: "hs38", depth: 31, gb: 96, size: 16.8, sex: "male", platform: "illumina" },
+      dir: "{{usersWorkspace}}/mygenomes/reginald-mcdonald", disk: "system", build: "GRCh38", ref: "hs38", depth: 31, gb: 96, size: 16.8, sex: "male", platform: "illumina" },
     gordon: { person: "gordon", kind: "reads", tag: "BAM", name: "60820188479016.bam", stem: "60820188479016",
       dir: "@genomes/Gordon", disk: "genomes", build: "GRCh37", ref: "hs37d5", depth: 38, gb: 118, size: 92.4, sex: "male", platform: "illumina" },
     alex: { person: "alex", kind: "reads", tag: "BAM", name: "NG1A2B3C4D.bam", stem: "NG1A2B3C4D",
@@ -141,7 +141,7 @@
     alexkit: { person: "alex", kind: "kit", tag: "KIT", name: "genome_Alex_v5_Full_20241103.txt", stem: "genome_Alex_v5_Full_20241103",
       dir: "@downloads", disk: "system", build: "GRCh37", size: 0.025, sex: "female" },
     helen: { person: "helen", kind: "vcf", tag: "VCF", name: "helen-mcdonald.deepvariant.vcf.gz", stem: "helen-mcdonald",
-      dir: "{{bundleWorkspace}}/genomes/helen-mcdonald", disk: "system", build: "GRCh38", ref: "hs38", size: 0.15, sex: "female" },
+      dir: "{{usersWorkspace}}/mygenomes/helen-mcdonald", disk: "system", build: "GRCh38", ref: "hs38", size: 0.15, sex: "female" },
     fastq: { person: null, kind: "fastq", tag: "FASTQ", name: "60820188474839_SA_L001_R1/R2_001.fastq.gz", stem: "60820188474839",
       r1: "60820188474839_SA_L001_R1_001.fastq.gz", r2: "60820188474839_SA_L001_R2_001.fastq.gz",
       dir: "@downloads", disk: "system", depth: 30, gb: 93, size: 77, platform: "illumina" },
@@ -153,12 +153,13 @@
   var ALL_FILES = Object.assign({}, FILES, GENERATED);
 
   /* Real paths for API requests: the workspace and ~ resolved, as the
-   * server needs absolute paths (shown in the GUI as {{bundleWorkspace}}) */
+   * server needs absolute paths (shown in the GUI as {{usersWorkspace}}) */
   var HOME = P.os === "windows" ? "C:/Users/you" : P.os === "macos" ? "/Users/you" : "/home/you";
   var WORKSPACE = HOME + "/wgs-extract";
 
   function realPath(p) {
-    var text = String(p).replace(/^\{\{bundleWorkspace\}\}/, WORKSPACE).replace(/^~(?=[\/\\])/, HOME);
+    var bundle = P.os === "windows" ? HOME + "/AppData/Local/WGSExtract/BundleWorkspace" : P.os === "macos" ? HOME + "/Library/Application Support/WGSExtract/BundleWorkspace" : HOME + "/.local/share/WGSExtract/BundleWorkspace";
+    var text = String(p).replace(/^\{\{usersWorkspace\}\}/, WORKSPACE).replace(/^\{\{bundleWorkspace\}\}/, bundle).replace(/^~(?=[\/\\])/, HOME);
     return native(text);
   }
 
@@ -249,10 +250,11 @@
     realPath: realPath,
     /* A reference genome's FASTA in the library (a Params "ref") */
     fasta: function (code) {
-      return realPath("{{bundleWorkspace}}/reference/genomes/" + code + ".fa.gz");
+      return realPath("{{usersWorkspace}}/reference/genomes/" + code + ".fa.gz");
     },
     outdir: function (file) {
-      return native(dir(file) + "/");
+      var folder = dir(file).replace(/[\\/]$/, "");
+      return native(folder + (/(^|[\\/])wgse$/i.test(folder) ? "/" : "/wgse/"));
     },
     /* Choose the pretend computer (a preset key, or "custom" with its
      * settings); the page reloads to show it */

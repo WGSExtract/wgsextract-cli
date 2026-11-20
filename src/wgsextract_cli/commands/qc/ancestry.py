@@ -9,7 +9,9 @@ ADMIXTURE allele frequencies at K=7 and K=12 (core/ancestry.py). Inputs:
 - VCF: the sample's calls. A variants-only VCF omits hom-ref sites, so its
   missing sites are hom-ref only when it is a whole-genome call set (as `qc
   relate` decides); otherwise ancestry from it would be biased and it is
-  refused. An all-sites VCF's missing sites are unknown;
+  refused. An all-sites VCF's missing sites are unknown. With reference
+  evidence (a gVCF input, or the gVCF its caller published beside it), a
+  missing site is hom-ref only where the gVCF calls it callable reference;
 - microarray raw data (23andMe, AncestryDNA, FTDNA, MyHeritage...): the
   genotypes at the chip's markers that are reference sites, on the forward
   strand of whichever of GRCh37 or GRCh38 they match.
@@ -24,10 +26,11 @@ import logging
 import re
 import subprocess
 import tempfile
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 
@@ -37,7 +40,13 @@ if TYPE_CHECKING:
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.qc import QcAncestryParams
-from wgsextract_cli.core import ancestry, ancestry_reference, sample_workspace
+from wgsextract_cli.core import (
+    ancestry,
+    ancestry_reference,
+    reference_evidence,
+    sample_workspace,
+    variant_confidence,
+)
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
@@ -48,15 +57,18 @@ from wgsextract_cli.core.reference_assets import (
     input_stem,
 )
 from wgsextract_cli.core.reference_resolver import (
+    ReferenceLibrary,
     header_contig_lengths,
+    read_fai_lengths,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
     run_command,
 )
-from wgsextract_cli.core.variant_files import verify_paths_exist
+from wgsextract_cli.core.variant_files import vcf_header_chromosomes, verify_paths_exist
 
 from ..genotyping.common import open_alignment
 from ._relate_vcf import (
@@ -89,6 +101,8 @@ class Genotypes:
     method: str
     sites_available: int  # reference sites on the input's build
     depth: float | None = None  # mean reads per covered site (BAM/CRAM)
+    # The gVCF that decided the sites the VCF doesn't list, and their states.
+    reference_evidence: dict[str, Any] | None = None
 
 
 def _slug(name: str) -> str:
@@ -226,7 +240,7 @@ def _alignment_genotypes(
 def _vcf_sample(vcf: str, wanted: str | None) -> str:
     names = run_command(
         ["bcftools", "query", "-l", vcf], capture_output=True
-    ).stdout.split()
+    ).stdout.splitlines()
     if wanted:
         if wanted not in names:
             raise WGSExtractError(
@@ -257,9 +271,32 @@ def _vcf_genotypes(
     work: Path,
 ) -> tuple[Genotypes, str, str | None]:
     vcf = expand_path(params.input)
+    sample = _vcf_sample(vcf, params.sample)
+    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
+    # The input when it is a gVCF, else the gVCF its caller published beside it.
+    gvcf = vcf if is_gvcf(vcf, header) else reference_evidence.companion(vcf)
+    read = reference_evidence.readable(gvcf, sample, work) if gvcf else None
+    if gvcf and read is None:
+        warn(
+            "ancestry_reference_evidence_other_sample",
+            "The gVCF beside the input holds another sample; it was not used.",
+            reference_evidence=gvcf,
+        )
     genotypes = vcf_genotypes(
-        vcf, reference, work, sample=params.sample, build=_given_build(params)
+        vcf,
+        reference,
+        work,
+        sample=sample,
+        build=_given_build(params),
+        evidence=read,
+        reference_fasta=(
+            ReferenceLibrary(params.ref, None, input_path=vcf).fasta
+            if read is not None and params.ref
+            else None
+        ),
     )
+    if read is not None and gvcf != vcf:
+        current_result().add_input(gvcf, reference_evidence.ROLE)
     return genotypes, vcf, None
 
 
@@ -271,11 +308,18 @@ def vcf_genotypes(
     sample: str | None = None,
     build: str | None = None,
     confident: IntervalIndex | None = None,
+    evidence: str | None = None,
+    reference_fasta: str | None = None,
 ) -> Genotypes:
     """A VCF sample's genotypes at the reference sites (also used by `score
-    pgs` for its PCA projection). A whole-genome variants-only VCF's absent
-    sites are hom-ref, only inside ``confident`` when it is given."""
+    pgs` for its PCA projection). With ``evidence``, an indexed gVCF whose
+    first sample is the sample (reference_evidence.readable), a site the VCF
+    lists no variant at is hom-ref only where the gVCF calls it callable
+    reference. Without it, a whole-genome variants-only VCF's absent sites are
+    hom-ref. Either way only inside ``confident`` when it is given."""
     verify_dependencies(["bcftools"])
+    if evidence is not None and reference_fasta:
+        verify_dependencies(["samtools"])
     header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
     lengths = header_contig_lengths(header)
     build = build or build_from_chr1_length(lengths) or ""
@@ -284,14 +328,15 @@ def vcf_genotypes(
             f"{Path(vcf).name}'s header doesn't give chr1's length, so its build "
             "is unknown; pass --build."
         )
-    if is_gvcf(vcf, header):
+    if evidence is None and is_gvcf(vcf, header):
         raise WGSExtractError(
             f"{Path(vcf).name} is a gVCF; its no-call blocks can't be told from "
             "reference blocks. Give the BAM/CRAM, or a VCF called from it."
         )
     sample = _vcf_sample(vcf, sample)
     sites = reference.sites(build)
-    chr_prefix = "chr1" in lengths or not any(c == "1" for c in lengths)
+    contigs = vcf_header_chromosomes(header)
+    chr_prefix = "chr1" in contigs or "1" not in contigs
     regions = work / "sites.tsv"
     with regions.open("w", newline="\n") as f:
         f.writelines(
@@ -303,20 +348,40 @@ def vcf_genotypes(
         for i, (c, p) in enumerate(zip(sites.chrom, sites.pos, strict=True))
     )
     query = ["bcftools", "query", "--allow-undef-tags", "-T", str(regions), "-s", sample,
-             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT]\n", vcf]  # fmt: skip
+             "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%FT\t%DP\t%GQ]\n", vcf]  # fmt: skip
+    thresholds = variant_confidence.thresholds_from(None)
+    source = reference_evidence.ReferenceEvidence(evidence) if evidence else None
     called: dict[int, int] = {}
     unknown: set[int] = set()
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
-        contig, pos, ref, alts, filt, gt, sample_filter = line.split("\t")
+        contig, pos, ref, alts, filt, gt, sample_filter, dp, gq = line.split("\t")
         names = alts.split(",")
         for i in lookup.get((contig, int(pos)), ()):
             if ref.upper() != sites.ref[i] or i in called:
                 continue
             k = names.index(sites.alt[i]) + 1 if sites.alt[i] in names else None
-            if k is None and not set(names) <= {".", "<*>", "<NON_REF>"}:
+            if k is None and (
+                evidence is not None or not set(names) <= {".", "<*>", "<NON_REF>"}
+            ):
+                # With a gVCF, its classifier decides reference-only records.
                 continue
             passed = filt in _PASSING and sample_filter in _PASSING
+            dosage = _dosage(gt, k) if passed else None
+            if evidence is not None and dosage == 0:
+                # The classifier applies the same DP/GQ floor to hom-ref,
+                # including explicit 0/0 records with a concrete ALT.
+                continue
+            if source is not None:
+                passed = (
+                    passed
+                    and dp not in {"", "."}
+                    and float(dp) >= thresholds.min_depth
+                    and (
+                        source.quality_model != reference_evidence.GQ
+                        or (gq not in {"", "."} and float(gq) >= thresholds.min_gq)
+                    )
+                )
             dosage = _dosage(gt, k) if passed else None
             if dosage is None:
                 unknown.add(i)
@@ -326,7 +391,63 @@ def vcf_genotypes(
             called[i] = dosage
     variants_only = passing > 0 and ref_only <= VARIANTS_ONLY_MAX_REF_RECORDS * passing
     filled = 0
-    if variants_only:
+    states: Counter[str] = Counter()
+    if evidence is not None:
+        absent = [
+            i
+            for i in range(len(sites.pos))
+            if i not in called
+            and i not in unknown
+            and (
+                confident is None
+                or confident.contains(str(int(sites.chrom[i])), int(sites.pos[i]))
+            )
+        ]
+        known = {
+            alias: length
+            for contig, length in (
+                read_fai_lengths(reference_fasta) if reference_fasta else {}
+            ).items()
+            for alias in (
+                contig,
+                contig.removeprefix("chr"),
+                f"chr{contig.removeprefix('chr')}",
+            )
+        }
+        source = reference_evidence.ReferenceEvidence(evidence, known)
+        located = _index(
+            ((_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i])), i)
+            for i in absent
+        )
+        fill: list[int] = []
+        for (site_contig, site_pos, _), state in reference_evidence.site_states(
+            source,
+            ((c, p, p) for c, p in located),
+            thresholds,
+        ):
+            rows = located[(site_contig, site_pos)]
+            states[state.value] += len(rows)
+            if state is reference_evidence.State.CALLABLE_REFERENCE:
+                fill.extend(rows)
+        from wgsextract_cli.core.reference_bases import verified_reference_bases
+
+        bases = verified_reference_bases(
+            evidence,
+            [
+                (_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i]))
+                for i in fill
+            ],
+            work,
+            reference_fasta,
+        )
+        for i in fill:
+            if (
+                bases.get((_contig(int(sites.chrom[i]), chr_prefix), int(sites.pos[i])))
+                == sites.ref[i]
+            ):
+                called[i] = 0
+                filled += 1
+    elif variants_only:
         freq = reference.pca()["frequency"][sites.index].astype(np.float64)
         expected = float((1 - (1 - freq) ** 2).sum())
         nonref = [i for i, d in called.items() if d]
@@ -358,7 +479,9 @@ def vcf_genotypes(
                 filled += 1
     order = sorted(called)
     method = "VCF genotype calls"
-    if filled:
+    if evidence is not None:
+        method += f" (gVCF: {filled:,} missing sites callable reference, hom-ref)"
+    elif filled:
         method += f" (whole-genome variants-only VCF: {filled:,} missing sites hom-ref)"
     genotypes = Genotypes(
         rows=sites.index[order],
@@ -368,6 +491,9 @@ def vcf_genotypes(
         build=build,
         method=method,
         sites_available=len(sites.pos),
+        reference_evidence=None
+        if evidence is None
+        else {"missing_site_states": dict(sorted(states.items()))},
     )
     return genotypes
 
@@ -479,7 +605,9 @@ def run_ancestry(params: QcAncestryParams) -> None:
     outdir = Path(expand_path(params.outdir or absolute_path(path).parent))
     outdir.mkdir(parents=True, exist_ok=True)
     result = current_result()
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_ancestry_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_ancestry_"
+    ) as tmp:
         work = Path(tmp)
         if kind == "alignment":
             genotypes, source, fasta = _alignment_genotypes(params, reference, work)
@@ -543,6 +671,10 @@ def run_ancestry(params: QcAncestryParams) -> None:
             if params.bootstrap:
                 metrics[f"ancestry_k{k}_{_slug(c.name)}_lower"] = round(float(lo), 4)
                 metrics[f"ancestry_k{k}_{_slug(c.name)}_upper"] = round(float(hi), 4)
+    if genotypes.reference_evidence is not None:
+        states = genotypes.reference_evidence["missing_site_states"]
+        for state, count in states.items():
+            metrics[f"ancestry_missing_sites_{state}"] = count
     if kind != "alignment":
         # Hard calls only: the projection of read-count likelihoods is biased.
         pcs, share = pca_projection(genotypes, reference)

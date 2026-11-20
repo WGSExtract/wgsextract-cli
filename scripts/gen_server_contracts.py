@@ -11,7 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from server_transport_typescript import typescript  # noqa: E402
+from server_transport_typescript import (  # noqa: E402
+    report_typescript,
+    result_typescript,
+    typescript,
+)
 
 from wgsextract_cli.server.http_api import openapi_document  # noqa: E402
 from wgsextract_cli.server.transport_schema import response_schemas  # noqa: E402
@@ -64,6 +68,8 @@ def artifacts() -> dict[Path, str]:
             + "\n"
         )
     result[ROOT / "gui/app/shared/generated/server-transport.ts"] = typescript()
+    result[ROOT / "gui/app/shared/generated/result-records.ts"] = result_typescript()
+    result[ROOT / "gui/app/shared/generated/report-records.ts"] = report_typescript()
     return result
 
 

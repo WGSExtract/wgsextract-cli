@@ -760,3 +760,71 @@ test("PR #530 review: a section shown by a value from its own data source appear
     globalThis.fetch = originalFetch;
   }
 });
+
+test("1087 Basic mode ignores advanced-only overrides without erasing shared settings", async () => {
+  resetState();
+  const { saveConfig, configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
+  const { commandContext, configDataSourceContext } = await import("../dist/web/src/client/model.js");
+  const control = {
+    id: "paths",
+    kind: "configEditor",
+    configFile: { path: "{{usersWorkspace}}/config.toml", format: "toml" },
+    settings: [
+      { id: "out_dir", key: "output_directory", kind: "path", advancedOnly: true },
+      { id: "threads", key: "cpu_threads", kind: "text", value: 4, advancedOnly: true },
+      { id: "ref_path", key: "reference_library", kind: "path", moveContents: true },
+    ],
+  };
+  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control, { id: "threads", kind: "text", value: 4, advancedOnly: true }] }] }] };
+  state.configValues = { "paths.out_dir": "/chosen/output", "paths.ref_path": "/lib", "paths.threads": 8 };
+  state.fieldValues = { out_dir: "/chosen/output", reference_library: "/lib", threads: 8 };
+  const saved = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (path, options) => {
+    if (path === "/api/config/save") {
+      saved.push(JSON.parse(options.body).values);
+      return Promise.resolve(new Response(JSON.stringify({ path: "/u/config.toml", keyCount: 2 }), { status: 200, headers: { "content-type": "application/json" } }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  try {
+    state.uiMode = "advanced";
+    assert.equal(commandContext().fieldValues.out_dir, "/chosen/output");
+
+    state.uiMode = "basic";
+    assert.equal(commandContext().fieldValues.out_dir, "");
+    assert.equal(commandContext().fieldValues.threads, "");
+    assert.equal(commandContext().configValues["paths.out_dir"], "");
+    assert.equal(configDataSourceContext(control).fieldValues.output_directory, "");
+    assert.equal(state.configValues["paths.out_dir"], "/chosen/output");
+    assert.equal(state.fieldValues.out_dir, "/chosen/output");
+    assert.deepEqual(saved, [], "reading Basic-mode contexts never saves the config");
+    await saveConfig(control);
+    assert.equal(Object.hasOwn(saved.at(-1), "output_directory"), false);
+    assert.equal(saved.at(-1).reference_library, "/lib");
+    state.uiMode = "advanced";
+    assert.equal(commandContext().fieldValues.out_dir, "/chosen/output");
+
+    await configSettingChanged("/fast/lib", control.settings.find((setting) => setting.key === "reference_library"), control);
+    assert.deepEqual(state.workspaceMove?.setting, { controlID: "paths", key: "reference_library", from: "/lib" });
+    assert.equal(state.configValues["paths.ref_path"], "/lib", "unchanged until the user answers");
+    state.workspaceMove = null;
+    state.fieldValues.reference_library = "/lib";
+    await fieldValueChanged("/other/library", { id: "reference_library", kind: "path" });
+    assert.equal(state.workspaceMove?.folder, "/other/library", "1087: bound folder controls ask too");
+    assert.equal(state.fieldValues.reference_library, "/lib", "Cancel retains the bound folder");
+    assert.equal(state.configValues["paths.ref_path"], "/lib");
+    const { renderPage } = await import("../dist/web/src/client/view.js");
+    const libraryPage = { id: "datasets", title: "My Genomes", sections: [{ id: "paths", controls: [{ id: "reference_library", kind: "path", label: "Library" }] }] };
+    for (const mode of ["basic", "advanced"]) {
+      state.uiMode = mode;
+      const html = renderPage(libraryPage);
+      assert.match(html, /role="dialog"/, "1087: a bound path's pending choice is visible on the initiating page");
+      for (const button of ["confirm", "setting-only", "cancel"]) {
+        assert.match(html, new RegExp(`data-workspace-location-${button}`));
+      }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

@@ -20,6 +20,15 @@ research result: before acting on it, confirm it with an accredited clinical
 laboratory (in the US a CLIA/CAP-certified test, ideally on a new sample). A
 first run through these commands is a technical check, not a clinical result.
 
+## Inspect the reads
+
+In the desktop app, open **Genome viewer** or choose **View reads** beside an
+indexed BAM/CRAM input. Enter the variant's 1-based position as
+`chromosome:position-position`, then zoom out to check strand balance, clipping,
+mapping quality and coverage. Use the [built-in viewer guide](../gui/docs/genome-viewer.md)
+for local reference and index requirements. You do not need desktop IGV or an
+online genome service. A visual check does not replace clinical confirmation.
+
 ## Where the labels appear
 
 ### ClinVar review evidence is not sequencing confidence
@@ -33,10 +42,12 @@ JSON), alongside `OLD_MULTIALLELIC` provenance. Originals are not rewritten.
 Shared VCF and allele-table annotation uses this normalization when a
 reference is resolved.
 
-Complete normalized resources are reused in the output folder's
-`.wgse_normalized_resources/` cache, keyed to the resource, FASTA/index file
-identities, conversion schema and bcftools version. Changed inputs invalidate
-the cache. Canonical CADD SNV, REVEL and AlphaMissense tables instead use tabix
+Complete normalized resources are reused in WGS Extract's persistent cache,
+`~/.cache/wgsextract/normalized-resources/` (under `XDG_CACHE_HOME` when set).
+The key uses the original resource, FASTA/index file identities, conversion
+schema and bcftools version, not a run's temporary copies. Changed inputs
+invalidate the cache; temporary-work cleanup does not remove it. Canonical
+CADD SNV, REVEL and AlphaMissense tables instead use tabix
 lookups at the normalized query's SNV positions, avoiding whole-table scans;
 selected resource records still undergo REF validation. Composition indexes
 only query records overlapping candidate MNV spans.
@@ -193,6 +204,31 @@ weakest base's state (`uncovered`, `low_quality_reference`, `filtered`,
 `no_call`, `variant`, `excluded_by_policy` or `not_assessed`), so
 `--absent-to-ref` no longer applies to it.
 
+### Reference evidence at the sites checked
+
+A findings VCF lists only what the sample carries, so a ClinVar pathogenic
+site it doesn't list can be confident reference or a stretch no read
+covered. When the input VCF's caller published a gVCF beside it
+([reference-evidence.md](reference-evidence.md)), `vcf clinvar`,
+`vcf gnomad --max-af` and `analyze` add `reference_evidence` to their entry
+in `details.confidence`: the gVCF, and the number of sites in each gVCF state
+for each set of sites checked, `calls` (the labelled calls) and, for
+`vcf clinvar` and `analyze`, `clinvar_pathogenic_sites` (every ClinVar
+pathogenic/likely pathogenic site the filter looked for, carried or not). A
+site is `callable_reference` only when every base of it is; otherwise it
+takes its strongest state against reference. Symbolic alleles use `INFO/END`
+when present. With a reference FASTA, checked ClinVar alleles and the gVCF
+are left-aligned to the same reference, and its index supplies missing gVCF
+contig lengths. The checked ClinVar set has the same compatibility exclusions
+as annotation, including incompatible hg19 mitochondrial references.
+ClinVar sites that are neither
+`variant` nor `callable_reference` (nor `excluded_by_policy`) raise a
+`reference_evidence_unassessed_sites` warning with the count per state: the
+sample may carry a variant there that was not called. The labels themselves
+are unchanged, and without a gVCF nothing is added. An unchanged `analyze`
+rerun retains these details and warnings when it reuses its discovery step;
+adding, replacing or removing the companion reruns that step.
+
 Contamination applies to the whole sample, not one call: another person's
 reads can turn a homozygous site heterozygous or add an allele the sample
 doesn't carry. The estimate is read from the sample workspace, so it applies
@@ -314,6 +350,64 @@ chr20 the 1,002 calls at ClinVar sites had 0.1%, 8% and 17%. A `low` call was
 over 100 times as likely to be wrong as a `high` one, while `high` kept over
 80% of the correct calls. Errors in `high` remain, as
 the limits above say: a `high` label is not a confirmation.
+
+## Variant calling accuracy
+
+These are caller comparisons, separate from the confidence-label validation
+above. Regional results are not whole-genome qualification.
+
+**Illumina:** HG002 v4.2.1 [GIAB](https://www.nist.gov/programs-projects/genome-bottle)
+truth on chr20, confident regions, `rtg vcfeval` with matching genotypes.
+Google's 35x NovaSeq PCR-free HG002 chr20 reads were aligned to hs38DH with
+`align`. Callers used `-r chr20`, 8 threads (DeepVariant 4), on a 4-core
+Ryzen 5350GE.
+
+| Caller | SNP precision | SNP recall | SNP F1 | Indel precision | Indel recall | Indel F1 | Time |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `vcf snp` + `vcf indel` (bcftools) | 0.974 | 0.993 | 0.984 | 0.949 | 0.949 | 0.949 | 6 min |
+| `vcf freebayes` | 0.976 | 0.995 | 0.985 | 0.970 | 0.966 | 0.968 | 9.5 min |
+| `vcf gatk` | 0.991 | 0.994 | 0.993 | 0.993 | 0.991 | 0.992 | 21 min |
+| `vcf deepvariant` | 0.999 | 0.995 | **0.997** | 0.998 | 0.994 | **0.996** | 18.5 min |
+
+**Ultima:** no GIAB truth exists for an Ultima sample with public reads.
+Instead, HG008-N-D's Ultima GIAB CRAM was downsampled to ~30x, realigned
+to hs38DH chr20 and compared with the same tissue's Illumina 169x BAM,
+downsampled to ~40x and called with bcftools.
+Both were scored inside GIAB's “not in any difficult region” stratification
+(50.8 Mb). Otherwise setup was as above, but without rtg: alleles and genotype
+class had to match. Callers used 2–3 threads on a busy shared host.
+GATK flow likelihoods are Java-only, ~1 Mb/min.
+
+| Caller on Ultima | SNP precision | SNP recall | SNP F1 | Indel precision | Indel recall | Indel F1 |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| bcftools (`-X ultima`) | 0.998 | 0.994 | 0.996 | 0.354 | 0.984 | 0.520 |
+| GATK (`--flow-mode ADVANCED`) | 0.985 | 0.996 | 0.991 | 0.396 | 0.971 | 0.563 |
+| DeepVariant (`ULTIMA`) | 0.997 | 0.994 | **0.995** | 0.969 | 0.950 | **0.959** |
+
+bcftools and GATK overcall homopolymer indels, Ultima's main error mode:
+prefer DeepVariant for them. See [flow-aware calling](variants.md#ultima-reads).
+
+### Ultima GATK scatter
+
+`vcf gatk --scatter` optionally runs independent flow-aware HaplotypeCaller
+processes over nonoverlapping intervals, gathering in reference order.
+It is **off by default**: annotations/genotypes can differ far from boundaries,
+because processes reset random state (annotation jitter, read downsampling)
+as well as assembly context. Threads/physical RAM cap concurrency, budgeting
+6 GiB per worker with explicit 4 GiB Java heap. One fitting worker keeps the
+unscattered path. `--memory` remains sort memory, not a GATK heap.
+Scatter needs bcftools/tabix as well as GATK/samtools and cannot use `--gpu`.
+
+A functional comparison used original GIABv3-mapped public HG008 Ultima
+chr20 reads, nominal 30x (7,012,718 primary reads), GATK 4.6.2.0, two workers.
+Both retained **131,299 sites**, but **85 records and two genotypes differed**:
+`0/1` → `1/1` at chr20:47,895,004 and chr20:47,895,025.
+Differences were 1.91–32.08 Mb from the chr20:32,222,084 split, not
+boundary-local: **not equivalence**.
+One run took 57.2 min unscattered versus 37.5 min scattered including CRAM
+preparation; this was neither a controlled throughput benchmark nor an
+accuracy comparison. A separate 200 kb realigned-read smoke was byte-identical
+across 395 decoded records, but slower scattered due to startup.
 
 ## Opt-in BAQ in `vcf snp` and `vcf indel`
 

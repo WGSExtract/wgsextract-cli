@@ -502,7 +502,8 @@ def test_download_builds_a_chm13_cache_that_vep_run_annotates_with(
     )
 
     assert run.metrics["engine"] == "vep-rs"
-    csq = _csq(str(tmp_path / "chm13_vep.vcf.gz"))
+    annotated = next(o.path for o in run.outputs if o.role == "vep_annotated")
+    csq = _csq(annotated)
     assert csq[1014]["Consequence"] == "missense_variant"
     assert csq[1014]["SYMBOL"] == "TINY1"
 

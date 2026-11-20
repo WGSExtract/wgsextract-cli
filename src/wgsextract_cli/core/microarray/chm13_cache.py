@@ -16,10 +16,17 @@ from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.library_cache import short_key
 from wgsextract_cli.core.microarray.aadr import _MARKERS
 from wgsextract_cli.core.microarray.chm13 import CHM13Catalogue
-from wgsextract_cli.core.microarray_targets import TARGET_VERSION, _template_paths
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.targets import (
+    _CHAINS_TO_GRCH37,
+    CHM13_V2_FORMATS,
+    TARGET_VERSION,
+    _template_paths,
+    installed_chain_copy,
+)
+from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _resolve_templates_roots,
+    delta_bases,
 )
 
 _VERSION = 1
@@ -34,6 +41,17 @@ def _key(value: object) -> str:
     )
 
 
+def installed_chains(roots: list[str]) -> dict[str, Path]:
+    """{build: the installed chain from build to GRCh37 in roots, preferring
+    the pinned copy}, for the builds (NCBI36, GRCh38) of templates in the
+    pinned site map."""
+    chains = {}
+    for build, source in _CHAINS_TO_GRCH37.items():
+        if (chain := installed_chain_copy(source, roots)) is not None:
+            chains[build] = chain
+    return chains
+
+
 def cache_directory(
     root: Path | None, catalogue: CHM13Catalogue, roots: list[str]
 ) -> Path | None:
@@ -43,20 +61,14 @@ def cache_directory(
         return None
     files = [
         Path(path)
-        for _name, _ncbi36, paths in _template_paths(_resolve_templates_roots(roots))
-        for path in paths
+        for _name, _build, paths in _template_paths(
+            _resolve_templates_roots(roots), CHM13_V2_FORMATS
+        )
+        for body in paths
+        for path in (Path(body), *delta_bases(body))
     ]
     files.extend([_MARKERS, _PACKAGED_TEMPLATES / "corrections.tsv"])
-    chain = next(
-        (
-            Path(root, "hg18ToHg19.over.chain.gz")
-            for root in roots
-            if Path(root, "hg18ToHg19.over.chain.gz").is_file()
-        ),
-        None,
-    )
-    if chain is not None:
-        files.append(chain)
+    files.extend(installed_chains(roots).values())
     fingerprints = []
     for path in files:
         stat = path.stat()

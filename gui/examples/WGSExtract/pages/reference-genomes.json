@@ -6,6 +6,7 @@
   "sections": [
     {
       "id": "reference-genome-paths",
+      "collapsible": false,
       "title": "sections.library.library-paths.title",
       "controls": [
         {
@@ -16,12 +17,39 @@
         }
       ],
       "iconName": "bundle-folder",
-      "textIcon": "📁",
-      "advancedOnly": true
+      "textIcon": "📁"
     },
     {
       "id": "genome-management",
       "title": "sections.library.genome-management.title",
+      "actions": [
+        {
+          "id": "ref-lookup-sizes",
+          "title": "actions.reference-genomes.lookup-sizes.title",
+          "tooltip": "actions.reference-genomes.lookup-sizes.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "ref",
+              "library",
+              "--list",
+              "--remote-sizes"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ]
+          },
+          "confirm": {
+            "title": "actions.reference-genomes.lookup-sizes.title",
+            "message": "actions.reference-genomes.lookup-sizes.tooltip",
+            "confirmButtonTitle": "actions.reference-genomes.lookup-sizes.title",
+            "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
+          }
+        }
+      ],
       "controls": [
         {
           "id": "reference_genomes",
@@ -34,8 +62,7 @@
               "--json",
               "ref",
               "library",
-              "--list",
-              "--remote-sizes"
+              "--list"
             ],
             "optionalArguments": [
               [

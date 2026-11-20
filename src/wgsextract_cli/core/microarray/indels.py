@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.microarray.aadr import aadr_lifter, aadr_panel
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.indel_probes import (
     IndelProbe,
@@ -21,16 +22,15 @@ from wgsextract_cli.core.microarray.indel_probes import (
     read_indel_manifest,
 )
 from wgsextract_cli.core.microarray.quality import quality_policy
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.templates import (
     _haploid_letter,
     _resolve_templates_for_format,
     get_template_format,
-    resolve_format_key,
     template_rows,
     vendor_chrom,
     vendor_output_profile,
 )
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import (
     match_chromosome_name,

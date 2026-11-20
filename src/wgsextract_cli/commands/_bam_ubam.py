@@ -19,6 +19,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -243,13 +244,21 @@ def run_to_ubam(params: BamToUbamParams) -> None:
         is_cram=source.lower().endswith(".cram"),
         reads=indexed_read_count(source, threads) if input_path else None,
     )
-    if not check_free_space(outdir, temp_gb + final_gb):
-        raise WGSExtractError(
-            f"Insufficient free disk space at {outdir} "
-            f"(needs ~{temp_gb + final_gb} GB)."
-        )
+    scratch = scratch_parent(outdir)
+    requirements = (
+        [(scratch, temp_gb), (str(outdir), final_gb)]
+        if Path(scratch).stat().st_dev != outdir.stat().st_dev
+        else [(str(outdir), temp_gb + final_gb)]
+    )
+    for directory, needed in requirements:
+        if not check_free_space(directory, needed):
+            raise WGSExtractError(
+                f"Insufficient free disk space at {directory} (needs ~{needed} GB)."
+            )
 
-    with tempfile.TemporaryDirectory(prefix=".wgse_ubam_", dir=outdir) as temp_dir:
+    with tempfile.TemporaryDirectory(
+        prefix=".wgse_ubam_", dir=scratch_parent(outdir)
+    ) as temp_dir:
         stages = (
             _bam_stages(params, input_path, threads)
             if input_path

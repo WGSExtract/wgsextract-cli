@@ -21,7 +21,7 @@ from wgsextract_cli.commands._microarray_combined import (
     record_kit,
     record_microarray_run,
 )
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genotype_qc import warn_about_genotypes
 from wgsextract_cli.core.library_cache import microarray_cache_root
@@ -48,16 +48,21 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
+from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
 from wgsextract_cli.core.microarray.site_map import SiteProjection
-from wgsextract_cli.core.microarray_targets import collect_template_markers
-from wgsextract_cli.core.microarray_utils import (
+from wgsextract_cli.core.microarray.targets import (
+    _CHAINS_TO_GRCH37,
+    CHM13_V2_FORMATS,
+    collect_template_markers,
+    lifted_chain,
+)
+from wgsextract_cli.core.microarray.templates import (
     GenotypeTally,
     convert_to_vendor_format,
     get_template_format,
-    resolve_format_key,
 )
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -110,22 +115,20 @@ def _selected(site: SiteProjection, regions: list[tuple[str, int, int]]) -> bool
 def _marker_ids(
     catalogue: CHM13Catalogue, roots: list[str]
 ) -> dict[tuple[str, int], str]:
-    chain = next(
-        (
-            Path(root, "hg18ToHg19.over.chain.gz")
-            for root in roots
-            if Path(root, "hg18ToHg19.over.chain.gz").is_file()
-        ),
-        None,
-    )
-    if chain is None:
+    chains = microarray_chm13_cache.installed_chains(roots)
+    if missing := sorted(set(_CHAINS_TO_GRCH37) - set(chains)):
         raise WGSExtractError(
-            "CHM13 microarray needs the installed hg18ToHg19.over.chain.gz "
-            "and the complete template set used by its pinned site map."
+            "CHM13 microarray needs the installed "
+            + " and ".join(_CHAINS_TO_GRCH37[build].name for build in missing)
+            + " and the complete template set used by its pinned site map."
         )
     markers = {
         (chrom, pos): marker
-        for (chrom, pos), marker in collect_template_markers(roots, str(chain)).items()
+        for (chrom, pos), marker in collect_template_markers(
+            roots,
+            {build: str(chain) for build, chain in chains.items()},
+            CHM13_V2_FORMATS,
+        ).items()
         if chrom in catalogue.source_lengths and pos <= catalogue.source_lengths[chrom]
     }
     for marker in aadr_markers("1240k"):
@@ -503,21 +506,16 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
-        chain36 = next(
-            (
-                str(Path(root, "hg18ToHg19.over.chain.gz"))
-                for root in roots
-                if Path(root, "hg18ToHg19.over.chain.gz").is_file()
-            ),
-            None,
-        )
+        build = info.get("build") if info else None
+        # Found in the library or fetched (with consent); else matched by ID.
+        lift_chain = lifted_chain(lib.root, build, roots) if build else None
         kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,
             str(combined),
             kit,
             roots,
-            chain36,
+            lift_chain,
             identity=identity,
             quirks=quirks_mode(params),
             indel_calls={

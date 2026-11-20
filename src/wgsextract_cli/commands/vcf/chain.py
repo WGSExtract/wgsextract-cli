@@ -5,15 +5,16 @@ import sys
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
-from wgsextract_cli.core.variant_files import calculate_bam_md5, ensure_vcf_prepared
+from wgsextract_cli.core.variant_files import calculate_bam_md5
 
 from .._vep_engines import VepEngine, configured_engine
 from .._vep_run import vep_output_paths
@@ -60,6 +61,19 @@ def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
         cache = vep_step_engine(lib).cache_root(Path(lib.vep_cache))
         return str(cache) if cache.is_dir() else None
     return getattr(lib, _VCF_STEPS[ann][0], None) or None
+
+
+def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
+    if ann == "vep":
+        return ["--vep-cache", lib.vep_cache] if lib.vep_cache else []
+    resource = dataset(ann, lib)
+    if not resource:
+        return []
+    flag = "--am-file" if ann == "alphamissense" else f"--{ann}-file"
+    args = [flag, resource]
+    if ann == "cadd" and lib.cadd_indel_file:
+        args += ["--cadd-indel-file", lib.cadd_indel_file]
+    return args
 
 
 def vep_step_engine(lib: ReferenceLibrary) -> VepEngine:
@@ -111,7 +125,7 @@ def run_chain_annotate(
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
 
-    current_input = prepared_input = ensure_vcf_prepared(input_file)
+    current_input = input_file
     step_dirs: list[str] = []
     applied: list[str] = []
     skipped: list[str] = []
@@ -144,8 +158,10 @@ def run_chain_annotate(
                 *_step_command(ann),
             ]
             cmd += ["--input", current_input, "--outdir", step_outdir]
-            if params.ref:
-                cmd += ["--ref", str(params.ref)]
+            reference = lib.fasta or params.ref
+            if reference:
+                cmd += ["--ref", str(reference)]
+            cmd += _step_resource_args(ann, lib)
 
             try:
                 # Captured so chained runs stay readable; surfaced on failure.
@@ -165,15 +181,16 @@ def run_chain_annotate(
             applied.append(ann)
             logging.info(f"{step} '{ann}' completed: {step_out}")
 
-        if current_input == prepared_input:
+        if current_input == input_file:
             raise WGSExtractError(
                 "No annotation was applied: every requested step was skipped."
             )
         final_out = str(Path(outdir, "chain_annotated.vcf.gz"))
-        shutil.copy2(current_input, final_out)
-        for ext in (".tbi", ".csi"):
-            if Path(current_input + ext).exists():
-                shutil.copy2(current_input + ext, final_out + ext)
+        with atomic_output(final_out) as staged:
+            shutil.copy2(current_input, staged)
+            for ext in (".tbi", ".csi"):
+                if Path(current_input + ext).exists():
+                    shutil.copy2(current_input + ext, staged + ext)
         finalized = True
         logging.info(f"Chain annotation complete: {final_out}")
         record_variants(final_out, "annotated_vcf", vcf_record_count(final_out))

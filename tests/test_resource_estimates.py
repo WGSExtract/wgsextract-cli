@@ -16,10 +16,16 @@ from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_
 from tests.prepared_data import sparse_truncate
 from wgsextract_cli import api
 from wgsextract_cli.commands import align, bam, realign
+from wgsextract_cli.commands.alignment import common, preparation
+from wgsextract_cli.commands.realignment import long_reads as realign_long_reads
+from wgsextract_cli.commands.realignment import mapping as realign_mapping
+from wgsextract_cli.commands.realignment import preparation as realign_preparation
+from wgsextract_cli.commands.realignment import resources as realign_resources
+from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 
 GIB = 1024**3
 H2_READS = 679_639_896
@@ -817,9 +823,10 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
     ref = tmp_path / "ref.fa"
     ref.write_text(">chr1\nA\n")
 
-    monkeypatch.setattr(
-        align, "get_tool_path", lambda name: "gatk" if name == "gatk" else None
-    )
+    for module in (align, common, preparation):
+        monkeypatch.setattr(
+            module, "get_tool_path", lambda name: "gatk" if name == "gatk" else None
+        )
 
     def reported(build):
         estimate = build()
@@ -835,20 +842,20 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
 
     if operation == "align":
         monkeypatch.setattr(
-            align,
+            preparation,
             "_prepare_alignment",
             lambda *_a, **_k: align._AlignSetup(
                 "1", "256M", str(tmp_path), str(ref), "sample", "r1.fq"
             ),
         )
         monkeypatch.setattr(
-            align,
+            preparation,
             "fastq_input_statistics",
             lambda *_: SimpleNamespace(reads=100, read_length=150),
         )
-        monkeypatch.setattr(align, "preflight_resources", reported)
+        monkeypatch.setattr(preparation, "preflight_resources", reported)
         monkeypatch.setattr(
-            align, "ensure_bwa_index", lambda *_: pytest.fail("indexing started")
+            preparation, "ensure_bwa_index", lambda *_: pytest.fail("indexing started")
         )
         with pytest.raises(Reported):
             align._bwa_setup(
@@ -860,11 +867,17 @@ def test_alignment_reports_before_index_building_or_fastq_extraction(
     else:
         monkeypatch.setattr(align, "streaming_mapping_fits", lambda *_a, **_kw: True)
         monkeypatch.setattr(realign, "resolve_reference", lambda *_: str(ref))
-        monkeypatch.setattr(realign, "indexed_read_count", lambda *_: 100)
-        monkeypatch.setattr(realign, "_input_cram_reference", lambda *_: [])
-        monkeypatch.setattr(realign, "preflight_resources", reported)
         monkeypatch.setattr(
-            realign,
+            realign_preparation, "resolve_reference", lambda *_: str(ref)
+        )
+        monkeypatch.setattr(realign_mapping, "indexed_read_count", lambda *_: 100)
+        monkeypatch.setattr(realign_steps, "indexed_read_count", lambda *_: 100)
+        monkeypatch.setattr(realign, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_long_reads, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_steps, "_input_cram_reference", lambda *_: [])
+        monkeypatch.setattr(realign_resources, "preflight_resources", reported)
+        monkeypatch.setattr(
+            realign_steps,
             "alignments_to_fastq",
             lambda *_a, **_k: pytest.fail("extraction started"),
         )

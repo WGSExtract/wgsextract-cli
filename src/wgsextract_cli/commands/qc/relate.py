@@ -29,7 +29,7 @@ from wgsextract_cli.api.qc import RelateParams
 from wgsextract_cli.commands.qc import _relate_vcf
 from wgsextract_cli.commands.vcf.basic import plain_reference
 from wgsextract_cli.core import sample_workspace, somalier_resources
-from wgsextract_cli.core.alignment_metadata import get_bam_header
+from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -37,11 +37,8 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import (
-    input_stem,
-    resolve_reference_library,
-)
-from wgsextract_cli.core.reference_resolver import (
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.resolver import (
     ReferenceLibrary,
     header_contig_lengths,
     library_roots,
@@ -57,6 +54,7 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -360,7 +358,7 @@ def _publish(items: list[Input], sketch_dir: Path) -> list[tuple[str, Input, Pat
     sketch_dir.mkdir(parents=True, exist_ok=True)
     for _name, item, sketch, target in planned:
         if item.kind != "sketch":
-            os.replace(sketch, target)
+            move_file(sketch, target)
         elif absolute_path(sketch) != absolute_path(target):
             shutil.copyfile(sketch, target)
     return [(name, item, target) for name, item, _sketch, target in planned]
@@ -762,7 +760,9 @@ def run_relate(params: RelateParams) -> None:
     result.add_input(sites, "sites")
     result.add_input(ped, "pedigree")
     items = _read_inputs(paths)
-    with tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_somalier_") as tmp:
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(outdir), prefix=".wgse_somalier_"
+    ) as tmp:
         work = Path(tmp)
         _sketch_inputs(items, params, reflib, work, threads)
         _warn_partial_vcfs(items)
@@ -779,10 +779,10 @@ def run_relate(params: RelateParams) -> None:
             sketches = [sketch for *_rest, sketch in published]
             predictions = _ancestry(labels, labelled, sketches, work)
         reports = [outdir / "relate.html"]
-        os.replace(work / "relate.html", reports[0])
+        move_file(work / "relate.html", reports[0])
         if predictions:
             reports.append(outdir / "relate.ancestry.html")
-            os.replace(work / "ancestry.somalier-ancestry.html", reports[1])
+            move_file(work / "ancestry.somalier-ancestry.html", reports[1])
 
     ped_sexes = {
         row[1]: {"1": "Male", "2": "Female"}.get(row[4]) for row in ped_rows or []

@@ -41,7 +41,7 @@ def _install_fasta(
     sequence itself is never read), and a .dict like an installed genome's:
     the M5 checksums of the alignment file ``like``, or ``m5`` for every
     sequence (a different genome's sequences)."""
-    from wgsextract_cli.core.alignment_metadata import get_bam_header
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.reference_assets import (
         header_sequences,
         reference_dict_path,
@@ -211,6 +211,9 @@ def test_a_bam_needs_no_reference_to_read_but_one_to_call_variants(
 
     assert _needs(capsys, library, "info", "--input", bam) == []
     calls = _needs(capsys, library, "vcf", "snp", "--input", bam)
+    assert [m["id"] for m in calls] == ["hs37d5"]
+    # The GUI's Default calling button runs vcf call (PR 1060 review).
+    calls = _needs(capsys, library, "vcf", "call", "--input", bam)
     assert [m["id"] for m in calls] == ["hs37d5"]
 
 

@@ -19,11 +19,14 @@ import type { JobServer } from "./job-server.js";
 import { configPath, distModulePath, normalizeContext } from "./paths.js";
 import { pickPath, type NativePickerEndpoint } from "./path-picker.js";
 import { optionalString, parseActionReference, parseBundleStatePatch, parseCommandContext, parseLabels, parseManifestLocation, parsePrecheckTarget, requestObject, requiredString } from "./request-bodies.js";
-import { applySecurityHeaders, guardRequest } from "./request-guard.js";
+import { applySecurityHeaders, contentSecurityPolicy, guardRequest } from "./request-guard.js";
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
-import { workspaceLocationInfo } from "./workspace-location.js";
+import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
+import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
+import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -52,7 +55,8 @@ export interface RequestHandlerContext {
         load: (locale?: string, preferredLocales?: string[]) => Promise<LocalizedBundle>;
     };
     loadBundle: (requestedSource: string) => Promise<LooseRecord>;
-    moveWorkspace: (directory: string | null, emit: EmitEvent, signal: AbortSignal) => Promise<void>;
+    /** Moves the users workspace, or one setting's folder, and loads the bundle again. */
+    moveWorkspace: (target: WorkspaceMoveTarget, emit: EmitEvent, signal: AbortSignal) => Promise<void>;
     /** The workspace manifest; actions, data sources, and settings files are only ever resolved from it. */
     manifest: BundleManifest;
     maxBodyBytes: number;
@@ -74,6 +78,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
     const pickedBundlePaths = new Set<string>();
     const resultPaths = new ResultPaths();
+    const viewerFiles = new ViewerFiles();
     // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
     let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
@@ -82,8 +87,34 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/favicon.ico": (response, headOnly) => serveBundleFavicon(response, headOnly, context.bundleRoot),
         "/client/app.js": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "src", "client", "app.js"), "text/javascript; charset=utf-8", response, headOnly),
         "/styles.css": (response, headOnly) => staticFile(path.join(context.webRoot, "styles.css"), "text/css; charset=utf-8", response, headOnly),
+        "/viewer": (response, headOnly) => {
+            // CRAM's bundled decoder uses WASM; network access stays same-origin only.
+            response.setHeader("content-security-policy", contentSecurityPolicy
+                .replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'")
+                .replace("frame-ancestors 'none'", "frame-ancestors 'self'")
+                .replace(/connect-src[^;]+/, "connect-src 'self'"));
+            return serveIndex(path.join(context.distRoot, "web", "viewer.html"), indexToken(context), response, headOnly);
+        },
+        "/viewer.css": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "viewer.css"), "text/css; charset=utf-8", response, headOnly),
     };
     const postRoutes: Record<string, (request: IncomingMessage, response: ServerResponse) => Promise<void>> = {
+        "/api/viewer/open": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const tracks = body.tracks ?? [];
+            if (!Array.isArray(tracks) || tracks.some((track) => typeof track !== "string" || !track.trim() || track.length > 4096)) {
+                throw new HttpError(400, "Viewer tracks must be local file paths.");
+            }
+            if (tracks.length > 16) {
+                json(response, { problem: "trackLimit" });
+                return;
+            }
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
+        },
+        "/api/viewer/close": jsonRoute(context, async (body) => {
+            viewerFiles.revoke(requiredString(body, "id"));
+            return { ok: true };
+        }),
         "/api/datasource": jsonRoute(context, async (body) => {
             const location = parseManifestLocation(body.source);
             const payload = await runDataSource(resolveDataSource(context.manifest, location), commandContext(body, context), context.bundleRoot, context.runProcess);
@@ -175,13 +206,16 @@ export function createRequestHandler(context: RequestHandlerContext) {
         }),
         "/api/workspace-location/move": async (request, response) => {
             const body = await readBody(request, context);
-            const directory = optionalString(body, "directory")?.trim() || null;
+            const folder = optionalString(body, "folder")?.trim() || null;
+            const controlID = optionalString(body, "controlID");
+            const key = optionalString(body, "key");
+            const target: WorkspaceMoveTarget = { folder, ...(controlID && key ? { setting: { controlID, key } } : {}) };
             await streamNDJSON(
                 response,
                 async (emit, signal) => {
                     workspaceMoving = true;
                     try {
-                        await context.moveWorkspace(directory, emit, signal);
+                        await context.moveWorkspace(target, emit, signal);
                     }
                     finally {
                         workspaceMoving = false;
@@ -214,6 +248,12 @@ export function createRequestHandler(context: RequestHandlerContext) {
             guardRequest(request, url.pathname, { apiToken: context.apiToken, hostnames: context.hostnames ?? [] });
             const method = request.method ?? "GET";
             const headOnly = method === "HEAD";
+            if (url.pathname.startsWith("/viewer-data/")) {
+                requireViewerLoopback(request);
+                const library = await viewerLibraries(context);
+                await viewerFiles.serve(request, response, url.pathname, library.roots, library.key);
+                return;
+            }
             if (method === "GET" || method === "HEAD") {
                 await handleGet(url, request, response, context, staticRoutes[url.pathname], headOnly);
                 return;
@@ -270,7 +310,7 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
         const loaded = await context.localizedBundleLoader.load(locale, preferredLocales(request.headers["accept-language"]));
         const body = {
             ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
-            workspaceLocation: await workspaceLocationInfo(context.manifest, context.bundleRoot),
+            workspaceLocation: await usersWorkspaceLocationInfo(context.manifest, usersWorkspaceFor(context.bundleRoot)),
         };
         json(response, context.enableDevReload ? { ...body, devReload: true } : body);
         return;
@@ -353,11 +393,11 @@ function requestedLocale(body: LooseRecord, defaultLocale: string | undefined) {
 }
 
 function webuiVendorAssetPath(pathname: string, webRoot: string) {
-    const prefix = "/vendor/bootstrap-icons/";
+    const prefix = pathname.startsWith("/vendor/igv/") ? "/vendor/igv/" : "/vendor/bootstrap-icons/";
     if (!pathname.startsWith(prefix)) {
         return undefined;
     }
-    const vendorRoot = path.resolve(webRoot, "vendor", "bootstrap-icons");
+    const vendorRoot = path.resolve(webRoot, prefix.slice(1));
     const filePath = path.resolve(vendorRoot, pathname.slice(prefix.length));
     return filePath.startsWith(`${vendorRoot}${path.sep}`) ? filePath : undefined;
 }

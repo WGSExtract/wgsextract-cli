@@ -237,7 +237,7 @@ def test_remote_tree_files_are_pinned_and_cached(kit, tmp_path, monkeypatch):
             "positions.hg38 = {url = "
             f'"{server.url_for("x_hg38.txt")}", sha256 = "{sha["x_hg38.txt"]}"}}\n'
         )
-        rows, run = _call(kit, tmp_path / "first", "--tree", "remote")
+        rows, run = _call(kit, tmp_path / "first", "--tree", "remote", "--download")
         assert rows[1].split("\t")[1] == "X1a"
         # A signed URL's token stays out of the run's provenance.
         assert run["tree"]["source"] == server.url_for("x.json")
@@ -257,7 +257,7 @@ def test_remote_tree_files_are_pinned_and_cached(kit, tmp_path, monkeypatch):
         with pytest.raises(
             WGSExtractError, match="Check the URL and the pinned sha256"
         ):
-            _call(kit, tmp_path / "third", "--tree", "changed")
+            _call(kit, tmp_path / "third", "--tree", "changed", "--download")
 
 
 @pytest.mark.parametrize(

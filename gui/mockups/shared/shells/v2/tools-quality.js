@@ -104,7 +104,7 @@
           return M.realPath(M.path(M.files[id]));
         }),
       };
-      if (c.v.expected === "library") extra.ped = M.realPath("{{bundleWorkspace}}/library/family.ped");
+      if (c.v.expected === "library") extra.ped = M.realPath("{{usersWorkspace}}/library/family.ped");
       return [base("qc/relate", extra)];
     },
     extra: function () {

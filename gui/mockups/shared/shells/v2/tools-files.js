@@ -77,7 +77,7 @@
     accepts: ["reads"], file: "gordon", button: "Merge", noInput: true,
     fields: [
       f.param("inputs", "Input paths", "Replace these example lanes: comma-separated paths, at least two files of the same sample", {
-        def: "{{bundleWorkspace}}/sample/lane1.bam,{{bundleWorkspace}}/sample/lane2.bam", send: true, width: 420,
+        def: "{{usersWorkspace}}/sample/lane1.bam,{{usersWorkspace}}/sample/lane2.bam", send: true, width: 420,
       }),
       f.param("cram", "Write CRAM", "Otherwise write BAM; CRAM needs the matching reference"),
       f.param("attach_rg", "Add read groups", "Attach a read group per input, preserving where the reads came from"),
@@ -149,7 +149,7 @@
     accepts: FILES, file: "reginald", allowUnready: true,
     fields: [
       action("sign_action", [["sign/create", "Create checksums"], ["sign/verify", "Verify manifest"]], "sign/create"),
-      f.param("manifest", "Manifest path", "SHA256SUMS on this computer", { def: "{{bundleWorkspace}}/SHA256SUMS", send: true,
+      f.param("manifest", "Manifest path", "SHA256SUMS on this computer", { def: "{{usersWorkspace}}/SHA256SUMS", send: true,
         when: function (c) { return c.v.sign_action === "sign/verify"; } }),
       f.param("public_key", "Trusted public key", "Optional: confirm who signed the manifest using their public key", {
         when: function (c) { return c.v.sign_action === "sign/verify"; } }),

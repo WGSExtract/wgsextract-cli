@@ -109,7 +109,7 @@ BAM/CRAM. Metrics are cached next to the outputs as
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to describe. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `detailed` | `bool` | `False` | `--detailed` | Perform full index and body sample analysis (detailed mode) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. None saves no table. One of: `tsv`, `parquet` |
 | `cache` | `bool` | `True` | `--cache` | Save the metrics as ``<input>.wgse_info.json`` for later runs; an existing cache is read either way. |
@@ -128,7 +128,7 @@ reports `with_bins` writes are `current` (both newer than the input).
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM to describe. Required unless status. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
 | `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
 | `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
@@ -149,7 +149,7 @@ Sampled coverage estimate; outputs the coverage table.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to describe. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. None saves no table. One of: `tsv`, `parquet` |
 
@@ -192,7 +192,7 @@ reads called haploid with bcftools and applied to the reference's chrM.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -209,7 +209,7 @@ metric counts them).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -225,7 +225,7 @@ Extract the chrM reads (output role `mt_bam`).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -242,7 +242,7 @@ limited to a region or gene.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `fraction` | `float` | required | `--fraction`, `-f` | Fraction of the reads to keep, e.g. 0.1 for 10%. |
@@ -262,7 +262,7 @@ Warns when the sample appears female, whose chrY reads are mismapped.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
@@ -281,7 +281,7 @@ metric counts them).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads). |
@@ -298,7 +298,7 @@ Extract the chrY and chrM reads together (output role `y_mt_bam`).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -316,7 +316,7 @@ for the FASTQs that have reads).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `fastq` | `bool` | `False` | `--fastq` | Also write paired, single-end and singleton unmapped FASTQs. |
@@ -337,7 +337,7 @@ and holds each read once.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file. |
@@ -370,7 +370,7 @@ are mismapped.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to extract from. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
@@ -401,7 +401,7 @@ checks that the temporary and final files fit on disk.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
@@ -444,7 +444,7 @@ Write the copy marked unsorted (output role `unsorted_alignment`).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 
 ### `api.bam.to_cram(BamToCramParams)`
 
@@ -459,7 +459,7 @@ or gene.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
@@ -478,7 +478,7 @@ gene.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
@@ -499,7 +499,7 @@ than one read group, which FASTQ can't keep apart.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `r1` | `str \| None` | `None` | `--r1` | Read 1 FASTQ (default ``<input>_R1.fastq.gz``) to write: a bare name goes in outdir, a path is used as given. |
@@ -548,7 +548,7 @@ merged file's autosomal depth.
 | `attach_rg` | `bool` | `False` | `--attach-rg` | Name every input's read group after its file, even when all have @RG lines (inputs without them always get one). |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name (SM) for every read group; needed when the inputs name different samples, e.g. one person's runs labelled differently (default: the inputs' sample name, else the output file name). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the first input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the first input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.bam.to_ubam(BamToUbamParams)`
@@ -572,7 +572,7 @@ without read groups gets one from `sample`, `library` and
 | `library` | `str` | `'lib1'` | `--library` | Library name (LB) for a new read group. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (PL) for a new read group (default: detected from the read names). One of: `ILLUMINA`, `DNBSEQ`, `ELEMENT`, `ULTIMA`, `PACBIO`, `ONT`, `IONTORRENT`, `LS454`, `SOLID`, `CAPILLARY` |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -599,7 +599,7 @@ rate and duplication rate are metrics.
 | --- | --- | --- | --- | --- |
 | `r1` | `Path \| None` | `None` | `--r1` | Read 1 FASTQ (required). |
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, for pairs. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the R1 file's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the R1 file's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.qc.fastqc(FastqcParams)`
@@ -618,7 +618,7 @@ the read count are metrics (`r2_`-prefixed for `r2`). With `r2`,
 | `input` | `Path` | required | `--input`, `-i` | FASTQ, BAM or SAM file. |
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, reported on too. |
 | `multiqc` | `bool` | `False` | `--multiqc` | With r2, merge the reports in outdir into ``multiqc_report.html``, replacing an earlier one. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.qc.multiqc(MultiqcParams)`
@@ -634,7 +634,7 @@ with MultiQC's AI summaries off.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | A report or result manifest, or a folder searched for them. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input folder, or the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input folder, or the input's folder). |
 | `force` | `bool` | `False` | `--force` | Replace an existing report instead of failing. |
 
 ### `api.qc.multiqc_metrics(MultiqcMetricsParams)`
@@ -649,7 +649,7 @@ metrics in WGS Extract result manifests; MultiQC isn't needed.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | A result manifest, or a folder searched for them. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input folder, or the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input folder, or the input's folder). |
 
 ### `api.qc.vcf(QcVcfParams)`
 
@@ -665,7 +665,7 @@ latter wins.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | VCF file. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | VCF file. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 
 ### `api.qc.contamination(QcContaminationParams)`
 
@@ -685,7 +685,7 @@ ancestry PCs; recorded as the sample's `contamination` fact. Optional
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `sites` | `str` | `'100k'` | `--sites` | 1000 Genomes marker set: 100k (default) or 10k, faster and noisier, for low coverage. One of: `100k`, `10k` |
 | `svd_prefix` | `str \| None` | `None` | `--svd-prefix` | Your own VerifyBamID2 resource prefix (``<prefix>.UD``, ``.mu``, ``.bed``, ``.V``); any build is then accepted. None uses the bundled 1000 Genomes resources for the input's build. |
@@ -716,7 +716,7 @@ is optional (`pixi install -e somalier`) and unavailable on Windows.
 | --- | --- | --- | --- | --- |
 | `inputs` | `tuple[Path, ...]` | required | `FILE` | BAM, CRAM or VCF files, or .somalier sketches from an earlier run. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the first input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the first input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `sites` | `Path \| None` | `None` | `--sites` | Sites VCF to genotype instead of somalier's own for the input's build (default: from 'ref somalier --install'). |
 | `ped` | `Path \| None` | `None` | `--ped` | PED/FAM file of the expected relationships and sexes; pairs or sexes that disagree are flagged as possible sample swaps. |
@@ -736,9 +736,10 @@ and the `ancestry` fact; see docs/ancestry.md.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, VCF, or microarray raw-data file. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `sample` | `str \| None` | `None` | `--sample` | The sample of a multi-sample VCF |
 | `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
@@ -764,7 +765,7 @@ reference when there is one.
 | `legacy_bam` | `bool` | `False` | `--legacy-bam` | Use the older scaled fake BAM generator. Slower and unavailable with --full-size, but includes randomized placement and indel CIGARs. |
 | `seed` | `int` | `42` | `--seed` | Random seed for reproducibility |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the current folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the current folder). |
 
 ## `api.align`
 
@@ -788,11 +789,13 @@ Basecall POD5 signal into an unaligned BAM (output role
 `BasecallParams`: Basecall Nanopore POD5 signal with ONT's Dorado into an unaligned BAM,
 `<input stem>.<model>[.<modifications>].bam`, that keeps the MM/ML
 base-modification tags and feeds `align` (`r1`) directly. Dorado is
-an optional tool the user installs; models download into
-`models_dir`.
+an optional tool the user installs; `download` permits model selection
+and downloads into `models_dir` (including chemistry/model identifiers
+sent to Oxford Nanopore). Without it, use a local model directory.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | A POD5 file, or a folder searched (recursively) for them. |
 | `model` | `str` | `'hac'` | `--model` | Dorado model: fast, hac or sup (optionally pinned, e.g. sup@v5.2.0; picked for the run's chemistry), or a model folder (default: hac) |
 | `modified_bases` | `str \| None` | `None` | `--modified-bases` | Also call base modifications, e.g. 5mCG_5hmCG (CpG methylation) or 5mC_5hmC; comma-separated for several. Writes MM/ML tags. |
@@ -803,7 +806,7 @@ an optional tool the user installs; models download into
 | `models_dir` | `Path \| None` | `None` (config `dorado_models_directory`) | `--models-dir` | Folder Dorado downloads models into and reuses them from (default: config dorado_models_directory, else the wgsextract cache's dorado-models) |
 | `dorado_path` | `str \| None` | `None` (config `dorado_executable`) | `--dorado-path` | Path to the dorado executable (optional if in PATH) |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the POD5 file's folder, or the POD5 folder's parent). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the POD5 file's folder, or the POD5 folder's parent). |
 
 ### `api.align.align(AlignParams)`
 
@@ -826,7 +829,7 @@ workspace.
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
 | `long_read` | `bool` | `False` | `--long-read` | Treat the reads as long reads (PacBio/ONT) and align them with pbmm2 or minimap2. |
@@ -835,7 +838,7 @@ workspace.
 | `input` | `Path \| None` | `None` | `--input`, `-i` | An aligned BAM/CRAM of the same sample whose header picks the reference from the library when ref is unset. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `input_ref` | `Path \| None` | `None` | `--input-ref` | Reference FASTA a CRAM --r1 was encoded with (default: --ref when its sequence names, lengths and MD5s match the CRAM). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder, else the reads'). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder, else the reads'). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -866,7 +869,7 @@ settings and tools are unchanged.
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2/pbmm2 preset. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
@@ -884,7 +887,7 @@ settings and tools are unchanged.
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
 | `input` | `Path \| str` | required | `--input`, `-i` | The aligned BAM or CRAM to realign. ONT and PacBio reads may also be an http(s) URL of one (command line and Python only), streamed without a local copy; its index is downloaded beside the output. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -915,7 +918,7 @@ required; the CLI's `--genome` may fill it in from a sample workspace.
 | `species` | `str` | required | `--species` | Species for analysis. One of: `dog`, `cat` |
 | `format` | `str` | `'BAM'` | `--format` | Output format of the alignment: BAM or CRAM. One of: `BAM`, `CRAM` |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the reads' folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the reads' folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 
@@ -953,7 +956,7 @@ length, `.dict` assembly, header description or file name).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
 | `ploidy` | `str \| None` | `None` | `--ploidy` | Predefined ploidy name or value |
@@ -976,7 +979,7 @@ Call indels; the `indels` output carries the record count in its metrics.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
 | `ploidy` | `str \| None` | `None` | `--ploidy` | Predefined ploidy name or value |
@@ -999,7 +1002,7 @@ Annotate; output role `annotated`, with the record count in its metrics.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `ann_vcf` | `Path \| None` | `None` | `--ann-vcf` | Annotation VCF file (auto-resolved from --ref if possible) |
 | `cols` | `str \| None` | `None` | `--cols` | bcftools annotate -c columns; default: inferred from the annotation file's header. |
@@ -1017,7 +1020,7 @@ Filter; output role `filtered_vcf`, with the record count in its metrics.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `expr` | `str \| None` | `None` | `--expr` | bcftools filter expression (e.g. 'QUAL>30') |
 | `gene` | `str \| None` | `None` | `--gene` | Filter by Gene Name (e.g. BRCA1, KCNQ2) |
@@ -1038,7 +1041,7 @@ Write the table (role `variant_table`) and database (`variant_database`);
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Only export this region (e.g. chr22). |
 | `sample` | `str \| None` | `None` | `--sample` | Sample whose genotypes to use (default: the first). |
 | `all_alleles` | `bool` | `False` | `--all-alleles` | Also export ALT alleles the sample doesn't carry (0/0 calls, no-calls, the other ALT of a 0/1 multi-allelic site). |
@@ -1060,7 +1063,7 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Only build this region (e.g. chr21 or 21:30000000-31000000); default: the whole reference. |
@@ -1093,7 +1096,7 @@ Covering gVCF reference blocks are assessed when a matching --ref is given.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `mother` | `Path \| None` | `None` (config `mother_vcf_path`) | `--mother` | The mother's VCF, or BAM/CRAM, for trio analysis. |
@@ -1124,7 +1127,7 @@ their own confidence table, not the consensus pathogenic subset.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `clinvar_file` | `Path \| None` | `None` (config `clinvar_vcf_path`) | `--clinvar-file` | Path to ClinVar VCF data file. |
@@ -1144,7 +1147,7 @@ Annotate with REVEL; output roles `annotated_vcf` and, with `min_score`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `revel_file` | `Path \| None` | `None` (config `revel_tsv_path`) | `--revel-file` | Path to REVEL TSV or VCF data file. |
@@ -1163,7 +1166,7 @@ Annotate with PhyloP; output roles `annotated_vcf` and, with `min_score`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `phylop_file` | `Path \| None` | `None` (config `phylop_tsv_path`) | `--phylop-file` | Path to a PhyloP bigWig (phylop_<build>.bw), or a TSV/VCF of scores. |
@@ -1183,7 +1186,7 @@ Annotate with CADD; output roles `annotated_vcf` and, with `min_score`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `cadd_file` | `Path \| None` | `None` (config `cadd_tsv_path`) | `--cadd-file` | Path to the CADD whole-genome SNV TSV (cadd_<build>.tsv.gz). |
@@ -1203,7 +1206,7 @@ Annotate with GERP++; output roles `annotated_vcf` and, with `min_score`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `gerp_file` | `Path \| None` | `None` (config `gerp_bigwig_path`) | `--gerp-file` | Path to a GERP++ RS bigWig (gerp_<build>.bw). |
@@ -1222,7 +1225,7 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1'. |
@@ -1252,7 +1255,7 @@ CNV carrier frequencies and cross-type INS/DUP matches are excluded.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `gnomad_sv_file` | `Path \| None` | `None` (config `gnomad_sv_path`) | `--gnomad-sv-file` | gnomAD-SV table (default: the library's, from 'ref gnomad-sv'). |
@@ -1275,7 +1278,7 @@ Annotate with SpliceAI; output role `annotated_vcf`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `spliceai_file` | `Path \| None` | `None` (config `spliceai_vcf_path`) | `--spliceai-file` | Path to SpliceAI VCF data file. |
@@ -1296,12 +1299,13 @@ unless `research_acmg` is set; GRCh38 only.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `research_acmg` | `bool` | `False` | `--research-acmg` | Required: confirm these automated classes are for research only, not a diagnosis. |
 | `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder of fastVEP databases (fastvep sa-build): ClinVar, its protein index, gnomAD, gene constraint, ClinGen, REVEL, SpliceAI, phyloP. |
 | `gff3` | `Path \| None` | `None` (config `acmg_gff3`) | `--gff3` | Ensembl GRCh38 GFF3 (Homo_sapiens.GRCh38.116.gff3.gz). |
+| `site_data` | `str` | `'library'` | `--site-data` | Where gnomAD and SpliceAI come from: library (the --sa-dir databases), per-run (only the input's sites, read from gnomAD's and Ensembl's indexed files and cached in the folder's sites/). Explicit per-run consent sends input-derived variant positions to Google Cloud Storage and Ensembl. Default: library, offline; auto is an offline alias. One of: `auto`, `library`, `per-run` |
 
 ### `api.vcf.alphamissense(VcfAlphamissenseParams)`
 
@@ -1316,7 +1320,7 @@ Annotate with AlphaMissense; output roles `annotated_vcf` and, with
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `am_file` | `Path \| None` | `None` (config `alphamissense_vcf_path`) | `--am-file` | Path to AlphaMissense VCF data file. |
@@ -1335,7 +1339,7 @@ Annotate with PharmGKB; output role `annotated_vcf`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `pharmgkb_file` | `Path \| None` | `None` (config `pharmgkb_vcf_path`) | `--pharmgkb-file` | Path to PharmGKB VCF or data file. |
@@ -1349,13 +1353,15 @@ Run PharmCAT; output roles `pharmcat_report`, `pharmcat_report_json` and
 
 `VcfPharmcatParams`: Star-allele diplotypes and drug-response phenotypes from a GRCh38 VCF
 with PharmCAT: `<stem>.report.html`, `.report.json` and
-`.phenotype.json`.
+`.phenotype.json`. Missing PharmCAT reference FASTA needs `download`;
+no sample data is sent to its public reference publisher.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `pharmcat_dir` | `Path \| None` | `None` (config `pharmcat_directory`) | `--pharmcat-dir` | Extracted PharmCAT pipeline release (default: <reference library>/pharmcat). |
 | `absent_to_ref` | `bool` | `False` | `--absent-to-ref` | Treat positions absent from the VCF as reference. Only for a whole-genome VCF that lists variants only (not a gVCF). |
@@ -1377,10 +1383,14 @@ steps whose tool or data is missing are skipped with a warning.
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the VCF's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
 | `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCF files generated during the chain process. |
+
+### `api.vcf.call_types(value: str) -> list[str]`
+
+`--types`' variant types, each once, in `CALL_TYPES` order.
 
 ### `api.vcf.cnv(VcfCnvParams)`
 
@@ -1394,7 +1404,7 @@ Call CNVs; output role `copy_number_variants`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 | `map` | `str \| None` | `None` | `-M`, `--map` | Deprecated and ignored: Delly 2 no longer uses mappability maps. |
@@ -1419,7 +1429,7 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 | `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
@@ -1428,6 +1438,41 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | `long_read` | `bool` | `False` | `--long-read` | Long-read data from any platform: use Sniffles unless --caller selects pbsv for PacBio reads. |
 | `ccs` | `bool` | `False` | `--ccs` | Use pbsv CCS/HiFi thresholds when --caller pbsv is selected. |
 | `tandem_repeats` | `Path \| None` | `None` | `--tandem-repeats` | Optional tandem-repeat BED for pbsv discover or Sniffles (recommended for long-read SV calling). |
+| `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
+
+### `api.vcf.call(VcfCallParams)`
+
+CLI: `wgsextract vcf call`.
+
+Call the chosen types; each type's output carries its own role, and
+`merge` adds `merged_variants`.
+
+`VcfCallParams`: Call the chosen variant types in one run, each into the file its own
+command writes: `snps.vcf.gz` (`vcf snp`), `indels.vcf.gz`
+(`vcf indel`), the SV caller's VCF (`vcf sv`) and `cnv.vcf.gz`
+(`vcf cnv`). With `reference_evidence` gvcf, SNPs and indels go into
+`bcftools.g.vcf.gz` alone. `merge` joins the parts, by position, into
+`variants.vcf.gz` (`variants.g.vcf.gz` with the gVCF; output role
+`merged_variants`) and removes them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `types` | `str` | `'snp,indel'` | `--types` | Comma-separated variant types to call: snp and indel (bcftools), sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel. |
+| `merge` | `bool` | `False` | `--merge` | Merge the called types into one variants.vcf.gz (+ .tbi), or variants.g.vcf.gz with the gVCF, in place of each type's own VCF. |
+| `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz (+ .tbi), with reference blocks, in place of snps.vcf.gz and indels.vcf.gz; none: the variant VCFs. Default: config reference_evidence, else none. One of: `none`, `gvcf` |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | SNP and indel ploidy name or value, as for vcf snp. |
+| `cnv_ploidy` | `int \| None` | `None` | `--cnv-ploidy` | CNV baseline ploidy, as vcf cnv's --ploidy (default: 2). |
+| `sv_caller` | `str \| None` | `None` | `--sv-caller` | SV caller (default: as vcf sv picks: sniffles for ONT or long reads, pbsv/sniffles for PacBio, else delly). One of: `delly`, `pbsv`, `sniffles` |
+| `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data, as for vcf sv. |
+| `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data, as for vcf sv. |
+| `long_read` | `bool` | `False` | `--long-read` | Long-read data, as for vcf sv. |
+| `ccs` | `bool` | `False` | `--ccs` | pbsv CCS/HiFi thresholds, as for vcf sv. |
+| `tandem_repeats` | `Path \| None` | `None` | `--tandem-repeats` | Tandem-repeat BED for pbsv or Sniffles, as for vcf sv. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.vcf.freebayes(VcfFreebayesParams)`
@@ -1442,7 +1487,7 @@ Call with FreeBayes; output role `variants`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1460,11 +1505,11 @@ Call with GATK; output role `variants`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes gatk.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1487,7 +1532,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region(s) to call (e.g. chrM) or BED files of them, separated by spaces (commas with gpu). |
 | `wes` | `bool` | `False` | `--wes` | Set model type to WES (default: WGS) |
@@ -1496,7 +1541,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `pacbio` | `bool` | `False` | `--pacbio` | Alias for --model-type PACBIO. |
 | `checkpoint` | `Path \| None` | `None` | `--checkpoint` | A custom model: its directory, or a checkpoint prefix. |
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
-| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-parabricks). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1518,11 +1563,11 @@ Call with Clair3; output role `variants`.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM to call. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes clair3.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1545,7 +1590,7 @@ HP/PS tags to `haplotagged.bam` (or `.cram`).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | BAM or CRAM of the sample's reads. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Phase only these regions (e.g. chr20 or chr20:1-1000000, comma-separated) |
 | `vcf_input` | `Path \| None` | `None` (config `default_input_vcf`) | `--vcf-input` | The calls to phase, read with ``input`` (not instead of it). |
@@ -1575,7 +1620,7 @@ multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 | `input` | `Path \| None` | `None` | `--input`, `-i` | Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x). |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | Genotype-only VCF (e.g. chip calls) to impute with Beagle instead. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes, e.g. chr20 or chr1-22 (default: every installed one). |
@@ -1620,7 +1665,7 @@ or `vcf_input_paths` supply them.
 | `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The sample's BAM or CRAM. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the current folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the current folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.analyze.batch_gen(AnalyzeBatchGenParams)`
@@ -1656,8 +1701,8 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 
 `MtHaplogroupParams`: Predict the mtDNA haplogroup with Haplogrep 3 from a BAM/CRAM (chrM
 called first; needs the reference) or a VCF, into
-`haplogrep_results.txt`; the tree is downloaded once into the reference
-library. With `contamination`, haplocheck also looks for a mixture of
+`haplogrep_results.txt`; a missing tree needs `download` permission.
+With `contamination`, haplocheck also looks for a mixture of
 two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
@@ -1669,9 +1714,10 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or VCF with chrM/MT. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `tree` | `str \| None` | `None` (config `haplogrep_tree`) | `--tree` | Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs, PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-rcrs is FamilyTreeDNA Mitotree (non-commercial use only). One of: `phylotree-fu-rcrs`, `phylotree-rcrs`, `mitotree-rcrs` |
 | `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
@@ -1693,9 +1739,10 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or single-sample VCF/BCF. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `pos_file` | `Path \| None` | `None` | `--pos-file` | Yleaf position file (optional) |
 | `build` | `str \| None` | `None` | `--build` | Override the detected reference build for this run. One of: `hg19`, `hg38`, `t2t` |
 | `tree` | `str \| None` | `None` (config `y_tree`) | `--tree` | Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull 10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default: config y_tree, else yfull). |
@@ -1722,7 +1769,7 @@ FamilyTreeDNA-order CSV).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `panel` | `str` | `'Y-111'` | `--panel` | Marker panel: FamilyTreeDNA Y-12 to Y-111, PowerPlex Y23, Yfiler Plus, or all (default: Y-111). One of: `Y-12`, `Y-25`, `Y-37`, `Y-67`, `Y-111`, `PPY23`, `YfilerPlus`, `all` |
 | `build` | `str \| None` | `None` | `--build` | Override the detected reference build for this run. One of: `hg19`, `hg38`, `t2t` |
 | `min_reads` | `int` | `2` | `--min-reads` | Spanning reads needed to support a repeat count (default: 2). |
@@ -1758,7 +1805,7 @@ methylation_combine_strands, else CpG, 5mC only and strands combined.
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, indexed BAM or CRAM with MM/ML tags. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region(s), 1-based and inclusive: chr20:10000000-11000000 or chr1,chr2 (default: the whole genome) |
 | `context` | `str \| None` | `None` | `--context` | cpg: CpG sites only; all: every cytosine (CHG/CHH too). Overrides methylation_context in config.toml (default: cpg). One of: `cpg`, `all` |
@@ -1781,13 +1828,15 @@ Generate the kits; each output carries its marker tallies in `metrics`.
 formats from a BAM, CRAM or VCF.
 
 Fields left at `None` fall back to config.toml (`microarray_*`
-settings) and then to the documented default.
+settings) and then to the documented default. Missing public liftOver
+chains require `download`; lifting sample coordinates stays local.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | BAM, CRAM or VCF to genotype. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `formats` | `str` | `'all'` | `--formats` | Comma-separated formats to generate, e.g. "23andme_v5,ancestry_v2" (default: "all", the combined kit only); see `wgsextract microarray --help` for the list. |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the genotypes as <input>_genotypes.tsv or .parquet (needs pyarrow): rsID, chrom, pos (in the input's build) and genotype. None saves no table. One of: `tsv`, `parquet` |
@@ -1946,8 +1995,9 @@ dictionary and the aligner's index, written beside it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | The reference FASTA (required; default: config reference_fasta). |
-| `aligner` | `str` | `'bwa'` | `--aligner` | Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; hs38DH's is downloaded, others need ~90 GB of memory to build. One of: `bwa`, `bwa-mem2` |
+| `aligner` | `str` | `'bwa'` | `--aligner` | Aligner index to make. bwa-mem2's maps faster but takes 17 GB of memory for a human genome; --download permits fetching hs38DH's, others need ~90 GB of memory to build. One of: `bwa`, `bwa-mem2` |
 
 ### `api.ref.dense_sa(RefDenseSaParams)`
 
@@ -2075,7 +2125,7 @@ ploidy and mappability files, and the test genome.
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | A BAM/CRAM or VCF whose build picks the annotation files to report. |
-| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `mygenomes_library` | `Path \| None` | `None` | `--mygenomes-library` | My Genomes library folder for the test genome (default: config mygenomes_library, else mygenomes/ in the users workspace). |
 | `annotation_vcf` | `Path \| None` | `None` | `--annotation-vcf` | Custom annotation VCF path to include in readiness checks. |
 
 ### `api.ref.test_genome(RefTestGenomeParams)`
@@ -2090,15 +2140,32 @@ already complete), `delete` adds `deleted` (the paths deleted) and
 `bytes_freed`.
 
 `RefTestGenomeParams`: The test genome: the small hg19 benchmark dataset (1000 Genomes
-HG00096) in the dataset library. Reports whether it is installed;
+HG00096) in the My Genomes library. Reports whether it is installed;
 `install` downloads it (SHA-256 pinned) and `delete` deletes it.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` | `--ref` | Reference library folder, or a FASTA in it (default: config reference_library, else reference_fasta's library, else the default library). |
-| `dataset_library` | `Path \| None` | `None` | `--dataset-library` | Dataset library folder for the test genome (default: config dataset_library, else ``datasets`` beside the reference library). |
+| `mygenomes_library` | `Path \| None` | `None` | `--mygenomes-library` | My Genomes library folder for the test genome (default: config mygenomes_library, else mygenomes/ in the users workspace). |
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
+
+### `api.ref.cytobands(RefCytobandsParams)`
+
+CLI: `wgsextract ref cytobands`.
+
+Validate/install UCSC cytobands (output role `reference_resource`).
+Missing or invalid tables require explicit `download=True`.
+
+`RefCytobandsParams`: Validate installed UCSC cytobands; fetch a missing table only with
+`--download`. Installs primary-chromosome hg19/hg38 ideograms for the
+offline viewer; no sample data is sent.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `build` | `str` | `'hg38'` | `--build` | Cytoband assembly (default: hg38). One of: `hg38`, `hg19` |
+| `download` | `bool` | `False` | `--download` | Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; only the public assembly URL is requested, never sample data. |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder (default: config reference_library); an explicit FASTA resolves its library. |
 
 ### `api.ref.gene_map(RefGeneMapParams)`
 
@@ -2247,9 +2314,10 @@ fastVEP's databases. Shows each source's terms; reruns resume.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
-| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: ref/acmg/sa in the library). |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: downloads/acmg/sa in the library). |
 | `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
 | `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
+| `site_data` | `str \| None` | `None` | `--site-data` | per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB downloaded for a genome); vcf acmg reads each input's own sites of them. library builds them. Default: as the folder was built, else library. One of: `library`, `per-run` |
 | `dry_run` | `bool` | `False` | `--dry-run` | Show the sources, their terms, sizes and the disk needed; download nothing. |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
@@ -2313,7 +2381,7 @@ accept it. A CRAM is decoded with `ref`, else the reference it names.
 | `input` | `Path` | required | `--input`, `-i` | The FTDNA BAM or CRAM to repair. |
 | `output` | `Path \| None` | `None` | `--output` | Repaired BAM to write (default: <outdir>/<input stem>_repaired.bam); not the input itself. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 
 ### `api.repair.ftdna_vcf(RepairFtdnaVcfParams)`
 
@@ -2329,7 +2397,7 @@ values hold only the characters VCF allows (`Low Qual;q<10` becomes
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | The FTDNA VCF, .vcf.gz or BCF to repair. |
 | `output` | `Path \| None` | `None` | `--output` | Repaired VCF to write (default: <outdir>/<input stem>_repaired.vcf); not the input itself. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 
 ## `api.sign`
 
@@ -2359,7 +2427,7 @@ Write (and sign) a checksum manifest (see `SignCreateParams`).
 | `paths` | `tuple[Path, ...]` | required | `PATH` | Files, or folders whose files (recursively) to list. |
 | `output` | `Path \| None` | `None` | `--output` | Manifest path. Defaults to <outdir>/SHA256SUMS, or SHA256SUMS in the inputs' common directory. |
 | `key` | `Path \| None` | `None` | `--key` | OpenSSH private key (or public key held by ssh-agent) to sign with (default: config signing_key; with neither, the manifest is not signed). Never taken from a server request. |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the inputs' common folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else the inputs' common folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.sign.verify(SignVerifyParams)`
@@ -2402,6 +2470,7 @@ Custom scoring files take precedence over Catalog selection.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Single-sample VCF/gVCF, or choose --sample. |
 | `build` | `Literal` | required | `--build` | Input/scoring coordinate build (must match). One of: `GRCh37`, `GRCh38` |
 | `pgs_id` | `str \| None` | `None` | `--pgs-id` | Catalog PGS ID; uncurated IDs carry a warning. |
@@ -2413,7 +2482,7 @@ Custom scoring files take precedence over Catalog selection.
 | `confident_bed` | `Path \| None` | `None` | `--confident-bed` | Same-sample/build confident BED: absent SNPs within it are reference calls (needs --ref). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Indexed reference FASTA, for confident BED/gVCF reference calls. |
 | `min_match` | `float \| None` | `None` (config `pgs_min_match`) | `--min-match` | Minimum matched fraction for percentile eligibility (default 0.75). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 
 ## `api.genotyping`
 
@@ -2463,7 +2532,7 @@ outside call. Metrics: `cyp2d6_genotype`, `cyp2d6_filter`,
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.genotyping.smn(TypingSmnParams)`
@@ -2488,7 +2557,7 @@ median depth no calls are reported (files kept as
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
 ### `api.genotyping.hla(TypingHlaParams)`
@@ -2504,11 +2573,12 @@ decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one, built from IPD-IMGT/HLA on first use. |
+| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's downloads/t1k_hla one; download permits building it if missing. |
 
 ### `api.genotyping.repeats(TypingStrParams)`
 
@@ -2531,7 +2601,7 @@ all-weak or incomplete call,
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM aligned to GRCh37/hg19 or GRCh38. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
 | `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
@@ -2545,7 +2615,8 @@ The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
 gene list) and the microarray export. It runs no analysis; its only network
-use is downloading a built-in gene list once into the reference library:
+use, only with `download` permission, is fetching a missing built-in gene
+list into the reference library:
 
 ```python
 res = api.report.build(api.ReportParams(workspace=Path("HG002")))
@@ -2570,12 +2641,13 @@ plus a findings table, from the result manifests in its folder.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | BAM, CRAM or VCF of the sample: only its runs (and runs on files made from it) are reported. Its folder holds the results unless workspace is given. |
 | `workspace` | `Path \| None` | `None` | `--workspace` | Sample folder whose results are reported (default: the --genome folder, else the --input's folder). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the sample folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the sample folder). |
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
-| `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; downloaded once into the reference library), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+| `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
 
 ## `api.sample`
 
@@ -2761,7 +2833,7 @@ tags and file count.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | My Genomes library folder holding the test-1000genomes collection (default: config mygenomes_library, else mygenomes/ in the users workspace). |
 | `tag` | `tuple[str, ...] \| None` | `None` | `--tag` | Only examples carrying every one of these tags. |
 
 ### `api.examples.download(ExampleGenomeDownloadParams)`
@@ -2783,7 +2855,7 @@ starter set (a chrMT VCF and a chr20 BAM) is downloaded.
 | `all` | `bool` | `False` | `--all` | Download every curated example, including large full-genome data. |
 | `method` | `str` | `'auto'` | `--method` | Transfer method. Auto is an alias for HTTPS and does not probe Aspera; use --method aspera explicitly for Aspera. One of: `auto`, `https`, `aspera` |
 | `aspera_key` | `Path \| None` | `None` | `--aspera-key` | Private key for Aspera downloads (default: the Aspera Connect key, if installed). |
-| `target_root` | `Path \| None` | `None` | `--target-root` | Dataset library folder holding the test-1000genomes collection (default: config dataset_library, else the datasets folder of the checkout or user data folder). |
+| `target_root` | `Path \| None` | `None` | `--target-root` | My Genomes library folder holding the test-1000genomes collection (default: config mygenomes_library, else mygenomes/ in the users workspace). |
 | `force` | `bool` | `False` | `--force` | Discard existing and partially downloaded files and download again. Without it, completed files are kept and interrupted downloads resume. |
 | `dry_run` | `bool` | `False` | `--dry-run` | Plan the downloads (the result's details) without creating files. |
 
@@ -2836,7 +2908,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | --- | --- | --- | --- | --- |
 | `input` | `Path` | required | `--input`, `-i` | VCF, BCF, BAM or CRAM to annotate, or a folder: every such file in it except earlier VEP outputs. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Folder for the outputs (default: config output_directory, else the input's folder). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |

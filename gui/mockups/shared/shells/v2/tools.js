@@ -77,6 +77,7 @@
 
   function define(def) {
     def.op = def.ops.join(" · ");
+    WGSM.v2output.fields(def);
     WGSM.v2requests.resolve(def);
     /* Dry run wherever the operation takes dry_run, unless the page says not */
     if (def.dryRun === undefined) {
@@ -328,6 +329,7 @@
         text: "It has no index, and its reference isn’t installed.", action: { label: "Fix it · 9 min", set: ctx.file.needs, toast: "Downloading hs38d1 and indexing the BAM. See Jobs." } });
     }
     var all = (def.fields || []).concat(def.more || []);
+    WGSM.v2output.describe(ctx, out);
     all.forEach(function (field) {
       var wrap = WGSM.qs('[data-v2-field="' + field.key + '"]', root);
       if (wrap) wrap.hidden = field.when ? !field.when(ctx) : false;

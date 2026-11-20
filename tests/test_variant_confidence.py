@@ -63,6 +63,49 @@ def _text(
     )
 
 
+def test_1103_native_encoded_haploid_variants_use_published_policy():
+    """#1103: a native 1/1 at 7x is moderate off PAR, low inside PAR."""
+    from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance
+
+    provenance = Provenance(
+        "deepvariant",
+        "wgse-deepvariant 0.4.0",
+        "gq",
+        ploidy="chrX:1-40=1,chrX:61-100=1",
+    )
+    text = _text(
+        [
+            "20 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "50 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "60 . AC A 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "80 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+        ],
+        header=provenance.header(key=POLICY_HEADER_KEY) + "\n",
+        contig="chrX",
+    )
+    labelled = [
+        row
+        for row in label_records(
+            text.splitlines(),
+            Thresholds(
+                min_depth=10,
+                high_depth=20,
+                min_gq=20,
+                high_gq=30,
+            ),
+        )
+        if isinstance(row, str) and not row.startswith("#")
+    ]
+    assert [row.split("\t")[7].split(";")[0] for row in labelled] == [
+        "WGSE_CONF=moderate",
+        "WGSE_CONF=low",
+        "WGSE_CONF=low",
+        "WGSE_CONF=moderate",
+    ]
+    assert all("low_depth" not in row for row in (labelled[0], labelled[3]))
+    assert all("low_depth" in row for row in (labelled[1], labelled[2]))
+
+
 def _vcf(path: Path, rows: list[str], **kwargs: str) -> str:
     plain = path.with_suffix("")
     plain.write_text(_text(rows, **kwargs))

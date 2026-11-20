@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam
-from wgsextract_cli.core import read_counts
+from wgsextract_cli.core.alignment import read_counts as read_counts
 
 
 def _fastq(reads=100):

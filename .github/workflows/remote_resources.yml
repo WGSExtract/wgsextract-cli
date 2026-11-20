@@ -1,11 +1,11 @@
 name: Remote resources
 
 # Third-party data the CLI downloads can move or change format without notice.
-# These tests read a few kilobytes of each file (tests/test_remote_*.py), and
+# Nightly reads a few kilobytes of each file (tests/test_remote_*.py), and
 # check a microarray kit made from public 1000 Genomes data against its real chip.
 on:
   schedule:
-    - cron: "41 6 * * 1"
+    - cron: "41 6 * * *"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
@@ -13,6 +13,8 @@ on:
       - .github/workflows/remote_resources.yml
       - pixi.toml
       - src/wgsextract_cli/assets/reference/seed_genomes.csv
+      - src/wgsextract_cli/assets/resource_mirrors.json
+      - src/wgsextract_cli/assets/report/gene_lists.json
       - src/wgsextract_cli/assets/microarray/chm13/**
       - src/wgsextract_cli/commands/benchmark/models.py
       - src/wgsextract_cli/commands/benchmark/chip.py
@@ -22,6 +24,8 @@ on:
       - src/wgsextract_cli/core/bigwig_resources.py
       - src/wgsextract_cli/core/constants.py
       - src/wgsextract_cli/core/gene_map.py
+      - src/wgsextract_cli/core/gene_lists.py
+      - src/wgsextract_cli/core/mini_genome.py
       - src/wgsextract_cli/core/gnomad_af.py
       - src/wgsextract_cli/core/microarray_*.py
       - src/wgsextract_cli/core/microarray/**
@@ -30,6 +34,7 @@ on:
       - tests/test_remote_*.py
       - tests/test_microarray_chip_benchmark.py
       - scripts/benchmark_microarray_chip.py
+      - scripts/check_remote_resources.py
       - "!**/*.md"
   workflow_dispatch:
 
@@ -50,20 +55,47 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
         with:
           environments: >-
             default
             dev
-      - name: Check remote resources
+      - name: Check added or changed PR URLs only
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p out
-          pixi run test-remote -v --basetemp out/remote -o tmp_path_retention_policy=all
+          pixi run -e dev python scripts/check_remote_resources.py --base "$BASE_SHA"
+      - name: Audit every upstream and mirror, including integrity metadata
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pixi run -e dev python scripts/check_remote_resources.py
+      - name: Check changed live SpliceAI and gene-list behavior
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: pixi run -e dev python scripts/check_remote_resources.py --live-tests-base "$BASE_SHA"
+      - name: Check nightly formats, scores and existing gene-list pins
+        if: github.event_name != 'pull_request'
+        run: |
+          pixi run pytest -m remote -v tests/test_remote_resources.py \
+            tests/test_remote_downloads.py::test_built_in_gene_list_downloads_and_matches_its_pins \
+            --basetemp out/remote -o tmp_path_retention_policy=all
+      - name: Check real-chip concordance against repository-hosted fixtures
+        run: |
+          pixi run pytest -m remote -v tests/test_remote_benchmark.py \
+            --basetemp out/remote-chip -o tmp_path_retention_policy=all
       - name: Upload aggregate chip concordance
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: chip-concordance
-          path: out/remote/**/chip-concordance.json
+          path: |
+            out/remote-chip/**/chip-concordance.json
+            out/remote-urls.json
           if-no-files-found: ignore

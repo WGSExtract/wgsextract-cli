@@ -47,10 +47,12 @@ def ref_param(*, local_only: bool = False) -> Any:
 
 
 def outdir_param(default_text: str = "the input's folder") -> Any:
+    fallback = f"wgse/ beside primary input; otherwise {default_text}"
+    if default_text == "the inputs' common folder":
+        fallback = default_text
     return param(
         None,
-        doc=f"Folder for the outputs (default: config output_directory, "
-        f"else {default_text}).",
+        doc=f"Outputs (default: config output_directory, else {fallback}).",
         flags=("--outdir", "-o"),
         path="directory",
         shared=True,

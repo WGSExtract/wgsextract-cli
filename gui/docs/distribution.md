@@ -39,7 +39,7 @@ app_name = "WGSExtract"
 
 The branded name is used for the app bundle name, installer/DMG name, and native window title. If you omit `app_name`, packaging falls back to the bundle directory name. `TAURI_PRODUCT_SUFFIX` appends a suffix (for example `Ubuntu WebUI`) for side-by-side test builds.
 
-Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.7"`, so installers are named with `0.8.7` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
+Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.8"`, so installers are named with `0.8.8` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
 
 Embedded bundle scripts can be split by platform under `scripts/windows`, `scripts/macos`, `scripts/linux`, `scripts/linux/<distro>`, and `scripts/posix`. Runtime resolution chooses the most specific folder for the host and falls back to `posix` for POSIX platforms. Every platform folder present in a bundle must include the full referenced script set, otherwise bundle validation fails.
 
@@ -80,6 +80,11 @@ hooks, runs the native uninstaller, and checks cleanup. Run the same check
 locally on Windows with
 `pwsh -File scripts\validate-windows-tauri-lifecycle.ps1 -AutomatedAdmin` after
 `powershell -ExecutionPolicy Bypass -File .\make.ps1 package`.
+
+Window close must stop both the app and all matched app processes within
+`-ShutdownTimeoutSeconds` (30 seconds by default). The harness waits for
+asynchronous descendant cleanup without killing or ignoring survivors; it logs
+their PIDs, parent PIDs, names, and command lines when waiting or failing.
 
 ## CI / release automation
 
@@ -133,6 +138,13 @@ installers, the tests that pin both, and a CHANGELOG entry. It changes nothing i
 any file can't be updated. The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in
 the same release; the release workflow refuses a tag the bundle doesn't pin.
+
+The script also generates `examples/WGSExtract/scripts/pixi-minimum-version.txt`
+from the root `pixi.toml`'s `requires-pixi`. Rerunning it with the current tag
+refreshes this requirement without bumping the release. Setup checks existing
+Pixi versions on POSIX and Windows and stops with update instructions if one is
+too old; it never upgrades the user's Pixi automatically. A missing Pixi is
+installed as before.
 
 ## Self-updates
 

@@ -2,8 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core import runtime
-from wgsextract_cli.core.config import dataset_library
+from wgsextract_cli.core.config import mygenomes_library
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -293,14 +292,8 @@ def _filter_examples_by_tags(
 
 
 def _target_root(override: PathInput | None) -> Path:
-    """Return a canonical dataset-library root, resolving symlinks for consistency."""
-    library = dataset_library()
-    if override:
-        root = Path(override).expanduser()
-    elif library:
-        root = Path(library).expanduser()
-    else:
-        root = runtime.repo_root() / "datasets"
+    """Return a canonical My Genomes library root, resolving symlinks for consistency."""
+    root = Path(override or mygenomes_library()).expanduser()
     return root.resolve()
 
 

@@ -13,9 +13,9 @@
     learn: "Starting from raw POD5 signal lets you basecall a new Nanopore run or re-basecall an older one with a newer or more accurate model; FASTQ and aligned BAM files cannot stand in for POD5 signal.\n\nRequires a local Dorado installation, where fast, high accuracy (hac) and super accuracy (sup) trade speed for accuracy. Output is an unaligned BAM that keeps MM/ML modification tags and feeds straight into Align. A local model folder stays offline, while named models and modification models may need a public download via the opt-in below.",
     accepts: ["reads"], file: "reginald", button: "Basecall",
     fields: [
-      f.param("input", "POD5 file or folder", "Example path: replace with your signal on this computer", { def: "{{bundleWorkspace}}/nanopore/run.pod5", send: true, width: 420 }),
+      f.param("input", "POD5 file or folder", "Example path: replace with your signal on this computer", { def: "{{usersWorkspace}}/nanopore/run.pod5", send: true, width: 420 }),
       f.param("model", "Dorado model", "Local folder (replace this example), or fast, hac, sup, or a pinned model", {
-        def: "{{bundleWorkspace}}/models/dorado/model", send: true, width: 420,
+        def: "{{usersWorkspace}}/models/dorado/model", send: true, width: 420,
       }),
       f.param("modified_bases", "Base modifications", "Optional codes, for example 5mCG_5hmCG"),
       f.param("device", "Compute device", "auto, cpu, metal, cuda:all or cuda:0"),
@@ -76,7 +76,7 @@
     accepts: ["fastq"], file: "fastq", button: "Align & call",
     fields: [
       f.param("species", "Species", "", { labels: { dog: "Dog", cat: "Cat" } }),
-      f.param("r1", "Read 1 FASTQ", "Choose pet reads on this computer, not the human demo pair", { def: "{{bundleWorkspace}}/pet/reads_R1.fastq.gz", send: true, width: 420 }),
+      f.param("r1", "Read 1 FASTQ", "Choose pet reads on this computer, not the human demo pair", { def: "{{usersWorkspace}}/pet/reads_R1.fastq.gz", send: true, width: 420 }),
       f.param("r2", "Read 2 FASTQ", "Optional, for paired reads", { width: 420 }),
       f.param("ref", "Species reference", "Required here: a local species FASTA or reference library", { width: 420 }),
       f.param("format", "Alignment format", "", { labels: { BAM: "BAM", CRAM: "CRAM" } }),

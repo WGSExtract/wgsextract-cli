@@ -50,6 +50,7 @@ from wgsextract_cli.core.sample_types import (
 )
 from wgsextract_cli.core.sample_types import (
     FactName,
+    ObservedPlatform,
     ObservedSex,
     OverrideChanges,
     Platform,
@@ -142,8 +143,9 @@ FACTS: dict[str, FactSpec] = {
         FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 4),
         FactSpec(
             "platform",
-            "Sequencing platform, from the read groups or read names.",
+            "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
             PLATFORMS,
+            4,
         ),
         FactSpec("build", "Reference build the file is aligned to."),
         FactSpec(
@@ -196,6 +198,8 @@ class Fact:
     version: int | None = None
     by: str | None = None
     at: str | None = None
+    statistics: dict[str, float] | None = None
+    evidence_fingerprint: str | None = None
 
     def describe(self) -> str:
         if self.source == "override":
@@ -230,6 +234,10 @@ class Fact:
             result["by"] = self.by
         if self.at is not None:
             result["at"] = self.at
+        if self.statistics is not None:
+            result["statistics"] = self.statistics
+        if self.evidence_fingerprint is not None:
+            result["evidence_fingerprint"] = self.evidence_fingerprint
         return result
 
 
@@ -344,8 +352,8 @@ class SampleWorkspace:
     @property
     def is_genome_folder(self) -> bool:
         """Whether the folder holds one person's files: the --genome folder, a
-        dataset-library entry, or a folder with genome-config.toml."""
-        from wgsextract_cli.core.config import dataset_library
+        My Genomes library entry, or a folder with genome-config.toml."""
+        from wgsextract_cli.core.config import mygenomes_library
         from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
 
         active = current_workspace()
@@ -353,10 +361,7 @@ class SampleWorkspace:
             return True
         if (self.folder / GENOME_CONFIG_NAME).is_file():
             return True
-        library = dataset_library()
-        if not library:
-            return False
-        root = absolute_path(str(library))
+        root = absolute_path(mygenomes_library())
         return self.folder != root and self.folder.is_relative_to(root)
 
     def _valid(self, name: str, value: object) -> str | None:
@@ -451,6 +456,15 @@ class SampleWorkspace:
         current = file_fingerprint(file)
         if current is None or entry.get("fingerprint") != current:
             return None
+        if name == "platform" and fact.get("statistics") is not None:
+            from wgsextract_cli.core.fastq_platform import fastq_evidence_fingerprint
+
+            try:
+                evidence = fastq_evidence_fingerprint(str(absolute_path(file)))
+            except OSError:
+                return None
+            if fact.get("evidence_fingerprint") != evidence:
+                return None
         return _detected_fact(name, key, _text(entry["fingerprint"]), fact)
 
     def detected_facts(self, name: str) -> list[Fact]:
@@ -537,7 +551,7 @@ class SampleWorkspace:
         self,
         name: Literal["platform"],
         file: PathInput,
-        value: Platform | None,
+        value: ObservedPlatform | None,
         *,
         method: str,
         confidence: Confidence,
@@ -607,6 +621,7 @@ class SampleWorkspace:
         *,
         method: str,
         confidence: Confidence,
+        statistics: dict[str, float] | None = None,
     ) -> bool:
         fingerprint = file_fingerprint(file)
         if fingerprint is None or value is None:
@@ -620,6 +635,19 @@ class SampleWorkspace:
             "by": _by(),
             "at": _now(),
         }
+        if statistics is not None:
+            new["statistics"] = statistics
+            if name == "platform":
+                from wgsextract_cli.core.fastq_platform import (
+                    fastq_evidence_fingerprint,
+                )
+
+                try:
+                    new["evidence_fingerprint"] = fastq_evidence_fingerprint(
+                        str(absolute_path(file))
+                    )
+                except OSError:
+                    return False
 
         def mutate(doc: WorkspaceState) -> bool:
             return doc.record(name, key, fingerprint, new)
@@ -804,7 +832,19 @@ def _detected_fact(
         version=version if isinstance(version, int) else None,
         by=_text(fact.get("by")),
         at=_text(fact.get("at")),
+        statistics=_statistics(fact.get("statistics")),
+        evidence_fingerprint=_text(fact.get("evidence_fingerprint")),
     )
+
+
+def _statistics(value: object) -> dict[str, float] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        key: float(item)
+        for key, item in value.items()
+        if isinstance(key, str) and isinstance(item, (int, float))
+    }
 
 
 def _text(value: object) -> str | None:
@@ -954,10 +994,11 @@ def record(
 def record(
     name: Literal["platform"],
     file: PathInput | None,
-    value: Platform | None,
+    value: ObservedPlatform | None,
     *,
     method: str,
     confidence: Confidence,
+    statistics: dict[str, float] | None = None,
 ) -> bool: ...
 
 
@@ -1012,6 +1053,7 @@ def record(
     *,
     method: str,
     confidence: Confidence,
+    statistics: dict[str, float] | None = None,
 ) -> bool:
     """Record a detected fact in ``file``'s workspace, if it has one, and warn
     if it contradicts the user's override."""
@@ -1019,7 +1061,7 @@ def record(
     if workspace is None or file is None or not _recording.get():
         return False
     recorded = workspace._record(
-        name, file, value, method=method, confidence=confidence
+        name, file, value, method=method, confidence=confidence, statistics=statistics
     )
     check_override(name, file, value, method)
     return recorded

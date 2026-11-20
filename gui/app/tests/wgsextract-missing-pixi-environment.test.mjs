@@ -100,16 +100,17 @@ test("data sources run in the environment setup installed for this workspace", {
   const result = await runInEnvironment(workspace, ["wgsextract", "ref", "list"], { dataSource: true });
 
   assert.equal(result.exitCode, 0, result.stderr);
-  assert.deepEqual(await pixiCalls(workspace), ["run --no-install wgsextract ref list"]);
+  assert.deepEqual(await pixiCalls(workspace), ["run --no-install --frozen wgsextract ref list"]);
 });
 
-test("actions still let Pixi install a missing environment", { skip }, async (t) => {
+test("#1052 actions refuse missing environments instead of running host programs", { skip }, async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "wgsextract-envs-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = await setUpWorkspace(root);
 
   const result = await runInEnvironment(workspace, ["wgsextract", "info"], { dataSource: false });
 
-  assert.equal(result.exitCode, 0, result.stderr);
-  assert.deepEqual(await pixiCalls(workspace), ["run wgsextract info"]);
+  assert.equal(result.exitCode, 127);
+  assert.match(result.stderr, /Run Setup again/);
+  assert.deepEqual(await pixiCalls(workspace), []);
 });
