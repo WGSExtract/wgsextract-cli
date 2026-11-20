@@ -1817,6 +1817,11 @@ tbody tr + tr {
   width: min(460px, calc(100vw - 32px));
 }
 
+.result-card-backdrop {
+  /* Above the genome viewer (z-index 100), which a run's card can interrupt. */
+  z-index: 110;
+}
+
 .result-card-modal {
   width: min(920px, calc(100vw - 32px));
   height: min(86vh, 900px);

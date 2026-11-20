@@ -300,12 +300,14 @@ def execute(
     """
     read_only = _runs_concurrently(params)
     with contextlib.nullcontext() if read_only else _LOCK:
-        result, error, created = _run(
+        result, error, created, card = _run(
             params, impl, progress, cancel, read_only, card=write_manifest
         )
         if write_manifest:
+            from wgsextract_cli.core.result_card import publish
+
             try:
-                result.write_manifest()
+                publish(result, card)
             except OSError as e:
                 logging.warning(f"Could not write the result manifest: {e}")
         from wgsextract_cli.core.output_location import remove_if_empty
@@ -316,23 +318,21 @@ def execute(
     return result
 
 
-def _write_card(params: Params, result: CommandResult, requested: bool | None) -> None:
-    """Write the run's result card when the caller (``wgsextract serve
+def _card_path(
+    params: Params, result: CommandResult, requested: bool | None
+) -> Path | None:
+    """Where the run's result card goes when the caller (``wgsextract serve
     --card``) or config.toml asks for one, as the CLI does. ``params`` are the
     ones the run used, with config defaults filled in."""
     from wgsextract_cli.cli.dispatch import card_wanted
-    from wgsextract_cli.core.result_card import NO_CARD, card_path, write_card
+    from wgsextract_cli.core.result_card import NO_CARD, card_path
 
     if not card_wanted(params.COMMAND, requested):
-        return
+        return None
     path = card_path(result, getattr(params, "outdir", None))
     if path is None:
         logging.info(NO_CARD)
-        return
-    try:
-        write_card(result, path)
-    except OSError as e:
-        logging.warning(f"Could not write the result card: {e}")
+    return path
 
 
 def _run(
@@ -343,9 +343,10 @@ def _run(
     read_only: bool,
     *,
     card: bool = False,
-) -> tuple[CommandResult, BaseException | None, Path | None]:
+) -> tuple[CommandResult, BaseException | None, Path | None, Path | None]:
     """Run ``impl`` in a context of its own; the result, what failed it, and
-    the default output folder it created (to remove if the run left it empty)."""
+    the default output folder it created (to remove if the run left it empty)
+    and, with ``card``, where its result card goes."""
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import (
         ensure_settings_loaded,
@@ -416,12 +417,13 @@ def _run(
                 unregister()
             proc_registry.accept_new(scope)
     result.finalize(probe_tools=True)
+    card_path = None
     if card:
         # The caller's request; the config the run read (a read-only call's snapshot).
         requested = execution_context.current().result_card
         with execution_context.bound(config=config):
-            _write_card(params, result, requested)
-    return result, error, created if default_outdir else None
+            card_path = _card_path(params, result, requested)
+    return result, error, created if default_outdir else None, card_path
 
 
 def _prepare(params: Params, result: CommandResult) -> Path | None:

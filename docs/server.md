@@ -95,7 +95,8 @@ you start yourself:
   files (`outdir`, `table_format`, and `info`'s `detailed`, which saves the
   coverage table) are left out of the tool schemas and refused with
   `read_only`, and `info` runs with `cache: false`, so it reads an existing
-  `<input>.wgse_info.json` but doesn't write one.
+  `<input>.wgse_info.json` but doesn't write one. Result cards are off, even
+  with `--card` or `result_card = true`.
 - Job records and logs (`<state>/server/jobs/`) are readable by you only.
 
 ## HTTP API

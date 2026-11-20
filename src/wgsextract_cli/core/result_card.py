@@ -12,16 +12,22 @@ in any browser and in a sandboxed frame.
 
 from __future__ import annotations
 
+import hashlib
+import logging
 import os
 import re
+import tempfile
 from collections.abc import Iterable
 from datetime import datetime
 from html import escape
 from pathlib import Path
 from typing import Final
+from urllib.parse import urlsplit
 
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.download_progress import format_bytes, redact_urls
+from wgsextract_cli.core.download_progress import format_bytes
+from wgsextract_cli.core.file_lock import exclusive_lock
+from wgsextract_cli.core.read_scope import may_follow
 from wgsextract_cli.core.results import (
     FINGERPRINT_PREFIX,
     MANIFEST_SUFFIX,
@@ -36,6 +42,7 @@ NO_CARD: Final = "No result card: this run reads no sample and has no outputs."
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # An absolute POSIX or Windows path, up to whitespace or a quote.
 _PATH = re.compile(r"(?<![\w:/.~])(?:[A-Za-z]:)?[\\/][^\s'\"<>|]+")
+_URL = re.compile(r"[A-Za-z][\w+.-]*://[^\s'\"<>]+")
 _STATUS_LABEL = {"ok": "Completed", "failed": "Failed", "cancelled": "Cancelled"}
 
 
@@ -49,7 +56,8 @@ def card_path(
     has its full-path record beside it, in ``outdir`` or, when the command has
     none, where outputs go by default: config.toml's output_directory, else
     ``wgse/`` beside the input. A report-only run without an input (``ref
-    status``) is about no sample and gets no card. None when there is none."""
+    status``) is about no sample and gets no card. Neither is a server job's
+    card outside the folders the server may use. None when there is none."""
     manifest = result.manifest_path()
     if manifest is None:
         from wgsextract_cli.core.config import output_directory
@@ -61,13 +69,37 @@ def card_path(
         name = f"{_stem(local[0])}_{'_'.join(result.command.split()) or 'wgsextract'}"
         manifest = Path(folder).expanduser().absolute() / (name + MANIFEST_SUFFIX)
     stem = manifest.with_name(manifest.name.removesuffix(MANIFEST_SUFFIX))
+    card = stem.with_name(stem.name + CARD_SUFFIX)
+    if not (may_follow(card) and may_follow(manifest)):
+        return None
     # Pinned: once the card is an output, it mustn't become the manifest's namesake.
     result.set_manifest_stem(stem)
-    return stem.with_name(stem.name + CARD_SUFFIX)
+    return card
+
+
+def publish(result: CommandResult, card: Path | None) -> Path | None:
+    """Write the run's manifest, after its card when it has one. The pair is
+    written under one lock, so concurrent runs of a report on one sample
+    (``info``) can't leave a card beside another run's manifest."""
+    if card is None:
+        return result.write_manifest()
+    key = hashlib.sha256(os.fsencode(card)).hexdigest()[:32]
+    locks = Path(tempfile.gettempdir(), "wgsextract-card-locks")
+    locks.mkdir(exist_ok=True)
+    with exclusive_lock(locks / key):
+        try:
+            write_card(result, card)
+        except OSError as e:
+            logging.warning(f"Could not write the result card: {e}")
+        return result.write_manifest()
 
 
 def write_card(result: CommandResult, path: Path) -> None:
     """Write the card for a finalised ``result`` and list it among its outputs."""
+    from wgsextract_cli.core.run_log import is_run_log_path
+
+    if is_run_log_path(path):
+        raise FileExistsError(f"{path} is this run's log file; not replacing it.")
     manifest = result.manifest_path()
     html = render_card(result, manifest_name=manifest.name if manifest else None)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,28 +202,42 @@ def _stem(path: str) -> str:
 
 
 def _private(text: str, result: CommandResult) -> str:
-    """``text`` without the user's folders: the run's files and option paths,
-    and any other existing path in it, reduced to their names; the home folder
-    to ``~``; URLs without credentials or query strings."""
+    """``text`` without the user's folders: URLs, the run's files, its path
+    options as given (missing or relative too) and any other existing path in
+    it, reduced to their names; the home folder to ``~``."""
+    text = _URL.sub(lambda m: _url_name(m.group(0)), text)
     paths = {r.path for r in (*result.inputs, *result.outputs)}
     if result.provenance.reference is not None:
         paths.add(result.provenance.reference.path)
-    paths.update(
-        str(Path(v).expanduser())
-        for v in result.provenance.params.values()
-        if isinstance(v, str)
-        and "://" not in v
-        and os.path.isabs(os.path.expanduser(v))
-    )
+    for value in result.provenance.params.values():
+        if (
+            isinstance(value, str)
+            and "://" not in value
+            and ("/" in value or "\\" in value)
+        ):
+            paths.update(
+                {
+                    value,
+                    os.path.expanduser(value),
+                    os.path.abspath(os.path.expanduser(value)),
+                }
+            )
     # Whole paths first, so a folder that prefixes one doesn't leave its rest.
     text = _PATH.sub(_existing_path_name, text)
     for path in sorted(paths, key=len, reverse=True):
-        if "://" not in path and len(Path(path).parts) > 1:
+        if "://" not in path and len(Path(path).parts) > 1 and Path(path).name:
             text = text.replace(path, Path(path).name)
     home = str(Path.home())
     if len(home) > 1:
         text = re.sub(re.escape(home) + r"(?=[\\/\s'\"),;:]|$)", "~", text)
-    return redact_urls(text) if "://" in text else text
+    return text
+
+
+def _url_name(url: str) -> str:
+    """A URL as the name of what it points to: no host, folders or query."""
+    trailing = url[len(url.rstrip(".,;:)")) :]
+    name = Path(urlsplit(url.rstrip(".,;:)")).path).name
+    return (name or "URL") + trailing
 
 
 def _existing_path_name(match: re.Match[str]) -> str:
@@ -210,7 +256,7 @@ def _file_fact(record: FileRecord) -> str:
     parts = [
         escape(Path(record.path).name)
         if "://" not in record.path
-        else escape(redact_urls(record.path))
+        else escape(_url_name(record.path))
     ]
     detail = [_size(record)] if record.size_bytes is not None else []
     if record.fingerprint:

@@ -61,10 +61,10 @@ parser still treats external/compact documents as unvalidated input.
   its status, what the command printed, metrics, warnings and output files,
   with the WGS Extract and tool versions, the input files with their size and
   an abbreviated fingerprint, the reference and when the run happened. Files
-  appear by name only. In the printed text, messages and metrics, the run's
-  files, its option paths and any other path that exists on the computer are
-  cut to their names, the home folder to `~`, and URLs lose credentials and
-  query strings, so sharing a card doesn't reveal your folders;
+  and URLs appear by name only. In the printed text, messages and metrics,
+  URLs, the run's files, its path options as given (missing or relative too)
+  and any other path that exists on the computer are cut to their names, and
+  the home folder to `~`, so sharing a card doesn't reveal your folders;
   the manifest beside it keeps the full paths. The page is self-contained: no
   scripts, nothing loaded from a network. A report-only command that reads
   a sample, such as `info`, which otherwise writes no manifest, writes both
@@ -74,9 +74,13 @@ parser still treats external/compact documents as unvalidated input.
   that reads no sample, such as `ref status`, writes no card. The card is
   listed in the manifest's `outputs` with role `result_card`. A failed run's
   card shows the error. Help and settings commands (`help`, `config`, `deps`,
-  `sample`, `serve`, `report-issue`) write no card. `wgsextract serve --card`
-  gives every job it runs a card; without the option, jobs follow
-  `result_card`. The desktop app passes `--card` to both, and shows each
+  `sample`, `serve`, `report-issue`) write no card, and neither does a run
+  whose card would replace its `--log-file`. `wgsextract serve --card`
+  gives every job it runs a card, inside the folders the server may use;
+  without the option, jobs follow `result_card`, and a read-only MCP session
+  writes none. The card and manifest are written together under a lock, so
+  concurrent runs on one sample can't pair one run's card with another's
+  manifest. The desktop app passes `--card` to both, and shows each
   run's card when the run ends.
 
 ## Document

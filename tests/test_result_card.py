@@ -4,16 +4,17 @@ import argparse
 import json
 import re
 import shutil
+import threading
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator
 
 from tests.smoke_utils import ensure_fake_data, run_cli
-from tests.test_server import _serve
+from tests.test_server import Mcp, _serve
 from wgsextract_cli import __version__
 from wgsextract_cli.cli.dispatch import dispatch_command
-from wgsextract_cli.core import results
+from wgsextract_cli.core import read_scope, result_card, results
 from wgsextract_cli.core.utils import WGSExtractError
 
 CLI_ROOT = Path(__file__).resolve().parents[1]
@@ -298,3 +299,112 @@ def test_analyze_does_not_take_its_steps_cards(tmp_path):
     with results.collecting(result):
         record_step_result(step)
     assert [o.role for o in result.outputs] == ["mt_bam"]
+
+
+def test_concurrent_runs_never_pair_a_card_with_another_runs_manifest(tmp_path):
+    """PR #1143 review: concurrent `info` calls on one sample write the same
+    card and manifest; interleaved, the card described another run."""
+    card = tmp_path / "s_info.card.html"
+    barrier = threading.Barrier(2)
+
+    def run(command: str) -> None:
+        result = results.CommandResult(command=command)
+        result.set_manifest_stem(tmp_path / "s_info")
+        barrier.wait()
+        result_card.publish(result, card)
+
+    for _ in range(10):
+        threads = [
+            threading.Thread(target=run, args=(c,)) for c in ("info a", "info b")
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        manifest = json.loads((tmp_path / "s_info.manifest.json").read_text())
+        assert f"<code>{manifest['command']}</code>" in card.read_text(encoding="utf-8")
+
+
+def test_server_job_card_stays_inside_the_allowed_folders(tmp_path):
+    """PR #1143 review: a server job's card went to a configured output folder
+    outside the folders `serve --allow` names."""
+    allowed, outside = tmp_path / "data", tmp_path / "outside"
+    allowed.mkdir()
+    (allowed / "s.bam").write_bytes(b"x")
+    result = results.CommandResult(command="info")
+    result.add_input(allowed / "s.bam")
+    with read_scope.limited_to(lambda p: Path(p).is_relative_to(allowed)):
+        assert result_card.card_path(result, outside) is None
+        assert result.manifest_path() is None
+        assert (
+            result_card.card_path(result, allowed / "wgse")
+            == allowed / "wgse" / "s_info.card.html"
+        )
+
+
+def test_read_only_mcp_with_card_still_saves_nothing(tmp_path):
+    """PR #1143 review: `serve --mcp --card` without --allow-jobs promised to
+    save nothing but wrote an `info` card and manifest."""
+    if not shutil.which("samtools"):
+        pytest.skip("samtools not found in PATH")
+    ensure_fake_data(str(FAKE_DIR))
+    data = tmp_path / "data"
+    data.mkdir()
+    for name in ("fake.bam", "fake.bam.bai"):
+        shutil.copy2(FAKE_DIR / name, data / name)
+    mcp = Mcp("--card", "--allow", str(data))
+    assert mcp.call("info", input=str(data / "fake.bam"))["isError"] is False
+    assert mcp.close() == 0
+    assert sorted(p.name for p in data.rglob("*")) == ["fake.bam", "fake.bam.bai"]
+
+
+def test_cli_card_never_replaces_the_run_log(tmp_path):
+    """PR #1143 review: a --log-file named like the card was replaced by the
+    card while the run still wrote to it."""
+    if not shutil.which("samtools"):
+        pytest.skip("samtools not found in PATH")
+    ensure_fake_data(str(FAKE_DIR))
+    log = tmp_path / "fake_info.card.html"
+    rc, _, stderr = run_cli(
+        [
+            "info",
+            "--input",
+            str(FAKE_DIR / "fake.bam"),
+            "--outdir",
+            str(tmp_path),
+            "--log-file",
+            str(log),
+            "--card",
+        ]
+    )
+    assert rc == 0, stderr
+    assert "<!doctype html>" not in log.read_text(encoding="utf-8")
+    assert "Could not write the result card" in stderr
+
+
+def test_card_hides_missing_relative_inputs_and_url_layout(tmp_path, monkeypatch):
+    """PR #1143 review: a missing input's folder (relative or outside home)
+    and a remote input's host and folders reached the shared card."""
+    monkeypatch.chdir(tmp_path)
+    missing = "lab/run7/sample.bam"
+
+    def command(args):
+        results.current_result().expect_output(tmp_path / "out.vcf.gz")
+        results.human_output(
+            "From https://host.example/project/patient/remote.bam?sig=1."
+        )
+        raise WGSExtractError(
+            f"Input file not found: {missing} (/srv/secret/lab/other.bam)"
+        )
+
+    assert (
+        dispatch(
+            command, tmp_path, card=True, input=missing, ref="/srv/secret/lab/other.bam"
+        )
+        == 1
+    )
+    html = (tmp_path / "out.vcf.failed.card.html").read_text(encoding="utf-8")
+    assert "Input file not found: sample.bam (other.bam)" in html
+    assert "From remote.bam." in html
+    for leak in ("run7", "/srv/secret", "host.example", "patient", "sig=1"):
+        assert leak not in html, leak

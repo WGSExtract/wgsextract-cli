@@ -101,10 +101,10 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         card = _card_path(args, result)
         has_manifest = result.manifest_path() is not None
         result.finalize(probe_tools=as_json or has_manifest)
-        if card is not None:
-            _write_card(result, card)
         try:
-            if has_manifest and (manifest := result.write_manifest()):
+            from wgsextract_cli.core.result_card import publish
+
+            if has_manifest and (manifest := publish(result, card)):
                 _index_output(args, manifest, result)
         except OSError as e:
             logging.warning(f"Could not write the result manifest: {e}")
@@ -157,15 +157,6 @@ def _card_path(args: argparse.Namespace, result: CommandResult) -> Path | None:
 
         logging.info(NO_CARD)
     return path
-
-
-def _write_card(result: CommandResult, path: Path) -> None:
-    from wgsextract_cli.core.result_card import write_card
-
-    try:
-        write_card(result, path)
-    except OSError as e:
-        logging.warning(f"Could not write the result card: {e}")
 
 
 def _progress_line(

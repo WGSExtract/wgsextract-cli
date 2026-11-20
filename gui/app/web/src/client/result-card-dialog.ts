@@ -39,7 +39,6 @@ export function closeResultCard() {
 }
 
 function showCard(card: ResultCard, labels: Labels) {
-    const app = document.querySelector<HTMLElement>("#app");
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const backdrop = element("div", "modal-backdrop result-card-backdrop");
@@ -74,24 +73,48 @@ function showCard(card: ResultCard, labels: Labels) {
     dialog.append(header, frame);
     backdrop.append(dialog);
 
+    // Focus moves between Close and the card's own controls (its Metrics summary), and wraps at
+    // either end; with the card focused, the arrow keys scroll it. Escape closes from both.
     const onKey = (event: KeyboardEvent) => {
         if (event.key === "Escape") {
             event.preventDefault();
             finish();
         }
-        // Only the Close button takes focus here; the frame is not focusable.
-        if (event.key === "Tab") {
+        else if (event.key === "Tab" && (event.shiftKey || document.activeElement !== close)) {
+            event.preventDefault();
+            (event.shiftKey ? lastCardStop() ?? frame : close).focus();
+        }
+    };
+    const frameDocument = () => frame.contentDocument;
+    const cardStops = () => [...(frameDocument()?.querySelectorAll<HTMLElement>("summary, a[href], button, [tabindex]:not([tabindex='-1'])") ?? [])];
+    const lastCardStop = () => cardStops().at(-1);
+    const onCardKey = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            finish();
+            return;
+        }
+        if (event.key !== "Tab") {
+            return;
+        }
+        const stops = cardStops();
+        const active = frameDocument()?.activeElement;
+        const atEdge = event.shiftKey ? !active || active === stops[0] || !stops.includes(active as HTMLElement) : active === stops.at(-1) || !stops.includes(active as HTMLElement);
+        if (atEdge) {
             event.preventDefault();
             close.focus();
         }
     };
+    frame.addEventListener("load", () => frameDocument()?.addEventListener("keydown", onCardKey));
+    // Everything behind the card, the app and an open genome viewer alike, is inert until it closes.
+    const behind = [...document.body.children].filter((node): node is HTMLElement => node instanceof HTMLElement && !node.inert);
     const finish = () => {
         backdrop.remove();
         document.removeEventListener("keydown", onKey, true);
         open = undefined;
-        if (app) {
-            app.inert = false;
-            app.removeAttribute("aria-hidden");
+        for (const node of behind) {
+            node.inert = false;
+            node.removeAttribute("aria-hidden");
         }
         if (opener?.isConnected) {
             opener.focus({ preventScroll: true });
@@ -105,11 +128,11 @@ function showCard(card: ResultCard, labels: Labels) {
     });
     document.addEventListener("keydown", onKey, true);
 
-    document.body.append(backdrop);
-    if (app) {
-        app.inert = true;
-        app.setAttribute("aria-hidden", "true");
+    for (const node of behind) {
+        node.inert = true;
+        node.setAttribute("aria-hidden", "true");
     }
+    document.body.append(backdrop);
     open = { close: finish };
     close.focus({ preventScroll: true });
 }
