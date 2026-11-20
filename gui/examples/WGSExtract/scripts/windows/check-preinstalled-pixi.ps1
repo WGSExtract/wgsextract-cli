@@ -64,6 +64,14 @@ function Report-Msys2 {
     }
 }
 
+# Like the rest of this script (exit 1 above, exit 0 below), a failure is
+# reported by exit code: print only the error's message, not PowerShell's
+# error record, and exit 1.
+trap {
+    [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
+    exit 1
+}
+
 Report-Pixi
 Report-Msys2
 exit 0
