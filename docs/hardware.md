@@ -745,8 +745,12 @@ showed less than 2% wall-time changes. No full-human-genome allocator
 comparison or Linux packaging/default change followed this gate; these
 measurements do not qualify Linux ARM64 or every glibc version.
 
-`vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
-(MPS) path; see [docs/ont.md](ont.md#clair3-optional).
+`vcf clair3` defaults to the CPU on Apple Silicon. Opt-in `--gpu` uses
+PyTorch MPS with the WGSE-built code-only caller, preserving CPU streaming
+and high-depth scaling (gVCF included). It refuses unavailable MPS or a
+missing patched package; no automatic installation or fallback. Package
+publication/Pixi pinning and whole-genome qualification are pending; see
+[docs/ont.md](ont.md#clair3-optional).
 
 ## Other GPUs
 
