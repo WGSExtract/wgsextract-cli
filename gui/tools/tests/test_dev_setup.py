@@ -56,6 +56,8 @@ def smoke_server(replies: list[str]) -> Iterator[tuple[str, list[str]]]:
                     b"Connection: close\r\n\r\n<html>"
                 )
                 self.request.shutdown(socket.SHUT_WR)
+            elif reply == "timeout":
+                stopped.wait(1.2)
             else:
                 self.request.sendall(
                     b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\n"
@@ -80,6 +82,25 @@ def smoke_server(replies: list[str]) -> Iterator[tuple[str, list[str]]]:
 
 
 class DesktopPrerequisiteTests(unittest.TestCase):
+    def test_issue_1154_closed_port_connect_timeout_confirms_smoke_shutdown(
+        self,
+    ) -> None:
+        connect = socket.socket.connect
+
+        def windows_connect(sock: socket.socket, address: tuple[str, int]) -> None:
+            try:
+                connect(sock, address)
+            except ConnectionRefusedError as error:
+                raise TimeoutError("closed port connection timed out") from error
+
+        with (
+            smoke_server(["html", "stop"]) as (url, received),
+            patch.object(socket.socket, "connect", windows_connect),
+        ):
+            source = f"print('Web UI: {url}', flush=True);import time; time.sleep(60)"
+            setup.smoke([sys.executable, "-c", source])
+            self.assertEqual(received, ["html", "stop"])
+
     def test_issue_1154_smoke_retries_startup_and_waits_for_real_shutdown(
         self,
     ) -> None:
@@ -97,7 +118,7 @@ class DesktopPrerequisiteTests(unittest.TestCase):
     def test_issue_1154_smoke_rejects_server_still_answering_after_cleanup(
         self,
     ) -> None:
-        for failure in ("html", "reset", "disconnect", "truncated"):
+        for failure in ("html", "reset", "disconnect", "truncated", "timeout"):
             with (
                 self.subTest(failure=failure),
                 smoke_server(["html", failure, "html"]) as (url, received),
