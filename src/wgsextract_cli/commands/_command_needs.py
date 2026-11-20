@@ -209,6 +209,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="curl"),
+    "ref cytobands": _n(DOWNLOAD, optional="curl"),
     "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref phylop": _n(DOWNLOAD, optional="curl"),
