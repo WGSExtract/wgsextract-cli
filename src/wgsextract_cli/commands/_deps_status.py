@@ -3,7 +3,13 @@ import platform
 import sys
 from typing import Any
 
-from wgsextract_cli.api.deps import DepsCheckParams
+from wgsextract_cli.api.deps import (
+    DepsCheckParams,
+    DepsInstallParams,
+    DepsListParams,
+    DepsUninstallParams,
+)
+from wgsextract_cli.core import optional_tools
 from wgsextract_cli.core.dependency_checks import check_all_dependencies
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.pixi_tools import pixi_install_command
@@ -73,12 +79,55 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
             hint = f". Run: {command}" if command else ""
             raise MissingDependencyError(f"Tool not found: {params.tool}{hint}")
 
+    results = _report()
+    missing = [tool["name"] for tool in results["mandatory"] if not tool["path"]]
+    if missing:
+        raise MissingDependencyError(
+            "Missing mandatory tool(s): "
+            + ", ".join(missing)
+            + ". Install them to ensure full functionality."
+        )
+    logging.info("All mandatory tools verified successfully.")
+
+
+def run_list(params: DepsListParams) -> None:
+    """``deps list``: the report ``deps check`` prints, without failing when a
+    mandatory tool is missing."""
+    _report()
+
+
+def run_install(params: DepsInstallParams) -> None:
+    """``deps install``."""
+    details = optional_tools.install(params.tool)
+    current_result().set_details(details)
+    human_output(f"Installed {params.tool} ({details['path']}).")
+
+
+def run_uninstall(params: DepsUninstallParams) -> None:
+    """``deps uninstall``."""
+    details = optional_tools.uninstall(params.tool)
+    current_result().set_details(details)
+    human_output(
+        f"Removed the Pixi environment '{details['environment']}' "
+        f"({', '.join(details['tools'])})."
+    )
+
+
+def _report() -> dict[str, list[dict[str, Any]]]:
+    """Checks every tool, prints the table and sets the result's details:
+    ``mandatory`` and ``optional`` rows, ``unavailable_on_platform`` and
+    ``tools``, every tool with its status and what can be done about it."""
     logging.info("Verifying bioinformatics tool installations...")
     results = check_all_dependencies()
     unavailable = platform_unavailable_tools()
-    result.set_details(
+    tools = [
+        optional_tools.tool_row(_row(tool), group)
+        for group in ("mandatory", "optional")
+        for tool in results[group]
+    ] + [optional_tools.unavailable_row(tool) for tool in unavailable]
+    current_result().set_details(
         {group: [_row(tool) for tool in results[group]] for group in results}
-        | {"unavailable_on_platform": unavailable}
+        | {"unavailable_on_platform": unavailable, "tools": tools}
     )
 
     human_output("\nMandatory Tools:")
@@ -104,11 +153,4 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
         human_output(f"\nNot available on {host}: {', '.join(unavailable)}")
 
     human_output("\n" + "=" * 60)
-    missing = [tool["name"] for tool in results["mandatory"] if not tool["path"]]
-    if missing:
-        raise MissingDependencyError(
-            "Missing mandatory tool(s): "
-            + ", ".join(missing)
-            + ". Install them to ensure full functionality."
-        )
-    logging.info("All mandatory tools verified successfully.")
+    return results

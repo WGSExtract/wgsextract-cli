@@ -136,6 +136,7 @@ READ_ONLY_COMMANDS = frozenset(
         "ref library-list",
         "example-genome list",
         "deps check",
+        "deps list",
     }
 )
 

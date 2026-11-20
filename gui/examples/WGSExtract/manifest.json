@@ -122,8 +122,9 @@
       ]
     }
   },
-  // Before an action runs, `wgsextract ref needs` names the reference genome or annotation data its command line needs
-  // that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>` and the like).
+  // Before an action runs, `wgsextract ref needs` names the reference genome, annotation data or optional tool its command
+  // line needs that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>`,
+  // `wgsextract deps install <tool>` and the like).
   "prerequisites": {
     "command": {
       "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
@@ -139,7 +140,8 @@
     },
     "kindLabels": {
       "genome": "prerequisites.kinds.genome",
-      "annotation": "prerequisites.kinds.annotation"
+      "annotation": "prerequisites.kinds.annotation",
+      "tool": "prerequisites.kinds.tool"
     }
   },
   "pages": [
@@ -154,6 +156,7 @@
     "datasets.json",
     "library.json",
     "reference-genomes.json",
+    "tools.json",
     "settings.json"
   ]
 }

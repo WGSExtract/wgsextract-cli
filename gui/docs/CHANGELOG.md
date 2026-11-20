@@ -5,6 +5,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- A **Tools** page, below Reference Genomes, lists every mandatory and optional tool from the dependency check (`wgsextract deps list`): whether it is installed, its version and the Pixi environment it comes from. Optional tools packaged in Pixi environments of their own get **Install** (`wgsextract deps install`) and **Uninstall** (`wgsextract deps uninstall`, after a confirmation naming every tool that environment provides); a tool this computer can't have shows **Not available**, and one the user installs (plink2, Dorado) **Install it yourself**, each with the reason as its tooltip.
+- An action that needs a missing optional tool (FastQC with MultiQC merging, `vcf gatk`, `score pgs --plink2-check` and the like) opens the missing-prerequisites dialog as a missing genome does, with **Install and Continue** when the app can install the tool.
+- A data source may declare `timeoutSeconds` (15 by default).
+
 ## [0.8.8] - 2026-11-18
 
 ### Added

@@ -8,6 +8,7 @@ from wgsextract_cli.core.pixi_tools import (
     _host_pixi_tool_command,
     is_pixi_tool_command,
     is_pixi_tool_path,
+    locked_packages,
     pixi_env_prefix,
     pixi_env_tool,
 )
@@ -82,6 +83,7 @@ tool_versions: dict[tuple[str, ...], str] = {}
 def clear_tool_caches() -> None:
     _resolve_tool_path.cache_clear()
     tool_versions.clear()
+    locked_packages.clear()
 
 
 @lru_cache(maxsize=256)

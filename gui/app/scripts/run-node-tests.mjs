@@ -21,6 +21,7 @@ const defaultTests = [
   "tests/wgsextract-missing-pixi-environment.test.mjs",
   "tests/example-bundles.test.mjs",
   "tests/wgsextract-reference-genomes.test.mjs",
+  "tests/wgsextract-tools.test.mjs",
   "tests/workspace.test.mjs",
   "tests/workspace-location.test.mjs",
   "tests/workspace-move-focus.test.mjs",
