@@ -70,18 +70,19 @@ parser still treats external/compact documents as unvalidated input.
   a sample, such as `info`, which otherwise writes no manifest, writes both
   into its output folder (with no `--outdir`, where outputs go by default:
   `output_directory` or `wgse/` beside the input), named after its input and
-  command (`sample_info.card.html` and `sample_info.manifest.json`); one
+  command (`sample.bam_info.card.html` and `sample.bam_info.manifest.json`); one
   that reads no sample, such as `ref status`, writes no card. The card is
   listed in the manifest's `outputs` with role `result_card`. A failed run's
   card shows the error. Help and settings commands (`help`, `config`, `deps`,
-  `sample`, `serve`, `report-issue`) write no card, and neither does a run
-  whose card would replace its `--log-file`. `wgsextract serve --card`
+  `sample`, `serve`, `report-issue`) write no card, and neither does a
+  `--status` run or a run whose card would replace its `--log-file`. `wgsextract serve --card`
   gives every job it runs a card, inside the folders the server may use; a
   job started with `?card=1` (or `card=0`) gets one (or not) whatever the
   server's default; otherwise jobs follow `result_card`. A read-only MCP
   session writes none. The card and manifest are written together under a lock, so
   concurrent runs on one sample can't pair one run's card with another's
-  manifest. The desktop app asks for cards only for its analysis
+  manifest; a successful run removes an earlier failed attempt's card with
+  its manifest. Internal steps (`analyze`, `benchmark`) write no cards. The desktop app asks for cards only for its analysis
   actions and shows each one when the run ends.
 
 ## Document

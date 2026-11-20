@@ -1,6 +1,10 @@
 import type { Labels } from "../../../shared/types.js";
 import { api } from "./api.js";
-import { formatLabel } from "./model.js";
+import { captureFocus, restoreFocus } from "./focus-state.js";
+import { errorMessage, formatLabel } from "./model.js";
+import { scheduleRender } from "./rerender.js";
+import { state } from "./state.js";
+import { appendTerminal } from "./terminal.js";
 
 interface ResultCard {
     path: string;
@@ -23,7 +27,9 @@ export async function openResultCard(filePath: string, labels: Labels) {
         card = await api<ResultCard>("/api/result/card", { body: { path: filePath } });
     }
     catch (error) {
-        console.error("Could not load the result card:", error);
+        // A deleted card or a refused path shows in the terminal, as Open and Show in Folder do.
+        appendTerminal("error", state.labels.terminalProcessErrorTitle, errorMessage(error));
+        scheduleRender();
         return;
     }
     // A later request (a newer run's card) wins over a slower earlier one.
@@ -39,7 +45,10 @@ export function closeResultCard() {
 }
 
 function showCard(card: ResultCard, labels: Labels) {
+    const app = document.querySelector<HTMLElement>("#app");
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // A render while the card is open replaces the opener; this finds its replacement.
+    const openerSnapshot = app ? captureFocus(app) : null;
 
     const backdrop = element("div", "modal-backdrop result-card-backdrop");
     backdrop.setAttribute("role", "presentation");
@@ -118,6 +127,9 @@ function showCard(card: ResultCard, labels: Labels) {
         }
         if (opener?.isConnected) {
             opener.focus({ preventScroll: true });
+        }
+        else if (app) {
+            restoreFocus(app, openerSnapshot);
         }
     };
     close.addEventListener("click", finish);

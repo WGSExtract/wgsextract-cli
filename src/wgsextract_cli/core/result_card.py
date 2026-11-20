@@ -12,11 +12,11 @@ in any browser and in a sandboxed frame.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import os
 import re
-import tempfile
 from collections.abc import Iterable
 from datetime import datetime
 from html import escape
@@ -34,14 +34,18 @@ from wgsextract_cli.core.results import (
     CommandResult,
     FileRecord,
 )
+from wgsextract_cli.core.utils import WGSExtractError
 
 CARD_SUFFIX: Final = ".card.html"
+FAILED_MANIFEST: Final = ".failed" + MANIFEST_SUFFIX
 CARD_ROLE: Final = "result_card"
 NO_CARD: Final = "No result card: this run reads no sample and has no outputs."
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
-# An absolute POSIX or Windows path, up to whitespace or a quote.
-_PATH = re.compile(r"(?<![\w:/.~])(?:[A-Za-z]:)?[\\/][^\s'\"<>|]+")
+# Where an absolute POSIX or Windows path may start.
+_PATH_START = re.compile(r"(?<![\w:/.~])(?:[A-Za-z]:)?[\\/](?=[^\s/\\])")
+# Characters a path in printed text can end before (spaces may be inside one).
+_PATH_ENDS = frozenset(" \t'\"<>|,;:)")
 _URL = re.compile(r"[A-Za-z][\w+.-]*://[^\s'\"<>]+")
 _STATUS_LABEL = {"ok": "Completed", "failed": "Failed", "cancelled": "Cancelled"}
 
@@ -55,7 +59,8 @@ def card_path(
     own; it gets one named after its input and command, so the card always
     has its full-path record beside it, in ``outdir`` or, when the command has
     none, where outputs go by default: config.toml's output_directory, else
-    ``wgse/`` beside the input. A report-only run without an input (``ref
+    ``wgse/`` beside the input. A failed run whose input was missing names it
+    after the input it was given. A report-only run without an input (``ref
     status``) is about no sample and gets no card. Neither is a server job's
     card outside the folders the server may use. None when there is none."""
     manifest = result.manifest_path()
@@ -63,10 +68,16 @@ def card_path(
         from wgsextract_cli.core.config import output_directory
 
         local = [r.path for r in result.inputs if "://" not in r.path]
+        given = result.provenance.params.get("input")
+        if not local and result.status != "ok" and isinstance(given, str) and given:
+            given = os.path.abspath(os.path.expanduser(given))
+            # Not beside an input whose folder doesn't exist either: no folders from a typo.
+            if outdir or os.path.isdir(os.path.dirname(given)):
+                local = [given]
         folder = (outdir or output_directory(local)) if local else None
         if not folder:
             return None
-        name = f"{_stem(local[0])}_{'_'.join(result.command.split()) or 'wgsextract'}"
+        name = f"{_input_name(local[0])}_{'_'.join(result.command.split()) or 'wgsextract'}"
         manifest = Path(folder).expanduser().absolute() / (name + MANIFEST_SUFFIX)
     stem = manifest.with_name(manifest.name.removesuffix(MANIFEST_SUFFIX))
     card = stem.with_name(stem.name + CARD_SUFFIX)
@@ -79,19 +90,36 @@ def card_path(
 
 def publish(result: CommandResult, card: Path | None) -> Path | None:
     """Write the run's manifest, after its card when it has one. The pair is
-    written under one lock, so concurrent runs of a report on one sample
-    (``info``) can't leave a card beside another run's manifest."""
-    if card is None:
-        return result.write_manifest()
-    key = hashlib.sha256(os.fsencode(card)).hexdigest()[:32]
-    locks = Path(tempfile.gettempdir(), "wgsextract-card-locks")
-    locks.mkdir(exist_ok=True)
-    with exclusive_lock(locks / key):
-        try:
-            write_card(result, card)
-        except OSError as e:
-            logging.warning(f"Could not write the result card: {e}")
-        return result.write_manifest()
+    written under one lock, kept in this user's WGS Extract state folder and
+    named after the card's resolved path, so concurrent runs of a report on
+    one sample (``info``) can't leave a card beside another run's manifest,
+    whatever their temp folder or a symlink on the way. Without the lock the
+    manifest is still written, without a card. A manifest written under the
+    output's own name retires a failed attempt's card, as it does the failed
+    attempt's manifest."""
+    with contextlib.ExitStack() as held:
+        if card is not None:
+            try:
+                from wgsextract_cli.core.last_run import state_directory
+
+                card.parent.mkdir(parents=True, exist_ok=True)
+                key = hashlib.sha256(os.fsencode(card.resolve())).hexdigest()[:32]
+                locks = state_directory() / "card-locks"
+                locks.mkdir(parents=True, exist_ok=True)
+                held.enter_context(exclusive_lock(locks / key))
+            except (OSError, WGSExtractError) as e:
+                logging.warning(f"Could not write the result card: {e}")
+                card = None
+        if card is not None:
+            try:
+                write_card(result, card)
+            except OSError as e:
+                logging.warning(f"Could not write the result card: {e}")
+        manifest = result.write_manifest()
+    if manifest is not None and not manifest.name.endswith(FAILED_MANIFEST):
+        stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
+        manifest.with_name(f"{stem}.failed{CARD_SUFFIX}").unlink(missing_ok=True)
+    return manifest
 
 
 def write_card(result: CommandResult, path: Path) -> None:
@@ -194,11 +222,13 @@ def render_card(result: CommandResult, *, manifest_name: str | None = None) -> s
     )
 
 
-def _stem(path: str) -> str:
+def _input_name(path: str) -> str:
+    """The input's name without a compression suffix, keeping its type, so
+    ``s.bam`` and ``s.cram`` get cards of their own."""
     name = Path(path).name
     for suffix in (".gz", ".bgz"):
         name = name.removesuffix(suffix)
-    return Path(name).stem or name
+    return name
 
 
 def _private(text: str, result: CommandResult) -> str:
@@ -222,8 +252,9 @@ def _private(text: str, result: CommandResult) -> str:
                     os.path.abspath(os.path.expanduser(value)),
                 }
             )
-    # Whole paths first, so a folder that prefixes one doesn't leave its rest.
-    text = _PATH.sub(_existing_path_name, text)
+    # Existing paths first, each as long as it goes, so a folder that prefixes
+    # one doesn't leave its rest; then the given ones that don't exist.
+    text = _existing_paths_named(text)
     for path in sorted(paths, key=len, reverse=True):
         if "://" not in path and len(Path(path).parts) > 1 and Path(path).name:
             text = text.replace(path, Path(path).name)
@@ -240,16 +271,33 @@ def _url_name(url: str) -> str:
     return (name or "URL") + trailing
 
 
-def _existing_path_name(match: re.Match[str]) -> str:
-    """A path the text names, as its name when it exists on this computer."""
-    candidate = match.group(0).rstrip(".,;:)'\"")
-    try:
-        exists = len(Path(candidate).parts) > 2 and Path(candidate).exists()
-    except OSError:
-        exists = False
-    if not exists:
-        return match.group(0)
-    return Path(candidate).name + match.group(0)[len(candidate) :]
+def _existing_paths_named(text: str) -> str:
+    """``text`` with each path that exists on this computer, spaces and all,
+    reduced to its name: at each place a path may start, the longest stretch
+    of that line, ending before a space or punctuation, that exists."""
+    parts: list[str] = []
+    done = 0
+    for start in _PATH_START.finditer(text):
+        if start.start() < done:
+            continue
+        line_end = text.find("\n", start.start())
+        line_end = len(text) if line_end < 0 else line_end
+        ends = [
+            e
+            for e in range(start.end(), line_end + 1)
+            if e == line_end or text[e] in _PATH_ENDS
+        ][:64]
+        for end in reversed(ends):
+            candidate = text[start.start() : end].rstrip(".")
+            try:
+                found = len(Path(candidate).parts) > 2 and Path(candidate).exists()
+            except (OSError, ValueError):
+                found = False
+            if found:
+                parts += [text[done : start.start()], Path(candidate).name]
+                done = start.start() + len(candidate)
+                break
+    return "".join(parts) + text[done:]
 
 
 def _file_fact(record: FileRecord) -> str:

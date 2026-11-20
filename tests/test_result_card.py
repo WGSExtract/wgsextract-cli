@@ -207,13 +207,13 @@ def test_cli_report_only_info_gets_a_card_and_manifest(tmp_path):
         ]
     )
     assert rc == 0, stderr
-    html = (tmp_path / "fake_info.card.html").read_text(encoding="utf-8")
+    html = (tmp_path / "fake.bam_info.card.html").read_text(encoding="utf-8")
     assert_self_contained(html)
     # The printed summary is on the card, and so is the tool that made it.
     first_line = stdout.strip().splitlines()[0]
     assert first_line.split()[0] in html
     assert "samtools" in html and str(FAKE_DIR) not in html
-    manifest = json.loads((tmp_path / "fake_info.manifest.json").read_text())
+    manifest = json.loads((tmp_path / "fake.bam_info.manifest.json").read_text())
     assert [o["role"] for o in manifest["outputs"]] == ["result_card"]
 
 
@@ -246,7 +246,7 @@ def test_serve_jobs_write_a_card_when_the_request_asks(tmp_path):
     work, other = tmp_path / "work", tmp_path / "other"
     work.mkdir()
     other.mkdir()
-    card = work / "fake_info.card.html"
+    card = work / "fake.bam_info.card.html"
     with _serve(tmp_path, [work, other, FAKE_DIR]) as client:
         status, plain = client.request(
             "POST",
@@ -288,9 +288,9 @@ def test_cli_info_without_outdir_puts_its_card_in_the_default_wgse_folder(tmp_pa
     rc, _, stderr = run_cli(["info", "--input", str(lab / "fake.bam"), "--card"])
     assert rc == 0, stderr
     assert "No result card written" not in stderr
-    card = lab / "wgse" / "fake_info.card.html"
+    card = lab / "wgse" / "fake.bam_info.card.html"
     assert "Avg Read Length" in card.read_text(encoding="utf-8")
-    manifest = json.loads((lab / "wgse" / "fake_info.manifest.json").read_text())
+    manifest = json.loads((lab / "wgse" / "fake.bam_info.manifest.json").read_text())
     assert [o["path"] for o in manifest["outputs"]] == [str(card)]
 
 
@@ -357,7 +357,7 @@ def test_server_job_card_stays_inside_the_allowed_folders(tmp_path):
         assert result.manifest_path() is None
         assert (
             result_card.card_path(result, allowed / "wgse")
-            == allowed / "wgse" / "s_info.card.html"
+            == allowed / "wgse" / "s.bam_info.card.html"
         )
 
 
@@ -383,7 +383,7 @@ def test_cli_card_never_replaces_the_run_log(tmp_path):
     if not shutil.which("samtools"):
         pytest.skip("samtools not found in PATH")
     ensure_fake_data(str(FAKE_DIR))
-    log = tmp_path / "fake_info.card.html"
+    log = tmp_path / "fake.bam_info.card.html"
     rc, _, stderr = run_cli(
         [
             "info",
@@ -427,3 +427,137 @@ def test_card_hides_missing_relative_inputs_and_url_layout(tmp_path, monkeypatch
     assert "From remote.bam." in html
     for leak in ("run7", "/srv/secret", "host.example", "patient", "sig=1"):
         assert leak not in html, leak
+
+
+def test_bam_and_cram_of_one_sample_get_cards_of_their_own(tmp_path):
+    """PR #1143 review: `info` cards for s.bam and s.cram shared one name."""
+    names = []
+    for name in ("s.bam", "s.cram"):
+        (tmp_path / name).write_bytes(b"x")
+        result = results.CommandResult(command="info")
+        result.add_input(tmp_path / name)
+        card = result_card.card_path(result, tmp_path / "wgse")
+        assert card is not None
+        names.append(card.name)
+    assert names == ["s.bam_info.card.html", "s.cram_info.card.html"]
+
+
+def test_cli_status_runs_write_no_card(tmp_path):
+    """PR #1143 review: `info calculate-coverage --status` promises to write
+    nothing, but --card wrote a card and manifest."""
+    if not shutil.which("samtools"):
+        pytest.skip("samtools not found in PATH")
+    ensure_fake_data(str(FAKE_DIR))
+    outdir = tmp_path / "out"
+    run_cli(
+        [
+            "info",
+            "calculate-coverage",
+            "--status",
+            "--input",
+            str(FAKE_DIR / "fake.bam"),
+            "--outdir",
+            str(outdir),
+            "--card",
+        ]
+    )
+    assert not outdir.exists() or not list(outdir.iterdir())
+
+
+def test_cli_missing_input_still_gets_a_failed_card(tmp_path):
+    """PR #1143 review: a failed run on a missing input wrote no card, since
+    the input was never recorded."""
+    outdir = tmp_path / "results"
+    rc, _, _ = run_cli(
+        [
+            "info",
+            "--input",
+            str(tmp_path / "missing.bam"),
+            "--outdir",
+            str(outdir),
+            "--card",
+        ]
+    )
+    assert rc != 0
+    html = (outdir / "missing.bam_info.card.html").read_text(encoding="utf-8")
+    assert "Failed" in html and str(tmp_path) not in html
+
+
+def test_a_successful_retry_retires_the_failed_card(tmp_path):
+    """PR #1143 review: after a failed attempt, the successful retry removed
+    the failed manifest but left its "Failed" card."""
+    output = tmp_path / "s.vcf.gz"
+
+    def failing(args):
+        results.current_result().expect_output(output)
+        raise WGSExtractError("boom")
+
+    def succeeding(args):
+        results.current_result().expect_output(output)
+        output.write_bytes(b"x")
+        results.current_result().add_output(output, "snps")
+
+    assert dispatch(failing, tmp_path, card=True) == 1
+    assert (tmp_path / "s.vcf.failed.card.html").is_file()
+    assert dispatch(succeeding, tmp_path, card=True) == 0
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == ["s.vcf.card.html", "s.vcf.gz", "s.vcf.manifest.json"]
+
+
+def test_a_card_that_cannot_be_locked_keeps_the_manifest(tmp_path, monkeypatch):
+    """PR #1143 review: a card lock that couldn't be taken ended the run
+    without its manifest."""
+    output = tmp_path / "s.txt"
+    locks = tmp_path / "state" / "card-locks"
+    locks.parent.mkdir(exist_ok=True)
+    locks.write_text("not a folder")  # so no lock can be taken
+    monkeypatch.setattr(
+        "wgsextract_cli.core.last_run.state_directory", lambda: tmp_path / "state"
+    )
+
+    def command(args):
+        output.write_text("x")
+        results.current_result().add_output(output, "out")
+
+    assert dispatch(command, tmp_path, card=True) == 0
+    assert (tmp_path / "s.txt.manifest.json").is_file()
+    assert not (tmp_path / "s.txt.card.html").exists()
+
+
+def test_card_hides_paths_with_spaces(tmp_path):
+    """PR #1143 review: the path pass stopped at spaces, leaving folders such
+    as "Private Ward" in the card."""
+    ward = tmp_path / "Clinical Study" / "Private Ward"
+    ward.mkdir(parents=True)
+    sample, tool = ward / "sample one.bam", ward / "bin" / "wgse bwa"
+    sample.write_bytes(b"x")
+    tool.parent.mkdir()
+    tool.write_text("x")
+    output = tmp_path / "out.txt"
+
+    def command(args):
+        results.current_result().add_input(sample)
+        output.write_text("x")
+        results.current_result().add_output(output, "out")
+        results.human_output(f"Read {sample}; skipped {tool}.")
+
+    assert dispatch(command, tmp_path, card=True) == 0
+    html = (tmp_path / "out.txt.card.html").read_text(encoding="utf-8")
+    assert "Read sample one.bam; skipped wgse bwa." in html
+    assert "Private Ward" not in html and "Clinical Study" not in html
+
+
+def test_internal_steps_write_no_cards_when_config_asks_for_them(tmp_path):
+    """PR #1143 review: with result_card = true, analyze's internal steps
+    still wrote cards of their own."""
+    from wgsextract_cli.core import config
+
+    own = tmp_path / "own.toml"
+    own.write_text("result_card = true\n")
+    try:
+        config.set_config_path(own)
+        config.reload_settings()
+        assert "--no-card" in config.config_args()
+    finally:
+        config.set_config_path(None)
+        config.reload_settings()

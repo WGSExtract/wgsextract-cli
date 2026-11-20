@@ -147,7 +147,8 @@ def _card_path(args: argparse.Namespace, result: CommandResult) -> Path | None:
     """Where this run's card goes, or None when it gets none. A run with a
     card always writes its manifest too, for the full paths."""
     command = str(getattr(args, "command", None) or "")
-    if not card_wanted(command, getattr(args, "card", None)):
+    # A --status run only reports on existing outputs; it writes nothing.
+    if reports_status(args) or not card_wanted(command, getattr(args, "card", None)):
         return None
     from wgsextract_cli.core.result_card import card_path
 
