@@ -13,6 +13,7 @@ import { usersWorkspaceFor } from "./users-workspace.js";
 import { guardedViewerPath, type ViewerFiles } from "./viewer-files.js";
 import { supplementalViewerTracks } from "./viewer-tracks.js";
 import { installedViewerGenes } from "./viewer-genes.js";
+import { installedViewerCytobands } from "./viewer-cytobands.js";
 
 /** Persistent library settings, never request-provided roots or a whole home directory. */
 export async function viewerLibraries(context: RequestHandlerContext) {
@@ -104,6 +105,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
     await guardedViewerPath(fasta, library.roots);
     await guardedViewerPath(fai, library.roots);
     const genes = await installedViewerGenes(fasta, library.referenceRoot);
+    const cytobands = await installedViewerCytobands(fasta, library.referenceRoot);
     let supplemental;
     try {
         supplemental = await supplementalViewerTracks(trackPaths, fasta, library.genomeRoots, context.bundleRoot);
@@ -125,6 +127,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         locus: position,
         files: {
             genes,
+            cytobands,
             reference: {
                 id: "local", name: path.basename(fasta), fastaURL: url(fasta), indexURL: url(fai),
                 ...(gzi ? { compressedIndexURL: url(gzi) } : {}), headers: grant.headers, wholeGenomeView: false,

@@ -6,8 +6,10 @@ import { escapeAttribute, escapeHTML } from "./dom.js";
 import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genome-viewer-privacy.js";
 import { validatedBedGraphTrack } from "../../../shared/viewer-track-records.js";
 import { viewerGeneLookup, viewerNavigationLocus, type ViewerGene } from "../../../shared/viewer-genes.js";
+import { viewerCytobandSource } from "../../../shared/viewer-cytobands.js";
 
 interface IgvBrowser {
+    genome: { cytobandSource?: ReturnType<typeof viewerCytobandSource> };
     loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }): Promise<IgvLocalTrack | undefined>;
     on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
@@ -77,6 +79,7 @@ try {
       </form>
       <p data-viewer-status role="status" aria-live="polite">${escapeHTML(text("empty"))}</p>
       <p data-gene-status role="status" aria-live="polite" hidden></p>
+      <p data-cytoband-status role="status" aria-live="polite" hidden></p>
       <form data-locus class="viewer-navigation" hidden>
         <label>${escapeHTML(text("navigation"))}<input name="locus" autocomplete="off" spellcheck="false" maxlength="128" aria-describedby="gene-help"></label>
         <p id="gene-help">${escapeHTML(text("geneHelp"))}</p>
@@ -203,6 +206,11 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         const geneStatus = required<HTMLElement>("[data-gene-status]");
         geneStatus.textContent = (files.genes?.notices ?? []).map((notice) => text(notice.code).replace("%{file}", notice.fileName)).join(" ");
         geneStatus.hidden = !geneStatus.textContent;
+        const cytobandStatus = required<HTMLElement>("[data-cytoband-status]");
+        cytobandStatus.textContent = (files.cytobands?.notices ?? []).map((notice) => text(notice.code)
+            .replace("%{file}", notice.fileName).replace("%{command}", notice.command)).join(" ");
+        cytobandStatus.hidden = !cytobandStatus.textContent;
+        const cytobands = files.cytobands?.features ?? [];
         browser = await window.igv.createBrowser(host, {
             ...files,
             tracks: [],
@@ -212,9 +220,12 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
             queryParametersSupported: false,
             search: false,
             showNavigation: false,
-            showIdeogram: false,
+            showIdeogram: cytobands.length > 0,
             showSVGButton: false,
         });
+        // igv skips URL cytobands when wholeGenomeView is false. Attach its
+        // in-memory source before search rebuilds the ideogram's viewports.
+        if (cytobands.length) browser.genome.cytobandSource = viewerCytobandSource(cytobands);
         browser.on("trackclick", localPopupHTML);
         if (!await browser.search(locus)) {
             dispose();
@@ -273,6 +284,8 @@ function dispose() {
     geneLookup.clear();
     const geneStatus = root?.querySelector<HTMLElement>("[data-gene-status]");
     if (geneStatus) geneStatus.hidden = true;
+    const cytobandStatus = root?.querySelector<HTMLElement>("[data-cytoband-status]");
+    if (cytobandStatus) cytobandStatus.hidden = true;
     if (browser) {
         window.igv.removeBrowser(browser);
         browser = undefined;

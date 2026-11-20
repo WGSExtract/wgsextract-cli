@@ -2150,6 +2150,23 @@ HG00096) in the My Genomes library. Reports whether it is installed;
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
+### `api.ref.cytobands(RefCytobandsParams)`
+
+CLI: `wgsextract ref cytobands`.
+
+Validate/install UCSC cytobands (output role `reference_resource`).
+Missing or invalid tables require explicit `download=True`.
+
+`RefCytobandsParams`: Validate installed UCSC cytobands; fetch a missing table only with
+`--download`. Installs primary-chromosome hg19/hg38 ideograms for the
+offline viewer; no sample data is sent.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `build` | `str` | `'hg38'` | `--build` | Cytoband assembly (default: hg38). One of: `hg38`, `hg19` |
+| `download` | `bool` | `False` | `--download` | Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; only the public assembly URL is requested, never sample data. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
 ### `api.ref.gene_map(RefGeneMapParams)`
 
 CLI: `wgsextract ref gene-map`.

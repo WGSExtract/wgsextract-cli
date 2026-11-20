@@ -23,6 +23,7 @@ from wgsextract_cli.core.utils import UsageError
 
 from ._network import DownloadParams
 from ._params import Params, param
+from ._ref_library import _InLibrary, _library_named
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
 
@@ -53,44 +54,6 @@ def _delete_param(what: str) -> Any:
         action="store_true",
         deletes=True,
     )
-
-
-def _library_named(ref: Path) -> Path:
-    """The library ``ref`` names, ``~`` expanded and ``..`` collapsed as the
-    command does: the one above a FASTA's ``genomes`` folder, else ``ref``
-    itself."""
-    from wgsextract_cli.core.reference_assets import reference_library_of
-
-    # Lexically, without absolutising, so a Windows request is checked as such.
-    ref = Path(os.path.normpath(ref.expanduser()))
-    return Path(reference_library_of(ref)) if ref.is_file() else ref
-
-
-class _InLibrary:
-    """An operation on the library ``ref`` names, or the one above a FASTA's
-    ``genomes`` folder."""
-
-    ref: Path | None
-
-    def library(self) -> Path:
-        """The library folder the operation installs into or reads."""
-        from wgsextract_cli.core.reference_assets import (
-            reference_library_of,
-            resolve_reference_library,
-        )
-
-        ref = reference_library_of(self.ref) if self.ref else None
-        return Path(resolve_reference_library(ref))
-
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        if self.ref is not None:
-            yield "ref", _library_named(self.ref)
-
-    def write_folders(self) -> Iterator[Path]:
-        from wgsextract_cli.core.reference_assets import reference_genomes_dir
-
-        library = self.library()
-        yield from (library, Path(reference_genomes_dir(library)))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -534,6 +497,25 @@ class RefTestGenomeParams(Params):
     def write_folders(self) -> Iterator[Path]:
         if self.install or self.delete:
             yield self._datasets()
+
+
+@dataclass(frozen=True, kw_only=True)
+class RefCytobandsParams(_InLibrary, Params):
+    """Validate installed UCSC cytobands; fetch a missing table only with
+    ``--download``. Installs primary-chromosome hg19/hg38 ideograms for the
+    offline viewer; no sample data is sent."""
+
+    COMMAND = "ref cytobands"
+
+    build: str = _build_param("Cytoband assembly (default: hg38).")
+    download: bool = param(
+        False,
+        help="Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; "
+        "only the public assembly URL is requested, never sample data.",
+        action="store_true",
+        writes=True,
+    )
+    ref: Path | None = ref_param()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1013,6 +995,20 @@ def test_genome(
     return execute(
         params, run_test_genome, progress=progress, cancel=cancel, check=check
     )
+
+
+def cytobands(
+    params: RefCytobandsParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Validate/install UCSC cytobands (output role ``reference_resource``).
+    Missing or invalid tables require explicit ``download=True``."""
+    from wgsextract_cli.commands.ref.cytobands import run_cytobands
+
+    return execute(params, run_cytobands, progress=progress, cancel=cancel, check=check)
 
 
 def gene_map(

@@ -78,6 +78,29 @@ contigs are reported and excluded from both drawing and search. Out-of-bounds
 coordinates disable the gene track with a mismatch notice. Manual file selection
 does not load installed gene maps; coordinate navigation remains available.
 
+## Installed cytobands
+
+Library files show a chromosome ideogram when their hg19/hg38 cytoband
+resource is installed. Run `wgsextract ref cytobands --build hg19 --download`
+or `wgsextract ref cytobands --build hg38 --download` using the same settings
+file as the desktop, then reopen the file. The missing-data notice names the
+required table and this exact command. Reads and coordinate navigation remain
+available without an ideogram.
+
+Only `ref/cytobands_hg19.tsv` or `ref/cytobands_hg38.tsv` under the configured
+reference library is read. Tables load once per open within a 1 MiB/10,000-row
+limit. Malformed, truncated, overlapping or incomplete tables are rejected.
+The chromosome 1 length selects the build; `chr`/no-`chr` primary aliases must
+match unambiguously, and bands must cover the full loaded chromosome length.
+Absent/ambiguous chromosomes are reported and omitted. Manual file selection
+does not load installed cytobands.
+
+Validated bands reach igv's native ideogram through an in-memory chromosome
+source, not a network URL or file grant. Whole-genome mode remains disabled.
+The viewer performs no downloads, public lookup or
+remote cytoband requests. For UCSC data terms, see
+[offline cytobands](../../docs/reference-genomes.md#offline-cytobands).
+
 ## Open an extraction result
 
 After a run, choose **Show in viewer** beside an existing BAM, CRAM or indexed
@@ -131,7 +154,7 @@ the viewer closes the selections. Files are not remembered between visits.
 
 ## Current limits
 
-Installed cytobands and rsID lookups, individual finding/haplogroup
+rsID lookups, individual finding/haplogroup
 links, and authenticated remote range serving remain
 [follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
 menus and external links inside igv are disabled, including BLAT.
@@ -153,8 +176,9 @@ An authenticated `POST /api/viewer/open` accepts a library file `path`, optional
 It creates a bounded, idle-expiring grant for those files, their indexes and
 the matching installed reference and indexes. The embedded viewer receives
 only that read-only grant, never the main app's API token.
-The response also contains bounded, validated installed gene features and notices;
-gene tables receive no file grants and need no extra lookup endpoint.
+The response also contains bounded, validated installed gene and cytoband
+features and notices; these tables receive no file grants and need no extra
+lookup endpoint.
 `GET /viewer-data/<session>/<file>` requires the grant's
 `x-gfc-viewer-token` header; query-string credentials are not accepted.
 Responses use `Cache-Control: no-store`; there is no directory listing or CORS

@@ -1,4 +1,5 @@
 import type { ViewerGenes } from "./viewer-genes.js";
+import type { ViewerCytobands } from "./viewer-cytobands.js";
 
 export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing" | "geneNotFound" | "geneSearchUnavailable";
 
@@ -23,6 +24,7 @@ export interface LocalViewerFiles<Source = File> {
     reference: { id: string; name: string; fastaURL: Source; indexURL: Source; compressedIndexURL?: Source; headers?: Record<string, string>; wholeGenomeView: false };
     tracks: LocalTrack<Source>[];
     genes?: ViewerGenes;
+    cytobands?: ViewerCytobands;
 }
 
 export interface LibraryViewerSession {

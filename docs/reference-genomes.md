@@ -48,6 +48,40 @@ The catalog's `md5` is a sequence-name/length dictionary signature,
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
 
+### Offline cytobands
+
+The library viewer can display chromosome ideograms from UCSC's public
+`cytoBand` data. Install the appropriate assembly explicitly:
+
+```sh
+wgsextract ref cytobands --build hg19 --download
+wgsextract ref cytobands --build hg38 --download
+```
+
+Use the same `config.toml` as the desktop, or pass `--ref /path/to/reference-library`.
+Without `--download`, the command validates the installed asset offline;
+missing or invalid data produces an error naming it and the explicit command.
+It does not inherit the persistent download opt-in. Tables are installed as
+`ref/cytobands_hg19.tsv` and `ref/cytobands_hg38.tsv` in the configured reference
+library. The viewer never downloads them.
+
+The installer checks pinned SHA-256 snapshots of `cytoBand.txt.gz`, gzip
+integrity, five columns, zero-based half-open coordinates, continuous chromosome
+coverage, band names and stains before publishing the table atomically.
+Only primary chromosomes 1–22, X and Y are retained; UCSC's unbanded alternate
+contigs are validated but excluded. Partial downloads use the standard
+URL-bound resume helper. UCSC changing a snapshot requires a reviewed pin update,
+not accepting unchecked replacement bytes.
+
+Source URLs are under
+`https://hgdownload.soe.ucsc.edu/goldenPath/{hg19,hg38}/database/cytoBand.txt.gz`.
+The [UCSC download terms](https://hgdownload.soe.ucsc.edu/downloads.html#terms)
+permit use of downloaded data for any purpose except directory-specific
+exceptions; see the [database README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt)
+and assembly credits. These are annotation data, not UCSC's separately licensed
+Genome Browser software. Credit UCSC and its assembly contributors. No new
+redistribution mirror is introduced.
+
 ## Download safety
 
 Reference HTTP downloads resume only explicit `.partial` files bound to

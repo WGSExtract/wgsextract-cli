@@ -9,6 +9,7 @@ import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
 import { prepareViewerFixtures } from "./prepare-viewer-fixtures.mjs";
+import { cytobandChromosomeLengths } from "../dist/shared/viewer-cytobands.js";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const { values } = parseArgs({ options: {
@@ -16,13 +17,22 @@ const { values } = parseArgs({ options: {
     chromium: { type: "string" },
     "read-only": { type: "boolean", default: false },
     genes: { type: "boolean", default: false },
+    cytobands: { type: "boolean", default: false },
 } });
 if (!values.out) throw new Error("Usage: node scripts/verify-viewer-offline.mjs --out REPO/out/verification [--cli-root PATH] [--chromium PATH]");
 const output = path.resolve(values.out);
 assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
 await mkdir(output, { recursive: true });
 const cli = path.resolve(values["cli-root"]);
-const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"), values.genes);
+const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"), values.genes || values.cytobands);
+if (values.cytobands) {
+    await writeFile(path.join(output, "reference/ref/cytobands_hg38.tsv"),
+        "chr1\t0\t121700000\tp11.1\tgneg\nchr1\t121700000\t123400000\tp11.2\tacen\n"
+        + "chr1\t123400000\t125100000\tq11.1\tacen\n"
+        + [...cytobandChromosomeLengths("hg38")].filter(([chr]) => chr !== "chr1")
+            .map(([chr, size]) => `${chr}\t0\t${size}\tp11\tgneg\n`).join("")
+        + "chr1\t125100000\t248956422\tq44\tgpos100\n");
+}
 const originalFiles = values["read-only"] ? (await readdir(fixtures.library, { recursive: true })).sort() : [];
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
@@ -56,8 +66,9 @@ try {
         "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output,
         ...(!values["read-only"] ? ["--config", config] : []),
         "--reference-name", "reference.fa", "--locus", "1:200-400", "--next-locus", "1:240-300",
-        ...(!values.genes ? ["--tracks", "--track-regressions"] : []),
+        ...(!values.genes && !values.cytobands ? ["--tracks", "--track-regressions"] : []),
         ...(values.genes ? ["--gene-map", path.join(output, "reference/ref/genes_hg38.tsv")] : []),
+        ...(values.cytobands ? ["--cytobands", path.join(output, "reference/ref/cytobands_hg38.tsv")] : []),
         ...(values.chromium ? ["--chromium", values.chromium] : []),
     ], { stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {
