@@ -49,13 +49,13 @@ test("current calling writes requested types and evidence into wgse beside lab i
   assert.ok(outputs.every(o => !o.path.includes("/wgse/wgse/")));
 });
 
-test("research ACMG refuses silent classification and unmerged Windows support", () => {
+test("research ACMG refuses silent classification and supports Windows x86-64", () => {
   const local = setup();
   const missingConsent = local.request("POST", "/v1/ops/vcf/acmg", { vcf_input: "/demo/input.vcf.gz" });
   assert.equal(missingConsent.body.error.code, "acmg_research_only");
   const windows = setup("windows");
   const pending = windows.request("POST", "/v1/ops/vcf/acmg", { vcf_input: "C:/demo/input.vcf.gz", research_acmg: true });
-  assert.equal(pending.body.error.code, "acmg_windows_coming");
+  assert.equal(pending.status, 202);
 });
 
 test("shared CLI output setting still applies when Basic sends no outdir", () => {

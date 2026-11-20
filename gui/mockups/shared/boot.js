@@ -47,7 +47,7 @@
     v2: ["state", "machine-spec", "machine", "machine-editor", "glossary-data", "glossary", "diagrams", "learn", "region", "../../data/api-schema", "requests", "tool-output", "tools", "tools-align", "tools-call", "tools-quality",
       "tools-annotate", "tools-reports", "tools-extract", "tools-lineage", "tools-files", "tools-inspect", "tools-vcf", "tools-long", "catalog", "install",
       "api-core", "api-validate", "api-ops", "api-seed", "api-engine", "api-views", "api-routes", "api-proposed", "api-admin", "api-files", "api-edge", "api-server",
-      "api-clock", "api-bind", "api-jobs-cards", "api-jobs", "generated", "edge-actions", "edge-views", "../../data/igv/coverage-demo", "viewer-tracks", "viewer", "current-ui"],
+      "api-clock", "api-bind", "api-jobs-cards", "api-jobs", "generated", "edge-actions", "edge-views", "../../data/igv/coverage-demo", "viewer-tracks", "viewer", "viewer-remote", "current-ui"],
   };
   if ((shell && shell !== "none") || setup) {
     var at = SCRIPTS.indexOf("shared/chrome.js");

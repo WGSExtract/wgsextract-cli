@@ -93,8 +93,9 @@ kept in this browser until you reset it.
   types; DeepVariant shows its native haploid/PAR policy and Clair3 has an
   explicit GPU/MPS opt-in. Public-data downloads default off. Research ACMG
   defaults to installed library data; per-run site lookups disclose variant
-  positions sent to Google Cloud Storage and Ensembl. Windows fastVEP and
-  remote viewing remain **Coming** while their PRs are open.
+  positions sent to Google Cloud Storage and Ensembl. Windows x86-64 fastVEP
+  and the desktop remote connection are available; non-loopback HTTP server
+  listening is **Coming in the next release** while its change is in the queue.
   Settings separates the movable `usersWorkspace` from the hidden app-managed
   `bundleWorkspace`; results default to `wgse/` beside lab inputs and scratch
   work stays separate. The viewer has tiny simulated panel and coverage tracks,

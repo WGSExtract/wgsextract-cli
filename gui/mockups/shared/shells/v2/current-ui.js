@@ -4,18 +4,7 @@
   var W = window.WGSM, h = W.h;
   var EVIDENCE = "A blank variant-only VCF is unknown, not reference. A gVCF distinguishes callable reference, uncovered, filtered and low-depth/low-GQ evidence. Confidence is high, moderate or low; bcftools depth-only blocks lack GQ and cannot justify high confidence. Ploidy-zero sites are not assessed.";
   function remote() {
-    return h("details.v2-more", h("summary", "View files on a remote server · Coming"),
-      h("div.v2-more__body.v2-section",
-        h("p", "Not merged yet. Local analyses and local viewing still use this computer. Remote viewing will open one primary BAM/CRAM/VCF with the exact server-side FASTA and index; local gene spans and cytobands will not be overlaid."),
-        h("label.v2-field", h("span.v2-field__label", "Private server config.toml"), h("button.v2-btn", { type: "button", disabled: true }, "Choose remote server config.toml")),
-        h("p.v2-small", "Contains URL and bearer token. Kept in Application Support, never in the browser or a URL. Choosing it makes no connection."),
-        h("label.v2-field", h("span.v2-field__label", "Destination"), h("input.v2-input", { value: "https://genomes.example/v1", readonly: true })),
-        ["Primary file on server", "Matching index on server", "Exact reference FASTA on server", "1-based inclusive interval"].map(function (label) {
-          return h("label.v2-field", h("span.v2-field__label", label), h("input.v2-input", { disabled: true, placeholder: label.indexOf("interval") >= 0 ? "chrM:1-16569" : "/server/mygenomes/…" }));
-        }),
-        h("p.v2-notice", { "data-tone": "warn" }, "On Connect, selected paths and genomic byte-range requests are sent to the displayed server; genomic bytes return to this desktop. Offsets reveal which regions you inspect. Use validated HTTPS or a trusted encrypted tunnel. Unencrypted HTTP exposes tokens, paths and genomic data. Redirects are refused."),
-        h("label.v2-choice", h("input.v2-check", { type: "checkbox", disabled: true }), h("span.v2-choice__title", "I consent to this transfer to the displayed destination")),
-        h("div.v2-row.v2-row--wrap", h("button.v2-btn", { disabled: true }, "Connect and view remote file"), h("button.v2-btn", { disabled: true }, "Forget server and revoke access"))));
+    return W.v2remote.render();
   }
   function diagnostics(root) {
     var state = W.params.get("demo");
@@ -36,7 +25,7 @@
     if (!root) return;
     var page = document.body.dataset.pageId;
     if (page === "v2-viewer" || page === "v2-settings") root.appendChild(remote());
-    if (page === "v2-settings") root.appendChild(h("details.v2-more", h("summary", "Remote HTTP server settings · Coming"),
+    if (page === "v2-settings") root.appendChild(h("details.v2-more", h("summary", "Remote HTTP server listening · Coming in the next release"),
       h("div.v2-more__body.v2-section", h("p", "The desktop’s local server stays on loopback. A separately configured HTTP/JSON server can opt in to another numeric listen interface."),
         h("label.v2-field", h("span.v2-field__label", "Listen interface (server.listen)"), h("input.v2-input", { value: "127.0.0.1", disabled: true })),
         h("p.v2-small", "Non-loopback listening requires an advertised public_url, exact allowed_hosts and allowed_origins, plus validated TLS or a trusted encrypted tunnel. The built-in listener does not configure certificates. Viewer endpoints and allowed roots are default-off."))));
@@ -56,7 +45,7 @@
       h("p.v2-small", "Gene spans: downloads/genes_hg19.tsv or genes_hg38.tsv, installed explicitly with wgsextract ref gene-map."),
       h("p.v2-small", "Cytobands: downloads/cytobands_hg19.tsv or cytobands_hg38.tsv. Confirm the download: wgsextract ref cytobands --build hg38 --download."),
       h("p.v2-small", "ACMG library data is installed separately. Per-run gnomAD/SpliceAI requests are a separate opt-in that sends sample-derived variant positions to Google Cloud Storage and Ensembl.")));
-    if (page === "v2-install") root.appendChild(h("p.v2-notice", { "data-tone": "info" }, "fastVEP / ACMG on Windows x86-64: Coming, pending the platform-support change. Clair3 on Apple Silicon: streaming MPS is an explicit GPU opt-in with the supported WGSE build."));
+    if (page === "v2-install") root.appendChild(h("p.v2-notice", { "data-tone": "info" }, "fastVEP / research ACMG is available on Windows x86-64, Linux and macOS. It requires the installed fastvep tool set and local annotation databases. Clair3 on Apple Silicon: streaming MPS is an explicit GPU opt-in with the supported WGSE build."));
     if (page === "v2-settings") {
       var about = root.querySelector('[data-annot-id="about"] p');
       if (about) about.textContent = "WGS Extract " + window.WGSMSchema.version + " · command line " + window.WGSMSchema.version + " · server API v1";

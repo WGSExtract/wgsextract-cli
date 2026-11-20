@@ -1,0 +1,7 @@
+##fileformat=VCFv4.2
+##INFO=<ID=AF,Number=A,Type=Float,Description="af">
+##INFO=<ID=AN,Number=1,Type=Integer,Description="an">
+##INFO=<ID=AC,Number=A,Type=Integer,Description="ac">
+##INFO=<ID=nhomalt,Number=A,Type=Integer,Description="hc">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+1	1150	.	T	A	.	PASS	AF=0.3;AC=300000;AN=1000000;nhomalt=50000

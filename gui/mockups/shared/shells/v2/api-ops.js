@@ -345,7 +345,7 @@
     if (!o) M.fail(404, "unknown_op", "No operation " + JSON.stringify(op) + ".");
     var p = params || {};
     if (op === "vcf/acmg" && !p.research_acmg) M.fail(400, "acmg_research_only", "Explicit research-only acknowledgement is required.");
-    if (op === "vcf/acmg" && machine.os === "windows") M.fail(400, "acmg_windows_coming", "Windows fastVEP support is coming, not merged yet.");
+    if (op === "vcf/acmg" && machine.os === "windows" && machine.arch !== "x86-64") M.fail(400, "unsupported_platform", "Windows fastVEP requires x86-64.");
     var hint = p._mock || {};
     var file = fileFor(config, p.input || p.vcf_input || p.r1 || (p.inputs && p.inputs[0]));
     var personId = hint.person !== undefined ? hint.person : file ? file.person : null;

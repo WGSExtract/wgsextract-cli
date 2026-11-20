@@ -62,11 +62,13 @@
       f.toggle("site_consent", "Allow these variant-position lookups", "I agree to send this sample’s variant positions to Google Cloud Storage and Ensembl for gnomAD and SpliceAI. Other databases must already be installed.", false, {
         ui: true, when: function (c) { return c.v.site_data === "per-run"; },
       })],
-    more: [f.param("sa_dir", "fastVEP data folder", "Empty: configured ACMG databases"),
+    more: [f.show("Platform support", "Requires the installed fastvep tool set; WGS Extract validates it without installing dependencies.",
+      function (c) { return c.M.os === "windows" ? "Available on Windows x86-64" : "Available on Linux and macOS"; }),
+      f.param("sa_dir", "fastVEP data folder", "Empty: configured ACMG databases"),
       f.param("gff3", "Ensembl GRCh38 GFF3", "Empty: the GFF3 recorded with the installed data"), f.threads()],
     run: function (c) {
       return { timeText: "minutes", memGB: 8,
-        blocked: !c.v.research_acmg ? "Acknowledge the research-only limits first." : c.M.os === "windows" ? "Windows fastVEP support is coming; not merged yet." :
+        blocked: !c.v.research_acmg ? "Acknowledge the research-only limits first." : c.M.os === "windows" && c.M.arch !== "x86-64" ? "Windows fastVEP requires x86-64." :
           c.v.site_data === "per-run" && !c.v.site_consent ? "Confirm the variant-position disclosure before remote lookups." :
           c.file.build !== "GRCh38" ? "Needs a GRCh38 vep-rs VCF." :
           !c.flag("data-acmg") && !c.v.sa_dir ? "ACMG databases are not installed. Run wgsextract ref acmg-data explicitly, then reopen. Nothing downloads automatically." : null,
