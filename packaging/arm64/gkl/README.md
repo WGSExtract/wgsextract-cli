@@ -100,6 +100,11 @@ Tools, JDK 17+ (`java`, `javac`, `jar` on PATH), Python 3, curl, and Homebrew
 `libomp` and `llvm`. The recipe validates these tools; it does not install
 them. Missing pinned public source archives error unless **`--download`**
 explicitly confirms fetching GKL/SIMDe from GitHub. No sample data is sent.
+Downloads are checksummed before entering the cache; failed transfers are
+discarded. If a cached archive fails verification, delete the named file
+and rerun with `--download`. Sources and build intermediates live only in
+the recipe-owned `OUT/wgse-pairhmm-build` directory, removed on exit.
+An existing directory of that name is refused, never deleted.
 
 ```bash
 bash packaging/arm64/gkl/build-darwin-aarch64.sh \
@@ -117,6 +122,8 @@ ARM loader overlay before GATK's bundled GKL. This is necessary because
 stock GKL rejects non-AVX hosts; unlike CUDA, ARM cannot use a resource-only
 bootstrap append. There is no replacement GATK API or separate JNI binding.
 `libomp` remains a local runtime dependency, not a bundled runtime.
+The sidecar option is local-only and cannot be supplied by server requests.
+Validation happens before input preparation, including CRAM reindexing.
 
 The CLI always requests **double precision**: native float passed the
 likelihood tolerance and call checks, but changed one reference block's DP

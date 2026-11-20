@@ -37,27 +37,43 @@ PY
 mkdir -p "$1" "$3"
 WORK=$(cd "$1" && pwd)
 OUT=$(cd "$3" && pwd)
+BUILD="$OUT/wgse-pairhmm-build"
+if ! mkdir "$BUILD"; then
+    echo "Refusing to reuse existing build directory $BUILD. Choose another OUT_DIR." >&2
+    exit 1
+fi
+trap 'rm -rf "$BUILD"' EXIT
 fetch() {
     local name=$1 sha=$2 url=$3
+    local part="$BUILD/$name.part"
     if [ ! -f "$WORK/$name" ]; then
         if [ "$DOWNLOAD" != --download ]; then
             echo "Missing $name in $WORK. Rerun with --download to fetch public source from $url." >&2
             exit 1
         fi
-        curl -fsSL "$url" -o "$WORK/$name.part"
-        mv "$WORK/$name.part" "$WORK/$name"
+        if ! curl -fsSL "$url" -o "$part"; then
+            rm -f "$part"
+            echo "Download failed for $name; partial transfer discarded." >&2
+            exit 1
+        fi
+        if ! echo "$sha  $part" | shasum -a 256 -c; then
+            rm -f "$part"
+            echo "Checksum mismatch for downloaded $name; partial transfer discarded." >&2
+            exit 1
+        fi
+        mv "$part" "$WORK/$name"
+    elif ! echo "$sha  $WORK/$name" | shasum -a 256 -c; then
+        echo "Bad cached archive $WORK/$name. Delete that file and rerun with --download." >&2
+        exit 1
     fi
-    echo "$sha  $WORK/$name" | shasum -a 256 -c --status
 }
 fetch gkl-0.8.11.tar.gz 23f1aa7de874e79aedc35901397545e9e406266dfb1584f21300e440806a8950 \
     https://codeload.github.com/IntelLabs/GKL/tar.gz/refs/tags/0.8.11
 fetch simde-0.8.2.tar.gz ed2a3268658f2f2a9b5367628a85ccd4cf9516460ed8604eed369653d49b25fb \
     https://codeload.github.com/simd-everywhere/simde/tar.gz/refs/tags/v0.8.2
-SRC="$WORK/GKL-0.8.11"
-BUILD="$OUT/build"
-rm -rf "$SRC" "$WORK/simde-0.8.2" "$BUILD"
-tar -xzf "$WORK/gkl-0.8.11.tar.gz" -C "$WORK"
-tar -xzf "$WORK/simde-0.8.2.tar.gz" -C "$WORK"
+SRC="$BUILD/GKL-0.8.11"
+tar -xzf "$WORK/gkl-0.8.11.tar.gz" -C "$BUILD"
+tar -xzf "$WORK/simde-0.8.2.tar.gz" -C "$BUILD"
 patch -s -d "$SRC" -p1 < "$HERE/../../windows/recipes/gkl/patches/0001-windows-avx-native.patch"
 patch -s -d "$SRC" -p1 < "$HERE/patches/0002-aarch64-neon-simde.patch"
 patch -s -d "$SRC" -p1 < "$HERE/patches/0003-darwin-aarch64-loader.patch"
@@ -66,7 +82,7 @@ RES="$BUILD/jar/com/intel/gkl/native/darwin-aarch64"
 mkdir -p "$RES" "$BUILD/classes"
 COMMON=(-std=c++11 -O3 -march=armv8-a -ffp-contract=off -fno-fast-math -fPIC
     -DWGSE_GKL_AVX_ONLY -Wno-ignored-attributes
-    "-I$WORK/simde-0.8.2" "-I$JAVA_HOME/include" "-I$JAVA_HOME/include/darwin"
+    "-I$BUILD/simde-0.8.2" "-I$JAVA_HOME/include" "-I$JAVA_HOME/include/darwin"
     "-I$NATIVE/common")
 fma_guard_selftest clang++ "$OBJDUMP" "$BUILD/fma-selftest" "${COMMON[@]}"
 OPENMP=(-Xpreprocessor -fopenmp "-I$OMP/include" "-L$OMP/lib" -lomp)
@@ -97,7 +113,7 @@ JAVA_SRC="$SRC/src/main/java/com/intel/gkl"
 cp -r "$BUILD/classes/." "$BUILD/jar/"
 mkdir -p "$BUILD/jar/META-INF/licenses/"{gkl,simde,wgse}
 cp "$SRC/LICENSE" "$BUILD/jar/META-INF/licenses/gkl/"
-cp "$WORK/simde-0.8.2/COPYING" "$BUILD/jar/META-INF/licenses/simde/"
+cp "$BUILD/simde-0.8.2/COPYING" "$BUILD/jar/META-INF/licenses/simde/"
 cp "$HERE/../../../LICENSE" "$BUILD/jar/META-INF/licenses/wgse/"
 python3 - "$BUILD/jar/META-INF/wgse-pairhmm.json" "$JAVA_HOME/bin/java" "$GATK_JAR" <<'PY'
 import json

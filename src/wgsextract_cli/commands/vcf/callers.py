@@ -269,6 +269,17 @@ def run_gatk(params: VcfGatkParams) -> None:
 
     from .caller_ploidy import GvcfEngine, call_partitioned
 
+    gatk_command = ["gatk"]
+    if params.pair_hmm_neon is not None:
+        if params.gpu or params.scatter:
+            raise UsageError(
+                "--pair-hmm-neon cannot be combined with --gpu or --scatter."
+            )
+        gatk_command = neon_pairhmm_command(params.pair_hmm_neon, _gatk_version())
+        if ultima.alignment_flow_data(str(params.input), params.ref).flow_aware:
+            raise UsageError(
+                "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
+            )
     require_native_tool("gatk")
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
@@ -310,6 +321,7 @@ def run_gatk(params: VcfGatkParams) -> None:
                 _run_gatk,
                 stage_region=params.region is not None,
                 read_index=read_index,
+                gatk_command=gatk_command,
             ),
             gvcf,
         )
@@ -324,6 +336,7 @@ def _run_gatk(
     *,
     stage_region: bool = True,
     read_index: str | None = None,
+    gatk_command: list[str] | None = None,
 ) -> None:
     """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks.
 
@@ -340,11 +353,7 @@ def _run_gatk(
     verify_dependencies(
         ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
     )
-    gatk_command = (
-        neon_pairhmm_command(params.pair_hmm_neon, _gatk_version())
-        if params.pair_hmm_neon is not None
-        else ["gatk"]
-    )
+    gatk_command = gatk_command or ["gatk"]
     if (
         Path(params.input).is_file()
         and not params.region

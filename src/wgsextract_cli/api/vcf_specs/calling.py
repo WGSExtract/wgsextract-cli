@@ -351,6 +351,7 @@ class VcfGatkParams(_CallerParams):
     )
     pair_hmm_neon: Path | None = param(
         None,
+        local_only=True,
         help="Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK "
         "4.6.2.0, with Java fallback. Opt-in; not Parabricks. "
         "See packaging/arm64/gkl/README.md. Not with --gpu or --scatter.",
