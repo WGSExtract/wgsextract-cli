@@ -1,6 +1,8 @@
 import { open, type FileHandle } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { ViewerFileError } from "../../../shared/genome-viewer.js";
+import { validateTrackRecord } from "../../../shared/viewer-track-records.js";
+import { tabixContigs } from "./viewer-tabix-metadata.js";
 
 const limit = 32 * 1024 * 1024;
 
@@ -30,7 +32,7 @@ export async function validateViewerTrack(file: string, format: "bed" | "bedgrap
             await validateBigWig(reader, reference);
         } else if (index) {
             await validateBgzf(reader);
-            const indexed = await tabixContigs(index);
+            const indexed = await tabixContigs(index, size);
             checkContigs(indexed, reference);
         } else {
             if (size > limit) throw new ViewerFileError("trackTooLarge");
@@ -55,14 +57,7 @@ function validateIntervals(content: string, format: "bed" | "bedgraph", referenc
     let records = 0;
     for (const line of content.split(/\r?\n/)) {
         if (!line.trim() || /^(#|track(?:\s|$)|browser(?:\s|$))/.test(line)) continue;
-        const [contig = "", first = "", last = "", value = ""] = line.trim().split(/\s+/);
-        checkContigs([contig], reference);
-        const start = Number(first);
-        const end = Number(last);
-        if (!/^\d+$/.test(first) || !/^\d+$/.test(last) || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
-            || end <= start || end > (reference.get(contig) ?? 0) || (format === "bedgraph" && (!value || !Number.isFinite(Number(value))))) {
-            throw new Error("Invalid interval.");
-        }
+        validateTrackRecord(line.trim().split(/\s+/), format, reference);
         records++;
     }
     if (!records) throw new Error("Empty track.");
@@ -85,26 +80,6 @@ async function validateBgzf(reader: MetadataReader) {
     throw new ViewerFileError("trackCompression");
 }
 
-async function tabixContigs(file: string) {
-    const handle = await open(file, "r");
-    try {
-        const size = (await handle.stat()).size;
-        const reader = new MetadataReader(handle, size);
-        let data = await reader.read(0, size);
-        if (data[0] === 31 && data[1] === 139) data = gunzipSync(data, { maxOutputLength: limit });
-        const magic = data.toString("ascii", 0, 4);
-        const aux = magic === "TBI\u0001" ? data.subarray(8) : magic === "CSI\u0001" ? data.subarray(16, 16 + data.readInt32LE(12)) : undefined;
-        if (!aux || aux.length < 28 || aux.readInt32LE(0) !== 65536 || aux.readInt32LE(4) !== 1 || aux.readInt32LE(8) !== 2 || aux.readInt32LE(12) !== 3) {
-            throw new Error("Use tabix BED preset.");
-        }
-        const length = aux.readInt32LE(24);
-        if (length < 1 || 28 + length > aux.length || aux[28 + length - 1] !== 0) throw new Error("Invalid tabix names.");
-        return aux.toString("utf8", 28, 28 + length - 1).split("\0");
-    } finally {
-        await handle.close();
-    }
-}
-
 async function validateBigWig(reader: MetadataReader, reference: Map<string, number>) {
     const header = await reader.read(0, 64);
     const little = header.readUInt32LE(0) === 0x888ffc26;
@@ -112,6 +87,25 @@ async function validateBigWig(reader: MetadataReader, reference: Map<string, num
     const uint16 = (buffer: Buffer, offset: number) => little ? buffer.readUInt16LE(offset) : buffer.readUInt16BE(offset);
     const uint64 = (buffer: Buffer, offset: number) => Number(little ? buffer.readBigUInt64LE(offset) : buffer.readBigUInt64BE(offset));
     if (uint32(header, 0) !== 0x888ffc26) throw new Error("Not bigWig.");
+    const dataOffset = uint64(header, 16);
+    const indexOffset = uint64(header, 24);
+    if (dataOffset < 64 || indexOffset < dataOffset + 8) throw new Error("Invalid bigWig offsets.");
+    const data = await reader.read(dataOffset, 8);
+    const index = await reader.read(indexOffset, 48);
+    if (!uint64(data, 0) || uint32(index, 0) !== 0x2468ace0 || !uint32(index, 4) || !uint64(index, 8)) {
+        throw new Error("Invalid bigWig data/index header.");
+    }
+    const root = await reader.read(indexOffset + 48, 4);
+    const rootCount = uint16(root, 2);
+    if (![0, 1].includes(root[0] ?? -1) || !rootCount || rootCount > uint32(index, 4)) throw new Error("Invalid bigWig index root.");
+    const rootEntries = await reader.read(indexOffset + 52, rootCount * (root[0] === 1 ? 32 : 24));
+    for (let offset = 0; offset < rootEntries.length; offset += root[0] === 1 ? 32 : 24) {
+        const child = uint64(rootEntries, offset + 16);
+        const length = root[0] === 1 ? uint64(rootEntries, offset + 24) : 4;
+        // A bounded read verifies both the offset and the minimum required target header.
+        if (!length || (root[0] === 1 && (child < dataOffset + 8 || child + length > indexOffset))) throw new Error("Invalid bigWig index entry.");
+        await reader.read(child, Math.min(length, 4));
+    }
     const treeOffset = uint64(header, 8);
     const tree = await reader.read(treeOffset, 32);
     if (uint32(tree, 0) !== 0x78ca8c91 || uint32(tree, 12) !== 8) throw new Error("Invalid chromosome tree.");

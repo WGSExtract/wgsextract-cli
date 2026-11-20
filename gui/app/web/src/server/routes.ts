@@ -102,8 +102,12 @@ export function createRequestHandler(context: RequestHandlerContext) {
             requireViewerLoopback(request);
             const body = await readBody(request, context);
             const tracks = body.tracks ?? [];
-            if (!Array.isArray(tracks) || tracks.length > 16 || tracks.some((track) => typeof track !== "string" || !track.trim() || track.length > 4096)) {
-                throw new HttpError(400, "Viewer tracks must be at most 16 local file paths.");
+            if (!Array.isArray(tracks) || tracks.some((track) => typeof track !== "string" || !track.trim() || track.length > 4096)) {
+                throw new HttpError(400, "Viewer tracks must be local file paths.");
+            }
+            if (tracks.length > 16) {
+                json(response, { problem: "trackLimit" });
+                return;
             }
             json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
         },

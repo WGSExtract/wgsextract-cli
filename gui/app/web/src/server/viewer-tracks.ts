@@ -15,11 +15,16 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
     const tracks: LocalTrack<string>[] = [];
     for (const requested of paths) {
         const file = expandWorkspaceToken(requested, bundleRoot);
-        await guardedViewerPath(file, roots);
         const name = path.basename(file);
+        try {
+            await guardedViewerPath(file, roots);
+        } catch (error) {
+            if (["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) throw new ViewerFileError("trackMissing", name);
+            throw error;
+        }
         const lower = name.toLowerCase();
         const format = /\.(bw|bigwig)$/.test(lower) ? "bigwig" : /\.bed(\.gz)?$/.test(lower) ? "bed" : /\.bedgraph(\.gz)?$/.test(lower) ? "bedgraph" : undefined;
-        if (!format) throw new ViewerFileError(/\.(gz|bgz|zip|bz2|xz)$/.test(lower) ? "trackCompression" : "unsupportedFile", name);
+        if (!format) throw new ViewerFileError(/\.(gz|bgz|zip|bz2|xz)$/.test(lower) ? "trackCompression" : "trackUnsupported", name);
         let index: string | undefined;
         if (lower.endsWith(".gz")) {
             for (const candidate of [`${file}.tbi`, `${file}.csi`]) {
@@ -32,7 +37,7 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
                     if (!["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) throw error;
                 }
             }
-            if (!index) throw new ViewerFileError("indexMissing", name);
+            if (!index) throw new ViewerFileError("trackIndexMissing", name);
             await guardedViewerPath(index, roots);
         }
         try {
@@ -45,6 +50,7 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
             name: name.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`),
             type: format === "bed" ? "annotation" : "wig", format, url: file,
             ...(index ? { indexURL: index } : {}), indexed: !!index || format === "bigwig",
+            ...(format === "bedgraph" && index ? { referenceLengths: Object.fromEntries(reference) } : {}),
         });
     }
     return tracks;

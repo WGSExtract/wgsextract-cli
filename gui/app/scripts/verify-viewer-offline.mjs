@@ -55,7 +55,7 @@ try {
         "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output,
         ...(!values["read-only"] ? ["--config", config] : []),
         "--reference-name", "reference.fa", "--locus", "1:200-400", "--next-locus", "1:240-300",
-        "--tracks",
+        "--tracks", "--track-regressions",
         ...(values.chromium ? ["--chromium", values.chromium] : []),
     ], { stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {

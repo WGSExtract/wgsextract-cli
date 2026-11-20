@@ -75,5 +75,8 @@ export async function prepareViewerFixtures(root, output, tools) {
     const bigwig = path.join(library, "coverage.bw");
     await copyFile(path.join(root, "tests/fixtures/viewer_tracks/coverage.bw"), bigwig);
     tracks.push(bigwig);
+    for (const name of ["malformed.bedgraph.gz", "malformed.bedgraph.gz.tbi", "csi-malformed.bedgraph.gz", "csi-malformed.bedgraph.gz.csi"]) {
+        await copyFile(path.join(root, "tests/fixtures/viewer_tracks", name), path.join(library, name));
+    }
     return { library, reference, bam, cram, vcf: `${vcf}.gz`, large, tracks };
 }

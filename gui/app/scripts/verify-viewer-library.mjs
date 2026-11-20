@@ -9,6 +9,7 @@ const { values } = parseArgs({ options: {
     "large-bam": { type: "string" }, vcf: { type: "string" }, chromium: { type: "string" },
     config: { type: "string" },
     tracks: { type: "boolean", default: false },
+    "track-regressions": { type: "boolean", default: false },
     "reference-name": { type: "string", default: "hs38DH.fa.gz" },
     locus: { type: "string", default: "chr20:10001200-10001450" },
     "next-locus": { type: "string", default: "chr20:10002400-10002700" },
@@ -153,6 +154,31 @@ try {
         } finally {
             await writeFile(values.config, original);
         }
+    }
+    if (values["track-regressions"]) {
+        assert.match(await page.locator("#extra-tracks-help").innerText(), /16 tracks/);
+        for (const [paths, expected] of [
+            [Array(17).fill(path.resolve(values.fixtures, "panels.bed")), /at most 16 tracks/],
+            [[path.resolve(values.fixtures, "missing.bed")], /missing\.bed was not found/],
+            [[path.resolve(values.fixtures, "reads.bam")], /Use BED.*bedGraph.*bigWig/],
+        ]) {
+            await page.locator('[name="extra-tracks"]').fill(paths.join("\n"));
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: expected }).waitFor();
+        }
+        for (const name of ["malformed.bedgraph.gz", "csi-malformed.bedgraph.gz"]) {
+            current = name;
+            await page.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, name));
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: `Could not read ${name}` }).waitFor();
+            await page.locator('[data-locus]:not([hidden])').waitFor();
+            await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: `Could not read ${name}` }).waitFor();
+            await page.screenshot({ path: path.join(out, `library-invalid-${name}.png`), fullPage: true });
+            proofs.push({ case: name, actionable: true, malformedValuesNotRendered: true });
+        }
+        await page.locator('[name="extra-tracks"]').fill("");
     }
     // The real tool page's selected file enters the sibling pane, not a document navigation.
     current = "entry-point";

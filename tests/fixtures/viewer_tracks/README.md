@@ -10,3 +10,7 @@ the same intervals and values as `coverage.bedgraph`.
 
 The browser fixture preparation recreates compressed tracks with installed
 bgzip/tabix and copies the bigWig. It never installs tools or downloads data.
+
+`malformed.bedgraph.gz` and its CSI counterpart use real bgzip/tabix indexes
+with one valid value, a nonnumeric value (`XX`) and an interval beyond the
+reference. They exercise range-time validation without a whole-file scan.

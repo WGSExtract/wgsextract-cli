@@ -1,4 +1,4 @@
-export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge";
+export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing";
 
 export class ViewerFileError extends Error {
     constructor(readonly code: ViewerProblem, readonly fileName = "") {
@@ -14,6 +14,7 @@ export interface LocalTrack<Source = File> {
     indexURL?: Source;
     headers?: Record<string, string>;
     indexed: boolean;
+    referenceLengths?: Record<string, number>;
 }
 
 export interface LocalViewerFiles<Source = File> {
