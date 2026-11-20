@@ -10,19 +10,26 @@ test("#1112: View reads opens the current selection even before the edited form 
         removeAttribute() {}
         focus() {}
         append() {}
+        remove() {}
     }
     const button = new Element();
     button.dataset.viewReads = "bam_path";
     const app = new Element();
-    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button] : [];
+    const result = new Element();
+    result.dataset.resultViewer = "/genomes/region.bam";
+    result.dataset.viewerLocus = "chr1:200-400";
+    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button] : selector === "[data-result-viewer]" ? [result] : [];
+    app.querySelector = () => button;
     const frameWindow = { postMessage: (message) => messages.push(message) };
     globalThis.localStorage = { getItem: () => null };
     globalThis.window = new EventTarget();
     globalThis.location = { origin: "http://localhost" };
+    const created = [];
     globalThis.document = {
         querySelector: () => app,
         createElement(tag) {
             const element = new Element();
+            created.push({ tag, element });
             if (tag === "iframe") element.contentWindow = frameWindow;
             return element;
         },
@@ -39,6 +46,13 @@ test("#1112: View reads opens the current selection even before the edited form 
         origin: location.origin, source: frameWindow, data: { type: "genomeViewerReady" },
     }));
     assert.equal(messages[0].inputPath, "{{usersWorkspace}}/mygenomes/new.bam");
+    created.find((item) => item.tag === "button").element.dispatchEvent(new Event("click"));
+    result.dispatchEvent(new Event("click"));
+    window.dispatchEvent(Object.assign(new Event("message"), {
+        origin: location.origin, source: frameWindow, data: { type: "genomeViewerReady" },
+    }));
+    assert.equal(messages[1].inputPath, "/genomes/region.bam");
+    assert.equal(messages[1].locus, "chr1:200-400");
 });
 
 test("#1112: standalone grants are revoked on replacement, manual selection and page exit with authentication", async (t) => {

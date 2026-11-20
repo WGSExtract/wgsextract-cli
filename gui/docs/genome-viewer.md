@@ -27,6 +27,19 @@ Enter an optional **1-based, inclusive** position such as
 reference's filename appears beside the status. The existing browser-file
 workflow below is available for files outside the configured libraries.
 
+## Open an extraction result
+
+After a run, choose **Show in viewer** beside an existing BAM, CRAM or indexed
+VCF/gVCF in the result summary. For **Extract custom**, a single coordinate
+interval opens at the extracted locus. BED selections and multiple intervals
+open at the reference's first chromosome; enter the interval you want to inspect.
+The output must still lie inside the configured My Genomes library.
+
+To check an unexpected variant, open its VCF or the aligned BAM/CRAM and enter
+`chromosome:position-position`. Zoom out to inspect nearby reads and coverage.
+Check both strands, mapping quality and clipping before interpreting a call.
+The viewer does not query ClinVar when you click a read.
+
 ## Select files manually
 
 1. In **Local reference FASTA and index**, select the installed `.fa`, `.fasta`
@@ -65,9 +78,9 @@ the viewer closes the selections. Files are not remembered between visits.
 
 ## Current limits
 
-This is part of [the built-in viewer work](https://github.com/WGSExtract/wgsextract-cli/issues/1090).
-Installed gene/rsID lookups, variant/finding/region deep links, BED and coverage
-tracks, and authenticated remote range serving remain follow-up work. Context
+Installed gene/rsID lookups, individual finding/haplogroup links, BED and coverage
+tracks, and authenticated remote range serving remain
+[follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
 menus and external links inside igv are disabled, including BLAT.
 Read and coverage popups never query ClinVar or other online services. File
 fields, including VCF INFO values, are shown as text, never interpreted as HTML.
@@ -100,3 +113,33 @@ return `416`. Full requests are limited to 32 MiB for indexes and metadata;
 larger data files require bounded ranges. Closing the pane revokes its grants;
 unused grants expire after an hour. No sample paths, loci, tokens or byte-read
 logs are sent to any external service.
+
+## Repeat the offline browser check
+
+From `gui/app/`, after preparing the locked CLI environment and running
+`npm run build`, run:
+
+```sh
+node scripts/verify-viewer-offline.mjs --out ../../out/viewer-check
+```
+
+Use `--chromium /path/to/chromium` for an installed browser, or `--cli-root PATH`
+to reuse another prepared checkout's CLI runtime. The check validates installed
+samtools and bcftools; it does not install tools or download data.
+
+The check copies `tests/fixtures/vep_rs/genome.fa`, a synthetic 3 kb reference,
+into the output directory and uses real samtools/bcftools to build matching BAM,
+CRAM and VCF fixtures. Chromium opens each track, moves between loci and checks
+the missing-CRAM-reference state. It also runs a region extraction through the
+app and follows **Show in viewer** to that locus. The request interceptor blocks
+requests outside the app's loopback origin; any attempted external request,
+console error or CSP violation fails the check.
+
+`library-browser-proof.json` records HTTP status, Content-Range and bytes for
+each file request. The large-file case uses a **4 GiB sparse BAM**, with valid
+indexed blocks at its start, to catch whole-file reads without storing 4 GiB.
+This tests indexed access, not whole-genome rendering performance. Screenshots,
+the byte log and the isolated app workspace stay under `out/`.
+For an existing multi-GiB biological BAM, use `verify-viewer-library.mjs` against
+a running app with matching installed references; its `--fixtures`, `--vcf`,
+`--large-bam`, `--locus` and `--next-locus` arguments select local inputs.

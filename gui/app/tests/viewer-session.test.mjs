@@ -65,6 +65,19 @@ async function fixture(t) {
     return { root, users, config, library, input, base, open };
 }
 
+test("#1090: opening and revoking viewer sessions require the app credential, not a byte grant", async (t) => {
+    const f = await fixture(t);
+    for (const route of ["/api/viewer/open", "/api/viewer/close"]) {
+        for (const headers of [{}, { "x-gfc-token": "wrong" }, { "x-gfc-viewer-token": "wrong" }]) {
+            const response = await fetch(`${f.base}${route}`, {
+                method: "POST", headers: { "content-type": "application/json", ...headers },
+                body: JSON.stringify({ path: f.input, id: "unknown" }),
+            });
+            assert.equal(response.status, 401);
+        }
+    }
+});
+
 test("#1112: selected settings TOML controls roots, resolver and existing grant validity", async (t) => {
     const f = await fixture(t);
     const response = await f.open();

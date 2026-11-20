@@ -478,7 +478,9 @@ def run_custom(params: CustomParams) -> None:
             )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Custom extraction failed: {e}") from e
-    _published(out_bam, "region_bam")
+    current_result().add_output(
+        out_bam, "region_bam", metrics={"locus": region} if not is_bed else None
+    )
 
 
 cmd_mito_fasta = cli_handler(MitoFastaParams, run_mito_fasta)

@@ -366,3 +366,12 @@ def test_api_custom_without_a_region_is_a_usage_error(genome, tmp_path):
     with pytest.raises(api.UsageError, match="--region or --gene"):
         api.CustomParams(input=genome["male"], outdir=tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_custom_result_preserves_resolved_locus_for_viewer_1090(genome, tmp_path):
+    result = api.extract.custom(
+        api.CustomParams(input=genome["male"], outdir=tmp_path, region="chr1:201-210")
+    )
+    output = next(o for o in result.outputs if o.role == "region_bam")
+    assert output.metrics["locus"] == "chr1:201-210"
+    assert _names(output.path) == {"chr1_201", "chr1_209"}

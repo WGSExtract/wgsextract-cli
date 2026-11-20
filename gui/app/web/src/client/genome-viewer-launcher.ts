@@ -5,7 +5,7 @@ import { api } from "./api.js";
 let pane: HTMLElement | undefined;
 
 /** A sibling of #app survives command-output renders without unloading either document or its streams. */
-export function openGenomeViewer(locale: string, labels: Labels, inputPath = "") {
+export function openGenomeViewer(locale: string, labels: Labels, inputPath = "", locus = "") {
     if (pane) {
         return;
     }
@@ -14,6 +14,7 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "")
         return;
     }
     const previousDisplay = app.style.display;
+    const previousFocus = document.activeElement;
     const container = document.createElement("section");
     container.className = "genome-viewer-shell";
     const back = document.createElement("button");
@@ -34,6 +35,7 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "")
                 direction: labels.layoutDirection ?? "ltr",
                 strings: labels.viewerStrings ?? {},
                 inputPath,
+                locus,
             }, location.origin);
         }
         if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerOpenLibrary"
@@ -68,7 +70,11 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "")
         app.style.display = previousDisplay;
         app.inert = false;
         app.removeAttribute("aria-hidden");
-        app.querySelector<HTMLElement>("[data-genome-viewer-open]")?.focus();
+        if (previousFocus?.isConnected && previousFocus instanceof HTMLElement) {
+            previousFocus.focus();
+        } else {
+            app.querySelector<HTMLElement>("[data-genome-viewer-open]")?.focus();
+        }
     });
     container.append(back, frame);
     document.body.append(container);

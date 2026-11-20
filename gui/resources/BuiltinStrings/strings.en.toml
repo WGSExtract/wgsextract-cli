@@ -1,6 +1,7 @@
 "language.name" = "English"
 "viewer.title" = "Genome viewer"
 "viewer.viewReads" = "View reads"
+"viewer.showInViewer" = "Show in viewer"
 "viewer.libraryPath" = "File in My Genomes"
 "viewer.libraryHelp" = "Enter the full path of an indexed BAM, CRAM or bgzip VCF/gVCF in the configured My Genomes library. The matching installed reference is selected from its header. Leave the position blank to open the first chromosome."
 "viewer.openLibrary" = "Open library file"

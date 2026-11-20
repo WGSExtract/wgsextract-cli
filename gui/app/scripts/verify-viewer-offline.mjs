@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { cp, mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import path from "node:path";
+import { parseArgs } from "node:util";
+import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
+import { createProcessManager } from "../dist/web/src/server/process-runner.js";
+import { createRequestHandler } from "../dist/web/src/server/routes.js";
+import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { prepareViewerFixtures } from "./prepare-viewer-fixtures.mjs";
+
+const root = path.resolve(import.meta.dirname, "../../..");
+const { values } = parseArgs({ options: {
+    out: { type: "string" }, "cli-root": { type: "string", default: root },
+    chromium: { type: "string" },
+} });
+if (!values.out) throw new Error("Usage: node scripts/verify-viewer-offline.mjs --out REPO/out/verification [--cli-root PATH] [--chromium PATH]");
+const output = path.resolve(values.out);
+assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
+await mkdir(output, { recursive: true });
+const cli = path.resolve(values["cli-root"]);
+const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"));
+const bundleRoot = path.join(output, "bundle");
+await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
+const users = path.join(output, "users");
+await mkdir(users, { recursive: true });
+registerUsersWorkspace(bundleRoot, users);
+const config = path.join(output, "config.toml");
+await writeFile(config, `mygenomes_library = ${JSON.stringify(fixtures.library)}\nreference_genome_library = ${JSON.stringify(fixtures.reference)}\n`);
+await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({
+    configFilePaths: { wgs_settings: config }, fieldValues: { bam_path: fixtures.cram },
+    uiMode: "advanced", setupExpanded: false, setupRun: { status: "succeeded", results: [] },
+}));
+const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
+const load = () => loadLocalizedBundle("en", path.join(root, "gui"), bundleRoot, bundleRoot);
+const loaded = await load();
+const handler = createRequestHandler({
+    ...loaded, apiToken: "offline-verification-only", bundleRoot, repoRoot: path.join(root, "gui"),
+    distRoot: path.join(root, "gui/app/dist"), webRoot: path.join(root, "gui/app/web"),
+    maxBodyBytes: 1048576, dynamicActions: new Map(),
+    runProcess: (script, args, options) => manager.runProcess(script, args, {
+        ...options, env: { ...options.env, WGSEXTRACT_APP_DIR: cli },
+    }),
+    localizedBundleLoader: { load }, enableDevReload: false, addDevReloadClient() {},
+});
+const server = createServer(handler);
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+try {
+    const child = spawn(process.execPath, [
+        path.join(import.meta.dirname, "verify-viewer-library.mjs"),
+        "--url", `http://127.0.0.1:${server.address().port}`, "--fixtures", fixtures.library,
+        "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output, "--config", config,
+        "--reference-name", "reference.fa", "--locus", "1:200-400", "--next-locus", "1:240-300",
+        ...(values.chromium ? ["--chromium", values.chromium] : []),
+    ], { stdio: "inherit", windowsHide: true });
+    const code = await new Promise((resolve, reject) => {
+        child.once("error", reject);
+        child.once("exit", resolve);
+    });
+    assert.equal(code, 0, "Offline real-browser verification must pass.");
+} finally {
+    await manager.terminateAllProcesses();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+}
