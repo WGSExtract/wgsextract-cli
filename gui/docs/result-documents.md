@@ -65,8 +65,9 @@ when setup itself fails. Setup output is not a CLI run document and cannot be
 reported with `--last-failed`.
 
 Conditions can use `setupReady`: `"true"` after setup completes successfully
-(including warnings), or when a bundle has no setup steps; `"false"` before,
-during, or after a failed setup.
+(including warnings), or when a bundle has no setup steps for the current
+platform; `"false"` before, during, or after a failed setup. Headless bundle
+tests apply the same readiness gate and update it after each setup run.
 
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:
 

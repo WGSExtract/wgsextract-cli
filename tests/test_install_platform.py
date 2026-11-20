@@ -71,6 +71,61 @@ def test_1138_installer_rejects_old_pixi_before_replacing_existing_app(
 
 
 @pytest.mark.parametrize(
+    "requirement",
+    [None, 'requires-pixi = "unsupported"', 'requires-pixi = ">=0.82"'],
+    ids=["no-minimum", "invalid-constraint", "incomplete-version"],
+)
+def test_1138_pinned_release_without_pixi_minimum_installs_but_bad_constraint_fails(
+    tmp_path: Path, requirement: str | None
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    manifest = '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    if requirement:
+        manifest += requirement + "\n"
+    (payload / "pixi.toml").write_text(manifest)
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    binary = tmp_path / "pixi"
+    binary.write_text(
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.69.0"; fi\n'
+    )
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    app.mkdir(parents=True)
+    (app / "keep").write_text("existing app")
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env={
+            **{
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("WGSEXTRACT_")
+            },
+            "HOME": str(tmp_path),
+            "PIXI": str(binary),
+            "WGSEXTRACT_INSTALL_DIR": str(installation),
+            "WGSEXTRACT_RELEASE_TAG": "v0.6.5",
+            "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if requirement is None:
+        assert result.returncode == 0, result.stderr
+        assert (app / "pixi.toml").read_text() == manifest
+        assert (installation / "wgsextract").is_file()
+    else:
+        assert result.returncode == 1
+        assert "Cannot read the minimum Pixi version" in result.stderr
+        assert (app / "keep").read_text() == "existing app"
+
+
+@pytest.mark.parametrize(
     "compiler",
     ["usr/bin/clang", "Toolchains/XcodeDefault.xctoolchain/usr/bin/clang", None],
     ids=["command-line-tools", "full-xcode", "missing-compiler"],

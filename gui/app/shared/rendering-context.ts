@@ -1,6 +1,6 @@
 import { allControls, configEditorControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
-import { currentSetupPlatform } from "./setup-platforms.js";
+import { currentSetupPlatform, setupStepsForPlatform } from "./setup-platforms.js";
 import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
 import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "./types.js";
 
@@ -21,7 +21,7 @@ type StateLike = {
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
     const { fieldValues, checkedOptions, configValues } = valuesForUIMode(state);
     const context: CommandContext = {
-        setupReady: !(state.manifest?.setup?.steps?.length) || state.setupRun?.status === "ok" || state.setupRun?.status === "warning",
+        setupReady: !setupStepsForPlatform(state.manifest?.setup?.steps ?? []).length || state.setupRun?.status === "ok" || state.setupRun?.status === "warning",
         fieldValues: { ...fieldValues, ...sectionValues },
         checkedOptions,
         configValues: { ...configValues, ...fieldValues, ...sectionValues },

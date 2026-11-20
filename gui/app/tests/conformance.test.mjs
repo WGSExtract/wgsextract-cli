@@ -173,6 +173,18 @@ test("#1138: CLI bug reports are disabled with a setup-log explanation until set
   }
 });
 
+test("#1138: bug reports remain available when setup targets only other platforms", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const otherPlatform = currentSetupPlatform() === "windows" ? "linux" : "windows";
+  bundle.manifest.setup.steps = bundle.manifest.setup.steps.map((step) => ({ ...step, platforms: [otherPlatform] }));
+  const section = bundle.manifest.pages.flatMap((page) => page.sections ?? []).find((candidate) => candidate.id === "report-issue");
+  const context = commandContextFromState({ manifest: bundle.manifest });
+  for (const action of section.actions.filter((action) => isActionVisible(action, context))) {
+    assert.equal(disabledReason(action, context), undefined);
+  }
+});
+
 test("conformance bundle preserves shared runtime semantics in TypeScript", async () => {
   const bundle = await loadLocalizedBundle("en", repoRoot, conformanceBundleRoot, conformanceBundleRoot);
   const { manifest } = bundle;
