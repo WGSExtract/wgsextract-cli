@@ -76,12 +76,13 @@ parser still treats external/compact documents as unvalidated input.
   card shows the error. Help and settings commands (`help`, `config`, `deps`,
   `sample`, `serve`, `report-issue`) write no card, and neither does a run
   whose card would replace its `--log-file`. `wgsextract serve --card`
-  gives every job it runs a card, inside the folders the server may use;
-  without the option, jobs follow `result_card`, and a read-only MCP session
-  writes none. The card and manifest are written together under a lock, so
+  gives every job it runs a card, inside the folders the server may use; a
+  job started with `?card=1` (or `card=0`) gets one (or not) whatever the
+  server's default; otherwise jobs follow `result_card`. A read-only MCP
+  session writes none. The card and manifest are written together under a lock, so
   concurrent runs on one sample can't pair one run's card with another's
-  manifest. The desktop app passes `--card` to both, and shows each
-  run's card when the run ends.
+  manifest. The desktop app asks for cards only for its analysis
+  actions and shows each one when the run ends.
 
 ## Document
 

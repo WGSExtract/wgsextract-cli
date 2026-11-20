@@ -122,6 +122,7 @@
       "actions": [
         {
           "id": "vcf-trio",
+          "resultCard": true,
           "title": "actions.vcf.trio-analysis.vcf-trio.title",
           "tooltip": "actions.vcf.trio-analysis.vcf-trio.tooltip",
           "command": {
@@ -162,6 +163,7 @@
         },
         {
           "id": "vcf-trio-joint",
+          "resultCard": true,
           "title": "actions.cli.vcf-trio-joint.title",
           "tooltip": "actions.cli.vcf-trio-joint.tooltip",
           "advancedOnly": true,

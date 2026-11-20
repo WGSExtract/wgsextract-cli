@@ -11,7 +11,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.window = { innerHeight: 900 };
 
 const { runBundleTest } = await import("../dist/web/src/server/bundle-test-runner.js");
-const { parseResultDocument, resultCardOutput, resultNotice } = await import("../dist/shared/result-document.js");
+const { commandWithResultArguments, parseResultDocument, preferredOutput, resultCardOutput, resultNotice } = await import("../dist/shared/result-document.js");
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { renderResultNotice, renderResultSummary } = await import("../dist/web/src/client/result-view.js");
 
@@ -268,4 +268,25 @@ test("a run's result card gets a View Card button and is the document's card out
   assert.equal(resultCardOutput(document)?.path, "/out/sample_info.card.html");
   const gone = parseResultDocument({ schema: "wgsextract.result/1", status: "ok", outputs: [{ path: "/out/x.card.html", role: "result_card", exists: false }] }, "wgsextract.result/1");
   assert.equal(resultCardOutput(gone), undefined);
+});
+
+test("an analysis action's report is the first role in its openOutput the run wrote; cards are asked for only by resultCard", () => {
+  const document = parseResultDocument({
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [
+      { path: "/out/r1_fastqc.html", role: "fastqc_report_html" },
+      { path: "/out/r2_fastqc.html", role: "fastqc_report_html" },
+      { path: "/out/old_multiqc.html", role: "multiqc_report", exists: false },
+    ],
+  }, "wgsextract.result/1");
+  assert.equal(preferredOutput(document, ["multiqc_report", "fastqc_report_html"])?.path, "/out/r1_fastqc.html");
+  document.outputs.push({ ...document.outputs[0], path: "/out/multiqc.html", role: "multiqc_report", exists: true });
+  assert.equal(preferredOutput(document, ["multiqc_report", "fastqc_report_html"])?.path, "/out/multiqc.html");
+  assert.equal(preferredOutput(document, undefined), undefined);
+
+  const spec = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--result-file", "{{resultDocumentPath}}"], cardArguments: ["--card"] };
+  const command = { executable: "tool", arguments: ["info"] };
+  assert.deepEqual(commandWithResultArguments(command, spec, "/tmp/r.json").optionalArguments, [["--result-file", "/tmp/r.json"]]);
+  assert.deepEqual(commandWithResultArguments(command, spec, "/tmp/r.json", true).optionalArguments, [["--result-file", "/tmp/r.json", "--card"]]);
 });

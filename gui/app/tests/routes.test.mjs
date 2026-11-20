@@ -356,7 +356,8 @@ test("a declared result document is read from stdout, and only its files can be 
 
 test("only result cards listed in a result document can be shown, as text for a sandboxed frame", async (t) => {
   const { baseURL, context, tempRoot } = await withTestServer(t);
-  context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json", "--card"] };
+  context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"], cardArguments: ["--card"] };
+  context.manifest.pages[0].sections[0].actions[0].resultCard = true;
   const card = path.join(tempRoot, "sample_info.card.html");
   const table = path.join(tempRoot, "sample.tsv");
   const stray = path.join(tempRoot, "other.card.html");

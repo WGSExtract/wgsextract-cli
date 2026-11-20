@@ -106,7 +106,9 @@
     ],
     "arguments": [
       "--result-file",
-      "{{resultDocumentPath}}",
+      "{{resultDocumentPath}}"
+    ],
+    "cardArguments": [
       "--card"
     ]
   },
@@ -117,7 +119,6 @@
         "--parent-pid",
         "{{appPid}}",
         "serve",
-        "--card",
         "--ready-json",
         "--allow",
         "{{home}}"

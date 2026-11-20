@@ -26,10 +26,11 @@ export type StartJobResult =
     | { started: false; reason: string; unreachable: boolean };
 
 /** Starts `operation` as a job. A refused or failed request reports why; no job was created then. */
-export async function startJob(address: JobServerAddress, operation: string, parameters: LooseRecord): Promise<StartJobResult> {
+/** Starts a job; with `card`, asks the server for its result card (`?card=1`). */
+export async function startJob(address: JobServerAddress, operation: string, parameters: LooseRecord, card = false): Promise<StartJobResult> {
     let response: Response;
     try {
-        response = await request(address, "POST", `/ops/${operation}`, parameters);
+        response = await request(address, "POST", `/ops/${operation}${card ? "?card=1" : ""}`, parameters);
     }
     catch (error) {
         return { started: false, reason: errorMessage(error), unreachable: true };

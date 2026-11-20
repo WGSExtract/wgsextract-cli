@@ -235,24 +235,43 @@ def test_cli_result_card_setting_and_no_card_override(tmp_path):
     assert not list((tmp_path / "off").glob("*.card.html"))
 
 
-def test_serve_card_jobs_write_cards(tmp_path):
-    """The desktop app runs `info` as a `wgsextract serve` job, which skips
-    CLI dispatch; `serve --card` must still give each job its card."""
+def test_serve_jobs_write_a_card_when_the_request_asks(tmp_path):
+    """The desktop app runs Detailed Coverage as a `wgsextract serve` job,
+    which skips CLI dispatch, and asks for a card per job (`?card=1`): only
+    that job gets one, and a rerun asks again; `?card=0` overrides
+    `serve --card`."""
     if not shutil.which("samtools"):
         pytest.skip("samtools not found in PATH")
     ensure_fake_data(str(FAKE_DIR))
-    work = tmp_path / "work"
+    work, other = tmp_path / "work", tmp_path / "other"
     work.mkdir()
-    params = {"input": str(FAKE_DIR / "fake.bam"), "outdir": str(work)}
-    with _serve(tmp_path, [work, FAKE_DIR], card=True) as client:
-        status, job = client.request("POST", "/ops/info?wait=120", params)
-    assert (status, job["status"]) == (200, "succeeded"), job
+    other.mkdir()
     card = work / "fake_info.card.html"
+    with _serve(tmp_path, [work, other, FAKE_DIR]) as client:
+        status, plain = client.request(
+            "POST",
+            "/ops/info?wait=120",
+            {"input": str(FAKE_DIR / "fake.bam"), "outdir": str(other)},
+        )
+        assert (status, plain["status"]) == (200, "succeeded"), plain
+        assert not list(other.glob("*.card.html"))
+        params = {"input": str(FAKE_DIR / "fake.bam"), "outdir": str(work)}
+        status, job = client.request("POST", "/ops/info?wait=120&card=1", params)
+        assert (status, job["status"]) == (200, "succeeded"), job
+        card.unlink()
+        _, rerun = client.request("POST", f"/jobs/{job['id']}/rerun")
+        client.events(rerun["id"])
     roles = {o["path"]: o["role"] for o in job["result"]["outputs"]}
     assert roles == {str(card): "result_card"}
     html = card.read_text(encoding="utf-8")
     assert_self_contained(html)
     assert "Avg Read Length" in html and str(FAKE_DIR) not in html
+
+    with _serve(tmp_path / "s2", [other, FAKE_DIR], card=True) as client:
+        params = {"input": str(FAKE_DIR / "fake.bam"), "outdir": str(other)}
+        status, job = client.request("POST", "/ops/info?wait=120&card=0", params)
+    assert (status, job["status"]) == (200, "succeeded"), job
+    assert not list(other.glob("*.card.html"))
 
 
 def test_cli_info_without_outdir_puts_its_card_in_the_default_wgse_folder(tmp_path):

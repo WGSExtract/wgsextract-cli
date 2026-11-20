@@ -1817,6 +1817,7 @@
       "actions": [
         {
           "id": "typing-hla",
+          "resultCard": true,
           "title": "actions.cli.typing-hla.title",
           "tooltip": "actions.cli.typing-hla.tooltip",
           "advancedOnly": true,
@@ -1838,6 +1839,7 @@
         },
         {
           "id": "typing-cyp2d6",
+          "resultCard": true,
           "title": "actions.cli.typing-cyp2d6.title",
           "tooltip": "actions.cli.typing-cyp2d6.tooltip",
           "advancedOnly": true,
@@ -1853,6 +1855,7 @@
         },
         {
           "id": "typing-str",
+          "resultCard": true,
           "title": "actions.cli.typing-str.title",
           "tooltip": "actions.cli.typing-str.tooltip",
           "advancedOnly": true,
