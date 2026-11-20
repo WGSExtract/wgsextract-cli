@@ -149,6 +149,10 @@
 "app.result.usage.title" = "Verifique as opções selecionadas"  # i18n-source-hash:fe89b952
 "app.result.missingDependency.title" = "Uma ferramenta necessária não está instalada"  # i18n-source-hash:1f5dd223
 "app.result.openSetup.title" = "Abrir configuração"  # i18n-source-hash:0ddb2086
+"app.result.card.title" = "Cartão de resultado"  # i18n-source-hash:d8b66952
+"app.result.card.sourceFormat" = "Exibido de %{file}"  # i18n-source-hash:5aaf5fdf
+"app.result.card.view.title" = "Ver cartão"  # i18n-source-hash:73cd1bf6
+"app.result.card.close.title" = "Fechar"  # i18n-source-hash:bbfa773e
 "app.prerequisites.title" = "Faltam dados necessários"  # i18n-source-hash:a96c1dde
 "app.prerequisites.message" = "Este comando precisa de dados que ainda não estão instalados:"  # i18n-source-hash:5c2ec892
 "app.prerequisites.stillMissing" = "Eles ainda não estão instalados. Instale-os ou baixe-os você mesmo e clique em Continuar novamente."  # i18n-source-hash:620e1770

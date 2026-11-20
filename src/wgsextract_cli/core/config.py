@@ -199,6 +199,9 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     args = ["--config", str(selected)] if selected else []
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
+    # An internal step's card would describe the step; its caller writes its own.
+    if settings.get("result_card", False):
+        args.append("--no-card")
     from wgsextract_cli.core.temp_directory import configured_temp_directory
 
     temporary = configured_temp_directory()

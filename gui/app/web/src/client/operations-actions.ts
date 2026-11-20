@@ -2,10 +2,11 @@ import { contextValue, displayCommand, placeholdersIn } from "../../../shared/re
 import { controlWithID, errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
-import { apiStream } from "./api.js";
+import { api, apiStream } from "./api.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
 import { findTerminalEntry } from "./terminal-output.js";
-import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { preferredOutput, resultCardOutput, resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { actionNoticeKey } from "./result-view.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
@@ -133,6 +134,7 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             tab.body = [tab.body, `exit ${result.exitCode}`].filter(Boolean).join("\n");
             if (result.resultDocument !== undefined) {
                 applyResultDocument(tab, result.resultDocument, result.exitCode, result.stderr ?? "", noticeRun);
+                showResult(action, result.resultDocument);
             }
             if (result.lastResultDocumentPaths) {
                 state.lastResultDocumentPaths = result.lastResultDocumentPaths;
@@ -143,6 +145,24 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             throw new Error(event.error ?? "Action failed.");
     }
     scheduleRender();
+}
+
+/**
+ * What an analysis action shows when its run ends, even while the terminal is collapsed: its result card
+ * (`resultCard`) in the app, or a report the tool wrote (`openOutput`) in the system's default app.
+ */
+function showResult(action: ActionSpec, document: ResultDocument | null) {
+    const card = action.resultCard ? resultCardOutput(document) : undefined;
+    if (card) {
+        void openResultCard(card.path, state.labels);
+    }
+    const report = preferredOutput(document, action.openOutput);
+    if (report) {
+        void api<void>("/api/result/open", { method: "POST", body: { path: report.path, reveal: false } }).catch((error: unknown) => {
+            appendTerminal("error", state.labels.terminalProcessErrorTitle, errorMessage(error));
+            scheduleRender();
+        });
+    }
 }
 
 function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null, exitCode: number, stderr: string, noticeRun: NoticeRun | null) {

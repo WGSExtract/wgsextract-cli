@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- Analysis actions show their result when the run ends, even while the terminal is collapsed. An action with `resultCard: true` gets a result card: the self-contained page `wgsextract --card` writes, with the printed result, warnings, outputs, tool versions and input file. It pops up over the app, naming the `.card.html` it is shown from, and **View Card** shows it again. An action with `openOutput` opens a report its tool wrote in the system's default app. The manifest's `resultDocument.cardArguments` asks commands for the card, and jobs get `?card=1`. WGSExtract shows cards for its info, coverage, identification, haplogroup, Y-STR, typing, VCF QC, trio, full-analysis and manifest-verification actions. It opens the FastQC (MultiQC when made), FastP, MultiQC, Personal Report and PharmCAT reports.
+
 ### Changed
 - Actions take an `advancedTitle`, shown instead of `title` in Advanced mode. WGSExtract's Variant Calling **Default** button is now **BCFTools** in Basic and **BCFTools, Delly** in Advanced, naming the callers each mode can run (Advanced adds SVs and CNVs, called with Delly).
 
