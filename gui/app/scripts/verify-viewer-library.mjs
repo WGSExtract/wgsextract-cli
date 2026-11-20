@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { chromium } from "playwright";
@@ -8,6 +8,7 @@ const { values } = parseArgs({ options: {
     url: { type: "string" }, fixtures: { type: "string" }, out: { type: "string" },
     "large-bam": { type: "string" }, vcf: { type: "string" }, chromium: { type: "string" },
     config: { type: "string" },
+    "gene-map": { type: "string" },
     tracks: { type: "boolean", default: false },
     "track-regressions": { type: "boolean", default: false },
     "reference-name": { type: "string", default: "hs38DH.fa.gz" },
@@ -179,6 +180,42 @@ try {
             proofs.push({ case: name, actionable: true, malformedValuesNotRendered: true });
         }
         await page.locator('[name="extra-tracks"]').fill("");
+    }
+    if (values["gene-map"]) {
+        const table = path.resolve(values["gene-map"]);
+        assert.ok(table.startsWith(`${out}${path.sep}`), "Only isolated gene fixtures may be changed.");
+        current = "gene-navigation";
+        await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+        await page.getByRole("button", { name: "Open library file", exact: true }).click();
+        await checkDrawing(page, "RefSeq gene spans");
+        const genes = page.locator(".igv-viewport").filter({ has: page.locator(".igv-track-label", { hasText: "RefSeq gene spans" }) });
+        assert.ok(await genes.locator("canvas").evaluateAll((canvases) => canvases.some((canvas) => {
+            const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+            return pixels.some((value, i) => i % 4 === 3 && value > 0 && (pixels[i - 3] < 220 || pixels[i - 2] < 220 || pixels[i - 1] < 220));
+        })), "Gene spans must draw in the data viewport.");
+        await page.locator('[data-locus] [name="locus"]').fill("refgene_demo");
+        await page.getByRole("button", { name: "Go", exact: true }).click();
+        await page.locator('[data-locus] [name="locus"]').filter({ visible: true }).waitFor();
+        await page.waitForFunction(() => document.querySelector('[data-locus] [name="locus"]').value === "1:200-400");
+        await page.screenshot({ path: path.join(out, "library-gene-navigation.png"), fullPage: true });
+        await page.locator('[data-locus] [name="locus"]').fill("UNKNOWN");
+        await page.getByRole("button", { name: "Go", exact: true }).click();
+        await page.getByRole("alert").filter({ hasText: "Gene symbol not found" }).waitFor();
+        await rename(table, `${table}.saved`);
+        try {
+            await page.getByRole("button", { name: "Open library file", exact: true }).click();
+            await checkDrawing(page, "reads.bam");
+            await page.locator("[data-gene-status]").filter({ hasText: "Gene-map genes_hg38.tsv is not installed" }).waitFor();
+            assert.match(await page.locator("[data-gene-status]").innerText(), /wgsextract ref gene-map/);
+            assert.equal(await page.locator(".igv-track-label").filter({ hasText: "RefSeq gene spans" }).count(), 0);
+            await page.screenshot({ path: path.join(out, "library-gene-missing.png"), fullPage: true });
+            await page.locator('[data-locus] [name="locus"]').fill("REFGENE_DEMO");
+            await page.getByRole("button", { name: "Go", exact: true }).click();
+            await page.getByRole("alert").filter({ hasText: "Gene search is unavailable" }).waitFor();
+        } finally {
+            await rename(`${table}.saved`, table);
+        }
+        proofs.push({ case: "gene-navigation", locus: "1:200-400", missingDataActionable: true });
     }
     // The real tool page's selected file enters the sibling pane, not a document navigation.
     current = "entry-point";

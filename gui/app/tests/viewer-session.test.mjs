@@ -8,6 +8,7 @@ import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { parseConfigToml } from "../dist/web/src/server/config-toml.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
 import { validatedBedGraphTrack } from "../dist/shared/viewer-track-records.js";
+import { viewerGeneLookup, viewerNavigationLocus } from "../dist/shared/viewer-genes.js";
 
 async function fixture(t) {
     const output = path.resolve("../out/tests");
@@ -122,6 +123,110 @@ test("#1112: invalid viewer positions return actionable invalidLocus, not a serv
     }
     const response = await f.open(f.input, "chr1:1-4");
     assert.equal((await response.json()).locus, "chr1:1-4");
+});
+
+async function geneFixture(t, contig = "chr1", length = 248956422) {
+    const f = await fixture(t);
+    await writeFile(`${f.fasta}.fai`, `${contig}\t${length}\t6\t4\t5\n`);
+    const directory = path.join(path.dirname(f.fasta), "ref");
+    await mkdir(directory);
+    const table = path.join(directory, `genes_${length === 249250621 ? "hg19" : "hg38"}.tsv`);
+    return { ...f, table };
+}
+
+test("#1148: installed gene spans navigate case-insensitively with correct inclusive endpoints and reference naming", async (t) => {
+    for (const [contig, length] of [["chr1", 248956422], ["1", 249250621]]) {
+        const f = await geneFixture(t, contig, length);
+        await writeFile(f.table, `symbol\tchrom\tstart\tend\nFIRST\tchr1\t1\t1\nTHRA1/BTR\tchr1\t2\t4\nLAST\tchr1\t${length - 1}\t${length}\n`);
+        const session = await (await f.open()).json();
+        assert.deepEqual(session.files.genes.notices, []);
+        assert.deepEqual(session.files.genes.features, [
+            { name: "FIRST", chr: contig, start: 0, end: 1 },
+            { name: "THRA1/BTR", chr: contig, start: 1, end: 4 },
+            { name: "LAST", chr: contig, start: length - 2, end: length },
+        ]);
+        const lookup = viewerGeneLookup(session.files.genes.features);
+        assert.equal(viewerNavigationLocus(" first ", lookup), `${contig}:1-1`);
+        assert.equal(viewerNavigationLocus("thra1/btr", lookup), `${contig}:2-4`);
+        assert.equal(viewerNavigationLocus("last", lookup), `${contig}:${length - 1}-${length}`);
+        assert.equal(viewerNavigationLocus(`${contig}:1-4`, lookup), `${contig}:1-4`);
+        assert.throws(() => viewerNavigationLocus("UNKNOWN", lookup), { code: "geneNotFound" });
+        assert.throws(() => viewerNavigationLocus("rs123", lookup), { code: "invalidLocus" });
+        // The prebuilt symbol lookup remains usable after the installed table disappears.
+        await rm(f.table);
+        assert.equal(viewerNavigationLocus("FIRST", lookup), `${contig}:1-1`);
+    }
+});
+
+test("#1148: missing or unknown-build gene maps do not hide reads or select the wrong assembly", async (t) => {
+    const f = await geneFixture(t);
+    await writeFile(path.join(path.dirname(f.table), "genes_hg19.tsv"), "symbol\tchrom\tstart\tend\nWRONG\tchr1\t1\t4\n");
+    let session = await (await f.open()).json();
+    assert.deepEqual(session.files.genes, { features: [], notices: [{ code: "geneMapMissing", fileName: "genes_hg38.tsv" }] });
+    assert.equal(session.files.tracks[0].name, "sample.bam");
+    assert.throws(() => viewerNavigationLocus("BRCA1", new Map()), { code: "geneSearchUnavailable" });
+    await writeFile(`${f.fasta}.fai`, "chr1\t3000\t6\t4\t5\n");
+    session = await (await f.open()).json();
+    assert.equal(session.files.genes.notices[0].code, "geneBuildUnsupported");
+    assert.deepEqual(session.files.genes.features, []);
+});
+
+test("#1148: truncated, oversized and malformed gene maps never draw or navigate invalid spans", async (t) => {
+    const f = await geneFixture(t);
+    for (const body of [
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t1\t4",
+        "wrong\theader\nGENE\tchr1\t1\t4\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t0\t4\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t4\t3\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t1.5\t4\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t1\t9007199254740992\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t1\t4\nGene\tchr1\t2\t4\n",
+        "symbol\tchrom\tstart\tend\nGENE\tchr1\t1\t4\textra\n",
+        "symbol\tchrom\tstart\tend\n",
+    ]) {
+        await writeFile(f.table, body);
+        const session = await (await f.open()).json();
+        assert.deepEqual(session.files.genes.features, []);
+        assert.ok(["geneMapInvalid", "geneMapMismatch"].includes(session.files.genes.notices[0].code));
+        assert.equal(session.files.tracks[0].name, "sample.bam");
+    }
+    await writeFile(f.table, "symbol\tchrom\tstart\tend\nGENE\tchr1\t248956420\t248956423\n");
+    assert.equal((await (await f.open()).json()).files.genes.notices[0].code, "geneMapMismatch");
+    const handle = await openFile(f.table, "r+");
+    try { await handle.truncate(8 * 1024 * 1024 + 1); } finally { await handle.close(); }
+    assert.equal((await (await f.open()).json()).files.genes.notices[0].code, "geneMapInvalid");
+});
+
+test("#1148: absent or ambiguous gene contigs are reported and excluded from navigation", async (t) => {
+    const f = await geneFixture(t);
+    await writeFile(f.table, "symbol\tchrom\tstart\tend\nGOOD\tchr1\t1\t4\nALT\tchr1_KI270762v1_alt\t1\t4\n");
+    let session = await (await f.open()).json();
+    assert.equal(session.files.genes.notices[0].code, "geneContigsSkipped");
+    assert.equal(viewerNavigationLocus("GOOD", viewerGeneLookup(session.files.genes.features)), "chr1:1-4");
+    assert.throws(() => viewerNavigationLocus("ALT", viewerGeneLookup(session.files.genes.features)), { code: "geneNotFound" });
+    await writeFile(`${f.fasta}.fai`, "chr1\t248956422\t6\t4\t5\n1\t248956422\t6\t4\t5\n");
+    session = await (await f.open()).json();
+    assert.equal(session.files.genes.notices[0].code, "geneBuildUnsupported");
+});
+
+test("#1148: gene maps honor the existing microarray location and reject escaping symlinks", async (t) => {
+    const f = await geneFixture(t);
+    const fallback = path.join(path.dirname(f.fasta), "microarray");
+    await mkdir(fallback);
+    const body = "symbol\tchrom\tstart\tend\r\nGENE\tchr1\t1\t4\r\n";
+    await writeFile(path.join(fallback, "genes_hg38.tsv"), body);
+    assert.equal((await (await f.open()).json()).files.genes.features[0].name, "GENE");
+    const outside = path.join(f.root, "outside-genes.tsv");
+    await writeFile(outside, body);
+    try {
+        await symlink(outside, f.table);
+    } catch (error) {
+        if (process.platform === "win32" && error.code === "EPERM") return;
+        throw error;
+    }
+    const session = await (await f.open()).json();
+    assert.deepEqual(session.files.genes.features, []);
+    assert.equal(session.files.genes.notices[0].code, "geneMapInvalid");
 });
 
 const supplementalFormats = ["panels.bed", "coverage.bedgraph", "panels.bed.gz", "coverage.bedgraph.gz",

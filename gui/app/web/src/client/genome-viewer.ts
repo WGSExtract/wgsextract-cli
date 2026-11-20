@@ -5,9 +5,10 @@ import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genome-viewer-privacy.js";
 import { validatedBedGraphTrack } from "../../../shared/viewer-track-records.js";
+import { viewerGeneLookup, viewerNavigationLocus, type ViewerGene } from "../../../shared/viewer-genes.js";
 
 interface IgvBrowser {
-    loadTrack(track: LocalTrack<File | string>): Promise<IgvLocalTrack | undefined>;
+    loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }): Promise<IgvLocalTrack | undefined>;
     on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
     zoomIn(): void;
@@ -27,6 +28,7 @@ declare global {
 
 let browser: IgvBrowser | undefined;
 let trackProblem: ViewerFileError | undefined;
+let geneLookup = new Map<string, string>();
 const root = document.querySelector<HTMLElement>("#genome-viewer");
 if (!root) {
     throw new Error("Missing genome viewer root.");
@@ -74,8 +76,10 @@ try {
         <div><button type="submit" class="action-button primary">${escapeHTML(text("open"))}</button></div>
       </form>
       <p data-viewer-status role="status" aria-live="polite">${escapeHTML(text("empty"))}</p>
+      <p data-gene-status role="status" aria-live="polite" hidden></p>
       <form data-locus class="viewer-navigation" hidden>
-        <label>${escapeHTML(text("locus"))}<input name="locus" autocomplete="off" spellcheck="false"></label>
+        <label>${escapeHTML(text("navigation"))}<input name="locus" autocomplete="off" spellcheck="false" maxlength="128" aria-describedby="gene-help"></label>
+        <p id="gene-help">${escapeHTML(text("geneHelp"))}</p>
         <button type="submit">${escapeHTML(text("go"))}</button>
         <div class="viewer-zoom">
           <button type="button" data-zoom="in" aria-label="${escapeAttribute(text("zoomIn"))}">+</button>
@@ -195,6 +199,10 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         status("loading");
         dispose();
         trackProblem = undefined;
+        geneLookup = viewerGeneLookup(files.genes?.features ?? []);
+        const geneStatus = required<HTMLElement>("[data-gene-status]");
+        geneStatus.textContent = (files.genes?.notices ?? []).map((notice) => text(notice.code).replace("%{file}", notice.fileName)).join(" ");
+        geneStatus.hidden = !geneStatus.textContent;
         browser = await window.igv.createBrowser(host, {
             ...files,
             tracks: [],
@@ -211,6 +219,11 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         if (!await browser.search(locus)) {
             dispose();
             throw new ViewerFileError("locusNotFound");
+        }
+        if (files.genes?.features.length) {
+            const loaded = await browser.loadTrack({ name: text("geneTrack"), type: "annotation", features: files.genes.features, searchable: false });
+            if (!loaded) throw new Error("Gene spans could not be loaded.");
+            disablePopupLookups(loaded);
         }
         for (const track of files.tracks) {
             const loaded = await browser.loadTrack(validatedBedGraphTrack(track, (error) => {
@@ -245,10 +258,11 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
 
 async function goToLocus(form: HTMLFormElement) {
     try {
-        const locus = localViewerLocus(form.querySelector<HTMLInputElement>("input")?.value ?? "");
+        const locus = viewerNavigationLocus(form.querySelector<HTMLInputElement>("input")?.value ?? "", geneLookup);
         if (!await browser?.search(locus)) {
             throw new ViewerFileError("locusNotFound");
         }
+        required<HTMLInputElement>('[data-locus] [name="locus"]').value = locus;
         readyStatus();
     } catch (error) {
         status(error instanceof ViewerFileError ? error.code : "loadFailed", true);
@@ -256,6 +270,9 @@ async function goToLocus(form: HTMLFormElement) {
 }
 
 function dispose() {
+    geneLookup.clear();
+    const geneStatus = root?.querySelector<HTMLElement>("[data-gene-status]");
+    if (geneStatus) geneStatus.hidden = true;
     if (browser) {
         window.igv.removeBrowser(browser);
         browser = undefined;

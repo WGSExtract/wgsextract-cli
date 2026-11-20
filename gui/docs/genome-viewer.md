@@ -56,6 +56,28 @@ bedGraph values. You inspect these tracks through the same authenticated,
 loopback-only file grant as the primary reads/variants. Nothing leaves this
 computer.
 
+## Installed gene spans and symbol navigation
+
+Library files also show the installed RefSeq gene-map for hg19 or hg38. Install
+the tables explicitly with `wgsextract ref gene-map`, then reopen the library
+file. The viewer reads `ref/genes_hg19.tsv` or `ref/genes_hg38.tsv` in the configured
+reference library; the CLI's `microarray/` location is also supported. Missing
+or invalid tables produce a notice with that command, without hiding the reads.
+
+In **Position or RefSeq gene symbol**, enter an exact symbol such as `BRCA1`
+and choose **Go**. Symbol matching ignores case. Each table loads once per open,
+within an 8 MiB/100,000-row limit, and search uses an in-memory lookup.
+Typing and searching do not scan files or contact public services.
+The track shows each gene's combined span, without exon or transcript models.
+
+The reference's chromosome 1 length must identify hg19 or hg38 unambiguously.
+Gene-map coordinates are 1-based inclusive; the viewer converts them for drawing.
+Primary chromosome aliases (`chr1`/`1`, including X/Y and mitochondrial names)
+are accepted only when one name matches the reference. Absent or ambiguous
+contigs are reported and excluded from both drawing and search. Out-of-bounds
+coordinates disable the gene track with a mismatch notice. Manual file selection
+does not load installed gene maps; coordinate navigation remains available.
+
 ## Open an extraction result
 
 After a run, choose **Show in viewer** beside an existing BAM, CRAM or indexed
@@ -109,7 +131,7 @@ the viewer closes the selections. Files are not remembered between visits.
 
 ## Current limits
 
-Installed annotation tracks and gene/rsID lookups, individual finding/haplogroup
+Installed cytobands and rsID lookups, individual finding/haplogroup
 links, and authenticated remote range serving remain
 [follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
 menus and external links inside igv are disabled, including BLAT.
@@ -131,6 +153,8 @@ An authenticated `POST /api/viewer/open` accepts a library file `path`, optional
 It creates a bounded, idle-expiring grant for those files, their indexes and
 the matching installed reference and indexes. The embedded viewer receives
 only that read-only grant, never the main app's API token.
+The response also contains bounded, validated installed gene features and notices;
+gene tables receive no file grants and need no extra lookup endpoint.
 `GET /viewer-data/<session>/<file>` requires the grant's
 `x-gfc-viewer-token` header; query-string credentials are not accepted.
 Responses use `Cache-Control: no-store`; there is no directory listing or CORS
@@ -154,6 +178,11 @@ From `gui/app/`, after preparing the locked CLI environment and running
 ```sh
 node scripts/verify-viewer-offline.mjs --out ../../out/viewer-check
 ```
+
+Add `--genes` to exercise installed gene spans, case-insensitive navigation and
+the missing-table notice. This generates a synthetic chromosome 1 padded with
+N bases to the hg38 length (about 242 MiB on disk) and real matching indexes;
+it does not download a reference or measure whole-genome performance.
 
 Use `--chromium /path/to/chromium` for an installed browser, or `--cli-root PATH`
 to reuse another prepared checkout's CLI runtime. The check validates installed

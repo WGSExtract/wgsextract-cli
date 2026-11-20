@@ -15,13 +15,14 @@ const { values } = parseArgs({ options: {
     out: { type: "string" }, "cli-root": { type: "string", default: root },
     chromium: { type: "string" },
     "read-only": { type: "boolean", default: false },
+    genes: { type: "boolean", default: false },
 } });
 if (!values.out) throw new Error("Usage: node scripts/verify-viewer-offline.mjs --out REPO/out/verification [--cli-root PATH] [--chromium PATH]");
 const output = path.resolve(values.out);
 assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
 await mkdir(output, { recursive: true });
 const cli = path.resolve(values["cli-root"]);
-const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"));
+const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"), values.genes);
 const originalFiles = values["read-only"] ? (await readdir(fixtures.library, { recursive: true })).sort() : [];
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
@@ -29,7 +30,7 @@ const users = path.join(output, "users");
 await mkdir(users, { recursive: true });
 registerUsersWorkspace(bundleRoot, users);
 const config = path.join(output, "config.toml");
-await writeFile(config, `mygenomes_library = ${JSON.stringify(fixtures.library)}\nreference_genome_library = ${JSON.stringify(fixtures.reference)}\n`);
+await writeFile(config, `mygenomes_library = ${JSON.stringify(fixtures.library)}\nreference_library = ${JSON.stringify(path.dirname(fixtures.reference))}\nreference_genome_library = ${JSON.stringify(fixtures.reference)}\n`);
 await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({
     configFilePaths: { wgs_settings: config }, fieldValues: { bam_path: fixtures.cram },
     uiMode: values["read-only"] ? "basic" : "advanced", setupExpanded: false, setupRun: { status: "succeeded", results: [] },
@@ -55,7 +56,8 @@ try {
         "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output,
         ...(!values["read-only"] ? ["--config", config] : []),
         "--reference-name", "reference.fa", "--locus", "1:200-400", "--next-locus", "1:240-300",
-        "--tracks", "--track-regressions",
+        ...(!values.genes ? ["--tracks", "--track-regressions"] : []),
+        ...(values.genes ? ["--gene-map", path.join(output, "reference/ref/genes_hg38.tsv")] : []),
         ...(values.chromium ? ["--chromium", values.chromium] : []),
     ], { stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {

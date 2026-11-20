@@ -1,4 +1,6 @@
-export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing";
+import type { ViewerGenes } from "./viewer-genes.js";
+
+export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing" | "geneNotFound" | "geneSearchUnavailable";
 
 export class ViewerFileError extends Error {
     constructor(readonly code: ViewerProblem, readonly fileName = "") {
@@ -20,6 +22,7 @@ export interface LocalTrack<Source = File> {
 export interface LocalViewerFiles<Source = File> {
     reference: { id: string; name: string; fastaURL: Source; indexURL: Source; compressedIndexURL?: Source; headers?: Record<string, string>; wholeGenomeView: false };
     tracks: LocalTrack<Source>[];
+    genes?: ViewerGenes;
 }
 
 export interface LibraryViewerSession {

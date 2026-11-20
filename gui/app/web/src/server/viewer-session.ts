@@ -12,6 +12,7 @@ import type { RequestHandlerContext } from "./routes.js";
 import { usersWorkspaceFor } from "./users-workspace.js";
 import { guardedViewerPath, type ViewerFiles } from "./viewer-files.js";
 import { supplementalViewerTracks } from "./viewer-tracks.js";
+import { installedViewerGenes } from "./viewer-genes.js";
 
 /** Persistent library settings, never request-provided roots or a whole home directory. */
 export async function viewerLibraries(context: RequestHandlerContext) {
@@ -37,7 +38,7 @@ export async function viewerLibraries(context: RequestHandlerContext) {
     const reference = configured("reference_library", path.join(workspace, "reference"));
     const referenceGenomes = configured("reference_genome_library", path.join(reference, "genomes"));
     const roots = [genomes, reference, referenceGenomes];
-    return { config, roots, genomeRoots: [genomes], key: JSON.stringify([context.bundleRoot, config, ...roots]) };
+    return { config, roots, referenceRoot: reference, genomeRoots: [genomes], key: JSON.stringify([context.bundleRoot, config, ...roots]) };
 }
 
 export async function openLibraryViewer(input: string, locus: string, context: RequestHandlerContext, files: ViewerFiles, trackPaths: string[] = []): Promise<LibraryViewerSession | { problem: string; fileName?: string }> {
@@ -100,6 +101,9 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         return { problem: "referenceCompressedIndexMissing", fileName: path.basename(fasta) };
     }
     position ??= localViewerLocus(resolved.locus);
+    await guardedViewerPath(fasta, library.roots);
+    await guardedViewerPath(fai, library.roots);
+    const genes = await installedViewerGenes(fasta, library.referenceRoot);
     let supplemental;
     try {
         supplemental = await supplementalViewerTracks(trackPaths, fasta, library.genomeRoots, context.bundleRoot);
@@ -120,6 +124,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         id: grant.id,
         locus: position,
         files: {
+            genes,
             reference: {
                 id: "local", name: path.basename(fasta), fastaURL: url(fasta), indexURL: url(fai),
                 ...(gzi ? { compressedIndexURL: url(gzi) } : {}), headers: grant.headers, wholeGenomeView: false,
