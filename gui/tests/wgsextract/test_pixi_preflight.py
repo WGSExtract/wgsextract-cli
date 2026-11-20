@@ -25,6 +25,7 @@ class PixiPreflightTests(unittest.TestCase):
             requirement,
         )
 
+    @unittest.skipIf(os.name == "nt", "POSIX setup script")
     def test_1138_posix_preflight_old_current_newer_missing_and_broken(self) -> None:
         for version in ("0.69.0", "0.82.0", "0.100.0", None, "invalid", "0.82.0-rc.1"):
             for location in ("home", "path", "explicit"):
