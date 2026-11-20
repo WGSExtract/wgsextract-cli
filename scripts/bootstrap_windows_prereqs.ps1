@@ -268,4 +268,17 @@ function Ensure-Pixi {
     }
 }
 
+# Run with -File (install_windows.bat), show only the error's message, not
+# PowerShell's error record. Called from another script (dev_setup.ps1 uses &),
+# rethrow so the caller stops too. $MyInvocation.PSCommandPath is the calling
+# script, if any; read here because in the trap $MyInvocation is the trap's.
+$RunWithFile = -not $MyInvocation.PSCommandPath
+trap {
+    if ($RunWithFile) {
+        [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
+        exit 1
+    }
+    break
+}
+
 Ensure-Pixi

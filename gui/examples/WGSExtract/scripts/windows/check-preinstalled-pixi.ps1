@@ -27,8 +27,8 @@ function Assert-PixiNewEnough {
     $minimum = Get-PixiMinimum
     $version = Get-PixiVersion $Pixi
     if ($minimum -and (-not $version -or $version -lt $minimum)) {
-        $found = if ($version) { "Pixi $version" } else { "a Pixi whose version could not be read" }
-        [Console]::Error.WriteLine("WGS Extract needs Pixi >=$minimum, but $Role is $found`: $Pixi. Run 'pixi self-update' in a terminal, then run setup again.")
+        $found = if ($version) { "is version $version" } else { "did not report its version" }
+        [Console]::Error.WriteLine("WGS Extract needs Pixi >=$minimum, but $Role ($Pixi) $found. Run 'pixi self-update' in a terminal, then run setup again.")
         exit 1
     }
     return $version
@@ -59,7 +59,8 @@ function Report-Pixi {
     $pathPixi = Get-PathPixi
     $setupPixi = if ($homePixi) { $homePixi } else { $pathPixi }
     if ($setupPixi) {
-        $version = Assert-PixiNewEnough $setupPixi "the Pixi setup would use"
+        $setupRole = if ($homePixi) { "the Pixi in Pixi's home folder" } else { "the Pixi on PATH" }
+        $version = Assert-PixiNewEnough $setupPixi $setupRole
         Write-Host "Setup will reuse the Pixi $version`: $setupPixi"
     } else {
         $installHome = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
@@ -67,7 +68,7 @@ function Report-Pixi {
     }
     $commandPixi = if ($env:PIXI) { $env:PIXI } else { $pathPixi }
     if ($commandPixi -and $commandPixi -ne $setupPixi) {
-        $role = if ($env:PIXI) { "the Pixi set in PIXI" } else { "the Pixi commands would run with" }
+        $role = if ($env:PIXI) { "the Pixi set in PIXI" } else { "the Pixi on PATH" }
         $version = Assert-PixiNewEnough $commandPixi $role
         Write-Host "Commands will run with the Pixi $version`: $commandPixi"
     }
