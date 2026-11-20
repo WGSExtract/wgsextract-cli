@@ -99,8 +99,44 @@ test("#1090: only touched blocks are served from a multi-gigabyte file; whole-fi
     assert.equal(await response.text(), "0123456789");
     assert.equal(f.reads.reduce((sum, read) => sum + read.bytes, 0), 10);
     assert.equal((await fetch(url, { headers: grant.headers })).status, 416);
-    assert.equal((await fetch(url, { headers: { ...grant.headers, range: "bytes=0-67108863" } })).status, 416);
+    for (const range of ["bytes=0-", "bytes=-67108864"]) {
+        assert.equal((await fetch(url, { headers: { ...grant.headers, range } })).status, 416);
+    }
     assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 409);
+});
+
+test("#1148: a high-depth region larger than 32 MiB streams completely and can be cancelled", async (t) => {
+    const f = await fixture(t);
+    const size = 33 * 1024 ** 2;
+    const handle = await open(f.file, "r+");
+    await handle.truncate(size);
+    await handle.write(Buffer.from("end"), 0, 3, size - 3);
+    await handle.close();
+    const grant = await f.files.grant([f.file], [f.library], "bundle");
+    const url = `${f.base}${grant.urls.get(f.file)}`;
+    const headers = { ...grant.headers, range: `bytes=0-${size - 1}` };
+    const response = await fetch(url, { headers });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("content-range"), `bytes 0-${size - 1}/${size}`);
+    assert.equal(response.headers.get("content-length"), String(size));
+    let received = 0;
+    let last;
+    for await (const chunk of response.body) {
+        if (received === 0) assert.equal(Buffer.from(chunk).subarray(0, 10).toString(), "0123456789");
+        received += chunk.length;
+        last = chunk;
+    }
+    assert.equal(received, size);
+    assert.equal(Buffer.from(last).subarray(-3).toString(), "end");
+    const controller = new AbortController();
+    const cancelled = await fetch(url, { headers, signal: controller.signal });
+    await cancelled.body.getReader().read();
+    controller.abort();
+    const next = await fetch(url, { headers: { ...grant.headers, range: `bytes=${size - 3}-${size - 1}` } });
+    assert.equal(next.status, 206);
+    assert.equal(await next.text(), "end");
+    f.files.revoke(grant.id);
+    assert.equal((await fetch(url, { headers })).status, 401);
 });
 
 test("#1090: traversal, directories, symlink escapes and changed file targets cannot be served", async (t) => {
