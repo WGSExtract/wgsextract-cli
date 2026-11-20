@@ -175,10 +175,11 @@
 "controls.vcf.variant-calling.vcf_filter_expr.tooltip" = "Expressão de filtro do BCFtools, por exemplo QUAL>30 && DP>10."  # i18n-source-hash:b9d8fb93
 "controls.vcf.variant-calling.vcf_ann_vcf.label" = "VCF de referência para anotações"  # i18n-source-hash:f19d6e50
 "controls.vcf.variant-calling.vcf_ann_vcf.tooltip" = "Arquivo VCF a usar para anotação, como ClinVar ou dbSNP."  # i18n-source-hash:98e0bd76
-"actions.vcf.variant-calling.vcf-call.title" = "Padrão"  # i18n-source-hash:808d7dca
+"actions.vcf.variant-calling.vcf-call.title" = "BCFTools"  # i18n-ignore
+"actions.vcf.variant-calling.vcf-call.advancedTitle" = "BCFTools, Delly"  # i18n-ignore
 "actions.vcf.variant-calling.vcf-call.tooltip" = "Chamar os tipos de variantes marcados: SNPs e InDels com bcftools, SVs (Delly, ou Sniffles/pbsv para leituras longas) e CNVs com Delly. Cada tipo recebe seu próprio VCF, a menos que gVCF ou Mesclado esteja marcado."  # i18n-source-hash:646a369e
 "controls.vcf.variant-calling.vcf_call_types.label" = "Tipos de variantes"  # i18n-source-hash:2af2a286
-"controls.vcf.variant-calling.vcf_call_types.tooltip" = "Os tipos de variantes que o botão Padrão chama."  # i18n-source-hash:454e0cca
+"controls.vcf.variant-calling.vcf_call_types.tooltip" = "Os tipos de variantes a chamar."  # i18n-source-hash:4bab1743
 "options.vcf.variant-calling.vcf_call_types.snp.title" = "SNP"  # i18n-ignore
 "options.vcf.variant-calling.vcf_call_types.indel.title" = "InDel"  # i18n-ignore
 "options.vcf.variant-calling.vcf_call_types.sv.title" = "SV"  # i18n-ignore

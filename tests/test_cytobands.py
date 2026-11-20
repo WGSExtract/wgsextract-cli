@@ -65,7 +65,7 @@ def test_1148_cytobands_require_explicit_download_and_reuse_offline(
         result = api.ref.cytobands(
             RefCytobandsParams(ref=tmp_path, build=build, download=True)
         )
-        target = tmp_path / "ref" / f"cytobands_{build}.tsv"
+        target = tmp_path / "downloads" / f"cytobands_{build}.tsv"
         assert target.read_bytes() == body
         assert any(output.role == "reference_resource" for output in result.outputs)
         server.requests.clear()
@@ -114,13 +114,13 @@ def test_1148_malformed_cytoband_download_never_publishes(
             api.ref.cytobands(
                 RefCytobandsParams(ref=tmp_path, build="hg38", download=True)
             )
-        assert not (tmp_path / "ref" / "cytobands_hg38.tsv").exists()
+        assert not (tmp_path / "downloads" / "cytobands_hg38.tsv").exists()
 
 
 def test_1148_truncated_gzip_and_checksum_mismatch_preserve_installed_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    target = tmp_path / "ref" / "cytobands_hg38.tsv"
+    target = tmp_path / "downloads" / "cytobands_hg38.tsv"
     target.parent.mkdir()
     original = b"previous invalid table\n"
     target.write_bytes(original)
@@ -151,19 +151,21 @@ def test_1148_cytobands_resume_partial_and_changed_url_cannot_mix_sources(
         params = RefCytobandsParams(ref=tmp_path, build="hg38", download=True)
         with pytest.raises(api.CommandFailed, match="Failed to download"):
             api.ref.cytobands(params)
-        assert list((tmp_path / "ref").glob("*.partial"))
+        assert list((tmp_path / "downloads").glob("*.partial"))
         server.drops = 0
         source(monkeypatch, server, "hg38", compressed, "second.gz")
         api.ref.cytobands(params)
-        assert (tmp_path / "ref" / "cytobands_hg38.tsv").read_bytes() == table("hg38")
+        assert (tmp_path / "downloads" / "cytobands_hg38.tsv").read_bytes() == table(
+            "hg38"
+        )
         assert "second.gz" in server.get_paths
-        assert not list((tmp_path / "ref").glob("*.partial*"))
+        assert not list((tmp_path / "downloads").glob("*.partial*"))
 
 
 def test_1153_install_preserves_user_archive_and_public_permissions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    archive = tmp_path / "ref" / "cytobands_hg38.txt.gz"
+    archive = tmp_path / "downloads" / "cytobands_hg38.txt.gz"
     archive.parent.mkdir()
     archive.write_bytes(b"user archive")
     sibling = archive.parent / "ordinary-public-file"
@@ -171,7 +173,7 @@ def test_1153_install_preserves_user_archive_and_public_permissions(
     with serving(data=None) as server:
         source(monkeypatch, server, "hg38", gzip.compress(table("hg38"), mtime=0))
         result = api.ref.cytobands(RefCytobandsParams(ref=tmp_path, download=True))
-    target = tmp_path / "ref" / "cytobands_hg38.tsv"
+    target = tmp_path / "downloads" / "cytobands_hg38.tsv"
     assert target.read_bytes() == table("hg38")
     assert archive.read_bytes() == b"user archive"
     assert not list(archive.parent.glob(".cytobands-*"))
@@ -212,7 +214,7 @@ def test_1153_independent_installers_publish_once(tmp_path: Path) -> None:
         assert all(process.returncode == 0 for process in processes), results
         assert sorted(stdout.strip() for stdout, _ in results) == [b"False", b"True"]
         assert server.get_paths == ["bands.gz"]
-    assert (tmp_path / "ref" / "cytobands_hg38.tsv").read_bytes() == table("hg38")
+    assert (tmp_path / "downloads" / "cytobands_hg38.tsv").read_bytes() == table("hg38")
 
 
 def test_1153_cli_repair_hint_keeps_selected_ref_and_config(
@@ -244,18 +246,20 @@ def test_1153_default_library_ignores_configured_external_fasta(
     with api.scoped_config(config), serving(data=None) as server:
         source(monkeypatch, server, "hg38", gzip.compress(table("hg38"), mtime=0))
         api.ref.cytobands(RefCytobandsParams(download=True))
-        assert (library / "ref" / "cytobands_hg38.tsv").read_bytes() == table("hg38")
-        assert not (fasta.parent / "ref").exists()
-        target = library / "ref" / "cytobands_hg38.tsv"
+        assert (library / "downloads" / "cytobands_hg38.tsv").read_bytes() == table(
+            "hg38"
+        )
+        assert not (fasta.parent / "downloads").exists()
+        target = library / "downloads" / "cytobands_hg38.tsv"
         manifest = Path(str(target) + ".manifest.json")
         record = manifest.read_bytes()
         main(["--config", str(config), "ref", "cytobands"])
         assert str(target) in capsys.readouterr().out
         assert manifest.read_bytes() == record
         api.ref.cytobands(RefCytobandsParams(ref=fasta, download=True))
-        assert (fasta.parent / "ref" / "cytobands_hg38.tsv").read_bytes() == table(
-            "hg38"
-        )
+        assert (
+            fasta.parent / "downloads" / "cytobands_hg38.tsv"
+        ).read_bytes() == table("hg38")
 
 
 def many_bands(count: int) -> bytes:
@@ -279,7 +283,7 @@ def many_bands(count: int) -> bytes:
 def test_1153_viewer_invalid_existing_table_is_repaired(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: bytes
 ) -> None:
-    target = tmp_path / "ref" / "cytobands_hg38.tsv"
+    target = tmp_path / "downloads" / "cytobands_hg38.tsv"
     target.parent.mkdir()
     target.write_bytes(bad)
     with serving(data=None) as server:
@@ -301,7 +305,7 @@ def test_1153_viewer_invalid_existing_table_is_repaired(
 def test_1153_viewer_valid_newlines_and_band_limit_reuse_offline(
     tmp_path: Path, body: bytes
 ) -> None:
-    target = tmp_path / "ref" / "cytobands_hg38.tsv"
+    target = tmp_path / "downloads" / "cytobands_hg38.tsv"
     target.parent.mkdir()
     target.write_bytes(body)
     assert not api.ref.cytobands(RefCytobandsParams(ref=tmp_path)).outputs
@@ -314,7 +318,7 @@ def test_1153_escaping_table_symlink_can_be_reinstalled(
     outside = tmp_path / "outside.tsv"
     outside.write_bytes(table("hg38"))
     library = tmp_path / "library"
-    target = library / "ref" / "cytobands_hg38.tsv"
+    target = library / "downloads" / "cytobands_hg38.tsv"
     target.parent.mkdir(parents=True)
     try:
         target.symlink_to(outside)
@@ -328,3 +332,16 @@ def test_1153_escaping_table_symlink_can_be_reinstalled(
         api.ref.cytobands(RefCytobandsParams(ref=library, download=True))
     assert not target.is_symlink()
     assert target.read_bytes() == outside.read_bytes() == table("hg38")
+
+
+def test_1141_older_library_cytobands_in_ref_still_validate_offline(tmp_path):
+    """#1141 (ref/ renamed downloads/): an older library's ref/ table stays
+    installed instead of asking for --download."""
+    legacy = tmp_path / "ref" / "cytobands_hg38.tsv"
+    legacy.parent.mkdir()
+    legacy.write_bytes(table("hg38"))
+
+    result = api.ref.cytobands(RefCytobandsParams(ref=tmp_path, build="hg38"))
+
+    assert any(item.path == str(legacy) for item in result.inputs)
+    assert not (tmp_path / "downloads").exists()

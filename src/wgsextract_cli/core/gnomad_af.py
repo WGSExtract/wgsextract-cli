@@ -24,6 +24,7 @@ from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.resource_mirrors import mirror_chunks, mirror_for
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -167,17 +168,19 @@ def build_gnomad_af(
     attempts: int = 3,
 ) -> bool:
     """
-    Build <library>/ref/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
+    Build <library>/downloads/gnomad_hg38.tsv.gz from the gnomAD v4.1 joint VCFs.
 
     Contigs stream in parallel (the build is network-bound) into resumable
     per-contig parts, which are then concatenated (BGZF allows that) and indexed.
     """
-    target_dir = str(Path(reflib_dir, "ref"))
-    dest = str(Path(target_dir, GNOMAD_AF_TABLE))
+    dest = str(download_path(reflib_dir, GNOMAD_AF_TABLE))
     if Path(dest).is_file() and Path(dest + ".tbi").is_file():
         logging.info(f"{GNOMAD_AF_TABLE} is already installed.")
         return True
-    parts_dir = str(Path(target_dir, ".gnomad_hg38_parts"))
+    # An older library's interrupted build resumes where its parts are.
+    parts_dir = str(download_path(reflib_dir, ".gnomad_hg38_parts"))
+    if not Path(dest).exists():
+        dest = str(Path(parts_dir).parent / GNOMAD_AF_TABLE)
     Path(parts_dir).mkdir(parents=True, exist_ok=True)
 
     def part_path(contig: str) -> str:

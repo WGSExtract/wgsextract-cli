@@ -13,7 +13,7 @@ def test_1093_chain_cadd_applies_the_resolved_snv_and_indel_resources(
     tmp_path, with_indels
 ):
     library = tmp_path / "lib"
-    resources = library / "ref"
+    resources = library / "downloads"
     resources.mkdir(parents=True)
     sample = _sample(tmp_path, SAMPLE_ROWS)
     header = "#Chrom\tPos\tRef\tAlt\tRawScore\tPHRED"

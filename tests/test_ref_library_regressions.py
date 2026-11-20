@@ -119,7 +119,7 @@ def test_genome_config_rewrite_keeps_unknown_keys(tmp_path):
 
 
 def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg19.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t41196312\t41277500\n"
@@ -136,8 +136,8 @@ def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
 def test_gene_coords_says_why_a_gene_cant_be_found(tmp_path):
     with pytest.raises(WGSExtractError, match="ref gene-map"):
         gene_coords(str(tmp_path), "BRCA1", "hg38")
-    (tmp_path / "ref").mkdir()
-    (tmp_path / "ref" / "genes_hg38.tsv").write_text(
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t43044295\t43125483\n"
     )
     assert gene_coords(str(tmp_path), "brca1", "hg38") == "chr17:43044295-43125483"
@@ -160,7 +160,7 @@ def test_gene_ranges_never_merge_across_contigs():
 
 
 def test_gene_map_ignores_stale_merged_alt_rows(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\n"
@@ -205,7 +205,7 @@ def test_annotation_data_resolves_in_a_library_without_a_genome(tmp_path):
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
-    ref = tmp_path / "lib" / "ref"
+    ref = tmp_path / "lib" / "downloads"
     ref.mkdir(parents=True)
     for name in ("spliceai_hg38.vcf.gz", "clinvar_hg38.vcf.gz"):
         (ref / name).write_bytes(b"")

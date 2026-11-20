@@ -31,17 +31,20 @@ def _touch(*paths: Path) -> None:
     [
         (
             "spliceai",
-            ["ref/spliceai_hg38.vcf.gz", "ref/spliceai_hg38.vcf.gz.tbi"],
+            ["downloads/spliceai_hg38.vcf.gz", "downloads/spliceai_hg38.vcf.gz.tbi"],
             "library.spliceaiInstalled",
         ),
         (
             "alphamissense",
-            ["ref/alphamissense_hg19.tsv.gz", "ref/alphamissense_hg19.tsv.gz.tbi"],
+            [
+                "downloads/alphamissense_hg19.tsv.gz",
+                "downloads/alphamissense_hg19.tsv.gz.tbi",
+            ],
             "library.alphamissenseInstalled",
         ),
         (
             "pharmgkb",
-            ["ref/pharmgkb_hg38.vcf.gz", "ref/pharmgkb_hg38.vcf.gz.csi"],
+            ["downloads/pharmgkb_hg38.vcf.gz", "downloads/pharmgkb_hg38.vcf.gz.csi"],
             "library.pharmgkbInstalled",
         ),
     ],
@@ -50,13 +53,13 @@ def test_annotation_resource_delete_removes_files_and_indexes(
     tmp_path, command, files, value
 ):
     reflib = tmp_path / "reference"
-    _touch(*(reflib / f for f in files), reflib / "ref" / "clinvar_hg38.vcf.gz")
+    _touch(*(reflib / f for f in files), reflib / "downloads" / "clinvar_hg38.vcf.gz")
     assert _values(reflib)[value] == "true"
 
     run_wgsextract("ref", command, "--delete", "--ref", str(reflib))
 
     assert not any((reflib / f).exists() for f in files)
-    assert (reflib / "ref" / "clinvar_hg38.vcf.gz").is_file()  # not theirs
+    assert (reflib / "downloads" / "clinvar_hg38.vcf.gz").is_file()  # not theirs
     assert _values(reflib)[value] == "false"
 
 
@@ -116,7 +119,7 @@ def test_ybrowse_delete_removes_every_snapshot(tmp_path):
 def test_microarray_targets_delete_removes_them_and_their_leftovers(tmp_path):
     reflib = tmp_path / "reference"
     target = reflib / "microarray" / "All_SNPs_hg38_ref.tab.gz"
-    legacy = reflib / "ref" / "All_SNPs_hg19_ref.tab.gz"
+    legacy = reflib / "downloads" / "All_SNPs_hg19_ref.tab.gz"
     kept = reflib / "microarray" / "raw_file_templates" / "head" / "23andMe_V5.csv"
     _touch(
         target,

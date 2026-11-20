@@ -322,7 +322,7 @@ def test_chain_skips_clinvar_without_fasta_and_keeps_other_annotations(tmp_path)
     sample.write_text(
         sample.read_text().replace("#CHROM", "##reference=GRCh38\n#CHROM")
     )
-    library = tmp_path / "lib" / "ref"
+    library = tmp_path / "lib" / "downloads"
     library.mkdir(parents=True)
     bgzip_index(
         vcf(

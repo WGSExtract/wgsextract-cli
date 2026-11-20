@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
+from wgsextract_cli.core.ref_library.layout import download_path, downloads_dir
 from wgsextract_cli.core.utils import WGSExtractError
 
 from .ref_library import download_file
@@ -64,10 +65,10 @@ def _download_bigwig(
     cancel_event: CancelEvent | None,
     progress_callback: ProgressCallback | None,
 ) -> bool:
-    """Downloads a bigWig into <library>/ref/<name> and checks it opens."""
-    target_dir = str(Path(reflib_dir, "ref"))
+    """Downloads a bigWig into <library>/downloads/<name> and checks it opens."""
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
-    dest = str(Path(target_dir, name))
+    dest = str(download_path(reflib_dir, name))
     if Path(dest).is_file():
         logging.info(f"{name} is already installed.")
         return True

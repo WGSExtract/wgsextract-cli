@@ -52,6 +52,7 @@ from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -226,7 +227,7 @@ def fastvep_version() -> str:
 
 def folder(reflib: str | Path) -> Path:
     """The library's ACMG folder: the GFF3, ``sources/`` and ``sa/``."""
-    return Path(reflib, "ref", "acmg")
+    return download_path(reflib, "acmg")
 
 
 def default_sa_dir(reflib: str | Path) -> Path:
@@ -237,7 +238,7 @@ def acmg_sa_dir(
     library_root: str | Path | None, sa_dir: str | Path | None
 ) -> Path | None:
     """The databases ``vcf acmg`` reads: ``sa_dir`` when given (or
-    configured), else the library's ``ref/acmg/sa`` when it is there."""
+    configured), else the library's ``downloads/acmg/sa`` when it is there."""
     if sa_dir:
         return Path(expand_path(sa_dir))
     built = default_sa_dir(library_root) if library_root else None
@@ -476,7 +477,7 @@ def make_plan(
 
 def library_spliceai_path(reflib: str | Path) -> Path:
     """Where ``ref spliceai`` installs the library's GRCh38 SpliceAI VCF."""
-    return Path(reflib, "ref", "spliceai_hg38.vcf.gz")
+    return download_path(reflib, "spliceai_hg38.vcf.gz")
 
 
 def library_spliceai(reflib: str | Path) -> Path | None:

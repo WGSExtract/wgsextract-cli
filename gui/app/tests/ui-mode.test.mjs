@@ -4,7 +4,8 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { commandContextFromState, placeholdersIn } from "../dist/shared/rendering.js";
-import { basicModeHiddenInputs, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
+import { localizeManifest, parseTomlStrings } from "../dist/shared/localization.js";
+import { actionTitledForUIMode, basicModeHiddenInputs, visibleActions, visibleControls, visibleOptions, visiblePages, visibleSections } from "../dist/shared/ui-mode.js";
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const wgsExtract = path.resolve(appRoot, "..", "examples", "WGSExtract");
@@ -56,6 +57,28 @@ test("Basic hides advancedOnly pages, sections, controls and options, and pages 
   assert.deepEqual(visibleControls(inputs, "basic").map((control) => control.id), ["input", "formats"]);
   assert.deepEqual(visibleOptions(inputs.controls[4].options, "basic").map((option) => option.id), ["v3", "v5"]);
   assert.equal(visibleOptions(inputs.controls[4].options, "advanced").length, 3);
+});
+
+test("WGS Extract names the variant-calling button for the callers each mode can run", () => {
+  // Basic only offers SNPs and InDels (bcftools); Advanced adds SVs and CNVs, which Delly calls.
+  const strings = parseTomlStrings(readFileSync(path.join(wgsExtract, "strings", "strings.en.toml"), "utf8"));
+  const section = localizeManifest(wgsExtractManifest(), strings).pages
+    .find((page) => page.id === "extract")
+    .sections.find((item) => item.id === "variant-calling");
+  const title = (mode) => visibleActions(section.actions, mode).find((action) => action.id === "vcf-call").title;
+  assert.equal(title("basic"), "BCFTools");
+  assert.equal(title("advanced"), "BCFTools, Delly");
+});
+
+test("an action without an advancedTitle keeps its title in Advanced", () => {
+  const actions = [{ id: "run", title: "Run", command: { executable: "tool" } }];
+  assert.equal(visibleActions(actions, "advanced")[0].title, "Run");
+});
+
+test("a row action shows its advancedTitle in Advanced and its title in Basic", () => {
+  const action = { id: "delete", title: "Delete", advancedTitle: "Delete files", command: { executable: "tool" } };
+  assert.equal(actionTitledForUIMode(action, "basic").title, "Delete");
+  assert.equal(actionTitledForUIMode(action, "advanced").title, "Delete files");
 });
 
 test("Basic runs commands with hidden settings at their defaults and hidden options unchecked, keeping hidden paths", () => {

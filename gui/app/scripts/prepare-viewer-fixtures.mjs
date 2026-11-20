@@ -36,7 +36,7 @@ export async function prepareViewerFixtures(root, output, tools, geneMaps = fals
         }
         await appendFile(fasta, `${"N".repeat(60)}\n`.repeat(Math.floor(remaining / 60))
             + (remaining % 60 ? `${"N".repeat(remaining % 60)}\n` : ""));
-        const maps = path.join(output, "reference", "ref");
+        const maps = path.join(output, "reference", "downloads");
         await mkdir(maps, { recursive: true });
         await writeFile(path.join(maps, "genes_hg38.tsv"), "symbol\tchrom\tstart\tend\nREFGENE_DEMO\tchr1\t200\t400\n");
     }

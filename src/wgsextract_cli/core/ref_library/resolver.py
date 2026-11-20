@@ -33,6 +33,7 @@ from wgsextract_cli.core.ref_library.assets import (
     resolve_input_reference_fasta,
     resolve_input_target_tab,
 )
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.ref_library.models import identify_reference, sequence_lengths
 
 _UNKNOWN_SIGNATURE = "0" * 32
@@ -344,7 +345,7 @@ class ReferenceLibrary:
         if not self.build:
             return
         self.ploidy_file = self._first_existing_file(
-            self._resource_dirs("", "ref", "microarray"),
+            self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
             [f"ploidy_{self.build}.txt", "ploidy.txt"],
         )
 
@@ -376,7 +377,7 @@ class ReferenceLibrary:
         so every kit made from it was empty. Without a genome-wide target,
         microarray builds one from the chip templates.
         """
-        subdirs = ["microarray", "", "ref"]
+        subdirs = ["microarray", "", *DOWNLOAD_DIRS]
         tab_names: list[str] = []
         if self.build:
             build = self.build.lower()
@@ -390,12 +391,19 @@ class ReferenceLibrary:
             subdirs += [
                 str(Path("microarray", self.build)),
                 self.build,
-                str(Path("ref", self.build)),
+                *(str(Path(d, self.build)) for d in DOWNLOAD_DIRS),
             ]
             if alt_build:
-                subdirs += [alt_build, str(Path("ref", alt_build))]
+                subdirs += [
+                    alt_build,
+                    *(str(Path(d, alt_build)) for d in DOWNLOAD_DIRS),
+                ]
         generic_names = ["All_SNPs.vcf.gz", "common_all.vcf.gz"]
-        walk_subdirs = ["microarray", "ref", str(Path("genomes", "microarray"))]
+        walk_subdirs = [
+            "microarray",
+            *DOWNLOAD_DIRS,
+            str(Path("genomes", "microarray")),
+        ]
 
         def search(root: str) -> Iterator[str | None]:
             dirs = [str(Path(root, d)) for d in subdirs]
@@ -417,26 +425,33 @@ class ReferenceLibrary:
     def _resolve_annotation_files(self) -> None:
         from wgsextract_cli.core.config import settings
 
-        dirs = self._resource_dirs("", "ref")
+        # Per resource root: the root, then downloads/ and ref/ as one place,
+        # so a better-ranked name (gnomAD v4.1 over v2.1.1) wins across both.
+        groups = [
+            [str(Path(root, d)) for d in group]
+            for root in self.resource_roots
+            for group in ([""], DOWNLOAD_DIRS)
+        ]
+        dirs = [d for group in groups for d in group]
         vcf_exts = [".vcf.gz", ".vcf.bgz"]
         tsv_exts = [".tsv.gz", ".vcf.gz"]
         self.clinvar_vcf = self._resolve_annotation_file(
-            settings.get("clinvar_vcf_path"), "clinvar", [".vcf.gz"], dirs
+            settings.get("clinvar_vcf_path"), "clinvar", [".vcf.gz"], groups
         )
         self.revel_file = self._resolve_annotation_file(
-            settings.get("revel_tsv_path"), "revel", tsv_exts, dirs
+            settings.get("revel_tsv_path"), "revel", tsv_exts, groups
         )
         self.phylop_file = self._resolve_annotation_file(
-            settings.get("phylop_tsv_path"), "phylop", [".bw", *tsv_exts], dirs
+            settings.get("phylop_tsv_path"), "phylop", [".bw", *tsv_exts], groups
         )
         self.cadd_file = self._resolve_annotation_file(
-            settings.get("cadd_tsv_path"), "cadd", [".tsv.gz"], dirs
+            settings.get("cadd_tsv_path"), "cadd", [".tsv.gz"], groups
         )
         self.cadd_indel_file = self._resolve_annotation_file(
-            settings.get("cadd_indel_tsv_path"), "cadd_indel", [".tsv.gz"], dirs
+            settings.get("cadd_indel_tsv_path"), "cadd_indel", [".tsv.gz"], groups
         )
         self.gerp_file = self._resolve_annotation_file(
-            settings.get("gerp_bigwig_path"), "gerp", [".bw", ".bigWig"], dirs
+            settings.get("gerp_bigwig_path"), "gerp", [".bw", ".bigWig"], groups
         )
         # The v4.1 allele-frequency table (`ref gnomad --release 4.1`) wins over
         # the v2.1.1 exome VCF when both are installed.
@@ -444,16 +459,16 @@ class ReferenceLibrary:
             settings.get("gnomad_vcf_path"),
             "gnomad",
             [".tsv.gz", ".vcf.bgz", ".vcf.gz"],
-            dirs,
+            groups,
         )
         self.spliceai_vcf = self._resolve_annotation_file(
-            settings.get("spliceai_vcf_path"), "spliceai", vcf_exts, dirs
+            settings.get("spliceai_vcf_path"), "spliceai", vcf_exts, groups
         )
         self.alphamissense_vcf = self._resolve_annotation_file(
             settings.get("alphamissense_vcf_path"),
             "alphamissense",
             [".tsv.gz", *vcf_exts],
-            dirs,
+            groups,
         )
 
         configured_pharmgkb = settings.get("pharmgkb_vcf_path")
@@ -466,14 +481,14 @@ class ReferenceLibrary:
         elif self.build:
             pharmgkb_exts = [".vcf.gz", ".vcf.bgz", ".tsv.gz"]
             self.pharmgkb_vcf = self._resolve_annotation_file(
-                None, "pharmgkb", pharmgkb_exts, dirs
+                None, "pharmgkb", pharmgkb_exts, groups
             ) or self._first_existing_file(
                 dirs, [f"pharmgkb{ext}" for ext in pharmgkb_exts]
             )
 
         if self.build and is_hg38_build(self.build):
             self.liftover_chain = self._first_existing_file(
-                self._resource_dirs("", "ref", "microarray"),
+                self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
                 ["hg38ToHg19.over.chain.gz"],
             )
 
@@ -529,9 +544,10 @@ class ReferenceLibrary:
         configured_path: object,
         prefix: str,
         extensions: list[str],
-        search_dirs: list[str],
+        search_groups: list[list[str]],
     ) -> str | None:
-        """Resolve an annotation file across directories and build aliases."""
+        """Resolve an annotation file across folder groups and build aliases:
+        group by group, the best-ranked name in any folder of a group."""
         if (
             isinstance(configured_path, str)
             and configured_path
@@ -550,10 +566,11 @@ class ReferenceLibrary:
         names = [f"{prefix}_{alias}{ext}" for alias in aliases for ext in extensions]
         names.extend(f"{prefix}{ext}" for ext in extensions)
 
-        for search_dir in search_dirs:
-            found = self._first_existing_file([search_dir], names)
-            if found:
-                return found
+        for group in search_groups:
+            for name in names:
+                found = self._first_existing_file(group, [name])
+                if found:
+                    return found
         return None
 
 

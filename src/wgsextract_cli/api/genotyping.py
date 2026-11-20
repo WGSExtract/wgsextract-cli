@@ -94,9 +94,9 @@ class TypingHlaParams(_TypingParams, DownloadParams):
     hla_index: Path | None = param(
         None,
         help="T1K allele index (hla_dna_seq.fa). Default: <reference library>/"
-        "ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
+        "downloads/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
         doc="T1K allele index (hla_dna_seq.fa); None uses the reference "
-        "library's ref/t1k_hla one; download permits building it if missing.",
+        "library's downloads/t1k_hla one; download permits building it if missing.",
         metavar="FASTA",
         path="file",
     )

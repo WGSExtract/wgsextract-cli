@@ -661,15 +661,15 @@ def test_real_clinical_annotation_stack(
         "alphamissense_*",
         "pharmgkb_*",
     ]
-    resource_root = real_dataset.ref / "ref"
+    resource_roots = [real_dataset.ref / d for d in ("downloads", "ref")]
     missing = [
         pattern
         for pattern in resource_patterns
-        if next(resource_root.glob(pattern), None) is None
+        if not any(next(root.glob(pattern), None) for root in resource_roots)
     ]
     if missing:
         pytest.skip(
-            f"clinical annotation resources missing in {resource_root}: "
+            f"clinical annotation resources missing in {resource_roots[0]}: "
             f"{', '.join(missing)}"
         )
 

@@ -3,9 +3,9 @@
 # require each one in the VCF as a PASS call with the planted genotype, and a
 # PL value for every genotype of every gVCF record; then
 # run the stages `run --dry_run=true` prints, on a copy with only a .csi
-# index and a BED selection of every contig, and require the same VCF. With
-# the ONT_R104 weights, call long reads too and require the planted SNPs with
-# the het ones phased, in phase sets.
+# index, a BED selection and a different worker count, and require the same
+# VCF and gVCF. With ONT_R104 weights, also call long reads and require the
+# planted SNPs with heterozygotes phased into phase sets.
 # Usage: smoke.sh <wgse-deepvariant> <weights-dir> <work-dir>
 # Needs samtools on PATH.
 set -eu
@@ -94,7 +94,8 @@ samtools index -c staged.bam
 awk -F '\t' '{ print $1 "\t0\t" $2 }' reference.fa.fai > all.bed
 "$binary" run --model_type=WGS --ref=reference.fa --reads=staged.bam --regions=all.bed \
     --checkpoint="$weights/wgs.dvw" --small_model_path="$weights/wgs_small_weights" \
-    --output_vcf=staged.vcf.gz --intermediate_results_dir=staged --num_shards=2 \
+    --output_vcf=staged.vcf.gz --output_gvcf=staged.g.vcf.gz \
+    --intermediate_results_dir=staged --num_shards=3 \
     --dry_run=true > plan.txt
 awk '/^\*\*\*\*\* Running the command:\*\*\*\*\*$/ { getline; print }' plan.txt > stages.sh
 test "$(wc -l < stages.sh)" -eq 3
@@ -106,7 +107,15 @@ if ! cmp -s calls.body staged.body; then
     echo "smoke: the staged commands called differently from run" >&2
     exit 1
 fi
-echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; the staged commands agree"
+# #1116: the small-model SIMD path and per-worker realigner cache must retain
+# calls and reference blocks across worker counts, including the empty contig.
+gzip -dc calls.g.vcf.gz | grep -v '^##' > calls.g.body
+gzip -dc staged.g.vcf.gz | grep -v '^##' > staged.g.body
+if ! cmp -s calls.g.body staged.g.body; then
+    echo "smoke: changing worker count changed the gVCF" >&2
+    exit 1
+fi
+echo "smoke: $(wc -l < truth.tsv | tr -d ' ') planted SNPs called; staged VCF/gVCF agree across worker counts"
 
 # #1103: staged execution must carry PAR/haploid policy to both reference
 # confidence generation and final calling, without changing diploid chr2.
