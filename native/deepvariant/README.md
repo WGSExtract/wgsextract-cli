@@ -90,6 +90,12 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0013** (0.4.1) compiles the realigner's fixed CIGAR regular expression once
   per worker instead of once per read/haplotype alignment, with unchanged
   parsing and no shared matching-cache contention.
+- **0014** (0.4.1) gates every Apple package build on bit-for-bit equality of
+  the production `DenseFp32` kernel with the exact pre-0012 scalar loop.
+  It checks 70/94/106 → 750 and 750 → 750 with deterministic signed zeros,
+  denormals, large magnitudes, mixed signs, rounding-sensitive cancellation
+  and varied finite FP32 inputs. Both use the same Objective-C++ build flags
+  and contraction settings; no tolerance or fast-math override is used.
 
 The haploid contract follows Google DeepVariant **v1.10.0**:
 [`postprocess_variants.py`, lines 1070–1092](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1070-L1092)
@@ -495,6 +501,16 @@ needs samtools. The macOS DeepVariant workflow
 (`.github/workflows/macos_deepvariant.yml`) converts the weights in Google's
 image, builds and smoke-tests the binary and, when run with a release tag,
 publishes both with a `SHA256SUMS`.
+
+The `deepvariant` build target always runs `wgse_ploidy_check` and, on
+macOS, `wgse_dense_check`, including package builds with `BUILD_TESTING=OFF`.
+A mismatch fails the build before installation or the synthetic-genome smoke
+test. The dense check links the production small-model library, not a second
+optimized implementation. To rerun it in the superbuild's `port-build-*`
+directory, use `cmake --build <port-build> --target wgse_dense_check` or
+`ctest --test-dir <port-build> -R wgse_dense_scalar_reference --output-on-failure`.
+The scalar-reference check is Apple-only; Linux's qualified math and conda
+recipe remain unchanged.
 
 ## Licences
 

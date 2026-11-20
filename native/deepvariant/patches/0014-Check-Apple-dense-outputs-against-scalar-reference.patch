@@ -1,0 +1,205 @@
+Subject: [PATCH] Gate Apple dense outputs against the pre-0012 scalar loop (#1116)
+
+Link the production dense kernel and compare 18000 FP32 output bit patterns.
+Run the independent reference with identical build flags and contraction
+settings. Like wgse_ploidy_check, gate the package target even with
+BUILD_TESTING=OFF; also register a dependency-free CTest.
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2b0565b2..3ed846e3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -66,6 +66,10 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+ # External dependencies (order matters: protos before nucleus)
+ # ---------------------------------------------------------------------------
+ option(BUILD_TESTING "Build the native tests (fetches GoogleTest)" ON)
++if(APPLE)
++  # The dependency-free scalar-reference gate also runs in package builds.
++  enable_testing()
++endif()
+ include(deps)    # FetchContent / find_package for htslib, abseil, protobuf, ssw
+ include(protos)  # compile DeepVariant + nucleus + TF-example protos
+
+diff --git a/deepvariant/native/CMakeLists.txt b/deepvariant/native/CMakeLists.txt
+index 1f743feb..03e6fe8f 100644
+--- a/deepvariant/native/CMakeLists.txt
++++ b/deepvariant/native/CMakeLists.txt
+@@ -608,11 +608,28 @@ target_link_libraries(wgse_ploidy_test PRIVATE dv_make_examples_lib)
+ add_custom_target(wgse_ploidy_check
+   COMMAND wgse_ploidy_test "${CMAKE_CURRENT_BINARY_DIR}/ploidy-test.bed"
+   DEPENDS wgse_ploidy_test)
++if(APPLE)
++  add_executable(wgse_dense_test small_model_dense_test.mm)
++  target_link_libraries(wgse_dense_test PRIVATE dv_small_model)
++  # Same Objective-C++ language, directory/build-type FP flags and target
++  # options as production, including any contraction settings; no overrides.
++  target_compile_options(wgse_dense_test PRIVATE
++    "$<TARGET_PROPERTY:dv_small_model,COMPILE_OPTIONS>")
++  target_compile_definitions(wgse_dense_test PRIVATE
++    "$<TARGET_PROPERTY:dv_small_model,COMPILE_DEFINITIONS>")
++  add_test(NAME wgse_dense_scalar_reference COMMAND wgse_dense_test)
++  add_custom_target(wgse_dense_check
++    COMMAND wgse_dense_test
++    DEPENDS wgse_dense_test)
++endif()
+ add_executable(deepvariant
+   "${CMAKE_CURRENT_SOURCE_DIR}/cli.cc"
+ )
+ target_include_directories(deepvariant PRIVATE ${ME_INCLUDE_DIRS})
+ add_dependencies(deepvariant wgse_ploidy_check)
++if(APPLE)
++  add_dependencies(deepvariant wgse_dense_check)
++endif()
+ target_compile_options(deepvariant PRIVATE ${ME_COMPILE_OPTS})
+
+ # Version metadata — captured at configure time and re-captured at every
+diff --git a/deepvariant/native/small_model_dense.h b/deepvariant/native/small_model_dense.h
+new file mode 100644
+index 00000000..47b53327
+--- /dev/null
++++ b/deepvariant/native/small_model_dense.h
+@@ -0,0 +1,9 @@
++#pragma once
++
++namespace deepvariant {
++
++// Internal kernel shared by inference and the bitwise scalar-reference check.
++void DenseFp32(const float* x, int in_dim, const float* W, const float* b,
++               int out_dim, float* y);
++
++}  // namespace deepvariant
+diff --git a/deepvariant/native/small_model_dense_test.mm b/deepvariant/native/small_model_dense_test.mm
+new file mode 100644
+index 00000000..8f88fecc
+--- /dev/null
++++ b/deepvariant/native/small_model_dense_test.mm
+@@ -0,0 +1,99 @@
++#include "deepvariant/native/small_model_dense.h"
++
++#include <cmath>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <limits>
++#include <vector>
++
++namespace {
++
++// Exact pre-0012 loop: input order, FP32 accumulator and bias placement.
++void ScalarDenseFp32(const float* x, int in_dim,
++                     const float* W, const float* b,
++                     int out_dim, float* y) {
++  for (int o = 0; o < out_dim; ++o) {
++    float acc = 0.0f;
++    for (int i = 0; i < in_dim; ++i) {
++      acc += x[i] * W[i * out_dim + o];
++    }
++    y[o] = acc + b[o];
++  }
++}
++
++uint32_t Bits(float value) {
++  uint32_t bits;
++  static_assert(sizeof(bits) == sizeof(value));
++  std::memcpy(&bits, &value, sizeof(bits));
++  return bits;
++}
++
++float MixedValue(uint32_t* state) {
++  *state = *state * 1664525u + 1013904223u;
++  // Finite FP32 values with varied mantissas, signs and exponents [-32, 32].
++  const uint32_t bits = (*state & 0x807fffffu) |
++      ((95u + ((*state >> 23) % 65u)) << 23);
++  float value;
++  std::memcpy(&value, &bits, sizeof(value));
++  return value;
++}
++
++bool Check(int in_dim, int fixture) {
++  constexpr int out_dim = 750;
++  const float denorm = std::numeric_limits<float>::denorm_min();
++  const float edges[] = {0.0f, -0.0f, denorm, -denorm,
++                        std::numeric_limits<float>::min(),
++                        -std::numeric_limits<float>::min(),
++                        0x1p40f, -0x1p40f, 1.0f, -1.0f,
++                        0x1.000002p0f, 0x1.fffffep-1f};
++  std::vector<float> x(in_dim), W(in_dim * out_dim), b(out_dim);
++  std::vector<float> expected(out_dim), actual(out_dim, -123.0f);
++  uint32_t state = 1116u + in_dim * 17u + fixture;
++  for (int i = 0; i < in_dim; ++i) {
++    x[i] = MixedValue(&state);
++    if (fixture == 0) x[i] = i % 2 ? -0.0f : 0.0f;
++    if (fixture == 1) x[i] = (i % 3 + 1) * denorm;
++    if (fixture == 2) x[i] = edges[i % 12];
++    if (fixture == 3) x[i] = 1.0f;
++    if (fixture == 4) x[i] = i % 2 ? 0x1.000002p0f : -1.0f;
++    for (int o = 0; o < out_dim; ++o) {
++      float value = MixedValue(&state);
++      if (fixture == 1) value = (i + o) % 3 == 0 ? -1.0f : 1.0f;
++      if (fixture == 2) value = edges[(i * 7 + o) % 12];
++      // Rounding-sensitive cancellation: (large + tiny) - large.
++      if (fixture == 3) {
++        const float terms[] = {0x1p24f, 1.0f, -0x1p24f, -0.5f};
++        value = terms[(i + o) % 4];
++      }
++      if (fixture == 4) value = i % 2 ? 0x1.fffffep-1f : 1.0f;
++      W[i * out_dim + o] = value;
++    }
++  }
++  for (int o = 0; o < out_dim; ++o) {
++    b[o] = fixture == 1 ? (o % 2 ? -denorm : denorm) : edges[o % 12];
++  }
++  ScalarDenseFp32(x.data(), in_dim, W.data(), b.data(), out_dim, expected.data());
++  deepvariant::DenseFp32(x.data(), in_dim, W.data(), b.data(), out_dim, actual.data());
++  for (int o = 0; o < out_dim; ++o) {
++    if (!std::isfinite(expected[o]) || Bits(actual[o]) != Bits(expected[o])) {
++      std::fprintf(stderr,
++          "DenseFp32 mismatch: %d->%d fixture=%d output=%d scalar=%08x production=%08x\n",
++          in_dim, out_dim, fixture, o, Bits(expected[o]), Bits(actual[o]));
++      return false;
++    }
++  }
++  return true;
++}
++
++}  // namespace
++
++int main() {
++  for (int in_dim : {70, 94, 106, 750}) {
++    for (int fixture = 0; fixture < 6; ++fixture) {
++      if (!Check(in_dim, fixture)) return 1;
++    }
++  }
++  std::puts("DenseFp32 scalar-reference check passed: 4 shapes, 6 fixtures, 18000 bitwise outputs");
++  return 0;
++}
+diff --git a/deepvariant/native/small_model_inference.mm b/deepvariant/native/small_model_inference.mm
+index 9d29d16d..8ec38e5b 100644
+--- a/deepvariant/native/small_model_inference.mm
++++ b/deepvariant/native/small_model_inference.mm
+@@ -24,6 +24,7 @@
+ // rounding determines small-model dispatch near GQ thresholds.
+
+ #include "deepvariant/native/small_model_inference.h"
++#include "deepvariant/native/small_model_dense.h"
+
+ #include <algorithm>
+ #include <cmath>
+@@ -90,6 +91,8 @@ bool ReadNpy(const std::string& path, NpyArr* out) {
+   return f.good() || f.eof();
+ }
+
++}  // namespace
++
+ // Sequential scalar FP32 dense forward: y[o] = sum_i x[i] * W[i, o] + b[o]
+ // with strict left-to-right accumulation order — matches Eigen's
+ // single-thread scalar GEMM bit-for-bit when no FMA fusion.
+@@ -120,6 +123,8 @@ void DenseFp32(const float* x, int in_dim,
+   }
+ }
+
++namespace {
++
+ void Relu(float* v, int n) {
+   for (int i = 0; i < n; ++i) if (v[i] < 0.0f) v[i] = 0.0f;
+ }
