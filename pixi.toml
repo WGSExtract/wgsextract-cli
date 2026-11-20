@@ -228,14 +228,27 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 somalier = ">=0.3.7,<0.4"
 
 # fastVEP classifies variants by ACMG/AMP criteria for the opt-in, research-only
-# `vcf acmg`. Opt-in environment (`pixi install -e fastvep`); Bioconda builds it
-# for linux-64 and osx-64 only. On Linux ARM64 and Apple Silicon the CLI uses the
-# upstream release binary on PATH; there is no Windows build.
+# `vcf acmg`. Opt-in environment (`pixi install -e fastvep`), on all five
+# supported platforms. CLI-only WGS Extract builds of upstream 0.5.0 from
+# packaging/fastvep (workflow fastvep.yml), published as fastvep-1 and pinned
+# by URL and SHA-256. No annotation databases are bundled.
 [feature.fastvep]
-platforms = ["linux-64", "osx-64"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 
-[feature.fastvep.dependencies]
-fastvep = ">=0.5.0,<0.6"
+[feature.fastvep.target.linux-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linux64_wgse_0.conda", sha256 = "bdf8079bc3a4269a6bcb6f86fb4e1f22f76e8f5d8af442fdda0b37f7731522f5" }
+
+[feature.fastvep.target.linux-aarch64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linuxaarch64_wgse_0.conda", sha256 = "d45c2b1d66a1595d389810048b828259e106fdb51d0b2da343958c994ab096bd" }
+
+[feature.fastvep.target.osx-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osx64_wgse_0.conda", sha256 = "1da1a7cdc17af847093d5eee362d85858d9d9af0e115a00cf9f24569846938f8" }
+
+[feature.fastvep.target.osx-arm64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osxarm64_wgse_0.conda", sha256 = "69b6147a4f9f2e4ac5b58764940c941540cd8db8242de13cf24d2b8b0c7a5395" }
+
+[feature.fastvep.target.win-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-win64_wgse_0.conda", sha256 = "bf295a143ac2fdb65dac60664e3bf62eec9c6693d49eaccfa9ae3cdf819ccc48" }
 
 # VerifyBamID2 estimates nuclear-DNA contamination (FREEMIX) from a GRCh37/38
 # BAM/CRAM (`qc contamination`) with the 1000 Genomes SVD resources its package

@@ -1,0 +1,79 @@
+name: fastVEP
+
+# Dispatch with a new fastvep-N tag to publish; then pin URLs and SHA-256s.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+    branches: [ main ]
+    paths:
+      - packaging/fastvep/**
+      - .github/workflows/fastvep.yml
+      - .github/actions/setup-pixi/**
+      - "!**/*.md"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: New release tag to publish the packages under (empty builds only).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    if: ${{ github.event.pull_request.draft != true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-64, runner: ubuntu-latest }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm }
+          - { platform: osx-64, runner: macos-15-intel }
+          - { platform: osx-arm64, runner: macos-latest }
+          - { platform: win-64, runner: windows-latest }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
+      - name: Build and test the package
+        shell: bash
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --recipe-dir packaging/fastvep -m packaging/fastvep/variants.yaml \
+            --output-dir out/conda --target-platform ${{ matrix.platform }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fastvep-${{ matrix.platform }}
+          path: out/conda/${{ matrix.platform }}/*.conda
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: fastvep-
+          title: fastVEP ${{ inputs.release_tag }}
+          source: packaging/fastvep
+          artifacts: "fastvep-*"
+          description: |
+            fastVEP 0.5.0 (Huang-lab/fastVEP), CLI-only conda packages for offline research use.
+            Apache-2.0; upstream and bundled third-party licence notices are included.
+            No annotation databases or web server are bundled.

@@ -1,0 +1,45 @@
+Subject: [PATCH] Vectorize independent small-model outputs without reordering sums (#1116)
+
+The hidden layers have 750 outputs stored contiguously in each weight row.
+Visit a whole row at a time instead of walking the matrix at a 3000-byte
+stride. Each output still accumulates inputs from left to right and adds
+its bias last; there is no horizontal SIMD reduction or fast-math flag.
+Keep the three-output final layer's existing computation unchanged.
+Limit the new path to Apple builds; Linux retains its qualified computation.
+
+diff --git a/deepvariant/native/small_model_inference.mm b/deepvariant/native/small_model_inference.mm
+--- a/deepvariant/native/small_model_inference.mm
++++ b/deepvariant/native/small_model_inference.mm
+@@ -20,5 +20,5 @@
+-// Inference is strict-scalar sequential FP32: per output element a
+-// scalar `for` accumulator, no SIMD reduction, no `mad`/FMA — same
+-// pattern as `bnns_finalize.mm`. This produces output identical to
+-// Eigen+single-thread on x86 within 1 ULP and matches Docker's
+-// dispatch decisions on the chr20 cross-MID sites.
++// Inference keeps left-to-right FP32 accumulation for each output.
++// On Apple, the hidden layers vectorize across independent outputs,
++// not across the input reduction. No fast-math flags are enabled.
++// Keep the final three-output layer's original computation: its
++// rounding determines small-model dispatch near GQ thresholds.
+@@ -96,6 +96,21 @@
+ void DenseFp32(const float* x, int in_dim,
+                const float* W, const float* b,
+                int out_dim, float* y) {
++#if defined(__APPLE__)
++  if (out_dim >= 4) {
++    // Independent outputs are SIMD lanes, never a horizontal reduction.
++    // Each output still accumulates inputs in order and adds its bias last.
++    std::fill(y, y + out_dim, 0.0f);
++    for (int i = 0; i < in_dim; ++i) {
++      const float* row = W + i * out_dim;
++      for (int o = 0; o < out_dim; ++o) {
++        y[o] += x[i] * row[o];
++      }
++    }
++    for (int o = 0; o < out_dim; ++o) y[o] += b[o];
++    return;
++  }
++#endif
+   for (int o = 0; o < out_dim; ++o) {
+     float acc = 0.0f;
+     for (int i = 0; i < in_dim; ++i) {

@@ -1,0 +1,19 @@
+Subject: [PATCH] Compile the realigner's fixed CIGAR regex once per worker (#1116)
+
+The chr20 make_examples sample shows RE2 construction and compilation under
+CigarStringToVector. The pattern never changes. Reuse it for each worker's
+read/haplotype alignments, keeping exactly the same parsing and avoiding
+shared matching-cache contention between workers.
+
+diff --git a/deepvariant/realigner/fast_pass_aligner.cc b/deepvariant/realigner/fast_pass_aligner.cc
+--- a/deepvariant/realigner/fast_pass_aligner.cc
++++ b/deepvariant/realigner/fast_pass_aligner.cc
+@@ -346,7 +346,7 @@
+ std::list<CigarOp> CigarStringToVector(absl::string_view cigar) {
+   std::list<CigarOp> cigarOps;
+   absl::string_view input(cigar);
+-  RE2 pattern("(\\d+)([XIDS=])");
++  static thread_local const RE2 pattern("(\\d+)([XIDS=])");
+   int opLen;
+   string opType;
+   while (RE2::Consume(&input, pattern, &opLen, &opType)) {

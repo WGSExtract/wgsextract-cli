@@ -140,3 +140,9 @@ def test_windows_restrictions_do_not_change_unix_dispatch(
     platform: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _passes_platform_check(["vcf", "phylop"], platform, monkeypatch)
+
+
+def test_issue_629_acmg_packaging_removes_windows_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _passes_platform_check(["vcf", "acmg", "--research-acmg"], "win32", monkeypatch)
