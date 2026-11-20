@@ -771,7 +771,20 @@ give no meaningful benefit.
   runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
   call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
-  call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
-  same calls as Google's image (**measured**). Linux ARM64 has a
+  call_variants on the GPU: the original chr20 qualification took about
+  5 minutes for the **whole pipeline** on an M1 Pro, with the same calls as
+  Google's image (**measured**). Its self-contained 0.4.1 build reduces
+  make_examples wall/CPU medians by 10.7%/9.8% against released 0.4.0,
+  retaining chr20 calls and gVCF blocks. A measured HG002 35x whole-genome
+  comparison (ten workers, batch 1024, gVCF) took **8,831.4 → 7,984.3 s**
+  wall and **50,708.6 → 46,455.5 s** CPU: 9.6% / 8.4% less.
+  Peak RSS grew **11.95 → 13.32 GB** (about 1.4 GB), sampled temporary
+  space **29.4 → 29.5 GB**, with zero swap growth. All **7,709,239 VCF**
+  and **72,210,019 gVCF** non-header records, including **64,500,780
+  reference blocks**, have identical full-body SHA-256 hashes.
+  One run each on the 32 GiB M1 Pro only, not a GPU speedup claim or a
+  qualification of the **16 GB base M1**; that remains follow-up.
+  See [measurements and qualification limits](resource_estimates.md#apple-silicon-cpu-hill-climb).
+  Linux ARM64 has a
   [native CPU build](deepvariant-arm64.md); native Windows has no DeepVariant
   ([Windows](windows.md)).
