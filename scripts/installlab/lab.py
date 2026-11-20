@@ -77,7 +77,6 @@ DATASET_SHA256 = "ad0f8070dc5ca35c4a6de540493a81df082d160417f747ae68d9c098c110a9
 MACOS_VANILLA = "ghcr.io/cirruslabs/macos-tahoe-vanilla:latest"
 MACOS_BASE = "wgse-lab-macos-base"
 LINUX_IMAGE = "ubuntu:24.04"
-APT_INSTALL = REPO / ".github" / "actions" / "apt-install" / "apt-install.sh"
 SABOTAGES = {
     # name: checks that must fail when the sabotage is applied
     # The installer "succeeds" without doing anything, so step.install passes;
@@ -422,7 +421,7 @@ class DockerMachine(Machine):
         )
         # The documented prerequisites a fresh Ubuntu user must install, with
         # mirror fallback and a clear failure if no Ubuntu mirror answers.
-        with APT_INSTALL.open() as script:
+        with windows_vm.APT_INSTALL.open() as script:
             apt = subprocess.run(
                 [self.docker, "exec", "-i", self.name, "bash", "-s", "--",
                  "curl", "ca-certificates", *self.prerequisites],

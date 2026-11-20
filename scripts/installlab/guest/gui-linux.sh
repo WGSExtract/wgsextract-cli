@@ -68,12 +68,44 @@ snapshot() {
     sh "$HERE/inventory.sh" "$R/inventory-$1.txt" "$R"
 }
 
+# The user's own `sudo apt-get`. The lab's machine setup (apt-install.sh)
+# already pointed the Ubuntu sources at the mirrors that answered, in fallback
+# order, and fetched their lists; this only adds time limits, and names a
+# mirror outage as one rather than as a failure of the package under test.
+APT_OUTAGE="$R/apt-outage.txt"
+user_apt() {
+    apt_log="$(mktemp)"
+    # The log is the user's own file; only apt-get needs root.
+    # shellcheck disable=SC2024
+    sudo DEBIAN_FRONTEND=noninteractive timeout --kill-after=30 900 apt-get \
+        -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 \
+        "$@" > "$apt_log" 2>&1
+    apt_rc=$?
+    cat "$apt_log"
+    if [ "$apt_rc" != 0 ] && ! grep -Eq 'NO_PUBKEY|BADSIG|EXPKEYSIG|signatures' "$apt_log" &&
+        { [ "$apt_rc" = 124 ] || [ "$apt_rc" = 137 ] ||
+            grep -Eq 'Could not resolve|Temporary failure resolving|Could not connect|Unable to connect|Connection failed|timed out|Network is unreachable|No route to host|Failed to fetch' "$apt_log"; }; then
+        echo "apt-get $1 could not reach the Ubuntu mirrors ($(cut -f1 /etc/apt/ci-ubuntu-mirrors.txt 2>/dev/null | paste -sd ' ' -))." |
+            tee -a "$APT_OUTAGE"
+    fi
+    rm -f "$apt_log"
+    return "$apt_rc"
+}
+
+# A GitHub error annotation for a mirror outage seen by the step before.
+report_apt_outage() {
+    if [ -s "$APT_OUTAGE" ]; then
+        echo "::error title=Upstream package mirror unreachable::Upstream package mirror unreachable: $(tr '\n' ' ' < "$APT_OUTAGE")This is an outage outside this repository, not a failure of the app under test; rerun the job later."
+        rm -f "$APT_OUTAGE"
+    fi
+}
+
 download_installer() {
     mkdir -p "$HOME/Downloads" && curl -fsSL -o "$DEB" "$LAB_GUI_INSTALLER_URL"
 }
 
 install_app() {
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$DEB" &&
+    user_apt install -y -q "$DEB" &&
         dpkg -s "$PACKAGE" && test -x "$APP_BIN" &&
         test -f /usr/share/applications/WGSExtract.desktop
 }
@@ -135,7 +167,7 @@ app_uninstall() {
     cat "$R/uninstall-result.json"
     [ "$rc" = 0 ] || { echo "the app's Uninstall exited $rc"; return 1; }
     # ...then removing the package, and what apt installed only for it.
-    sudo DEBIAN_FRONTEND=noninteractive apt-get remove --autoremove -y -q "$PACKAGE" &&
+    user_apt remove --autoremove -y -q "$PACKAGE" &&
         ! dpkg -s "$PACKAGE" 2>/dev/null
 }
 
@@ -153,12 +185,10 @@ if [ "$MODE" = "control" ]; then
     # A different WebKitGTK app (webkit-window.py) is installed, open for 4
     # minutes and removed: what GTK, WebKit and Mesa keep for any such app.
     set -- gir1.2-webkit2-4.1 python3-gi
-    # The log is the user's own file; only apt-get needs root.
-    # shellcheck disable=SC2024
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$@" > "$R/control-apt.log" 2>&1
+    user_apt install -y -q "$@" > "$R/control-apt.log" 2>&1
+    report_apt_outage
     xvfb-run -a -s "-screen 0 1280x800x24" python3 "$HERE/webkit-window.py" 240 > "$R/control-window.log" 2>&1
-    # shellcheck disable=SC2024
-    sudo DEBIAN_FRONTEND=noninteractive apt-get remove --autoremove -y -q "$@" >> "$R/control-apt.log" 2>&1
+    user_apt remove --autoremove -y -q "$@" >> "$R/control-apt.log" 2>&1
     snapshot after_install
     snapshot after_uninstall
     echo "scenario finished"
@@ -167,11 +197,13 @@ fi
 
 step download_installer download_installer
 step install_app install_app
+report_apt_outage
 step setup app_setup
 step optional_tools sh "$HERE/install-optional-tools.sh" "$APP_DATA" "$WORKSPACE" "$HOME/.local/share/$APP_ID"
 step actions app_actions
 snapshot after_install
 step uninstall app_uninstall
+report_apt_outage
 rm -f "$DEB"
 snapshot after_uninstall
 echo "scenario finished"
