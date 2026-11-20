@@ -201,9 +201,13 @@ Host/Origin checks still apply even if the app itself binds a LAN interface.
 Both the requested path and canonical target must remain in the same configured
 library root. Traversal and escaping symlinks are refused, each read rechecks
 the roots, and replaced or modified files require reopening. A single byte
-range returns `206`; malformed, multiple, out-of-bounds or over-32-MiB reads
-return `416`. Full requests are limited to 32 MiB for indexes and metadata;
-larger data files require bounded ranges. Closing the pane revokes its grants;
+range returns `206`; malformed, multiple or out-of-bounds reads return `416`.
+Full, suffix and open-ended requests are limited to 32 MiB for indexes and
+metadata. Explicit `bytes=start-end` ranges may exceed this limit: high-depth
+mitochondrial BAI bins can span more than 32 MiB even for a small locus. The
+server streams these ranges with backpressure and a 64 KiB read buffer;
+it does not buffer the entire response. The browser still needs memory to
+decode the indexed region. Closing the pane revokes its grants;
 unused grants expire after an hour. No sample paths, loci, tokens or byte-read
 logs are sent to any external service.
 
