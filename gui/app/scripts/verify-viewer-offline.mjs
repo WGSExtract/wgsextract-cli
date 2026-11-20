@@ -18,6 +18,7 @@ const { values } = parseArgs({ options: {
     "read-only": { type: "boolean", default: false },
     genes: { type: "boolean", default: false },
     cytobands: { type: "boolean", default: false },
+    memory: { type: "boolean", default: false },
 } });
 if (!values.out) throw new Error("Usage: node scripts/verify-viewer-offline.mjs --out REPO/out/verification [--cli-root PATH] [--chromium PATH]");
 const output = path.resolve(values.out);
@@ -61,7 +62,7 @@ const server = createServer(handler);
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 try {
     const child = spawn(process.execPath, [
-        path.join(import.meta.dirname, "verify-viewer-library.mjs"),
+        path.join(import.meta.dirname, values.memory ? "verify-viewer-memory.mjs" : "verify-viewer-library.mjs"),
         "--url", `http://127.0.0.1:${server.address().port}`, "--fixtures", fixtures.library,
         "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output,
         ...(!values["read-only"] ? ["--config", config] : []),

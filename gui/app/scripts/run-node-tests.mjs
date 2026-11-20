@@ -32,6 +32,7 @@ const defaultTests = [
   "tests/operations.test.mjs",
   "tests/routes.test.mjs",
   "tests/genome-viewer.test.mjs",
+  "tests/viewer-memory.test.mjs",
   "tests/viewer-files.test.mjs",
   "tests/viewer-session.test.mjs",
   "tests/viewer-library.test.mjs",
