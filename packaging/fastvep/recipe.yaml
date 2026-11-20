@@ -33,7 +33,7 @@ tests:
   - files:
       recipe:
         - check_vcf.py
-        - fixtures/
+        - fixtures/**
     script:
       - python check_vcf.py
     requirements:

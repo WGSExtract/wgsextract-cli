@@ -1,11 +1,15 @@
 """Exercise the installed package's database builder and ACMG annotator offline."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
 
 def main() -> None:
-    fixtures = Path("fixtures")
+    fixtures = Path("out/fixtures")
+    shutil.copytree(
+        Path(__file__).resolve().parent / "fixtures", fixtures, dirs_exist_ok=True
+    )
     sa = Path("out/sa")
     sa.mkdir(parents=True, exist_ok=True)
     sources = {
