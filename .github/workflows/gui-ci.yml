@@ -81,8 +81,37 @@ jobs:
           npm-install: ci-ignore-scripts
           cli-python: "true"
 
+      - name: Set up cached viewer fixture tools (Linux only)
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: default
+          scope: cli
+
+      - name: Restore Chromium
+        id: chromium-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: viewer-chromium-${{ runner.os }}-${{ hashFiles('gui/app/package-lock.json') }}
+
+      - name: Install Chromium and Linux browser libraries
+        working-directory: gui/app
+        run: npx playwright install --with-deps chromium
+
+      - name: Seed Chromium cache from main
+        if: github.ref == 'refs/heads/main' && steps.chromium-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: viewer-chromium-${{ runner.os }}-${{ hashFiles('gui/app/package-lock.json') }}
+
       - name: Lint and test
         run: python3 tools/tasks.py ci
+
+      # Direct invocation cannot silently skip if tool/browser provisioning breaks.
+      - name: Require the offline viewer memory regression
+        working-directory: .
+        run: node gui/app/scripts/verify-viewer-offline.mjs --memory --out out/viewer-memory-ci
 
   test:
     if: ${{ github.event.pull_request.draft != true }}

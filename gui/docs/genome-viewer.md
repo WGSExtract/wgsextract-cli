@@ -166,6 +166,12 @@ Developers can check repeated BAM/CRAM jumps in an installed offline Chromium
 with `node gui/app/scripts/verify-viewer-offline.mjs --memory --out out/viewer-memory
 --chromium /usr/bin/chromium` from the repository root. This uses tiny synthetic
 genomes and installed samtools/bcftools; it downloads nothing.
+The Linux GUI CI job provisions cached fixture tools and Chromium and requires
+this check directly, so missing prerequisites fail CI. Unprepared local Node
+test runs skip it with a prerequisite explanation. The browser uses its normal
+temporary directory; fixtures and evidence stay under `--out`. On timeout the
+test freezes new launches, kills the runner, verifier and Chromium process
+groups, and waits for shutdown. Failed checks retain their output for diagnosis.
 
 rsID lookups, individual finding/haplogroup
 links, and authenticated remote range serving remain
