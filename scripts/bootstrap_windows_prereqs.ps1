@@ -194,18 +194,17 @@ function Add-PixiToUserPath {
 }
 
 function Ensure-Pixi {
-    if ($SkipPixiInstall) {
-        Write-Step "Skipping Pixi bootstrap."
-        return
-    }
-
     # A Pixi already in ~\.pixi still counts when PIXI_HOME names another folder.
     Add-PathForCurrentProcess (Join-Path $env:USERPROFILE ".pixi\bin")
     Add-PathForCurrentProcess (Get-PixiBinDirectory)
     $pixi = Get-Command pixi -ErrorAction SilentlyContinue
     if ($pixi) {
+        Assert-PixiVersion -Executable $pixi.Source
         Write-Step "Pixi found: $($pixi.Source)"
         return
+    }
+    if ($SkipPixiInstall) {
+        throw "Pixi was not found. Install Pixi or rerun without --skip-pixi-bootstrap."
     }
 
     Write-Step "Pixi was not found; installing Pixi..."
@@ -244,10 +243,24 @@ function Ensure-Pixi {
         if (-not $pixi) {
             throw "Pixi installation completed, but pixi was not found on PATH."
         }
+        Assert-PixiVersion -Executable $pixi.Source
         Write-Step "Pixi installed: $($pixi.Source)"
     }
     finally {
         Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Assert-PixiVersion {
+    param([string]$Executable)
+    $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\pixi.toml") -Raw
+    $requirement = [regex]::Match($manifest, '(?m)^requires-pixi = ">=([0-9]+\.[0-9]+\.[0-9]+)"\r?$')
+    if (-not $requirement.Success) { throw "Cannot read the minimum Pixi version from pixi.toml." }
+    $minimum = $requirement.Groups[1].Value
+    $installed = & $Executable --version
+    if ($LASTEXITCODE -ne 0 -or "$installed" -notmatch '^pixi ([0-9]+\.[0-9]+\.[0-9]+)$' -or
+        [version]$Matches[1] -lt [version]$minimum) {
+        throw "Pixi >=$minimum is required; found $installed at $Executable. Update that Pixi installation (for example with 'pixi self-update'), then rerun setup. Your Pixi installation was not changed."
     }
 }
 

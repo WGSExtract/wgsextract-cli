@@ -35,13 +35,14 @@ done
 
 tar -czf "$archive" -C "$source_parent" "$(basename "$source_dir")"
 
-cat > "$fake_pixi_source/pixi" <<'SH'
+minimum_pixi="$(sed -n 's/^requires-pixi = ">=\([0-9][0-9.]*\)"$/\1/p' "$repo_root/pixi.toml")"
+sed "s/FAKE_PIXI_VERSION/$minimum_pixi/" > "$fake_pixi_source/pixi" <<'SH'
 #!/bin/sh
 set -eu
 
 case "${1:-}" in
     --version)
-        printf 'pixi 0.0.0-test\n'
+        printf 'pixi FAKE_PIXI_VERSION\n'
         ;;
     install)
         mkdir -p .pixi/envs/default/conda-meta

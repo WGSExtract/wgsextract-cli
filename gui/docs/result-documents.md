@@ -59,6 +59,16 @@ Each is empty until such a run happens, so put it in `optionalArguments`, or tes
 
 ## Failures
 
+WGS Extract's report actions need the installed CLI. They remain disabled until
+setup succeeds, with an explanation to copy setup output into a GitHub issue
+when setup itself fails. Setup output is not a CLI run document and cannot be
+reported with `--last-failed`.
+
+Conditions can use `setupReady`: `"true"` after setup completes successfully
+(including warnings), or when a bundle has no setup steps for the current
+platform; `"false"` before, during, or after a failed setup. Headless bundle
+tests apply the same readiness gate and update it after each setup run.
+
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:
 
 | `error.kind` | Shown |
