@@ -67,11 +67,19 @@ genotypes or variant coordinates.
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
 | Desktop **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
 | Desktop **Setup**, reference/dataset download actions | GitHub, Pixi/Conda/PyPI registries and each selected resource publisher | Selected package versions, platform and public dataset identifiers, not sample information |
+| Desktop genome viewer **Connect and view remote file**, after transfer consent | The operator-selected server URL displayed in the viewer | Selected server-side sample/index/reference paths, adjacent FASTA index paths and genomic byte offsets; the backend authenticates with the server token and receives selected genomic/reference bytes |
 
 Opening an external report/documentation link is an explicit browser action;
 the browser's own privacy settings apply. Generated reports do not load remote
 scripts, fonts or images automatically. The desktop's UI and job server talk
-over authenticated loopback connections on this computer, not a remote service.
+over authenticated loopback connections on this computer. The optional
+[remote genome viewer](../gui/docs/genome-viewer.md#view-files-on-a-remote-server)
+uses that local backend to proxy explicitly selected server file ranges.
+Importing or restoring its private TOML configuration makes no remote request.
+The backend keeps the server token outside browser-delivered data; the viewer
+receives revocable per-file grants. HTTPS retains certificate validation;
+redirects and cookie forwarding are disabled. Plain HTTP exposes credentials
+and genomic traffic, so use an operator-managed TLS proxy or encrypted tunnel.
 Opening the desktop's Reference Genomes page reads only local/catalog metadata
 and cached sizes, including old sizes. **Look up sizes** requires confirmation
 of the destinations and requests before any remote size lookup.

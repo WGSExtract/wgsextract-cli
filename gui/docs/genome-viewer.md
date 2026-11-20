@@ -2,7 +2,8 @@
 
 Open **Genome viewer** in the WGS Extract sidebar to inspect local reads and
 variants with the bundled igv.js. There is no separate IGV installation, upload,
-online reference lookup or CDN connection.
+online reference lookup or CDN connection. Local viewing stays offline.
+Remote viewing requires the explicit connection and transfer consent below.
 
 ## Open a file from My Genomes
 
@@ -142,8 +143,9 @@ Files remain on your disk. The browser reads indexed slices directly from the
 manually selected files. Library files use authenticated HTTP Range reads from
 the app's loopback-only Node backend. Neither workflow copies a whole-genome
 BAM/CRAM or loads it whole into memory. A missing reference or index is reported
-before opening a track. The viewer file endpoint does not support remote or
-phone access.
+before opening a track. The app's file endpoints remain loopback-only; remote
+server reads use the separate backend proxy below, not a LAN-accessible app or
+phone endpoint.
 The viewer opens in a separate in-app pane, so running jobs continue. Its frame
 is kept outside the app's command-output renders; returning to the app closes
 the selected files without interrupting jobs.
@@ -151,6 +153,64 @@ the selected files without interrupting jobs.
 Select only matching references and indexes. Duplicate filenames are rejected;
 open same-named files from different folders separately. Leaving or reloading
 the viewer closes the selections. Files are not remembered between visits.
+
+## View files on a remote server
+
+The desktop can read selected files from a running WGS Extract HTTP/JSON server.
+Other app operations still use the bundled local job server. Configure the
+remote server's default-off viewer endpoint and allowed roots as described in
+[server mode](../../docs/server.md). Use a TLS reverse proxy with an
+operator-provided certificate or a trusted encrypted tunnel. The app validates
+HTTPS certificates and refuses redirects; it never installs or configures TLS.
+
+The remote host must support the server's race-safe directory-handle file
+access (Linux and macOS). The Windows CLI rejects viewer reads with
+`viewer_unavailable` rather than using an unsafe path fallback. The Windows
+desktop can still view files served by a supported remote host.
+
+1. In a private editor, create a `config.toml` containing the server's URL and
+   current bearer token:
+
+   ```toml
+   url = "https://genomes.example/v1"
+   token = "the-current-server-token"
+   ```
+
+   Keep this file readable only by you. Get the token through a private channel,
+   not a URL query parameter. A server restart creates a new token, so update
+   this file and choose it again.
+2. Expand **View files on a remote server** and choose
+   **Choose remote server config.toml**. The desktop's native file dialog sends
+   that file only to the backend. The backend stores a private copy at
+   `RemoteViewer/config.toml` in the app's Application Support folder, outside
+   served bundle files. The browser and viewer receive only the displayed URL
+   and an opaque connection identifier. Choosing or restoring a configuration
+   does not contact the remote server.
+3. Check the displayed **Destination**. Enter absolute server-side paths for the
+   BAM/CRAM/bgzip VCF, its BAI/CRAI/TBI/CSI index, and the exact matching FASTA.
+   The server also reads the FASTA's adjacent `.fai` and, for BGZF FASTA, `.gzi`.
+   All of these files must lie inside the server's guard roots.
+   Remote viewing does not infer an assembly or run a remote header tool.
+   Select the exact alignment reference for CRAM and the matching data index.
+4. Enter a **1-based, inclusive** interval. Read the transfer disclosure and check
+   its consent box, then choose **Connect and view remote file**. Only this action
+   sends the selected paths and range requests to the displayed destination.
+   Unencrypted HTTP shows a warning: traffic observers can read the server token,
+   paths and genomic bytes.
+
+The backend authenticates HEAD/Range requests to the chosen server and issues
+revocable grants for only the selected files. The viewer uses opaque same-origin
+URLs and a file-only grant token; it never receives the general server token.
+Streaming uses backpressure and rejects unexpected lengths/ranges. Whole-file,
+suffix and open-ended reads have a 32 MiB fallback limit; closed ranges can
+stream larger bins. Byte offsets reveal genomic access patterns to the selected
+server. The backend forwards neither cookies nor Set-Cookie and follows no
+redirects. The server, not the app's local library settings, guards remote paths.
+
+Leaving the viewer revokes its file grants. **Forget server and revoke access**
+also removes the saved backend credentials and aborts active proxy transfers.
+Choosing another configuration invalidates earlier grants. Closing the viewer
+does not cancel analyses on the local job server.
 
 ## Current limits
 
@@ -173,9 +233,10 @@ temporary directory; fixtures and evidence stay under `--out`. On timeout the
 test freezes new launches, kills the runner, verifier and Chromium process
 groups, and waits for shutdown. Failed checks retain their output for diagnosis.
 
-rsID lookups, individual finding/haplogroup
-links, and authenticated remote range serving remain
-[follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Context
+rsID lookups and individual finding/haplogroup links remain
+[follow-up work](https://github.com/WGSExtract/wgsextract-cli/issues/1148). Remote
+viewing currently accepts one primary track and a manually selected reference;
+installed local gene spans and cytobands do not load for remote files. Context
 menus and external links inside igv are disabled, including BLAT.
 Read and coverage popups never query ClinVar or other online services. File
 fields, including VCF INFO values, are shown as text, never interpreted as HTML.

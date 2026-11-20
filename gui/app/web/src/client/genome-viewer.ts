@@ -7,6 +7,7 @@ import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genom
 import { validatedBedGraphTrack } from "../../../shared/viewer-track-records.js";
 import { viewerGeneLookup, viewerNavigationLocus, type ViewerGene } from "../../../shared/viewer-genes.js";
 import { viewerCytobandSource } from "../../../shared/viewer-cytobands.js";
+import { bindRemoteViewer, remoteViewerForm } from "./genome-viewer-remote-form.js";
 
 interface IgvBrowser {
     genome: { cytobandSource?: ReturnType<typeof viewerCytobandSource> };
@@ -29,6 +30,7 @@ declare global {
 }
 
 let browser: IgvBrowser | undefined;
+let remoteActive = false;
 let trackProblem: ViewerFileError | undefined;
 let geneLookup = new Map<string, string>();
 const root = document.querySelector<HTMLElement>("#genome-viewer");
@@ -77,6 +79,7 @@ try {
         </label>
         <div><button type="submit" class="action-button primary">${escapeHTML(text("open"))}</button></div>
       </form>
+      ${remoteViewerForm(text)}
       <p data-viewer-status role="status" aria-live="polite">${escapeHTML(text("empty"))}</p>
       <p data-gene-status role="status" aria-live="polite" hidden></p>
       <p data-cytoband-status role="status" aria-live="polite" hidden></p>
@@ -95,6 +98,14 @@ try {
     const navigation = required<HTMLFormElement>("[data-locus]");
     const host = required<HTMLElement>("[data-igv]");
     const libraryForm = required<HTMLFormElement>("[data-library]");
+    bindRemoteViewer(root, text, status, async (session) => {
+        await openTracks(session.files, session.locus, navigation, host);
+    }, () => {
+        if (!remoteActive) return;
+        dispose();
+        navigation.hidden = true;
+        host.hidden = true;
+    }, setBusy);
     libraryForm.addEventListener("submit", (event) => {
         event.preventDefault();
         void openLibrary(libraryForm, navigation, host);
@@ -148,7 +159,7 @@ function status(key: string, isError = false, fileName = "") {
 
 function readyStatus() {
     if (trackProblem) status(trackProblem.code, true, trackProblem.fileName);
-    else status("ready");
+    else status(remoteActive ? "remoteReady" : "ready");
 }
 
 async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, host: HTMLElement) {
@@ -201,6 +212,7 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         host.setAttribute("aria-busy", "true");
         status("loading");
         dispose();
+        remoteActive = files.reference.id === "remote";
         trackProblem = undefined;
         geneLookup = viewerGeneLookup(files.genes?.features ?? []);
         const geneStatus = required<HTMLElement>("[data-gene-status]");
@@ -251,7 +263,7 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         readyStatus();
         if (typeof files.reference.fastaURL === "string") {
             const info = document.createElement("span");
-            info.textContent = ` ${text("automaticReference").replace("%{file}", files.reference.name)}`;
+            info.textContent = ` ${text(remoteActive ? "remoteReferenceSelected" : "automaticReference").replace("%{file}", files.reference.name)}`;
             required<HTMLElement>("[data-viewer-status]").append(info);
         }
     } catch (error) {
@@ -281,6 +293,7 @@ async function goToLocus(form: HTMLFormElement) {
 }
 
 function dispose() {
+    remoteActive = false;
     geneLookup.clear();
     const geneStatus = root?.querySelector<HTMLElement>("[data-gene-status]");
     if (geneStatus) geneStatus.hidden = true;
