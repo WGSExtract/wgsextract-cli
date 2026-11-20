@@ -1,4 +1,14 @@
 "language.name" = "Português do Brasil"  # i18n-source-hash:649df08a
+"viewer.extraTracks" = "Regiões e cobertura opcionais"  # i18n-source-hash:d1cf2aaa
+"viewer.extraTracksHelp" = "Digite um caminho completo de Meus Genomas por linha, até 16 trilhas: BED, bedGraph ou bigWig (.bw/.bigwig). BED/bedGraph comprimidos precisam de BGZF (.gz) e um .tbi ou .csi correspondente ao lado. Os nomes dos cromossomos devem corresponder exatamente à referência. Reabra o arquivo da biblioteca para alterar as trilhas."  # i18n-source-hash:ff59fad5
+"viewer.trackLimit" = "Trilhas suplementares demais. Remova caminhos para manter no máximo 16 trilhas e reabra o arquivo da biblioteca."  # i18n-source-hash:19dd986f
+"viewer.trackMissing" = "Arquivo suplementar %{file} não encontrado. Verifique o caminho completo e a grafia no campo de trilhas opcionais."  # i18n-source-hash:7371ae1f
+"viewer.trackUnsupported" = "Arquivo suplementar %{file} não suportado. Use BED (.bed), bedGraph (.bedgraph) ou bigWig (.bw/.bigwig). BGZF BED/bedGraph (.gz) também precisa de um índice .tbi ou .csi adjacente."  # i18n-source-hash:2278fc46
+"viewer.trackIndexMissing" = "Índice tabix ausente ao lado de %{file}. BGZF BED/bedGraph precisa de um .tbi ou .csi adjacente correspondente. Crie-o com tabix -p bed FILE.gz (adicione -C para CSI) e reabra o arquivo da biblioteca."  # i18n-source-hash:659a4642
+"viewer.trackCompression" = "Compressão não suportada para %{file}. Use BED/bedGraph sem compressão, ou bgzip como .bed.gz/.bedgraph.gz e crie um índice tabix adjacente com a predefinição BED. bigWig não deve ser comprimido com gzip."  # i18n-source-hash:06dd70b7
+"viewer.trackContigs" = "Os nomes ou comprimentos dos cromossomos em %{file} não correspondem à referência. Use trilhas da mesma montagem com nomes idênticos (por exemplo chr1 ou 1); corrija os nomes e recrie o índice se necessário."  # i18n-source-hash:c2936859
+"viewer.trackInvalid" = "Não foi possível ler %{file}. Verifique os intervalos BED/bedGraph e os valores numéricos, ou recrie o índice com a predefinição BED (tabix -p bed; adicione -C para CSI). Para bigWig, verifique se o arquivo é válido e completo."  # i18n-source-hash:9dd0905b
+"viewer.trackTooLarge" = "%{file} excede o limite de trilhas de texto sem índice (32 MiB). Use bgzip com um índice tabix adjacente ou converta a cobertura para bigWig."  # i18n-source-hash:fa3f9349
 "viewer.showInViewer" = "Mostrar no visualizador"  # i18n-source-hash:155bc8f9
 "language.layoutDirection" = "ltr"  # i18n-source-hash:61ac44aa
 "language.code" = "pt-BR"  # i18n-source-hash:094b0fe0
@@ -206,7 +216,7 @@
 "viewer.empty" = "Escolha uma referência, trilhas e uma posição como chr1:1000-2000."  # i18n-source-hash:e1c28ce6
 "viewer.loading" = "Abrindo arquivos locais…"  # i18n-source-hash:2adfe53f
 "viewer.ready" = "Trilhas locais carregadas. Arraste para navegar, amplie para ver bases individuais ou clique em uma leitura ou variante para ver detalhes."  # i18n-source-hash:f136d021
-"viewer.limits" = "Aceita arquivos locais indexados BAM, CRAM e VCF/gVCF. Arquivos da biblioteca usam correspondência de referência pelo cabeçalho; arquivos selecionados manualmente ainda exigem a seleção da referência. A busca por gene/rsID e outros formatos ainda não estão disponíveis. Menus de contexto e links externos estão desativados. Sair desta página fecha os arquivos."  # i18n-source-hash:d3ffb817
+"viewer.limits" = "Aceita BAM, CRAM e VCF/gVCF indexados, além de trilhas BED, bedGraph e bigWig opcionais com um arquivo da biblioteca. A referência é escolhida automaticamente para a biblioteca; leituras/variantes selecionadas manualmente precisam de uma referência. Busca por gene/rsID, anotações instaladas e acesso remoto ainda não estão disponíveis. Menus de contexto e links externos estão desativados. Sair desta página fecha os arquivos."  # i18n-source-hash:016df972
 "viewer.referenceMissing" = "Referência não instalada ou não selecionada. Instale a referência correspondente em Genomas de referência e selecione seu FASTA e .fai, além de .gzi para FASTA BGZF. Nada será baixado automaticamente."  # i18n-source-hash:094f8319
 "viewer.referenceCompressedIndexMissing" = "Selecione o índice .gzi junto com %{file} e seu .fai. Se faltar, indexe primeiro a referência BGZF e selecione os três arquivos."  # i18n-source-hash:cbb9b192
 "viewer.referenceIndexMissing" = "Selecione o índice .fai junto com %{file}. Indexe a referência primeiro se necessário."  # i18n-source-hash:a39bb059

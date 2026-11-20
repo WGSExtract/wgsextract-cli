@@ -4,6 +4,7 @@ import type { StringMap } from "../../../shared/types.js";
 import { genomeViewerLabels } from "./genome-viewer-labels.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { disablePopupLookups, localPopupHTML, type IgvLocalTrack } from "./genome-viewer-privacy.js";
+import { validatedBedGraphTrack } from "../../../shared/viewer-track-records.js";
 
 interface IgvBrowser {
     loadTrack(track: LocalTrack<File | string>): Promise<IgvLocalTrack | undefined>;
@@ -25,6 +26,7 @@ declare global {
 }
 
 let browser: IgvBrowser | undefined;
+let trackProblem: ViewerFileError | undefined;
 const root = document.querySelector<HTMLElement>("#genome-viewer");
 if (!root) {
     throw new Error("Missing genome viewer root.");
@@ -50,6 +52,10 @@ try {
           <input type="text" name="library-path" dir="ltr" autocomplete="off" spellcheck="false" required aria-describedby="library-help">
         </label>
         <p id="library-help">${escapeHTML(text("libraryHelp"))}</p>
+        <label>${escapeHTML(text("extraTracks"))}
+          <textarea name="extra-tracks" rows="3" dir="ltr" autocomplete="off" spellcheck="false" aria-describedby="extra-tracks-help"></textarea>
+        </label>
+        <p id="extra-tracks-help">${escapeHTML(text("extraTracksHelp"))}</p>
         <label>${escapeHTML(text("locus"))}<input name="locus" placeholder="chr1:1000-2000" autocomplete="off" spellcheck="false"></label>
         <div><button type="submit" class="action-button primary">${escapeHTML(text("openLibrary"))}</button></div>
       </form>
@@ -133,6 +139,11 @@ function status(key: string, isError = false, fileName = "") {
     element.setAttribute("role", isError ? "alert" : "status");
 }
 
+function readyStatus() {
+    if (trackProblem) status(trackProblem.code, true, trackProblem.fileName);
+    else status("ready");
+}
+
 async function openFiles(form: HTMLFormElement, navigation: HTMLFormElement, host: HTMLElement) {
     try {
         const files = localViewerFiles(
@@ -157,6 +168,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
         const result = await requestLibraryViewer(
             required<HTMLInputElement>('[name="library-path"]').value,
             form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "",
+            (form.querySelector<HTMLTextAreaElement>('[name="extra-tracks"]')?.value ?? "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
         );
         if ("problem" in result) {
             status(result.problem, true, result.fileName ?? "");
@@ -171,7 +183,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
 }
 
 function setBusy(busy: boolean) {
-    root?.querySelectorAll<HTMLInputElement | HTMLButtonElement>("form input, form button").forEach((element) => { element.disabled = busy; });
+    root?.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>("form input, form button, form textarea").forEach((element) => { element.disabled = busy; });
 }
 
 async function openTracks(files: LocalViewerFiles<File | string>, locus: string, navigation: HTMLFormElement, host: HTMLElement) {
@@ -182,6 +194,7 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         host.setAttribute("aria-busy", "true");
         status("loading");
         dispose();
+        trackProblem = undefined;
         browser = await window.igv.createBrowser(host, {
             ...files,
             tracks: [],
@@ -200,7 +213,10 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
             throw new ViewerFileError("locusNotFound");
         }
         for (const track of files.tracks) {
-            const loaded = await browser.loadTrack(track);
+            const loaded = await browser.loadTrack(validatedBedGraphTrack(track, (error) => {
+                trackProblem = error;
+                status(error.code, true, error.fileName);
+            }));
             if (!loaded) {
                 throw new Error("Track could not be loaded.");
             }
@@ -208,7 +224,7 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         }
         required<HTMLInputElement>('[data-locus] [name="locus"]').value = locus;
         navigation.hidden = false;
-        status("ready");
+        readyStatus();
         if (typeof files.reference.fastaURL === "string") {
             const info = document.createElement("span");
             info.textContent = ` ${text("automaticReference").replace("%{file}", files.reference.name)}`;
@@ -233,7 +249,7 @@ async function goToLocus(form: HTMLFormElement) {
         if (!await browser?.search(locus)) {
             throw new ViewerFileError("locusNotFound");
         }
-        status("ready");
+        readyStatus();
     } catch (error) {
         status(error instanceof ViewerFileError ? error.code : "loadFailed", true);
     }
