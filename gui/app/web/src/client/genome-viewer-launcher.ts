@@ -5,7 +5,7 @@ import { api } from "./api.js";
 let pane: HTMLElement | undefined;
 
 /** A sibling of #app survives command-output renders without unloading either document or its streams. */
-export function openGenomeViewer(locale: string, labels: Labels, inputPath = "", locus = "") {
+export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLElement, inputPath = "", locus = "") {
     if (pane) {
         return;
     }
@@ -14,7 +14,7 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "",
         return;
     }
     const previousDisplay = app.style.display;
-    const previousFocus = document.activeElement;
+    const focusSelector = openerSelector(opener);
     const container = document.createElement("section");
     container.className = "genome-viewer-shell";
     const back = document.createElement("button");
@@ -70,11 +70,7 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "",
         app.style.display = previousDisplay;
         app.inert = false;
         app.removeAttribute("aria-hidden");
-        if (previousFocus?.isConnected && previousFocus instanceof HTMLElement) {
-            previousFocus.focus();
-        } else {
-            app.querySelector<HTMLElement>("[data-genome-viewer-open]")?.focus();
-        }
+        (app.querySelector<HTMLElement>(focusSelector) ?? app.querySelector<HTMLElement>("[data-genome-viewer-open]"))?.focus();
     });
     container.append(back, frame);
     document.body.append(container);
@@ -83,4 +79,15 @@ export function openGenomeViewer(locale: string, labels: Labels, inputPath = "",
     app.inert = true;
     app.setAttribute("aria-hidden", "true");
     back.focus();
+}
+
+/** Background job renders may replace the clicked control while the viewer stays mounted. */
+function openerSelector(opener: HTMLElement): string {
+    if (opener.dataset.resultViewer != null) {
+        return `[data-result-viewer="${CSS.escape(opener.dataset.resultViewer)}"][data-viewer-locus="${CSS.escape(opener.dataset.viewerLocus ?? "")}"]`;
+    }
+    if (opener.dataset.viewReads != null) {
+        return `[data-view-reads="${CSS.escape(opener.dataset.viewReads)}"]`;
+    }
+    return "[data-genome-viewer-open]";
 }

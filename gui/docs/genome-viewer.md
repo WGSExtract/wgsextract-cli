@@ -31,7 +31,9 @@ workflow below is available for files outside the configured libraries.
 
 After a run, choose **Show in viewer** beside an existing BAM, CRAM or indexed
 VCF/gVCF in the result summary. For **Extract custom**, a single coordinate
-interval opens at the extracted locus. BED selections and multiple intervals
+interval, chromosome name or position opens at the extracted locus. A chromosome
+name covers its header length; `chr1:1000` covers base 1000 through the chromosome
+end, matching samtools. Use `chr1:1000-1000` for one base. BED selections and multiple intervals
 open at the reference's first chromosome; enter the interval you want to inspect.
 The output must still lie inside the configured My Genomes library.
 
@@ -143,3 +145,8 @@ the byte log and the isolated app workspace stay under `out/`.
 For an existing multi-GiB biological BAM, use `verify-viewer-library.mjs` against
 a running app with matching installed references; its `--fixtures`, `--vcf`,
 `--large-bam`, `--locus` and `--next-locus` arguments select local inputs.
+The standalone checker works in Basic mode and does not run extraction commands.
+Only the self-hosted isolated setup passes `--config` to enable the
+missing-reference and extraction-result checks; do not use that option against
+an app containing your own settings or outputs. Add `--read-only` to the
+self-hosted command to verify the standalone Basic-mode path without extraction.

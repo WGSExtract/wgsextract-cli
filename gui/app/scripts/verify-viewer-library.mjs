@@ -30,9 +30,14 @@ const errors = [];
 const external = [];
 const byteLog = [];
 const byteReads = [];
+const actionRequests = [];
 const proofs = [];
 let current = "";
 let lastGrant;
+page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/run" || pathname.startsWith("/api/run/")) actionRequests.push(request.url());
+});
 await context.route("**/*", (route) => {
     if (new URL(route.request().url()).origin !== url.origin) {
         external.push(route.request().url());
@@ -135,33 +140,38 @@ try {
     await closed;
     const revoked = await context.request.get(new URL(grant.files.tracks[0].url, url).href, { headers: grant.files.tracks[0].headers });
     assert.equal(revoked.status(), 401, "Closing the pane revokes its scoped byte grant.");
-    await page.locator('[data-page-id="extract"]').click();
-    const extraction = page.locator('[data-section-toggle="extract/extract-inputs"]');
-    if (await extraction.getAttribute("aria-expanded") === "false") await extraction.click();
-    await page.locator('[data-field-id="bam_path"]').fill(path.resolve(values.fixtures, "reads.bam"));
-    await page.locator('[data-field-id="bam_path"]').dispatchEvent("change");
-    await page.locator('[data-field-id="extract_region"]').fill(values.locus);
-    await page.locator('[data-field-id="extract_region"]').dispatchEvent("change");
-    await page.locator('[data-action-id="custom"]').click();
-    const resultLink = page.locator("[data-result-viewer]").first();
-    await resultLink.waitFor({ timeout: 60_000 });
-    assert.equal(await resultLink.getAttribute("data-viewer-locus"), values.locus);
-    await resultLink.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: path.join(out, "library-extraction-result.png"), fullPage: true });
-    await resultLink.click();
-    const resultViewer = page.frameLocator(".genome-viewer-shell iframe");
-    await resultViewer.locator("[data-locus]:not([hidden])").waitFor();
-    assert.equal(await resultViewer.locator('[data-locus] [name="locus"]').inputValue(), values.locus);
-    assert.deepEqual(await resultViewer.locator("body").evaluate(() => window.policyViolations), []);
-    await page.screenshot({ path: path.join(out, "library-result-locus.png"), fullPage: true });
-    proofs.push({ case: "extracted-region-result", locus: values.locus, reference: lastGrant.files.reference.name });
-    await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
-    assert.equal(await resultLink.evaluate((element) => element === document.activeElement), true, "Returning restores focus to the result action.");
+    // Only the self-hosted isolated setup opts into commands that write result files.
+    if (values.config) {
+        await page.locator('[data-page-id="extract"]').click();
+        const extraction = page.locator('[data-section-toggle="extract/extract-inputs"]');
+        if (await extraction.getAttribute("aria-expanded") === "false") await extraction.click();
+        await page.locator('[data-field-id="bam_path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+        await page.locator('[data-field-id="bam_path"]').dispatchEvent("change");
+        await page.locator('[data-field-id="extract_region"]').fill(values.locus);
+        await page.locator('[data-field-id="extract_region"]').dispatchEvent("change");
+        await page.locator('[data-action-id="custom"]').click();
+        const resultLink = page.locator("[data-result-viewer]").first();
+        await resultLink.waitFor({ timeout: 60_000 });
+        assert.equal(await resultLink.getAttribute("data-viewer-locus"), values.locus);
+        await resultLink.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(out, "library-extraction-result.png"), fullPage: true });
+        await resultLink.click();
+        const resultViewer = page.frameLocator(".genome-viewer-shell iframe");
+        await resultViewer.locator("[data-locus]:not([hidden])").waitFor();
+        assert.equal(await resultViewer.locator('[data-locus] [name="locus"]').inputValue(), values.locus);
+        assert.deepEqual(await resultViewer.locator("body").evaluate(() => window.policyViolations), []);
+        await page.screenshot({ path: path.join(out, "library-result-locus.png"), fullPage: true });
+        proofs.push({ case: "extracted-region-result", locus: values.locus, reference: lastGrant.files.reference.name });
+        await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
+        assert.equal(await resultLink.evaluate((element) => element === document.activeElement), true, "Returning restores focus to the result action.");
+    } else {
+        assert.deepEqual(actionRequests, [], "The standalone checker must not run commands in the connected app.");
+    }
     assert.deepEqual(await page.evaluate(() => window.policyViolations), []);
     await Promise.all(byteReads);
     assert.deepEqual(external, [], "No request leaves the loopback origin.");
     assert.deepEqual(errors, [], "No console, CSP or page errors.");
-    await writeFile(path.join(out, "library-browser-proof.json"), JSON.stringify({ proofs, largeFile, byteLog, external, errors, revokedStatus: revoked.status() }, null, 2));
+    await writeFile(path.join(out, "library-browser-proof.json"), JSON.stringify({ proofs, largeFile, byteLog, actionRequests, external, errors, revokedStatus: revoked.status() }, null, 2));
     console.log(JSON.stringify(proofs));
 } catch (error) {
     await page.screenshot({ path: path.join(out, "library-failure.png"), fullPage: true });

@@ -368,10 +368,59 @@ def test_api_custom_without_a_region_is_a_usage_error(genome, tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_custom_result_preserves_resolved_locus_for_viewer_1090(genome, tmp_path):
+@pytest.mark.parametrize(
+    ("region", "locus", "names"),
+    [
+        ("chr1:201-210", "chr1:201-210", {"chr1_201", "chr1_209"}),
+        ("chrM", "chrM:1-1000", _on("chrM")),
+        ("chr1:300", "chr1:300-1000", _on("chr1")),
+        (
+            "chr1:201-210,chrM:380-388",
+            None,
+            {"chr1_201", "chr1_209", "chrM_281", "chrM_289"},
+        ),
+        ("bed", None, {"chr1_201", "chr1_209"}),
+    ],
+)
+def test_custom_result_preserves_single_locus_for_viewer_1149(
+    genome, tmp_path, region, locus, names
+):
+    if region == "bed":
+        bed = tmp_path / "regions.bed"
+        bed.write_text("chr1\t200\t210\n")
+        region = str(bed)
     result = api.extract.custom(
-        api.CustomParams(input=genome["male"], outdir=tmp_path, region="chr1:201-210")
+        api.CustomParams(input=genome["male"], outdir=tmp_path, region=region)
     )
     output = next(o for o in result.outputs if o.role == "region_bam")
-    assert output.metrics["locus"] == "chr1:201-210"
-    assert _names(output.path) == {"chr1_201", "chr1_209"}
+    if locus is None:
+        assert "locus" not in output.metrics
+    else:
+        assert output.metrics["locus"] == locus
+    assert _names(output.path) == names
+
+
+@pytest.mark.parametrize(
+    ("region", "locus", "names"),
+    [
+        ("chr1:500", "chr1:500-1000", {"late"}),
+        ("chr1:500-500", "chr1:500-500", set()),
+    ],
+)
+def test_viewer_locus_matches_samtools_open_ended_region_1149(
+    tmp_path, region, locus, names
+):
+    bam = sam_to_bam(
+        [
+            "@SQ\tSN:chr1\tLN:1000",
+            "early\t0\tchr1\t100\t60\t10M\t*\t0\t0\tAAAAAAAAAA\tIIIIIIIIII",
+            "late\t0\tchr1\t900\t60\t10M\t*\t0\t0\tAAAAAAAAAA\tIIIIIIIIII",
+        ],
+        tmp_path / "source.bam",
+    )
+    result = api.extract.custom(
+        api.CustomParams(input=bam, outdir=tmp_path, region=region)
+    )
+    output = next(o for o in result.outputs if o.role == "region_bam")
+    assert output.metrics["locus"] == locus
+    assert _names(output.path) == names

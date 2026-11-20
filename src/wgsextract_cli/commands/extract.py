@@ -55,6 +55,7 @@ from ._extract_helpers import (
     derive_output_path,
     region_or_gene,
 )
+from ._extract_locus import extracted_locus
 from ._extract_region import run_region
 
 _SAMTOOLS = ["samtools"]
@@ -478,8 +479,9 @@ def run_custom(params: CustomParams) -> None:
             )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Custom extraction failed: {e}") from e
+    locus = extracted_locus(region, out_bam)
     current_result().add_output(
-        out_bam, "region_bam", metrics={"locus": region} if not is_bed else None
+        out_bam, "region_bam", metrics={"locus": locus} if locus else None
     )
 
 
