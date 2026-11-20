@@ -19,6 +19,7 @@ from wgsextract_cli.core.paths import (
     append_suffix,
     expand_path,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna", ".fa.gz", ".fasta.gz", ".fna.gz")
 FASTA_SUFFIX_RE = re.compile(r"\.(fa|fasta|fna)(\.gz)?$", re.IGNORECASE)
@@ -320,7 +321,7 @@ def select_reference_fasta(candidates: list[str], *hints: PathInput | None) -> s
 def find_annotation_vcf(reflib: PathInput, build: str) -> str:
     directories = [
         reflib,
-        str(Path(reflib, "ref")),
+        *map(str, download_dirs(reflib)),
         str(Path(reflib, "microarray")),
         str(Path(reflib, "genomes", "microarray")),
     ]
@@ -354,7 +355,7 @@ def annotation_vcf_names(build: str) -> list[str]:
 def find_annotation_resource(
     reflib: PathInput, prefix: str, build: str, extensions: list[str]
 ) -> str:
-    directories = [reflib, str(Path(reflib, "ref"))]
+    directories = [reflib, *map(str, download_dirs(reflib))]
     patterns: list[str] = []
     if build:
         patterns.extend(f"{prefix}*{build}*{extension}" for extension in extensions)
@@ -387,7 +388,7 @@ def resolve_input_target_tab(input_path: PathInput | None) -> str:
 def find_reference_target_tab(reflib: PathInput, build: str) -> str:
     directories = [
         reflib,
-        str(Path(reflib, "ref")),
+        *map(str, download_dirs(reflib)),
         str(Path(reflib, "microarray")),
         str(Path(reflib, "genomes", "microarray")),
     ]

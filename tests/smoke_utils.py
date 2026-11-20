@@ -317,7 +317,7 @@ def copy_resource_files(src_dir: str, dst_dir: str, build: str) -> None:
     if not os.path.exists(src_dir):
         return
 
-    os.makedirs(os.path.join(dst_dir, "ref"), exist_ok=True)
+    os.makedirs(os.path.join(dst_dir, "downloads"), exist_ok=True)
 
     # Common resource patterns
     patterns = [
@@ -331,7 +331,9 @@ def copy_resource_files(src_dir: str, dst_dir: str, build: str) -> None:
 
     for pattern in patterns:
         for file in glob.glob(os.path.join(src_dir, pattern + "*")):
-            shutil.copy(file, os.path.join(dst_dir, "ref", os.path.basename(file)))
+            shutil.copy(
+                file, os.path.join(dst_dir, "downloads", os.path.basename(file))
+            )
 
 
 def prepare_vcf_for_test(vcf_src: str, outdir: str, ref: str) -> None:

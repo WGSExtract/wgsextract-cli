@@ -20,7 +20,7 @@ export async function installedViewerCytobands(fasta: string, referenceRoot: str
     if (!build) return notice("cytobandBuildUnsupported");
     fileName = `cytobands_${build}.tsv`;
     command = installCommand(build);
-    const file = path.join(referenceRoot, "ref", fileName);
+    const file = path.join(referenceRoot, "downloads", fileName);
     let text: string;
     try {
         await guardedViewerPath(file, [referenceRoot]);

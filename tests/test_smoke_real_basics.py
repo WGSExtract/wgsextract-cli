@@ -447,7 +447,7 @@ class TestMicroarraySmoke:
     def setup_outdir(self, tmp_path):
         self.outdir = str(tmp_path)
         self.ref_dir = os.path.join(self.outdir, "fake_ref")
-        os.makedirs(os.path.join(self.ref_dir, "ref"), exist_ok=True)
+        os.makedirs(os.path.join(self.ref_dir, "downloads"), exist_ok=True)
         os.makedirs(os.path.join(self.ref_dir, "genomes"), exist_ok=True)
         os.makedirs(os.path.join(self.ref_dir, "microarray"), exist_ok=True)
         os.makedirs(

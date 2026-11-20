@@ -489,7 +489,7 @@ def _index_args(tmp_path):
     library.mkdir(exist_ok=True)
     settings["reference_library"] = str(library)
     params = api.TypingHlaParams(input=tmp_path / "s.bam")
-    return params, library / "ref" / "t1k_hla"
+    return params, library / "downloads" / "t1k_hla"
 
 
 def test_hla_index_is_built_once_in_the_reference_library(tmp_path, monkeypatch):
@@ -542,7 +542,7 @@ def test_1052_hla_missing_index_requires_download_then_reuses_it_offline(
     # T1K is the download boundary; the existing fake builds its tiny local index.
     accepted = api.genotyping.hla(replace(params, download=True))
     assert accepted.exit_code == 0
-    assert (library / "ref/t1k_hla/hla_dna_seq.fa").is_file()
+    assert (library / "downloads/t1k_hla/hla_dna_seq.fa").is_file()
     assert api.genotyping.hla(params).exit_code == 0
 
 

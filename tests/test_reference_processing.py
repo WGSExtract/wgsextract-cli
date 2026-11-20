@@ -618,13 +618,13 @@ def test_gnomad_downloads_are_indexed_and_failures_reported(tmp_path, monkeypatc
         monkeypatch, {"https://x/38.bgz": _bgzip(_VCF), "https://x/19.bgz": None}
     )
     assert not rp.download_gnomad(str(tmp_path))
-    assert (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").is_file()
-    assert not (tmp_path / "ref" / "gnomad_hg19.vcf.bgz").exists()
+    assert (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").is_file()
+    assert not (tmp_path / "downloads" / "gnomad_hg19.vcf.bgz").exists()
 
     _fake_download(monkeypatch, {"https://x/38.bgz": _VCF, "https://x/19.bgz": None})
-    (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").unlink()
+    (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").unlink()
     assert not rp.download_gnomad(str(tmp_path))  # plain VCF: tabix refuses it
-    assert not (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").exists()
+    assert not (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").exists()
 
     cancel = threading.Event()
     cancel.set()
