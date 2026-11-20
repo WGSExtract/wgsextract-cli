@@ -278,6 +278,8 @@ export interface ConfirmationSpec {
 export interface ActionSpec {
     id?: string;
     title?: string;
+    /** The title Advanced mode shows instead of `title`, when the action does more there. */
+    advancedTitle?: string;
     command: CommandSpec;
     precheck?: LooseRecord;
     confirm?: ConfirmationSpec;
