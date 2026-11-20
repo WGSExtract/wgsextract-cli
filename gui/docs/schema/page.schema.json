@@ -335,6 +335,7 @@
         "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "minLength": 1 },
         "title": { "type": "string", "minLength": 1 },
+        "advancedTitle": { "type": "string", "minLength": 1, "description": "The title Advanced mode shows instead of title, for an action that does more there." },
         "role": { "type": "string", "enum": ["primary", "secondary", "destructive"] },
         "tooltip": { "type": "string" },
         "iconName": { "type": "string" },

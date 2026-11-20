@@ -11,7 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
-import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
+import { isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting, ValueMap } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -217,7 +217,7 @@ export function renderSection(section: PageSection, page: BundlePage) {
     </section>
   `;
     }
-    const sectionActions = (section.actions ?? []).filter((action) => isShownInUIMode(action, state.uiMode));
+    const sectionActions = visibleActions(section.actions, state.uiMode);
     const controls = visibleControls(section, state.uiMode);
     // Empty header and controls blocks would still add their margins: a blank band above the first row.
     return `
