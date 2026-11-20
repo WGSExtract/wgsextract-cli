@@ -36,6 +36,7 @@ datasets/
 !tests/fixtures/pharmcat_hg002/*
 !tests/fixtures/acmg/*
 !tests/fixtures/pgs/*
+!tests/fixtures/viewer_tracks/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

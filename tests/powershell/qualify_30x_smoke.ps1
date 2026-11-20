@@ -13,7 +13,7 @@ $Text = "reference_library = $($ReferenceLibrary | ConvertTo-Json -Compress)`nst
 function Get-CimInstance {
     param($ClassName, $Property)
     if ($ClassName -eq 'Win32_Process') {
-        Get-Process | Select-Object @{n='ProcessId';e={$_.Id}}, @{n='ParentProcessId';e={0}}, @{n='CreationDate';e={$_.StartTime.ToUniversalTime()}}, @{n='WorkingSetSize';e={$_.WorkingSet64}}
+        Get-Process | Select-Object @{n='ProcessId';e={$_.Id}}, @{n='ParentProcessId';e={0}}, @{n='CreationDate';e={Get-ProcessStartTimeUtc $_}}, @{n='WorkingSetSize';e={$_.WorkingSet64}}
     } else {
         [pscustomobject]@{ TotalVisibleMemorySize = 8MB; FreePhysicalMemory = 6MB }
     }

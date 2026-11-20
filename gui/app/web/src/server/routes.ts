@@ -101,7 +101,15 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/api/viewer/open": async (request, response) => {
             requireViewerLoopback(request);
             const body = await readBody(request, context);
-            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles));
+            const tracks = body.tracks ?? [];
+            if (!Array.isArray(tracks) || tracks.some((track) => typeof track !== "string" || !track.trim() || track.length > 4096)) {
+                throw new HttpError(400, "Viewer tracks must be local file paths.");
+            }
+            if (tracks.length > 16) {
+                json(response, { problem: "trackLimit" });
+                return;
+            }
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
         },
         "/api/viewer/close": jsonRoute(context, async (body) => {
             viewerFiles.revoke(requiredString(body, "id"));

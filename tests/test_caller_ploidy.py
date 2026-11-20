@@ -151,9 +151,7 @@ def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(
 
 
 @pytest.mark.parametrize("version", ["0.1.1", "0.3.1"])
-def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(
-    sex_par, request, version
-):
+def test_1136_native_deepvariant_refusal_explains_upgrade(sex_par, request, version):
     require_bare_name_fakes()
     native = request.getfixturevalue("mac_native")
     native.deepvariant.set_native_version(version)
@@ -172,6 +170,9 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(
     assert result.status == "failed"
     assert "does not support this sex/PAR" in str(result.error)
     assert "0.4.0" in str(result.error)
+    assert "pixi install -e deepvariant" in str(result.error)
+    assert "updated WGS Extract checkout" in str(result.error)
+    assert "PATH" in str(result.error)
     assert not (sex_par.root / "refused" / "deepvariant.vcf.gz").exists()
 
 

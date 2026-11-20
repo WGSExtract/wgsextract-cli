@@ -3,17 +3,29 @@
 # overrides the Pixi that commands run with, so an unusable one fails here.
 $ErrorActionPreference = "Stop"
 
+function Assert-PixiVersion {
+    param([string]$Executable)
+    $minimum = (Get-Content -LiteralPath (Join-Path $PSScriptRoot "..\pixi-minimum-version.txt") -Raw).Trim()
+    $installed = & $Executable --version
+    if ($LASTEXITCODE -ne 0 -or "$installed" -notmatch '^pixi ([0-9]+\.[0-9]+\.[0-9]+)$' -or
+        [version]$Matches[1] -lt [version]$minimum) {
+        throw "Pixi >=$minimum is required; found $installed at $Executable. Update that Pixi installation (for example with 'pixi self-update'), then rerun setup. Your Pixi installation was not changed."
+    }
+}
+
 function Report-Pixi {
     if ($env:PIXI) {
         if (-not (Test-Path -LiteralPath $env:PIXI -PathType Leaf)) {
             [Console]::Error.WriteLine("PIXI is set but is not a file: $env:PIXI")
             exit 1
         }
+        Assert-PixiVersion -Executable $env:PIXI
         Write-Host "Commands will run with the Pixi set in PIXI: $env:PIXI"
         return
     }
     $command = Get-Command pixi -ErrorAction SilentlyContinue
     if ($command) {
+        Assert-PixiVersion -Executable $command.Source
         Write-Host "Setup will reuse the Pixi on PATH: $($command.Source)"
         return
     }
@@ -22,6 +34,7 @@ function Report-Pixi {
         if (-not $pixiHome) { continue }
         $homePixi = Join-Path $pixiHome "bin\pixi.exe"
         if (Test-Path -LiteralPath $homePixi -PathType Leaf) {
+            Assert-PixiVersion -Executable $homePixi
             Write-Host "Setup will reuse the Pixi in ${pixiHome}: $homePixi"
             return
         }

@@ -301,9 +301,12 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 ### Installing on Linux
 
 From a checkout of this repository, `pixi install -e deepvariant` installs the
-CUDA build from `linux-deepvariant-3` (0.3.1), pinned by its checksum (about
+CUDA build from `linux-deepvariant-4` (0.4.0, build 2), pinned by its checksum (about
 3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
-there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
+there without `PATH`. Updating WGS Extract preserves an existing optional
+`deepvariant` environment. To upgrade from 0.3.1 or another older version,
+rerun `pixi install -e deepvariant` from the updated checkout before calling
+haploid chrX/Y/MT. A `wgse-deepvariant` on `PATH` comes first, so remove an
 older standalone install (such as 0.2.0, which sends ONT reads to Google's
 image) from `PATH`. Then download, check and unpack just the weights, which
 have the WGS and ONT_R104 models, and set `deepvariant_weights` in
@@ -311,24 +314,24 @@ have the WGS and ONT_R104 models, and set `deepvariant_weights` in
 
 ```bash
 mkdir wgse-deepvariant-weights && cd wgse-deepvariant-weights
-gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli \
+gh release download linux-deepvariant-4 -R WGSExtract/wgsextract-cli \
   -p 'wgse-deepvariant-weights-*' -p SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS && tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
-Otherwise, download the whole `linux-deepvariant-3` prerelease into an empty
+Otherwise, download the whole `linux-deepvariant-4` prerelease into an empty
 directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli
+gh release download linux-deepvariant-4 -R WGSExtract/wgsextract-cli
 sha256sum -c SHA256SUMS
 tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
 Continue only if every file reports `OK`. Then install the package into a Pixi
 environment of its own, with this `pixi.toml` beside it (for the CPU-only
-build, name `..._cpu_wgse_0.conda` and drop `cuda = "12"`):
+build, name `..._cpu_wgse_2.conda` and use `platforms = ["linux-64"]`):
 
 ```toml
 [workspace]
@@ -337,7 +340,7 @@ channels = ["conda-forge", "bioconda"]
 platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
-wgse-deepvariant = { path = "./wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda" }
+wgse-deepvariant = { path = "./wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda" }
 ```
 
 ```bash
@@ -362,6 +365,11 @@ still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)). With
 and with its WGS-only weights (`wgse-deepvariant-weights-1.10.0-wgs`) an ONT
 run stops at the missing ONT_R104 files.
 
+Version 0.4.0 supports male chrX/Y non-PAR and mitochondrial haploid calling,
+while retaining diploid PAR heterozygotes and reference confidence in gVCF.
+The CLI's minimum-version check still rejects older native binaries for
+non-diploid policies.
+
 To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
 `libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and
 `onnxruntime-cpp`, with `-DCMAKE_PREFIX_PATH` naming it, or build the package
@@ -376,7 +384,7 @@ executables), and check the archives against the published digests:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download macos-deepvariant-3 -R WGSExtract/wgsextract-cli
+gh release download macos-deepvariant-4 -R WGSExtract/wgsextract-cli
 shasum -a 256 -c SHA256SUMS
 ```
 
@@ -406,7 +414,7 @@ wgse-deepvariant run --model_type=WGS --ref=ref.fa --reads=sample.bam \
 `wgsextract vcf deepvariant --input sample.cram --ref reference.fa` supplies
 the native reader with a temporary, local MD5 cache of the supplied FASTA.
 This avoids relying on the CRAM header's `UR` (which may name a missing file
-on the machine that made it): native 0.3.1 does not use `--ref` for CRAM
+on the machine that made it): native 0.4.0 does not use `--ref` for CRAM
 decoding and can otherwise silently write an empty VCF (#1061).
 The CLI checks matching contigs' `M5` checksums before starting the reader.
 

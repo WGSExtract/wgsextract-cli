@@ -29,6 +29,9 @@ export async function guardedViewerPath(file: string, roots: string[]): Promise<
         throw new HttpError(403, "Viewer path is outside the configured libraries.");
     }
     const absolute = path.resolve(file);
+    if (!roots.some((root) => inside(absolute, root))) {
+        throw new HttpError(403, "Viewer path is outside the configured libraries.");
+    }
     const canonical = await realpath(absolute);
     for (const root of roots) {
         if (inside(absolute, root) && inside(canonical, await realpath(root))) {
@@ -127,7 +130,7 @@ export class ViewerFiles {
                 response.end();
                 return;
             }
-            const stream = handle.createReadStream({ start, end, autoClose: false });
+            const stream = handle.createReadStream({ start, end, autoClose: false, highWaterMark: 64 * 1024 });
             let bytes = 0;
             stream.on("data", (chunk: Buffer) => { bytes += chunk.length; });
             try {
@@ -170,6 +173,9 @@ function byteRange(header: string | undefined, size: number) {
     }
     const start = first ?? Math.max(0, size - (last ?? 0));
     const end = first === undefined ? size - 1 : Math.min(size - 1, last ?? size - 1);
-    return start >= 0 && start <= end && start < size && end - start + 1 <= maximumReadBytes
+    // BAI bins at high-depth loci can exceed the fallback limit. Explicit
+    // bounds are streamed with backpressure, never buffered as a whole.
+    const explicitBounds = first !== undefined && last !== undefined;
+    return start >= 0 && start <= end && start < size && (explicitBounds || end - start + 1 <= maximumReadBytes)
         ? { start, end, partial: true } : undefined;
 }
