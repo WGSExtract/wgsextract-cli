@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import http.client
 import json
 import os
 import platform
@@ -15,6 +17,7 @@ import sys
 import tempfile
 import time
 import tomllib
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -296,7 +299,7 @@ def smoke(command: list[str] | None = None) -> None:
                                 )
                                 smoke_url = url
                                 return
-                    except OSError:
+                    except (OSError, http.client.HTTPException):
                         pass
                 time.sleep(0.2)
             raise RuntimeError(f"Server did not become ready:\n{log_path.read_text()}")
@@ -325,8 +328,14 @@ def smoke(command: list[str] | None = None) -> None:
                 while time.monotonic() < deadline:
                     try:
                         LOOPBACK_OPENER.open(smoke_url, timeout=1).close()
-                    except OSError:
-                        break
+                    except (OSError, http.client.HTTPException) as error:
+                        reason = (
+                            error.reason
+                            if isinstance(error, urllib.error.URLError)
+                            else error
+                        )
+                        if isinstance(reason, OSError) and reason.errno == errno.ECONNREFUSED:
+                            break
                     time.sleep(0.1)
                 else:
                     raise RuntimeError(

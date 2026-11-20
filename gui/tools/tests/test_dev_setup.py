@@ -28,6 +28,7 @@ SPEC.loader.exec_module(setup)
 def smoke_server(replies: list[str]) -> Iterator[tuple[str, list[str]]]:
     """Serve real HTTP responses or disconnect during the response read."""
     received: list[str] = []
+    stopped = threading.Event()
 
     class Handler(socketserver.BaseRequestHandler):
         def handle(self) -> None:
@@ -45,7 +46,15 @@ def smoke_server(replies: list[str]) -> Iterator[tuple[str, list[str]]]:
                 linger = struct.pack("hh" if sys.platform == "win32" else "ii", 1, 0)
                 self.request.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
                 self.request.close()
-            elif reply == "disconnect":
+            elif reply in ("disconnect", "stop"):
+                self.request.shutdown(socket.SHUT_WR)
+                if reply == "stop":
+                    stopped.set()
+            elif reply == "truncated":
+                self.request.sendall(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 18\r\n"
+                    b"Connection: close\r\n\r\n<html>"
+                )
                 self.request.shutdown(socket.SHUT_WR)
             else:
                 self.request.sendall(
@@ -54,39 +63,49 @@ def smoke_server(replies: list[str]) -> Iterator[tuple[str, list[str]]]:
                 )
 
     with socketserver.TCPServer(("127.0.0.1", 0), Handler) as server:
-        thread = threading.Thread(
-            target=server.serve_forever, kwargs={"poll_interval": 0.05}
-        )
+        server.timeout = 0.05
+
+        def serve() -> None:
+            while not stopped.is_set():
+                server.handle_request()
+            server.server_close()
+
+        thread = threading.Thread(target=serve)
         thread.start()
         try:
             yield f"http://127.0.0.1:{server.server_address[1]}/", received
         finally:
-            server.shutdown()
+            stopped.set()
             thread.join(timeout=5)
 
 
 class DesktopPrerequisiteTests(unittest.TestCase):
-    def test_issue_1154_smoke_retries_startup_and_accepts_cleanup_disconnects(
+    def test_issue_1154_smoke_retries_startup_and_waits_for_real_shutdown(
         self,
     ) -> None:
-        for failure in ("reset", "disconnect"):
+        for failure in ("reset", "disconnect", "truncated"):
             with (
                 self.subTest(failure=failure),
-                smoke_server([failure, "html", failure]) as (url, received),
+                smoke_server([failure, "html", failure, "stop"]) as (url, received),
             ):
                 source = (
                     f"print('Web UI: {url}', flush=True);import time; time.sleep(60)"
                 )
                 setup.smoke([sys.executable, "-c", source])
-                self.assertEqual(received, [failure, "html", failure])
+                self.assertEqual(received, [failure, "html", failure, "stop"])
 
     def test_issue_1154_smoke_rejects_server_still_answering_after_cleanup(
         self,
     ) -> None:
-        with smoke_server(["html"]) as (url, _):
-            source = f"print('Web UI: {url}', flush=True);import time; time.sleep(60)"
-            with self.assertRaisesRegex(RuntimeError, "remained alive after cleanup"):
-                setup.smoke([sys.executable, "-c", source])
+        for failure in ("html", "reset", "disconnect", "truncated"):
+            with (
+                self.subTest(failure=failure),
+                smoke_server(["html", failure, "html"]) as (url, received),
+            ):
+                source = f"print('Web UI: {url}', flush=True);import time; time.sleep(60)"
+                with self.assertRaisesRegex(RuntimeError, "remained alive after cleanup"):
+                    setup.smoke([sys.executable, "-c", source])
+                self.assertIn("html", received[2:])
 
     def test_smoke_preserves_existing_app_files_and_removes_private_workspace(
         self,
