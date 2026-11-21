@@ -23,7 +23,11 @@ state="$(dirname "$0")"
 case "$1" in
   run)
     while [ "$1" != "--name" ]; do shift; done
-    printf '%s\\n' "$2" > "$state/running"
+    if [ -e "$state/stop-before-start" ]; then
+      printf '%s\\n' "$2" > "$state/created"
+    else
+      printf '%s\\n' "$2" > "$state/running"
+    fi
     printf '%s\\n' $$ > "$state/run.pid"
     exec sleep 60 ;;
   events)
@@ -38,10 +42,14 @@ case "$1" in
     exec sleep 60 ;;
   kill)
     sleep 0.1
+    [ -e "$state/running" ] || exit 1
     [ "$2" = "$(cat "$state/running")" ] || exit 1
     mv "$state/running" "$state/killed"
     [ -e "$state/no-oom" ] || [ -e "$state/oom-on-shutdown" ] ||
       kill "$(cat "$state/run.pid")" ;;
+  rm)
+    [ "$2" = "-f" ] && [ "$3" = "$(cat "$state/created")" ] || exit 1
+    mv "$state/created" "$state/removed" ;;
 esac
 """
 
@@ -84,9 +92,16 @@ def test_other_failures_keep_their_error(docker, monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell fake")
-@pytest.mark.parametrize("oom_error", [None, "out of memory"])
-def test_issue_1207_cancel_token_does_not_leave_running_container(docker, oom_error):
+@pytest.mark.parametrize(
+    ("oom_error", "before_start"),
+    [(None, False), ("out of memory", False), (None, True)],
+)
+def test_issue_1207_cancel_token_does_not_leave_container(
+    docker, oom_error, before_start
+):
     (docker / "no-oom").touch()
+    if before_start:
+        (docker / "stop-before-start").touch()
     token = CancelToken()
     scope = object()
     token.on_cancel(lambda: proc_registry.cancel(scope))
@@ -107,7 +122,12 @@ def test_issue_1207_cancel_token_does_not_leave_running_container(docker, oom_er
         worker.join()
         proc_registry.accept_new(scope)
     assert not (docker / "running").exists()
-    assert (docker / "killed").read_text().startswith("wgsextract-")
+    assert not (docker / "created").exists()
+    assert (
+        (docker / ("removed" if before_start else "killed"))
+        .read_text()
+        .startswith("wgsextract-")
+    )
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell fake")

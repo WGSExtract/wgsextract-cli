@@ -152,7 +152,9 @@ def run_container(
 ) -> subprocess.CompletedProcess[str]:
     """Run ``command`` in ``image``. ``paths`` are the files and directories it
     reads or writes, and ``command`` names them by host_path; their directories
-    are mounted at the same paths in the container.
+    are mounted at the same paths in the container. POSIX mount paths with
+    both a colon and a comma or double quote require an engine with CSV
+    ``--mount`` support (Docker or Podman 4.9 and later).
 
     With ``oom_error``, an out-of-memory kill of any process in the container
     stops it and raises that message, for tools such as DeepVariant whose
@@ -213,7 +215,9 @@ def run_container(
 
 def _kill_container(docker_path: str, name: str) -> None:
     with suppress(OSError, subprocess.SubprocessError):
-        engine_call([docker_path, "kill", name])
+        if engine_call([docker_path, "kill", name]).returncode != 0:
+            # Cancellation can interrupt `run` between creation and start.
+            engine_call([docker_path, "rm", "-f", name])
 
 
 def engine_call(cmd: list[str]) -> subprocess.CompletedProcess[str]:
