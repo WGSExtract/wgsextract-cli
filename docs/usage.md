@@ -70,6 +70,12 @@ verified steps in `.steps.json` journals. Rerunning after a crash, Ctrl-C or
 OOM skips completed steps. `--dry-run` explains the plan, `--force-step STEP`
 reruns that step and later ones, and `--force` reruns all. See [resuming](step-resume.md).
 
+`analyze comprehensive` uses `vcf_input_paths` from config only when you
+don't select inputs. A configured `input_path` can be used alongside these
+VCFs. With a BAM/CRAM selected via `--input` or `--genome`, it calls variants
+from that alignment unless you supply matching `--vcf-inputs` or use
+`--skip-calling`.
+
 `wgsextract report --genome ID` reads earlier manifests without running tools.
 Its local HTML, Markdown, JSON and findings table cover overview/QC, Y/mtDNA,
 pharmacogenomics (including HLA-A/B), ClinVar pathogenic calls in ACMG SF v3.3
