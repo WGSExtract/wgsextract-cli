@@ -7,7 +7,9 @@ share these states and parsing rules without depending on each other.
 from __future__ import annotations
 
 import enum
+import math
 import re
+import shlex
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -15,6 +17,26 @@ from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thre
 
 GQ, DEPTH_ONLY = "gq", "depth_only"
 Interval = tuple[str, int, int]  # contig, 1-based start, inclusive end
+
+
+def bcftools_gvcf_header(header: str) -> bool:
+    """Whether a recorded bcftools call command explicitly enabled gVCF."""
+    for line in header.splitlines():
+        if not line.startswith("##bcftools_callCommand="):
+            continue
+        try:
+            args = shlex.split(line.split("=", 1)[1].partition("; Date=")[0])
+        except ValueError:
+            continue
+        for index, arg in enumerate(args):
+            if arg == "--":
+                break
+            if arg in ("-g", "--gvcf") and index + 1 < len(args):
+                if re.fullmatch(r"\d+(?:,\d+)*", args[index + 1]):
+                    return True
+            if re.fullmatch(r"-g\d+(?:,\d+)*|--gvcf=\d+(?:,\d+)*", arg):
+                return True
+    return False
 
 
 class State(enum.Enum):
@@ -62,7 +84,8 @@ def _int(value: str | None) -> int | None:
 
 def _float(value: str | None) -> float | None:
     try:
-        return float(value) if value not in (None, "", ".") else None
+        number = float(value) if value not in (None, "", ".") else None
+        return number if number is not None and math.isfinite(number) else None
     except ValueError:
         return None
 
@@ -141,6 +164,8 @@ def _sweep(
     wanted: list[Interval],
     records: Iterator[Classified],
     order: Mapping[str, int],
+    *,
+    missing_state: State = State.UNCOVERED,
 ) -> Iterator[Span]:
     """Resolve overlapping records base by base, highest-ranked state first.
     Records arrive sorted, so only the few overlapping the cursor are held."""
@@ -165,6 +190,6 @@ def _sweep(
                 state = min((a[2] for a in active), key=_RANK.__getitem__)
                 stop = min(min(a[1] for a in active), upcoming - 1)
             else:
-                state, stop = State.UNCOVERED, upcoming - 1
+                state, stop = missing_state, upcoming - 1
             yield Span(contig, cursor, stop, state)
             cursor = stop + 1
