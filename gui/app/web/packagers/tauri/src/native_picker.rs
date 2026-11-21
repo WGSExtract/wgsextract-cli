@@ -56,12 +56,9 @@ struct ConnectionSlot(Arc<AtomicUsize>);
 
 impl ConnectionSlot {
     fn acquire(active: &Arc<AtomicUsize>) -> Option<Self> {
-        active
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
-                (count < MAX_CONNECTIONS).then_some(count + 1)
-            })
-            .ok()?;
-        Some(Self(Arc::clone(active)))
+        let slot = Self(Arc::clone(active));
+        let previous = active.fetch_add(1, Ordering::Relaxed);
+        (previous < MAX_CONNECTIONS).then_some(slot)
     }
 }
 
