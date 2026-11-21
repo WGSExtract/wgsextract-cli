@@ -232,6 +232,38 @@ def test_unreadable_variant_tables_are_refused_not_failed(
         assert "pyarrow" in answer["error"]["message"]
 
 
+def test_1209_corrupt_parquet_returns_a_client_error(client, work):
+    pytest.importorskip("pyarrow.parquet")
+    parquet = work / "broken_variants.parquet"
+    parquet.write_bytes(b"not a parquet file")
+    query = urllib.parse.urlencode({"path": str(parquet)})
+    status, answer = client.request("GET", f"/variants?{query}")
+    assert (status, answer["error"]["code"]) == (400, "usage")
+
+
+def test_1209_parquet_reads_requested_and_filter_columns_only(client, work):
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    parquet = work / "sample_variants.parquet"
+    # This timestamp is valid in Arrow but outside Python datetime's range.
+    pq.write_table(
+        pa.table(
+            {
+                "chrom": ["chr1", "chr2"],
+                "pos": [42, 84],
+                "not_requested": pa.array([10**13, 10**13], type=pa.timestamp("s")),
+            }
+        ),
+        parquet,
+    )
+    query = urllib.parse.urlencode(
+        {"path": str(parquet), "columns": "pos,gene", "region": "chr1:42"}
+    )
+    status, answer = client.request("GET", f"/variants?{query}")
+    assert status == 200
+    assert answer["rows"] == [{"pos": 42}]
+
+
 def test_report_lookup_reads_a_samples_newest_report(tmp_path, work):
     from tests.htslib_helpers import run_wgsextract
 

@@ -1127,7 +1127,7 @@ class FakeDeepVariant:
 
 
 _FAKE_DOCKER = r"""
-import json, os, re, shlex, signal, subprocess, sys, time
+import csv, json, os, re, shlex, signal, subprocess, sys, time
 
 
 def state():
@@ -1186,11 +1186,11 @@ elif args[0] == "events":
     print("oom", flush=True)
     time.sleep(60)
 elif args[0] == "run":
-    opts, i = {"-e": [], "-v": []}, 1
+    opts, i = {"-e": [], "-v": [], "--mount": []}, 1
     while args[i].startswith("-"):
         if args[i] == "--rm" or args[i].startswith("--pull="):
             opts[args[i].split("=")[0]], i = args[i], i + 1
-        elif args[i] in ("-e", "-v"):
+        elif args[i] in ("-e", "-v", "--mount"):
             opts[args[i]].append(args[i + 1])
             i += 2
         else:
@@ -1198,6 +1198,11 @@ elif args[0] == "run":
     image, command = args[i], args[i + 1:]
     env = dict(e.split("=", 1) for e in opts["-e"])
     mounts = [v.split(":")[0] for v in opts["-v"]]
+    for mount in opts["--mount"]:
+        fields = dict(field.split("=", 1) for field in next(csv.reader([mount], strict=True)))
+        if fields["type"] != "bind" or fields["source"] != fields["target"]:
+            sys.exit("fake docker: expected a bind mount at the same host and container path")
+        mounts.append(fields["target"])
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),

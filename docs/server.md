@@ -119,6 +119,7 @@ Responses are compact JSON, except viewer file bytes. Errors are
 | 403 | A path outside the allowed folders (`path_not_allowed`), a request that deletes data (`destructive`), or a bad Host or Origin |
 | 404 | Unknown operation or job |
 | 409 | Cancelling a finished job |
+| 411 | Missing `Content-Length` on an operation submission |
 
 A failed analysis is not an HTTP error. Its job finishes with status
 `failed` and the manifest's `error`.
@@ -168,6 +169,15 @@ flight was rejected.
 `exit_code` and `error`, and the operation's result manifest as `result`.
 The manifest's `provenance` (tool versions and the full parameters) appears
 only with `full=1`, to keep responses short.
+
+Operation submissions require `Content-Length` (use `0` for an empty body).
+Requests using `Transfer-Encoding` are rejected with 400.
+
+The event stream keeps the latest 1,024 events per job for active jobs and
+the 128 most recently finished jobs. Reconnecting with an older event ID
+returns only the events still in memory. Older job records and logs remain
+available on disk, but their events are not replayed.
+Job listings use a compact on-disk index rebuilt from the records on startup.
 
 ### Lookups
 
@@ -233,11 +243,12 @@ curl -H "Authorization: ******" \
   A crash or a cancel affects only that job. Its log, at the CLI's log level
   (`--debug` for more), is `<state>/server/jobs/<id>.log`.
 - **Cancelling.** A queued job is cancelled immediately. A running job gets
-  the API's `CancelToken`: tools stop, and the manifest is written with
-  status `cancelled` (exit code 130). If the job is still running 30 seconds
-  later, it is killed. As on the CLI, partial outputs are kept unless the
-  `atomic_outputs` setting is on. `align` is an always-atomic exception: its
-  failed or cancelled validation/writes preserve previous completed outputs.
+  the API's `CancelToken`: tools stop, including running containers, and the
+  manifest is written with status `cancelled` (exit code 130). If the job is
+  still running 30 seconds later, it is killed. As on the CLI, partial
+  outputs are kept unless the `atomic_outputs` setting is on. `align` is an
+  always-atomic exception: its failed or cancelled validation/writes preserve
+  previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
   so a restarted server still lists the earlier jobs and their results. Jobs
   that were queued or running when a server stopped are marked
