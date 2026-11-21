@@ -26,7 +26,8 @@ def correct_polarity(
 
     No strand guessing or reference-as-ancestral assumption is made. Recurrent
     positions are deliberately left alone, as they are excluded by prediction.
-    Ancient panels are filtered after correction, not before it.
+    Ancient panels are filtered after correction, excluding whole positions
+    so a surviving row cannot turn a recurrent site into unique evidence.
     """
     metadata = json.loads(audit.read_text(encoding="utf-8"))
     spec = metadata["tables"][f"{tree_id}/{build}"]
@@ -51,13 +52,16 @@ def correct_polarity(
                 marker, ancestral=anc, derived=der, mutation=f"{anc}->{der}"
             )
             count += 1
-        if not ancient or (marker.ancestral, marker.derived) not in {
-            ("C", "T"),
-            ("G", "A"),
-        }:
-            corrected.append(marker)
+        corrected.append(marker)
     if count != len(alleles):
         raise WGSExtractError("Incomplete Y marker polarity correction.")
+    if ancient:
+        damaged = {
+            marker.pos
+            for marker in corrected
+            if (marker.ancestral, marker.derived) in {("C", "T"), ("G", "A")}
+        }
+        corrected = [marker for marker in corrected if marker.pos not in damaged]
     return corrected, {
         "source": metadata["source"],
         "sha256": file_sha256(audit),

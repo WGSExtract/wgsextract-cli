@@ -307,27 +307,30 @@ def analyze(
     logging.info(
         "%s; tables %s; build %s; tree %s", CREDIT, version, build, selected.label
     )
-    marker_file = pos_file or selected.positions(
-        build, ancient and selected.polarity_file is None
-    )
+    marker_file = pos_file or selected.positions(build, ancient)
     panel_source = "custom" if pos_file else selected.origin
-    markers = read_markers(marker_file)
     polarity = None
     if not pos_file and selected.polarity_file is not None:
         from .polarity import correct_polarity
 
+        regular_file = selected.positions(build)
+        filter_damage = ancient and marker_file != regular_file
+        marker_file = regular_file
+        markers = read_markers(marker_file)
         markers, polarity = correct_polarity(
             markers,
             marker_file,
             selected.polarity_file,
             selected.id,
             build,
-            ancient=ancient,
+            ancient=filter_damage,
         )
         logging.info(
             "Y marker polarity: %s independently verified reversals corrected",
             polarity["corrected"],
         )
+    else:
+        markers = read_markers(marker_file)
     predictor = Predictor(selected.tree_file, selected.qc)
     sample = input_path.name
     for suffix in (".vcf.gz", ".vcf", ".bcf", ".bam", ".cram"):

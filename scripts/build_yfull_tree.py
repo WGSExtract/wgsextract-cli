@@ -416,16 +416,12 @@ def main() -> None:
         contig, sequence = chr_y(reference)
         identities[build] = sequence_identity(reference, contig, sequence)
         identities[build]["haplogroup"] = getattr(args, f"ref_haplogroup_{build}")
+        polarity = reference_polarity(
+            by_build[build], sequence, children, identities[build]["haplogroup"]
+        )
         by_build[build], checked = reference_checked(by_build[build], sequence)
         build_stats[build] = dict(Counter(build_stats[build]) + checked)
-        build_stats[build]["polarity"] = dict(
-            reference_polarity(
-                by_build[build],
-                sequence,
-                children,
-                getattr(args, f"ref_haplogroup_{build}"),
-            )
-        )
+        build_stats[build]["polarity"] = dict(polarity)
         build_stats[build]["markers"] = len(by_build[build])
         print(f"{build}: {build_stats[build]}")
 

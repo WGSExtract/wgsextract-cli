@@ -40,27 +40,23 @@ from wgsextract_cli.ydna.yleaf_native.markers import Marker, read_markers
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src/wgsextract_cli/ydna/yleaf_native"
 COMPLEMENT = str.maketrans("ACGT", "TGCA")
-Site = tuple[int, str, str, str, str]
+BASES = {"A", "C", "G", "T"}
+Site = tuple[str, str, str, str, str, str]
 
 
 def ybrowse_sites(path: Path) -> dict[str, set[Site]]:
+    """Keep indels and other non-SNP records for the name ambiguity check."""
     sites: dict[str, set[Site]] = defaultdict(set)
     opener = gzip.open if path.suffix == ".gz" else open
     with opener(path, "rt", encoding="utf-8", newline="") as stream:
         for row in csv.DictReader(stream):
-            anc, der = row["allele_anc"].upper(), row["allele_der"].upper()
-            if (
-                row["seqid"] == "chrY"
-                and row["start"] == row["end"]
-                and anc in {"A", "C", "G", "T"}
-                and der in {"A", "C", "G", "T"}
-                and anc != der
-            ):
+            if row["seqid"] == "chrY":
                 sites[row["Name"]].add(
                     (
-                        int(row["start"]),
-                        anc,
-                        der,
+                        row["start"],
+                        row["end"],
+                        row["allele_anc"].upper(),
+                        row["allele_der"].upper(),
                         row["YCC_haplogroup"],
                         row["ISOGG_haplogroup"],
                     )
@@ -186,7 +182,11 @@ def audited_alleles(
         if len(found) != 1:
             stats["ambiguous_independent_snp"] += 1
             continue
-        pos, anc, der, ycc_branch, isogg_branch = next(iter(found))
+        start, end, anc, der, ycc_branch, isogg_branch = next(iter(found))
+        if start != end or anc not in BASES or der not in BASES or anc == der:
+            stats["no_independent_snp"] += 1
+            continue
+        pos = int(start)
         if lifter is not None:
             hits = [
                 hit

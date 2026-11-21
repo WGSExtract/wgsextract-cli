@@ -99,8 +99,9 @@ using native node names or unambiguous shared ISOGG marker placements (name,
 position and allele pair; recurrent sites excluded). Approximate or unplaced
 labels alone cannot establish placement. For hg19/T2T, the lift must reproduce the target
 position and alleles, with reverse-strand complementation. Recurrent sites,
-ambiguous names, missing SNPs, different positions and different allele pairs
-are reported in `build_info.json`, not guessed. Every proposed correction also
+ambiguous names (including names shared with an indel), missing SNPs, different
+positions and different allele pairs are reported in `build_info.json`, not
+guessed. Every proposed correction also
 must leave the build's reference derived on its known lineage and ancestral
 off it: R-M343/R1b for hg38/hg19, J-M267/J1 for T2T. Unresolved reference
 descendants, ambiguous ancestry and reference mismatches remain uncorrected.
@@ -111,15 +112,17 @@ the alternative is the unique SNP-named parent represented in the source
 marker table; other ambiguous parentage is refused. Excluded overlay edges
 are counted separately in `tree_audit`.
 The runtime checks the source
-table's SHA-256 before interpreting it. Ancient filtering follows correction,
-so a reversed deamination mutation cannot slip through, and newly eligible
-markers are recovered. `--pos-file` and custom trees bypass this module.
+table's SHA-256 before interpreting it. With a distinct ancient table, damage
+filtering follows correction and excludes entire positions, so a recurrent
+site cannot become unique evidence. ISOGG uses the same table in both modes.
+`--pos-file` and custom trees bypass this module.
 
 The module is CC-BY-SA (version not stated), Thomas Krahn YSEQ, and contains
 only YBrowse-derived allele corrections, its input digests and attribution.
 First use of FTDNA/ISOGG requires an explicit `--download` if it is missing;
-subsequent runs are offline. `run.json` preserves the original table digest
-and separately records the correction module digest and audit.
+both trees reuse the same verified module offline. `run.json` preserves the
+original table digest and separately records the correction module digest and
+audit. A changed module pin also invalidates the Y-lineage step on resume.
 
 To regenerate the correction asset, run the builder with `--data` pointing to
 the pinned Yleaf cache, `--ybrowse` pointing to the archived YBrowse snapshot,
@@ -153,8 +156,9 @@ R1b for hg19/GRCh38 and J1 for T2T-CHM13v2 chrY. Override these with
 `--ref-haplogroup-hg19`, `--ref-haplogroup-hg38`, or `--ref-haplogroup-t2t`
 for a different FASTA. A broad haplogroup cannot resolve its descendants;
 recurrent positions and ambiguous ancestry cannot establish polarity either.
-This is an audit recorded in `build_info.json`, never a rule to silently
-flip all reference-matching alleles.
+This audit runs before reference filtering, so a shared position is still
+counted as recurrent even if one row is later discarded. It is recorded in
+`build_info.json`, never used to silently flip reference-matching alleles.
 
 Each SNP group on a branch (`/`-separated aliases) becomes one marker when its
 aliases name exactly one GRCh38 chrY single-base substitution in YBrowse.

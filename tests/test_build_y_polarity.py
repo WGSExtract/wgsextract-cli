@@ -199,6 +199,8 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
         "chrY\trecovered\tR\t20\tG->A\tG\tA\n"
         "chrY\trecurrent\tR\t30\tA->G\tA\tG\n"
         "chrY\trecurrent\tC\t30\tA->G\tA\tG\n"
+        "chrY\tmixed-R\tR\t35\tA->G\tA\tG\n"
+        "chrY\tmixed-C\tC\t35\tG->A\tG\tA\n"
         "chrY\tambiguous\tR\t40\tA->G\tA\tG\n"
     )
     data, audit = _module(
@@ -206,8 +208,8 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
         rows,
         "chrY,10,10,transition,C,T,R,R\nchrY,20,20,recovered,A,G,R,R\n"
         "chrY,30,30,recurrent,G,A,R,R\n"
-        "chrY,40,40,ambiguous,G,A,R,R\nchrY,41,41,ambiguous,G,A,R,R\n",
-        reference_bases={10: "T", 20: "G"},
+        "chrY,40,40,ambiguous,G,A,R,R\nchrY,41,42,ambiguous,G,GA,R,R\n",
+        reference_bases={10: "T", 20: "G", 40: "G"},
     )
     table = data / "hg38/ftdna_positions_hg38.txt"
     markers, _ = correct_polarity(
@@ -219,6 +221,7 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
             10: Call("T", 30, 100),
             20: Call("G", 30, 100),
             30: Call("G", 30, 100),
+            35: Call("G", 30, 100),
             40: Call("G", 30, 100),
         },
     )
@@ -228,6 +231,12 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
         ("recurrent", "D"),
         ("ambiguous", "D"),
     ]
+    assert (
+        json.loads(audit.read_text())["tables"]["ftdna/hg38"]["audit"][
+            "ambiguous_independent_snp"
+        ]
+        == 1
+    )
     rebuilt = tmp_path / "rebuilt"
     build(
         data,
