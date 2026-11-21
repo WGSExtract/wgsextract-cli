@@ -13,9 +13,10 @@ from wgsextract_cli.core.remote_input import check_url, copy_range, remote_file
 from wgsextract_cli.core.utils import WGSExtractError
 
 
-def test_1210_malformed_content_length_reports_remote_file_error():
+@pytest.mark.parametrize("length", ["not-a-number", "-1"])
+def test_1210_malformed_content_length_reports_remote_file_error(length):
     with serving(b"bytes") as srv:
-        srv.headers["sample.bam"] = {"Content-Length": "not-a-number"}
+        srv.headers["sample.bam"] = {"Content-Length": length}
         url = srv.url_for("sample.bam") + "?sig=fixture-signature"
 
         with pytest.raises(WGSExtractError, match="Content-Length") as failure:

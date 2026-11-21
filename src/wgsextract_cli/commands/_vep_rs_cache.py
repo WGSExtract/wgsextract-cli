@@ -22,7 +22,11 @@ from urllib.error import HTTPError, URLError
 from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.download_progress import redact_urls, retryable_http_status
+from wgsextract_cli.core.download_progress import (
+    redact_url,
+    redact_urls,
+    retryable_http_status,
+)
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.resource_estimates import (
@@ -314,7 +318,7 @@ def _expected_sums(
     and blocks) or an md5sum.txt. An unreadable listing fails: it can't tell
     a missing file from a lost one."""
     if listing_url not in cache:
-        location = redact_urls(listing_url)
+        location = redact_url(listing_url)
         md5 = listing_url.endswith("md5sum.txt")
         sums: dict[str, _Sum] = {}
         try:

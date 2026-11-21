@@ -30,6 +30,7 @@ from wgsextract_cli.core.download_progress import (
     DownloadIncomplete,
     PercentProgressLogger,
     ProgressCallback,
+    redact_url,
     redact_urls,
     retryable_http_status,
 )
@@ -150,7 +151,7 @@ def download_segmented(
     partial = dest + ".partial"
     state_path = partial + ".segments"
     url_digest = hashlib.sha256(url.encode()).hexdigest()
-    location = redact_urls(url)
+    location = redact_url(url)
     starts = list(range(0, size, SEGMENT_SIZE))
     try:
         partial_size = Path(partial).stat().st_size
@@ -158,6 +159,8 @@ def download_segmented(
         partial_size = None
     state = _load_state(state_path, url_digest, size) if partial_size == size else None
     if state is None:
+        # A sparse segmented partial must never look like a single download.
+        Path(partial + ".source").unlink(missing_ok=True)
         Path(state_path).unlink(missing_ok=True)
         with open(partial, "wb") as f:
             f.truncate(size)

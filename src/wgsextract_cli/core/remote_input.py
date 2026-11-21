@@ -109,7 +109,10 @@ def remote_file(url: str) -> RemoteFile:
     except (URLError, OSError, ValueError, HTTPException) as error:
         raise WGSExtractError(f"Can't reach {shown(url)}: {error}") from error
     try:
-        size = int(headers.get("Content-Length", "0"))
+        length = headers.get("Content-Length", "0").strip()
+        if not length.isascii() or not length.isdecimal():
+            raise ValueError
+        size = int(length)
     except ValueError:
         raise WGSExtractError(f"Invalid Content-Length for {shown(url)}.") from None
     validator = headers.get("ETag") or headers.get("Last-Modified")

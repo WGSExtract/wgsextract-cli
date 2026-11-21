@@ -185,7 +185,10 @@ def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
         srv.get_errors["hs38.fa.gz"] = [503, 503]
         monkeypatch.setattr(segmented, "ATTEMPTS", 2)
         dest = tmp_path / "hs38.fa.gz"
-        signed_url = f"{srv.url}?sig=fixture-signature#fixture-fragment"
+        signed_url = (
+            f"{srv.url}?redirect=https://example.test/session&sig=fixture-signature"
+            "#fixture-fragment"
+        )
 
         with (
             caplog.at_level(logging.DEBUG),
@@ -273,3 +276,33 @@ def test_1210_state_write_failure_preserves_segmented_error(
 
     assert "fixture-signature" not in str(failure.value)
     assert "Could not save download progress" in caplog.text
+
+
+def test_1210_failed_segment_checkpoint_cannot_resume_sparse_file_as_single(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
+    monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
+    dest = tmp_path / "hs38.fa.gz"
+    blocked = tmp_path / "hs38.fa.gz.partial.segments.tmp"
+    blocked.mkdir()
+    with serving(DATA) as srv:
+        # A single-connection failure can leave a source marker without data.
+        srv.head_status = 405
+        srv.get_status = 404
+        assert not downloads.download_file(
+            srv.url, str(dest), progress_callback=lambda *_: None, use_cache=False
+        )
+        # With ranges available on the next run, the failed transfer and
+        # blocked checkpoint leave a full-size sparse file without state.
+        srv.head_status = None
+        assert not downloads.download_file(srv.url, str(dest), use_cache=False)
+        assert (tmp_path / "hs38.fa.gz.partial").exists()
+        blocked.rmdir()
+        srv.get_status = None
+        srv.head_status = 405
+
+        assert downloads.download_file(
+            srv.url, str(dest), progress_callback=lambda *_: None, use_cache=False
+        )
+    assert dest.read_bytes() == DATA
