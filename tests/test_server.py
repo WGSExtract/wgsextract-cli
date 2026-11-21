@@ -130,6 +130,7 @@ def _serve(
     max_jobs: int = 1,
     *,
     allow_destructive: bool = False,
+    card: bool | None = None,
 ) -> Iterator[Client]:
     guard = PathGuard(roots, allow_destructive=allow_destructive)
     manager = JobManager(
@@ -137,6 +138,7 @@ def _serve(
         config_path=get_config_path(),
         max_jobs=max_jobs,
         allowed=roots,
+        card=card,
     )
     server = Server(0, TOKEN, manager, guard)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

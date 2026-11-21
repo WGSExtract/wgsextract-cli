@@ -84,6 +84,9 @@ function validateResultDocument(manifest: BundleManifest): void {
     if (spec.arguments != null && !(Array.isArray(spec.arguments) && spec.arguments.every((argument) => typeof argument === "string"))) {
         throw new BundleValidationError("Invalid resultDocument.arguments: expected an array of strings.");
     }
+    if (spec.cardArguments != null && !(Array.isArray(spec.cardArguments) && spec.cardArguments.every((argument) => typeof argument === "string"))) {
+        throw new BundleValidationError("Invalid resultDocument.cardArguments: expected an array of strings.");
+    }
 }
 
 function validatePrerequisites(manifest: BundleManifest): void {

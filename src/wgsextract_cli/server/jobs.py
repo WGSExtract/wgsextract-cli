@@ -72,6 +72,9 @@ class Job:
     progress: JobProgress | None = None
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
+    card: bool | None = (
+        None  # its result card, as the request asked; None: the server's default
+    )
     server_pid: int = field(default_factory=os.getpid)
     events: list[JobEvent] = field(default_factory=list, repr=False)
 
@@ -149,6 +152,7 @@ class JobManager:
         default_outdir: str | None = None,
         allowed: Iterable[str | os.PathLike[str]] | None = None,
         worker_command: list[str] | None = None,
+        card: bool | None = None,
     ) -> None:
         self.directory = directory
         self.allowed = None if allowed is None else [os.fspath(a) for a in allowed]
@@ -156,6 +160,7 @@ class JobManager:
         self.config_path = config_path
         self.max_jobs = max(1, max_jobs)
         self.debug = debug
+        self.card = card  # each job's result card; None: as config.toml says
         self.worker_command = worker_command or [
             sys.executable,
             "-m",
@@ -259,7 +264,9 @@ class JobManager:
 
     # Changes ---------------------------------------------------------------
 
-    def submit(self, op: Operation, params: Mapping[str, Any]) -> Job:
+    def submit(
+        self, op: Operation, params: Mapping[str, Any], *, card: bool | None = None
+    ) -> Job:
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
@@ -271,6 +278,7 @@ class JobManager:
             kind=op.kind,
             # Locks and workers see the folders the path checks approved.
             params=expand_paths(op, effective),
+            card=card,
         )
         names = {f.name for f in op.fields()}
         # With no input to save beside, outputs would go to the working folder.
@@ -437,6 +445,10 @@ class JobManager:
             "config": str(self.config_path) if self.config_path else None,
             "debug": self.debug,
             "allowed": self.allowed,
+            # A server that saves nothing (read-only MCP) writes no card, whatever a job asks.
+            "card": False
+            if self.card is False
+            else (job.card if job.card is not None else self.card),
         }
         log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
         try:

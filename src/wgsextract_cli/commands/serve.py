@@ -143,6 +143,10 @@ def _run(args: argparse.Namespace) -> None:
         config_path=get_config_path(),
         max_jobs=max_jobs,
         debug=bool(getattr(args, "debug", False)),
+        # A read-only MCP session saves nothing, whatever config.toml says.
+        card=False
+        if transport and not args.allow_jobs
+        else getattr(args, "card", None),
         default_outdir=settings.get("output_directory"),
         # As given: a worker allows a symlinked root as written, as here.
         allowed=roots,

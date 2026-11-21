@@ -423,6 +423,7 @@
         },
         {
           "id": "vcf-qc",
+          "resultCard": true,
           "title": "actions.vcf.variant-calling.vcf-qc.title",
           "tooltip": "actions.vcf.variant-calling.vcf-qc.tooltip",
           "command": {
@@ -1035,6 +1036,7 @@
       "actions": [
         {
           "id": "vcf-pharmcat",
+          "openOutput": ["pharmcat_report"],
           "title": "actions.cli.vcf-pharmcat.title",
           "tooltip": "actions.cli.vcf-pharmcat.tooltip",
           "advancedOnly": true,
