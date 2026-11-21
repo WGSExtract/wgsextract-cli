@@ -104,7 +104,7 @@ def test_1087_gui_bootstrap_uses_library_not_last_selected_fasta(
     monkeypatch.delenv("WGSEXTRACT_GUI_CONFIG_PATH", raising=False)
     monkeypatch.setattr(sys, "argv", ["bootstrap_reference_library.py"])
 
-    def download(folder):
+    def download(folder, *, cancel_event=None):
         destination = Path(folder)
         destination.mkdir(parents=True, exist_ok=True)
         (destination / "bootstrap.txt").write_text("downloaded")
