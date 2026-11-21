@@ -241,7 +241,7 @@ def _consensus_outputs(out: Path) -> dict[str, bytes]:
     return {
         path.name: path.read_bytes()
         for path in out.iterdir()
-        if path.name != ".wgse_publish.guard"
+        if not path.match(".wgse_publish-*.guard")
     }
 
 
@@ -334,10 +334,9 @@ def test_1236_blocked_index_destination_leaves_no_partial_consensus(tmp_path):
     with pytest.raises(WGSExtractError, match=blocked.name):
         _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
 
-    assert {path.name for path in out.iterdir()} == {
-        blocked.name,
-        ".wgse_publish.guard",
-    }
+    assert [
+        path for path in out.iterdir() if not path.match(".wgse_publish-*.guard")
+    ] == [blocked]
     assert blocked.is_dir()
 
 

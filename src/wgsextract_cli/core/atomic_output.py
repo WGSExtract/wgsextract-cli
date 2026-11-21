@@ -1,11 +1,14 @@
 """Publish completed outputs without replacing previous files on failure."""
 
 import contextlib
+import errno
+import hashlib
 import logging
 import os
 import shutil
 import stat
 import tempfile
+import unicodedata
 import uuid
 from collections.abc import Iterator, Mapping
 from contextvars import ContextVar
@@ -136,9 +139,38 @@ def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
 
     files = list(staged_to_final.items())
     if files:
-        parent = files[-1][1].parent
-        with exclusive_lock(parent / ".wgse_publish"):
-            _publish_output_set(files, parent)
+        primary = files[-1][1]
+        # Normalize case and Unicode for output directories on insensitive filesystems.
+        name = unicodedata.normalize("NFC", primary.name.casefold())
+        key = hashlib.sha256(os.fsencode(name)).hexdigest()[:32]
+        with exclusive_lock(primary.parent / f".wgse_publish-{key}"):
+            _publish_output_set(files, primary.parent)
+
+
+def _preserve_output_permissions(
+    final: Path, staged: Path, info: os.stat_result
+) -> None:
+    current = staged.stat()
+    if hasattr(os, "chown") and (info.st_uid, info.st_gid) != (
+        current.st_uid,
+        current.st_gid,
+    ):
+        os.chown(staged, info.st_uid, info.st_gid)
+    staged.chmod(info.st_mode & 0o777)
+    if hasattr(os, "getxattr"):
+        acl_name = "system.posix_acl_access"
+        try:
+            acl = os.getxattr(final, acl_name)
+        except OSError as error:
+            if error.errno not in {errno.ENODATA, errno.ENOTSUP}:
+                raise
+            try:
+                os.removexattr(staged, acl_name)
+            except OSError as staged_error:
+                if staged_error.errno not in {errno.ENODATA, errno.ENOTSUP}:
+                    raise
+        else:
+            os.setxattr(staged, acl_name, acl)
 
 
 def _publish_output_set(files: list[tuple[Path, Path]], parent: Path) -> None:
@@ -149,20 +181,20 @@ def _publish_output_set(files: list[tuple[Path, Path]], parent: Path) -> None:
         if not staged.is_file() or not staged.stat().st_size:
             raise WGSExtractError(f"Output writer did not produce a nonempty {final}")
         try:
-            mode = final.lstat().st_mode
+            info = final.lstat()
         except FileNotFoundError:
             continue
-        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
+        if not (stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)):
             raise WGSExtractError(
                 f"Cannot replace {final}: not a regular file or symlink"
             )
-        if stat.S_ISLNK(mode):
+        if stat.S_ISLNK(info.st_mode):
             try:
-                mode = final.stat().st_mode
+                info = final.stat()
             except FileNotFoundError:
                 pass
-        if stat.S_ISREG(mode):
-            staged.chmod(mode & 0o777)
+        if stat.S_ISREG(info.st_mode):
+            _preserve_output_permissions(final, staged, info)
         existing.append(final)
 
     backup_dir = Path(tempfile.mkdtemp(dir=parent, prefix=".wgse_previous_"))
