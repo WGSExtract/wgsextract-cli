@@ -13,7 +13,20 @@ globalThis.localStorage = {
 globalThis.window = { innerHeight: 900 };
 
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
-const { renderTerminalPane, terminalTextDirection } = await import("../dist/web/src/client/terminal.js");
+const { appendTerminal, closeTerminalTab, renderTerminalPane, terminalTextDirection } = await import("../dist/web/src/client/terminal.js");
+
+test("#1235: closing a tab with a pending submission leaves uncertainty in Jobs", () => {
+  Object.assign(state, createInitialState(), {
+    labels: { terminalJobSubmissionUnknown: "The server may still be running this job." },
+  });
+  appendTerminal("command", "Coverage", "", "", { pendingJobID: "pending-job-id" });
+  closeTerminalTab(1);
+  assert.equal(state.terminalEntries.length, 1);
+  const [job] = state.jobHistory;
+  assert.equal(job.kind, "error");
+  assert.match(job.body, /may still be running/);
+  assert.match(job.body, /pending-job-id/);
+});
 
 test("terminal copy feedback renders only after copying", () => {
   Object.assign(state, createInitialState(), {

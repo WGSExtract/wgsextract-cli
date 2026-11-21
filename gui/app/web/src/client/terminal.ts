@@ -90,7 +90,7 @@ export function terminalTextDirection() {
     return state.manifest?.terminalTextDirection === "rtl" ? "rtl" : "ltr";
 }
 /** Opens a terminal tab. A "command" tab is a job: it is timestamped and listed on the Jobs tab. */
-export function appendTerminal(kind: string, title: unknown, body = "", command = "", details: Pick<TerminalEntry, "primaryFile"> = {}): string {
+export function appendTerminal(kind: string, title: unknown, body = "", command = "", details: Pick<TerminalEntry, "primaryFile" | "pendingJobID"> = {}): string {
     ensureMainTerminal();
     if (kind === "config") {
         const main = state.terminalEntries[0];
@@ -165,8 +165,12 @@ export function closeTerminalTab(index: number) {
     }
     runningActionControllers.get(tab.id)?.abort();
     runningActionControllers.delete(tab.id);
-    // Closing a running job's tab stops it; the Jobs list keeps it as cancelled.
-    if (tab.kind === "command") {
+    if (tab.kind === "command" && tab.pendingJobID !== undefined) {
+        const message = jobSubmissionUnknownMessage(tab.pendingJobID);
+        tab.kind = "error";
+        tab.body = [tab.body, message].filter(Boolean).join("\n");
+        tab.status = terminalProcessErrorStatus(tab.command ?? "", message);
+    } else if (tab.kind === "command") {
         tab.kind = "cancelled";
     }
     state.terminalEntries.splice(index, 1);
@@ -178,6 +182,11 @@ export function closeTerminalTab(index: number) {
     }
     state.activeTerminalIndex = Math.min(state.activeTerminalIndex, state.terminalEntries.length - 1);
 }
+
+export function jobSubmissionUnknownMessage(jobID: string | null): string {
+    return [state.labels.terminalJobSubmissionUnknown, jobID].filter(Boolean).join("\n");
+}
+
 /** Collapses the pane to its row of tabs (down arrow) or expands it again (up arrow). */
 export function renderTerminalToggle(): string {
     const title = escapeAttribute(terminalToggleTitle());

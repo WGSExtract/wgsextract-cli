@@ -69,6 +69,6 @@ On Windows, use `powershell -ExecutionPolicy Bypass -File .\make.ps1 <target>` w
 ::: wrap
 ## Earlier experiments
 
-Before settling on one app, the project prototyped native SwiftUI and AppKit apps, a Swift CLI, Electron, and renderers in Rust, Go, C++, .NET, Dart, Kotlin, Python, and Mojo, with benchmarks across all of them. That work is preserved on the [`old-experimental`](https://github.com/WGSExtract/gui-for-cli/tree/old-experimental) branch.
+Before settling on one app, the project prototyped native SwiftUI and AppKit apps, a Swift CLI, Electron, and renderers in Rust, Go, C++, .NET, Dart, Kotlin, Python, and Mojo, with benchmarks across all of them. That work is preserved on the [`old-experimental`](https://github.com/theontho/gui-for-cli/tree/old-experimental) branch.
 :::
 :::
