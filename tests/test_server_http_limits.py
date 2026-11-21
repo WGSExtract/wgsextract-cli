@@ -77,7 +77,12 @@ def test_1173_review_header_deadline_expires_despite_dripped_bytes(
             sender = threading.Thread(target=drip)
             sender.start()
             try:
-                assert peer.recv(1) == b""
+                try:
+                    assert peer.recv(1) == b""
+                except ConnectionResetError:
+                    # Aborting an incomplete request can reset TCP when the
+                    # peer is still sending. Both reset and EOF end the read.
+                    pass
             finally:
                 stop.set()
                 sender.join(3)

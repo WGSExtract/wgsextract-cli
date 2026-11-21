@@ -43,7 +43,9 @@ class LimitedHTTPServer(ThreadingHTTPServer):
             return
         try:
             super().process_request(request, client_address)
-        except BaseException:
+        except Exception:
+            # SIGINT can unwind dispatch after the worker already released its
+            # slot. Don't release it twice and mask the shutdown with ValueError.
             self._connections.release()
             raise
 
