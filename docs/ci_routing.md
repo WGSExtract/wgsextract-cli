@@ -791,14 +791,14 @@ push, every three hours and on manual dispatch, *Auto-merge conflict watch*
 (`auto_merge_watch.yml`, one five-minute API-only job running
 `scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
 auto-merge is enabled and whose mergeability is `CONFLICTING`
-`auto-merge-blocked`, creating the label if needed, and comments once asking
-the author to merge the base branch. It comments before labelling, and skips
-the comment if the workflow posted one since the label was last removed, so a
-failed run retries without repeating it. One PR's API failure doesn't stop the
-others; the run fails at the end. The label is removed when the PR merges
-cleanly again or auto-merge is turned off. It waits for GitHub to compute an
-auto-merging PR's mergeability after a push and leaves it alone if that stays
-unknown. `--dry-run` reports without changing anything.
+`auto-merge-blocked`, creating the label if needed, and comments once per PR
+head asking the author to merge the base branch. It comments before labelling,
+and skips the comment if the workflow already posted one for that head (a
+hidden marker), so a failed run retries without repeating it. One PR's API
+failure doesn't stop the others; the run fails at the end. The label is removed
+when the conflict is gone, auto-merge is turned off, or the PR closes or merges.
+It waits for GitHub to compute an auto-merging PR's mergeability after a push
+and leaves it alone if that stays unknown. `--dry-run` reports without changing anything.
 
 Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
 the stdlib-only release-note fragment check (#1281), so a PR adding only a

@@ -22,9 +22,10 @@ class FakeGitHub(GitHub):
         self.repository_labels: set[str] = set()
         self.pulls: dict[int, dict[str, Any]] = {}
         self.comments: dict[int, list[str]] = {}
-        self.timeline: dict[int, list[dict[str, Any]]] = {}
+        self.posted: dict[int, list[dict[str, Any]]] = {}
         self.listings = 0
         self.label_failures = 0
+        self.create_failures = 0
 
     def add(
         self,
@@ -33,12 +34,15 @@ class FakeGitHub(GitHub):
         auto_merge: bool = True,
         labels: tuple[str, ...] = (),
         base: str = "main",
+        state: str = "OPEN",
     ) -> None:
         self.pulls[number] = {
             "states": list(mergeable),
             "auto_merge": auto_merge,
             "labels": set(labels),
             "base": base,
+            "head": f"{number}a",
+            "state": state,
         }
         self.repository_labels |= set(labels)
 
@@ -52,13 +56,16 @@ class FakeGitHub(GitHub):
         if path == "graphql":
             assert data is not None
             if "number" in data["variables"]:
-                return self.pull_timeline(data["variables"]["number"])
+                return self.pull_comments(data["variables"]["number"])
             return self.graphql(data["variables"])
         prefix = f"repos/{REPO}/"
         assert path.startswith(prefix), path
         path = path.removeprefix(prefix)
         if method == "POST" and path == "labels":
             assert data is not None
+            if self.create_failures:
+                self.create_failures -= 1
+                raise subprocess.CalledProcessError(1, "gh", stderr="HTTP 502")
             if data["name"] in self.repository_labels:
                 raise subprocess.CalledProcessError(1, "gh", stderr="already_exists")
             self.repository_labels.add(data["name"])
@@ -78,35 +85,31 @@ class FakeGitHub(GitHub):
             if parts[3] not in self.pulls[number]["labels"]:
                 raise subprocess.CalledProcessError(1, "gh", stderr="Label not found")
             self.pulls[number]["labels"].remove(parts[3])
-            self.timeline.setdefault(number, []).append(
-                {"__typename": "UnlabeledEvent", "label": {"name": parts[3]}}
-            )
             return []
         if method == "POST" and parts[2] == "comments":
             assert data is not None
             self.comments.setdefault(number, []).append(data["body"])
-            self.timeline.setdefault(number, []).append(
-                {
-                    "__typename": "IssueComment",
-                    "body": data["body"],
-                    "author": {"login": "github-actions"},
-                }
+            self.posted.setdefault(number, []).append(
+                {"body": data["body"], "author": {"login": "github-actions"}}
             )
             return {}
         raise AssertionError(f"Unexpected GitHub call: {method} {path}")
 
-    def pull_timeline(self, number: int) -> dict[str, Any]:
-        nodes = self.timeline.get(number, [])[-100:]
-        return {
-            "data": {"repository": {"pullRequest": {"timelineItems": {"nodes": nodes}}}}
-        }
+    def pull_comments(self, number: int) -> dict[str, Any]:
+        nodes = self.posted.get(number, [])[-100:]
+        return {"data": {"repository": {"pullRequest": {"comments": {"nodes": nodes}}}}}
 
     def graphql(self, variables: dict[str, Any]) -> dict[str, Any]:
         assert (variables["owner"], variables["name"]) == tuple(REPO.split("/"))
         start = int(variables["cursor"] or 0)
         if start == 0:
             self.listings += 1
-        numbers = sorted(self.pulls)
+        numbers = sorted(n for n, p in self.pulls.items() if p["state"] == "OPEN")
+        closed = [
+            {"number": n, "baseRefName": p["base"]}
+            for n, p in sorted(self.pulls.items())
+            if p["state"] != "OPEN" and variables["label"] in p["labels"]
+        ]
         page = numbers[start : start + self.page_size]
         nodes = []
         for number in page:
@@ -117,6 +120,7 @@ class FakeGitHub(GitHub):
                     "number": number,
                     "mergeable": states[min(self.listings, len(states)) - 1],
                     "baseRefName": pull["base"],
+                    "headRefOid": pull["head"],
                     "autoMergeRequest": {"enabledAt": "2026-11-21T00:00:00Z"}
                     if pull["auto_merge"]
                     else None,
@@ -131,6 +135,7 @@ class FakeGitHub(GitHub):
                     "label": {"name": label}
                     if label in self.repository_labels
                     else None,
+                    "closed": {"nodes": closed},
                     "pullRequests": {
                         "pageInfo": {
                             "hasNextPage": end < len(numbers),
@@ -260,23 +265,47 @@ def test_1281_failed_label_is_retried_without_a_second_comment() -> None:
     assert len(github.comments[1205]) == 1
 
 
-def test_1281_a_new_conflict_after_a_clean_merge_is_announced_again() -> None:
+def test_1281_a_new_conflict_after_a_fix_is_announced_again() -> None:
     github = FakeGitHub()
     github.add(1205, "CONFLICTING", "MERGEABLE", "CONFLICTING")
+    # The first label fails, so no label removal marks the recovery.
+    github.label_failures = 1
 
-    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
-    assert watch(github, sleep=no_sleep) == {1205: "cleared"}
+    assert watch(github, sleep=no_sleep) == {1205: "failed"}
+    github.pulls[1205]["head"] = "1205b"  # The author merged main.
+    assert watch(github, sleep=no_sleep) == {}
     assert watch(github, sleep=no_sleep) == {1205: "flagged"}
     assert len(github.comments[1205]) == 2
+    assert "head=1205b" in github.comments[1205][1]
+
+
+def test_1281_labels_clear_when_a_blocked_pr_merges_or_closes() -> None:
+    github = FakeGitHub()
+    github.add(1205, "MERGEABLE", labels=(LABEL,), state="MERGED")
+    github.add(1206, "CONFLICTING", labels=(LABEL,), state="CLOSED")
+    github.add(1207, "CONFLICTING", state="CLOSED")
+
+    assert watch(github, sleep=no_sleep) == {1205: "cleared", 1206: "cleared"}
+    assert github.labels(1205) == github.labels(1206) == set()
+
+
+def test_1281_failed_label_creation_is_retried_for_the_next_pr() -> None:
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING")
+    github.add(1206, "CONFLICTING")
+    github.create_failures = 1
+
+    assert watch(github, sleep=no_sleep) == {1205: "failed", 1206: "flagged"}
+    assert github.labels(1206) == {LABEL}
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
 
 
 def test_1281_a_pasted_marker_does_not_count_as_the_notification() -> None:
     github = FakeGitHub()
     github.add(1205, "CONFLICTING")
-    github.timeline[1205] = [
+    github.posted[1205] = [
         {
-            "__typename": "IssueComment",
-            "body": "Quoting: <!-- auto-merge-blocked -->",
+            "body": "Quoting: <!-- auto-merge-blocked head=1205a -->",
             "author": {"login": "someone"},
         }
     ]

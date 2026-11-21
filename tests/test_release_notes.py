@@ -144,12 +144,15 @@ def repository(tmp_path: Path) -> Path:
     return root
 
 
-def test_1281_previous_release_comes_from_tags_without_a_notes_file(
+def test_1281_previous_release_comes_from_tags_not_notes_files(
     repository: Path,
 ) -> None:
-    # Released as a draft with generated notes, so no v0.8.10.md exists.
+    # v0.8.10 was released as a draft with generated notes, so it has no
+    # notes file; v0.8.11.md exists, but its release never got tagged.
+    git(repository, "tag", "v0.8.9")
     git(repository, "tag", "v0.8.10")
     notes = repository / "docs" / "release-notes"
+    (notes / "v0.8.11.md").write_text("# WGS Extract 0.8.11\n")
 
     assert run(notes, "assemble", "0.9.0") == 0
     assert "compare/v0.8.10...v0.9.0>" in (notes / "v0.9.0.md").read_text()

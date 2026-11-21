@@ -152,9 +152,13 @@ def released(notes: Path, base: str) -> list[str]:
 
 
 def previous(notes: Path, version: tuple[int, ...]) -> str | None:
-    """The newest older release: a tag, or a notes file (when not checked out)."""
-    names = [path.stem for path in notes.glob("v*.md")]
-    names += git(notes, "tag", "--list", "v*") or []
+    """The newest older release tag; notes files only without tags.
+
+    A notes file can exist for a release whose workflow never tagged it.
+    """
+    names = git(notes, "tag", "--list", "v*") or [
+        path.stem for path in notes.glob("v*.md")
+    ]
     releases = [
         tuple(int(part) for part in match["version"].split("."))
         for name in names
