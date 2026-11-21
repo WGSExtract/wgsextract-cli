@@ -300,7 +300,9 @@ def test_batch_sample_names_stay_out_of_the_report(
         "[%(asctime)s] %(levelname)s: %(message)s",  # the console, with symbols
     ],
 )
-def test_data_lines_are_removed_behind_a_log_prefix(fmt: str) -> None:
+def test_data_lines_are_removed_behind_a_log_prefix(
+    fmt: str, caplog: pytest.LogCaptureFixture
+) -> None:
     import logging
 
     from wgsextract_cli.cli.bootstrap import EmojiFormatter
@@ -313,6 +315,7 @@ def test_data_lines_are_removed_behind_a_log_prefix(fmt: str) -> None:
         else logging.Formatter(fmt)
     )
     logger = logging.getLogger("test-report-data-lines")
+    caplog.set_level(logging.INFO, logger=logger.name)
     logger.addHandler(tail)
     try:
         logger.warning("rs4680\t22\t19951271\tAG")

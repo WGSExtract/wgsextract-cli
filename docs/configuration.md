@@ -147,12 +147,13 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `quiet_mode` | boolean | `false` | Enable quiet mode (errors only) |
 | `log_dir` | string, path (`~` expands) | unset | Opt-in directory for unique persistent DEBUG run logs and provenance; it keeps the newest 100 runs |
 | `state_directory` | string, path (`~` expands) | unset | Folder for the last-run record and saved bug reports (report-issue); default: state/ in the data folder |
-| `server_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port) |
+| `server_port` | integer, 0 to 65535 | `0` | Default HTTP/JSON listen port (0: any free port); an embedded server.listen port overrides this default, and explicit --port wins |
 | `server_allowed_paths` | string or array of strings, path (`~` expands) | unset | Folders (a string or an array) `wgsextract serve` requests may read and write, besides mygenomes_library, reference_library, reference_genome_library and output_directory |
 | `server_mcp_transport` | `stdio` or `http` | `"stdio"` | How `wgsextract serve --mcp` speaks MCP: stdio, or http (streamable HTTP on 127.0.0.1 with a per-launch token; needs the optional 'mcp' package) |
 | `server_mcp_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 (0: any free port) |
 | `server_max_jobs` | integer, at least 1 | `1` | Long `wgsextract serve` jobs that run at once; more wait in a queue |
 | `keep_awake` | boolean | `false` | Best-effort sleep inhibition while commands run (opt-in) |
+| `result_card` | boolean | `false` | Also write `<name>.card.html`, a shareable page of each run's result, beside its manifest |
 | `haplogrep_executable` | string, path (`~` expands) | unset | Path to the Haplogrep 3 executable or JAR |
 | `dorado_executable` | string, path (`~` expands) | unset | Path to ONT's dorado executable for `basecall` |
 | `native_aligners` | `auto` or `off` | unset | Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2 |
@@ -160,7 +161,7 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `prefer_native_gpu` | boolean | `false` | `align`/`realign`: prefer wgse-bwa's native GPU even above the RAM budget after normal sort step-down; retain explicit memory, otherwise cap default/config sort at 256M (may swap heavily) |
 | `dense_suffix_array` | boolean | `false` | `align`/`realign`: wgse-bwa reads the reference's dense suffix-array file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; holds it in RAM, 0.8 GB for hs38) |
 | `dorado_models_directory` | string, path (`~` expands) | unset | Folder `basecall` downloads Dorado models into (default: the wgsextract cache's dorado-models) |
-| `mimalloc` | `auto` or `off` | unset | Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's wgse-mimalloc allocator when it's installed (auto, the default) or never (off) |
+| `mimalloc` | `auto` or `off` | unset | Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's wgse-mimalloc allocator. Native Windows: `bam to-cram --cram-version 3.1` with a local reference uses the matching samtools-mimalloc encoder. Only validated installed variants run (auto, default), or never (off) |
 | `baq` | boolean | `false` | `vcf snp`/`vcf indel`: enable heuristic base alignment quality (BAQ) in bcftools mpileup (slower; may reduce low-depth recall); off by default; see docs/variant-confidence.md |
 | `reference_evidence` | `none` or `gvcf` | `"none"` | `vcf snp`/`vcf indel`/`vcf deepvariant`/`vcf gatk`/`vcf clair3`: also write a gVCF of reference evidence (bcftools.g.vcf.gz, deepvariant.g.vcf.gz, gatk.g.vcf.gz, clair3.g.vcf.gz) beside the variant VCF (gvcf), or not (none, the default); see docs/reference-evidence.md |
 | `haplocheck_executable` | string, path (`~` expands) | unset | Path to the haplocheck executable or JAR |
@@ -226,6 +227,20 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `pgs_keep_ambiguous` | boolean | `false` | Keep palindromic SNPs only with independently verified forward-strand alleles |
 
 Older names still read: `dataset_library` (`mygenomes_library`), `father_vcf` (`father_vcf_path`), `genome_library` (`mygenomes_library`), `genomes` (`mygenomes_library`), `haplocheck_path` (`haplocheck_executable`), `haplogrep_path` (`haplogrep_executable`), `input` (`input_path`), `input_vcf` (`default_input_vcf`), `jar_dir` (`jar_directory`), `memory` (`memory_limit`), `mother_vcf` (`mother_vcf_path`), `outdir` (`output_directory`), `ref` (`reference_fasta`), `reflib` (`reference_library`), `threads` (`cpu_threads`), `vep_cache` (`vep_cache_directory`).
+
+## The [server] table
+
+Operator opt-ins for HTTP/JSON listening and viewer files. See [server mode](server.md#remote-http-access) for exposure and TLS requirements.
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | `"127.0.0.1"` | HTTP listen address[:port]; explicit --port overrides the embedded port; loopback by default |
+| `allowed_hosts` | string or array of strings | unset | Exact external Host headers, including ports; never wildcards |
+| `allowed_origins` | string or array of strings | unset | Exact app origins allowed to read viewer files; never wildcards |
+| `viewer_files` | boolean | `false` | Enable authenticated, guarded viewer byte ranges |
+| `public_url` | string | unset | Advertised HTTP/HTTPS client origin; required for non-loopback listening, with its authority in allowed_hosts |
+| `max_connections` | integer, 1 to 256 | `32` | Maximum accepted HTTP connections, including unauthenticated peers |
+| `header_timeout_seconds` | number, 0.1 to 60 | `10.0` | Absolute request-header and keep-alive idle deadline; does not limit authenticated responses |
 
 ## The [dev] table
 

@@ -85,6 +85,7 @@
       "actions": [
         {
           "id": "info-chip",
+          "resultCard": true,
           "title": "actions.cli.info-chip.title",
           "tooltip": "actions.cli.info-chip.tooltip",
           "advancedOnly": true,

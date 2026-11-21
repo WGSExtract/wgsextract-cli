@@ -59,6 +59,12 @@
           "type": "array",
           "items": { "type": "string" },
           "default": []
+        },
+        "cardArguments": {
+          "description": "Appended after arguments for actions with resultCard, to ask the command for its result card, such as [\"--card\"].",
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
         }
       }
     },

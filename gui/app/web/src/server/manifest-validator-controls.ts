@@ -34,6 +34,13 @@ export function validateAction(action: ActionSpec, basePath: string): void {
     if (action.primaryInput != null) {
         requireNonEmpty(action.primaryInput, `${basePath}.primaryInput`);
     }
+    if (action.resultCard != null && typeof action.resultCard !== "boolean") {
+        throw new BundleValidationError(`Invalid ${basePath}.resultCard: expected true or false.`);
+    }
+    const openOutput: unknown = action.openOutput;
+    if (openOutput != null && !(Array.isArray(openOutput) && openOutput.length > 0 && openOutput.every((role) => typeof role === "string" && role.trim()))) {
+        throw new BundleValidationError(`Invalid ${basePath}.openOutput: expected a non-empty array of output roles.`);
+    }
 }
 
 function validateServerOperation(operation: ServerOperationSpec, basePath: string): void {

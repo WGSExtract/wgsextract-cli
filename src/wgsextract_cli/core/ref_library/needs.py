@@ -102,7 +102,7 @@ class MissingReference:
     """Reference data the command needs that isn't installed."""
 
     id: str  # catalog code or annotation resource, e.g. "hs37d5", "clinvar"
-    kind: str  # "genome" or "annotation"
+    kind: str  # "genome", "annotation" or "tool" (commands/ref/needs.py)
     name: str  # e.g. "hs37d5", "ClinVar"
     reason: str
     # The `wgsextract` arguments that install it, or None when nothing can.

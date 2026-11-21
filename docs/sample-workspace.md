@@ -49,6 +49,11 @@ wgsextract microarray --genome "ken mcdonald" --formats 23andme_v5
 wgsextract vcf filter --genome joe --expr 'QUAL>30'
 ```
 
+For commands that accept `--vcf-input` and `--input` for the same VCF,
+`--vcf-input` wins over `--input`. Either explicit option skips VCF selection
+from the genome folder, even when it has multiple VCFs. `vcf phase` and
+`vcf trio` have separate input roles.
+
 ## Example genomes
 
 `example-genome` downloads curated 1000 Genomes/HGSVC2 datasets into the

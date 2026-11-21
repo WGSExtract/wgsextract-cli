@@ -16,6 +16,13 @@ from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import chromosome_aliases
 
+from .breadth import (
+    breadth_map,
+    exact_breadth,
+    parse_legacy_bincvg,
+    parse_samtools_coverage,
+    whole_contig_ns,
+)
 from .metrics import IdxStat, contig_key, is_primary_contig
 
 
@@ -187,7 +194,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             "  # Segs Map      - Count of read segments mapped to this sequence.",
             "  Map Gbases      - Billions of bases mapped to this sequence.",
             "  Map ARD         - Average Read Depth (Gbases / Effective Length).",
-            "  Breadth Coverage- % of sequence covered by at least one read.",
+            "  Breadth Coverage- % of non-N sequence covered by at least one read.",
             "",
             "METRICS SUMMARY:",
             "  MAPPED          - Statistics for reads aligned to the reference.",
@@ -266,49 +273,22 @@ def is_fresh_output(path: str, input_p: str) -> bool:
         return False
 
 
-def _breadth_map(
-    covered: Mapping[str, tuple[int, int]], with_total: bool, approx: bool = False
+def existing_full_coverage(
+    input_p: str,
+    out_p: str,
+    n_lengths: Mapping[str, int],
+    contig_lengths: Mapping[str, int],
 ) -> dict[str, str]:
-    """Format per-contig (covered, total) base counts as breadth percentages."""
-    prefix = "~" if approx else ""
-    result = {
-        contig_key(name): f"{prefix}{cov / total * 100:.0f} %"
-        for name, (cov, total) in covered.items()
-        if total > 0
-    }
-    if with_total:
-        primary = [v for k, v in covered.items() if is_primary_contig(k)]
-        total_bp = sum(total for _cov, total in primary)
-        if total_bp:
-            covered_bp = sum(cov for cov, _total in primary)
-            result["TOTAL_EST"] = f"{prefix}{covered_bp / total_bp * 100:.0f} %"
-    return result
-
-
-def _parse_samtools_coverage(path: str) -> dict[str, tuple[int, int]]:
-    covered: dict[str, tuple[int, int]] = {}
-    with open(path) as f:
-        for line in f:
-            if line.startswith("#"):
-                continue
-            p = line.rstrip("\n").split("\t")
-            if len(p) < 5:
-                continue
-            start, end, covbases = int(p[1]), int(p[2]), int(p[4])
-            covered[p[0]] = (covbases, end - start + 1)
-    return covered
-
-
-def _parse_legacy_bincvg(path: str) -> dict[str, tuple[int, int]]:
-    """Parse the older ``samtools depth | awk`` ``_bincvg.csv`` summary."""
-    covered: dict[str, tuple[int, int]] = {}
-    with open(path) as f:
-        next(f, None)
-        for line in f:
-            p = line.rstrip("\n").split("\t")
-            if len(p) > 7:
-                covered[p[0]] = (int(p[2]), int(p[7]))
-    return covered
+    """Breadth from a whole-file ``samtools coverage`` result newer than the
+    input, or {} when there is none; never runs anything."""
+    if not is_fresh_output(out_p, input_p):
+        return {}
+    try:
+        covered = parse_samtools_coverage(out_p)
+    except (OSError, ValueError, IndexError) as exc:
+        logging.warning(f"Ignoring unreadable coverage file {out_p}: {exc}")
+        return {}
+    return exact_breadth(covered, True, n_lengths, contig_lengths) if covered else {}
 
 
 def run_full_coverage(
@@ -317,16 +297,23 @@ def run_full_coverage(
     out_p: str,
     region: str | None = None,
     legacy_p: str | None = None,
+    n_lengths: Mapping[str, int] | None = None,
+    contig_lengths: Mapping[str, int] | None = None,
 ) -> dict[str, str]:
-    """Exact per-contig breadth of coverage via ``samtools coverage``.
+    """Exact per-contig breadth of coverage via ``samtools coverage``, leaving
+    out the `n_lengths` N bases of contigs covered whole (by `contig_lengths`).
 
     A previous result is reused only when it is newer than the input. For
     whole-file runs an up-to-date legacy ``_bincvg.csv`` is also accepted.
     """
+
+    def breadth(covered: Mapping[str, tuple[int, int]]) -> dict[str, str]:
+        return exact_breadth(covered, with_total, n_lengths, contig_lengths)
+
     with_total = not region
-    candidates = [(out_p, _parse_samtools_coverage)]
+    candidates = [(out_p, parse_samtools_coverage)]
     if legacy_p:
-        candidates.append((legacy_p, _parse_legacy_bincvg))
+        candidates.append((legacy_p, parse_legacy_bincvg))
     for cached, parser in candidates:
         if is_fresh_output(cached, input_p):
             try:
@@ -337,7 +324,7 @@ def run_full_coverage(
             if covered:
                 logging.info(f"Using existing coverage results from {cached}")
                 current_result().add_output(cached, "coverage")
-                return _breadth_map(covered, with_total)
+                return breadth(covered)
 
     logging.info(f"Calculating breadth of coverage... saving to {out_p}")
     tmp_p = out_p + ".tmp"
@@ -353,7 +340,7 @@ def run_full_coverage(
         if Path(tmp_p).exists():
             Path(tmp_p).unlink()
     current_result().add_output(out_p, "coverage")
-    return _breadth_map(_parse_samtools_coverage(out_p), with_total)
+    return breadth(parse_samtools_coverage(out_p))
 
 
 def _resolve_sample_targets(
@@ -724,8 +711,13 @@ def run_sampled_coverage(
     idx_stats: Sequence[IdxStat],
     out_p: str,
     region: str | None = None,
+    n_lengths: Mapping[str, int] | None = None,
 ) -> dict[str, str]:
-    """Estimate breadth of coverage from evenly spaced 1 kb windows."""
+    """Estimate breadth of coverage from evenly spaced 1 kb windows, leaving
+    out the `n_lengths` N bases of contigs sampled whole.
+
+    Windows falling in N runs are uncovered, so the covered share of a
+    contig's span estimates its covered bases, of which the Ns are none."""
     targets = _resolve_sample_targets(idx_stats, region)
     if not targets:
         raise WGSExtractError(
@@ -753,7 +745,9 @@ def run_sampled_coverage(
         )
         for name in sampled
     }
-    final_map = _breadth_map(covered, with_total=not region, approx=True)
+    lengths = {s["name"]: s["length"] for s in idx_stats}
+    ns = whole_contig_ns(n_lengths or {}, lengths, spans)
+    final_map = breadth_map(covered, with_total=not region, approx=True, excluded=ns)
     with open(out_p, "w", newline="\n") as f:
         json.dump(final_map, f)
     current_result().add_output(out_p, "coverage")

@@ -65,7 +65,11 @@ marker = os.path.join(prefix, "conda-meta", "pixi")
 if sub in ("install", "list", "run") and "--no-install" not in flags:
     os.makedirs(os.path.dirname(marker), exist_ok=True)
     open(marker, "w").write("{{}}")
-if sub == "list":
+if sub == "clean":
+    # pixi removes the environment; here its install marker is enough.
+    if os.path.isfile(marker):
+        os.remove(marker)
+elif sub == "list":
     # pixi sizes the app's editable source as "./" from the current directory,
     # walking all of it; past the limit, stand in for that taking too long.
     limit = state["list_walk_limit"]
@@ -115,7 +119,8 @@ class FakePixi:
     """A pixi stand-in for one workspace, with environments under ``root/envs``.
 
     Like pixi, ``run``, ``list`` and ``install`` install a missing environment
-    (marked by ``conda-meta/pixi``) unless given ``--no-install``, and
+    (marked by ``conda-meta/pixi``) unless given ``--no-install``, ``clean``
+    removes it, and
     ``run --no-install`` of a missing one runs the host's programs. Without
     ``--manifest-path`` it finds the workspace in the current directory or a
     parent. It knows only the workspace at ``manifest``; ``None`` is any.

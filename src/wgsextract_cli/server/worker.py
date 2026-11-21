@@ -1,6 +1,6 @@
 """A job's worker process: runs one operation through the typed API.
 
-Reads ``{"op", "params", "config", "debug", "allowed"}`` as one JSON line on
+Reads ``{"op", "params", "config", "debug", "allowed", "card"}`` as one JSON line on
 stdin, then
 writes ``{"event": "progress", ...}`` lines and a final ``{"event":
 "result", "result": <manifest>}`` to stdout. A ``cancel`` line on stdin, or
@@ -42,7 +42,7 @@ def _private_pipes() -> tuple[TextIO, TextIO]:
 
 def main() -> int:
     from wgsextract_cli.cli.bootstrap import configure_logging
-    from wgsextract_cli.core import read_scope
+    from wgsextract_cli.core import execution_context, read_scope
     from wgsextract_cli.core.config import settings
     from wgsextract_cli.core.keep_awake import keep_awake
 
@@ -79,7 +79,11 @@ def main() -> int:
         if allowed is None
         else read_scope.limited_to(PathGuard(allowed).allows)
     )
-    with scope, keep_awake(bool(settings.get("keep_awake"))):
+    with (
+        scope,
+        keep_awake(bool(settings.get("keep_awake"))),
+        execution_context.bound(result_card=request.get("card")),
+    ):
         result = op.run(params, progress=progress, cancel=token, check=False)
     emit({"event": "result", "result": result.to_dict()})
     return 0

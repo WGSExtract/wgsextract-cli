@@ -14,6 +14,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
+from wgsextract_cli.core.reference_evidence import header_declares_gvcf
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
@@ -61,7 +62,13 @@ _IUPAC_BASES = {
 
 
 def is_gvcf(vcf_path: str) -> bool:
-    """Whether a VCF has gVCF reference blocks (so absent sites are uncalled)."""
+    """Detect declared gVCFs before probing for reference blocks."""
+    header = run_command(
+        ["bcftools", "view", "-h", vcf_path], capture_output=True
+    ).stdout
+    if header_declares_gvcf(header):
+        return True
+
     proc = popen(
         ["bcftools", "view", "-H", vcf_path],
         stdout=subprocess.PIPE,

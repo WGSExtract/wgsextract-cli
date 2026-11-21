@@ -5,43 +5,6 @@
   "sidebarPlacement": "bottom",
   "sections": [
     {
-      "id": "dependency-checks",
-      "title": "sections.settings.dependency-checks.title",
-      "summary": "sections.settings.dependency-checks.summary",
-      "actions": [
-        {
-          "id": "deps-check",
-          "title": "actions.settings.dependency-checks.deps-check.title",
-          "tooltip": "actions.settings.dependency-checks.deps-check.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "deps",
-              "check"
-            ],
-            "optionalArguments": [
-              [
-                "--tool",
-                "{{deps_tool}}"
-              ]
-            ]
-          }
-        }
-      ],
-      "iconName": "precheck",
-      "textIcon": "☑️",
-      "controls": [
-        {
-          "id": "deps_tool",
-          "label": "controls.cli.deps_tool.label",
-          "kind": "text",
-          "tooltip": "controls.cli.deps_tool.tooltip",
-          "advancedOnly": true
-        }
-      ],
-      "collapsed": true
-    },
-    {
       "id": "report-issue",
       "title": "sections.settings.v066.report-issue.title",
       "subtitle": "sections.settings.v066.report-issue.subtitle",

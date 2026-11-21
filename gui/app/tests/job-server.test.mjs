@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import test from "node:test";
 const { createProcessManager } = await import("../dist/web/src/server/process-runner.js");
 const { createJobServer } = await import("../dist/web/src/server/job-server.js");
 const { runActionPreferringServer } = await import("../dist/web/src/server/job-server-action.js");
+const { startJob } = await import("../dist/web/src/server/job-server-client.js");
 
 // A job server speaking the protocol in docs/job-server.md. `slow` runs until cancelled;
 // `quick` finishes at once and logs the parameters it received, `noisy` the same with a 2 MiB log;
@@ -59,7 +61,8 @@ const server = createServer(async (request, response) => {
       response.end(JSON.stringify({ error: { code: "path_not_allowed", message: "not allowed" } }));
       return;
     }
-    const job = { id: "job" + (jobs.size + 1), status: "running", events: [], log: "params " + body + "\n" };
+    const query = new URL(request.url, "http://x").search;
+    const job = { id: "job" + (jobs.size + 1), status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
     jobs.set(job.id, job);
     response.writeHead(202, { "content-type": "application/json" }).end(JSON.stringify(job));
     send(job, "status", { status: "running" });
@@ -107,6 +110,47 @@ async function withBundle(t) {
   return { bundleRoot, manager, startServer };
 }
 
+test("#1173: a locally launched server cannot publish an external job destination", async (t) => {
+  const bundle = await withBundle(t);
+  await writeFile(path.join(bundle.bundleRoot, "server.mjs"),
+    'console.log(JSON.stringify({url:"https://genomes.example/v1",token:"synthetic-token"}));');
+  assert.equal(await bundle.startServer().address(), undefined);
+});
+
+test("#1173: job credentials and sample parameters never reach a non-loopback URL", async (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("unexpected network request"); });
+  for (const url of ["https://genomes.example/v1", "http://localhost:8080/v1", "http://0.0.0.0:8080/v1"]) {
+    const result = await startJob({ url, token: "synthetic-token" }, "quick", { input: "/private/sample.bam" });
+    assert.equal(result.started, false);
+    assert.match(result.reason, /loopback/);
+  }
+});
+
+test("#1173: redirects cannot forward a local job's sample parameters to another service", async (t) => {
+  let unwantedRequests = 0;
+  const sink = createServer((_request, response) => {
+    unwantedRequests++;
+    response.end();
+  });
+  await new Promise((resolve) => sink.listen(0, "127.0.0.1", resolve));
+  const redirect = createServer((_request, response) => response.writeHead(307, {
+    location: `http://127.0.0.1:${sink.address().port}/unapproved`,
+  }).end());
+  await new Promise((resolve) => redirect.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    for (const server of [redirect, sink]) {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+  const result = await startJob(
+    { url: `http://127.0.0.1:${redirect.address().port}/v1`, token: "synthetic-token" },
+    "quick", { input: "/private/sample.bam" },
+  );
+  assert.equal(result.started, false);
+  assert.equal(unwantedRequests, 0);
+});
+
 function action(operation, parameters = {}) {
   return {
     id: "coverage",
@@ -135,6 +179,16 @@ test("an action with a serverOperation runs as a job, with its progress in the o
   // An empty placeholder leaves its parameter out; non-string values are sent as written.
   assert.match(output, /params \{"input":"\/data\/sample\.bam","bins":true\}/);
   assert.doesNotMatch(output, /ran the command/);
+});
+
+test("an action with resultCard asks the job server for the job's card; others don't", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer();
+  const plain = await run(bundle, action("quick", { input: "{{bam}}" }), jobServer);
+  const carded = await run(bundle, { ...action("quick", { input: "{{bam}}" }), resultCard: true }, jobServer);
+
+  assert.doesNotMatch(plain.output, /query/);
+  assert.match(carded.output, /params \{"input":"\/data\/sample\.bam"\} query \?card=1/);
 });
 
 test("a job's result document is read from its record, which wgsextract serve sends without its schema", async (t) => {
