@@ -106,6 +106,10 @@ shared Pixi setup also exercise the integrations themselves. Drafts allocate no
 runner. Main/nightly Ubuntu runs retain all five suites, subject to the existing
 exact-head nightly guard. Manual dispatch of `optional_tools.yml` validates just
 this small lane on a branch.
+Before the new workflow reaches main, dispatch the existing `ubuntu_ci.yml`
+with `optional-tools-only=true` on the branch instead. This explicit manual
+override skips its normal jobs; default dispatches, PRs, main and schedules
+retain their existing coverage.
 
 The existing pinned Pixi action installs `dev verifybamid2 freebayes longtr modkit expansionhunter`
 under the separate lockfile-keyed `optional-tools` cache family, seeded only from

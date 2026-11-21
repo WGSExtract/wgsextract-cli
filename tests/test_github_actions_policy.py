@@ -141,6 +141,16 @@ def test_1199_optional_ci_is_cached_linux_only_and_required() -> None:
     ]
     assert "github.event_name != 'pull_request'" in optional
     assert "platform-certified" not in optional
+    assert "optional-tools-only:" in ubuntu
+    assert (
+        "default: false"
+        in ubuntu.split("optional-tools-only:", 1)[1].split("permissions:", 1)[0]
+    )
+    for job_name in ("lint", "test-ubuntu", "imputation", "ont-hg002"):
+        job = ubuntu.split(f"\n  {job_name}:\n", 1)[1]
+        condition = re.search(r"^\s+if: (.*)$", job, re.M)
+        assert condition is not None
+        assert "!inputs.optional-tools-only" in top_level_conjuncts(condition[1])
     for workflow in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml"):
         assert "optional_tools.yml" not in (WORKFLOWS / workflow).read_text()
 
