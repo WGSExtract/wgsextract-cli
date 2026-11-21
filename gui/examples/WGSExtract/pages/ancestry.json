@@ -238,6 +238,7 @@
       "actions": [
         {
           "id": "run-yleaf",
+          "resultCard": true,
           "title": "actions.ancestry.ancestry-inputs.run-yleaf.title",
           "tooltip": "actions.ancestry.ancestry-inputs.run-yleaf.tooltip",
           "command": {
@@ -302,6 +303,7 @@
         },
         {
           "id": "run-haplogrep",
+          "resultCard": true,
           "title": "actions.ancestry.ancestry-inputs.run-haplogrep.title",
           "tooltip": "actions.ancestry.ancestry-inputs.run-haplogrep.tooltip",
           "command": {
@@ -424,6 +426,7 @@
       "actions": [
         {
           "id": "run-y-str",
+          "resultCard": true,
           "title": "actions.ancestry.v066.y-str.title",
           "tooltip": "actions.ancestry.v066.y-str.tooltip",
           "command": {

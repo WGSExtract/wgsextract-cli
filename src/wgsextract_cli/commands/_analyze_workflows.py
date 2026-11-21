@@ -17,6 +17,7 @@ from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.result_card import CARD_ROLE
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, StepRun
 from wgsextract_cli.core.temp_directory import (
@@ -464,7 +465,13 @@ def record_step_result(document: Path) -> None:
     if step.get("manifest"):
         result.add_output(step["manifest"], "step_manifest", kind="json")
     for output in outputs:
-        if isinstance(output, dict) and output.get("path") and output.get("role"):
+        # A step's card describes that step; the analyze run gets its own.
+        if (
+            isinstance(output, dict)
+            and output.get("path")
+            and output.get("role")
+            and output.get("role") != CARD_ROLE
+        ):
             result.add_output(
                 output["path"],
                 output["role"],

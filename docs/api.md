@@ -1510,6 +1510,7 @@ Call with GATK; output role `variants`.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks). |
+| `pair_hmm_neon` | `Path \| None` | `None` | `--pair-hmm-neon` | Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See packaging/arm64/gkl/README.md. Not with --gpu or --scatter. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes gatk.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -2314,7 +2315,7 @@ fastVEP's databases. Shows each source's terms; reruns resume.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
-| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: ref/acmg/sa in the library). |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: downloads/acmg/sa in the library). |
 | `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
 | `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
 | `site_data` | `str \| None` | `None` | `--site-data` | per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB downloaded for a genome); vcf acmg reads each input's own sites of them. library builds them. Default: as the folder was built, else library. One of: `library`, `per-run` |
@@ -2578,7 +2579,7 @@ decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one; download permits building it if missing. |
+| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's downloads/t1k_hla one; download permits building it if missing. |
 
 ### `api.genotyping.repeats(TypingStrParams)`
 

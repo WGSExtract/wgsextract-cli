@@ -48,7 +48,7 @@ class TestRefLibrarySmoke:
         # Mock a small library structure
         self.reflib = os.path.join(self.outdir, "reflib")
         os.makedirs(os.path.join(self.reflib, "genomes"), exist_ok=True)
-        os.makedirs(os.path.join(self.reflib, "ref"), exist_ok=True)
+        os.makedirs(os.path.join(self.reflib, "downloads"), exist_ok=True)
 
     def test_ref_gene_map(self):
         # Changed from download-genes to gene-map

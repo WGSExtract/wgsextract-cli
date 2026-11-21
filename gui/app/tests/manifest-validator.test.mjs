@@ -64,6 +64,16 @@ test("manifest validator checks the result document declaration", () => {
   rejects((manifest) => { manifest.resultDocument = { format: "other/1", executables: ["tool"] }; }, /resultDocument\.format/);
   rejects((manifest) => { manifest.resultDocument = { format: "wgsextract.result/1", executables: [] }; }, /resultDocument\.executables/);
   rejects((manifest) => { manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: [1] }; }, /resultDocument\.arguments/);
+  rejects((manifest) => { manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], cardArguments: "--card" }; }, /resultDocument\.cardArguments/);
+});
+
+test("manifest validator checks how an action shows its result", () => {
+  const manifest = validManifest();
+  Object.assign(manifest.pages[0].sections[0].actions[0], { resultCard: true, openOutput: ["multiqc_report", "fastqc_report_html"] });
+  assert.doesNotThrow(() => validateManifest(manifest));
+  rejects((manifest) => { manifest.pages[0].sections[0].actions[0].resultCard = "yes"; }, /resultCard/);
+  rejects((manifest) => { manifest.pages[0].sections[0].actions[0].openOutput = []; }, /openOutput/);
+  rejects((manifest) => { manifest.pages[0].sections[0].actions[0].openOutput = "report"; }, /openOutput/);
 });
 
 test("manifest validator rejects paths that escape the bundle", () => {

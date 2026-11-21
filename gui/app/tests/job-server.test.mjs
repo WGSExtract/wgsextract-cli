@@ -61,7 +61,8 @@ const server = createServer(async (request, response) => {
       response.end(JSON.stringify({ error: { code: "path_not_allowed", message: "not allowed" } }));
       return;
     }
-    const job = { id: "job" + (jobs.size + 1), status: "running", events: [], log: "params " + body + "\n" };
+    const query = new URL(request.url, "http://x").search;
+    const job = { id: "job" + (jobs.size + 1), status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
     jobs.set(job.id, job);
     response.writeHead(202, { "content-type": "application/json" }).end(JSON.stringify(job));
     send(job, "status", { status: "running" });
@@ -178,6 +179,16 @@ test("an action with a serverOperation runs as a job, with its progress in the o
   // An empty placeholder leaves its parameter out; non-string values are sent as written.
   assert.match(output, /params \{"input":"\/data\/sample\.bam","bins":true\}/);
   assert.doesNotMatch(output, /ran the command/);
+});
+
+test("an action with resultCard asks the job server for the job's card; others don't", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer();
+  const plain = await run(bundle, action("quick", { input: "{{bam}}" }), jobServer);
+  const carded = await run(bundle, { ...action("quick", { input: "{{bam}}" }), resultCard: true }, jobServer);
+
+  assert.doesNotMatch(plain.output, /query/);
+  assert.match(carded.output, /params \{"input":"\/data\/sample\.bam"\} query \?card=1/);
 });
 
 test("a job's result document is read from its record, which wgsextract serve sends without its schema", async (t) => {

@@ -613,6 +613,7 @@ def add_shared_arguments(
         help="Print the result manifest (wgsextract.result/1) as JSON on stdout "
         "instead of human-readable output; logs stay on stderr.",
     )
+    add("--card", action=argparse.BooleanOptionalAction, help=CLI_HELP["arg_card"])
     add("--quiet", action="store_true", help="Suppress all informational logs.")
     add("--debug", action="store_true", help=CLI_HELP["arg_debug"])
     add(

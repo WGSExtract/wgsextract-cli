@@ -24,7 +24,7 @@ class TestVcfAnnotationSmoke:
     def setup_vcf_data(self, tmp_path):
         self.outdir = str(tmp_path)
         self.refdir = os.path.join(self.outdir, "fake_ref")
-        os.makedirs(os.path.join(self.refdir, "ref"), exist_ok=True)
+        os.makedirs(os.path.join(self.refdir, "downloads"), exist_ok=True)
         os.makedirs(os.path.join(self.refdir, "genomes"), exist_ok=True)
 
         # Create dummy hg38 ref
@@ -70,7 +70,7 @@ class TestVcfAnnotationSmoke:
                 subprocess.run(["tabix", "-p", "vcf", self.input_vcf])
 
     def _create_ann_file(self, filename, header, rows, tbx_args):
-        path = os.path.join(self.refdir, "ref", filename)
+        path = os.path.join(self.refdir, "downloads", filename)
         raw_path = path.replace(".gz", "")
         with open(raw_path, "w") as f:
             f.write(header + "\n")
@@ -234,7 +234,7 @@ class TestVcfChainAnnotateSmoke:
         # Similar setup to above but for multiple tools
         self.outdir = str(tmp_path)
         self.refdir = os.path.join(self.outdir, "fake_ref")
-        os.makedirs(os.path.join(self.refdir, "ref"), exist_ok=True)
+        os.makedirs(os.path.join(self.refdir, "downloads"), exist_ok=True)
         os.makedirs(os.path.join(self.refdir, "genomes"), exist_ok=True)
 
         # Reference (MUST have hg38 in name)
@@ -270,7 +270,7 @@ class TestVcfChainAnnotateSmoke:
     def test_chain_annotate(self):
         # We need to place files where ReferenceLibrary(ref) can find them
         # ref is genomes/hg38.fa.gz, so it looks in ../ref/ relative to genomes/
-        ref_subdir = os.path.join(self.refdir, "ref")
+        ref_subdir = os.path.join(self.refdir, "downloads")
         os.makedirs(ref_subdir, exist_ok=True)
 
         # REVEL

@@ -46,7 +46,7 @@ jobs:
       os: windows
       runner: windows-latest
       timeout-minutes: 54
-      environments: default dev gatk vep-rs
+      environments: default dev gatk vep-rs fastvep
       tests: ${{ inputs.tests || 'all' }}
       smoke-only: ${{ inputs.smoke-only == true }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}

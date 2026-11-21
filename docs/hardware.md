@@ -333,6 +333,145 @@ contain this table. Only M1 and the 10-core M1 Pro are available for measurement
 | M6 (10-core) | 2S + 3P + 5E | 10 | 5 | Derived |
 | M6 (12-core) | 2S + 4P + 6E | 12 | 6 | Derived |
 
+### Experimental Apple Silicon NEON PairHMM
+
+`vcf gatk --pair-hmm-neon JAR` opts into the existing native ARM64 GKL
+PairHMM port, built for macOS. It is **not Parabricks**; `--gpu` keeps its
+existing meaning. GATK 4.6.2.0, JDK 17+, Apple Silicon and locally installed
+libomp are required. No dependency is installed or downloaded by calling.
+See [build, fallback and native validation instructions](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117).
+Metal is not used. NEON removes PairHMM as the main bottleneck in ordinary
+slices, but the difficult-window measurements below still spend substantial
+time in PairHMM.
+
+**Opt-in, not a default.** It calls the same sites, alleles, GT and FILTER as
+the Java PairHMM across the five-window HG002 panel below, 9.1× faster. In
+difficult regions (pericentromere, high depth) a few reads near the
+informative cutoff are counted differently, so 9 of 306,024 gVCF reference
+blocks and 8 final records differ in AD/DP, QUAL or annotations (for example
+AD/DP `63,38`/101 vs `62,38`/100). GATK's own x86 GKL AVX PairHMM is not
+bit-identical to Java either; #1193 measures how far apart those two are.
+
+Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
+17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
+four native threads and 4 GiB Java heap. JVM startup is included;
+Smith-Waterman stays Java.
+
+| Backend | Wall seconds | PairHMM timer seconds | Peak process RSS MiB |
+| :--- | ---: | ---: | ---: |
+| Java LOGLESS_CACHING | 396.37 | 238.374 | 658.8 |
+| NEON float (rejected) | 175.61 | 10.094 | 766.7 |
+| NEON double (selected) | 179.75 | 15.373 | 770.8 |
+
+Stock GATK rejects its bundled x86 dylibs and selects Java LOGLESS_CACHING.
+An initial 1 Mb slice showed PairHMM at 51.6% of wall; in this expanded
+region it is 60.1%. NEON double reduces HaplotypeCaller wall by **54.7%**
+and leaves PairHMM at 8.6% of wall, no longer dominant.
+
+All 1,631,572 gVCF records have identical sites, alleles, GT and FILTER;
+all 1,612,162 reference blocks match completely. One variant's non-reference
+PL annotations differ; the final genotyped VCF's 17,107 records match
+byte-for-byte apart from headers. Float was rejected because one block's DP was 50
+instead of Java's 49 at chr20:17778563-17778607. A separate 200 kb control
+reproduces that mismatch with float and matches every gVCF record with
+double. The CLI therefore always requests native double precision.
+
+32,000 synthetic likelihoods per precision/native-thread configuration
+(one and four threads) are within 0.00001 absolute log10 of Java; observed
+maximum errors are 0.00000425 (float) and 0.00000106 (double).
+JVM thread FP-state restoration passes for both thread counts.
+
+Full `vcf gatk --reference-evidence gvcf` timings on the initial 1 Mb slice
+(`--threads 4 --qc-min-depth 0`, JVM default heap) confirm the CLI gate:
+interleaved Java/NEON/NEON/Java runs took **45.29 / 25.00 / 25.61 / 45.38 s**.
+Mean wall falls from 45.34 to 25.31 s (**44.2%**). Every CLI gVCF body
+(25,534 records) and final VCF body (1,779 calls) matches exactly.
+
+These are **bounded-region prototype results**, not full chr20 or
+whole-genome performance/accuracy qualification. Do not extrapolate RSS
+from the slice or treat the sidecar as a qualified default.
+
+The 2026-11-19 whole-chr20 real-CLI qualification attempt did **not**
+complete: Java's progress meter reached chr20:29,840,219 after 283.6
+traversal minutes before cancellation. No final gVCF or genotyped VCF was
+published, and the NEON comparison was not started. This is an incomplete
+run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
+the slow pericentromeric traversal; its speedup is not a whole-chromosome
+runtime estimate.
+
+#### Five-window panel: identical calls, small read-count differences
+
+On 2026-11-20, five matched intervals totaling **12.551 Mb** replaced the
+infeasible whole-chr20 comparison. Each Java/NEON run used the real CLI:
+`vcf gatk --threads 4 --reference-evidence gvcf --qc-min-depth 0`, default
+JVM heap, the same shared HG002 BAM/hs38, and no scattering. This differs
+from the direct 10 Mb HC microbenchmark's explicit 4 GiB heap; those results
+are not combined. The sidecar and scientific options were unchanged.
+
+| Window, 1-based inclusive | Selection evidence |
+| :--- | :--- |
+| chr20:1,000,001–4,000,000 | Ordinary p-arm control: mean depth 38.15×, only 819 bases at ≥100×. |
+| chr20:17,000,001–20,000,000 | Low complexity: 48-base homopolymer, 72-base GAAA tandem tract at 17,347,788; includes the prior float block-DP regression and double non-reference PL site. |
+| chr20:26,000,001–29,050,000 | Pericentromere: mean 56.71×, maximum 3,432×; 441,098 bases at ≥100×. Prior whole-chr20 Java traversal took roughly 31 minutes through this vicinity. |
+| chr20:29,060,001–29,061,000 | Narrow slow-region sentinel: the previous unpartitioned progress meter advanced 980 bases near here in 12.8 minutes. Mean depth 81.81×. |
+| chr20:31,000,001–34,500,000 | Proximal q-arm high-depth stress: mean 53.91×, maximum 23,756×; 25,326 bases at ≥500×; 60-base homopolymer. |
+
+Depth and repeat evidence comes from the existing BAM and hs38, not downloaded
+stratification tracks. High depth is a duplication-like stress proxy, not proof
+of membership in an annotated segmental duplication. The pericentromeric and
+q-arm windows contain 90,575 and 102,506 reference N bases, respectively.
+Distal q-arm sequence is not sampled. Interval clipping changes assembly
+context: the 1 kb sentinel is much cheaper than the unpartitioned traversal
+and does not reproduce that traversal's full pathological workload.
+
+All values below are **Java → NEON double**. Wall/CPU include CLI startup,
+HaplotypeCaller, GenotypeGVCFs and output; RSS is the largest process,
+not simultaneous aggregate memory. PairHMM share uses its logged compute
+timer divided by complete CLI wall time.
+
+| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Exact parity |
+| :--- | ---: | ---: | ---: | ---: | ---: | :--- |
+| Ordinary p-arm | 168.43 → 68.98 | 197.17 → 114.16 | 627.0 → 815.5 | 107.479 → 6.458 | 63.8% → 9.4% | Pass |
+| Repeat control | 155.67 → 67.90 | 183.17 → 109.94 | 640.2 → 921.6 | 93.092 → 5.841 | 59.8% → 8.6% | Pass |
+| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | Differs |
+| Slow sentinel | 8.67 → 6.30 | 14.12 → 11.62 | 529.1 → 490.9 | 2.440 → 0.145 | 28.1% → 2.3% | Pass |
+| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | Differs |
+| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | Differs |
+
+The observed panel speedup is **9.14× (89.1% less wall time)**. Each backend/window
+ran once, sequential Java then NEON, with warm caches on a shared desktop;
+the exclusive bench queue excludes other queued heavy jobs, not all desktop
+activity. All ten turns finished within the independently enforced 80-minute
+deadline (largest: 75.46 minutes). A forced process-group timeout smoke
+terminated both a TERM-resistant parent and its child without leaks.
+
+Ordered sites, alleles, GT and FILTER match across **340,743 gVCF records**
+and **28,065 final VCF records**. Of **306,024 reference blocks**, **nine
+do not match completely**: six in the pericentromeric window, three in the
+q-arm window. **Eight final VCF records** differ in more than the allowed
+PL-level exception. At chr20:28,830,216, for example, sample AD/DP changes
+from `63,38`/101 to `62,38`/100; the next block's DP changes 112→111.
+At chr20:31,068,903, block DP changes 924→920, and the nearby final variants
+also change depth and other annotations. These differences are why the
+option stays opt-in rather than a default.
+The ordinary and repeat windows have only three already-characterized
+variant-gVCF `<NON_REF>` PL differences; their final VCF bodies are identical.
+
+Independent real-CLI **20 kb controls reproduce the failures**. At
+chr20:28,820,001–28,840,000, all twelve differing gVCF rows (six blocks)
+and six final-VCF mismatch pairs reproduce exactly, taking
+214.14→26.08 s Java→NEON. At chr20:31,060,001–31,080,000, two blocks and
+both nearby final variants still differ beyond PL alone, taking
+3,006.57→208.72 s. The q-arm control's absolute annotations change with
+clipped assembly context, but its depth/allele-depth discrepancies recur
+at the same sites. Control timings are excluded from the panel totals.
+
+Double precision fixes the earlier ordinary-slice float regression, but is
+**insufficient for exact difficult-region parity**. Native likelihood/vector
+tolerance tests and passing software certification do not establish this
+scientific gate. Do not infer whole-chromosome/WGS equivalence, extend this
+speedup to other chips, or conclude PairHMM can never remain a bottleneck.
+
 ### Around the aligner
 
 Short reads stream from the aligner through samblaster into `samtools sort`
@@ -771,7 +910,20 @@ give no meaningful benefit.
   runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
   call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
-  call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
-  same calls as Google's image (**measured**). Linux ARM64 has a
+  call_variants on the GPU: the original chr20 qualification took about
+  5 minutes for the **whole pipeline** on an M1 Pro, with the same calls as
+  Google's image (**measured**). Its self-contained 0.4.1 build reduces
+  make_examples wall/CPU medians by 10.7%/9.8% against released 0.4.0,
+  retaining chr20 calls and gVCF blocks. A measured HG002 35x whole-genome
+  comparison (ten workers, batch 1024, gVCF) took **8,831.4 → 7,984.3 s**
+  wall and **50,708.6 → 46,455.5 s** CPU: 9.6% / 8.4% less.
+  Peak RSS grew **11.95 → 13.32 GB** (about 1.4 GB), sampled temporary
+  space **29.4 → 29.5 GB**, with zero swap growth. All **7,709,239 VCF**
+  and **72,210,019 gVCF** non-header records, including **64,500,780
+  reference blocks**, have identical full-body SHA-256 hashes.
+  One run each on the 32 GiB M1 Pro only, not a GPU speedup claim or a
+  qualification of the **16 GB base M1**; that remains follow-up.
+  See [measurements and qualification limits](resource_estimates.md#apple-silicon-cpu-hill-climb).
+  Linux ARM64 has a
   [native CPU build](deepvariant-arm64.md); native Windows has no DeepVariant
   ([Windows](windows.md)).

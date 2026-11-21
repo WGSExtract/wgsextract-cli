@@ -62,8 +62,8 @@ Use the same `config.toml` as the desktop, or pass `--ref /path/to/reference-lib
 Without `--download`, the command validates the installed asset offline;
 missing or invalid data produces an error naming it and the explicit command.
 It does not inherit the persistent download opt-in. Tables are installed as
-`ref/cytobands_hg19.tsv` and `ref/cytobands_hg38.tsv` in the configured reference
-library. The viewer never downloads them.
+`downloads/cytobands_hg19.tsv` and `downloads/cytobands_hg38.tsv` in the configured
+reference library. The viewer never downloads them.
 Validation-only runs record the table as an input and leave its installation
 manifest unchanged. The default is the configured reference library even when
 `reference_fasta` points elsewhere; only an explicit `--ref` FASTA selects its

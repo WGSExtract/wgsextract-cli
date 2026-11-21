@@ -65,6 +65,13 @@ from wgsextract_cli.server.operations import params_from_json as params_from_jso
         ("info", {"input": "\\\\attacker\\share\\a.bam"}, 403, "path_not_allowed"),
         ("info", {"input": "{work}/a.bam", "bogus": 1}, 400, "usage"),
         ("vcf/snp", {"input": "{work}/a.bam", "threads": "four"}, 400, "usage"),
+        # #1117: executable sidecars must remain local-only, even in allowed folders.
+        (
+            "vcf/gatk",
+            {"input": "{work}/a.bam", "pair_hmm_neon": "{work}/neon.jar"},
+            400,
+            "usage",
+        ),
         (
             "lineage/mt-haplogroup",
             {"input": "{work}/a.bam", "haplogrep_path": "/bin/sh"},

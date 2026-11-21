@@ -394,10 +394,14 @@ class _FastVep:
         self._raise_failure(strip, fastvep)
 
     def _raise_failure(self, strip: int, fastvep: int) -> None:
-        # bcftools killed by SIGPIPE was writing to a fastVEP that had stopped:
-        # fastVEP's error is the one to report.
-        if strip != 0 and not (_is_sigpipe(strip) and fastvep != 0):
-            detail = "".join(self.strip_tail).strip()
+        detail = "".join(self.strip_tail).strip()
+        # Windows reports a failed stdout write instead of SIGPIPE when fastVEP
+        # stops. Preserve genuine input errors, but report the downstream cause.
+        broken_pipe = _is_sigpipe(strip) or any(
+            line.strip() == "[main_vcfannotate] Error: failed to write to -"
+            for line in detail.splitlines()
+        )
+        if strip != 0 and not (broken_pipe and fastvep != 0):
             raise WGSExtractError(f"bcftools failed reading the input: {detail}")
         if fastvep != 0:
             detail = "\n".join([*self.setup[-10:], *self.tail]).strip()

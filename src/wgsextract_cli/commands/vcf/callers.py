@@ -22,6 +22,7 @@ from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.native_pairhmm import neon_pairhmm_command
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
@@ -268,6 +269,17 @@ def run_gatk(params: VcfGatkParams) -> None:
 
     from .caller_ploidy import GvcfEngine, call_partitioned
 
+    gatk_command = ["gatk"]
+    if params.pair_hmm_neon is not None:
+        if params.gpu or params.scatter:
+            raise UsageError(
+                "--pair-hmm-neon cannot be combined with --gpu or --scatter."
+            )
+        gatk_command = neon_pairhmm_command(params.pair_hmm_neon, _gatk_version())
+        if ultima.alignment_flow_data(str(params.input), params.ref).flow_aware:
+            raise UsageError(
+                "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
+            )
     require_native_tool("gatk")
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
@@ -309,6 +321,7 @@ def run_gatk(params: VcfGatkParams) -> None:
                 _run_gatk,
                 stage_region=params.region is not None,
                 read_index=read_index,
+                gatk_command=gatk_command,
             ),
             gvcf,
         )
@@ -323,6 +336,7 @@ def _run_gatk(
     *,
     stage_region: bool = True,
     read_index: str | None = None,
+    gatk_command: list[str] | None = None,
 ) -> None:
     """``vcf gatk``: HaplotypeCaller into ``gatk.vcf.gz``, or Parabricks.
 
@@ -339,6 +353,7 @@ def _run_gatk(
     verify_dependencies(
         ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
     )
+    gatk_command = gatk_command or ["gatk"]
     if (
         Path(params.input).is_file()
         and not params.region
@@ -385,6 +400,10 @@ def _run_gatk(
     # Ultima's own pipeline calls with the flow-based likelihood model.
     flow_args = []
     if ultima.alignment_flow_data(input_file, ref).flow_aware:
+        if params.pair_hmm_neon is not None:
+            raise UsageError(
+                "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
+            )
         logging.info(
             "Ultima reads: calling in GATK's flow mode (--flow-mode ADVANCED)."
         )
@@ -450,7 +469,7 @@ def _run_gatk(
             return
         cmd = (
             [
-                "gatk",
+                *gatk_command,
                 "HaplotypeCaller",
                 "-R",
                 java_local_path(ref),
@@ -464,6 +483,15 @@ def _run_gatk(
             + ["--sample-ploidy", str(sample_ploidy)]
             + region_args
         )
+        if params.pair_hmm_neon is not None:
+            # contract: require double to avoid the known float block-DP
+            # regression; difficult-region exact parity remains unqualified.
+            cmd += [
+                "--native-pair-hmm-threads",
+                _threads,
+                "--native-pair-hmm-use-double-precision",
+                "true",
+            ]
         if gvcf:
             from wgsextract_cli.core.reference_evidence import GATK_BANDS
 

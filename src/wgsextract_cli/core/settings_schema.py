@@ -220,6 +220,11 @@ class Settings:
     keep_awake: bool = setting(
         False, "Best-effort sleep inhibition while commands run (opt-in)"
     )
+    result_card: bool = setting(
+        False,
+        "Also write `<name>.card.html`, a shareable page of each run's result, "
+        "beside its manifest",
+    )
     haplogrep_executable: str | None = setting(
         None, "Path to the Haplogrep 3 executable or JAR", path=True
     )

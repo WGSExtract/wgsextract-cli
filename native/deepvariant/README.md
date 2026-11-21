@@ -83,6 +83,19 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
   GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
   The build runs native likelihood and PAR-edge regressions; the smoke test
   checks staged flag propagation, retained PAR heterozygotes and gVCF coverage.
+- **0012** (0.4.1) traverses the Apple small model's hidden-layer weights
+  contiguously, so independent outputs use SIMD without changing each output's
+  input accumulation order or adding fast-math flags. The three-output final
+  layer and Linux computation are unchanged.
+- **0013** (0.4.1) compiles the realigner's fixed CIGAR regular expression once
+  per worker instead of once per read/haplotype alignment, with unchanged
+  parsing and no shared matching-cache contention.
+- **0014** (0.4.1) gates every Apple package build on bit-for-bit equality of
+  the production `DenseFp32` kernel with the exact pre-0012 scalar loop.
+  It checks 70/94/106 → 750 and 750 → 750 with deterministic signed zeros,
+  denormals, large magnitudes, mixed signs, rounding-sensitive cancellation
+  and varied finite FP32 inputs. Both use the same Objective-C++ build flags
+  and contraction settings; no tolerance or fast-math override is used.
 
 The haploid contract follows Google DeepVariant **v1.10.0**:
 [`postprocess_variants.py`, lines 1070–1092](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1070-L1092)
@@ -177,6 +190,81 @@ RTG SNP/indel F1 is **0.997409 / 0.995993** (RTG, not the hap.py figures above).
 See the [16 GB measurements](../../docs/apple-silicon-16gb.md#native-deepvariant)
 for the version-labelled whole-genome timing projection; a whole genome was
 measured with 0.1.0, **not** 0.1.1.
+
+### Apple Silicon CPU hill-climb (0.4.1)
+
+The CPU changes in 0.4.1 were checked on the same HG002 35x chr20 input on
+an M1 Pro (eight performance and two efficiency cores, 32 GiB). Three
+interleaved, unprofiled observations per variant, with the same Apple Clang 21
+toolchain and Homebrew dependencies, gave these make_examples medians:
+
+| Change, ten workers | Wall seconds | CPU seconds, user + system |
+| --- | ---: | ---: |
+| Unchanged 0.4.0 source control | 149.55 | 1,378.19 |
+| Contiguous small-model hidden layers | 130.60 | 1,212.30 |
+| Plus per-worker CIGAR regex cache | **124.41** | **1,169.03** |
+
+That is **16.8% less wall time and 15.2% less CPU time** in make_examples for
+the combined changes, not a 16.8% whole-pipeline speedup. These development
+builds are not directly comparable with the older qualification timings or
+the self-contained release binary.
+
+The exact self-contained 0.4.1 superbuild was also checked against released
+0.4.0, with three unprofiled make_examples observations each: median wall
+**137.62 → 122.84 seconds** (10.7% less), median CPU **1,272.61 → 1,148.23
+seconds** (9.8% less). One complete staged run with gVCF took **252.37 →
+242.00 seconds** (4.1% less); inference and postprocessing were not changed.
+Do not substitute the development-build percentage for this release comparison.
+
+Each individual change retained all **210,390 VCF calls**, the sites, alleles,
+GT and FILTER of **1,743,980 gVCF records**, and all **1,533,590 complete
+reference-block rows** against released 0.4.0. The synthetic-genome smoke
+also checks staged VCF/gVCF equality with two versus three workers, haploid/PAR
+calls and reference coverage through an empty contig.
+
+Eight- and twelve-worker pilots took 139.22 and 124.19 seconds respectively;
+these pilots do not justify introducing a new thread default. Eight uses
+less CPU, but takes longer; twelve is effectively tied with ten here.
+macOS scheduled the workers; they were not pinned to P or E cores.
+Weights, inference backend, batch-size policy and CLI thread defaults are
+unchanged.
+
+Whole-genome confirmation on **2026-11-20**, HG002 NovaSeq PCR-free 35x on
+the same 32 GiB M1 Pro, ten workers, Metal FP32 batch 1024, gVCF enabled:
+
+| Measurement | Released 0.4.0 | Candidate 0.4.1 |
+| --- | ---: | ---: |
+| Wall seconds | 8,831.4 | 7,984.3 |
+| CPU seconds, user + system | 50,708.6 | 46,455.5 |
+| Peak RSS, GB (`time`) | 11.95 | 13.32 |
+| Peak temporary space, GB (5 s sampling) | 29.4 | 29.5 |
+| Swap growth, bytes | 0 | 0 |
+
+This measured whole-pipeline reduction is **9.6% wall / 8.4% CPU**, with
+approximately **1.4 GB more RSS**. One run per version, M1 Pro only; this
+does not qualify the **16 GB base M1**, whose whole-genome memory/swap
+confirmation remains follow-up. Decimal GB; RSS does not include all Metal
+buffers, and temporary space excludes inputs, reference and final outputs.
+
+The full non-header VCF and gVCF bodies are **exactly identical**, all columns:
+**7,709,239 VCF records**, **72,210,019 gVCF records**, including
+**64,500,780 entire reference blocks**. Matching SHA-256 hashes:
+
+- VCF: `f2f01ee66a6baca00e2d0c43dffb9020f5efaa12519d136f96339aef0a526942`
+- gVCF: `a21d0be63888a41df749ffd37af8ff1ae76a274601be04b2aed4a2a58ccf4b80`
+
+This is native 0.4.0 versus 0.4.1 equality, not byte equality with Google's
+image. [Raw result](https://github.com/WGSExtract/wgsextract-cli/issues/1116#issuecomment-7042830878);
+[resource estimates](../../docs/resource_estimates.md#apple-silicon-cpu-hill-climb)
+retain the measured envelopes and qualification limits.
+
+The 0.4.1 comparison uses a local candidate build. Shipping it requires a
+new `macos-deepvariant-N` release from the **macOS DeepVariant** workflow
+(`workflow_dispatch` with `release_tag`); ordinary main/PR builds do not
+publish it. Mac users install that release's 0.4.1 binary on PATH; the CLI
+discovers it there, so no macOS Pixi binary pin changes. Existing WGS weights
+are unchanged. The Linux Pixi environment remains pinned to 0.4.0 until a
+separate Linux release and checksum/lockfile update.
 
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
@@ -413,6 +501,16 @@ needs samtools. The macOS DeepVariant workflow
 (`.github/workflows/macos_deepvariant.yml`) converts the weights in Google's
 image, builds and smoke-tests the binary and, when run with a release tag,
 publishes both with a `SHA256SUMS`.
+
+The `deepvariant` build target always runs `wgse_ploidy_check` and, on
+macOS, `wgse_dense_check`, including package builds with `BUILD_TESTING=OFF`.
+A mismatch fails the build before installation or the synthetic-genome smoke
+test. The dense check links the production small-model library, not a second
+optimized implementation. To rerun it in the superbuild's `port-build-*`
+directory, use `cmake --build <port-build> --target wgse_dense_check` or
+`ctest --test-dir <port-build> -R wgse_dense_scalar_reference --output-on-failure`.
+The scalar-reference check is Apple-only; Linux's qualified math and conda
+recipe remain unchanged.
 
 ## Licences
 

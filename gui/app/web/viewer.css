@@ -26,7 +26,8 @@
   margin-block: var(--space-5) var(--space-2);
 }
 
-.viewer-files {
+.viewer-files,
+.viewer-remote-fields {
   display: grid;
   grid-template-columns: minmax(160px, 220px) minmax(240px, 1fr);
   gap: var(--space-3) var(--space-5);
@@ -36,6 +37,7 @@
 }
 
 .viewer-files label,
+.viewer-remote-fields label,
 .viewer-navigation label {
   display: grid;
   gap: var(--space-2);
@@ -50,6 +52,40 @@
 .viewer-files p {
   margin: 0;
   align-self: center;
+}
+
+.viewer-remote {
+  padding-block: var(--space-4);
+  border-block: 1px solid var(--border);
+}
+
+.viewer-remote summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.viewer-remote [data-remote-destination] {
+  overflow-wrap: anywhere;
+}
+
+.viewer-remote-fields {
+  border: 0;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 75ch;
+}
+
+.viewer-remote [hidden] {
+  display: none;
+}
+
+.viewer-remote-fields label.viewer-remote-consent {
+  display: flex;
+  align-items: start;
+}
+
+.viewer-remote-fields input:not([type="checkbox"]) {
+  min-width: 0;
+  width: 100%;
 }
 
 .viewer-navigation:not([hidden]) {
@@ -86,7 +122,8 @@
   .genome-viewer {
     padding: var(--space-4);
   }
-  .viewer-files {
+  .viewer-files,
+  .viewer-remote-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 }

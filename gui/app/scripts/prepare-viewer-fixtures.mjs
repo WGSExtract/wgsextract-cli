@@ -3,7 +3,7 @@ import { appendFile, copyFile, mkdir, open, readFile, writeFile } from "node:fs/
 import path from "node:path";
 
 /** Tiny synthetic reference from the CLI's VEP tests; all derived files stay in the verification output directory. */
-export async function prepareViewerFixtures(root, output, tools, geneMaps = false) {
+export async function prepareViewerFixtures(root, output, tools, geneMaps = false, memory = false) {
     const tool = (name) => path.join(tools, `${name}${process.platform === "win32" ? ".exe" : ""}`);
     const run = (name, args) => {
         const result = spawnSync(tool(name), args, { encoding: "utf8", windowsHide: true });
@@ -22,7 +22,11 @@ export async function prepareViewerFixtures(root, output, tools, geneMaps = fals
     const record = source.split(/^>/m).find((entry) => entry.startsWith("1\n"));
     if (!record) throw new Error("Synthetic viewer fixture requires contig 1.");
     const sequence = record.split("\n").slice(1).join("").trim();
-    const referenceLength = geneMaps ? 248956422 : sequence.length;
+    const referenceLength = geneMaps ? 248956422 : memory ? 25000 : sequence.length;
+    if (memory && !geneMaps) {
+        const padded = sequence + "N".repeat(referenceLength - sequence.length);
+        await writeFile(fasta, `>1\n${padded.match(/.{1,60}/g).join("\n")}\n`);
+    }
     if (geneMaps) {
         let remaining = referenceLength - sequence.length;
         const chunk = `${"N".repeat(60)}\n`.repeat(10_000);
@@ -32,7 +36,7 @@ export async function prepareViewerFixtures(root, output, tools, geneMaps = fals
         }
         await appendFile(fasta, `${"N".repeat(60)}\n`.repeat(Math.floor(remaining / 60))
             + (remaining % 60 ? `${"N".repeat(remaining % 60)}\n` : ""));
-        const maps = path.join(output, "reference", "ref");
+        const maps = path.join(output, "reference", "downloads");
         await mkdir(maps, { recursive: true });
         await writeFile(path.join(maps, "genes_hg38.tsv"), "symbol\tchrom\tstart\tend\nREFGENE_DEMO\tchr1\t200\t400\n");
     }

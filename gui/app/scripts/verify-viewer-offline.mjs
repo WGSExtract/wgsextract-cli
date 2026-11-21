@@ -18,13 +18,14 @@ const { values } = parseArgs({ options: {
     "read-only": { type: "boolean", default: false },
     genes: { type: "boolean", default: false },
     cytobands: { type: "boolean", default: false },
+    memory: { type: "boolean", default: false },
 } });
 if (!values.out) throw new Error("Usage: node scripts/verify-viewer-offline.mjs --out REPO/out/verification [--cli-root PATH] [--chromium PATH]");
 const output = path.resolve(values.out);
 assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
 await mkdir(output, { recursive: true });
 const cli = path.resolve(values["cli-root"]);
-const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"), values.genes || values.cytobands);
+const fixtures = await prepareViewerFixtures(root, output, path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "Library/bin" : "bin"), values.genes || values.cytobands, values.memory);
 if (values.cytobands) {
     await writeFile(path.join(output, "reference/ref/cytobands_hg38.tsv"),
         "chr1\t0\t121700000\tp11.1\tgneg\nchr1\t121700000\t123400000\tp11.2\tacen\n"
@@ -59,9 +60,17 @@ const handler = createRequestHandler({
 });
 const server = createServer(handler);
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+let child;
+let cancelled = false;
+const cancel = () => {
+    cancelled = true;
+    child?.kill("SIGTERM");
+};
+process.on("SIGTERM", cancel);
+process.on("SIGINT", cancel);
 try {
-    const child = spawn(process.execPath, [
-        path.join(import.meta.dirname, "verify-viewer-library.mjs"),
+    child = spawn(process.execPath, [
+        path.join(import.meta.dirname, values.memory ? "verify-viewer-memory.mjs" : "verify-viewer-library.mjs"),
         "--url", `http://127.0.0.1:${server.address().port}`, "--fixtures", fixtures.library,
         "--large-bam", fixtures.large, "--vcf", fixtures.vcf, "--out", output,
         ...(!values["read-only"] ? ["--config", config] : []),
@@ -73,13 +82,16 @@ try {
     ], { stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {
         child.once("error", reject);
-        child.once("exit", resolve);
+        child.once("close", resolve);
     });
+    if (cancelled) throw new Error("Offline verification cancelled.");
     assert.equal(code, 0, "Offline real-browser verification must pass.");
     if (values["read-only"]) {
         assert.deepEqual((await readdir(fixtures.library, { recursive: true })).sort(), originalFiles, "Read-only verification must not create extraction outputs.");
     }
 } finally {
+    process.off("SIGTERM", cancel);
+    process.off("SIGINT", cancel);
     await manager.terminateAllProcesses();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

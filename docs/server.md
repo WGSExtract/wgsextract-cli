@@ -103,7 +103,8 @@ you start yourself:
   files (`outdir`, `table_format`, and `info`'s `detailed`, which saves the
   coverage table) are left out of the tool schemas and refused with
   `read_only`, and `info` runs with `cache: false`, so it reads an existing
-  `<input>.wgse_info.json` but doesn't write one.
+  `<input>.wgse_info.json` but doesn't write one. Result cards are off, even
+  with `--card` or `result_card = true`.
 - Job records and logs (`<state>/server/jobs/`) are readable by you only.
 
 ## HTTP API
@@ -129,7 +130,7 @@ A failed analysis is not an HTTP error. Its job finishes with status
 | `GET /v1/openapi.json` | The OpenAPI 3.1 document, also `wgsextract serve --openapi` |
 | `GET /v1/ops` | Operations: `op`, `kind` (`query` or `job`), `destructive` when a request may delete data, and a one-line summary |
 | `GET /v1/ops/{op}` | One operation and the JSON Schema of its parameters |
-| `POST /v1/ops/{op}?wait=S` | Start the operation as a job; the body is its parameters |
+| `POST /v1/ops/{op}?wait=S&card=1` | Start the operation as a job; the body is its parameters. `card` asks for its result card (or not), overriding `serve --card` and `result_card` |
 | `GET /v1/jobs?status=` | Jobs, newest last |
 | `GET /v1/jobs/{id}?wait=S&full=1` | A job; with `wait`, block up to S seconds (≤600) for it to finish |
 | `GET /v1/jobs/{id}/events` | Server-sent events: status changes and progress; ends when the job does |

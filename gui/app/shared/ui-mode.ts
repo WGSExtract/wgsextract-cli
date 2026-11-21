@@ -1,4 +1,4 @@
-import type { BundleManifest, BundlePage, ControlOption, ControlSpec, PageSection, RowSpec } from "./types.js";
+import type { ActionSpec, BundleManifest, BundlePage, ControlOption, ControlSpec, PageSection, RowSpec } from "./types.js";
 
 /** How much of the GUI is shown: Basic for new users (the default after install), or Advanced for every feature. */
 export type UIMode = "basic" | "advanced";
@@ -29,6 +29,16 @@ export function visibleSections(page: BundlePage, mode: UIMode): PageSection[] {
         const items = [...(section.controls ?? []), ...(section.actions ?? [])];
         return items.length === 0 || items.some((item) => isShownInUIMode(item, mode));
     });
+}
+
+/** An action titled for a mode: Advanced uses its `advancedTitle` when it has one. */
+export function actionTitledForUIMode(action: ActionSpec, mode: UIMode): ActionSpec {
+    return mode === "advanced" && action.advancedTitle ? { ...action, title: action.advancedTitle } : action;
+}
+
+/** The actions a mode shows, each titled for that mode. */
+export function visibleActions(actions: ActionSpec[] | undefined, mode: UIMode): ActionSpec[] {
+    return (actions ?? []).filter((action) => isShownInUIMode(action, mode)).map((action) => actionTitledForUIMode(action, mode));
 }
 
 export function visibleControls(section: PageSection, mode: UIMode): ControlSpec[] {

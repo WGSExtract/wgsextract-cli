@@ -158,7 +158,7 @@ function sameToken(actual: string, expected: string) {
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function byteRange(header: string | undefined, size: number) {
+export function byteRange(header: string | undefined, size: number) {
     if (!header) {
         return size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
     }

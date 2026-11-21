@@ -572,7 +572,7 @@ def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
     }
 
 
-@pytest.mark.parametrize("sub", ["", "ref", "microarray"])
+@pytest.mark.parametrize("sub", ["", "downloads", "ref", "microarray"])
 def test_requested_chain_is_found_in_library_subdirectories(tmp_path, monkeypatch, sub):
     chain = tmp_path / sub / "hg38ToHg19.over.chain.gz"
     chain.parent.mkdir(parents=True, exist_ok=True)

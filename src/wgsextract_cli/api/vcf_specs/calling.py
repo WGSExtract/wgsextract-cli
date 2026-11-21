@@ -349,12 +349,27 @@ class VcfGatkParams(_CallerParams):
         "docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
+    pair_hmm_neon: Path | None = param(
+        None,
+        local_only=True,
+        help="Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK "
+        "4.6.2.0, with Java fallback. Opt-in; not Parabricks. "
+        "See packaging/arm64/gkl/README.md. Not with --gpu or --scatter.",
+        path="file",
+    )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
         "gatk.g.vcf.gz",
         "little time; the VCF is then genotyped from it; not with --gpu or --scatter",
     )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.pair_hmm_neon is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-neon cannot be combined with --gpu or --scatter."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)

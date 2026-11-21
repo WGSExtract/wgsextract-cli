@@ -281,7 +281,7 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
     assert gnomad_af.build_gnomad_af(str(tmp_path / "library"), workers=1, attempts=1)
-    table = tmp_path / "library/ref/gnomad_hg38.tsv.gz"
+    table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
             "chr1\t100\tA\tG\t0.25",

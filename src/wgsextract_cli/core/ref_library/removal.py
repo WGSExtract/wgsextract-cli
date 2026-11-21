@@ -22,6 +22,7 @@ from wgsextract_cli.core.ref_library.assets import (
     annotation_vcf_names,
     reference_dict_path,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.results import manifest_path_for
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -29,7 +30,7 @@ _INDEXES = (".tbi", ".csi")
 _DOWNLOAD_LEFTOVERS = (".partial", ".partial.segments", ".partial.source")
 
 # The files `ref status` finds for each deletable annotation resource:
-# <key>*<extension> in the library or its ref folder.
+# <key>*<extension> in the library or its downloads/ (or older ref/) folder.
 _RESOURCE_EXTENSIONS = {
     "spliceai": (".vcf.gz", ".vcf.bgz"),
     "alphamissense": (".tsv.gz", ".vcf.gz", ".vcf.bgz"),
@@ -58,7 +59,7 @@ def annotation_resource_paths(reflib: str, key: str) -> list[Path]:
     extensions = _RESOURCE_EXTENSIONS[key]
     found = {
         path
-        for directory in (Path(reflib), Path(reflib, "ref"))
+        for directory in (Path(reflib), *download_dirs(reflib))
         if directory.is_dir()
         for extension in extensions
         for path in directory.glob(f"{key}*{extension}")
@@ -73,7 +74,7 @@ def microarray_target_paths(reflib: str) -> list[Path]:
     names = [n for n in annotation_vcf_names("") if n.startswith("All_SNPs_")]
     directories = (
         Path(reflib),
-        Path(reflib, "ref"),
+        *download_dirs(reflib),
         Path(reflib, "microarray"),
         Path(reflib, "genomes", "microarray"),
     )

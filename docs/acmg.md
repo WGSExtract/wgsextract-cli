@@ -67,10 +67,12 @@ warning `acmg_contigs_not_classified`, and listed in the summary's
 ## Requirements
 
 - GRCh38 only, with its reference FASTA (`--ref` or the reference library).
-- fastVEP 0.5: `pixi install -e fastvep` on x86-64 Linux and Intel macOS. On
-  Linux ARM64 and Apple Silicon, put the
-  [fastVEP 0.5 release](https://github.com/Huang-lab/fastVEP/releases) for
-  your system on PATH. There is no Windows build; the command refuses there.
+- fastVEP 0.5.0: `pixi install -e fastvep` on Linux (x86-64 and ARM64),
+  macOS (Intel and Apple Silicon), or Windows x86-64. WGS Extract builds the
+  CLI-only packages from the pinned upstream release, with portable CPU
+  targets and upstream/third-party licence notices, and pins each package by
+  URL and SHA-256. The CLI uses the installed environment automatically; it
+  never installs it or downloads databases during classification.
 - An Ensembl GRCh38 GFF3 of the same release as the vep-rs cache, such as
   `Homo_sapiens.GRCh38.116.gff3.gz` from
   <https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/>. fastVEP
@@ -89,10 +91,10 @@ warning `acmg_contigs_not_classified`, and listed in the summary's
 from their publishers, checks them, shows their terms and builds the
 databases with `fastvep sa-build`:
 
-- The GFF3 goes in `ref/acmg/` in the library, the downloads in
-  `ref/acmg/sources/` and the databases in `ref/acmg/sa/`, or in `--sa-dir`
-  (`acmg_sa_dir`). `--ensembl-release` (default 116) should match your vep-rs
-  cache.
+- The GFF3 goes in `downloads/acmg/` in the library, the downloads in
+  `downloads/acmg/sources/` and the databases in `downloads/acmg/sa/`, or in
+  `--sa-dir` (`acmg_sa_dir`). `--ensembl-release` (default 116) should match
+  your vep-rs cache.
 - Each download is checked against the checksum its publisher gives: the
   `.md5` files of NCBI, UCSC's `md5sum.txt`, the MD5 Google Cloud Storage gives
   for gnomAD and Ensembl's `CHECKSUMS`. ClinGen and REVEL publish none. A file
@@ -150,8 +152,8 @@ held back by parsing its 11 KB records, and more bcftools threads don't help.
 A whole genome streams 877 GB, about 29 hours of one core, or 7 at 4
 chromosomes at a time where the network keeps up; `--dry-run` says it needs
 about 80 GB (75 GiB) free: 47 GiB for the databases and their staging, 27 GiB
-for the SpliceAI download in the library's `ref/` and 1.4 GiB for the other
-downloads.
+for the SpliceAI download in the library's `downloads/` and 1.4 GiB for the
+other downloads.
 
 ## gnomAD and SpliceAI per run
 

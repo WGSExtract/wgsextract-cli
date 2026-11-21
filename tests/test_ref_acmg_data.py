@@ -5,13 +5,14 @@ the real fastVEP and bcftools. The sources are the one-gene fixtures of
 tests/test_vcf_acmg.py on chromosome 1; gnomAD's is in the joint release's
 shape. Skipped without fastVEP (`pixi install -e fastvep`)."""
 
+import _thread
 import base64
 import gzip
 import hashlib
 import io
 import json
+import re
 import shutil
-import signal
 import threading
 import time
 import zipfile
@@ -60,7 +61,7 @@ GFF3 = "Homo_sapiens.GRCh38.116.gff3.gz"
 
 
 def _write(path: Path, text: str) -> Path:
-    path.write_text(text)
+    path.write_text(text, newline="\n")
     return path
 
 
@@ -176,7 +177,7 @@ def _params(library, **extra) -> RefAcmgDataParams:
 
 
 def _sa(library) -> Path:
-    return library[0] / "ref" / "acmg" / "sa"
+    return library[0] / "downloads" / "acmg" / "sa"
 
 
 def _manifest(library) -> dict:
@@ -290,14 +291,14 @@ def test_a_download_that_fails_its_published_md5_is_removed(publishers, library)
     with pytest.raises(api.CommandFailed, match="clinvar:.*MD5"):
         api.ref.acmg_data(_params(library))
 
-    assert not list((library[0] / "ref" / "acmg" / "sources").glob("clinvar*"))
+    assert not list((library[0] / "downloads" / "acmg" / "sources").glob("clinvar*"))
     assert "clinvar" not in _manifest(library)["databases"]
 
 
 def test_dry_run_shows_terms_and_sizes_and_writes_nothing(publishers, library):
     result = api.ref.acmg_data(_params(library, dry_run=True))
 
-    assert not (library[0] / "ref" / "acmg").exists()
+    assert not (library[0] / "downloads" / "acmg").exists()
     assert _gets(publishers) == 0
     assert result.details["needed_bytes"] > 0
     assert len(result.details["to_build"]) == 9  # 8 databases and the GFF3
@@ -360,7 +361,7 @@ def test_files_an_interrupted_run_left_are_checked_and_recorded_again(
     manifest = _manifest(library)
     del manifest["gff3"]
     (_sa(library) / "acmg_data.json").write_text(json.dumps(manifest))
-    (lib / "ref" / "acmg" / "sources" / "revel.zip").unlink()
+    (lib / "downloads" / "acmg" / "sources" / "revel.zip").unlink()
     for path in _sa(library).glob("revel_chr1*"):
         path.unlink()
 
@@ -375,7 +376,7 @@ def test_files_an_interrupted_run_left_are_checked_and_recorded_again(
 def test_a_dry_run_leaves_the_last_builds_result_manifest(publishers, library):
     """#1010 review: a dry run with ref/acmg already there replaced the last
     build's acmg_data.manifest.json with its own empty inventory."""
-    acmg = library[0] / "ref" / "acmg"
+    acmg = library[0] / "downloads" / "acmg"
     acmg.mkdir(parents=True)
     previous = acmg / "acmg_data.manifest.json"
     previous.write_text('{"outputs": ["the last build"]}\n')
@@ -506,7 +507,9 @@ def test_the_library_drive_is_checked_when_the_databases_go_elsewhere(
 
     monkeypatch.setattr(acmg_data.shutil, "disk_usage", usage)
 
-    with pytest.raises(api.CommandFailed, match=f"needs about .* free for {lib}"):
+    with pytest.raises(
+        api.CommandFailed, match=rf"needs about .* free for {re.escape(str(lib))}"
+    ):
         api.ref.acmg_data(_params(library, sa_dir=tmp_path / "external"))
     assert _gets(publishers) == 0
 
@@ -516,14 +519,13 @@ def test_ctrl_c_stops_the_queued_builds_and_the_preparation(publishers, library)
     """#1010 review: on Ctrl-C or SIGTERM the executors waited for every
     queued chromosome, so builds kept starting after the user stopped."""
     publishers.delays["gnomad/chr1.vcf.bgz"] = 2.0
-    main = threading.get_ident()
 
     def interrupt_once_streaming() -> None:
         # The signal arrives as gnomAD's stream starts (after the plan's and
         # the step's HEAD), the other builds queued behind it.
         while publishers.paths.count("gnomad/chr1.vcf.bgz") < 2:
             time.sleep(0.05)
-        signal.pthread_kill(main, signal.SIGINT)
+        _thread.interrupt_main()
 
     watcher = threading.Thread(target=interrupt_once_streaming, daemon=True)
     watcher.start()
@@ -568,12 +570,12 @@ def test_a_server_checks_the_library_and_folders_ref_acmg_data_writes(
 
     lib = allowed / "lib"
     PathGuard([allowed]).check(params_from_json(op, {"ref": str(lib)}))
-    _link(lib / "ref" / "acmg", outside / "acmg")
+    _link(lib / "downloads" / "acmg", outside / "acmg")
     with pytest.raises(RequestError, match="outside the folders"):
         PathGuard([allowed]).check(params_from_json(op, {"ref": str(lib)}))
 
     other = allowed / "other"
-    _link(other / "ref" / "acmg" / "sa", outside / "sa")
+    _link(other / "downloads" / "acmg" / "sa", outside / "sa")
     with pytest.raises(RequestError, match="outside the folders"):
         PathGuard([allowed]).check(params_from_json(op, {"ref": str(other)}))
 
@@ -590,7 +592,7 @@ def test_a_server_checks_the_gff3_vcf_acmg_finds_through_its_databases(tmp_path)
     )
 
     allowed, outside = tmp_path / "allowed", tmp_path / "outside"
-    sa = allowed / "lib" / "ref" / "acmg" / "sa"
+    sa = allowed / "lib" / "downloads" / "acmg" / "sa"
     sa.mkdir(parents=True)
     outside.mkdir()
     gff3 = outside / GFF3
@@ -610,7 +612,11 @@ def test_a_server_checks_the_gff3_vcf_acmg_finds_through_its_databases(tmp_path)
 
 @pytest.mark.parametrize(
     "linked",
-    ["ref/acmg/sa/sites", "ref/spliceai_hg38.vcf.gz", "ref/spliceai_hg38.vcf.gz.tbi"],
+    [
+        "downloads/acmg/sa/sites",
+        "downloads/spliceai_hg38.vcf.gz",
+        "downloads/spliceai_hg38.vcf.gz.tbi",
+    ],
 )
 def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
     tmp_path, linked
@@ -627,7 +633,7 @@ def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
 
     allowed, outside = tmp_path / "allowed", tmp_path / "outside"
     lib = allowed / "lib"
-    (lib / "ref" / "acmg" / "sa").mkdir(parents=True)
+    (lib / "downloads" / "acmg" / "sa").mkdir(parents=True)
     _link(lib / linked, outside / "target")
     op = find("vcf/acmg")
     request = {
@@ -642,7 +648,7 @@ def test_a_server_checks_the_per_run_cache_and_spliceai_vcf_vcf_acmg_uses(
     library = {**request, "ref": str(lib), "site_data": "library"}
     PathGuard([allowed]).check(params_from_json(op, library))
     # The job lock covers the cache a per-run job writes.
-    assert lib / "ref" / "acmg" / "sa" / "sites" in set(params.write_folders())
+    assert lib / "downloads" / "acmg" / "sa" / "sites" in set(params.write_folders())
 
 
 def _input(tmp_path: Path, extra: str = "") -> Path:

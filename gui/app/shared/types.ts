@@ -130,6 +130,10 @@ export type LabelTextKey =
     | "resultUsageTitle"
     | "resultMissingDependencyTitle"
     | "resultOpenSetupTitle"
+    | "resultCardTitle"
+    | "resultCardSourceFormat"
+    | "resultCardViewTitle"
+    | "resultCardCloseTitle"
     | "prerequisitesTitle"
     | "prerequisitesMessage"
     | "prerequisitesStillMissingMessage"
@@ -278,6 +282,8 @@ export interface ConfirmationSpec {
 export interface ActionSpec {
     id?: string;
     title?: string;
+    /** The title Advanced mode shows instead of `title`, when the action does more there. */
+    advancedTitle?: string;
     command: CommandSpec;
     precheck?: LooseRecord;
     confirm?: ConfirmationSpec;
@@ -293,6 +299,10 @@ export interface ActionSpec {
     prerequisiteArguments?: string[];
     /** The placeholder naming the job's main input, shown in the Jobs list; else the first file path control the command uses. */
     primaryInput?: string;
+    /** Ask for the run's result card (the manifest's `resultDocument.cardArguments`, or a job's `card`) and show it when the run ends. */
+    resultCard?: boolean;
+    /** Output roles in order of preference: when the run ends, the first output it wrote with one of them opens in the system's default app. */
+    openOutput?: string[];
     [key: string]: unknown;
 }
 

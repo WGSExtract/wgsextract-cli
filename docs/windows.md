@@ -345,6 +345,42 @@ Bugs found, fixed on `main` after v0.8.5:
   and `vcf indel` "Expected Wait" was divided by the thread count even when
   calling ran in one stream.
 
+## 30x genome with windows-tools-9 (v0.8.8)
+
+The same HG002 30x BAM was rerun with v0.8.8 and the pinned `windows-tools-9`
+packages (bwa with the SSE2 extension kernel, samblaster with a buffered SAM
+reader, bcftools with static mimalloc) in
+[#1024](https://github.com/WGSExtract/wgsextract-cli/issues/1024). The host
+was a Windows 11 Pro desktop (Intel Core i9-9900, 8 cores / 16 threads,
+96 GiB RAM, NVMe `C:`), with default settings and `--threads 16`:
+
+| step | v0.8.8, windows-tools-9 | v0.8.5 ([#554](https://github.com/WGSExtract/wgsextract-cli/issues/554)) |
+| --- | --- | --- |
+| build the BWA index for hs38 | 40 min | 58 min |
+| `realign`: unpack the reads | 22 min | 23 min |
+| `realign`: align, mark duplicates and sort | 7 h 13 min | 7 h 10 min |
+| `info` on the realigned BAM | 2 s | 2 s |
+| `vcf snp` | 25 min | 2 h 48 min |
+| `vcf indel` | 26 min | 3 h 3 min |
+
+The index was built by a chr22 sizing run just before, so the full `realign`
+took 7 h 36 min without it. Alignment took about as long as v0.8.5 did on
+#554's Azure D16ads_v5. The CPUs differ, so this is not a controlled
+comparison of the bwa kernel. The calling steps were about 7× faster because they now call
+contigs in parallel ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560));
+the "Expected Wait" of 21 minutes for each was close.
+
+Memory peaked at 28.8 GiB above the desktop's idle use (44.7 GiB in use in
+total; the preflight estimate was 40.0 GiB), with `samtools` the largest
+process at 24.4 GiB. `realign` used at most 144 GiB of disk beyond its input,
+and the calling steps used under 4 GiB of memory.
+
+The results agree with v0.8.5 to the precision it published: 99.70% of reads
+mapped and 97.76% properly paired; a 37.2 GiB BAM; 4,406,363 SNPs (3,907,801
+with QUAL ≥ 30 and depth ≥ 10, Ti/Tv 1.99); and 916,621 indels (842,400 with
+QUAL ≥ 30 and depth ≥ 10). v0.8.5 published only rounded counts, so this run
+does not show record-for-record identity.
+
 # Windows ARM64
 
 Native Windows ARM64 (`win-arm64`) is being qualified separately in
