@@ -88,7 +88,13 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
     tail = LogTail()
     root = logging.getLogger()
     root.addHandler(tail)
-    with reserved as stdout, collecting(result, as_json=as_json):
+    from wgsextract_cli.core.atomic_output import output_publication_scope
+
+    with (
+        reserved as stdout,
+        collecting(result, as_json=as_json),
+        output_publication_scope(),
+    ):
         try:
             with (
                 _progress_line(args, result.command) as line,
