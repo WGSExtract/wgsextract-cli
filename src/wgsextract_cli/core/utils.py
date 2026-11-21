@@ -37,6 +37,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     get_sam_view_cmd as get_sam_view_cmd,
 )
 from wgsextract_cli.core.download_progress import CancelEvent, redact_urls
+from wgsextract_cli.core.errors import WGSExtractError as WGSExtractError
 from wgsextract_cli.core.paths import PathInput, command_is_path, expand_path
 from wgsextract_cli.core.process_registry import (
     cleanup_processes as cleanup_processes,
@@ -87,10 +88,6 @@ def _child_stdout(stdout: ProcessStream) -> ProcessStream:
         return 2
     except OSError:
         return subprocess.DEVNULL
-
-
-class WGSExtractError(Exception):
-    """Base exception for wgsextract-cli errors (exit code 1)."""
 
 
 class UsageError(WGSExtractError):

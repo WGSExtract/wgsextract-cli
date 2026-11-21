@@ -3,8 +3,11 @@
 import json
 import shutil
 import subprocess
+import sys
 
 import pytest
+
+from tests.htslib_helpers import needs_htslib, vcf_calls
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
@@ -29,6 +32,8 @@ from tests.test_server import (
 from tests.test_server import (
     work as work,
 )
+from tests.test_vep_run import _vcf
+from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.server.jobs import JobManager
@@ -467,6 +472,40 @@ def test_a_server_request_cannot_pass_raw_vep_arguments():
     # which the path guard can't see.
     with pytest.raises(RequestError, match="can't be set by a server request"):
         params_from_json(find("vep/run"), {"input": "a.vcf.gz", "vep_args": "-o x"})
+
+
+@needs_htslib
+@pytest.mark.skipif(sys.platform == "win32", reason="Ensembl VEP is not on Windows")
+def test_1238_server_ensembl_requires_local_cache(
+    tmp_path, work, fake_vep, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vcf = _vcf(work / "s.vcf.gz")
+    cache = work / "cache"
+    request = {
+        "input": vcf,
+        "outdir": str(work),
+        "engine": "ensembl",
+        "vep_cache": str(cache),
+        "vep_assembly": "GRCh38",
+    }
+    with _serve(tmp_path, [work]) as client:
+        status, job = client.request("POST", "/ops/vep/run?wait=60", request)
+        assert (status, job["status"], job["exit_code"]) == (200, "failed", 1), job
+        JOB_VALIDATOR.validate(job)
+        assert job["error"]["code"] == "vep_cache_missing"
+        assert str(cache) in job["error"]["message"]
+        assert "vep download --engine ensembl" in job["error"]["message"]
+        assert not fake_vep()
+
+        (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+        status, job = client.request("POST", "/ops/vep/run?wait=60", request)
+
+    assert (status, job["status"]) == (200, "succeeded"), job
+    [args] = fake_vep()
+    # contract: annotation must not send sample-derived queries to Ensembl.
+    assert "--offline" in args and "--database" not in args
+    assert vcf_calls(work / "s_vep.vcf.gz") == [("1", "10", "A", "G", "0/1")]
 
 
 def test_home_relative_paths_reach_the_job_expanded(tmp_path, work, monkeypatch):

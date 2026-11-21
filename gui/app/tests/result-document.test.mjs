@@ -50,9 +50,9 @@ const wire: ResultFileRecord = {
   metrics: { count: 1, ratio: 0.5, flag: true, missing: null, label: "test" },
 };
 const warning: ResultWarningRecord = { code: "low_coverage", message: "", details: { depth: 1 } };
-const error: ResultErrorRecord = { kind: "usage", message: "" };
+const error: ResultErrorRecord = { kind: "usage", message: "", code: null };
 // @ts-expect-error A canonical writer error uses a declared ErrorKind.
-const unknown: ResultErrorRecord = { kind: "future_kind", message: "" };
+const unknown: ResultErrorRecord = { kind: "future_kind", message: "", code: null };
 const normalized: ResultFile = { path: wire.path, role: wire.role, kind: wire.kind,
   exists: wire.exists, sizeBytes: wire.size_bytes, metrics: wire.metrics };
 const tolerant: ResultError = { kind: "future_kind", message: error.message };

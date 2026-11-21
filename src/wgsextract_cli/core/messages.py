@@ -290,7 +290,6 @@ LOG_MESSAGES = {
     "vep_verification_complete": "Verification complete.",
     "vep_calling_pre": "Input is BAM/CRAM. Performing variant calling first...",
     "vep_using_cache": "Using VEP cache at {path}",
-    "vep_no_cache_warn": "VEP cache not found at {path}. Attempting slow online mode.",
     "vep_preprocessing_chr": "Preprocessing VCF to add 'chr' prefix: {input} -> {output}",
     "vep_skipping_exists": "Skipping {input}, output already exists at {output}. Use --force to re-run.",
     "vep_batch_summary": "VEP Batch Summary:",

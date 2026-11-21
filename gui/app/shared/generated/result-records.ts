@@ -18,6 +18,7 @@ export interface ResultDocumentRecord {
 export interface ResultErrorRecord {
     kind: "failure" | "usage" | "missing_dependency" | "cancelled";
     message: string;
+    code: string | null;
 }
 
 export interface ResultFileRecord {

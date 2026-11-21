@@ -1,5 +1,6 @@
 """Generate result/1 from the dataclasses its real writer serializes."""
 
+from wgsextract_cli.core.errors import ResultError
 from wgsextract_cli.core.output_schema import Shape, output_schema
 from wgsextract_cli.core.results import (
     SCHEMA_ID,
@@ -8,7 +9,6 @@ from wgsextract_cli.core.results import (
     Fingerprint,
     Provenance,
     ReferenceRecord,
-    ResultError,
     ResultWarning,
     Scalar,
 )

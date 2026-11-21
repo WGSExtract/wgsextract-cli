@@ -151,6 +151,13 @@ class VepRunParams(Params):
         flags=("-r", "--region"),
     )
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        from wgsextract_cli.core.utils import UsageError
+
+        if not re.fullmatch(r"[0-9]+", self.vep_cache_version):
+            raise UsageError(f"Invalid --vep-cache-version {self.vep_cache_version!r}.")
+
     def write_folders(self) -> Iterator[Path]:
         # An unindexed .vcf.gz input is indexed beside itself.
         path = self.input.expanduser()

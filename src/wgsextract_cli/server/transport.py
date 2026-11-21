@@ -94,6 +94,7 @@ class JobEvent(JobProgress, JobEventRequired, total=False):
 class JobError(TypedDict, total=False):
     kind: str
     message: str
+    code: str | None
 
 
 class Job(JobRequired, total=False):

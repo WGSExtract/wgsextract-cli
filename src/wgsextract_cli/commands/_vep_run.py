@@ -25,6 +25,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
@@ -61,6 +62,11 @@ from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
 _FORMAT_EXT = {"vcf": ".vcf", "tab": ".txt", "json": ".json"}
+
+
+class _VepCacheMissingError(CodedError):
+    def __init__(self, message: str) -> None:
+        super().__init__("vep_cache_missing", message)
 
 
 # The VEP options of each --preset. 'fast' leaves out what makes VEP slow,
@@ -230,21 +236,11 @@ def _build_vep_command(
         if c
     ]
     cache_dir = next((c for c in candidates if Path(c).is_dir()), candidates[0])
-    vep_cmd += ["--dir_cache", cache_dir, "--cache_version", params.vep_cache_version]
-    if Path(cache_dir).exists():
-        vep_cmd.append("--offline")
-        logging.info(LOG_MESSAGES["vep_using_cache"].format(path=cache_dir))
-        _check_cache_version(engine, cache_dir, params.vep_cache_version, vep_cmd)
-    elif not engine.database_fallback:
-        raise WGSExtractError(
-            f"No {engine.label} cache in {cache_dir}; build it with "
-            f"'wgsextract vep download --engine {engine.name}'."
-        )
-    else:
-        logging.warning(LOG_MESSAGES["vep_no_cache_warn"].format(path=cache_dir))
-        vep_cmd.append("--database")
-        if "GRCh37" in vep_cmd:
-            vep_cmd += ["--port", "3337"]  # Ensembl serves GRCh37 there
+    _require_cache(engine, Path(cache_dir), params.vep_cache_version, assembly)
+    vep_cmd += [
+        "--offline", "--dir_cache", cache_dir, "--cache_version", params.vep_cache_version,
+    ]  # fmt: skip
+    logging.info(LOG_MESSAGES["vep_using_cache"].format(path=cache_dir))
 
     vep_cmd += VEP_PRESETS[params.preset]
     if vcf_type in ("sv", "cnv"):
@@ -260,40 +256,29 @@ def _assembly_of(build: str | None) -> str | None:
     return next((a for a, b in _ASSEMBLY_BUILDS.items() if b == canonical), None)
 
 
-def _check_cache_version(
-    engine: VepEngine, cache_dir: str, version: str, vep_cmd: list[str]
+def _require_cache(
+    engine: VepEngine, cache_dir: Path, version: str, assembly: str | None
 ) -> None:
-    """Warn (Ensembl VEP) or fail (vep-rs, which has no fallback) when the
-    release and assembly to annotate with isn't in the cache."""
-    species = "homo_sapiens"
-    if "--assembly" in vep_cmd:
-        assembly = vep_cmd[vep_cmd.index("--assembly") + 1]
-    else:
-        # Without an assembly, VEP takes the release's only one.
-        found = sorted(
-            p for p in Path(cache_dir, species).glob(f"{version}_*") if p.is_dir()
-        )
-        if len(found) != 1:
-            return
-        assembly = found[0].name.split("_", 1)[1]
-    version_dir = Path(cache_dir, species, f"{version}_{assembly}")
-    if version_dir.is_dir():
-        if engine.name == "vep-rs":
-            _warn_about_cache_gaps(version_dir)
+    species_dir = cache_dir / "homo_sapiens"
+    assemblies = (assembly,) if assembly else engine.assemblies
+    installed = [
+        path
+        for candidate in assemblies
+        if (path := species_dir / f"{version}_{candidate}").is_dir()
+    ]
+    if installed:
+        if engine.name == "vep-rs" and len(installed) == 1:
+            _warn_about_cache_gaps(installed[0])
         return
-    download = (
-        f"'wgsextract vep download{'' if engine.name == 'ensembl' else ' --engine ' + engine.name}"
-        f" --vep-version {version} --assembly {assembly}'"
-    )
-    if not engine.database_fallback:
-        raise WGSExtractError(
-            f"{version_dir} is missing, so {engine.label} has no cache. Build it "
-            f"with {download}, or pass the installed release with --vep-cache-version."
-        )
-    logging.warning(
-        f"{version_dir} is missing, so VEP will find no cache. Download it "
-        f"with {download}, or pass the installed release with "
-        "--vep-cache-version."
+    location = species_dir / f"{version}_{assembly}" if assembly else species_dir
+    assembly_arg = f" --assembly {assembly}" if assembly else ""
+    cache_root = cache_dir.parent if engine.cache_subdir else cache_dir
+    raise _VepCacheMissingError(
+        f"No {engine.label} cache for release {version} in {location}. "
+        f"Run `wgsextract vep download --engine {engine.name} "
+        f"--vep-version {version}{assembly_arg} --vep-cache {shlex.quote(str(cache_root))}` "
+        "before annotating, or select "
+        "an installed cache with --vep-cache and --vep-cache-version.",
     )
 
 
@@ -415,6 +400,8 @@ def _run_vep_on_input(
             for suffix in ("_summary.html", "_warnings.txt"):
                 if Path(vep_output + suffix).exists():
                     move_file(vep_output + suffix, output_file + suffix)
+    except _VepCacheMissingError:
+        raise
     except (OSError, subprocess.SubprocessError, WGSExtractError, ValueError) as e:
         checkpoint()  # a cancelled run stops here, not at the next input
         logging.error(f"VEP failed for {current_input}: {e}")
@@ -482,9 +469,17 @@ def run_vep(params: VepRunParams) -> None:
     threads, _ = get_resource_defaults(params.threads, None)
 
     batch_stats = []
+    cache_error: _VepCacheMissingError | None = None
     for path in input_files:
         checkpoint()
-        batch_stats.append((Path(path).name, *_run_vep_on_input(params, path, threads)))
+        try:
+            status, duration = _run_vep_on_input(params, path, threads)
+        except _VepCacheMissingError as error:
+            checkpoint()
+            cache_error = cache_error or error
+            current_result().warn(error.code, str(error), path=path)
+            status, duration = "FAILED", "-"
+        batch_stats.append((Path(path).name, status, duration))
     statuses = [status for _, status, _ in batch_stats]
     current_result().add_metrics(
         inputs=len(input_files),
@@ -503,5 +498,7 @@ def run_vep(params: VepRunParams) -> None:
             )
         human_output("-" * 60)
 
-    if any(status == "FAILED" for _, status, _ in batch_stats):
+    if cache_error:
+        raise cache_error
+    if "FAILED" in statuses:
         raise WGSExtractError("One or more VEP tasks failed.")

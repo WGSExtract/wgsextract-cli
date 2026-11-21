@@ -62,6 +62,8 @@ def fake_vep(tmp_path, monkeypatch):
 
     # These are Ensembl VEP's command lines; vep-rs has its own tests.
     monkeypatch.setitem(settings, "vep_engine", "ensembl")
+    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    (tmp_path / "homo_sapiens" / "116_GRCh37").mkdir()
     log = tmp_path / "vep_calls.jsonl"
 
     def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
@@ -106,7 +108,7 @@ def _value(cmd: list[str], flag: str) -> str:
 def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
     vcf = _vcf(tmp_path / "s.vcf.gz")
     cache = tmp_path / "cache"
-    cache.mkdir()
+    (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
 
     _vep("-i", vcf, "--vep-cache", str(cache), "--vep-assembly", "GRCh38", "-t", "3")
 
@@ -146,7 +148,9 @@ def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
         VepRunParams(input=Path(vcf), vep_cache=cache, vep_assembly="GRCh38")
     )
 
-    assert len(fake_vep()) == 1
+    [cmd] = fake_vep()
+    # contract: annotation must not send sample-derived queries to Ensembl.
+    assert "--offline" in cmd and "--database" not in cmd
     assert result.metrics["engine"] == "ensembl"
     [notice] = [w for w in result.warnings if w.code == "vep_engine_fallback"]
     assert "--engine ensembl" in notice.message
@@ -169,16 +173,48 @@ def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
     ]
 
 
-def test_missing_cache_falls_back_to_database(tmp_path, fake_vep):
+@pytest.mark.parametrize("root_exists", [False, True])
+def test_1238_ensembl_missing_cache_fails_without_database(
+    tmp_path, fake_vep, monkeypatch, capsys, root_exists
+):
+    from wgsextract_cli.main import main
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     vcf = _vcf(tmp_path / "s.vcf.gz")
     missing = tmp_path / "no_cache"
+    if root_exists:
+        (missing / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
 
-    _vep("-i", vcf, "--vep-cache", str(missing), "--vep-cache-version", "115")
+    params = VepRunParams(
+        input=Path(vcf), engine="ensembl", vep_cache=missing,
+        vep_assembly="GRCh38", vep_cache_version="115",
+    )  # fmt: skip
+    with pytest.raises(api.CommandFailed) as caught:
+        api.vep.run(params)
+    assert caught.value.exit_code == 1
+    error = caught.value.result.error
+    assert error is not None and error.code == "vep_cache_missing"
+    assert str(missing / "homo_sapiens" / "115_GRCh38") in error.message
+    assert (
+        "vep download --engine ensembl --vep-version 115 --assembly GRCh38"
+        in error.message
+    )
 
-    [cmd] = fake_vep()
-    assert "--database" in cmd and "--offline" not in cmd
-    assert _value(cmd, "--dir_cache") == str(missing)
-    assert _value(cmd, "--cache_version") == "115"
+    # Permission to fetch public data is not permission to query with a sample.
+    config = tmp_path / "config.toml"
+    config.write_text("allow_reference_downloads = true\n")
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as cli_exit:
+        main([
+            "--config", str(config), "--json", "vep", "run", "-i", vcf, "--engine", "ensembl",
+            "--vep-cache", str(missing), "--assembly", "GRCh38", "--vep-cache-version", "115",
+        ])  # fmt: skip
+    assert cli_exit.value.code == 1
+    assert json.loads(capsys.readouterr().out)["error"]["code"] == "vep_cache_missing"
+    # contract: --database sends sample-derived queries; do not launch VEP to annotate.
+    assert all("--database" not in args for args in fake_vep())
+    assert not fake_vep()
 
 
 def test_unindexed_vcf_is_indexed_before_vep(tmp_path, fake_vep):
@@ -611,7 +647,7 @@ def test_api_expands_home_in_every_path(tmp_path, fake_vep, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     _vcf(tmp_path / "s.vcf.gz")
-    (tmp_path / "cache").mkdir()
+    (tmp_path / "cache" / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
 
     api.vep.run(
         VepRunParams(
@@ -656,7 +692,6 @@ def _command(lib, **overrides):
 
     fields = {
         "input": Path("in.vcf.gz"),
-        "vep_cache": Path("/no/such/cache"),
         "engine": "ensembl",
     }
     params = VepRunParams(**{**fields, **overrides})
@@ -666,8 +701,11 @@ def _command(lib, **overrides):
 @pytest.mark.parametrize(
     ("build", "assembly"), [("hg38", "GRCh38"), ("hg19", "GRCh37"), (None, None)]
 )
-def test_assembly_follows_the_library_build(build, assembly):
-    cmd = _command(SimpleNamespace(build=build, fasta="/r/g.fa", vep_cache=None))
+def test_assembly_follows_the_library_build(tmp_path, build, assembly):
+    (tmp_path / "homo_sapiens" / f"116_{assembly or 'GRCh38'}").mkdir(parents=True)
+    cmd = _command(
+        SimpleNamespace(build=build, fasta="/r/g.fa", vep_cache=str(tmp_path))
+    )
     assert _value(cmd, "--fasta") == "/r/g.fa"
     if assembly:
         assert _value(cmd, "--assembly") == assembly
@@ -676,10 +714,22 @@ def test_assembly_follows_the_library_build(build, assembly):
 
 
 def test_library_cache_used_when_no_cache_option(tmp_path):
+    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
     lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
     cmd = _command(lib, vep_cache=None)
     assert _value(cmd, "--dir_cache") == str(tmp_path)
     assert "--offline" in cmd and "--fasta" not in cmd
+
+
+def test_vep_fast_preset_replaces_everything(tmp_path):
+    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
+
+    assert "--everything" in _command(lib, preset="everything")
+    fast = _command(lib, preset="fast")
+    assert "--everything" not in fast
+    assert {"--symbol", "--mane", "--sift", "--polyphen"} <= set(fast)
+    assert "--af_gnomadg" not in fast and "--hgvs" not in fast
 
 
 @pytest.mark.parametrize(

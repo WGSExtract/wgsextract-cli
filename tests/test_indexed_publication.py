@@ -38,7 +38,7 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         request.getfixturevalue("fake_vep")
         source = Path(_vcf(tmp_path / "sample.vcf.gz"))
         cache = tmp_path / "cache"
-        cache.mkdir()
+        (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
         params = api.VepRunParams(
             input=source, outdir=output, vep_cache=cache, vep_assembly="GRCh38",
             engine="ensembl", force=True, threads=1,
