@@ -12,6 +12,20 @@ class DirectoryIdentity(TypedDict):
     fingerprint: str
 
 
+class Digest(TypedDict):
+    """How a recorded fingerprint was made, and so what it can vouch for."""
+
+    algorithm: Literal["sha256", "wgse-fp1", "wgse-dir1"]
+    strength: Literal["full", "sampled", "metadata"]
+
+
+class FileIdentity(TypedDict):
+    size: int
+    mtime_ns: int
+    fingerprint: str | None
+    digest: Digest
+
+
 class InputRequired(TypedDict):
     role: str
     path: str
@@ -20,6 +34,8 @@ class InputRequired(TypedDict):
 class InputIdentity(InputRequired, total=False):
     size: int | None
     fingerprint: str | None
+    mtime_ns: int
+    digest: Digest
     from_step: str
     from_run: object
     kind: Literal["directory"]
@@ -31,12 +47,24 @@ class InputIdentity(InputRequired, total=False):
 class FileOutput(TypedDict):
     path: str
     size: int
+    mtime_ns: int
     fingerprint: str | None
+    digest: Digest
 
 
-class DirectoryOutput(TypedDict):
+class DirectoryOutputRequired(TypedDict):
     path: str
     kind: Literal["directory"]
+    files: int
+    size: int
+    fingerprint: str
+    digest: Digest
+
+
+class DirectoryOutput(DirectoryOutputRequired, total=False):
+    # Declared required members (relative path -> identity). Without them
+    # every file but locks and staged partials is required.
+    members: dict[str, FileIdentity]
 
 
 OutputDocument = FileOutput | DirectoryOutput
