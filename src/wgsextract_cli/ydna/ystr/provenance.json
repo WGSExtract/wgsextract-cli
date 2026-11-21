@@ -553,10 +553,7 @@
     "DYS425": {
       "chosen": 10,
       "source": "NIST reference allele (AC095380.1)",
-      "votes": {
-        "Y-LineageTracker": 10,
-        "HipSTR-references": 10
-      }
+      "votes": {}
     },
     "DYS413a": {
       "chosen": null,
@@ -1099,16 +1096,19 @@
   },
   "references": {
     "hg38": {
-      "fasta": "hs38DH.fa.gz",
-      "contig": "chrY"
+      "fasta": "hg38-Y.fa",
+      "contig": "chrY",
+      "y_sequence_sha256": "4dd2f55ccb22c2e3cb1f677774fd0296073dc7d6135831993a1a6cabdca23cdf"
     },
     "hg19": {
-      "fasta": "hs37d5.fa.gz",
-      "contig": "Y"
+      "fasta": "hg19-Y.fa",
+      "contig": "chrY",
+      "y_sequence_sha256": "4caacbbc868386c35fbbfdeab5480157306e2ce6f47fa21eb35e15e8d9643dcc"
     },
     "t2t": {
-      "fasta": "chm13v2.0.fa.gz",
-      "contig": "chrY"
+      "fasta": "t2t-Y.fa",
+      "contig": "chrY",
+      "y_sequence_sha256": "486c9a3cd6abaf123a024d55c13c39448f81de11177f829e7bac7a1f15b9bf36"
     }
   }
 }

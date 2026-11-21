@@ -1,7 +1,11 @@
 """Y-STR calling (`lineage y-str`): read measurement, calling rules and the CLI."""
 
 import csv
+import json
+import subprocess
+import sys
 from collections import Counter
+from pathlib import Path
 
 import pytest
 
@@ -189,3 +193,198 @@ def test_y_str_cli_reports_a_sample_without_y_reads(tmp_path):
     )
     with pytest.raises(WGSExtractError, match="too few chrY reads"):
         run_wgsextract("lineage", "y-str", "--input", bam, "--build", "hg38")
+
+
+def _issue_1155_reads(build, *, reference=False, dys425_part=None):
+    fixture = json.loads(
+        (Path(__file__).parent / "fixtures/ystr_issue_1155.json").read_text()
+    )
+    reads = []
+    for row in fixture["records"]:
+        if row["build"] != build:
+            continue
+        if (
+            row["group"] == "DYS425"
+            and dys425_part is not None
+            and row["part"] != dys425_part
+        ):
+            continue
+        seq = row["reference_sequence"] if reference else row["sequence"]
+        # Palindromic reads can have MAPQ 0 and either alignment orientation.
+        mapq = 0 if row["group"] in ("DYS425", "DYS459") else 60
+        for i in range(4):
+            reads.append(
+                f"{row['group']}_{row['part']}_{i}\t{16 if i % 2 else 0}\tchrY\t"
+                f"{row['position']}\t{mapq}\t{len(seq)}M\t*\t0\t0\t{seq}\t"
+                f"{'I' * len(seq)}"
+            )
+    return reads
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    "build,y_length", [("hg38", 57227415), ("hg19", 59373566), ("t2t", 62460029)]
+)
+def test_issue_1155_missing_strs_appear_with_correct_values(tmp_path, build, y_length):
+    reads = _issue_1155_reads(build)
+    for marker, units in (
+        ("DYS393", 13),
+        ("DYS390", 24),
+        ("DYS391", 11),
+        ("DYS19", 15),
+        ("DYS426", 12),
+        ("DYS388", 12),
+        ("DYS439", 12),
+        ("DYS392", 13),
+    ):
+        reads += _spanning_reads(marker, units, 4, build)
+    bam = sam_to_bam(
+        [f"@SQ\tSN:chrY\tLN:{y_length}", *reads], tmp_path / "issue1155.bam"
+    )
+    run_wgsextract(
+        "lineage", "y-str", "--input", bam, "--panel", "all", "--build", build
+    )
+    output = tmp_path / "wgse/ystr"
+    table = {
+        row["marker"]: row
+        for row in csv.DictReader(
+            (output / "issue1155.ystr.tsv").open(), delimiter="\t"
+        )
+    }
+    expected = {
+        "DYS425": "12",
+        "DYS448": "20",
+        "DYS449": "30",
+        "DYS459a": "11",
+        "DYS459b": "13",
+        "DYS589": "14",
+    }
+    assert {
+        name: (table[name]["status"], table[name]["value"]) for name in expected
+    } == {name: ("called", value) for name, value in expected.items()}
+    header, row = list(csv.reader((output / "issue1155.ftdna.csv").open()))
+    exported = dict(zip(header, row, strict=True))
+    assert exported["DYS459"] == "11-13"
+    assert {
+        name: exported[name] for name in ("DYS425", "DYS448", "DYS449", "DYS589")
+    } == {name: expected[name] for name in ("DYS425", "DYS448", "DYS449", "DYS589")}
+
+
+@needs_htslib
+@pytest.mark.parametrize("part", [1, 2, 3, 4])
+def test_issue_1155_dys425_reads_at_any_homolog_yield_one_value(tmp_path, part):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+
+    bam = sam_to_bam(
+        ["@SQ\tSN:chrY\tLN:62460029", *_issue_1155_reads("t2t", dys425_part=part)],
+        tmp_path / "one-region.bam",
+    )
+    _, table = analyze(
+        Path(bam), tmp_path / "result", build="t2t", selected=[_marker("DYS425")]
+    )
+    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
+    assert (row["value"], row["status"], row["supporting_reads"]) == (
+        "12",
+        "called",
+        "4",
+    )
+
+
+@needs_htslib
+def test_issue_1155_dys425_disagreeing_homologs_are_not_guessed(tmp_path):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+
+    bam = sam_to_bam(
+        ["@SQ\tSN:chrY\tLN:62460029", *_issue_1155_reads("t2t", reference=True)],
+        tmp_path / "reference.bam",
+    )
+    _, table = analyze(
+        Path(bam),
+        tmp_path / "result",
+        build="t2t",
+        selected=[_marker("DYS425"), _marker("DYS589")],
+    )
+    rows = {r["marker"]: r for r in csv.DictReader(table.open(), delimiter="\t")}
+    assert (rows["DYS425"]["status"], rows["DYS425"]["value"]) == ("conflicting", "")
+    # CHM13 has 12 repeat units plus a non-STR poly-T insertion: not 12.1.
+    assert (rows["DYS589"]["status"], rows["DYS589"]["value"]) == ("called", "12")
+
+
+@needs_htslib
+@pytest.mark.parametrize("evidence", ["minor_stutter", "longer_unspanned"])
+def test_issue_1155_pooled_dys425_preserves_confidence_checks(tmp_path, evidence):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+
+    reads = [
+        r for r in _issue_1155_reads("t2t", dys425_part=1) if r.startswith("DYS425_")
+    ]
+    fields = reads[0].split("\t")
+    sequence = fields[9]
+    if evidence == "minor_stutter":
+        extra = sequence[:30] + "ACA" + sequence[30:]
+        copies = 1
+    else:
+        extra = sequence[:30] + "ACA" * 30
+        copies = 4
+    for i in range(copies):
+        fields[0] = f"extra_{i}"
+        fields[5], fields[9], fields[10] = f"{len(extra)}M", extra, "I" * len(extra)
+        reads.append("\t".join(fields))
+    bam = sam_to_bam(["@SQ\tSN:chrY\tLN:62460029", *reads], tmp_path / "evidence.bam")
+    _, table = analyze(
+        Path(bam),
+        tmp_path / "result",
+        build="t2t",
+        selected=[_marker("DYS425")],
+        min_fraction=1.0,
+    )
+    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
+    assert (row["status"], row["value"]) == ("conflicting", "")
+
+
+def test_issue_1155_panel_builder_finds_inverted_and_duplicated_tracts():
+    from scripts.build_ystr_panel import locate, locate_all, revcomp
+
+    left = "CCGACGTAGCATGACCTAGGCTACGATCGATGCTAGCTACGAGTACGATCAGTACT"
+    right = "ACGTCAGATCGATGCTACGACTAGCTACGATCGTAGCTACGACTAGCTAGCATGACT"
+    original = left + "AGAGAT" * 8 + right
+    start, end = len(left), len(original) - len(right)
+    inverted = revcomp(left + "AGAGAT" * 10 + right)
+    found = locate(original, start, end, inverted)
+    assert found is not None
+    lo, hi, _strand = found
+    assert measure(
+        inverted[lo - 14 : hi + 14],
+        inverted[lo - 14 : lo],
+        inverted[hi : hi + 14],
+    ) == (60, None)
+    doubled = inverted + "N" * 100 + inverted
+    placed = locate_all(original, start, end, doubled)
+    assert len(placed) == 2
+    assert [doubled[lo:hi] for lo, hi, _strand in placed] == ["ATCTCT" * 10] * 2
+
+
+def test_ystr_panel_builder_missing_sources_require_explicit_download(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/build_ystr_panel.py",
+            "--hg38",
+            "missing.fa",
+            "--hg19",
+            "missing.fa",
+            "--t2t",
+            "missing.fa",
+            "--cache",
+            str(tmp_path / "sources"),
+            "--out",
+            str(tmp_path / "panel"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Missing public Y-STR source" in result.stderr
+    assert "--download" in result.stderr
+    assert not list((tmp_path / "sources").iterdir())

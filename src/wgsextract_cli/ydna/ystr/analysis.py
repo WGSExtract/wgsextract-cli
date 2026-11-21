@@ -147,6 +147,8 @@ def call_multicopy(
     parts: Sequence[Tract],
     reads: dict[str, TractReads],
     min_reads: int,
+    *,
+    min_fraction: float | None = None,
 ) -> list[Call]:
     """Copies of a duplicated marker, pooled and reported in ascending order.
 
@@ -211,6 +213,17 @@ def call_multicopy(
     if status != "called":
         return [Call(m, status, spanning=spanning, alleles=table) for m in group]
     values = sorted(alleles)
+    if min_fraction is not None:
+        # One exported value (DYS425) still needs the requested majority and
+        # must not hide a longer, unspanned homolog.
+        bp = values[0]
+        longer = sum(n for bound, n in bounds.items() if bound > bp + period)
+        if pooled[bp] / spanning < min_fraction or longer >= max(
+            LONGER_ALLELE_READS, pooled[bp]
+        ):
+            return [
+                Call(m, "conflicting", spanning=spanning, alleles=table) for m in group
+            ]
     if len(values) < len(group):
         # Too few distinct alleles: the copies may share one, or a longer copy
         # may have too few spanning reads (fewer reads span a longer allele).
@@ -328,7 +341,7 @@ def call_markers(
     shared: dict[str, tuple[str, int, int, str, str]] = {}
     for m in selected:
         for t in panel.get(m.group, ()):
-            target = shared if m.kind == "multicopy" else unique
+            target = shared if m.kind in ("multicopy", "pooled") else unique
             target[key(t)] = (contig, t.start, t.end, t.left, t.right)
     reads = list(reads)
     measured = collect(
@@ -345,13 +358,19 @@ def call_markers(
             calls.append(Call(m, "not_callable"))
             continue
         parts = panel.get(m.group)
-        if m.kind == "multicopy":
+        if m.kind in ("multicopy", "pooled"):
             done.add(m.group)
             group = [g for g in selected if g.group == m.group]
             if not parts:
                 calls += [Call(g, "not_in_build") for g in group]
             else:
-                calls += call_multicopy(group, parts, measured, min_reads)
+                calls += call_multicopy(
+                    group,
+                    parts,
+                    measured,
+                    min_reads,
+                    min_fraction=min_fraction if m.kind == "pooled" else None,
+                )
         elif not parts or m.hg38_value is None:
             calls.append(Call(m, "not_in_build" if not parts else "not_callable"))
         else:

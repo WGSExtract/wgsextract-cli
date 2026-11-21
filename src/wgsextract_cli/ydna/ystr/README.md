@@ -57,6 +57,16 @@ count. That matches capillary sizing (for example, DYS458 `17.2`).
   copy only when at least 6 reads support it and no read shows another length.
   A length with weak support that sits one repeat from a stronger one is
   treated as stutter.
+* **DYS425.** Four homologous regions were found in the public reference Y
+  chromosomes, including both regions used by Y-STR_Kit. Reads from these
+  regions are pooled without a MAPQ filter and produce one value, not a sum
+  or four export columns. Distinct supported non-stutter alleles produce
+  `conflicting`, rather than choosing a region or guessing a lab value.
+* **Reference orientation.** Opposite-strand tracts use swapped,
+  reverse-complemented flanks in reference orientation. DYS448 and DYS589
+  can therefore be called on T2T. DYS589's conserved flank is widened beyond
+  its poly-T boundary; a CHM13-specific non-STR base there is excluded from
+  the repeat-length comparison, so its reference allele is 12, not 12.1.
 * **Too-long check.** Reads that contain only one flank set a lower bound on
   the length. Two or more bounds above the call make it `conflicting` (single
   copy) or `too_long` (multicopy), not a falsely short value.
@@ -72,8 +82,7 @@ Not callable from short reads:
 
 Build gaps:
 
-* T2T lacks DYS459, DYS448, DYS425 and DYS589.
-* hg19 lacks DYS425 and DYS716.
+* hg19 lacks DYS716.
 
 ### Why not `typing str` (ExpansionHunter)
 
@@ -90,7 +99,12 @@ it is not available for Windows and would add a dependency.
 `scripts/build_ystr_panel.py` from the sources below. Each source is pinned by
 URL and SHA-256 in `provenance.json`. Repeat tracts are located in each
 reference by sequence, not by lifting coordinates over. No upstream file is
-bundled; only derived coordinates, motifs and allele numbers are.
+bundled; only derived coordinates, flanks and allele numbers are. `loci.tsv`
+also records each placement's strand relative to its GRCh38 source; runtime
+counting uses reference-oriented flanks, not a motif-matching caller.
+Regeneration is offline with a populated source cache. Missing public source
+tables or BACs require the generator's explicit `--download` option (about
+6 MB total); reference FASTAs must already be present and indexed.
 
 | Source | Used for | Licence |
 |---|---|---|
@@ -132,7 +146,7 @@ counted separately.
 | GRCh38, downsampled to 50% | 603 / 604 (99.83%) | 247 (29%) |
 | GRCh38, downsampled to 25% | 313 / 314 (99.68%) | 537 (63%) |
 | Reads realigned to GRCh37 | 785 / 786 (99.87%) | 65 |
-| Reads realigned to T2T-CHM13v2 | 759 / 760 (99.87%) | 91 (DYS448 absent) |
+| Reads realigned to T2T-CHM13v2 (original panel) | 759 / 760 (99.87%) | 91 (DYS448 absent) |
 | GRCh38, `--min-reads 1` | 828 / 831 (99.64%) | 20 |
 
 The one remaining error at `--min-reads 2` is DYS458 in one sample, called
@@ -140,6 +154,11 @@ The one remaining error at `--min-reads 2` is DYS458 in one sample, called
 likely a difference between capillary sizing and sequence. Most no-calls are at
 long tracts that 150 bp reads rarely span (DYS389II, DYS448, DYS576, DYS635,
 DYS570).
+
+The missing-region fix is tested with small public-reference regions and
+synthetic repeat expansions on all three builds, including both DYS449 blocks.
+This confirms placement and counting, not population accuracy. The historical
+1000G figures above have not been remeasured for the expanded panel.
 
 The Y-67 and Y-111 markers outside PPY23 have no public truth set, so their
 accuracy is untested; this includes the unverified values above. Treat the

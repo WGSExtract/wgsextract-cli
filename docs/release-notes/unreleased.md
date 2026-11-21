@@ -43,3 +43,10 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   and `ref bootstrap` removes the empty `ref/` its archive leaves behind.
 
 ## Fixes
+
+- `lineage y-str` now places DYS448, DYS459, DYS589 and DYS425 on T2T,
+  and DYS425 on hg19. Opposite-strand flanks and duplicated regions are
+  handled correctly; DYS425 reports one pooled value, or a conflicting
+  no-call when supported alleles disagree. DYS589's non-repeat boundary
+  variation no longer appears as a fractional STR allele
+  ([#1155, missing Y-STRs](https://github.com/WGSExtract/wgsextract-cli/issues/1155)).

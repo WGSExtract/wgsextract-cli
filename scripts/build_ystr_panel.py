@@ -6,8 +6,9 @@ Usage (from the repository root):
         --hg38 GRCh38.fa.gz --hg19 GRCh37.fa.gz --t2t chm13v2.0.fa.gz \
         --cache tmp/ystr-sources
 
-The FASTAs need a samtools faidx index. Sources are downloaded into --cache,
-pinned by commit/SHA-256 (see SOURCES); GenBank BACs come from NCBI E-utilities.
+The FASTAs need a samtools faidx index. Missing sources require --download,
+which fetches public source tables and GenBank BACs into --cache (about 6 MB).
+Tables are pinned by commit/SHA-256 (see SOURCES); BACs use NCBI E-utilities.
 
 For each marker the script
 
@@ -37,11 +38,10 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-KMER = 14
+from wgsextract_cli.ydna.ystr.locations import KMER, locate, locate_all, revcomp
+
 SEARCH_PAD = 60
 MAX_WIDEN = 120
-CONTEXT = 40
-ANCHOR_SHIFTS = (0, 8, 20, 40, 80)
 
 _HIPSTR = "https://raw.githubusercontent.com/HipSTR-Tool/HipSTR-references/a396cd453c3ad6e5df6415f6a596fde56f20085c/human"
 _YLT = "https://raw.githubusercontent.com/Shuhua-Group/Y-LineageTracker/82b14c74be95ef2d4d929ce20bf7436869f163ea"
@@ -86,7 +86,7 @@ SOURCES: dict[str, dict[str, str]] = {
 # outside it. Columns: marker, FTDNA order, smallest FTDNA panel, forensic kits,
 # repeat unit length, kind, GRCh38 cores ("name" of the source row, ';' between
 # summed parts), FTDNA count minus NIST count, note.
-# kind: single | sum (parts counted together) | multicopy (copies sorted) | none
+# kind: single | sum (parts summed) | multicopy (copies sorted) | pooled | none
 PPY23 = "PPY23"
 YFP = "YfilerPlus"
 SPEC = """
@@ -137,7 +137,7 @@ DYS641	44	Y-67		4	single	DYS641	0
 DYS472	45	Y-67		3	single	DYS472	0
 DYF406S1	46	Y-67		4	single	DYF406S1	0
 DYS511	47	Y-67		4	single	DYS511	0
-DYS425	48	Y-67		3	single	DYS425	0
+DYS425	48	Y-67		3	pooled	DYS425	0	Homologous regions are pooled; one value is reported only when supported alleles agree.
 DYS413a	49	Y-67		2	multicopy	DYS413_1;DYS413_2	0	Two copies; values are sorted.
 DYS413b	50	Y-67		2	multicopy	DYS413_1;DYS413_2	0	Two copies; values are sorted.
 DYS557	51	Y-67		4	single	DYS557	0
@@ -240,8 +240,13 @@ class Core:
     copies: float | None
 
 
-def fetch(url: str, dest: Path, sha256: str | None) -> Path:
+def fetch(url: str, dest: Path, sha256: str | None, *, download: bool = False) -> Path:
     if not dest.exists():
+        if not download:
+            raise SystemExit(
+                f"Missing public Y-STR source {dest}; rerun with --download "
+                f"to fetch it from {url}."
+            )
         print(f"downloading {url}", file=sys.stderr)
         request = urllib.request.Request(url, headers={"User-Agent": "wgsextract"})
         with urllib.request.urlopen(request, timeout=120) as response:
@@ -270,10 +275,6 @@ def y_contig(fasta: str) -> str:
         if name in names:
             return name
     raise SystemExit(f"{fasta} has no chrY/Y")
-
-
-def revcomp(seq: str) -> str:
-    return seq[::-1].translate(str.maketrans("ACGTN", "TGCAN"))
 
 
 def near_matches(seq: str, pattern: str, limit: int = 1) -> list[int]:
@@ -330,44 +331,6 @@ def widen(ref: str, core: Core, period: int) -> tuple[int, int]:
     return s, e
 
 
-def unique_find(haystack: str, needle: str) -> int | None:
-    first = haystack.find(needle)
-    if first == -1 or haystack.find(needle, first + 1) != -1:
-        return None
-    return first
-
-
-def mismatches(a: str, b: str) -> int:
-    return sum(x != y for x, y in zip(a, b, strict=True)) + abs(len(a) - len(b))
-
-
-def locate(ref38: str, s: int, e: int, other: str) -> tuple[int, int] | None:
-    """The same tract in another assembly, by its flanking sequence.
-
-    Anchors start at the tract and step outwards, so a variant next to the
-    tract doesn't lose it; the KMER flanks found must then match GRCh38's to
-    within one base.
-    """
-    flank_l, flank_r = ref38[s - KMER : s], ref38[e : e + KMER]
-    for shift in ANCHOR_SHIFTS:
-        for context in (CONTEXT, 30, 22):
-            left = ref38[s - KMER - context - shift : s - shift]
-            right = ref38[e + shift : e + KMER + context + shift]
-            lpos = unique_find(other, left)
-            rpos = unique_find(other, right)
-            if lpos is None or rpos is None:
-                continue
-            bs, be = lpos + len(left) + shift, rpos - shift
-            if (
-                be >= bs
-                and be - bs < (e - s) + 400
-                and mismatches(other[bs - KMER : bs], flank_l) <= 1
-                and mismatches(other[be : be + KMER], flank_r) <= 1
-            ):
-                return bs, be
-    return None
-
-
 def locate_in_bac(ref38: str, s: int, e: int, bac: str) -> int | None:
     """Tract length in a BAC (either strand), or None if not found."""
     for seq in (bac, revcomp(bac)):
@@ -412,15 +375,20 @@ class Sources:
     nist: dict[str, tuple[str, list[int]]]  # BAC, reference alleles
 
 
-def load_sources(cache: Path) -> Sources:
+def load_sources(cache: Path, *, download: bool = False) -> Sources:
     cache.mkdir(parents=True, exist_ok=True)
     paths = {
-        key: fetch(src["url"], cache / Path(src["url"]).name, src["sha256"] or None)
+        key: fetch(
+            src["url"],
+            cache / Path(src["url"]).name,
+            src["sha256"] or None,
+            download=download,
+        )
         for key, src in SOURCES.items()
         if key != "strbase_assembly"
     }
     strbase_path = cache / "RelLociAssembly.json"
-    fetch(SOURCES["strbase_assembly"]["url"], strbase_path, None)
+    fetch(SOURCES["strbase_assembly"]["url"], strbase_path, None, download=download)
 
     hipstr: dict[str, Core] = {}
     for line in paths["hipstr_hg38"].read_text().splitlines():
@@ -547,9 +515,14 @@ def main() -> None:
     parser.add_argument("--t2t", required=True)
     parser.add_argument("--cache", default="tmp/ystr-sources")
     parser.add_argument("--out", default="src/wgsextract_cli/ydna/ystr")
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Fetch missing public source tables and GenBank BACs (about 6 MB); no sample data is sent.",
+    )
     args = parser.parse_args()
     cache = Path(args.cache)
-    sources = load_sources(cache)
+    sources = load_sources(cache, download=args.download)
     refs = {
         build: chrom_seq(fasta, y_contig(fasta))
         for build, fasta in (
@@ -572,6 +545,10 @@ def main() -> None:
         for core_name in core_names:
             try:
                 core = core_for(core_name, sources, refs["hg19"], ref38)
+                if name == "DYS589":
+                    # Include the variable base at the edge of CHM13's tract,
+                    # then widen to a unique, conserved flank outside its poly-T.
+                    core = Core(core.start - 1, core.end, core.source, core.copies)
                 s, e = widen(ref38, core, period)
             except PanelError as err:
                 print(f"{name}: {err}; not called", file=sys.stderr)
@@ -597,7 +574,7 @@ def main() -> None:
                     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
                     f"?db=nuccore&id={accession}&rettype=fasta&retmode=text"
                 )
-                fetch(url, bac_path, None)
+                fetch(url, bac_path, None, download=args.download)
             text = bac_path.read_text()
             header, *seq_lines = text.splitlines()
             bac = "".join(seq_lines).upper()
@@ -606,7 +583,9 @@ def main() -> None:
                 "sha256": hashlib.sha256(text.encode()).hexdigest(),
             }
             delta_bp: int | None = 0
-            for _part, _core, s, e in tracts:
+            for _part, _core, s, e in (
+                tracts[:1] if spec["kind"] == "pooled" else tracts
+            ):
                 bac_len = locate_in_bac(ref38, s, e, bac)
                 if bac_len is None:
                     delta_bp = None
@@ -644,8 +623,12 @@ def main() -> None:
         for part, core, s, e in tracts if group not in emitted else ():
             ref_len = e - s
             for build, ref in refs.items():
-                if build == "hg38":
-                    bs, be = s, e
+                if spec["kind"] == "pooled" or (build == "t2t" and group == "DYS459"):
+                    if part != 1:
+                        continue
+                    placements = locate_all(ref38, s, e, ref)
+                elif build == "hg38":
+                    placements = [(s, e, "+")]
                 else:
                     found = locate(ref38, s, e, ref)
                     if not found:
@@ -653,27 +636,40 @@ def main() -> None:
                             f"{name} part {part}: not found in {build}", file=sys.stderr
                         )
                         continue
-                    bs, be = found
-                left, right = ref[bs - KMER : bs], ref[be : be + KMER]
-                # A copy's GRCh38 count; reads are measured against hg38_length.
-                copy_value = ""
-                if spec["kind"] == "multicopy" and core.copies is not None:
-                    copy_value = str(int(core.copies))
-                loci.append(
-                    {
-                        "group": group,
-                        "part": part,
-                        "build": build,
-                        "start": bs + 1,
-                        "end": be,
-                        "left": left,
-                        "right": right,
-                        "ref_length": be - bs,
-                        "hg38_length": ref_len,
-                        "copy_value": copy_value,
-                        "core_source": core.source,
-                    }
-                )
+                    placements = [found]
+                for index, (bs, be, strand) in enumerate(placements):
+                    left, right = ref[bs - KMER : bs], ref[be : be + KMER]
+                    comparison_length = ref_len
+                    if name == "DYS589":
+                        # The widened flank includes an invariant poly-T base
+                        # gained in CHM13, not an extra base of the STR allele.
+                        allele = ref[bs:be]
+                        if strand == "-":
+                            allele = revcomp(allele)
+                        units = len(re.findall("TTATT", allele))
+                        hg38_units = len(re.findall("TTATT", ref38[s:e]))
+                        comparison_length = be - bs - (units - hg38_units) * period
+                    copy_value = ""
+                    if spec["kind"] == "multicopy" and core.copies is not None:
+                        copy_value = str(int(core.copies))
+                    elif spec["kind"] == "pooled":
+                        copy_value = str((core.end - core.start + 1) // period)
+                    loci.append(
+                        {
+                            "group": group,
+                            "part": index + 1 if len(placements) > 1 else part,
+                            "build": build,
+                            "start": bs + 1,
+                            "end": be,
+                            "left": left,
+                            "right": right,
+                            "ref_length": be - bs,
+                            "hg38_length": comparison_length,
+                            "copy_value": copy_value,
+                            "core_source": core.source,
+                            "strand": strand,
+                        }
+                    )
         emitted.add(group)
         markers.append(
             {
@@ -725,7 +721,11 @@ def main() -> None:
         "genbank_bacs": dict(sorted(bacs.items())),
         "reference_value_votes": calibration,
         "references": {
-            build: {"fasta": Path(path).name, "contig": y_contig(path)}
+            build: {
+                "fasta": Path(path).name,
+                "contig": y_contig(path),
+                "y_sequence_sha256": hashlib.sha256(refs[build].encode()).hexdigest(),
+            }
             for build, path in (
                 ("hg38", args.hg38),
                 ("hg19", args.hg19),
