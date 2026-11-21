@@ -86,7 +86,7 @@ SOURCES: dict[str, dict[str, str]] = {
 # outside it. Columns: marker, FTDNA order, smallest FTDNA panel, forensic kits,
 # repeat unit length, kind, GRCh38 cores ("name" of the source row, ';' between
 # summed parts), FTDNA count minus NIST count, note.
-# kind: single | sum (parts summed) | multicopy (copies sorted) | pooled | none
+# kind: single | sum (parts summed) | multicopy (copies sorted) | none
 PPY23 = "PPY23"
 YFP = "YfilerPlus"
 SPEC = """
@@ -137,7 +137,7 @@ DYS641	44	Y-67		4	single	DYS641	0
 DYS472	45	Y-67		3	single	DYS472	0
 DYF406S1	46	Y-67		4	single	DYF406S1	0
 DYS511	47	Y-67		4	single	DYS511	0
-DYS425	48	Y-67		3	pooled	DYS425	0	Homologous regions are pooled; one value is reported only when supported alleles agree.
+DYS425	48	Y-67		3	none		0	Short reads cannot reliably distinguish the assay target from paralogs with different repeat counts.
 DYS413a	49	Y-67		2	multicopy	DYS413_1;DYS413_2	0	Two copies; values are sorted.
 DYS413b	50	Y-67		2	multicopy	DYS413_1;DYS413_2	0	Two copies; values are sorted.
 DYS557	51	Y-67		4	single	DYS557	0
@@ -583,9 +583,7 @@ def main() -> None:
                 "sha256": hashlib.sha256(text.encode()).hexdigest(),
             }
             delta_bp: int | None = 0
-            for _part, _core, s, e in (
-                tracts[:1] if spec["kind"] == "pooled" else tracts
-            ):
+            for _part, _core, s, e in tracts:
                 bac_len = locate_in_bac(ref38, s, e, bac)
                 if bac_len is None:
                     delta_bp = None
@@ -623,7 +621,7 @@ def main() -> None:
         for part, core, s, e in tracts if group not in emitted else ():
             ref_len = e - s
             for build, ref in refs.items():
-                if spec["kind"] == "pooled" or (build == "t2t" and group == "DYS459"):
+                if build == "t2t" and group == "DYS459":
                     if part != 1:
                         continue
                     placements = locate_all(ref38, s, e, ref)
@@ -654,8 +652,6 @@ def main() -> None:
                     copy_value = ""
                     if spec["kind"] == "multicopy" and core.copies is not None:
                         copy_value = str(int(core.copies))
-                    elif spec["kind"] == "pooled":
-                        copy_value = str((core.end - core.start + 1) // period)
                     loci.append(
                         {
                             "group": group,

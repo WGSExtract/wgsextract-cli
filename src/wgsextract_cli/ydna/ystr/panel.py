@@ -24,7 +24,7 @@ class Marker:
     ftdna_panel: str
     kits: tuple[str, ...]
     period: int
-    kind: str  # single, sum, multicopy, pooled or none
+    kind: str  # single, sum, multicopy or none
     hg38_value: int | None
     value_source: str
     ftdna_minus_nist: int
@@ -44,7 +44,7 @@ class Tract:
     left: str
     right: str
     hg38_length: int  # comparison length; excludes build-specific non-STR changes
-    copy_value: int | None  # multicopy/pooled markers: source count for this tract
+    copy_value: int | None  # multicopy markers: source count for this tract
     trim_boundary: str = ""  # variable non-STR sequence inside the flanks
 
 
@@ -106,7 +106,7 @@ def tracts(build: str) -> dict[str, tuple[Tract, ...]]:
     return {
         group: tuple(parts)
         for group, parts in found.items()
-        if by_kind[group] in ("multicopy", "pooled") or len(parts) == expected[group]
+        if by_kind[group] == "multicopy" or len(parts) == expected[group]
     }
 
 

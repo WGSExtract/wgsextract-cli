@@ -196,7 +196,7 @@ def test_y_str_cli_reports_a_sample_without_y_reads(tmp_path):
         run_wgsextract("lineage", "y-str", "--input", bam, "--build", "hg38")
 
 
-def _issue_1155_reads(build, *, reference=False, dys425_part=None):
+def _issue_1155_reads(build, *, reference=False):
     fixture = json.loads(
         (Path(__file__).parent / "fixtures/ystr_issue_1155.json").read_text()
     )
@@ -204,19 +204,18 @@ def _issue_1155_reads(build, *, reference=False, dys425_part=None):
     for row in fixture["records"]:
         if row["build"] != build:
             continue
-        if (
-            row["group"] == "DYS425"
-            and dys425_part is not None
-            and row["part"] != dys425_part
-        ):
-            continue
         seq = row["reference_sequence"] if reference else row["sequence"]
         # Palindromic reads can have MAPQ 0 and either alignment orientation.
         mapq = 0 if row["group"] in ("DYS425", "DYS459") else 60
+        cigar = f"{len(seq)}M"
+        if row["group"] == "DYS425":
+            insertion = len(seq) - len(row["reference_sequence"])
+            if insertion:
+                cigar = f"30M{insertion}I{len(seq) - 30 - insertion}M"
         for i in range(4):
             reads.append(
                 f"{row['group']}_{row['part']}_{i}\t{16 if i % 2 else 0}\tchrY\t"
-                f"{row['position']}\t{mapq}\t{len(seq)}M\t*\t0\t0\t{seq}\t"
+                f"{row['position']}\t{mapq}\t{cigar}\t*\t0\t0\t{seq}\t"
                 f"{'I' * len(seq)}"
             )
     return reads
@@ -226,7 +225,9 @@ def _issue_1155_reads(build, *, reference=False, dys425_part=None):
 @pytest.mark.parametrize(
     "build,y_length", [("hg38", 57227415), ("hg19", 59373566), ("t2t", 62460029)]
 )
-def test_issue_1155_missing_strs_appear_with_correct_values(tmp_path, build, y_length):
+def test_issue_1155_restored_strs_and_ambiguous_dys425_export(
+    tmp_path, build, y_length
+):
     reads = _issue_1155_reads(build)
     for marker, units in (
         ("DYS393", 13),
@@ -253,7 +254,6 @@ def test_issue_1155_missing_strs_appear_with_correct_values(tmp_path, build, y_l
         )
     }
     expected = {
-        "DYS425": "12",
         "DYS448": "20",
         "DYS449": "30",
         "DYS459a": "11",
@@ -263,36 +263,19 @@ def test_issue_1155_missing_strs_appear_with_correct_values(tmp_path, build, y_l
     assert {
         name: (table[name]["status"], table[name]["value"]) for name in expected
     } == {name: ("called", value) for name, value in expected.items()}
+    # A non-reference DYS425 tract plus reference-matching paralogs does not
+    # identify an assay allele when the flanks are shared.
+    assert (table["DYS425"]["status"], table["DYS425"]["value"]) == ("not_callable", "")
     header, row = list(csv.reader((output / "issue1155.ftdna.csv").open()))
     exported = dict(zip(header, row, strict=True))
     assert exported["DYS459"] == "11-13"
-    assert {
-        name: exported[name] for name in ("DYS425", "DYS448", "DYS449", "DYS589")
-    } == {name: expected[name] for name in ("DYS425", "DYS448", "DYS449", "DYS589")}
+    assert exported["DYS425"] == ""
+    for name in ("DYS448", "DYS449", "DYS589"):
+        assert exported[name] == expected[name]
 
 
 @needs_htslib
-@pytest.mark.parametrize("part", [1, 2, 3, 4])
-def test_issue_1155_dys425_reads_at_any_homolog_yield_one_value(tmp_path, part):
-    from wgsextract_cli.ydna.ystr.analysis import analyze
-
-    bam = sam_to_bam(
-        ["@SQ\tSN:chrY\tLN:62460029", *_issue_1155_reads("t2t", dys425_part=part)],
-        tmp_path / "one-region.bam",
-    )
-    _, table = analyze(
-        Path(bam), tmp_path / "result", build="t2t", selected=[_marker("DYS425")]
-    )
-    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
-    assert (row["value"], row["status"], row["supporting_reads"]) == (
-        "12",
-        "called",
-        "4",
-    )
-
-
-@needs_htslib
-def test_issue_1155_dys425_disagreeing_homologs_are_not_guessed(tmp_path):
+def test_issue_1155_reference_paralogs_do_not_create_dys425_conflict(tmp_path):
     from wgsextract_cli.ydna.ystr.analysis import analyze
 
     bam = sam_to_bam(
@@ -306,7 +289,7 @@ def test_issue_1155_dys425_disagreeing_homologs_are_not_guessed(tmp_path):
         selected=[_marker("DYS425"), _marker("DYS589")],
     )
     rows = {r["marker"]: r for r in csv.DictReader(table.open(), delimiter="\t")}
-    assert (rows["DYS425"]["status"], rows["DYS425"]["value"]) == ("conflicting", "")
+    assert (rows["DYS425"]["status"], rows["DYS425"]["value"]) == ("not_callable", "")
     # CHM13 has 12 repeat units plus a non-STR poly-T insertion: not 12.1.
     assert (rows["DYS589"]["status"], rows["DYS589"]["value"]) == ("called", "12")
 
@@ -346,38 +329,6 @@ def test_issue_1155_dys589_poly_t_boundary_is_not_a_fractional_allele(
         "called",
         "14.1" if repeat_insertion else "14",
     )
-
-
-@needs_htslib
-@pytest.mark.parametrize("evidence", ["minor_stutter", "longer_unspanned"])
-def test_issue_1155_pooled_dys425_preserves_confidence_checks(tmp_path, evidence):
-    from wgsextract_cli.ydna.ystr.analysis import analyze
-
-    reads = [
-        r for r in _issue_1155_reads("t2t", dys425_part=1) if r.startswith("DYS425_")
-    ]
-    fields = reads[0].split("\t")
-    sequence = fields[9]
-    if evidence == "minor_stutter":
-        extra = sequence[:30] + "ACA" + sequence[30:]
-        copies = 1
-    else:
-        extra = sequence[:30] + "ACA" * 30
-        copies = 4
-    for i in range(copies):
-        fields[0] = f"extra_{i}"
-        fields[5], fields[9], fields[10] = f"{len(extra)}M", extra, "I" * len(extra)
-        reads.append("\t".join(fields))
-    bam = sam_to_bam(["@SQ\tSN:chrY\tLN:62460029", *reads], tmp_path / "evidence.bam")
-    _, table = analyze(
-        Path(bam),
-        tmp_path / "result",
-        build="t2t",
-        selected=[_marker("DYS425")],
-        min_fraction=1.0,
-    )
-    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
-    assert (row["status"], row["value"]) == ("conflicting", "")
 
 
 def test_issue_1155_panel_builder_finds_inverted_and_duplicated_tracts():

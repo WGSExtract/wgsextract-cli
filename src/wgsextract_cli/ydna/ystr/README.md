@@ -57,11 +57,6 @@ count. That matches capillary sizing (for example, DYS458 `17.2`).
   copy only when at least 6 reads support it and no read shows another length.
   A length with weak support that sits one repeat from a stronger one is
   treated as stutter.
-* **DYS425.** Four homologous regions were found in the public reference Y
-  chromosomes, including both regions used by Y-STR_Kit. Reads from these
-  regions are pooled without a MAPQ filter and produce one value, not a sum
-  or four export columns. Distinct supported non-stutter alleles produce
-  `conflicting`, rather than choosing a region or guessing a lab value.
 * **Reference orientation.** Opposite-strand tracts use swapped,
   reverse-complemented flanks in reference orientation. DYS448 and DYS589
   can therefore be called on T2T. DYS589's conserved flank is widened beyond
@@ -76,6 +71,9 @@ count. That matches capillary sizing (for example, DYS458 `17.2`).
 
 Not callable from short reads:
 
+* DYS425: the assay reports one value, but the four homologous tracts can
+  have different repeat counts and share flanks that short reads cannot
+  reliably distinguish. The export leaves DYS425 blank on all builds.
 * DYS464a-d (four or more palindromic copies)
 * CDYa/b (long tracts in palindrome P1)
 * DYF387S1

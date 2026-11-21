@@ -46,7 +46,7 @@ DYS641	DYS641	44	Y-67		4	single	10	NIST reference allele (AC018677.3)		0
 DYS472	DYS472	45	Y-67		3	single	8	unverified: HipSTR-references, Y-LineageTracker, Y-STR_Kit		0
 DYF406S1	DYF406S1	46	Y-67		4	single	9	unverified: Y-STR_Kit		0
 DYS511	DYS511	47	Y-67		4	single	9	unverified: HipSTR-references, Y-LineageTracker, Y-STR_Kit		0
-DYS425	DYS425	48	Y-67		3	pooled	10	NIST reference allele (AC095380.1)	Homologous regions are pooled; one value is reported only when supported alleles agree.	0
+DYS425	DYS425	48	Y-67		3	none			Short reads cannot reliably distinguish the assay target from paralogs with different repeat counts.	0
 DYS413a	DYS413	49	Y-67		2	multicopy		repeat units in each copy's core	Two copies; values are sorted.	0
 DYS413b	DYS413	50	Y-67		2	multicopy		repeat units in each copy's core	Two copies; values are sorted.	0
 DYS557	DYS557	51	Y-67		4	single	16	NIST reference allele (AC007876.2)		0

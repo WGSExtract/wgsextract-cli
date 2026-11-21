@@ -197,10 +197,6 @@
     "AC053516": {
       "version": "AC053516.10",
       "sha256": "a64cb825242cf3b6af9f5c70e6431c702664b7e4dee1cef097047312a72b80d3"
-    },
-    "AC095380": {
-      "version": "AC095380.1",
-      "sha256": "c3599c3925f7ba44234e587d855b9b0e2b54d11d5f229f800a88ab495355879d"
     }
   },
   "reference_value_votes": {
@@ -551,8 +547,8 @@
       }
     },
     "DYS425": {
-      "chosen": 10,
-      "source": "NIST reference allele (AC095380.1)",
+      "chosen": null,
+      "source": "",
       "votes": {}
     },
     "DYS413a": {
