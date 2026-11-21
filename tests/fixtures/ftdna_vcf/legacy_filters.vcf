@@ -1,0 +1,23 @@
+##fileformat=VCFv4.1
+##source=synthetic legacy FTDNA Big Y style corpus for wgsextract-cli tests (no donor data)
+##contig=<ID=chrY,length=1000>
+##FILTER=<ID=PASS,Description="All filters passed">
+##FILTER=<ID=LowQual,Description="Low quality">
+##FILTER=<ID=q10,Description="Quality below 10">
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	kit00000
+chrY	101	.	A	C	30	PASS	DP=30;HG=R-M269;ISOGG=R1b1a1b	GT	1
+chrY	102	.	A	G	31	.	DP=12	GT	1
+chrY	103	.	A	T	32	DP=1	DP=1	GT	1
+chrY	104	.	A	C	33	DP=812	DP=812	GT	1
+chrY	105	.	A	G	34	DP=37	DP=37	GT	1
+chrY	106	.	A	T	35	QUAL=12.5	DP=9	GT	1
+chrY	107	.	A	C	36	QUAL=55	DP=40	GT	1
+chrY	108	.	A	G	37	GTL=0.43	DP=20	GT	1
+chrY	109	.	A	T	38	DP=1;QUAL=19.1	DP=1	GT	1
+chrY	110	.	A	C	39	LowQual;DP=1	DP=1	GT	1
+chrY	111	.	A	G	40	q10;s50	DP=5;HG=R-L21	GT	1
+chrY	112	.	A	T	41	Low Coverage	DP=3	GT	1
+chrY	113	.	A	C	42	DP<5	DP=4	GT	1
+chrY	114	.	A	G	43	PASS;DP=1	DP=1	GT	1
