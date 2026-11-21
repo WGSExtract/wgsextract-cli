@@ -10,6 +10,7 @@ import pytest
 
 from scripts.build_microarray_chm13_map import write_site_map
 from tests.microarray_helpers import microarray_params
+from tests.path_budget import utf16_len
 from wgsextract_cli.commands import _microarray_chm13 as command
 from wgsextract_cli.core import library_cache
 from wgsextract_cli.core.config import settings
@@ -226,13 +227,13 @@ def test_native_vcf_quality_and_unsupported_masks_survive_canonical_aadr_export(
 
 def _deep_library(root: Path, length: int) -> Path:
     """A reference library under ``root`` whose absolute path is ``length``
-    characters."""
+    UTF-16 units long, as Windows counts it."""
     library = root
-    while (missing := length - len(str(library.absolute())) - 1) > 0:
+    while (missing := length - utf16_len(str(library.absolute())) - 1) > 0:
         # Never leave a single character, which needs a separator too.
         library /= "d" * (missing if missing <= 40 else min(40, missing - 2))
     library.mkdir(parents=True)
-    assert len(str(library.absolute())) == length
+    assert utf16_len(str(library.absolute())) == length
     return library
 
 

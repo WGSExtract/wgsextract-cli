@@ -14,6 +14,7 @@ import pytest
 
 from tests.fake_tools import FakePixi
 from tests.macos_openmp import sweep_unwritten_openmp_registrations
+from tests.path_budget import utf16_len
 from tests.smoke_utils import isolate_home, state_directory_setting
 from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
@@ -295,20 +296,25 @@ def _restore_signal_handlers() -> Iterator[None]:
 
 @pytest.fixture
 def short_tmp_path() -> Iterator[Path]:
-    """A temporary folder directly in the system temp folder, for paths built up
-    to a fixed length (Windows' 175-character library budget): pytest's
+    """A temporary folder with a short absolute path, for paths built up to a
+    fixed length (Windows' 175-UTF-16-unit library budget): pytest's
     ``tmp_path`` can be longer than that alone, as under a worktree's
-    certification basetemp. Fails, rather than skips, if the system temp folder
-    itself leaves too little room."""
-    path = Path(tempfile.mkdtemp(prefix="wgse-"))
-    if len(str(path.absolute())) > 120:
+    certification basetemp. Uses the system temp folder, else ``/tmp`` when
+    that is too deep; fails, rather than skips, if neither is short."""
+    for parent in [None, *(["/tmp"] if os.name == "posix" else [])]:
+        try:
+            path = Path(tempfile.mkdtemp(prefix="wgse-", dir=parent))
+        except OSError:
+            continue
+        if utf16_len(str(path.absolute())) <= 120:
+            yield path
+            shutil.rmtree(path, ignore_errors=True)
+            return
         shutil.rmtree(path, ignore_errors=True)
-        pytest.fail(
-            f"{path} is too long to build 175-character paths under; "
-            "point TMPDIR (TEMP on Windows) at a shorter folder."
-        )
-    yield path
-    shutil.rmtree(path, ignore_errors=True)
+    pytest.fail(
+        f"{tempfile.gettempdir()} is too long to build 175-character paths "
+        "under; point TMPDIR (TEMP on Windows) at a shorter folder."
+    )
 
 
 @pytest.fixture

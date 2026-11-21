@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pytest
 
+from tests.path_budget import utf16_len
 from wgsextract_cli.core import library_cache
 from wgsextract_cli.core.microarray import chm13_cache as cache
 from wgsextract_cli.core.microarray.chm13 import load_chm13_catalogue
@@ -176,7 +177,7 @@ def test_windows_library_depth_counts_utf16_code_units(
     # Issue #419 review: Windows measures MAX_PATH in UTF-16 code units, so a
     # character outside the BMP takes two of the 175 a library may use.
     monkeypatch.setattr(library_cache, "sys", SimpleNamespace(platform="win32"))
-    pad = 175 - len(str(short_tmp_path.absolute())) - 1
+    pad = 175 - utf16_len(str(short_tmp_path.absolute())) - 1
     narrow = short_tmp_path / ("d" * pad)
     wide = short_tmp_path / ("\U0001f600" + "d" * (pad - 1))
     result = CommandResult(command="microarray")
