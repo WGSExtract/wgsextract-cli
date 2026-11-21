@@ -303,21 +303,48 @@ def test_dead_builder_lock_is_reclaimed(tmp_path):
 def test_1214_remote_builder_lock_expires_only_when_stale(tmp_path, monkeypatch):
     lock = tmp_path / "shared.index.lock"
     hostname = socket.gethostname()
-    with monkeypatch.context() as remote:
-        remote.setattr(socket, "gethostname", lambda: f"{hostname}-remote")
-        with contextlib.ExitStack() as owner:
-            owner.enter_context(build_lock(str(lock), timeout=0))
-            with monkeypatch.context() as local:
-                local.setattr(socket, "gethostname", lambda: hostname)
-                with pytest.raises(WGSExtractError, match="Timed out"):
-                    with build_lock(str(lock), timeout=0):
-                        pytest.fail("a fresh remote builder was evicted")
+    lock.write_text(json.dumps({"pid": os.getpid(), "created": 0, "host": hostname}))
+    monkeypatch.setattr(socket, "gethostname", lambda: f"{hostname}-peer")
+    with pytest.raises(WGSExtractError, match="Timed out"):
+        with build_lock(str(lock), timeout=0):
+            pytest.fail("a fresh remote builder was evicted")
 
-                old = time.time() - 14 * 24 * 60 * 60
-                os.utime(lock, (old, old))
-                with build_lock(str(lock), timeout=0):
-                    assert json.loads(lock.read_text())["host"] == hostname
+    old = time.time() - 14 * 24 * 60 * 60
+    os.utime(lock, (old, old))
+    with build_lock(str(lock), timeout=0):
+        assert json.loads(lock.read_text())["host"] == socket.gethostname()
     assert not lock.exists()
+
+
+def test_1214_live_builder_renews_lock_on_shared_storage(tmp_path, monkeypatch):
+    lock = tmp_path / "shared.index.lock"
+    tick = threading.Event()
+    refreshed = threading.Event()
+    real_wait = threading.Event.wait
+    first = True
+
+    def advance_heartbeat(event, timeout=None):
+        nonlocal first
+        if threading.current_thread().name != "builder-lock-heartbeat":
+            return real_wait(event, timeout)
+        if first:
+            first = False
+            assert real_wait(tick, 5)
+            return event.is_set()
+        refreshed.set()
+        return real_wait(event, timeout)
+
+    monkeypatch.setattr(threading.Event, "wait", advance_heartbeat)
+    with build_lock(str(lock), timeout=0):
+        old = time.time() - 14 * 24 * 60 * 60
+        os.utime(lock, (old, old))
+        tick.set()
+        assert refreshed.wait(5)
+        hostname = socket.gethostname()
+        monkeypatch.setattr(socket, "gethostname", lambda: f"{hostname}-peer")
+        with pytest.raises(WGSExtractError, match="Timed out"):
+            with build_lock(str(lock), timeout=0):
+                pytest.fail("a renewed remote builder was evicted")
 
 
 def test_1214_zero_wait_can_release_contended_builder_lock(tmp_path, monkeypatch):

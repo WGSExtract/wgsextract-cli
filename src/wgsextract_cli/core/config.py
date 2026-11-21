@@ -276,6 +276,10 @@ def load_config() -> dict[str, Any]:
             config = read_toml(config_path)
         except tomllib.TOMLDecodeError as e:
             raise WGSExtractError(f"Invalid TOML in {config_path}: {e}") from e
+        except UnicodeDecodeError as e:
+            raise WGSExtractError(
+                f"Invalid UTF-8 in {config_path} at byte {e.start + 1}"
+            ) from e
         except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 

@@ -360,14 +360,24 @@ def test_startup_selects_alternate_config_before_validating_default(
 
 
 @pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
-def test_1214_cli_rejects_invalid_toml(tmp_path, monkeypatch, explicit):
+@pytest.mark.parametrize(
+    ("content", "location"),
+    [
+        (b"keep_awake = false\natomic_outputs = @\n", "line 2, column 18"),
+        (b"\xff\xfe", "byte 1"),
+    ],
+    ids=["invalid-toml", "invalid-utf8"],
+)
+def test_1214_cli_rejects_malformed_toml(
+    tmp_path, monkeypatch, explicit, content, location
+):
     from tests.smoke_utils import isolate_home
 
     home = tmp_path / "home"
     isolate_home(monkeypatch, home)
     path = tmp_path / "alternate.toml" if explicit else config.default_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("keep_awake = false\natomic_outputs = @\n", encoding="utf-8")
+    path.write_bytes(content)
     options = ["--config", str(path)] if explicit else []
 
     result = subprocess.run(
@@ -380,7 +390,7 @@ def test_1214_cli_rejects_invalid_toml(tmp_path, monkeypatch, explicit):
     assert result.returncode == 1
     assert "Configuration error:" in result.stderr
     assert str(path) in result.stderr
-    assert "line 2, column 18" in result.stderr
+    assert location in result.stderr
     assert "Traceback" not in result.stderr
 
 

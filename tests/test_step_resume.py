@@ -15,6 +15,16 @@ import pytest
 from wgsextract_cli.core.steps import ResumePolicy, Step, StepJournal
 
 
+def test_1214_journal_lock_cleanup_preserves_original_workflow_error(tmp_path):
+    path = tmp_path / "steps.json"
+    lock = tmp_path / ".steps.json.lock"
+    with pytest.raises(RuntimeError, match="workflow failed"):
+        with StepJournal(path, "synthetic", ResumePolicy()):
+            lock.unlink()
+            lock.mkdir()
+            raise RuntimeError("workflow failed")
+
+
 class Workflow:
     """``annotation`` reads a database folder and writes analysis.txt from its
     release files; ``summary`` reads analysis.txt."""
