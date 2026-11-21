@@ -93,8 +93,9 @@ redistribution mirror is introduced.
 ## Download safety
 
 Reference HTTP downloads resume only explicit `.partial` files bound to
-their source URL by a `.partial.source` hash sidecar; segmented downloads
-keep their own metadata. Unknown legacy partials or changed URLs restart.
+their source URL by a `.partial.source` hash sidecar. Segmented downloads
+record the URL hash and per-segment progress in `.partial.segments`.
+Legacy or invalid state and changed URLs cause the download to restart.
 Refreshing a complete file starts from zero and preserves it until replacement
 finishes and passes available checksums, then publishes atomically.
 Diagnostic URLs omit userinfo and queries, while requests keep the original
