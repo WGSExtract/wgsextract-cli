@@ -356,3 +356,32 @@ def test_needs_trusts_an_executable_the_user_named(host, capsys):
 
     assert "dorado" not in [item["name"] for item in named]
     assert "dorado" in [item["name"] for item in unnamed]
+
+
+def test_no_install_offer_where_the_cli_cannot_manage_pixi(
+    host, fake_pixi, monkeypatch, capsys
+):
+    """A CLI without its own pixi.toml (pip-installed) can't run `deps
+    install`: the Tools page and the dialog send the user to install it."""
+    fake_pixi.env("multiqc", locked=("multiqc",), installed=False)
+    monkeypatch.setattr(runtime, "source_checkout_root", lambda: None)
+
+    _, document = _json(capsys, "deps", "list")
+    (item,) = _needs(capsys, "qc", "multiqc", "-i", ".")
+
+    assert not _row(document, "multiqc")["can_install"]
+    assert item["name"] == "multiqc" and item["installArguments"] is None
+
+
+def test_deleting_imputation_panels_needs_no_glimpse2(host, fake_pixi, capsys):
+    if "GLIMPSE2_chunk" in platform_unavailable_tools():
+        pytest.skip("no GLIMPSE2 build for this platform")
+    fake_pixi.env("imputation", locked=("glimpse-bio",), installed=False)
+
+    deleting = _needs(capsys, "ref", "imputation", "--delete", "--chromosomes", "chr20")
+    installing = _needs(
+        capsys, "ref", "imputation", "--install", "--chromosomes", "chr20"
+    )
+
+    assert deleting == []
+    assert "GLIMPSE2_chunk" in [item["name"] for item in installing]

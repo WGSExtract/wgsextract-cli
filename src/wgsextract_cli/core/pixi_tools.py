@@ -255,6 +255,12 @@ def pixi_environment_argv(action: str, env: str) -> list[str] | None:
     return [pixi_cmd, action, *options, *manifest, "-e", env]
 
 
+def can_manage_environments() -> bool:
+    """Whether ``deps install`` / ``deps uninstall`` can run here: a Pixi and
+    this installation's own manifest (see ``pixi_environment_argv``)."""
+    return bool(_resolve_pixi_command() and _pixi_manifest_args())
+
+
 def locked_for_platform(tool: str) -> bool | None:
     """Whether the lockfile gives this platform the package providing
     ``tool`` in its Pixi environment; None when that can't be told (no Pixi,

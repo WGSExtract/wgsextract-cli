@@ -26,6 +26,7 @@ from typing import Any
 from wgsextract_cli.core import runtime
 from wgsextract_cli.core.native_support import tool_unsupported_reason
 from wgsextract_cli.core.pixi_tools import (
+    can_manage_environments,
     is_pixi_tool_command,
     locked_for_platform,
     pixi_env_prefix,
@@ -63,10 +64,15 @@ def environment_tools(env: str) -> list[str]:
 
 
 def installable(tool: str) -> bool:
-    """Whether ``deps install`` can install ``tool``: it has an environment of
-    its own and the lockfile doesn't rule this platform out (when Pixi can't
-    say, the install itself reports the problem)."""
-    return own_environment(tool) is not None and locked_for_platform(tool) is not False
+    """Whether ``deps install`` can install ``tool``: this installation
+    manages its own Pixi environments (a pip-installed CLI doesn't), the tool
+    has an environment of its own, and the lockfile doesn't rule this platform
+    out (when Pixi can't say, the install itself reports the problem)."""
+    return (
+        own_environment(tool) is not None
+        and can_manage_environments()
+        and locked_for_platform(tool) is not False
+    )
 
 
 def _host() -> str:
@@ -358,6 +364,8 @@ def missing_tools(args: argparse.Namespace) -> list[str]:
     needs = COMMAND_NEEDS.get(command)
     if needs is None or command.split()[0] in {"deps", "help", "serve"}:
         return []
+    if getattr(args, "delete", False) is True:
+        return []  # `ref imputation --delete` removes files; it runs no tools.
     wanted = [*needs.tools, *_chosen(args, needs.optional)]
     if command in ("vep run", "vep download"):
         wanted = [tool for tool in wanted if tool not in _VEP_TOOLS]
