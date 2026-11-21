@@ -4,6 +4,7 @@
 ##FILTER=<ID=PASS,Description="All filters passed">
 ##FILTER=<ID=LowQual,Description="Low quality">
 ##FILTER=<ID=q10,Description="Quality below 10">
+##FILTER=<Description="VQSR tranche, 99.90 to 100.00",ID=VQSRTrancheSNP99.90to100.00+>
 ##INFO=<ID=DP,Number=1,Type=Integer,Description="Read depth">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	kit00000
@@ -23,3 +24,5 @@ chrY	113	.	A	C	42	DP<5	DP=4	GT	1
 chrY	114	.	A	G	43	PASS;DP=1	DP=1	GT	1
 chrY	115	.	A	T	44	PASS;PASS	DP=22	GT	1
 chrY	116	.	A	C	45	.;DP=1	DP=1	GT	1
+chrY	117	.	A	G	46	.;.	DP=8	GT	1
+chrY	118	.	A	T	47	VQSRTrancheSNP99.90to100.00+	DP=9	GT	1

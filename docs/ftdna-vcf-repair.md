@@ -21,7 +21,7 @@ Each `;`-separated entry of a FILTER value is handled on its own:
 | Input entry | Output ID | Header description |
 | --- | --- | --- |
 | `PASS` or `.` (whole value) | unchanged | unchanged |
-| a valid ID declared in the header (`LowQual`, `q10`) | unchanged | the input's own |
+| an ID declared in the header (`LowQual`, `VQSRTrancheSNP99.90to100.00+`) | unchanged | the input's own |
 | a valid ID the header doesn't declare | unchanged | declared as "meaning unknown" |
 | `DP=1` | `DP1` | a single read covers the site |
 | `DP=n`, n > 750 | `DPM` | more than 750 reads cover the site |
@@ -29,12 +29,13 @@ Each `;`-separated entry of a FILTER value is handled on its own:
 | `QUAL=q`, q < 40 | `Q40` | site quality below 40 |
 | `QUAL=q`, q ≥ 40 | `QF` | failed an FTDNA quality filter of undocumented threshold |
 | `GTL=x` | `GTL` | failed FTDNA's undocumented GTL filter |
-| anything else (`Low Coverage`, `DP<5`, empty) | `FTDNA_UNKNOWN` | failed a vendor filter of unknown meaning |
+| anything else (`Low Coverage`, `DP<5`, an empty value or `;`) | `FTDNA_UNKNOWN` | failed a vendor filter of unknown meaning |
 
 - A failed call never becomes `PASS`: `PASS` next to a failing entry
   (`PASS;DP=1`) is dropped, and the remaining failure is kept. A value of only
-  `PASS` entries (`PASS;PASS`) becomes `PASS`, and a `.` entry beside others
-  is dropped.
+  `PASS` entries (`PASS;PASS`) becomes `PASS`, one of only `.` entries
+  (`.;.`) becomes `.`, and `.` or empty entries beside others (`PASS;`,
+  `.;DP=1`) are dropped: an empty separator is not evidence of a failure.
 - Several entries stay several IDs (`DP=1;QUAL=19.1` becomes `DP1;Q40`).
 - Each replaced expression is kept, percent-encoded, in `INFO/FTDNA_FILTER`
   (`DP%3D1,QUAL%3D19.1`), so the original evidence is still in the file.
@@ -63,7 +64,10 @@ The result manifest (`--json`) counts `records`, `repaired_records` and
 A record before the `#CHROM` line, a missing `#CHROM` line or a record with
 fewer than eight columns stops the repair with an error. The repair reads the
 whole input before writing, so a failure leaves no partial file and, in pipe
-mode, writes nothing to stdout. Empty input gives empty output.
+mode, writes nothing to stdout. Empty input gives empty output. Records
+beyond 64 MiB are held in an unnamed temporary file in `--tmp-dir` (or the
+`temp_directory` setting), else beside the output, else the system temporary
+folder; memory use doesn't grow with the number of records.
 
 ## Differences from WGS Extract v4
 

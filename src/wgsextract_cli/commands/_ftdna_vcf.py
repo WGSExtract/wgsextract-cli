@@ -11,6 +11,7 @@ from typing import TextIO
 
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError
 
 _CHECK_EVERY = 10_000
@@ -18,8 +19,7 @@ _SPOOL_IN_MEMORY = 64 << 20
 
 _VALID_ID = re.compile(r"[A-Za-z0-9_.\-]+")
 _LEGACY = re.compile(r"(DP|QUAL|GTL)\s*=\s*([0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)")
-_HEADER_ID = re.compile(r"##(FILTER|INFO)=<ID=([^,>]+)")
-_DESCRIPTION = re.compile(r'Description="((?:[^"\\]|\\.)*)"')
+_STRUCTURED = re.compile(r"##(FILTER|INFO)=<(.*)>\s*$")
 
 UNKNOWN = "FTDNA_UNKNOWN"
 EVIDENCE = "FTDNA_FILTER"
@@ -68,6 +68,37 @@ def _encode(expression: str) -> str:
     )
 
 
+def _attributes(body: str) -> dict[str, str]:
+    """``key=value`` pairs of a structured header line's ``<...>`` body, in
+    any order; commas and ``=`` inside quoted values don't split it."""
+    pairs: dict[str, str] = {}
+    key, value, quoted, escaped, in_value = "", "", False, False, False
+    for char in body + ",":
+        if escaped:
+            value += char
+            escaped = False
+        elif quoted and char == "\\":
+            value += char
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+            value += char
+        elif char == "," and not quoted:
+            pairs.setdefault(key.strip(), value.strip())
+            key, value, in_value = "", "", False
+        elif char == "=" and not in_value:
+            in_value = True
+        elif in_value:
+            value += char
+        else:
+            key += char
+    return pairs
+
+
+def _unquote(value: str) -> str:
+    return value[1:-1] if len(value) > 1 and value[0] == value[-1] == '"' else value
+
+
 @dataclass
 class _Header:
     lines: list[str] = field(default_factory=list)
@@ -76,48 +107,96 @@ class _Header:
 
     def add(self, line: str) -> None:
         self.lines.append(line)
-        if match := _HEADER_ID.match(line):
-            description = _DESCRIPTION.search(line)
+        match = _STRUCTURED.match(line)
+        if match is None:
+            return
+        attributes = _attributes(match[2])
+        if "ID" in attributes:
             table = self.filters if match[1] == "FILTER" else self.infos
-            table[match[2]] = description[1] if description else None
+            description = attributes.get("Description")
+            table[attributes["ID"]] = (
+                _unquote(description) if description is not None else None
+            )
+
+
+def _entries(value: str) -> str | list[str]:
+    """A failed FILTER value's entries to rewrite, or the value to emit when
+    nothing failed. PASS beside a failure and ``.``/empty entries are
+    dropped; only PASS entries give ``PASS`` and only ``.`` entries ``.``.
+    A value with no entries at all (empty, ``;``) is one unknown entry."""
+    tokens = [token.strip() for token in value.split(";")]
+    failures = [token for token in tokens if token not in ("", ".", "PASS")]
+    if failures:
+        return failures
+    if "PASS" in tokens:
+        return "PASS"
+    return "." if "." in tokens else [value]
 
 
 @dataclass
 class _Plan:
-    """How each distinct FILTER value is rewritten, and the IDs to declare."""
+    """Which IDs and INFO keys the records need, and the names they get.
+
+    Built from one pass over the records without keeping per-record or
+    per-value state, so memory stays flat on whole-genome inputs."""
 
     header: _Header
-    info_used: set[str]
-    values: list[str]
+    info_used: set[str] = field(default_factory=set)
+    categories: set[str] = field(default_factory=set)
+    undeclared: dict[str, None] = field(default_factory=dict)
+    unknown_examples: dict[str, None] = field(default_factory=dict)
+    unknown_records: int = 0
     names: dict[str, str] = field(default_factory=dict)
     new_filters: dict[str, str] = field(default_factory=dict)
     new_infos: dict[str, str] = field(default_factory=dict)
-    rewrites: dict[str, tuple[str, list[str]]] = field(default_factory=dict)
-    unknown: dict[str, int] = field(default_factory=dict)
-    unknown_values: set[str] = field(default_factory=set)
-    undeclared: list[str] = field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        # Valid IDs the records use are claimed first, so a mapped category
-        # never takes a name the input already gives another meaning.
-        for value in self.values:
-            if value in ("PASS", "."):
-                continue
-            for token in _tokens(value):
-                if token == "PASS":
-                    continue
-                if _is_id(token) and token not in self.header.filters:
-                    if token not in self.undeclared:
-                        self.undeclared.append(token)
-                        self.new_filters[token] = UNDECLARED
-        for value in self.values:
-            self.rewrite(value)
+    def classify(self, token: str) -> str | None:
+        """``token`` itself when it is an ID to keep, else its category;
+        ``None`` for an undeclared, uninterpretable expression."""
+        if token in self.header.filters or _VALID_ID.fullmatch(token):
+            return token
+        legacy = _LEGACY.fullmatch(token)
+        category = _category(legacy[1], legacy[2]) if legacy else None
+        return category
+
+    def observe(self, value: str) -> None:
+        if value in ("PASS", "."):
+            return
+        entries = _entries(value)
+        if isinstance(entries, str):
+            return
+        unknown = False
+        for token in entries:
+            kind = self.classify(token)
+            if kind == token:
+                if token not in self.header.filters:
+                    self.undeclared[token] = None
+            elif kind is None:
+                unknown = True
+                self.categories.add(UNKNOWN)
+                if len(self.unknown_examples) < 5:
+                    self.unknown_examples[token] = None
+            else:
+                self.categories.add(kind)
+        self.unknown_records += unknown
+
+    def finish(self) -> None:
+        # Undeclared IDs the records use are claimed first, so a mapped
+        # category never takes a name the input gives another meaning.
+        for token in self.undeclared:
+            self.new_filters[token] = UNDECLARED
+        for category, description in CATEGORIES.items():
+            if category in self.categories:
+                self.name(category, description)
+        if self.categories:
+            self.name(EVIDENCE, EVIDENCE_DESCRIPTION, info=True)
+        for key, description in HAPLOGROUP_INFO.items():
+            if key in self.info_used and key not in self.header.infos:
+                self.new_infos[key] = description
 
     def name(self, base: str, description: str, *, info: bool = False) -> str:
         """The ID to emit for ``base``: renamed when the input already uses
         it for something else, and declared when the input doesn't."""
-        if base in self.names:
-            return self.names[base]
         declared = self.header.infos if info else self.header.filters
         taken = set(declared) | (self.info_used if info else set(self.undeclared))
         candidate, suffix = base, 0
@@ -138,44 +217,22 @@ class _Plan:
         return candidate
 
     def rewrite(self, value: str) -> tuple[str, list[str]]:
-        if value not in self.rewrites:
-            self.rewrites[value] = (
-                (value, []) if value in ("PASS", ".") else self._rewrite(value)
-            )
-        return self.rewrites[value]
-
-    def _rewrite(self, value: str) -> tuple[str, list[str]]:
+        if value in ("PASS", "."):
+            return value, []
+        entries = _entries(value)
+        if isinstance(entries, str):
+            return entries, []
         ids: list[str] = []
         evidence: list[str] = []
-        for token in _tokens(value):
-            if token == "PASS" or _is_id(token):
+        for token in entries:
+            kind = self.classify(token)
+            if kind == token:
                 ids.append(token)
                 continue
-            legacy = _LEGACY.fullmatch(token)
-            category = _category(legacy[1], legacy[2]) if legacy else None
-            if category is None:
-                category = UNKNOWN
-                self.unknown[token] = self.unknown.get(token, 0) + 1
-                self.unknown_values.add(value)
-            ids.append(self.name(category, CATEGORIES[category]))
+            ids.append(self.names[kind or UNKNOWN])
             if token:
                 evidence.append(_encode(token))
         return ";".join(dict.fromkeys(ids)), evidence
-
-
-def _tokens(value: str) -> list[str]:
-    """A FILTER value's entries, less ``.`` and any PASS beside a failure.
-    Only PASS entries stay ``["PASS"]``; no entries at all (an empty value)
-    is one unknown entry."""
-    tokens = [token.strip() for token in value.split(";")]
-    failures = [token for token in tokens if token not in ("", ".", "PASS")]
-    if failures:
-        return failures
-    return ["PASS"] if "PASS" in tokens else [value]
-
-
-def _is_id(token: str) -> bool:
-    return token != "." and _VALID_ID.fullmatch(token) is not None
 
 
 def _fields(line: str) -> list[str]:
@@ -207,17 +264,18 @@ def repair_vcf_stream(
     returns the record count and how many records were changed.
 
     Nothing is written until the whole input has been read and checked, so
-    a malformed input leaves the output empty rather than half repaired."""
+    a malformed input leaves the output empty rather than half repaired.
+    Records past the in-memory limit spool to ``spool_dir``, else the run's
+    configured temporary folder."""
     header = _Header()
-    info_used: set[str] = set()
-    filter_values: dict[str, None] = {}
+    plan = _Plan(header)
     records = 0
     with tempfile.SpooledTemporaryFile(
         max_size=_SPOOL_IN_MEMORY,
         mode="w+",
         encoding="utf-8",
-        newline="",
-        dir=spool_dir,
+        newline="\n",
+        dir=spool_dir or configured_temp_directory(),
     ) as spool:
         columns = False
         for number, line in enumerate(input_stream, 1):
@@ -243,21 +301,15 @@ def repair_vcf_stream(
             records += 1
             if not records % _CHECK_EVERY:
                 checkpoint()
-            filter_values[fields[6]] = None
-            info_used.update(_info_keys(fields[7]))
+            plan.observe(fields[6])
+            plan.info_used.update(_info_keys(fields[7]))
             spool.write(line)
         if not header.lines:
             return 0, 0  # Empty input: nothing to repair.
         if not columns:
             raise WGSExtractError("The input has no #CHROM header line.")
 
-        plan = _Plan(header, info_used, list(filter_values))
-        evidence_id = EVIDENCE
-        if any(evidence for _, evidence in plan.rewrites.values()):
-            evidence_id = plan.name(EVIDENCE, EVIDENCE_DESCRIPTION, info=True)
-        for key, description in HAPLOGROUP_INFO.items():
-            if key in info_used and key not in header.infos:
-                plan.new_infos[key] = description
+        plan.finish()
         _report(plan)
 
         output_stream.writelines(header.lines[:-1])
@@ -270,34 +322,34 @@ def repair_vcf_stream(
         output_stream.write(header.lines[-1])
 
         spool.seek(0)
-        repaired = unknown = 0
+        repaired = 0
         for count, line in enumerate(spool, 1):
             if not count % _CHECK_EVERY:
                 checkpoint()
             fields = _fields(line)
             value, evidence = plan.rewrite(fields[6])
-            unknown += fields[6] in plan.unknown_values
             if value == fields[6]:
                 output_stream.write(line)
                 continue
             fields[6] = value
             if evidence:
-                fields[7] = _add_info(fields[7], evidence_id, evidence)
+                fields[7] = _add_info(fields[7], plan.names[EVIDENCE], evidence)
             output_stream.write("\t".join(fields) + "\n")
             repaired += 1
-    current_result().add_metrics(unknown_filter_records=unknown)
+    current_result().add_metrics(unknown_filter_records=plan.unknown_records)
     return records, repaired
 
 
 def _report(plan: _Plan) -> None:
-    if plan.unknown:
-        shown = ", ".join(repr(token) for token in list(plan.unknown)[:5])
+    if plan.unknown_records:
+        shown = ", ".join(repr(token) for token in plan.unknown_examples)
         warn(
             "ftdna_vcf_unknown_filter",
-            f"{len(plan.unknown)} FILTER expression(s) the FTDNA repair policy "
-            f"can't interpret ({shown}) became {plan.names[UNKNOWN]}; the "
-            f"originals are kept in INFO/{plan.names.get(EVIDENCE, EVIDENCE)}.",
-            expressions=len(plan.unknown),
+            f"{plan.unknown_records} record(s) have FILTER expressions the FTDNA "
+            f"repair policy can't interpret (such as {shown}); they became "
+            f"{plan.names[UNKNOWN]}, and the originals are kept in "
+            f"INFO/{plan.names[EVIDENCE]}.",
+            records=plan.unknown_records,
         )
     if plan.undeclared:
         warn(

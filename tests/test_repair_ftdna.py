@@ -300,8 +300,14 @@ def _bcftools(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _filter_descriptions(vcf: Path) -> dict[str, str]:
-    header = _bcftools("view", "-h", str(vcf)).stdout
-    return dict(re.findall(r'##FILTER=<ID=([^,]+),Description="([^"]*)"', header))
+    meanings = {}
+    for line in _bcftools("view", "-h", str(vcf)).stdout.splitlines():
+        if line.startswith("##FILTER=<"):
+            filter_id = re.search(r"[<,]ID=([^,>]+)", line)
+            description = re.search(r'Description="([^"]*)"', line)
+            assert filter_id and description, line
+            meanings[filter_id[1]] = description[1]
+    return meanings
 
 
 def test_1185_legacy_ftdna_filters_become_declared_ids_that_keep_their_meaning(
@@ -323,7 +329,8 @@ def test_1185_legacy_ftdna_filters_become_declared_ids_that_keep_their_meaning(
         "101": "PASS", "102": ".", "103": "DP1", "104": "DPM", "105": "DPF",
         "106": "Q40", "107": "QF", "108": "GTL", "109": "DP1;Q40",
         "110": "LowQual;DP1", "111": "q10;s50", "112": "FTDNA_UNKNOWN",
-        "113": "FTDNA_UNKNOWN", "114": "DP1", "115": "PASS", "116": "DP1",
+        "113": "FTDNA_UNKNOWN", "114": "DP1", "115": "PASS", "116": "DP1", "117": ".",
+        "118": "VQSRTrancheSNP99.90to100.00+",
     }  # fmt: skip
     assert rows["109"][1] == "DP%3D1,QUAL%3D19.1"  # original evidence kept
     assert rows["112"][1] == "Low%20Coverage"
@@ -367,14 +374,15 @@ def test_1185_mapped_id_already_declared_with_another_meaning_is_renamed(
     src.write_text(
         _CORPUS.read_text().replace(
             "##FILTER=<ID=q10,",
-            '##FILTER=<ID=DP1,Description="Depth below 1x in window">\n'
+            # The declaration's ID isn't its first attribute.
+            '##FILTER=<Description="Depth below 1x, in window",ID=DP1>\n'
             "##FILTER=<ID=q10,",
         )
     )
     out = tmp_path / "fixed.vcf"
     result = _repair_json(capsys, src, out)
     meanings = _filter_descriptions(out)
-    assert meanings["DP1"] == "Depth below 1x in window"
+    assert meanings["DP1"] == "Depth below 1x, in window"
     assert "single read" in meanings["DP1_WGSE"]
     filters = _bcftools("query", "-f", "%POS %FILTER\n", str(out)).stdout
     assert "103 DP1_WGSE\n" in filters
@@ -388,7 +396,7 @@ def test_1185_malformed_record_fails_without_partial_output(
     bad.write_text(_CORPUS.read_text() + "chrY\t200\t.\tA\n")
     out = tmp_path / "fixed.vcf"
     result = _repair_json(capsys, bad, out)
-    assert result["status"] == "failed" and "Line 26" in result["error"]["message"]
+    assert result["status"] == "failed" and "Line 29" in result["error"]["message"]
     assert not out.exists()
 
     config = tmp_path / "config.toml"
@@ -398,3 +406,18 @@ def test_1185_malformed_record_fails_without_partial_output(
     with pytest.raises(SystemExit) as exit_info:
         main(["--config", str(config), "repair", "ftdna-vcf"])
     assert exit_info.value.code != 0 and stream.getvalue() == ""
+
+
+def test_1185_bare_carriage_return_in_a_streamed_record_is_not_split(
+    tmp_path, monkeypatch
+):
+    # Replaying the spool split a record at a bare CR and crashed after the
+    # header had been written to stdout.
+    config = tmp_path / "config.toml"
+    config.write_text("")
+    vcf = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrY\t5\t.\tA\tG\t9\tDP=1\tX=a\rb\n"
+    monkeypatch.setattr(sys, "stdin", io.StringIO(vcf))
+    monkeypatch.setattr(sys, "stdout", stream := io.StringIO())
+    main(["--config", str(config), "repair", "ftdna-vcf"])
+    record = stream.getvalue().split("\n")[-2].split("\t")
+    assert record[6:8] == ["DP1", "X=a\rb;FTDNA_FILTER=DP%3D1"]
