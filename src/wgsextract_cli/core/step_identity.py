@@ -33,10 +33,7 @@ def _fingerprint(path: Path) -> str | None:
     return file_fingerprint(path)
 
 
-@functools.lru_cache(maxsize=256)
-def _sha256(path: str, size: int, mtime_ns: int, ctime_ns: int, inode: int) -> str:
-    # Keyed by ctime too, which no one can set back: an edit that restores
-    # the size and mtime is still hashed again.
+def _read_sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as stream:
         while chunk := stream.read(4 << 20):
@@ -44,16 +41,42 @@ def _sha256(path: str, size: int, mtime_ns: int, ctime_ns: int, inode: int) -> s
     return "sha256:" + digest.hexdigest()
 
 
+@functools.lru_cache(maxsize=256)
+def _cached_sha256(
+    path: str, size: int, mtime_ns: int, ctime_ns: int, inode: int
+) -> str:
+    # Keyed by ctime too, which no one can set back: an edit that restores
+    # the size and mtime is still hashed again.
+    return _read_sha256(path)
+
+
+def _sha256(path: Path, info: os.stat_result) -> str:
+    # On Windows st_ctime is the creation time, which an edit doesn't change,
+    # so no stat key can tell an edit that restores size and mtime: hash anew.
+    if os.name == "nt":
+        return _read_sha256(str(path))
+    return _cached_sha256(
+        str(path), info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino
+    )
+
+
+class NotARegularFile(ValueError):
+    """A path recorded as a file is now a FIFO, device or socket, which a
+    digest would block on or drain."""
+
+
 def file_identity(path: Path) -> FileIdentity:
     """A file's size, mtime and fingerprint: a full SHA-256 of files up to
     ``FULL_DIGEST_LIMIT``, sampled blocks (``results.fingerprint``) of larger
-    ones, which are then trusted only while their mtime is unchanged."""
+    ones, which are then trusted only while their mtime is unchanged.
+    Raises ``NotARegularFile`` rather than opening anything but a regular
+    file."""
     info = path.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise NotARegularFile(f"{path} is not a regular file")
     digest: Digest
     if info.st_size <= FULL_DIGEST_LIMIT:
-        fingerprint: str | None = _sha256(
-            str(path), info.st_size, info.st_mtime_ns, info.st_ctime_ns, info.st_ino
-        )
+        fingerprint: str | None = _sha256(path, info)
         digest = {"algorithm": "sha256", "strength": "full"}
     else:
         fingerprint = _fingerprint(path)
@@ -75,6 +98,9 @@ def file_drift(old: Mapping[str, Any], new: Mapping[str, Any]) -> str | None:
             f"changed size ({old.get('size')} -> {new.get('size')} bytes; "
             "truncated or rewritten)"
         )
+    if old.get("fingerprint") is None or new.get("fingerprint") is None:
+        # Two failed reads aren't a match: nothing was verified.
+        return "couldn't be read to verify its digest"
     if old.get("fingerprint") != new.get("fingerprint"):
         algorithm = new["digest"]["algorithm"]
         return f"changed ({algorithm} {new['digest']['strength']} digest differs)"

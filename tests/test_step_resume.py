@@ -418,3 +418,76 @@ def test_1181_declared_member_must_exist(tmp_path: Path) -> None:
     report = Report(tmp_path, ["table.tsv", "summary.html"])
     with pytest.raises(WGSExtractError, match="summary.html"):
         report.run()
+
+
+def plan(root: Path, step: Step) -> str:
+    """The dry-run reason for ``step`` in ``root``'s copy journal."""
+    with StepJournal(
+        root / "copy.steps.json", "synthetic", ResumePolicy(dry_run=True)
+    ) as journal:
+        decision = journal.decide(step)
+    return ("ran: " if decision.run else "skipped: ") + decision.reason
+
+
+def test_1181_output_replaced_by_a_fifo_reruns_without_blocking(
+    tmp_path: Path,
+) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("this system has no named pipes")
+    source = tmp_path / "reads.bin"
+    source.write_bytes(b"ACGT" * 1000)
+    _, output = copy_step(tmp_path, source)
+    output.unlink()
+    os.mkfifo(output)
+
+    reason = plan(tmp_path, Step("copy", inputs={"source": source}, outputs=(output,)))
+
+    assert reason == "ran: copy.bin is no longer a regular file"
+
+
+def test_1181_unreadable_large_input_is_not_a_digest_match(tmp_path: Path) -> None:
+    from wgsextract_cli.core.step_identity import FULL_DIGEST_LIMIT
+
+    if os.name == "nt" or os.geteuid() == 0:
+        pytest.skip("needs POSIX permissions that bind this user")
+    source = tmp_path / "reads.bin"
+    with open(source, "wb") as stream:
+        stream.truncate(FULL_DIGEST_LIMIT + MIB)
+    _, output = copy_step(tmp_path, source)
+    # A completion whose sampled read failed recorded no fingerprint.
+    journal = tmp_path / "copy.steps.json"
+    document = json.loads(journal.read_text())
+    document["steps"]["copy"]["inputs"][0]["fingerprint"] = None
+    journal.write_text(json.dumps(document))
+    source.chmod(0)
+    try:
+        reason = plan(
+            tmp_path, Step("copy", inputs={"source": source}, outputs=(output,))
+        )
+    finally:
+        source.chmod(0o644)
+
+    assert reason.startswith("ran: its source")
+    assert "couldn't be read to verify its digest" in reason
+
+
+def test_1181_skip_reason_counts_inputs_a_step_reported_while_running(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.core.step_identity import FULL_DIGEST_LIMIT
+
+    reference = tmp_path / "reference.fa"
+    with open(reference, "wb") as stream:
+        stream.truncate(FULL_DIGEST_LIMIT + MIB)
+    output = tmp_path / "calls.txt"
+    step = Step("call", outputs=(output,))
+    with StepJournal(tmp_path / "copy.steps.json", "synthetic", ResumePolicy()) as j:
+        with j.running(j.decide(step)) as handle:
+            # A child command names its reference only once it runs.
+            handle.add_input("reference", reference)
+            output.write_text("calls")
+
+    reason = plan(tmp_path, step)
+
+    assert reason.startswith("skipped: complete")
+    assert reason.endswith("checked 1 sha256 full, 1 wgse-fp1 sampled)")

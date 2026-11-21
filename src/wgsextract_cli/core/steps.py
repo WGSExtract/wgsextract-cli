@@ -62,6 +62,7 @@ from wgsextract_cli.core.step_documents import (
 )
 from wgsextract_cli.core.step_identity import (
     METADATA_DIGEST,
+    NotARegularFile,
     directory_drift,
     directory_identity,
     file_drift,
@@ -541,9 +542,9 @@ class StepJournal:
             return run("an earlier run was interrupted during it", partial=same)
         if record.get("key") != key:
             return run(self._key_change(step, record, tools))
-        if changed := self._changed_input(record, inputs):
-            return run(changed)
         checked: list[Mapping[str, Any]] = list(inputs.values())
+        if changed := self._changed_input(record, inputs, checked):
+            return run(changed)
         if stale := self._stale_output(step, record, checked):
             return run(stale)
         finished = record.get("finished", "an earlier run")
@@ -584,7 +585,10 @@ class StepJournal:
         return "its settings changed"
 
     def _changed_input(
-        self, record: Mapping[str, Any], inputs: Mapping[str, Mapping[str, Any]]
+        self,
+        record: Mapping[str, Any],
+        inputs: Mapping[str, Mapping[str, Any]],
+        checked: list[Mapping[str, Any]],
     ) -> str | None:
         recorded = {item.get("role"): item for item in record.get("inputs") or []}
         for role in sorted(set(recorded) - set(inputs)):
@@ -609,7 +613,9 @@ class StepJournal:
                 path.is_file() or (old.get("kind") == "directory" and path.is_dir())
             ):
                 return f"its {role} {path} is missing or changed"
-            if drift := input_drift(old, self._input(role, path)):
+            now = self._input(role, path)
+            checked.append(now)
+            if drift := input_drift(old, now):
                 return f"its {role} {path} {drift}"
         return None
 
@@ -635,7 +641,10 @@ class StepJournal:
             if item.get("kind") == "directory" or path.is_dir():
                 stale = directory_drift(path, item, checked)
             else:
-                identity = file_identity(path)
+                try:
+                    identity = file_identity(path)
+                except NotARegularFile:
+                    return f"{path.name} is no longer a regular file"
                 checked.append(identity)
                 stale = file_drift(item, identity)
                 stale = stale and f"{path.name} {stale} since the step wrote it"
@@ -738,7 +747,13 @@ class StepJournal:
                     f"Step {step.name} declared members of {resolved}, a file."
                 )
             else:
-                file = file_identity(resolved)
+                try:
+                    file = file_identity(resolved)
+                except NotARegularFile:
+                    raise WGSExtractError(
+                        f"Step {step.name} wrote {resolved}, which isn't a "
+                        "regular file, so it can't be recorded for resume."
+                    ) from None
                 identity = FileOutput(
                     path=self._stored_path(resolved),
                     size=file["size"],

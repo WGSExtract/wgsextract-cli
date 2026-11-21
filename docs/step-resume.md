@@ -107,7 +107,12 @@ without times (`cp` without `-p`) does. A large file deliberately edited and
 then given back its old modification time (`touch -r`) isn't seen; use
 `--force-step` after such a change, or `wgsextract sign` for full-content
 checksums. A full digest is never taken on trust: it is recomputed, so one
-recorded earlier can't vouch for a file that has since changed.
+recorded earlier can't vouch for a file that has since changed. On Linux and
+macOS a full digest is reused within one process only while the file's size,
+modification and change times and inode are all unchanged; on Windows it is
+rehashed on every check. A file whose digest can't be read never matches, and
+an output replaced by something other than a regular file (a pipe or device)
+reruns the step without being read.
 
 A journal written before these digests runs each step once more, with the
 reason `was recorded by an earlier wgsextract without an integrity digest`.
