@@ -12,7 +12,26 @@ from itertools import zip_longest
 from pathlib import Path
 
 from wgsextract_cli.core.alignment.read_counts import FastqStatistics
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError
+
+
+def discarded_read_count(other: Path | None) -> int:
+    """Count READ_OTHER records from a completed samtools FASTQ extraction."""
+    if other is None or not other.exists():
+        return 0
+    with gzip.open(other, "rb") as reads:
+        return sum(1 for _ in reads) // 4
+
+
+def warn_discarded_reads(count: int) -> None:
+    if count:
+        warn(
+            "paired_fastq_discarded_reads",
+            f"{count:,} primary reads flagged neither first nor second of a pair "
+            "(single-end) were left out of the paired FASTQ.",
+            reads=count,
+        )
 
 
 def stage_read_input(path: str, directory: str, cleanup: ExitStack) -> str:

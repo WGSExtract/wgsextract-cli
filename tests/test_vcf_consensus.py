@@ -2,12 +2,20 @@
 
 import gzip
 import logging
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from tests.fake_tool_launchers import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import consensus
+from wgsextract_cli.core.atomic_output import atomic_output_mode
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -232,17 +240,145 @@ def test_missing_reference_fails_before_writing(tmp_path):
     assert not list(tmp_path.glob("*consensus*"))
 
 
-def test_failure_while_writing_removes_partial_outputs(tmp_path, monkeypatch):
-    def fail(stages, stdout=None, description=""):
-        stdout.write(b"partial")
-        Path(tmp_path / "out" / "v_consensus.chain").write_text("partial")
-        raise WGSExtractError("consensus died")
+def _consensus_outputs(out: Path) -> dict[str, bytes]:
+    # The persistent lock serializes publishers; it is not a result artifact.
+    return {
+        path.name: path.read_bytes()
+        for path in out.iterdir()
+        if not path.match(".wgse_publish-*.guard")
+    }
 
-    monkeypatch.setattr(consensus, "run_pipeline", fail)
-    (tmp_path / "out").mkdir()
-    with pytest.raises(WGSExtractError, match="consensus died"):
-        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain", contigs=("chr1",))
-    assert list((tmp_path / "out").iterdir()) == []
+
+@pytest.mark.parametrize("previous_result", [False, True], ids=["first-run", "retry"])
+def test_1236_ref_mismatch_leaves_consensus_outputs_untouched(
+    tmp_path, previous_result
+):
+    out = tmp_path / "out"
+    with atomic_output_mode(True):
+        if previous_result:
+            assert _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain") == {
+                "chr1": _with(12, "T", 2)
+            }
+            names = (
+                "v_consensus.fa.gz",
+                "v_consensus.fa.gz.fai",
+                "v_consensus.fa.gz.gzi",
+                "v_consensus.chain",
+            )
+            expected = {name: (out / name).read_bytes() for name in names}
+        else:
+            expected = {}
+        with pytest.raises(WGSExtractError, match="does not match the REF allele"):
+            _to_fasta(tmp_path, _rec(12, "A", "C", "1/1"), "--chain")
+
+    assert _consensus_outputs(out) == expected
+
+
+def test_1236_failed_faidx_retry_preserves_consensus(tmp_path, monkeypatch):
+    require_bare_name_fakes()
+    out = tmp_path / "out"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    previous = _consensus_outputs(out)
+    samtools = get_tool_path("samtools")
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "samtools",
+        "import os, sys\n"
+        "if sys.argv[1] == 'faidx' and sys.argv[2].endswith('.fa.gz'):\n"
+        "    sys.exit('cannot index consensus output')\n"
+        f"os.execv({samtools!r}, [{samtools!r}, *sys.argv[1:]])\n",
+    )
+    with monkeypatch.context() as env:
+        env.setenv("PATH", str(bindir), prepend=os.pathsep)
+        clear_tool_caches()
+        try:
+            with pytest.raises(WGSExtractError, match="cannot index consensus output"):
+                _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+        finally:
+            clear_tool_caches()
+    assert _consensus_outputs(out) == previous
+
+
+@pytest.mark.parametrize("publishing", [False, True], ids=["retiring", "publishing"])
+def test_1236_interrupt_after_rename_restores_prior_consensus(
+    tmp_path, monkeypatch, publishing
+):
+    out = tmp_path / "out"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    previous = _consensus_outputs(out)
+    replace = Path.replace
+    interrupted = False
+
+    def interrupted_replace(source, target):
+        nonlocal interrupted
+        result = replace(source, target)
+        matches = (
+            target == out / "v_consensus.fa.gz.gzi"
+            if publishing
+            else source == out / "v_consensus.fa.gz"
+        )
+        if matches and not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    with pytest.raises(KeyboardInterrupt):
+        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+
+    assert _consensus_outputs(out) == previous
+
+
+def test_1236_blocked_index_destination_leaves_no_partial_consensus(tmp_path):
+    out = tmp_path / "out"
+    blocked = out / "v_consensus.fa.gz.gzi"
+    blocked.mkdir(parents=True)
+
+    with pytest.raises(WGSExtractError, match=blocked.name):
+        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+
+    assert [
+        path for path in out.iterdir() if not path.match(".wgse_publish-*.guard")
+    ] == [blocked]
+    assert blocked.is_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1236_successful_retry_keeps_private_consensus_permissions(tmp_path):
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    fasta = tmp_path / "out" / "v_consensus.fa.gz"
+    fasta.chmod(0o600)
+
+    assert _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain") == {
+        "chr1": _with(12, "C")
+    }
+    assert fasta.stat().st_mode & 0o777 == 0o600
+
+
+def test_1236_cancelled_api_retry_waiting_to_publish_preserves_outputs(tmp_path):
+    out = tmp_path / "out"
+    ref = tmp_path / "ref.fa"
+    vcf = tmp_path / "v.vcf.gz"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    expected = _consensus_outputs(out)
+    _vcf(vcf, _rec(12, "T", "C", "1/1"))
+    params = api.vcf.VcfToFastaParams(input=vcf, ref=ref, outdir=out, chain=True)
+    cancel = api.CancelToken()
+    guard = next(out.glob(".wgse_publish-*.guard"))
+
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        with exclusive_lock(guard.with_suffix("")):
+            run = workers.submit(api.vcf.to_fasta, params, cancel=cancel, check=False)
+            deadline = time.monotonic() + 10
+            while not any(out.glob(".wgse_publish_*/*.gzi")):
+                assert not run.done(), run.result()
+                assert time.monotonic() < deadline, "consensus never reached indexing"
+                time.sleep(0.01)
+            cancel.cancel()
+            assert run.result(timeout=5).status == "cancelled"
+
+    assert _consensus_outputs(out) == expected
 
 
 def test_1222_structural_variant_end_does_not_mask_uncovered_bases(tmp_path):

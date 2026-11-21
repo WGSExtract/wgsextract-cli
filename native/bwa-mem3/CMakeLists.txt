@@ -42,7 +42,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.4.0)
+set(WGSE_BWA_MEM3_VERSION 0.4.1)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
@@ -341,7 +341,7 @@ if(APPLE)
 endif()
 
 if(BUILD_TESTING)
-    # Hidden failure-injection flag (--gpu-inject-hang) for tests only.
+    # Hidden watchdog failure-injection flags for tests only.
     target_compile_definitions(wgse-bwa-mem3 PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     add_test(NAME bwa_mem3_capabilities COMMAND wgse-bwa-mem3 capabilities --json)
     set_tests_properties(bwa_mem3_capabilities PROPERTIES
@@ -376,7 +376,9 @@ if(BUILD_TESTING)
     # Each test is NAME|OPTION|..., run with the GPU's option.
     if(APPLE)
         set(gpu metal)
-        set(gpu_specs "parity|--gpu-seed-wait|--gpu-inject-interruptions|2")
+        set(gpu_specs "parity|--gpu-seed-wait|--gpu-inject-interruptions|2"
+            "watchdog_start_failure|--gpu-inject-watchdog-start-failure"
+            "auto_watchdog_start_failure|--backend|auto|--gpu-inject-watchdog-start-failure")
     elseif(WGSE_CUDA)
         set(gpu cuda)
         # Mate rescue on the GPU (CUDA only): off, failed, and hung; and suffix-array lookups

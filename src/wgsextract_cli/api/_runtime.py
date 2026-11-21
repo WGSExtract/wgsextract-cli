@@ -299,8 +299,13 @@ def execute(
     stopped. config.toml is loaded on the first call unless the host already
     loaded or selected one (see ``use_config``).
     """
+    from wgsextract_cli.core.atomic_output import output_publication_scope
+
     read_only = _runs_concurrently(params)
-    with contextlib.nullcontext() if read_only else _LOCK:
+    with (
+        contextlib.nullcontext() if read_only else _LOCK,
+        output_publication_scope(),
+    ):
         result, error, created, card = _run(
             params, impl, progress, cancel, read_only, card=write_manifest
         )

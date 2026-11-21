@@ -85,8 +85,8 @@ class VepRunParams(Params):
         None,
         help="Path to VEP cache directory (e.g., $HOME/.vep)",
         doc="VEP cache folder (default: config vep_cache_directory, else the "
-        "reference library's, else ~/.vep). VEP runs offline when it exists, "
-        "else queries Ensembl's database.",
+        "reference library's, else ~/.vep). VEP runs offline. If the cache is "
+        "missing, vep_cache_missing tells you how to fetch it with vep download.",
         path="directory",
         config_key="vep_cache_directory",
     )
@@ -150,6 +150,13 @@ class VepRunParams(Params):
         help="Chromosomal region (e.g. chrM, chrY:10000-20000)",
         flags=("-r", "--region"),
     )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        from wgsextract_cli.core.utils import UsageError
+
+        if not re.fullmatch(r"[0-9]+", self.vep_cache_version):
+            raise UsageError(f"Invalid --vep-cache-version {self.vep_cache_version!r}.")
 
     def write_folders(self) -> Iterator[Path]:
         # An unindexed .vcf.gz input is indexed beside itself.

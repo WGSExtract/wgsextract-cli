@@ -14,7 +14,7 @@ FetchContent_Declare(mem3
 FetchContent_MakeAvailable(bwa mem3)
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
-set(WGSE_BWA_VERSION 0.14.0)
+set(WGSE_BWA_VERSION 0.14.1)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
 include("${CMAKE_CURRENT_SOURCE_DIR}/upstream_seams.cmake")

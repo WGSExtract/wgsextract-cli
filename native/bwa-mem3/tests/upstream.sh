@@ -32,7 +32,9 @@ expected_status() {
     case "$1 $2: $wgse_options " in
     "wgse se:"*" --gpu-inject-rescue-failure "* | "wgse se:"*" --gpu-inject-hang rescue "*) echo 0 ;;
     wgse*" --gpu-inject-extension-failure "* | wgse*" --gpu-inject-hang "* \
-        | wgse*" --gpu-inject-seed-failure "* | wgse*" --gpu-inject-rescue-failure "*) case " $wgse_options " in
+        | wgse*" --gpu-inject-seed-failure "* | wgse*" --gpu-inject-rescue-failure "* \
+        | wgse*" --gpu-inject-watchdog-start-failure "*) case " $wgse_options " in
+        *" --backend auto "*) echo 0 ;;
         *" --metal "* | *" --cuda "*) echo 1 ;;
         *) echo 0 ;;
         esac ;;
@@ -210,6 +212,9 @@ case " $wgse_options " in
     for log in wgse.*.log; do grep -q 'warning: this run needs about' "$log"; done ;;
 esac
 case " $wgse_options " in
+*" --gpu-inject-watchdog-start-failure "*)
+    # #1228: both seeding and extension must finish without a Metal watchdog.
+    for log in wgse.*.log; do grep -q 'could not start the Metal watchdog thread' "$log"; done ;;
 *" --gpu-inject-hang "*)
     # The hung command's label (extend, or collect_smems for GPU seeding).
     label=$(echo " $wgse_options " | sed 's/.* --gpu-inject-hang \([^ ]*\) .*/\1/')

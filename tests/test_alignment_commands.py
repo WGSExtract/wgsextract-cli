@@ -697,11 +697,8 @@ def test_fastq_extraction_keeps_its_temporaries_in_temp_parent(tmp_path):
 
 
 @needs_tools("samtools")
-@pytest.mark.parametrize("mode", ["files", "files-se", "stream"])
+@pytest.mark.parametrize("mode", ["files", "files-se"])
 def test_paired_extraction_warns_about_reads_it_leaves_out(tmp_path, caplog, mode):
-    from wgsextract_cli.commands._extract_helpers import paired_fastq_stream
-    from wgsextract_cli.core.utils import run_pipeline
-
     read = "\t*\t0\t0\t*\t*\t0\t0\tACGT\tIIII"
     bam = sam_to_bam(
         [
@@ -715,17 +712,10 @@ def test_paired_extraction_warns_about_reads_it_leaves_out(tmp_path, caplog, mod
     )
     se = tmp_path / "se.fq"
     common = {"threads": "1", "memory": "100M", "temp_parent": tmp_path}
-    if mode == "stream":
-        with (
-            paired_fastq_stream(bam, **common) as stages,
-            (tmp_path / "pairs.fq").open("wb") as pairs,
-        ):
-            run_pipeline(stages, stdout=pairs)
-    else:
-        alignments_to_fastq(
-            bam, tmp_path / "r1.fq", tmp_path / "r2.fq",
-            out_other=se if mode == "files-se" else None, **common,
-        )  # fmt: skip
+    alignments_to_fastq(
+        bam, tmp_path / "r1.fq", tmp_path / "r2.fq",
+        out_other=se if mode == "files-se" else None, **common,
+    )  # fmt: skip
     if mode == "files-se":
         assert se.read_text().count("\n") == 8 and "neither" not in caplog.text
     else:
@@ -741,10 +731,10 @@ def test_streamed_extraction_orders_pairs_like_file_extraction(tmp_path):
     common = {"threads": "2", "memory": "100M", "temp_parent": tmp_path}
     alignments_to_fastq(bam, tmp_path / "r1.fq", tmp_path / "r2.fq", **common)
     with (
-        paired_fastq_stream(bam, **common) as stages,
+        paired_fastq_stream(bam, **common) as stream,
         (tmp_path / "pairs.fq").open("wb") as pairs,
     ):
-        run_pipeline(stages, stdout=pairs)
+        run_pipeline(stream.stages, stdout=pairs)
 
     assert _names(tmp_path / "pairs.fq")[::2] == _names(tmp_path / "r1.fq")
 
@@ -771,8 +761,8 @@ def test_streamed_collate_uses_file_extractions_bucket_count(tmp_path):
     for threads, memory in (("8", "2G"), ("2", "512M"), ("1", "100M")):
         with paired_fastq_stream(
             bam, threads=threads, memory=memory, temp_parent=tmp_path
-        ) as stages:
-            collate = stages[1]
+        ) as stream:
+            collate = stream.stages[1]
         # contract: collate's pair order depends on its bucket count, and
         # streamed realignment must reproduce file extraction's alignments
         assert collate[collate.index("-n") + 1] == str(

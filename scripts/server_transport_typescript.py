@@ -18,7 +18,11 @@ from typing import (
     is_typeddict,
 )
 
-from wgsextract_cli.core.output_schema import Constraints, _dataclass_hints
+from wgsextract_cli.core.output_schema import (
+    Constraints,
+    _dataclass_hints,
+    _dataclass_required,
+)
 from wgsextract_cli.core.report_documents import ReportDocument
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -123,7 +127,7 @@ def typescript_records(
     for model, name in models.items():
         hints = _hints(model)
         required = (
-            frozenset(hints)
+            _dataclass_required(model)
             if isinstance(model, type) and is_dataclass(model)
             else cast(_Keys, model).__required_keys__
         )
