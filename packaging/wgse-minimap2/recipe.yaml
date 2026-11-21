@@ -1,6 +1,6 @@
 context:
   # native/minimap2/CMakeLists.txt's WGSE_MINIMAP2_VERSION, and the minimap2 it declares.
-  version: "0.4.0"
+  version: "0.4.1"
   minimap2_version: "2.31"
 
 package:

@@ -42,7 +42,7 @@ set(SKIP_INSTALL_ALL ON)
 FetchContent_MakeAvailable(mem3 mem3_libsais mem3_mimalloc mem3_zlibng mem3_libdeflate)
 
 # Bump when the wgse-bwa-mem3 package changes; it is versioned separately from bwa-mem3.
-set(WGSE_BWA_MEM3_VERSION 0.4.0)
+set(WGSE_BWA_MEM3_VERSION 0.4.1)
 set(MEM3_VERSION 0.16.0)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # src/ includes the vendored "../ext/pdqsort/pdqsort.h".
