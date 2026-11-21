@@ -41,14 +41,17 @@ step (or delete the failed run's manifest) to clear it. Only runs this report
 already counts as this sample's are compared, so another sample's failures in
 a shared `--results` folder never mark a section stale.
 
-With `--input`, only that file's runs are reported: runs on it, on files made
-from it (its `vcf snp` VCF, say) and the runs that made it. In a sample
-workspace or genome folder, which holds one person, runs on files made from no
-other alignment (a VCF from a lab, say) are included too. Without `--input`, a
+With `--input`, only that file's connected runs are reported: runs on it, on
+files made from it (its `vcf snp` VCF, say), and the runs that made it.
+A PharmCAT run is also linked to runs that produced its `--outside-call`
+files. In a genome folder, which holds one person, runs on files made from
+no other alignment (a VCF from a lab, say) are included too. A per-file
+override does not make an ordinary folder single-sample. Without `--input`, a
 plain folder holding results of several samples is an error (exit 2) naming
-them; choose one with `--input`. The report reads only manifests and the
-workspace, so it needs no samtools or other analysis tools, even for a BAM or
-CRAM `--input`.
+their input paths; choose one with `--input`. Matching filenames in different
+folders do not identify the same sample, and `qc relate` comparisons do not
+link samples for reporting. The report reads only manifests and the workspace,
+so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input`.
 
 > **Technical result, not diagnosis.** The report describes what software
 > found in this sequencing run. It is not a diagnosis or medical advice.

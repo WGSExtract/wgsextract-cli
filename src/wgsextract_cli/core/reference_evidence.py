@@ -31,7 +31,6 @@ import re
 import subprocess
 import tempfile
 from bisect import bisect_right
-from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import InitVar, dataclass, field, replace
 from functools import cached_property
@@ -69,6 +68,7 @@ from wgsextract_cli.core.reference_evidence_records import (
 from wgsextract_cli.core.reference_evidence_records import (
     State as State,
 )
+from wgsextract_cli.core.reference_evidence_records import count_bases as count_bases
 from wgsextract_cli.core.reference_evidence_records import record_state as record_state
 from wgsextract_cli.core.reference_evidence_records import (
     reference_depth as reference_depth,
@@ -93,6 +93,14 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
+
+
+def header_declares_gvcf(header: str) -> bool:
+    """Recognize WGS Extract evidence and GATK-style reference confidence bands."""
+    return any(
+        line.startswith((f"##{HEADER_KEY}=", "##GVCFBlock"))
+        for line in header.splitlines()
+    )
 
 
 @dataclass(frozen=True)
@@ -633,14 +641,6 @@ class ReferenceEvidence:
         return query_intervals(
             self.path, self.quality_model, wanted, thresholds, order, regions
         )
-
-
-def count_bases(spans: Iterable[Span]) -> Counter[State]:
-    """Bases per state."""
-    counts: Counter[State] = Counter()
-    for span in spans:
-        counts[span.state] += span.length
-    return counts
 
 
 def _recorded_file(

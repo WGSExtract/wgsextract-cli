@@ -10,6 +10,7 @@ import enum
 import math
 import re
 import shlex
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -69,6 +70,14 @@ class Span:
     @property
     def length(self) -> int:
         return self.end - self.start + 1
+
+
+def count_bases(spans: Iterable[Span]) -> Counter[State]:
+    """Bases per state."""
+    counts: Counter[State] = Counter()
+    for span in spans:
+        counts[span.state] += span.length
+    return counts
 
 
 def _info(text: str) -> dict[str, str]:
