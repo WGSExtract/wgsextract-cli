@@ -49,6 +49,13 @@ Large jobs can take hours and hundreds of gigabytes; see
 2 for usage errors (including missing input), and 3 for missing, unusable or
 too-old required tools. They make commands safe to chain in scripts.
 
+When a command prepares a BGZF-compressed VCF for indexed access, it rebuilds
+the sidecar indexes if any are older than the VCF. If a rebuild fails, the
+command stops instead of using the old index. If the input directory is
+read-only and needs a refresh, copy the VCF without its `.tbi` and `.csi`
+files to a writable directory and retry. Preserve matching indexes when
+moving a VCF: file dates alone cannot tell whether the pair matches.
+
 File-writing commands record `<output>.manifest.json`: inputs and outputs
 with cheap fingerprints, metrics, structured warnings and provenance
 (versions, parameters, reference and timing). `--json` prints the result

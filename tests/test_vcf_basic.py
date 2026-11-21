@@ -5,6 +5,7 @@ import argparse
 import gzip
 import json
 import logging
+import os
 import random
 import shlex
 from pathlib import Path
@@ -24,6 +25,8 @@ from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.main import main
 
 # A het SNP (A>G) at 500 and a het 2 bp deletion (CGT>C) at 700, each carried by
 # half of 24 reads; the deletion's flanks differ, so it can't be left-shifted.
@@ -416,3 +419,90 @@ def test_annotate_without_an_annotation_file_fails(tmp_path):
 def test_annotate_requires_input():
     with pytest.raises(WGSExtractError, match="--input is required"):
         run_wgsextract("vcf", "annotate", "--ann-vcf", "ann.vcf.gz")
+
+
+def _write_index_test_vcf(vcf: Path, *positions: int) -> None:
+    plain = vcf.with_suffix("")
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(f"chr1\t{pos}\trs{pos}\tA\tG\t50\tPASS\t.\n" for pos in positions),
+        encoding="utf-8",
+    )
+    with vcf.open("wb") as output:
+        run_command(["bgzip", "-c", plain], stdout=output)
+
+
+@pytest.fixture
+def rewritten_vcf(tmp_path):
+    folder = tmp_path / "input"
+    folder.mkdir()
+    vcf = folder / "sample.vcf.gz"
+    _write_index_test_vcf(vcf, 100)
+    run_command(["tabix", "-p", "vcf", vcf])
+    run_command(["tabix", "-C", "-p", "vcf", vcf])
+    _write_index_test_vcf(vcf, 50000)
+    for ext in ("tbi", "csi"):
+        os.utime(f"{vcf}.{ext}", (1_000_000, 1_000_000))
+    return vcf
+
+
+def _index_test_query(vcf: str) -> str:
+    return run_command(
+        ["bcftools", "query", "-r", "chr1:50000-50000", "-f", "%ID\n", vcf],
+        capture_output=True,
+    ).stdout
+
+
+@needs_htslib
+@pytest.mark.parametrize("stale", ["csi", "tbi", "both"])
+def test_1231_refreshes_coexisting_indexes_after_vcf_rewrite(rewritten_vcf, stale):
+    vcf = rewritten_vcf
+    if stale != "both":
+        options = ["-C"] if stale == "tbi" else []
+        run_command(["tabix", "-f", *options, "-p", "vcf", vcf])
+
+    stale_ext = "csi" if stale == "both" else stale
+    assert _index_test_query(f"{vcf}##idx##{vcf}.{stale_ext}") == ""
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+    for ext in ("tbi", "csi"):
+        assert _index_test_query(f"{vcf}##idx##{vcf}.{ext}") == "rs50000\n"
+
+
+@needs_htslib
+@pytest.mark.parametrize("problem", ["unsorted", "read-only"])
+def test_1231_failed_refresh_stops_annotation(rewritten_vcf, tmp_path, capsys, problem):
+    vcf = rewritten_vcf
+    assert _index_test_query(str(vcf)) == ""
+    ann = _vcf(tmp_path / "ann.vcf", ["chr1\t100\trs1\tA\tG\t.\t.\t."])
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    if problem == "unsorted":
+        _write_index_test_vcf(vcf, 50000, 100)
+    elif os.name == "nt":
+        pytest.skip("Windows chmod doesn't restrict directory writes")
+
+    old_indexes = {p: p.read_bytes() for p in vcf.parent.glob("*.vcf.gz.*")}
+    try:
+        if problem == "read-only":
+            vcf.parent.chmod(0o555)
+            if os.access(vcf.parent, os.W_OK):
+                pytest.skip("This account can write to the read-only fixture")
+        with pytest.raises(SystemExit) as failure:
+            main(
+                ["vcf", "annotate", "--input", str(vcf), "--ann-vcf", ann,
+                 "--outdir", str(outdir)]
+            )  # fmt: skip
+        assert failure.value.code == 1
+        error = capsys.readouterr().err
+        assert vcf.name in error
+        assert (
+            "coordinate-sorted" if problem == "unsorted" else "writable directory"
+        ) in error
+        assert not (outdir / "annotated.vcf.gz").exists()
+        assert all(path.read_bytes() == data for path, data in old_indexes.items())
+    finally:
+        if problem == "read-only":
+            vcf.parent.chmod(0o755)

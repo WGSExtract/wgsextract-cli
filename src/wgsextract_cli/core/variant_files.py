@@ -61,41 +61,62 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
 
 
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
-    """Ensure VCF has a .tbi index, creating it if needed."""
-    if Path(vcf_path).suffix not in {".gz", ".bgz"}:
+    """Create a TBI when missing, or refresh all sidecars if any look stale."""
+    vcf = Path(vcf_path)
+    if vcf.suffix not in {".gz", ".bgz"}:
         # We can't index plain VCF easily with tabix
         return
 
-    indexes = [
-        p for p in (append_suffix(vcf_path, ext) for ext in (".tbi", ".csi"))
-        if p.exists()
-    ]  # fmt: skip
-    # An index older than the VCF describes a file since rewritten (a rerun
-    # into the same folder), and region queries would read the wrong blocks.
-    vcf_mtime = Path(vcf_path).stat().st_mtime
-    stale = bool(indexes) and all(p.stat().st_mtime < vcf_mtime for p in indexes)
-    if indexes and not stale:
+    vcf_mtime = vcf.stat().st_mtime_ns
+    indexes: list[tuple[int, Path]] = []
+    for ext in (".tbi", ".csi"):
+        index = append_suffix(vcf, ext)
+        try:
+            indexes.append((index.stat().st_mtime_ns, index))
+        except FileNotFoundError:
+            continue
+    # Age can trigger a refresh, but doesn't establish whether an index matches.
+    if indexes and all(mtime >= vcf_mtime for mtime, _ in indexes):
         return
-    from wgsextract_cli.core.dependencies import get_tool_path
 
-    tabix = get_tool_path("tabix")
-    if tabix is None:
-        raise MissingDependencyError("tabix dependency is required to index VCF files.")
+    # Publish the oldest index last so a partial publication doesn't clear the
+    # refresh trigger. Build both before publishing either.
+    destinations = [index for _, index in sorted(indexes, reverse=True)] or [
+        append_suffix(vcf, ".tbi")
+    ]
     logging.info(LOG_MESSAGES["vcf_indexing"].format(path=vcf_path))
     try:
-        run_command([tabix, "-f", "-p", "vcf", vcf_path])
-    except (OSError, subprocess.SubprocessError):
-        if not stale:
-            raise
-        # A read-only input whose index is merely older on disk: use it.
-        logging.warning(f"Couldn't refresh the index of {vcf_path}; using it as is.")
+        with tempfile.TemporaryDirectory(prefix=".wgse-", dir=vcf.parent) as stage:
+            for index in destinations:
+                run_command(
+                    [
+                        "bcftools",
+                        "index",
+                        "--force",
+                        "--tbi" if index.suffix == ".tbi" else "--csi",
+                        "-o",
+                        Path(stage, index.suffix[1:]),
+                        vcf,
+                    ]
+                )
+            for index in destinations:
+                Path(stage, index.suffix[1:]).replace(index)
+    except MissingDependencyError:
+        raise
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise WGSExtractError(
+            f"Could not index VCF {vcf}: {exc}. "
+            "Check that the VCF is coordinate-sorted and BGZF-compressed; "
+            "if the index cannot be written, copy the VCF without its indexes "
+            "to a writable directory and retry."
+        ) from exc
 
 
 def ensure_vcf_prepared(
     vcf_path: PathInput | None, workdir: PathInput | None = None
 ) -> str:
     """Ensure VCF is bgzipped and indexed, returns path to compressed file.
-    A bgzipped VCF is indexed in place (a .tbi beside it); a plain one is
+    A bgzipped VCF needs indexes beside it; a plain one is
     bgzipped into the run's temporary work (see input_scratch_directory)."""
     if not vcf_path:
         raise UsageError("VCF input path is required.")
