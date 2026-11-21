@@ -231,11 +231,12 @@ class McpTools:
             return QUERIES[name].run(self.guard, arguments), False
         if name == "list_jobs":
             status = arguments.get("status")
+            if status is not None and not isinstance(status, str):
+                raise RequestError(400, "usage", "status must be a string.")
             return {
                 "jobs": [
                     {key: value for key, value in job.items() if key != "finished"}
-                    for job in self.manager.summaries()
-                    if status is None or job["status"] == status
+                    for job in self.manager.summaries(status)
                 ]
             }, False
         if name == "job_status":

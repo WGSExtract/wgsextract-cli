@@ -428,14 +428,8 @@ class Handler(LimitedHandler):
         return job
 
     def list_jobs(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
-        jobs = self.server.manager.summaries()
         status = query.get("status", [None])[-1]
-        self._send_json(
-            200,
-            Jobs(
-                jobs=[job for job in jobs if status is None or job["status"] == status]
-            ),
-        )
+        self._send_json(200, Jobs(jobs=self.server.manager.summaries(status)))
 
     def get_job(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         job = self._job(match)

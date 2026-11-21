@@ -177,6 +177,7 @@ The event stream keeps the latest 1,024 events per job for active jobs and
 the 128 most recently finished jobs. Reconnecting with an older event ID
 returns only the events still in memory. Older job records and logs remain
 available on disk, but their events are not replayed.
+Job listings use a compact on-disk index rebuilt from the records on startup.
 
 ### Lookups
 

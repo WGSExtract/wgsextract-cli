@@ -55,9 +55,16 @@ def test_1209_evicting_finished_jobs_keeps_their_disk_records(tmp_path):
         assert old is not None and old.status == "failed"
         assert manager.events(old, 0, 0) == ([], True)
         assert manager.events(latest, 0, 0)[0][-1]["status"] == "failed"
-        assert first.id in {job["id"] for job in manager.summaries()}
+        assert first.id in {job["id"] for job in manager.summaries("failed")}
+        assert manager.summaries("running") == []
         with pytest.raises(RequestError) as error:
             manager.submit(op, params, job_id=job_id)
         assert error.value.status == 409
     finally:
         manager.shutdown()
+    restarted = JobManager(tmp_path / "jobs", config_path=None)
+    try:
+        history = restarted.summaries("failed")
+        assert {first.id, latest.id} <= {job["id"] for job in history}
+    finally:
+        restarted.shutdown()

@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -192,11 +193,22 @@ class JobManager:
             raise WGSExtractError(
                 f"Another wgsextract server is using {directory}; stop it first."
             ) from None
+        self._history = directory / "summaries.sqlite"
         self._load()
 
     # Records ---------------------------------------------------------------
 
     def _load(self) -> None:
+        # The index is derived; rebuilding also picks up older records.
+        self._history.unlink(missing_ok=True)
+        with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+            db.execute(
+                "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, summary TEXT)"
+            )
+            db.execute("CREATE INDEX jobs_status ON jobs (status)")
+            self._recover_records(db)
+
+    def _recover_records(self, db: sqlite3.Connection) -> None:
         for path in self.directory.glob("*.json"):
             job = self._read_record(path)
             if job is None:
@@ -212,6 +224,14 @@ class JobManager:
                     "rerun it to resume from its completed steps.",
                 }
                 self._save(job)
+            self._index_summary(db, job)
+
+    @staticmethod
+    def _index_summary(db: sqlite3.Connection, job: Job) -> None:
+        db.execute(
+            "INSERT INTO jobs (id, status, summary) VALUES (?, ?, ?)",
+            (job.id, job.status, json.dumps(job.summary())),
+        )
 
     def _read_record(self, path: Path) -> Job | None:
         try:
@@ -247,16 +267,24 @@ class JobManager:
             return self._read_record(self.directory / f"{job_id}.json")
         return job
 
-    def summaries(self) -> list[JobSummary]:
+    def summaries(self, status: str | None = None) -> list[JobSummary]:
         with self._lock:
-            cached = {job.id: job.summary() for job in self._jobs.values()}
-        jobs = []
-        for path in self.directory.glob("*.json"):
-            if path.stem not in cached:
-                job = self._read_record(path)
-                if job is not None and job.done:
-                    jobs.append(job.summary())
-        return sorted([*jobs, *cached.values()], key=lambda job: job["created"])
+            jobs = [
+                job.summary()
+                for job in self._jobs.values()
+                if not job.done and (status is None or job.status == status)
+            ]
+            if status is None or status in FINISHED:
+                with contextlib.closing(sqlite3.connect(self._history)) as db:
+                    rows = (
+                        db.execute("SELECT summary FROM jobs")
+                        if status is None
+                        else db.execute(
+                            "SELECT summary FROM jobs WHERE status = ?", (status,)
+                        )
+                    )
+                    jobs.extend(json.loads(summary) for (summary,) in rows)
+        return sorted(jobs, key=lambda job: job["created"])
 
     def wait(self, job_id: str, timeout: float) -> Job | None:
         """The job once finished, or as it is after ``timeout`` seconds."""
@@ -629,6 +657,8 @@ class JobManager:
         self._writes.pop(job.id, None)
         self._event(job, "status", status=status)
         self._save(job)
+        with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+            self._index_summary(db, job)
         self._finished.append(job.id)
         if len(self._finished) > MAX_FINISHED_JOBS:
             del self._jobs[self._finished.popleft()]
