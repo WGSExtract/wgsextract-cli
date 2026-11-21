@@ -302,6 +302,11 @@
           "default": {}
         },
         "workingDirectory": { "$ref": "#/$defs/bundledRelativePath" },
+        "timeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "How long the script may run before it fails; 15 seconds by default."
+        },
         "transform": {
           "type": "object",
           "required": ["module", "export"],

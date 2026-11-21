@@ -385,7 +385,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract --json ref test-genome",
     ),
     "ref needs": _h(
-        "Prints the missing reference genome or annotation data and the command "
+        "Prints the missing reference genome, annotation data or optional tool and the command "
         "that installs each; writes no files. With --json, the result's "
         "details.missing lists them.",
         "wgsextract ref needs -- info --input sample.cram",
@@ -507,6 +507,20 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints each tool's status; writes no files.",
         "wgsextract deps check",
         "wgsextract deps check --tool samtools",
+    ),
+    "deps list": _h(
+        "Prints each tool's status and what can be done about it; writes no files.",
+        "wgsextract deps list",
+        "wgsextract --json deps list",
+    ),
+    "deps install": _h(
+        "Installs the tool's Pixi environment beside the CLI's own.",
+        "wgsextract deps install gatk",
+        "wgsextract deps install sniffles",
+    ),
+    "deps uninstall": _h(
+        "Removes the tool's Pixi environment, and the other tools in it.",
+        "wgsextract deps uninstall gatk",
     ),
     "panel bed": _h(
         "panel_<presets>[_<genes>]_<build>_pad<N>kb.bed, the genes named when "

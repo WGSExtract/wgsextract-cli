@@ -1,5 +1,5 @@
-"""``wgsextract ref needs -- COMMAND...``: the reference data a command line
-needs that isn't installed, and how to install it."""
+"""``wgsextract ref needs -- COMMAND...``: the reference data and optional
+tools a command line needs that aren't installed, and how to install them."""
 
 import argparse
 import contextlib
@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core.optional_tools import installable, missing_tools
 from wgsextract_cli.core.ref_library.needs import MissingReference, missing_references
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -57,7 +58,20 @@ def check_command(argv: list[str]) -> list[MissingReference]:
             return []
         with sample_workspace.recording_paused():
             missing = missing_references(parsed)
+        missing += [_missing_tool(tool, parsed) for tool in missing_tools(parsed)]
     return [_with_config(item, config) for item in missing]
+
+
+def _missing_tool(tool: str, args: argparse.Namespace) -> MissingReference:
+    """A missing optional tool, installed by ``deps install`` when it can be;
+    otherwise the user installs it."""
+    return MissingReference(
+        id=tool,
+        kind="tool",
+        name=tool,
+        reason=str(getattr(args, "_command", "")),
+        install_arguments=["deps", "install", tool] if installable(tool) else None,
+    )
 
 
 def parse_command(argv: list[str]) -> argparse.Namespace | None:
@@ -93,10 +107,13 @@ def cmd_ref_needs(args: argparse.Namespace) -> None:
         human_output(json.dumps(report))
         return
     if not missing:
-        human_output("All the reference data this command needs is installed.")
+        human_output(
+            "All the reference data and tools this command needs are installed."
+        )
         return
+    kinds = {"genome": "reference genome", "tool": "optional tool"}
     for item in missing:
-        what = "reference genome" if item.kind == "genome" else "annotation data"
+        what = kinds.get(item.kind, "annotation data")
         human_output(f"Missing: {item.name} {what} (needed for {item.reason}).")
         if item.install_arguments:
             human_output(
