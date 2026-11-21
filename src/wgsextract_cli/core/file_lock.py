@@ -13,6 +13,9 @@ from pathlib import Path
 
 from wgsextract_cli.core.utils import WGSExtractError
 
+_REMOTE_STALE_SECONDS = 7 * 24 * 60 * 60
+_RELEASE_TIMEOUT = 30
+
 # Chosen at import, so tests that patch sys.platform still lock natively.
 if sys.platform == "win32":
     import msvcrt
@@ -101,7 +104,7 @@ def _abandoned(path: Path, timeout: float) -> bool:
     try:
         record = json.loads(path.read_text())
         if record["host"] != socket.gethostname():
-            return False
+            return time.time() - path.stat().st_mtime > _REMOTE_STALE_SECONDS
         try:
             process = psutil.Process(record["pid"])
             return bool(process.create_time() != record["created"])
@@ -122,7 +125,12 @@ def held(lock: str, timeout: float = 1800) -> bool:
 
 @contextlib.contextmanager
 def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
-    """Reclaim dead local owners, never evict a live hour-long index builder."""
+    """Reclaim dead local owners without expiring live local builders.
+
+    Remote owners cannot be checked by PID. With no heartbeat, their lock
+    expires seven days after its last modification, independent of the
+    acquisition timeout, to allow even multi-day builds on shared storage.
+    """
     import psutil
 
     path = Path(lock)
@@ -158,11 +166,23 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
             raise WGSExtractError(
                 f"Timed out waiting for index builder lock: {path}"
             ) from None
-        logging.info(f"Waiting for another run to finish building {lock[:-5]}...")
+        logging.info(
+            "Waiting for another run to finish building %s...",
+            lock.removesuffix(".lock"),
+        )
         time.sleep(min(5, max(0, deadline - time.monotonic())))
+    body_failed = False
     try:
         yield
+    except BaseException:
+        body_failed = True
+        raise
     finally:
-        with _reclaim_guard(path, time.monotonic() + timeout):
-            if path.exists() and path.read_text() == record:
-                path.unlink(missing_ok=True)
+        try:
+            with _reclaim_guard(path, time.monotonic() + _RELEASE_TIMEOUT):
+                if path.exists() and path.read_text() == record:
+                    path.unlink(missing_ok=True)
+        except Exception:
+            if not body_failed:
+                raise
+            logging.exception("Could not release builder lock %s", path)

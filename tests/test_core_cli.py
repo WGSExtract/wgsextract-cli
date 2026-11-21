@@ -359,6 +359,31 @@ def test_startup_selects_alternate_config_before_validating_default(
     assert len(rejected.stderr.splitlines()) == 1
 
 
+@pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
+def test_1214_cli_rejects_invalid_toml(tmp_path, monkeypatch, explicit):
+    from tests.smoke_utils import isolate_home
+
+    home = tmp_path / "home"
+    isolate_home(monkeypatch, home)
+    path = tmp_path / "alternate.toml" if explicit else config.default_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("keep_awake = false\natomic_outputs = @\n", encoding="utf-8")
+    options = ["--config", str(path)] if explicit else []
+
+    result = subprocess.run(
+        [sys.executable, "-m", "wgsextract_cli.main", *options, "help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "Configuration error:" in result.stderr
+    assert str(path) in result.stderr
+    assert "line 2, column 18" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_save_config_clears_aliases_of_cleared_key(temp_config):
     temp_config.write_text('reflib = "/old/reference"\nthreads = 4\n')
     config.reload_settings()

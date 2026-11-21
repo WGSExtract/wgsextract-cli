@@ -1,5 +1,7 @@
+import contextlib
 import errno
 import json
+import logging
 import os
 import platform
 import shutil
@@ -164,6 +166,35 @@ def test_atomic_alignment_retires_basename_index_and_config_leaves_neighbors(tmp
     assert neighbor.read_bytes() == b"unrelated data"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX umask permission bits")
+def test_1214_atomic_replacement_keeps_group_write_under_restrictive_umask(tmp_path):
+    existing = tmp_path / "existing.toml"
+    existing.write_bytes(b"old")
+    existing.chmod(0o664)
+    new = tmp_path / "new.toml"
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import os
+import sys
+from wgsextract_cli.core.atomic_output import atomic_write
+
+os.umask(0o077)
+for filename in sys.argv[1:]:
+    atomic_write(filename, b"updated", new_mode=0o666)
+""",
+            str(existing),
+            str(new),
+        ],
+        check=True,
+    )
+    assert existing.read_bytes() == new.read_bytes() == b"updated"
+    assert stat.S_IMODE(existing.stat().st_mode) == 0o664
+    assert stat.S_IMODE(new.stat().st_mode) == 0o600
+
+
 @pytest.mark.parametrize("backend", ["parabricks", "ultima"])
 def test_atomic_special_alignment_failure_preserves_the_existing_bam(
     tmp_path, monkeypatch, backend
@@ -267,6 +298,53 @@ def test_dead_builder_lock_is_reclaimed(tmp_path):
     with build_lock(str(lock), timeout=0.01):
         assert json.loads(lock.read_text())["pid"] == os.getpid()
     assert not lock.exists()
+
+
+def test_1214_remote_builder_lock_expires_only_when_stale(tmp_path, monkeypatch):
+    lock = tmp_path / "shared.index.lock"
+    hostname = socket.gethostname()
+    with monkeypatch.context() as remote:
+        remote.setattr(socket, "gethostname", lambda: f"{hostname}-remote")
+        with contextlib.ExitStack() as owner:
+            owner.enter_context(build_lock(str(lock), timeout=0))
+            with monkeypatch.context() as local:
+                local.setattr(socket, "gethostname", lambda: hostname)
+                with pytest.raises(WGSExtractError, match="Timed out"):
+                    with build_lock(str(lock), timeout=0):
+                        pytest.fail("a fresh remote builder was evicted")
+
+                old = time.time() - 14 * 24 * 60 * 60
+                os.utime(lock, (old, old))
+                with build_lock(str(lock), timeout=0):
+                    assert json.loads(lock.read_text())["host"] == hostname
+    assert not lock.exists()
+
+
+def test_1214_zero_wait_can_release_contended_builder_lock(tmp_path, monkeypatch):
+    lock = tmp_path / "shared.index.lock"
+    with contextlib.ExitStack() as contender:
+        with build_lock(str(lock), timeout=0):
+            contender.enter_context(exclusive_lock(lock))
+            monkeypatch.setattr(time, "sleep", lambda _: contender.close())
+        assert not lock.exists()
+
+
+def test_1214_builder_release_error_does_not_mask_body_error(tmp_path):
+    lock = tmp_path / "shared.index.lock"
+    with pytest.raises(RuntimeError, match="build failed"):
+        with build_lock(str(lock), timeout=0):
+            lock.unlink()
+            lock.mkdir()
+            raise RuntimeError("build failed")
+
+
+def test_1214_builder_wait_message_preserves_name_without_lock_suffix(tmp_path, caplog):
+    lock = tmp_path / "shared.index"
+    with build_lock(str(lock)), caplog.at_level(logging.INFO):
+        with pytest.raises(WGSExtractError, match="Timed out"):
+            with build_lock(str(lock), timeout=0.1):
+                pytest.fail("a live builder was evicted")
+    assert any(f"building {lock}" in message for message in caplog.messages)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX umask permission bits")

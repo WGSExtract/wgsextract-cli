@@ -28,6 +28,8 @@ above. Former per-user locations, still recognized for existing installs, are:
 - Windows: `%LocalAppData%\theontho\wgsextract\config.toml`.
 
 Saves are atomic; `wgsextract config` prompts only in an interactive terminal.
+If the selected file contains invalid TOML, the CLI stops and reports the file
+path and parse location. Fix the syntax or select a valid file with `--config`.
 Boolean values must be unquoted `true`/`false`, never `"false"`.
 Threads accept a positive integer or `"auto"`; legacy numeric strings such
 as `"4"` still work. Integer thresholds/TTLs require integers, not quoted

@@ -134,12 +134,18 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
     permissions; a new one gets ``new_mode`` (private by default; 0o666 gives
     the umask's ordinary permissions)."""
     final = Path(path)
-    mode = stat.S_IMODE(final.stat().st_mode) if final.exists() else new_mode
+    try:
+        existing_mode = stat.S_IMODE(final.stat().st_mode)
+    except FileNotFoundError:
+        existing_mode = None
+    mode = new_mode if existing_mode is None else existing_mode
     with atomic_output(final, retire_indexes=False) as staged:
         fd = os.open(staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
+            if os.name == "posix" and existing_mode is not None:
+                os.fchmod(stream.fileno(), existing_mode)
             os.fsync(stream.fileno())
 
 

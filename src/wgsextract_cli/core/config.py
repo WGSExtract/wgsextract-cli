@@ -274,7 +274,9 @@ def load_config() -> dict[str, Any]:
     if config_path.exists():
         try:
             config = read_toml(config_path)
-        except (OSError, tomllib.TOMLDecodeError) as e:
+        except tomllib.TOMLDecodeError as e:
+            raise WGSExtractError(f"Invalid TOML in {config_path}: {e}") from e
+        except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
