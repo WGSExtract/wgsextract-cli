@@ -131,7 +131,7 @@ def query_vcf(
     calls: dict[int, Call] = {}
     reference_positions: set[int] = set()
     with (
-        (work / "vcf-errors.txt").open("w+", encoding="utf-8") as errors,
+        (work / "vcf-errors.txt").open("w+", encoding="utf-8", newline="\n") as errors,
         ExitStack() as stack,
     ):
         first = stack.enter_context(
