@@ -31,12 +31,12 @@ import os
 import re
 import shutil
 import struct
-import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.alignment import splice as alignment_splice
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import atomic_write
@@ -450,17 +450,11 @@ class ChunkedAlignment:
 
     def _engine(self) -> str:
         """The aligner's version, so that another build restarts the work."""
+        command = [self.mapper[0], "--version"]
         try:
-            done = subprocess.run(
-                [self.mapper[0], "--version"],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                check=False,
-            )
+            return run_command(command, capture_output=True, check=False).stdout.strip()
         except OSError:
             return ""
-        return done.stdout.strip()
 
     def _key(self, groups: list[Chunk]) -> str:
         def settings(argv: list[str]) -> list[str]:
@@ -487,6 +481,8 @@ class ChunkedAlignment:
             "reference": self.reference,
             "mapper": settings(self.mapper),
             "indexer": settings(self.indexer),
+            "decode": self.decode,
+            "reads": self.reads,
             "engine": self._engine(),
         }
         text = json.dumps(plan, sort_keys=True, separators=(",", ":"))
@@ -762,6 +758,7 @@ class ChunkedAlignment:
                 ],
             ],  # fmt: skip
             description=f"Alignment of chunk {number + 1} of {total}",
+            cancel_event=execution_context.current().cancel,
             heartbeat=True,
         )
         sizes = []
@@ -822,6 +819,7 @@ class ChunkedAlignment:
                         ],
                     ],  # fmt: skip
                     description=f"Merge of output group {group + 1}",
+                    cancel_event=execution_context.current().cancel,
                 )
                 state["merged"].append(group)
                 self._save(state)
