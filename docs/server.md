@@ -233,11 +233,12 @@ curl -H "Authorization: ******" \
   A crash or a cancel affects only that job. Its log, at the CLI's log level
   (`--debug` for more), is `<state>/server/jobs/<id>.log`.
 - **Cancelling.** A queued job is cancelled immediately. A running job gets
-  the API's `CancelToken`: tools stop, and the manifest is written with
-  status `cancelled` (exit code 130). If the job is still running 30 seconds
-  later, it is killed. As on the CLI, partial outputs are kept unless the
-  `atomic_outputs` setting is on. `align` is an always-atomic exception: its
-  failed or cancelled validation/writes preserve previous completed outputs.
+  the API's `CancelToken`: tools stop, including running containers, and the
+  manifest is written with status `cancelled` (exit code 130). If the job is
+  still running 30 seconds later, it is killed. As on the CLI, partial
+  outputs are kept unless the `atomic_outputs` setting is on. `align` is an
+  always-atomic exception: its failed or cancelled validation/writes preserve
+  previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
   so a restarted server still lists the earlier jobs and their results. Jobs
   that were queued or running when a server stopped are marked
