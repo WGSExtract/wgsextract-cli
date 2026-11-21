@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.8"
+version = "0.8.9"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
