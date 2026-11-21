@@ -9,6 +9,7 @@ import pytest
 from tests.htslib_helpers import (
     bgzip_index,
     needs_htslib,
+    reference_for_vcf,
     sam_to_bam,
     snp_sample,
     vcf_calls,
@@ -21,8 +22,103 @@ from tests.smoke_utils import (
     state_directory_setting,
     yleaf_tables_cached,
 )
+from tests.test_analyze_workflows import ids, write_vcf
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
+
+
+@needs_htslib
+def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    source_ids = {}
+    for folder, name, positions in (
+        (tmp_path / "caller-a", "calls.vcf.gz", [100]),
+        (tmp_path / "caller-b", "calls.vcf.gz", [200, 300]),
+        (out / "work_snp-indel_calls-3", "calls-1.vcf.gz", [400]),
+        (out, "significant_snp-indel_calls-2.vcf.gz", [500]),
+    ):
+        folder.mkdir(parents=True, exist_ok=True)
+        records = [(pos, f"call{pos}", "50", ".") for pos in positions]
+        source_ids[write_vcf(folder / name, records)] = [r[1] for r in records]
+
+    clinvar = write_vcf(
+        tmp_path / "clinvar.vcf.gz",
+        [
+            (pos, f"cv{pos}", ".", "CLNSIG=Pathogenic")
+            for pos in (100, 200, 300, 400, 500)
+        ],
+        ["CLNSIG"],
+        header='##INFO=<ID=CLNDN,Number=.,Type=String,Description="d">',
+    )
+    lib = tmp_path / "lib"
+    reference_for_vcf(lib / "genomes" / "hg38.fa.gz", clinvar)
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        f"reference_library = '{lib}'\nclinvar_vcf_path = '{clinvar}'\n"
+        + state_directory_setting(tmp_path)
+    )
+    linked_output = out / "significant_snp-indel_calls-4.vcf.gz"
+    if os.name != "nt":
+        linked_output.symlink_to(next(iter(source_ids)))
+    results = []
+    for vcfs in (list(source_ids), list(reversed(source_ids))):
+        code, stdout, stderr = run_cli([
+            "--config", str(cfg), "analyze", "comprehensive", "--outdir", str(out / ".." / "out"),
+            "--threads", "1", "--vcf-inputs", *vcfs,
+        ])  # fmt: skip
+        assert code == 0, stderr
+        manifest = json.loads((out / "analyze.manifest.json").read_text())
+        significant = [
+            record
+            for record in manifest["outputs"]
+            if record["role"] == "significant_variants"
+        ]
+        assert len(significant) == len(source_ids)
+        paths = {
+            record["metrics"]["source_vcf"]: record["path"] for record in significant
+        }
+        assert {source: ids(path) for source, path in paths.items()} == source_ids
+        assert {source: ids(source) for source in vcfs} == source_ids
+        if os.name != "nt":
+            assert linked_output.is_symlink()
+            assert str(linked_output) not in paths.values()
+        independent_source = str(out / "work_snp-indel_calls-3" / "calls-1.vcf.gz")
+        assert (
+            Path(paths[independent_source]).name
+            == "significant_snp-indel_calls-1.vcf.gz"
+        )
+        for source, path in paths.items():
+            basename = Path(source).name
+            label = source if basename == "calls.vcf.gz" else basename
+            _, marker, summary = stdout.partition(f"[SNP-INDEL] {label}\n")
+            assert marker
+            section = summary.split("----------------", 1)[0]
+            assert f"Significant variants: {len(source_ids[source])}" in section
+            assert f"Results file: {path}" in section
+        steps = manifest["details"]["steps"]
+        assert len({step["step"] for step in steps}) == 2 * len(source_ids)
+        results.append((paths, manifest["metrics"]["steps_run"]))
+    assert results[0][0] == results[1][0]
+    assert [ran for _, ran in results] == [2 * len(source_ids), 0]
+
+
+@needs_htslib
+def test_1223_existing_annotation_folder_cannot_contain_an_input(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    folder = out / "work_snp-indel_calls"
+    folder.mkdir(parents=True)
+    inside = write_vcf(folder / "nested.vcf.gz", [(100, "nested", "50", ".")])
+    calls = write_vcf(tmp_path / "calls.vcf.gz", [(200, "calls", "50", ".")])
+
+    code, _, stderr = run_cli([
+        "analyze", "comprehensive", "--outdir", str(out), "--vcf-inputs", calls, inside,
+    ])  # fmt: skip
+    assert code == 2
+    assert str(folder) in stderr and "--outdir" in stderr
+    assert ids(inside) == ["nested"]
+    assert not (out / "analyze.steps.json").exists()
 
 
 @needs_htslib
