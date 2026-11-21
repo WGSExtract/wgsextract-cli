@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextvars import ContextVar
 from pathlib import Path
@@ -16,6 +18,7 @@ from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
+from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.result_card import CARD_ROLE
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
@@ -212,6 +215,15 @@ def detect_vcf_type(vcf_path: str) -> str:
     if tokens & _SV_NAME_TOKENS:
         return "sv"
     return "snp-indel"
+
+
+def _vcf_output_tag(vcf_path: str, v_type: str) -> str:
+    stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
+    return f"{v_type}_{stem}"
+
+
+def _filename_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name.casefold())
 
 
 # bcftools `~` uses POSIX basic regex: "|" and "()" are literals, so match each
@@ -493,11 +505,12 @@ def run_vcf_workflow(
     outdir: str,
     journal: StepJournal,
     after: Sequence[Decision] = (),
+    *,
+    output_tag: str | None = None,
 ) -> AnalyzeResult | None:
     """Annotates and filters a single VCF file based on its type, as the
     steps annotate and discovery. ``after``: the step that made the VCF."""
-    # The name without its VCF suffix: NA12878.snp and NA12878.indel stay apart.
-    base_name = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
+    tag = output_tag or _vcf_output_tag(vcf_path, v_type)
     _print(f"\nSub-Stage: Processing {v_type.upper()} ({Path(vcf_path).name})")
 
     # Define targeted annotations per type
@@ -531,7 +544,7 @@ def run_vcf_workflow(
         return None
     anns = ",".join(available)
 
-    work_dir = Path(outdir, f"work_{v_type}_{base_name}")
+    work_dir = Path(outdir, f"work_{tag}")
     actual_ann_vcf = str(work_dir / "chain_annotated.vcf.gz")
     command = ["vcf", "chain-annotate", "--input", vcf_path,
                "--outdir", str(work_dir), "--annotations", anns]  # fmt: skip
@@ -548,7 +561,6 @@ def run_vcf_workflow(
     for ann in available:
         if path := dataset(ann, lib):
             inputs[f"dataset:{ann}"] = path
-    tag = f"{v_type}_{base_name}"
     annotate_step = Step(
         f"annotate:{tag}",
         inputs=inputs,
@@ -562,7 +574,7 @@ def run_vcf_workflow(
         journal, annotate_step, annotate, after=after, clean=[work_dir]
     )
 
-    discovery_vcf = str(Path(outdir, f"significant_{v_type}_{base_name}.vcf.gz"))
+    discovery_vcf = str(Path(outdir, f"significant_{tag}.vcf.gz"))
     thresholds = variant_confidence.thresholds_from(job)
     discovery_inputs = {"annotated": actual_ann_vcf}
     # A gVCF published (or replaced) since redoes the step's evidence counts.
@@ -605,6 +617,11 @@ def run_vcf_workflow(
                 handle.add_output(discovery_vcf + index)
 
     _, metrics = run_step(journal, discovery_step, discover, after=[annotated])
+    current_result().add_output(
+        discovery_vcf,
+        "significant_variants",
+        metrics={"source_vcf": str(absolute_path(vcf_path))},
+    )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}
 
@@ -615,9 +632,12 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
     _print("GENOMIC ANALYSIS SUMMARY REPORT")
     _print("=" * 60)
 
+    basenames = Counter(_filename_key(Path(res["input"]).name) for res in results)
     total_sig = 0
     for res in results:
-        _print(f"[{res['type'].upper()}] {Path(res['input']).name}")
+        basename = Path(res["input"]).name
+        source = res["input"] if basenames[_filename_key(basename)] > 1 else basename
+        _print(f"[{res['type'].upper()}] {source}")
         _print(f"  Significant variants: {res['count']}")
         _print(f"  Results file: {res['output']}")
         total_sig += res["count"]
