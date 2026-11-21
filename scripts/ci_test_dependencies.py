@@ -26,6 +26,7 @@ DOCS_TEST_TARGETS = (
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
     "tests/test_bump_version.py",
+    "tests/test_release_notes.py",
     "tests/test_build_mockup_previews.py",
     "tests/test_ci_changes.py",
     "tests/test_ci_landing.py",
@@ -88,6 +89,7 @@ DOCS_TARGET_INPUTS = {
         "gui/scripts/bump-wgsextract-cli.py",
         "justfile",
     ),
+    "tests/test_release_notes.py": ("scripts/release_notes.py",),
     "tests/test_build_mockup_previews.py": (
         "gui/mockups/**",
         "scripts/build_mockup_previews.py",
@@ -122,6 +124,7 @@ DOCS_ONLY_SCRIPTS = frozenset(
         "scripts/regen.py",
         "scripts/bump_version.py",
         "gui/scripts/bump-wgsextract-cli.py",
+        "scripts/release_notes.py",
         "scripts/build_mockup_previews.py",
         "scripts/pr_checks_ready.py",
         "scripts/validate_github_actions.py",

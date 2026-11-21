@@ -30,8 +30,11 @@ restricted-resource policy and manual publication/activation procedure.
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
 it can request a draft review on `opened`, but never checks out or executes PR
-code. The default-branch ruleset also reviews owner drafts. Readiness remains
-the point where validation starts, not the first opportunity for review.
+code. The default-branch ruleset also reviews owner drafts when they are opened,
+but not later pushes; agents request a fresh draft review after pushing
+(`gh pr edit N --add-reviewer @copilot`) and handle its threads before
+readiness (#1281). Readiness remains the point where validation starts, not the
+first opportunity for review, so review rounds no longer rerun the matrix.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -527,15 +530,16 @@ changelog exceptions. Mixed Markdown/code pushes still run normally.
 and cannot start independently on a push or PR.
 Generated references legitimately change with code inputs; the PR/merge-queue
 docs or CLI lane already checked freshness before `required` passed.
-The secret scan remains unfiltered on every main push; Pages retains its
-existing site-source filters.
+The secret scan and the auto-merge conflict watch (below) remain unfiltered
+on every main push; Pages retains its existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
 retain the area-scoped main-push filters from #904 (main-push coalescing),
 including the final `!**/*.md` exclusion. Their PR triggers use the same
 Markdown exclusion (Install Lab is invoked through PR area routing).
-A Markdown-only main push therefore starts only gitleaks, plus Pages for
-site sources; none of these six workflows or the OS suite starts.
+A Markdown-only main push therefore starts only gitleaks and the conflict
+watch, plus Pages for site sources; none of these six workflows or the OS
+suite starts.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
@@ -779,6 +783,22 @@ commits. Queue runs need only the `required` set; their smaller matrix must not
 be rejected for omitting the PR-only gate or advisory jobs.
 The autopilot skill
 documents this rule too. This validator does not itself merge anything.
+
+Auto-merge never enqueues a PR that conflicts with its base, and GitHub
+doesn't say so (#1281; one such PR waited about three hours). After every main
+push, every three hours and on manual dispatch, *Auto-merge conflict watch*
+(`auto_merge_watch.yml`, one five-minute API-only job running
+`scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
+auto-merge is enabled and whose mergeability is `CONFLICTING`
+`auto-merge-blocked`, creating the label if needed, and comments once asking
+the author to merge the base branch. The label suppresses repeat comments and
+is removed when the PR merges cleanly again or auto-merge is turned off. It
+waits for GitHub to compute mergeability after a push and leaves PRs whose
+state stays unknown alone. `--dry-run` reports without changing anything.
+
+Routing (`changes`) also runs `python3 scripts/release_notes.py check`, the
+stdlib-only release-note fragment check (#1281), so a PR adding only a
+fragment under `docs/release-notes/unreleased/` needs no other runner.
 
 ## Cache plan
 

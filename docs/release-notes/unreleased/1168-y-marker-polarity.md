@@ -1,15 +1,5 @@
-<!-- Notes for the next release. PRs add user-facing entries here as they
-land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
-
-## New
-
 ## Fixes
 
-- `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
-  support a call. DYS589's non-repeat boundary variation no longer appears
-  as a fractional STR allele. DYS425 is left blank on all builds because
-  short reads cannot reliably distinguish its assay target from paralogs
-  ([#1155, missing Y-STRs](https://github.com/WGSExtract/wgsextract-cli/issues/1155)).
 - `lineage y-haplogroup --tree ftdna` and `--tree isogg` correct independently
   verified ancestral/derived reversals using a pinned, separately licensed
   YBrowse polarity module. This fixes inverted backbone evidence and wrong
