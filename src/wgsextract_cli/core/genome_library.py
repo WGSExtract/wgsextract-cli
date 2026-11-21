@@ -27,6 +27,21 @@ _FASTQ_EXT_RE = re.compile(r"\.(?:fastq|fq)(?:\.gz)?$", re.IGNORECASE)
 # optionally followed by an Illumina segment number (sample_1, sample.2_001).
 _EXPLICIT_MATE_RE = re.compile(r"(?<![^._-])(?:r|read)([12])(?![^._-])", re.IGNORECASE)
 _TRAILING_MATE_RE = re.compile(r"(?<![^._-])([12])((?:[._-]\d{3})?)$")
+# Commands that take their default VCF from the genome instead of global config.
+VCF_FILE_COMMANDS = {
+    "annotate",
+    "filter",
+    "clinvar",
+    "revel",
+    "phylop",
+    "cadd",
+    "gerp",
+    "gnomad",
+    "spliceai",
+    "alphamissense",
+    "pharmgkb",
+    "chain-annotate",
+}
 
 
 def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
@@ -236,9 +251,12 @@ def _set_vcf_input(
         return
     if "vcf_input" in explicit_dests and getattr(args, "vcf_input", None):
         return
-    if getattr(args, "_one_vcf_input", False):
+    should_resolve_vcf = getattr(args, "qc_cmd", None) == "vcf" or (
+        vcf_cmd in VCF_FILE_COMMANDS and "vcf_input" not in explicit_dests
+    )
+    if should_resolve_vcf and hasattr(args, "vcf_input"):
         args.vcf_input = str(_resolve_category(genome_dir, config, "vcf", VCF_SUFFIXES))
-        if hasattr(args, "input"):
+        if "input" not in explicit_dests and hasattr(args, "input"):
             args.input = None
         return
     _set_alignment_input(args, genome_dir, config, explicit_dests)
