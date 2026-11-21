@@ -4,7 +4,7 @@ import { open, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { HttpError } from "./errors.js";
+import { HttpError, isErrnoCode } from "./errors.js";
 
 const maximumReadBytes = 32 * 1024 * 1024;
 const idleLifetimeMs = 60 * 60 * 1000;
@@ -23,19 +23,38 @@ function inside(file: string, root: string) {
     return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
 }
 
+function rethrowUnlessMissing(error: unknown): undefined {
+    if (!isErrnoCode(error, "ENOENT")) {
+        throw error;
+    }
+    return undefined;
+}
+
 /** Both the spelling and canonical target must be inside the same configured library. */
 export async function guardedViewerPath(file: string, roots: string[]): Promise<string> {
     if (!path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).includes("..")) {
         throw new HttpError(403, "Viewer path is outside the configured libraries.");
     }
     const absolute = path.resolve(file);
-    if (!roots.some((root) => inside(absolute, root))) {
-        throw new HttpError(403, "Viewer path is outside the configured libraries.");
-    }
-    const canonical = await realpath(absolute);
+    let canonical: string | undefined;
     for (const root of roots) {
-        if (inside(absolute, root) && inside(canonical, await realpath(root))) {
-            if (!(await stat(canonical)).isFile()) {
+        if (!inside(absolute, root)) {
+            continue;
+        }
+        const canonicalRoot = await realpath(root).catch(rethrowUnlessMissing);
+        if (canonicalRoot === undefined) {
+            continue;
+        }
+        canonical ??= await realpath(absolute).catch(rethrowUnlessMissing);
+        if (canonical === undefined) {
+            throw new HttpError(404, "Viewer file not found.");
+        }
+        if (inside(canonical, canonicalRoot)) {
+            const info = await stat(canonical).catch(rethrowUnlessMissing);
+            if (!info) {
+                throw new HttpError(404, "Viewer file not found.");
+            }
+            if (!info.isFile()) {
                 throw new HttpError(403, "Viewer paths must be regular files.");
             }
             return canonical;
