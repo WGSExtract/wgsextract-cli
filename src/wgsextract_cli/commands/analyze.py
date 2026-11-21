@@ -28,12 +28,12 @@ from ._analyze_workflows import (
     AnalyzeResult,
     _print,
     _step_params,
-    detect_vcf_type,
     generate_summary_report,
     run_bam_chain,
     run_step,
     run_vcf_workflow,
     subcommand_action,
+    vcf_workflow_inputs,
 )
 
 
@@ -149,9 +149,8 @@ def _run_comprehensive(
     results: list[AnalyzeResult] = []
     if vcf_inputs:
         _print(f"\nSTAGE: Processing Input VCFs ({len(vcf_inputs)} files)")
-        for vcf in vcf_inputs:
-            v_type = detect_vcf_type(vcf)
-            res = run_vcf_workflow(job, vcf, v_type, outdir, journal)
+        for vcf, v_type, tag in vcf_workflow_inputs(vcf_inputs):
+            res = run_vcf_workflow(job, vcf, v_type, outdir, journal, output_tag=tag)
             if res:
                 results.append(res)
     elif input_file and not job.skip_calling:

@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextvars import ContextVar
 from pathlib import Path
@@ -212,6 +214,40 @@ def detect_vcf_type(vcf_path: str) -> str:
     if tokens & _SV_NAME_TOKENS:
         return "sv"
     return "snp-indel"
+
+
+def _vcf_output_tag(vcf_path: str, v_type: str) -> str:
+    stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
+    return f"{v_type}_{stem}"
+
+
+def _filename_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name.casefold())
+
+
+def vcf_workflow_inputs(vcfs: Sequence[str]) -> list[tuple[str, str, str]]:
+    """Plan (source, type, output tag) before any annotation step writes."""
+    types = [detect_vcf_type(vcf) for vcf in vcfs]
+    tags = [_vcf_output_tag(vcf, kind) for vcf, kind in zip(vcfs, types, strict=True)]
+    keys = [_filename_key(tag) for tag in tags]
+    counts = Counter(keys)
+    used = set(keys)
+    # Reserve existing names and assign suffixes in source order, independent
+    # of the order the user passes the same inputs on a resumed run.
+    suffixes: Counter[str] = Counter()
+    for i in sorted(range(len(vcfs)), key=lambda i: str(Path(vcfs[i]).absolute())):
+        key = keys[i]
+        if counts[key] == 1:
+            continue
+        while True:
+            suffixes[key] += 1
+            candidate = f"{tags[i]}-{suffixes[key]}"
+            candidate_key = _filename_key(candidate)
+            if candidate_key not in used:
+                used.add(candidate_key)
+                tags[i] = candidate
+                break
+    return list(zip(vcfs, types, tags, strict=True))
 
 
 # bcftools `~` uses POSIX basic regex: "|" and "()" are literals, so match each
@@ -493,12 +529,13 @@ def run_vcf_workflow(
     outdir: str,
     journal: StepJournal,
     after: Sequence[Decision] = (),
+    *,
+    output_tag: str | None = None,
 ) -> AnalyzeResult | None:
     """Annotates and filters a single VCF file based on its type, as the
     steps annotate and discovery. ``after``: the step that made the VCF."""
-    # The name without its VCF suffix: NA12878.snp and NA12878.indel stay apart.
-    base_name = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
-    _print(f"\nSub-Stage: Processing {v_type.upper()} ({Path(vcf_path).name})")
+    tag = output_tag or _vcf_output_tag(vcf_path, v_type)
+    _print(f"\nSub-Stage: Processing {v_type.upper()} ({vcf_path})")
 
     # Define targeted annotations per type
     if v_type == "snp-indel":
@@ -531,7 +568,7 @@ def run_vcf_workflow(
         return None
     anns = ",".join(available)
 
-    work_dir = Path(outdir, f"work_{v_type}_{base_name}")
+    work_dir = Path(outdir, f"work_{tag}")
     actual_ann_vcf = str(work_dir / "chain_annotated.vcf.gz")
     command = ["vcf", "chain-annotate", "--input", vcf_path,
                "--outdir", str(work_dir), "--annotations", anns]  # fmt: skip
@@ -548,7 +585,6 @@ def run_vcf_workflow(
     for ann in available:
         if path := dataset(ann, lib):
             inputs[f"dataset:{ann}"] = path
-    tag = f"{v_type}_{base_name}"
     annotate_step = Step(
         f"annotate:{tag}",
         inputs=inputs,
@@ -562,7 +598,7 @@ def run_vcf_workflow(
         journal, annotate_step, annotate, after=after, clean=[work_dir]
     )
 
-    discovery_vcf = str(Path(outdir, f"significant_{v_type}_{base_name}.vcf.gz"))
+    discovery_vcf = str(Path(outdir, f"significant_{tag}.vcf.gz"))
     thresholds = variant_confidence.thresholds_from(job)
     discovery_inputs = {"annotated": actual_ann_vcf}
     # A gVCF published (or replaced) since redoes the step's evidence counts.
@@ -605,6 +641,11 @@ def run_vcf_workflow(
                 handle.add_output(discovery_vcf + index)
 
     _, metrics = run_step(journal, discovery_step, discover, after=[annotated])
+    current_result().add_output(
+        discovery_vcf,
+        "significant_variants",
+        metrics={"source_vcf": str(Path(vcf_path).absolute())},
+    )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}
 
@@ -617,7 +658,7 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
 
     total_sig = 0
     for res in results:
-        _print(f"[{res['type'].upper()}] {Path(res['input']).name}")
+        _print(f"[{res['type'].upper()}] {res['input']}")
         _print(f"  Significant variants: {res['count']}")
         _print(f"  Results file: {res['output']}")
         total_sig += res["count"]
