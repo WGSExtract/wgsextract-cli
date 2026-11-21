@@ -10,7 +10,7 @@ from wgsextract_cli.core import config, constants
 from wgsextract_cli.core.ref_library import processing as reference_processing
 
 
-def _bootstrap(path: str) -> bool:
+def _bootstrap(path: str, *, cancel_event=None) -> bool:
     """The archive's download is tested elsewhere; it leaves the library."""
     Path(path).mkdir(parents=True, exist_ok=True)
     return True
@@ -18,16 +18,16 @@ def _bootstrap(path: str) -> bool:
 
 def test_1213_cancelled_bootstrap_does_not_retry(tmp_path, monkeypatch):
     path = "bootstrap.tar.gz"
-    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    started, release = threading.Event(), threading.Event()
+    cancel = api.CancelToken()
     reflib = tmp_path / "library"
     result = []
 
-    def on_progress(*_):
-        cancel.set()
-
     def download():
         result.append(
-            reference_processing.download_bootstrap(str(reflib), cancel, on_progress)
+            api.ref.bootstrap(
+                api.RefBootstrapParams(ref=reflib), cancel=cancel, check=False
+            )
         )
 
     with serving(files={path: b"a" * (1 << 20)}) as server:
@@ -37,9 +37,11 @@ def test_1213_cancelled_bootstrap_does_not_retry(tmp_path, monkeypatch):
         worker.start()
         try:
             assert started.wait(5), "the bootstrap request never reached the server"
+            cancel.cancel()
+            release.set()
             worker.join(2)
             assert not worker.is_alive(), "cancelled bootstrap did not return promptly"
-            assert result == [False]
+            assert result[0].exit_code == 130
             assert server.get_paths == [path]
             assert not (reflib / constants.BOOTSTRAP_FILENAME).exists()
         finally:

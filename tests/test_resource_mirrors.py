@@ -15,6 +15,7 @@ from scripts import mirror_download_resources as publisher
 from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
+from wgsextract_cli import api
 from wgsextract_cli.core import gnomad_af, resource_mirrors
 from wgsextract_cli.core.ref_library.downloads import download_file
 
@@ -297,25 +298,36 @@ def test_1213_cancelled_gnomad_does_not_wait_for_stalled_body(
 ):
     path = "upstream"
     source.files[path] = b"a" * (2 << 20)
-    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    started, release, disconnected = (
+        threading.Event(),
+        threading.Event(),
+        threading.Event(),
+    )
+    cancel = api.CancelToken()
     source.body_pauses[path] = (1, started, release)
+    source.body_disconnects[path] = disconnected
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", source.url_for(path))
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
     result = []
 
     def build():
         result.append(
-            gnomad_af.build_gnomad_af(str(tmp_path), workers=1, cancel_event=cancel)
+            api.ref.gnomad(
+                api.RefGnomadParams(ref=tmp_path, release="4.1", threads=1),
+                cancel=cancel,
+                check=False,
+            )
         )
 
     worker = threading.Thread(target=build, daemon=True)
     worker.start()
     try:
         assert started.wait(5), "gnomAD did not begin streaming"
-        cancel.set()
+        cancel.cancel()
         worker.join(3)
         assert not worker.is_alive(), "cancelled gnomAD stream did not return promptly"
-        assert result == [False]
+        assert result[0].exit_code == 130
+        assert disconnected.wait(1), "client did not shut down the stalled response"
         assert source.get_paths == [path]
         assert not list(tmp_path.rglob("*.gz*"))
     finally:

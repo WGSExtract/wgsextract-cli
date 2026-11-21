@@ -3,6 +3,7 @@ the network."""
 
 import hashlib
 import secrets
+import select
 import threading
 import time
 from collections.abc import Iterator
@@ -28,6 +29,7 @@ class RangeServer:
     etags: send each file's ETag (a hash of its content), as S3 does.
     delays[path]: seconds to wait before answering a GET for path.
     body_pauses[path]: (prefix bytes, started, release) to stall a full GET.
+    body_disconnects[path]: signal if a client disconnects during the pause.
     headers[path]: extra headers sent with path (as x-goog-hash on GCS).
     """
 
@@ -45,6 +47,7 @@ class RangeServer:
         self.etags = False
         self.delays: dict[str, float] = {}
         self.body_pauses: dict[str, tuple[int, threading.Event, threading.Event]] = {}
+        self.body_disconnects: dict[str, threading.Event] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
         self.get_paths: list[str] = []
@@ -155,7 +158,22 @@ class RangeServer:
                     self.wfile.write(body[:length])
                     self.wfile.flush()
                     started.set()
-                    release.wait(10)
+                    if disconnected := server.body_disconnects.get(path):
+                        deadline = time.monotonic() + 10
+                        while not release.is_set() and time.monotonic() < deadline:
+                            readable, _, _ = select.select(
+                                [self.connection], [], [], 0.05
+                            )
+                            if readable:
+                                try:
+                                    if self.connection.recv(1):
+                                        continue
+                                except ConnectionError:
+                                    pass
+                                disconnected.set()
+                                break
+                    else:
+                        release.wait(10)
                     return
                 self.wfile.write(body)
 

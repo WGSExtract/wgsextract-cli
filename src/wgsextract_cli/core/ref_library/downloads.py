@@ -341,6 +341,8 @@ def _download_file(
             )
 
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        if cancel_event and cancel_event.is_set():
+            return False
         try:
             return _urllib_download(
                 url,
@@ -352,6 +354,8 @@ def _download_file(
                 use_cache,
             )
         except _RESUMABLE as e:
+            if cancel_event and cancel_event.is_set():
+                return False
             if attempt == DOWNLOAD_ATTEMPTS:
                 logging.error(
                     f"Download error: {redact_urls(str(e), sources=(url,))} (gave up after {attempt} attempts; "
@@ -362,7 +366,16 @@ def _download_file(
                 f"Download interrupted ({redact_urls(str(e), sources=(url,))}); resuming "
                 f"(attempt {attempt + 1} of {DOWNLOAD_ATTEMPTS})..."
             )
-            time.sleep(min(30, 2**attempt))
+            delay = min(30, 2**attempt)
+            if cancel_event is None:
+                time.sleep(delay)
+            else:
+                deadline = time.monotonic() + delay
+                while not cancel_event.is_set():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.1, remaining))
     return False
 
 
