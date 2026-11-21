@@ -105,8 +105,11 @@ jobs:
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
       # Stdlib-only and instant, so fragment-only PRs need no extra runner.
+      # A release's queue commit must not leave late fragments unassembled.
       - name: Check release-note fragments
-        run: python3 scripts/release_notes.py check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+        run: python3 scripts/release_notes.py check --base "$BASE"
 
   draft-fast:
     name: Draft lint and fast tests

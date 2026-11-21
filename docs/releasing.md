@@ -48,9 +48,12 @@ it.
    ```
 
    which writes the notes file from the fragments, grouped by section, with
-   the title and compare link, and deletes the fragments. Then add a short
-   summary under the title and the app's changes under `## Desktop app`. The
-   deprecated commands are also listed in `DEPRECATIONS` in
+   the title and a compare link from the newest older release tag, and deletes
+   the fragments. Then add a short summary under the title and the app's
+   changes under `## Desktop app`. If a fragment lands on main before the
+   release PR merges, the PR's checks fail: move its entries into the notes
+   file and delete it. The deprecated commands are also listed in
+   `DEPRECATIONS` in
    `src/wgsextract_cli/commands/registry.py`. A command deprecated in one minor
    release is removed in the next, so a release that reaches a deprecation's
    `remove_in` version removes the command. The PRs since the last release are

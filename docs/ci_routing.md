@@ -29,7 +29,8 @@ restricted-resource policy and manual publication/activation procedure.
 
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
-it can request a draft review on `opened`, but never checks out or executes PR
+it can request a draft review on `opened`, skips the readiness request when
+Copilot already reviewed the head, and never checks out or executes PR
 code. The default-branch ruleset also reviews owner drafts when they are opened,
 but not later pushes; agents request a fresh draft review after pushing
 (`gh pr edit N --add-reviewer @copilot`) and handle its threads before
@@ -791,14 +792,18 @@ push, every three hours and on manual dispatch, *Auto-merge conflict watch*
 `scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
 auto-merge is enabled and whose mergeability is `CONFLICTING`
 `auto-merge-blocked`, creating the label if needed, and comments once asking
-the author to merge the base branch. The label suppresses repeat comments and
-is removed when the PR merges cleanly again or auto-merge is turned off. It
-waits for GitHub to compute mergeability after a push and leaves PRs whose
-state stays unknown alone. `--dry-run` reports without changing anything.
+the author to merge the base branch. It comments before labelling, and skips
+the comment if one was posted since the label was last removed, so a failed
+run retries without repeating it. The label is removed when the PR merges
+cleanly again or auto-merge is turned off. It waits for GitHub to compute an
+auto-merging PR's mergeability after a push and leaves it alone if that stays
+unknown. `--dry-run` reports without changing anything.
 
-Routing (`changes`) also runs `python3 scripts/release_notes.py check`, the
-stdlib-only release-note fragment check (#1281), so a PR adding only a
-fragment under `docs/release-notes/unreleased/` needs no other runner.
+Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
+the stdlib-only release-note fragment check (#1281), so a PR adding only a
+fragment under `docs/release-notes/unreleased/` needs no other runner. With the
+base, it also fails a PR or queue group that adds a `vX.Y.Z.md` while
+fragments remain: they landed after the release notes were assembled.
 
 ## Cache plan
 

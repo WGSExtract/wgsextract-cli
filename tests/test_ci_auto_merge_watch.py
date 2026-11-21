@@ -22,7 +22,9 @@ class FakeGitHub(GitHub):
         self.repository_labels: set[str] = set()
         self.pulls: dict[int, dict[str, Any]] = {}
         self.comments: dict[int, list[str]] = {}
+        self.timeline: dict[int, list[dict[str, Any]]] = {}
         self.listings = 0
+        self.label_failures = 0
 
     def add(
         self,
@@ -49,6 +51,8 @@ class FakeGitHub(GitHub):
         assert data is not None or method == "DELETE"
         if path == "graphql":
             assert data is not None
+            if "number" in data["variables"]:
+                return self.pull_timeline(data["variables"]["number"])
             return self.graphql(data["variables"])
         prefix = f"repos/{REPO}/"
         assert path.startswith(prefix), path
@@ -63,6 +67,9 @@ class FakeGitHub(GitHub):
         number = int(parts[1])
         if method == "POST" and parts[2] == "labels":
             assert data is not None
+            if self.label_failures:
+                self.label_failures -= 1
+                raise subprocess.CalledProcessError(1, "gh", stderr="HTTP 502")
             # GitHub creates unknown labels when adding them to an issue.
             self.repository_labels |= set(data["labels"])
             self.pulls[number]["labels"] |= set(data["labels"])
@@ -71,12 +78,24 @@ class FakeGitHub(GitHub):
             if parts[3] not in self.pulls[number]["labels"]:
                 raise subprocess.CalledProcessError(1, "gh", stderr="Label not found")
             self.pulls[number]["labels"].remove(parts[3])
+            self.timeline.setdefault(number, []).append(
+                {"__typename": "UnlabeledEvent", "label": {"name": parts[3]}}
+            )
             return []
         if method == "POST" and parts[2] == "comments":
             assert data is not None
             self.comments.setdefault(number, []).append(data["body"])
+            self.timeline.setdefault(number, []).append(
+                {"__typename": "IssueComment", "body": data["body"]}
+            )
             return {}
         raise AssertionError(f"Unexpected GitHub call: {method} {path}")
+
+    def pull_timeline(self, number: int) -> dict[str, Any]:
+        nodes = self.timeline.get(number, [])[-100:]
+        return {
+            "data": {"repository": {"pullRequest": {"timelineItems": {"nodes": nodes}}}}
+        }
 
     def graphql(self, variables: dict[str, Any]) -> dict[str, Any]:
         assert (variables["owner"], variables["name"]) == tuple(REPO.split("/"))
@@ -212,3 +231,35 @@ def test_1281_dry_run_reports_without_changing_prs() -> None:
     }
     assert github.labels(1205) == set() and github.labels(1206) == {LABEL}
     assert github.comments == {}
+
+
+def test_1281_disabled_auto_merge_clears_label_without_mergeability() -> None:
+    github = FakeGitHub()
+    github.add(1205, "UNKNOWN", auto_merge=False, labels=(LABEL,))
+
+    assert watch(github, sleep=no_sleep) == {1205: "cleared"}
+    assert github.labels(1205) == set()
+
+
+def test_1281_failed_label_is_retried_without_a_second_comment() -> None:
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING")
+    github.label_failures = 1
+
+    with pytest.raises(subprocess.CalledProcessError):
+        watch(github, sleep=no_sleep)
+    assert len(github.comments[1205]) == 1 and github.labels(1205) == set()
+
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert github.labels(1205) == {LABEL}
+    assert len(github.comments[1205]) == 1
+
+
+def test_1281_a_new_conflict_after_a_clean_merge_is_announced_again() -> None:
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING", "MERGEABLE", "CONFLICTING")
+
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert watch(github, sleep=no_sleep) == {1205: "cleared"}
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert len(github.comments[1205]) == 2

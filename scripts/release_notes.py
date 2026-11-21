@@ -6,19 +6,22 @@ edit a shared notes file (#1281). A fragment is named NUMBER-SLUG.md after its
 issue or PR (for example 1155-missing-ystrs.md) and holds one or more of the
 sections below, each a `## Section` heading followed by a `- ` list of entries.
 
-  python scripts/release_notes.py check
+  python scripts/release_notes.py check [--base REF]
   python scripts/release_notes.py assemble X.Y.Z
 
 `assemble` writes docs/release-notes/vX.Y.Z.md from every fragment, grouped by
 section in the order below and by number within a section, then deletes the
 fragments; the release PR adds the summary and the app's changes by hand (see
-docs/releasing.md).
+docs/releasing.md). With --base, `check` also fails when the change since REF
+adds a vX.Y.Z.md while fragments remain: they landed after the notes were
+assembled and would be left out of that release.
 """
 
 from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,11 +105,48 @@ def collect(notes: Path) -> tuple[list[Fragment], list[str]]:
     return fragments, errors
 
 
+def git(notes: Path, *args: str) -> list[str] | None:
+    """Output lines from the repository that holds docs/release-notes, if any."""
+    repository = notes.parents[1]
+    if not (repository / ".git").exists():
+        return None
+    command = ["git", "-C", str(repository), *args]
+    return subprocess.run(
+        command, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+
+
+def released(notes: Path, base: str) -> list[str]:
+    """Release notes files added since base."""
+    added = git(
+        notes,
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "--diff-filter=A",
+        f"{base}...HEAD",
+        "--",
+        "docs/release-notes/",
+    )
+    if added is None:
+        raise ValueError(f"{notes.parents[1]} is not a git checkout")
+    return [
+        Path(path).name
+        for path in added
+        if Path(path).parent == Path("docs/release-notes")
+        and Path(path).stem.startswith("v")
+        and VERSION.fullmatch(Path(path).stem)
+    ]
+
+
 def previous(notes: Path, version: tuple[int, ...]) -> str | None:
+    """The newest older release: a tag, or a notes file (when not checked out)."""
+    names = [path.stem for path in notes.glob("v*.md")]
+    names += git(notes, "tag", "--list", "v*") or []
     releases = [
         tuple(int(part) for part in match["version"].split("."))
-        for path in notes.glob("v*.md")
-        if (match := VERSION.fullmatch(path.stem))
+        for name in names
+        if name.startswith("v") and (match := VERSION.fullmatch(name))
     ]
     older = [release for release in releases if release < version]
     return ".".join(map(str, max(older))) if older else None
@@ -149,12 +189,29 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--notes-dir", type=Path, default=NOTES, help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("check", help="Validate fragment names and sections.")
+    check = commands.add_parser("check", help="Validate fragment names and sections.")
+    check.add_argument(
+        "--base",
+        help="Also reject fragments left over by a release notes file added "
+        "since this git ref (PR and merge-queue checks).",
+    )
     build = commands.add_parser("assemble", help="Write vX.Y.Z.md from fragments.")
     build.add_argument("version", help="Release version, X.Y.Z")
     args = parser.parse_args(argv)
     if args.command == "check":
         fragments, errors = collect(args.notes_dir)
+        if args.base and fragments:
+            try:
+                added = released(args.notes_dir, args.base)
+            except (ValueError, subprocess.CalledProcessError) as error:
+                print(f"Cannot compare with {args.base}: {error}", file=sys.stderr)
+                return 1
+            errors += [
+                f"{name} is added here, but {len(fragments)} fragment(s) in "
+                "unreleased/ landed after it was assembled: move their entries "
+                "into it and delete them"
+                for name in added
+            ]
         if errors:
             print("Release-note fragments are invalid:", file=sys.stderr)
             print("\n".join(f"  - {error}" for error in errors), file=sys.stderr)

@@ -41,6 +41,22 @@ query($owner: String!, $name: String!, $label: String!, $cursor: String) {
   }
 }
 """
+# Comments and label removals, newest last: was this conflict announced yet?
+TIMELINE = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, UNLABELED_EVENT]) {
+        nodes {
+          __typename
+          ... on IssueComment { body }
+          ... on UnlabeledEvent { label { name } }
+        }
+      }
+    }
+  }
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -56,32 +72,29 @@ class Pull:
         return self.auto_merge and self.mergeable == "CONFLICTING"
 
     @property
-    def watched(self) -> bool:
-        return self.auto_merge or self.labelled
+    def pending(self) -> bool:
+        """Only auto-merging PRs need a mergeability verdict."""
+        return self.auto_merge and self.mergeable == "UNKNOWN"
+
+
+def graphql(github: GitHub, query: str, **variables: Any) -> Any:
+    owner, name = github.repository.split("/")
+    response = github.request(
+        "POST",
+        "graphql",
+        {"query": query, "variables": {"owner": owner, "name": name, **variables}},
+    )
+    if response.get("errors"):
+        raise RuntimeError(f"GitHub GraphQL errors: {response['errors']}")
+    return response["data"]["repository"]
 
 
 def open_pulls(github: GitHub) -> tuple[list[Pull], bool]:
     """Every open pull request, and whether the label exists yet."""
-    owner, name = github.repository.split("/")
     pulls: list[Pull] = []
     cursor = None
     while True:
-        response = github.request(
-            "POST",
-            "graphql",
-            {
-                "query": QUERY,
-                "variables": {
-                    "owner": owner,
-                    "name": name,
-                    "label": LABEL,
-                    "cursor": cursor,
-                },
-            },
-        )
-        if response.get("errors"):
-            raise RuntimeError(f"GitHub GraphQL errors: {response['errors']}")
-        repository = response["data"]["repository"]
+        repository = graphql(github, QUERY, label=LABEL, cursor=cursor)
         page = repository["pullRequests"]
         pulls += [pull(node) for node in page["nodes"]]
         if not page["pageInfo"]["hasNextPage"]:
@@ -99,6 +112,17 @@ def pull(node: dict[str, Any]) -> Pull:
     )
 
 
+def announced(github: GitHub, number: int) -> bool:
+    """A comment since the label was last removed means the author was told."""
+    items = graphql(github, TIMELINE, number=number)["pullRequest"]
+    for item in reversed(items["timelineItems"]["nodes"]):
+        if item["__typename"] == "IssueComment" and MARKER in item["body"]:
+            return True
+        if item["__typename"] == "UnlabeledEvent" and item["label"]["name"] == LABEL:
+            return False
+    return False
+
+
 def watch(
     github: GitHub,
     *,
@@ -111,21 +135,26 @@ def watch(
     for attempt in range(attempts):
         pulls, label_exists = open_pulls(github)
         # GitHub computes mergeability lazily after the base moves.
-        if attempt + 1 == attempts or not any(
-            p.watched and p.mergeable == "UNKNOWN" for p in pulls
-        ):
+        if attempt + 1 == attempts or not any(p.pending for p in pulls):
             break
         sleep(delay)
     actions: dict[int, str] = {}
     for pr in pulls:
-        if pr.mergeable == "UNKNOWN":
-            if pr.watched:
-                actions[pr.number] = "unknown"
+        if pr.pending:
+            actions[pr.number] = "unknown"
             continue
         if pr.blocked and not pr.labelled:
             actions[pr.number] = "flagged"
             if dry_run:
                 continue
+            # Comment before labelling so a failed run is retried; the timeline
+            # stops a retry after a failed label from repeating the comment.
+            if not announced(github, pr.number):
+                github.api(
+                    "POST",
+                    f"issues/{pr.number}/comments",
+                    {"body": COMMENT.format(base=pr.base)},
+                )
             if not label_exists:
                 github.api(
                     "POST",
@@ -138,13 +167,7 @@ def watch(
                     },
                 )
                 label_exists = True
-            # Label first: a failed comment must not be repeated on every run.
             github.api("POST", f"issues/{pr.number}/labels", {"labels": [LABEL]})
-            github.api(
-                "POST",
-                f"issues/{pr.number}/comments",
-                {"body": COMMENT.format(base=pr.base)},
-            )
         elif pr.labelled and not pr.blocked:
             actions[pr.number] = "cleared"
             if not dry_run:

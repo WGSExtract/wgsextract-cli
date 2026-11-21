@@ -1,5 +1,6 @@
 """scripts/release_notes.py: per-change fragments replace the shared notes file (#1281)."""
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ from scripts.release_notes import main
 
 def notes_dir(tmp_path: Path, fragments: dict[str, str]) -> Path:
     unreleased = tmp_path / "unreleased"
-    unreleased.mkdir()
+    unreleased.mkdir(parents=True)
     (unreleased / "README.md").write_text("# How to add notes\n")
     for version in ("0.8.8", "0.8.9", "1.0.0"):
         (tmp_path / f"v{version}.md").write_text(f"# WGS Extract {version}\n")
@@ -119,3 +120,64 @@ def test_1281_assemble_without_fragments_writes_nothing(tmp_path: Path) -> None:
 
     assert run(notes, "assemble", "0.9.0") == 1
     assert not (notes / "v0.9.0.md").exists()
+
+
+def git(repository: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-C", str(repository), "-c", "user.name=t", "-c", "user.email=t@t"]
+        + list(args),
+        check=True,
+        capture_output=True,
+    )
+
+
+@pytest.fixture
+def repository(tmp_path: Path) -> Path:
+    """A checkout whose notes live in docs/release-notes, as in this repository."""
+    root = tmp_path / "repo"
+    notes = notes_dir(root / "docs" / "release-notes", {})
+    (notes / "unreleased" / "7-fix.md").write_text("## Fixes\n\n- Fix.\n")
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    return root
+
+
+def test_1281_previous_release_comes_from_tags_without_a_notes_file(
+    repository: Path,
+) -> None:
+    # Released as a draft with generated notes, so no v0.8.10.md exists.
+    git(repository, "tag", "v0.8.10")
+    notes = repository / "docs" / "release-notes"
+
+    assert run(notes, "assemble", "0.9.0") == 0
+    assert "compare/v0.8.10...v0.9.0>" in (notes / "v0.9.0.md").read_text()
+
+
+def test_1281_fragment_landing_after_assembly_fails_the_release_check(
+    repository: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = repository / "docs" / "release-notes"
+    git(repository, "checkout", "-qb", "release-0.9.0")
+    assert run(notes, "assemble", "0.9.0") == 0
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "release")
+    assert run(notes, "check", "--base", "main") == 0
+
+    # Another PR's fragment merges cleanly into the release PR's queue commit.
+    git(repository, "checkout", "-qb", "queue")
+    (notes / "unreleased" / "8-late.md").write_text("## New\n\n- Late.\n")
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "late fragment")
+    capsys.readouterr()
+    assert run(notes, "check", "--base", "main") == 1
+    assert "v0.9.0.md is added here" in capsys.readouterr().err
+
+    # Once the release lands, PRs add fragments for the next one.
+    git(repository, "checkout", "-q", "main")
+    git(repository, "merge", "-q", "--ff-only", "release-0.9.0")
+    git(repository, "checkout", "-qb", "next")
+    (notes / "unreleased" / "9-next.md").write_text("## New\n\n- Next.\n")
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "next fragment")
+    assert run(notes, "check", "--base", "main") == 0
