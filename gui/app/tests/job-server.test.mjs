@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +10,7 @@ import test from "node:test";
 const { createProcessManager } = await import("../dist/web/src/server/process-runner.js");
 const { createJobServer } = await import("../dist/web/src/server/job-server.js");
 const { runActionPreferringServer } = await import("../dist/web/src/server/job-server-action.js");
+const { startJob } = await import("../dist/web/src/server/job-server-client.js");
 
 // A job server speaking the protocol in docs/job-server.md. `slow` runs until cancelled;
 // `quick` finishes at once and logs the parameters it received, `noisy` the same with a 2 MiB log;
@@ -107,6 +109,47 @@ async function withBundle(t) {
     createJobServer({ command: { executable: process.execPath, arguments: args }, startupTimeoutSeconds: 10 }, bundleRoot, manager.runProcess);
   return { bundleRoot, manager, startServer };
 }
+
+test("#1173: a locally launched server cannot publish an external job destination", async (t) => {
+  const bundle = await withBundle(t);
+  await writeFile(path.join(bundle.bundleRoot, "server.mjs"),
+    'console.log(JSON.stringify({url:"https://genomes.example/v1",token:"synthetic-token"}));');
+  assert.equal(await bundle.startServer().address(), undefined);
+});
+
+test("#1173: job credentials and sample parameters never reach a non-loopback URL", async (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("unexpected network request"); });
+  for (const url of ["https://genomes.example/v1", "http://localhost:8080/v1", "http://0.0.0.0:8080/v1"]) {
+    const result = await startJob({ url, token: "synthetic-token" }, "quick", { input: "/private/sample.bam" });
+    assert.equal(result.started, false);
+    assert.match(result.reason, /loopback/);
+  }
+});
+
+test("#1173: redirects cannot forward a local job's sample parameters to another service", async (t) => {
+  let unwantedRequests = 0;
+  const sink = createServer((_request, response) => {
+    unwantedRequests++;
+    response.end();
+  });
+  await new Promise((resolve) => sink.listen(0, "127.0.0.1", resolve));
+  const redirect = createServer((_request, response) => response.writeHead(307, {
+    location: `http://127.0.0.1:${sink.address().port}/unapproved`,
+  }).end());
+  await new Promise((resolve) => redirect.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    for (const server of [redirect, sink]) {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+  const result = await startJob(
+    { url: `http://127.0.0.1:${redirect.address().port}/v1`, token: "synthetic-token" },
+    "quick", { input: "/private/sample.bam" },
+  );
+  assert.equal(result.started, false);
+  assert.equal(unwantedRequests, 0);
+});
 
 function action(operation, parameters = {}) {
   return {
