@@ -514,15 +514,70 @@ CREATED_PROFILES=""
 WORK_DIR=""
 pixi_work_dir=""
 INSTALL_DIR_CREATED=0
+APP_COMMITTED=0
+DETACHED_BACKUP=""
+DETACHED_ENVS=""
+
+carry_install_path() {
+    path="$1"
+    if { [ -e "$WORK_DIR/previous-app/$path" ] || [ -L "$WORK_DIR/previous-app/$path" ]; } &&
+        [ ! -e "$APP_DIR/$path" ] && [ ! -L "$APP_DIR/$path" ]; then
+        mkdir -p "$(dirname "$APP_DIR/$path")" "$(dirname "$WORK_DIR/carried/$path")"
+        touch "$WORK_DIR/carried/$path"
+        mv -- "$WORK_DIR/previous-app/$path" "$APP_DIR/$path"
+    fi
+}
+
+restore_detached_environment() {
+    if [ -n "$DETACHED_BACKUP" ] && [ -d "$DETACHED_BACKUP/default" ]; then
+        if [ -e "$DETACHED_ENVS/default" ] || [ -L "$DETACHED_ENVS/default" ]; then
+            mv -- "$DETACHED_ENVS/default" "$DETACHED_BACKUP/failed-default" || return 1
+        fi
+        mv -- "$DETACHED_BACKUP/default" "$DETACHED_ENVS/default"
+    fi
+}
+
+restore_app() {
+    # A missing source means the installer moved it to the live path.
+    if [ -n "$SOURCE_DIR" ] && [ ! -e "$SOURCE_DIR" ]; then
+        for marker in "$WORK_DIR"/carried/* "$WORK_DIR"/carried/.pixi/envs/*; do
+            path="${marker#"$WORK_DIR/carried/"}"
+            if [ -f "$marker" ] && [ ! -e "$WORK_DIR/previous-app/$path" ] &&
+                [ ! -L "$WORK_DIR/previous-app/$path" ]; then
+                mv -- "$APP_DIR/$path" "$WORK_DIR/previous-app/$path" || return 1
+            fi
+        done
+        mv -- "$APP_DIR" "$SOURCE_DIR" || return 1
+    fi
+    if [ -e "$WORK_DIR/previous-app" ] || [ -L "$WORK_DIR/previous-app" ]; then
+        if [ -e "$APP_DIR" ] || [ -L "$APP_DIR" ]; then
+            return 1
+        fi
+        mv -- "$WORK_DIR/previous-app" "$APP_DIR" || return 1
+    fi
+}
+
+SOURCE_DIR=""
 cleanup() {
+    if [ "$APP_COMMITTED" -eq 0 ]; then
+        if ! restore_detached_environment; then
+            printf 'Could not restore the previous Pixi environment; backup kept at %s\n' "$DETACHED_BACKUP" >&2
+            DETACHED_BACKUP=""
+        fi
+        if [ -n "$WORK_DIR" ] && ! restore_app; then
+            printf 'Could not restore the previous app; staging directory kept at %s\n' "$WORK_DIR" >&2
+            WORK_DIR=""
+        fi
+    fi
     [ -z "$WORK_DIR" ] || rm -rf "$WORK_DIR"
+    [ -z "$DETACHED_BACKUP" ] || rm -rf "$DETACHED_BACKUP"
     [ -z "$pixi_work_dir" ] || rm -rf "$pixi_work_dir"
     if [ "$INSTALL_DIR_CREATED" -eq 1 ]; then
         rmdir "$INSTALL_DIR" 2>/dev/null || true
     fi
 }
 trap cleanup EXIT
-trap 'cleanup; exit 1' INT HUP TERM
+trap 'exit 1' INT HUP TERM
 if [ -n "$PIXI" ] && [ ! -x "$PIXI" ]; then
     fail "PIXI is set but is not executable: $PIXI"
 fi
@@ -545,6 +600,7 @@ SOURCE_DIR="$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 if [ -z "$SOURCE_DIR" ]; then
     fail "Downloaded archive did not contain a source directory."
 fi
+[ -f "$SOURCE_DIR/pixi.toml" ] || fail "Installer payload is missing pixi.toml."
 
 case "$OS_NAME:$(uname -m)" in
     Linux:aarch64|Linux:arm64)
@@ -612,22 +668,27 @@ if grep -Eq '^[[:space:]]*requires-pixi([[:space:]]|=)' "$SOURCE_DIR/pixi.toml";
     fi
 fi
 
-mkdir -p "$TMP_DIR" "$BIN_DIR" "$PIXI_CACHE_DIR" "$PIXI_ENV_DIR"
+[ -s "$SOURCE_DIR/uninstall.sh" ] || fail "Installer payload is missing or has an empty uninstall.sh."
+sh -n "$SOURCE_DIR/uninstall.sh" || fail "Installer payload has an invalid uninstall.sh."
+mkdir -p "$BIN_DIR"
 
-rm -rf "$APP_DIR.new"
-mv "$SOURCE_DIR" "$APP_DIR.new"
-# An update replaces the app source, but reference genomes, example genomes,
-# downloaded jars and the Pixi environments inside app/ belong to the user (and
-# config.toml may point at them), so carry them into the new tree.
-for preserved in reference genomes jartools .pixi/envs; do
-    if [ -e "$APP_DIR/$preserved" ] && [ ! -e "$APP_DIR.new/$preserved" ]; then
-        mkdir -p "$(dirname "$APP_DIR.new/$preserved")"
-        mv "$APP_DIR/$preserved" "$APP_DIR.new/$preserved"
-    fi
-done
-rm -rf "$APP_DIR"
-mv "$APP_DIR.new" "$APP_DIR"
-mkdir -p "$TMP_DIR"
+# Pixi prefixes can contain absolute paths. Install at the final path, keeping
+# the previous tree and (when detached) its default environment for rollback.
+if [ -L "$APP_DIR/.pixi/envs" ] && [ -d "$APP_DIR/.pixi/envs/default" ]; then
+    DETACHED_ENVS="$(CDPATH= cd -P "$APP_DIR/.pixi/envs" && pwd -P)"
+    case "$DETACHED_ENVS" in
+        "$(CDPATH= cd -P "$APP_DIR" && pwd -P)"/*) ;;
+        *)
+            DETACHED_BACKUP="$(make_staging_directory "${DETACHED_ENVS%/*}" ".wgse-upgrade")"
+            mv -- "$DETACHED_ENVS/default" "$DETACHED_BACKUP/default"
+            ;;
+    esac
+fi
+if [ -e "$APP_DIR" ] || [ -L "$APP_DIR" ]; then
+    mv -- "$APP_DIR" "$WORK_DIR/previous-app"
+fi
+mv -- "$SOURCE_DIR" "$APP_DIR"
+mkdir -p "$TMP_DIR" "$PIXI_CACHE_DIR"
 
 if [ "$PIXI_ENV_DIR" != "$DEFAULT_PIXI_ENV_DIR" ]; then
     # Pixi reads the environment location from project config, not from env vars.
@@ -640,6 +701,30 @@ cd "$APP_DIR"
 export PIXI_CACHE_DIR
 # --locked installs exactly the versions the release was tested with.
 "$PIXI" install --locked
+
+log "Checking installation..."
+"$PIXI" run wgsextract --help >/dev/null
+"$PIXI" run wgsextract deps check >/dev/null
+
+if [ -n "$DETACHED_BACKUP" ]; then
+    current_envs="$(CDPATH= cd -P "$APP_DIR/.pixi/envs" && pwd -P)"
+    if [ "$current_envs" != "$DETACHED_ENVS" ]; then
+        restore_detached_environment || fail "Could not restore the previous detached Pixi environment."
+    fi
+fi
+for preserved in reference genomes jartools; do
+    carry_install_path "$preserved"
+done
+
+# Keep local optional environments not replaced by the default install.
+old_envs="$WORK_DIR/previous-app/.pixi/envs"
+if [ -d "$old_envs" ] && [ ! -L "$old_envs" ] && [ ! -L "$APP_DIR/.pixi/envs" ]; then
+    for environment in "$old_envs"/*; do
+        [ -d "$environment" ] && [ "${environment##*/}" != default ] || continue
+        carry_install_path ".pixi/envs/${environment##*/}"
+    done
+fi
+APP_COMMITTED=1
 
 # The CLI creates its config directory on first save. Remember config parents
 # that don't exist yet, so `uninstall.sh --remove-config` can remove them again.
@@ -669,10 +754,6 @@ if uses_default_pixi_layout; then
     rm -rf "$INSTALL_DIR/pixi-cache" "$INSTALL_DIR/pixi-envs"
 fi
 rm -rf "$INSTALL_DIR/tmp"
-
-log "Checking installation..."
-"$PIXI" run wgsextract --help >/dev/null
-"$PIXI" run wgsextract deps check >/dev/null
 
 case "$OS_NAME" in
     Darwin)

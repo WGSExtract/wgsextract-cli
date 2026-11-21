@@ -15,6 +15,88 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize(
+    ("step", "detached"),
+    [("install", False), ("deps", False), ("deps", True)],
+    ids=["install-fails", "verification-fails", "detached-verification-fails"],
+)
+def test_1211_failed_upgrade_keeps_the_previous_app(
+    tmp_path: Path, step: str, detached: bool
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    (app / "reference").mkdir(parents=True)
+    (app / "reference/keep.fa").write_text("user reference")
+    (app / "pixi.toml").write_text("previous manifest")
+    (installation / "wgsextract").write_text("previous launcher")
+    (installation / "install-manifest.json").write_text("previous install record")
+    local_envs = app / ".pixi/envs"
+    envs = tmp_path / "detached/envs" if detached else local_envs
+    (envs / "default").mkdir(parents=True)
+    (envs / "default/keep").write_text("working environment")
+    if detached:
+        local_envs.parent.mkdir()
+        local_envs.symlink_to(envs, target_is_directory=True)
+
+    binary = tmp_path / "pixi"
+    create_env = (
+        f'ln -s "{envs}" .pixi/envs && mkdir -p "{envs}/default"'
+        if detached
+        else "mkdir -p .pixi/envs/default"
+    )
+    binary.write_text(
+        "#!/bin/sh\nset -eu\n"
+        'if [ "$1" = install ]; then\n'
+        f"  {create_env}\n"
+        "  printf partial > .pixi/envs/default/keep\n"
+        f"  [ '{step}' != install ] || {{ echo 'injected install failure' >&2; exit 42; }}\n"
+        'elif [ "$3" = deps ]; then\n'
+        "  echo 'injected deps failure' >&2; exit 42\n"
+        "fi\n"
+    )
+    binary.chmod(0o755)
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("WGSEXTRACT_")},
+        "HOME": str(tmp_path),
+        "PIXI": str(binary),
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        "WGSEXTRACT_NO_OPEN": "1",
+    }
+    if detached:
+        env["WGSEXTRACT_PIXI_ENV_DIR"] = str(envs.parent)
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 42, result.stderr
+    assert f"injected {step} failure" in result.stderr
+    assert (app / "pixi.toml").read_text() == "previous manifest"
+    assert (app / "reference/keep.fa").read_text() == "user reference"
+    assert (local_envs / "default/keep").read_text() == "working environment"
+    assert (installation / "wgsextract").read_text() == "previous launcher"
+    assert (
+        installation / "install-manifest.json"
+    ).read_text() == "previous install record"
+    assert not list(installation.glob(".source-download.*"))
+    if detached:
+        assert list(envs.parent.iterdir()) == [envs]
+
+
 @pytest.mark.parametrize("location", ["explicit", "path", "home"])
 def test_1138_installer_rejects_old_pixi_before_replacing_existing_app(
     tmp_path: Path, location: str
