@@ -9,6 +9,7 @@ from wgsextract_cli.core.reference_evidence_records import (
     _RANK,
     Classified,
     Interval,
+    Span,
     State,
     _info,
     _merge,
@@ -31,6 +32,26 @@ from wgsextract_cli.core.variant_confidence import Thresholds
 # bases; #1028).
 CLAIR3_DELETION_SPAN = 10
 CLAIR3_DELETION_DEPTH = 0.7
+
+
+def classify_spans(
+    records: Iterator[list[str]],
+    model: str,
+    thresholds: Thresholds,
+    wanted: list[Interval],
+    *,
+    deletion_shadow: bool = False,
+    record_ploidy: Callable[[str, int, int], int | None] | None = None,
+    missing_state: State = State.UNCOVERED,
+) -> Iterator[Span]:
+    """Resolve sorted records, including overlaps and caller-specific shadows."""
+    order = {contig: index for index, (contig, _, _) in enumerate(wanted)}
+    yield from _sweep(
+        _merge(wanted, order),
+        classified_records(records, model, thresholds, deletion_shadow, record_ploidy),
+        order,
+        missing_state=missing_state,
+    )
 
 
 def query_intervals(
