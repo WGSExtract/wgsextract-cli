@@ -23,7 +23,7 @@ export type ActionRunResult = ProcessResult & {
 };
 
 export type ActionEvent =
-    | { type: "submission-pending"; jobID: string }
+    | { type: "submission-pending"; jobID: string | null }
     | { type: "start"; command: string; startedAt: string }
     | { type: "output"; stream: "stdout" | "stderr"; text: string }
     | { type: "complete"; result: ActionRunResult };

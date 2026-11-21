@@ -7,6 +7,7 @@ import { localJobServerURL } from "./local-job-server-url.js";
 export interface JobServerAddress {
     url: string;
     token: string;
+    clientJobIDs?: boolean;
 }
 
 /** A job record; servers may add fields. `exit_code` is set once the job has finished. */
@@ -29,16 +30,16 @@ export type StartJobResult =
 const submissionTimeoutMs = 15_000;
 
 /** Starts a job once. A lost reply can be recovered by reading the original ID, not by submitting again. */
-export async function startJob(address: JobServerAddress, id: string, operation: string, parameters: LooseRecord, card = false): Promise<StartJobResult> {
+export async function startJob(address: JobServerAddress, id: string | null, operation: string, parameters: LooseRecord, card = false): Promise<StartJobResult> {
     if (!localJobServerURL(address.url)) {
         return { kind: "rejected", reason: "Local job server requires a numeric loopback URL." };
     }
     let reason: string;
     try {
         const response = await request(address, "POST", `/ops/${operation}${card ? "?card=1" : ""}`,
-            parameters, AbortSignal.timeout(submissionTimeoutMs), { "X-WGSE-Job-ID": id });
+            parameters, AbortSignal.timeout(submissionTimeoutMs), id ? { "X-WGSE-Job-ID": id } : undefined);
         const body = await response.json().catch(() => undefined) as LooseRecord | undefined;
-        if (response.ok && isJobRecord(body)) {
+        if (response.ok && isJobRecord(body) && (id === null || body.id === id)) {
             return { kind: "accepted", job: body };
         }
         reason = `HTTP ${response.status}: ${describeError(body)}`;
@@ -57,7 +58,7 @@ export async function startJob(address: JobServerAddress, id: string, operation:
             return { kind: "unavailable", reason };
         }
     }
-    const job = await getJob(address, id, AbortSignal.timeout(submissionTimeoutMs)).catch(() => undefined);
+    const job = id ? await getJob(address, id, AbortSignal.timeout(submissionTimeoutMs)).catch(() => undefined) : undefined;
     return job ? { kind: "accepted", job } : { kind: "indeterminate", reason };
 }
 
@@ -160,7 +161,7 @@ function parseEvent(block: string): JobEvent | undefined {
 }
 
 function isJobRecord(value: LooseRecord | undefined): value is JobRecord {
-    return typeof value?.id === "string" && /^[A-Za-z0-9-]+$/.test(value.id)
+    return typeof value?.id === "string" && value.id.trim() !== "" && value.id !== "." && value.id !== ".."
         && typeof value.status === "string" && value.status.trim() !== "";
 }
 

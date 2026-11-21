@@ -57,27 +57,27 @@ const server = createServer(async (request, response) => {
   const [, kind, ...rest] = new URL(request.url, "http://x").pathname.replace(/^\/v1/, "").split("/");
   if (request.method === "POST" && kind === "ops") {
     const operation = rest.join("/");
-    if (!["slow", "quick", "noisy", "malformed", "missing", "lost", "gateway-error", "unconfirmed", "server-id"].includes(operation)) {
+    if (!["slow", "quick", "noisy", "malformed", "missing", "lost", "gateway-error", "unconfirmed", "cancel-recovered"].includes(operation)) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { code: "path_not_allowed", message: "not allowed" } }));
       return;
     }
     const query = new URL(request.url, "http://x").search;
-    const id = operation === "server-id" ? "20260105-100425-986af7" : request.headers["x-wgse-job-id"];
+    const id = request.headers["x-wgse-job-id"] ?? "job_" + (jobs.size + 1);
     const job = { id, status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
     jobs.set(job.id, job);
     appendFileSync("executions", "server\n");
     if (operation === "lost" || operation === "unconfirmed") request.socket.destroy();
     else if (operation === "gateway-error") response.writeHead(502).end();
     else {
-      const replies = { malformed: "{", missing: "{}" };
+      const replies = { malformed: "{", missing: "{}", "cancel-recovered": "{" };
       response.writeHead(202, { "content-type": "application/json" }).end(replies[operation] ?? JSON.stringify(job));
     }
     if (operation === "unconfirmed") job.hideFromLookup = true;
     send(job, "status", { status: "running" });
     send(job, "progress", { stage: "reading", message: "chr1", fraction: 0.5 });
     if (operation === "noisy") job.log = "x".repeat(2 * 1024 * 1024) + "\nlast line\n";
-    if (operation !== "slow") setTimeout(() => finish(job, "succeeded", 0), 50);
+    if (operation !== "slow" && operation !== "cancel-recovered") setTimeout(() => finish(job, "succeeded", 0), 50);
     return;
   }
   if (kind === "jobs" && rest.length === 0) {
@@ -105,7 +105,7 @@ const server = createServer(async (request, response) => {
 });
 server.listen(0, "127.0.0.1", () => {
   console.log("starting up");
-  console.log(JSON.stringify({ url: "http://127.0.0.1:" + server.address().port + "/v1/", token }));
+  console.log(JSON.stringify({ url: "http://127.0.0.1:" + server.address().port + "/v1/", token, client_job_ids: !process.argv.includes("--server-ids") }));
 });
 `;
 
@@ -250,9 +250,16 @@ for (const fault of ["malformed", "missing", "lost", "gateway-error", "unconfirm
 
 test("#1235: a successful submission with a server-assigned ID still follows the job", async (t) => {
   const bundle = await withBundle(t);
-  const { result, output } = await run(bundle, action("server-id"), bundle.startServer());
+  const { result, output } = await run(bundle, action("quick"), bundle.startServer(["{{bundleRoot}}/server.mjs", "--server-ids"]));
   assert.equal(result.exitCode, 0);
   assert.match(output, /\[job\] succeeded/);
+  assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
+});
+
+test("#1235: an older server's lost reply does not report a fictitious recovery ID or rerun the command", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer(["{{bundleRoot}}/server.mjs", "--server-ids"]);
+  await assert.rejects(run(bundle, action("lost"), jobServer), (error) => error.jobID === null);
   assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
 });
 
@@ -262,6 +269,26 @@ test("cancelling a server action cancels its job", async (t) => {
   const controller = new AbortController();
   const running = run(bundle, action("slow"), jobServer, controller.signal, undefined, (event) => {
     if (event.type === "start") controller.abort();
+  });
+
+  test("#1235: a recovered job is cancelled even when the action stream has already closed", async (t) => {
+    const bundle = await withBundle(t);
+    const jobServer = bundle.startServer();
+    const controller = new AbortController();
+    const fetchJob = globalThis.fetch;
+    t.mock.method(globalThis, "fetch", async (url, options) => {
+      try {
+        return await fetchJob(url, options);
+      } finally {
+        if (options?.method === "POST") controller.abort();
+      }
+    });
+    await assert.rejects(run(bundle, action("cancel-recovered"), jobServer, controller.signal, undefined, (event) => {
+      assert.notEqual(event.type, "start");
+    }), /Process cancelled/);
+    const address = await jobServer.address();
+    const { jobs } = await (await fetchJob(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
+    assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
   });
 
   await assert.rejects(running, /Process cancelled\./);

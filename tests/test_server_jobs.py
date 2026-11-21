@@ -51,6 +51,8 @@ def test_1235_client_job_id_recovers_original_job_and_refuses_duplicate(client, 
     assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
     status, error = client.request("POST", path, params, headers=headers)
     assert (status, error["error"]["code"]) == (409, "job_id_in_use")
+    status, error = client.request("POST", path, {"unknown": True}, headers=headers)
+    assert (status, error["error"]["code"]) == (409, "job_id_in_use")
     status, error = client.request(
         "POST", path, params, headers={"X-WGSE-Job-ID": "invalid"}
     )

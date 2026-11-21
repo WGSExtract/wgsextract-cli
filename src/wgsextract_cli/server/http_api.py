@@ -389,6 +389,9 @@ class Handler(LimitedHandler):
         )
 
     def run_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
+        job_id = self.headers.get("X-WGSE-Job-ID")
+        if job_id is not None:
+            self.server.manager.check_job_id(job_id)
         op = find(match["op"])
         wait = _wait(query)
         body = self._body()
@@ -399,7 +402,7 @@ class Handler(LimitedHandler):
             op,
             op.request_values(params),
             card=card,
-            job_id=self.headers.get("X-WGSE-Job-ID"),
+            job_id=job_id,
         )
         if wait:
             job = self.server.manager.wait(job.id, wait) or job

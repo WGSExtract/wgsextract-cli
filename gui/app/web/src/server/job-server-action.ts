@@ -15,8 +15,8 @@ const cancelWaitMs = 60_000;
 const maxOutputBytes = 1_048_576;
 
 export class JobSubmissionUnknown extends Error {
-    constructor(readonly jobID: string) {
-        super(`Job submission could not be confirmed: ${jobID}`);
+    constructor(readonly jobID: string | null) {
+        super(jobID ? `Job submission could not be confirmed: ${jobID}` : "Job submission could not be confirmed");
     }
 }
 
@@ -49,24 +49,23 @@ export async function runActionPreferringServer(
 
 /** Returns no job only when the server could not have accepted the submission. */
 async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean, emit: ActionEmit, signal?: AbortSignal): Promise<{ address: JobServerAddress; id: string } | undefined> {
-    const address = await jobServer.address();
-    if (!address || signal?.aborted) {
-        return undefined;
-    }
     const id = randomUUID();
-    await emit({ type: "submission-pending", jobID: id });
-    if (signal?.aborted) {
-        return undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const address = await jobServer.address();
+        if (!address || signal?.aborted) return undefined;
+        const jobID = address.clientJobIDs ? id : null;
+        await emit({ type: "submission-pending", jobID });
+        if (signal?.aborted) return undefined;
+        const started = await startJob(address, jobID, operation, parameters, card);
+        if (started.kind === "accepted") return { address, id: started.job.id };
+        if (started.kind === "indeterminate") {
+            console.warn(`Could not confirm submission for '${operation}': ${started.reason}`);
+            throw new JobSubmissionUnknown(jobID);
+        }
+        console.warn(`Job server did not accept '${operation}': ${started.reason}`);
+        if (started.kind === "rejected") return undefined;
+        jobServer.stop(address);
     }
-    const started = await startJob(address, id, operation, parameters, card);
-    if (started.kind === "accepted") {
-        return { address, id: started.job.id };
-    }
-    if (started.kind === "indeterminate") {
-        console.warn(`Could not confirm job ${id} for '${operation}': ${started.reason}`);
-        throw new JobSubmissionUnknown(id);
-    }
-    console.warn(`Job server did not accept '${operation}': ${started.reason}`);
     return undefined;
 }
 
@@ -95,7 +94,6 @@ async function runJob(
     resultSpec: ResultDocumentSpec | undefined,
 ): Promise<ActionRunResult> {
     const startedAt = new Date().toISOString();
-    await emit({ type: "start", command, startedAt });
     const stdout = new TailBuffer(maxOutputBytes);
     const write = (text: string) => {
         stdout.push(Buffer.from(text));
@@ -119,6 +117,7 @@ async function runJob(
         signal?.addEventListener("abort", onAbort, { once: true });
     }
     try {
+        if (!cancelled) await emit({ type: "start", command, startedAt });
         await followJob(address, id, (event) => {
             const line = eventLine(event);
             if (line) {

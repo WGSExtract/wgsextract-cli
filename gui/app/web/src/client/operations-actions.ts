@@ -18,11 +18,11 @@ interface NoticeRun {
 const latestNoticeRuns = new Map<string, NoticeRun>();
 
 type ActionStreamEvent =
-    | { type: "submission-pending"; jobID: string }
+    | { type: "submission-pending"; jobID: string | null }
     | { type: "start"; command: string }
     | { type: "output"; text?: string }
     | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null; lastResultDocumentPaths?: LastResultDocumentPaths } }
-    | { type: "submission-unknown"; jobID: string }
+    | { type: "submission-unknown"; jobID: string | null }
     | { type: "error"; error?: string };
 
 export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference, options: { prerequisitesChecked?: boolean } = {}) {
@@ -85,6 +85,10 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             return null;
         }
         const failedCommand = existing.command || command;
+        const message = existing.pendingJobID !== undefined
+            ? jobSubmissionUnknownMessage(existing.pendingJobID)
+            : errorMessage(error);
+        delete existing.pendingJobID;
         // Updated in place: the Jobs list holds this same entry.
         Object.assign(existing, {
             kind: "error",
@@ -92,9 +96,9 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             command: failedCommand,
             body: [
                 existing.body || actionExecutionLine(action.title, context, action),
-                errorMessage(error),
+                message,
             ].join("\n"),
-            status: terminalProcessErrorStatus(failedCommand, errorMessage(error)),
+            status: terminalProcessErrorStatus(failedCommand, message),
         });
         return null;
     }
@@ -148,8 +152,10 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             break;
         }
         case "submission-unknown":
+            delete tab.pendingJobID;
             throw new Error(jobSubmissionUnknownMessage(event.jobID));
         case "error":
+            delete tab.pendingJobID;
             throw new Error(event.error ?? "Action failed.");
     }
     scheduleRender();

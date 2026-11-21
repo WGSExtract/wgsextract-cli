@@ -265,6 +265,22 @@ class JobManager:
 
     # Changes ---------------------------------------------------------------
 
+    def check_job_id(self, job_id: str) -> None:
+        """Reject invalid IDs and existing jobs before validating a submission."""
+        if not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            job_id,
+        ):
+            raise RequestError(
+                400, "invalid_job_id", "Job ID must be a lowercase UUIDv4."
+            )
+        with self._lock:
+            self._check_new_job_id(job_id)
+
+    def _check_new_job_id(self, job_id: str) -> None:
+        if job_id in self._jobs:
+            raise RequestError(409, "job_id_in_use", "Job ID is already in use.")
+
     def submit(
         self,
         op: Operation,
@@ -273,13 +289,8 @@ class JobManager:
         card: bool | None = None,
         job_id: str | None = None,
     ) -> Job:
-        if job_id is not None and not re.fullmatch(
-            r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
-            job_id,
-        ):
-            raise RequestError(
-                400, "invalid_job_id", "Job ID must be a lowercase UUIDv4."
-            )
+        if job_id is not None:
+            self.check_job_id(job_id)
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
@@ -312,8 +323,7 @@ class JobManager:
                 "job would save into the server's working folder.",
             )
         with self._lock:
-            if job.id in self._jobs:
-                raise RequestError(409, "job_id_in_use", "Job ID is already in use.")
+            self._check_new_job_id(job.id)
             if self._stopping:
                 raise RequestError(503, "stopping", "The server is stopping.")
             self._jobs[job.id] = job
