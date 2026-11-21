@@ -121,17 +121,26 @@ def test_repair_bam_unreadable_input_names_the_reader(tmp_path):
 @pytest.mark.skipif(
     sys.platform == "win32" or os.geteuid() == 0, reason="POSIX non-root"
 )
-def test_repair_bam_writer_failure_is_reported(tmp_path):
+def test_repair_bam_writer_failure_is_reported(tmp_path, capsys):
     bam = _ftdna_bam(tmp_path / "ok.bam")
     locked = tmp_path / "locked"
     locked.mkdir(mode=0o500)
     try:
-        with pytest.raises(WGSExtractError, match=r"samtools view -b \(exit"):
-            run_wgsextract(
-                "repair", "ftdna-bam", "--input", bam, "--output", str(locked / "y.bam")
+        with pytest.raises(SystemExit) as exit_info:
+            main(
+                [
+                    "repair",
+                    "ftdna-bam",
+                    "--input",
+                    bam,
+                    "--output",
+                    str(locked / "y.bam"),
+                ]
             )
     finally:
         locked.chmod(0o700)
+    assert exit_info.value.code == 1
+    assert "Permission denied" in capsys.readouterr().err
     assert list(locked.iterdir()) == []
 
 
@@ -302,6 +311,26 @@ def test_1224_failed_vcf_repair_preserves_previous_output(tmp_path, capsys):
     assert list(dest.iterdir()) == [output]
 
 
+def test_1224_repair_vcf_refuses_to_replace_output_symlink(tmp_path, capsys):
+    source = tmp_path / "kit.vcf"
+    source.write_text(_VCF, encoding="utf-8")
+    target = tmp_path / "saved.vcf"
+    target.write_bytes(b"existing output")
+    output = tmp_path / "fixed.vcf"
+    try:
+        output.symlink_to(target)
+    except OSError as error:
+        pytest.skip(f"Symlinks unavailable: {error}")
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(["repair", "ftdna-vcf", "--input", str(source), "--output", str(output)])
+
+    assert exit_info.value.code == 1
+    assert "regular file" in capsys.readouterr().err
+    assert output.is_symlink()
+    assert target.read_bytes() == b"existing output"
+
+
 def test_1224_failed_bam_repair_preserves_previous_output(tmp_path):
     source = tmp_path / "bad.bam"
     source.write_text("not a bam\n", encoding="utf-8")
@@ -317,6 +346,35 @@ def test_1224_failed_bam_repair_preserves_previous_output(tmp_path):
         )
     assert output.read_bytes() == original
     assert list(dest.iterdir()) == [output]
+
+
+def test_1224_vcf_repair_leaves_index_like_neighbors_alone(tmp_path):
+    output = tmp_path / "fixed.vcf"
+    source = tmp_path / "fixed.vcf.idx"
+    original = _VCF.encode()
+    source.write_bytes(original)
+    other = tmp_path / "fixed.vcf.tbi"
+    other.mkdir()
+
+    main(["repair", "ftdna-vcf", "--input", str(source), "--output", str(output)])
+
+    assert source.read_bytes() == original
+    assert other.is_dir()
+    assert output.is_file()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX modes and path lengths")
+def test_1224_vcf_replacement_preserves_private_mode_and_accepts_long_names(tmp_path):
+    source = tmp_path / "kit.vcf"
+    source.write_text(_VCF, encoding="utf-8")
+    output = tmp_path / ("a" * 220 + ".vcf")
+    output.write_bytes(b"previous output")
+    output.chmod(0o600)
+
+    main(["repair", "ftdna-vcf", "--input", str(source), "--output", str(output)])
+
+    assert _filters(output) == ["101 PASS 7 1", "105 FTDNA_UNKNOWN 2 1"]
+    assert output.stat().st_mode & 0o777 == 0o600
 
 
 def test_repair_cram_finds_the_reference_beside_it(tmp_path, monkeypatch):

@@ -65,9 +65,12 @@ A record before the `#CHROM` line, a missing `#CHROM` line or a record with
 fewer than eight columns stops the repair with an error. The repair reads the
 whole input first, so malformed input produces nothing on stdout in pipe mode.
 When using `--input`, the output cannot be the input file, even through a
-hard link or symlink. The command writes to a temporary file next to the
+hard link. If the output is a symlink, choose a regular file path instead.
+The command writes to a temporary file next to the
 destination and replaces the destination only on success. A failed repair
-leaves any existing output intact. Empty input gives empty output. Records
+leaves any existing output intact. On Unix, the repaired file is private to
+the current user, even when replacing an existing output. Empty input gives
+empty output. Records
 beyond 64 MiB are held in an unnamed temporary file in `--tmp-dir` (or the
 `temp_directory` setting), else beside the output, else the system temporary
 folder; memory use doesn't grow with the number of records.

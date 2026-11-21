@@ -7,6 +7,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, TextIO
 
@@ -14,7 +16,6 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from wgsextract_cli.cli.registration.repair import register as register
-from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, expand_path
@@ -64,7 +65,6 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
         raise WGSExtractError(f"Input BAM/CRAM does not exist: {input_path}")
     verify_dependencies(["samtools"])
     output_path = _repair_output_path(params, ".bam")
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     cram_opt: list[str] = []
     if input_path.lower().endswith(".cram"):
@@ -79,7 +79,7 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
         cram_opt = ["-T", ref]
 
     with (
-        atomic_output(output_path) as staged,
+        _stage_repair(output_path, ".bam") as staged,
         tempfile.TemporaryFile() as read_err,
         tempfile.TemporaryFile() as write_err,
     ):
@@ -135,9 +135,8 @@ def repair_vcf_file(params: RepairFtdnaVcfParams) -> None:
         raise WGSExtractError(f"Input VCF/BCF does not exist: {input_path}")
     output_path = _repair_output_path(params, ".vcf")
     output_dir = Path(output_path).parent
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with atomic_output(output_path) as staged:
-        with open(staged, "x", encoding="utf-8", newline="\n") as repaired_output:
+    with _stage_repair(output_path, ".vcf") as staged:
+        with open(staged, "w", encoding="utf-8", newline="\n") as repaired_output:
             counts = _repair_vcf_to(input_path, repaired_output, output_dir)
         checkpoint()
     _record_repair(output_path, "repaired_vcf", counts)
@@ -215,15 +214,35 @@ def _repair_output_path(
         outdir = expand_path(params.outdir or absolute_path(input_path).parent)
         name = f"{input_stem(input_path)}_repaired{extension}"
         output = str(absolute_path(Path(outdir, name)))
+    destination = Path(output)
     try:
-        output_stat = Path(output).stat()
+        aliases_input = destination.samefile(input_path)
     except FileNotFoundError:
-        return output
-    if os.path.samestat(output_stat, Path(input_path).stat()):
+        aliases_input = False
+    if aliases_input:
         raise WGSExtractError(f"Output {output} would overwrite the input.")
-    if not stat.S_ISREG(output_stat.st_mode):
-        raise WGSExtractError(f"Output {output} is not a regular file.")
+    try:
+        if not stat.S_ISREG(destination.lstat().st_mode):
+            raise WGSExtractError(f"Output {output} is not a regular file.")
+    except FileNotFoundError:
+        pass
     return output
+
+
+@contextmanager
+def _stage_repair(output: str, extension: str) -> Iterator[str]:
+    parent = Path(output).parent
+    parent.mkdir(parents=True, exist_ok=True)
+    temp = tempfile.NamedTemporaryFile(
+        dir=parent, prefix=".wgse-repair-", suffix=extension, delete=False
+    )
+    staged = temp.name
+    try:
+        temp.close()  # samtools and Windows need the path closed before reopening it.
+        yield staged
+        os.replace(staged, output)
+    finally:
+        Path(staged).unlink(missing_ok=True)
 
 
 def _input_was_explicit(args: argparse.Namespace) -> bool:
