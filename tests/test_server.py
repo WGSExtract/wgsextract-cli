@@ -201,8 +201,8 @@ def test_bad_lengths_are_refused_and_errors_close_the_connection(
 
 @pytest.mark.parametrize(
     ("length", "expected"),
-    [(1, (409, "job_id_in_use")), (2, (400, "bad_length"))],
-    ids=["complete-malformed-json", "truncated-body"],
+    [(1, (409, "job_id_in_use")), (2, (400, "bad_length")), (2, None)],
+    ids=["complete-malformed-json", "truncated-body", "stalled-body"],
 )
 def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expected):
     job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
@@ -227,8 +227,20 @@ def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expe
         connection.putheader("Content-Length", str(length))
         connection.endheaders()
         connection.send(b"{")
-        assert connection.sock is not None
-        connection.sock.shutdown(socket.SHUT_WR)
+        if expected is None:
+            # Leave the write side open so only the input deadline ends the read.
+            with pytest.raises(
+                (
+                    http.client.RemoteDisconnected,
+                    ConnectionAbortedError,
+                    ConnectionResetError,
+                )
+            ):
+                connection.getresponse()
+            return
+        if length == 2:
+            assert connection.sock is not None
+            connection.sock.shutdown(socket.SHUT_WR)
         with connection.getresponse() as response:
             assert (
                 response.status,

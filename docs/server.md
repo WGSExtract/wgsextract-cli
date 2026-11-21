@@ -172,7 +172,8 @@ The manifest's `provenance` (tool versions and the full parameters) appears
 only with `full=1`, to keep responses short.
 
 Operation submissions require `Content-Length` (use `0` for an empty body).
-Requests using `Transfer-Encoding` are rejected with 400.
+Requests using `Transfer-Encoding` are rejected with 400. The server closes
+the connection if it cannot read the complete request body within 10 seconds.
 
 The event stream keeps the latest 1,024 events per job for active jobs and
 the 128 most recently finished jobs. Reconnecting with an older event ID

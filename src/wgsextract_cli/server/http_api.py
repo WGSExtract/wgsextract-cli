@@ -32,6 +32,7 @@ from .transport import Health, Index, Jobs, OperationDescription, Operations
 from .transport import Job as JobView
 
 MAX_BODY_BYTES = 1 << 20
+BODY_TIMEOUT_SECONDS = 10.0
 MAX_WAIT_SECONDS = 600.0
 SSE_KEEPALIVE_SECONDS = 15.0
 
@@ -295,7 +296,7 @@ class Handler(LimitedHandler):
             raise RequestError(400, "bad_length", "Invalid Content-Length.")
         if length > MAX_BODY_BYTES:
             raise RequestError(413, "too_large", "The request body is too large.")
-        raw = self.rfile.read(length) if length else b""
+        raw = self.read_body(length, timeout=BODY_TIMEOUT_SECONDS) if length else b""
         if len(raw) != length:
             raise RequestError(400, "bad_length", "Incomplete request body.")
         return raw
