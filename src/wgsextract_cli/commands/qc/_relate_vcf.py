@@ -26,6 +26,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+from wgsextract_cli.core.reference_evidence import header_declares_gvcf
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 
 # Share of the expected non-reference sites a whole-genome sample reaches.
@@ -94,10 +95,7 @@ def read_sites(path: str) -> list[Site]:
 def is_gvcf(vcf: str, header: str, records: int = 10_000) -> bool:
     """Whether the VCF has reference blocks (END, or a symbolic-only ALT such
     as <*> or <NON_REF>) among its first ``records`` records."""
-    if any(
-        line.startswith(("##wgseReferenceEvidence=", "##GVCFBlock"))
-        for line in header.splitlines()
-    ):
+    if header_declares_gvcf(header):
         return True
     if "##INFO=<ID=END," not in header and "<NON_REF>" not in header:
         return False
