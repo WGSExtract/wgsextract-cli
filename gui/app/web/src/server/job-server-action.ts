@@ -39,7 +39,7 @@ export async function runActionPreferringServer(
     const operation = action.serverOperation;
     if (operation && jobServer && !signal?.aborted) {
         const parameters = renderedParameters(operation, await contextWithFileState(context, bundleRoot));
-        const job = await startServerJob(jobServer, operation.operation, parameters, action.resultCard === true, signal);
+        const job = await startServerJob(jobServer, operation.operation, parameters, action.resultCard === true, emit, signal);
         if (job) {
             return runJob(job.address, job.id, `${operation.operation} ${JSON.stringify(parameters)}`, signal, emit, resultSpec);
         }
@@ -48,12 +48,16 @@ export async function runActionPreferringServer(
 }
 
 /** Returns no job only when the server could not have accepted the submission. */
-async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean, signal?: AbortSignal): Promise<{ address: JobServerAddress; id: string } | undefined> {
+async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean, emit: ActionEmit, signal?: AbortSignal): Promise<{ address: JobServerAddress; id: string } | undefined> {
     const address = await jobServer.address();
     if (!address || signal?.aborted) {
         return undefined;
     }
     const id = randomUUID();
+    await emit({ type: "submission-pending", jobID: id });
+    if (signal?.aborted) {
+        return undefined;
+    }
     const started = await startJob(address, id, operation, parameters, card);
     if (started.kind === "accepted") {
         return { address, id: started.job.id };

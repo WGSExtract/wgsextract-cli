@@ -57,13 +57,14 @@ const server = createServer(async (request, response) => {
   const [, kind, ...rest] = new URL(request.url, "http://x").pathname.replace(/^\/v1/, "").split("/");
   if (request.method === "POST" && kind === "ops") {
     const operation = rest.join("/");
-    if (!["slow", "quick", "noisy", "malformed", "missing", "lost", "gateway-error", "unconfirmed"].includes(operation)) {
+    if (!["slow", "quick", "noisy", "malformed", "missing", "lost", "gateway-error", "unconfirmed", "server-id"].includes(operation)) {
       response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { code: "path_not_allowed", message: "not allowed" } }));
       return;
     }
     const query = new URL(request.url, "http://x").search;
-    const job = { id: request.headers["x-wgse-job-id"], status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
+    const id = operation === "server-id" ? "20260105-100425-986af7" : request.headers["x-wgse-job-id"];
+    const job = { id, status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
     jobs.set(job.id, job);
     appendFileSync("executions", "server\n");
     if (operation === "lost" || operation === "unconfirmed") request.socket.destroy();
@@ -187,7 +188,7 @@ test("an action with a serverOperation runs as a job, with its progress in the o
   const { result, events, output } = await run(bundle, action("quick", { input: "{{bam}}", ref: "{{ref}}", bins: true }), bundle.startServer());
 
   assert.equal(result.exitCode, 0);
-  assert.equal(events[0].type, "start");
+  assert.ok(events.some((event) => event.type === "start"));
   assert.equal(events.at(-1).type, "complete");
   assert.match(output, /\[progress\] reading: chr1 \(50%\)/);
   assert.match(output, /\[job\] succeeded/);
@@ -246,6 +247,14 @@ for (const fault of ["malformed", "missing", "lost", "gateway-error", "unconfirm
     assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
   });
 }
+
+test("#1235: a successful submission with a server-assigned ID still follows the job", async (t) => {
+  const bundle = await withBundle(t);
+  const { result, output } = await run(bundle, action("server-id"), bundle.startServer());
+  assert.equal(result.exitCode, 0);
+  assert.match(output, /\[job\] succeeded/);
+  assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
+});
 
 test("cancelling a server action cancels its job", async (t) => {
   const bundle = await withBundle(t);

@@ -38,7 +38,7 @@ export async function startJob(address: JobServerAddress, id: string, operation:
         const response = await request(address, "POST", `/ops/${operation}${card ? "?card=1" : ""}`,
             parameters, AbortSignal.timeout(submissionTimeoutMs), { "X-WGSE-Job-ID": id });
         const body = await response.json().catch(() => undefined) as LooseRecord | undefined;
-        if (response.ok && isJobRecord(body) && body.id === id) {
+        if (response.ok && isJobRecord(body)) {
             return { kind: "accepted", job: body };
         }
         reason = `HTTP ${response.status}: ${describeError(body)}`;
@@ -160,7 +160,8 @@ function parseEvent(block: string): JobEvent | undefined {
 }
 
 function isJobRecord(value: LooseRecord | undefined): value is JobRecord {
-    return typeof value?.id === "string" && typeof value.status === "string" && value.status.trim() !== "";
+    return typeof value?.id === "string" && /^[A-Za-z0-9-]+$/.test(value.id)
+        && typeof value.status === "string" && value.status.trim() !== "";
 }
 
 function describeError(body: LooseRecord | undefined): string {

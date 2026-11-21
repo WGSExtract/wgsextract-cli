@@ -129,7 +129,7 @@
 "app.terminal.exitCode.detailFormat" = "%{command} wurde mit Code %{code} beendet."  # i18n-source-hash:7a9533ad
 "app.terminal.nonzeroExit.summary" = "Der Befehl wurde mit einem Status ungleich null beendet. Prüfen Sie die Befehlsausgabe für Details."  # i18n-source-hash:79a56aef
 "app.terminal.processError.title" = "Befehl fehlgeschlagen"  # i18n-source-hash:ad9f31ca
-"app.terminal.jobSubmissionUnknown" = "Dieser Auftrag läuft möglicherweise noch auf dem Server. Prüfen Sie seinen Status, bevor Sie es erneut versuchen. Auftrags-ID:"  # i18n-source-hash:e6629d77
+"app.terminal.jobSubmissionUnknown" = "Dieser Auftrag läuft möglicherweise noch auf dem Server. Prüfen Sie seinen Status, bevor Sie es erneut versuchen."  # i18n-source-hash:9027a372
 "app.terminal.processError.summary" = "Der Befehl konnte nicht abgeschlossen werden."  # i18n-source-hash:e4fc233c
 "app.config.loaded.format" = "Einstellungen aus %{path} geladen"  # i18n-source-hash:8f856738
 "app.config.loadError.format" = "%{label} konnte nicht geladen werden: %{error}"  # i18n-source-hash:67314edf
