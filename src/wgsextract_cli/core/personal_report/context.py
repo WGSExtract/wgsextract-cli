@@ -15,7 +15,6 @@ from wgsextract_cli.core import (
     variant_confidence,
 )
 from wgsextract_cli.core.multiqc import find_documents
-from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument,
     ReportEvidenceDocument,
@@ -270,11 +269,12 @@ def select_sample(
             (s for g in kept for s in g), key=lambda s: (s.finished, str(s.manifest))
         )
     if not workspace:
-        stems = sorted({input_stem(p) for g in groups for p in _roots(g)})
-        if len(stems) > 1:
+        rooted_groups = [roots for group in groups if (roots := _roots(group))]
+        if len(rooted_groups) > 1:
+            paths = sorted(str(path) for roots in rooted_groups for path in roots)
             raise UsageError(
                 "The folder has results of several samples ("
-                + ", ".join(stems)
+                + ", ".join(paths)
                 + "); choose one with --input."
             )
     return list(sources)

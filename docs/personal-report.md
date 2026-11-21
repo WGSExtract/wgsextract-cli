@@ -46,7 +46,8 @@ from it (its `vcf snp` VCF, say) and the runs that made it. In a sample
 workspace or genome folder, which holds one person, runs on files made from no
 other alignment (a VCF from a lab, say) are included too. Without `--input`, a
 plain folder holding results of several samples is an error (exit 2) naming
-them; choose one with `--input`. The report reads only manifests and the
+their input paths; choose one with `--input`. Matching filenames in different
+folders do not identify the same sample. The report reads only manifests and the
 workspace, so it needs no samtools or other analysis tools, even for a BAM or
 CRAM `--input`.
 

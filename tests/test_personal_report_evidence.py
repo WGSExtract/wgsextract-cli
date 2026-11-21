@@ -10,6 +10,7 @@ from typing import Any
 import jsonschema
 import pytest
 
+from tests.htslib_helpers import needs_tools, sam_to_bam
 from tests.test_personal_report import (
     TSV_HEADER as TSV_HEADER,
 )
@@ -63,10 +64,91 @@ def test_an_input_limits_the_report_to_that_samples_runs(tmp_path):
     sources = {s["manifest"] for s in report["sections"]["lineage"]["sources"]}
     assert sources == {"Alice_haplogrep.manifest.json"}
 
-    with pytest.raises(UsageError, match="Alice, Bob"):
+    with pytest.raises(UsageError, match=r"Alice\.cram.*Bob\.cram"):
         pr.build_report(folder)
     code, out = _cli("report", "--workspace", str(folder))
     assert code == 2
+
+
+@needs_tools("samtools")
+def test_1221_report_distinguishes_same_named_bams_by_provenance(tmp_path):
+    folder = tmp_path / "shared"
+    first, second = folder / "first", folder / "second"
+    for directory, base in ((first, "A"), (second, "T")):
+        directory.mkdir(parents=True)
+        sam_to_bam(
+            [
+                "@HD\tVN:1.6\tSO:coordinate",
+                "@SQ\tSN:chr1\tLN:1000",
+                f"read\t0\tchr1\t1\t60\t1M\t*\t0\t0\t{base}\tI",
+            ],
+            directory / "sample.bam",
+        )
+
+    def run(*args: str) -> dict[str, Any]:
+        code, output = _cli(*args, "--json")
+        assert code == 0, output
+        return json.loads(output)
+
+    first_bam = str(first / "sample.bam")
+    sorted_run = run(
+        "bam",
+        "sort",
+        "--input",
+        first_bam,
+        "--outdir",
+        str(first),
+        "--threads",
+        "1",
+    )
+    descendant = run(
+        "info",
+        "--input",
+        str(first / "sample_sorted.bam"),
+        "--outdir",
+        str(first),
+        "--format",
+        "tsv",
+    )
+    expected = {Path(result["manifest"]) for result in (sorted_run, descendant)}
+    report_args = ("report", "--workspace", str(folder))
+    connected = run(*report_args, "--outdir", str(tmp_path / "connected"))
+    assert {Path(item["path"]) for item in connected["inputs"]} == expected
+
+    run(
+        "info",
+        "--input",
+        str(second / "sample.bam"),
+        "--outdir",
+        str(second),
+        "--format",
+        "tsv",
+    )
+    outdir = tmp_path / "report"
+    report_args += ("--outdir", str(outdir))
+    code, output = _cli(*report_args, "--json")
+    refusal = json.loads(output)
+    assert code == refusal["exit_code"] == 2
+    assert refusal["error"]["kind"] == "usage"
+    assert "--input" in refusal["error"]["message"]
+    assert not list(outdir.glob("*.html"))
+    for directory in (first, second):
+        assert str(directory / "sample.bam") in refusal["error"]["message"]
+
+    selected = run(*report_args, "--input", first_bam)
+    assert {Path(item["path"]) for item in selected["inputs"]} == expected | {
+        Path(first_bam)
+    }
+    (report_json,) = [
+        Path(item["path"])
+        for item in selected["outputs"]
+        if item["role"] == "report_json"
+    ]
+    report = json.loads(report_json.read_text(encoding="utf-8"))
+    assert report["sample"]["alignment"] == "first/sample.bam"
+    assert [
+        source["manifest"] for source in report["sections"]["overview"]["sources"]
+    ] == [f"first/{Path(descendant['manifest']).name}"]
 
 
 def test_in_a_workspace_runs_on_another_alignment_stay_out(tmp_path):
