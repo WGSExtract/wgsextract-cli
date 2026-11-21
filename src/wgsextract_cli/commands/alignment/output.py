@@ -10,7 +10,11 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.commands._extract_helpers import cleanup_files
-from wgsextract_cli.core.alignment.fastq import check_primary_reads
+from wgsextract_cli.core.alignment.fastq import (
+    check_primary_reads,
+    discarded_read_count,
+    warn_discarded_reads,
+)
 from wgsextract_cli.core.alignment.profiles import output_profile_options
 from wgsextract_cli.core.alignment.samtools_commands import (
     indexed_output,
@@ -21,6 +25,7 @@ from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
+    WGSExtractError,
     get_sam_index_cmd,
     get_sam_sort_cmd,
     run_command,
@@ -93,6 +98,8 @@ def run_streamed_alignment(
     output_profile: str = "default",
     compression_threads: str | None = None,
     dense_sa: Path | None = None,
+    index_suffixes: Sequence[str] = (),
+    discarded_fastq: Path | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -104,6 +111,10 @@ def run_streamed_alignment(
     if staged_mode:
         from wgsextract_cli.core.staged_alignment import run_staged_alignment
 
+        if not index_suffixes:
+            raise WGSExtractError(
+                "Staged alignment requires the selected index suffixes"
+            )
         workspace = None
         try:
             with cleanup_files(
@@ -124,6 +135,8 @@ def run_streamed_alignment(
                         expected_reads=expected_reads,
                         output_profile=output_profile,
                         dense_sa=dense_sa,
+                        index_suffixes=index_suffixes,
+                        discarded_fastq=discarded_fastq,
                     )
                     if exact_reads is not None:
                         check_primary_reads(staged, exact_reads, ref)
@@ -177,6 +190,7 @@ def run_streamed_alignment(
                 heartbeat=True,
                 expected_reads=expected_reads,
             )
+            warn_discarded_reads(discarded_read_count(discarded_fastq))
             if exact_reads is not None:
                 check_primary_reads(staged, exact_reads, ref)
 

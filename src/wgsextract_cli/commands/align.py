@@ -282,6 +282,7 @@ from .alignment.short_reads import (
 from .alignment.short_reads import (
     aligner_gpu_bytes as aligner_gpu_bytes,
 )
+from .alignment.short_reads import bwa_index_suffixes
 from .alignment.short_reads import (
     bwa_mem2_index_ready as bwa_mem2_index_ready,
 )
@@ -386,6 +387,7 @@ def align_bwa(
     job: AlignJob,
     *,
     upstream: Sequence[Sequence[object]] = (),
+    discarded_fastq: Path | None = None,
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
 ) -> None:
@@ -433,6 +435,7 @@ def align_bwa(
             ref=setup.ref,
             duplicates=duplicate_marker(paired=bool(job.r2)),
             upstream=list(upstream) if upstream else None,
+            discarded_fastq=discarded_fastq,
             expected_reads=job.read_count,
             exact_reads=job.exact_reads,
             staged_mode=aligner.staged,
@@ -440,6 +443,9 @@ def align_bwa(
             retire_fastqs=job.retire_fastqs,
             read_length=job.input_reads.read_length if job.input_reads else None,
             dense_sa=aligner.dense_sa,
+            index_suffixes=bwa_index_suffixes(aligner.memory_model)
+            if aligner.staged
+            else (),
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e

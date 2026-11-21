@@ -275,6 +275,10 @@ raw plus compressed marked parts, then parts plus final output. Owned generated
 FASTQs retire after alignment unless kept; the raw checkpoint retires only after
 all marked parts are durable. Existing resumable checkpoints and owned-read
 retirement are credited, never user-provided read files.
+Recovery checks only the selected aligner's index files. Large sidecars use
+sampled content and file metadata rather than a full read. If streamed
+extraction left out single-end reads, recovery reports the saved count even
+after extraction scratch files are gone.
 The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
 BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
 includes the guard's safety reserve once per guarded filesystem, the extraction

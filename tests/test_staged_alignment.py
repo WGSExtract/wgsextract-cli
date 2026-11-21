@@ -17,6 +17,7 @@ from tests.test_alignment_commands import _samtools, _short_reads
 from wgsextract_cli import api
 from wgsextract_cli.commands._extract_helpers import paired_fastq_stream
 from wgsextract_cli.commands.align import read_group, run_streamed_alignment
+from wgsextract_cli.commands.alignment.short_reads import bwa_index_suffixes
 from wgsextract_cli.core import native_aligners, results
 from wgsextract_cli.core.alignment.memory import bwa_gpu_memory, estimate_mapping_memory
 from wgsextract_cli.core.config import settings
@@ -46,6 +47,8 @@ def _align(reads, ref, out, *, native="off", prefer=None):
 
 def _stage_reads(tmp_path, reads, *, aligner="bwa", staged_output=None, chunks=7):
     output = str(tmp_path / "staged.bam")
+    # The executable may be a Pixi wrapper; it still maps with BWA's index.
+    model = "bwa-mem2" if aligner == "bwa-mem2" else "bwa"
     return run_staged_alignment(
         [[aligner, "mem", "-t", "1", "-R", read_group("reads"),
           Path(reads.ref), Path(reads.r1), Path(reads.r2)]],
@@ -54,6 +57,7 @@ def _stage_reads(tmp_path, reads, *, aligner="bwa", staged_output=None, chunks=7
         memory="16M",
         fmt="BAM",
         ref=reads.ref,
+        index_suffixes=bwa_index_suffixes(model),
         chunk_records=chunks,
         expected_reads=280,
     )  # fmt: skip
@@ -185,6 +189,7 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(
             memory="16M",
             fmt=fmt,
             ref=ref,
+            index_suffixes=bwa_index_suffixes("bwa"),
             threads=threads,
             compression_threads=compression_threads,
             chunk_records=3,
@@ -238,6 +243,7 @@ def test_issue872_staged_merge_honours_lossless_output_profile(
         ref=reads.ref,
         duplicates="samblaster",
         staged_mode=True,
+        index_suffixes=bwa_index_suffixes("bwa"),
         expected_reads=280,
         exact_reads=280,
         output_profile=profile,
@@ -281,6 +287,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
             memory="16M",
             fmt="BAM",
             ref=reads.ref,
+            index_suffixes=bwa_index_suffixes("bwa"),
             chunk_records=7,
             expected_reads=280,
         )
@@ -298,6 +305,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
             memory="16M",
             fmt="BAM",
             ref=reads.ref,
+            index_suffixes=bwa_index_suffixes("bwa"),
             chunk_records=7,
             expected_reads=280,
         )
@@ -309,6 +317,7 @@ def test_issue872_failed_encoding_resumes_validated_parts_without_remapping(tmp_
         memory="16M",
         fmt="BAM",
         ref=reads.ref,
+        index_suffixes=bwa_index_suffixes("bwa"),
         chunk_records=7,
         expected_reads=280,
     )
@@ -509,6 +518,7 @@ def test_issue872_rejects_shared_checkpoint_permissions(tmp_path):
             memory="16M",
             fmt="BAM",
             ref=reads.ref,
+            index_suffixes=bwa_index_suffixes("bwa"),
             expected_reads=280,
         )
 
@@ -539,6 +549,7 @@ def test_issue872_post_merge_validation_reports_retained_workspace(tmp_path):
             ref=reads.ref,
             duplicates="samblaster",
             staged_mode=True,
+            index_suffixes=bwa_index_suffixes("bwa"),
             expected_reads=280,
             exact_reads=999,
         )
@@ -560,14 +571,16 @@ def test_issue1206_stream_resume_ignores_extraction_scratch_paths(tmp_path):
     stream = {"threads": "1", "memory": "16M", "temp_parent": tmp_path}
 
     def run(staged_output):
-        with paired_fastq_stream(baseline, **stream) as stages:
+        with paired_fastq_stream(baseline, **stream) as extracted:
             run_staged_alignment(
-                [*stages, aligner],
+                [*extracted.stages, aligner],
                 output,
                 staged_output,
                 memory="16M",
                 fmt="BAM",
                 ref=reads.ref,
+                index_suffixes=bwa_index_suffixes("bwa"),
+                discarded_fastq=extracted.discarded_fastq,
                 expected_reads=280,
                 chunk_records=7,
             )
@@ -598,6 +611,7 @@ def test_issue872_owned_fastqs_retire_only_after_validated_alignment(tmp_path):
             memory="16M",
             fmt="BAM",
             ref=reads.ref,
+            index_suffixes=bwa_index_suffixes("bwa"),
             retire_fastqs=owned,
             expected_reads=280,
         )
@@ -623,6 +637,7 @@ def test_issue872_owned_fastqs_retire_only_after_validated_alignment(tmp_path):
         memory="16M",
         fmt="BAM",
         ref=reads.ref,
+        index_suffixes=bwa_index_suffixes("bwa"),
         retire_fastqs=owned,
         chunk_records=7,
         expected_reads=280,

@@ -9,6 +9,10 @@ from os import devnull, fspath
 from pathlib import Path
 from typing import IO, Literal, NamedTuple
 
+from wgsextract_cli.core.alignment.fastq import (
+    discarded_read_count,
+    warn_discarded_reads,
+)
 from wgsextract_cli.core.alignment.samtools_commands import parse_memory
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -361,19 +365,9 @@ def _collate_progress(
     return estimate
 
 
-def _warn_unpaired(other: Path) -> None:
-    """Warn about READ_OTHER records ``samtools fastq`` wrote to ``other``."""
-    import gzip
-
-    if not other.exists():
-        return
-    with gzip.open(other, "rb") as reads:
-        count = sum(1 for _ in reads) // 4
-    if count:
-        logging.warning(
-            f"{count:,} primary reads flagged neither first nor second of a pair "
-            "(single-end) were left out of the paired FASTQ."
-        )
+class PairedFastqStream(NamedTuple):
+    stages: list[Sequence[str | Path]]
+    discarded_fastq: Path
 
 
 @contextlib.contextmanager
@@ -385,25 +379,27 @@ def paired_fastq_stream(
     temp_parent: PathInput,
     cram_opt: list[str] | None = None,
     memory_threads: str | None = None,
-) -> Iterator[list[Sequence[str | Path]]]:
-    """Interleaved pairs; ``memory_threads`` keeps sort RAM separate from codecs."""
+) -> Iterator[PairedFastqStream]:
+    """Interleaved pairs and scratch for discarded reads, owned by this context."""
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or temp_parent, prefix=".collate_"
     ) as tmp:
         other = Path(tmp, "other.fastq.gz")
-        yield _fastq_stages(
-            input_path,
-            "-",
-            "-",
-            threads=threads,
-            memory=memory,
-            memory_threads=memory_threads,
-            temporary=tmp,
-            singletons=devnull,
-            out_other=other,
-            cram_opt=cram_opt,
+        yield PairedFastqStream(
+            _fastq_stages(
+                input_path,
+                "-",
+                "-",
+                threads=threads,
+                memory=memory,
+                memory_threads=memory_threads,
+                temporary=tmp,
+                singletons=devnull,
+                out_other=other,
+                cram_opt=cram_opt,
+            ),
+            other,
         )
-        _warn_unpaired(other)
 
 
 def alignments_to_fastq(
@@ -491,4 +487,4 @@ def alignments_to_fastq(
             expected_reads=expected_reads,
         )
         if not staged_other:
-            _warn_unpaired(Path(tmp, "other.fastq.gz"))
+            warn_discarded_reads(discarded_read_count(Path(tmp, "other.fastq.gz")))
