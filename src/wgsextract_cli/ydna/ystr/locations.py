@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 
 KMER = 14
 CONTEXT = 40
@@ -64,14 +65,13 @@ def locate_all(ref38: str, s: int, e: int, other: str) -> list[tuple[int, int, s
     return sorted(locations)
 
 
-def locate(ref38: str, s: int, e: int, other: str) -> tuple[int, int, str] | None:
-    """A unique tract in another assembly, on either strand.
-
-    Anchors step outwards so a variant next to the tract does not lose it;
-    the KMER flanks found must then match the source within one base.
-    """
+def strand_placements(
+    ref38: str, s: int, e: int, other: str
+) -> Iterator[tuple[int, int, str]]:
+    """Yield the strongest globally unique anchor pair on each strand."""
     flank_l, flank_r = ref38[s - KMER : s], ref38[e : e + KMER]
-    for strand in ("+", "-"):
+
+    def place(strand: str) -> tuple[int, int, str] | None:
         for shift in ANCHOR_SHIFTS:
             for context in (CONTEXT, 30, 22):
                 left = ref38[s - KMER - context - shift : s - shift]
@@ -98,4 +98,14 @@ def locate(ref38: str, s: int, e: int, other: str) -> tuple[int, int, str] | Non
                     and mismatches(other[be : be + KMER], expected_r) <= 1
                 ):
                     return bs, be, strand
-    return None
+        return None
+
+    for strand in ("+", "-"):
+        if (placement := place(strand)) is not None:
+            yield placement
+
+
+def locate(ref38: str, s: int, e: int, other: str) -> tuple[int, int, str] | None:
+    """A tract with a unique placement after considering both strands."""
+    placements = list(strand_placements(ref38, s, e, other))
+    return placements[0] if len(placements) == 1 else None

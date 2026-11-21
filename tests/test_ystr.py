@@ -295,6 +295,63 @@ def test_issue_1155_reference_paralogs_do_not_create_dys425_conflict(tmp_path):
 
 
 @needs_htslib
+def test_issue_1155_dys425_spanning_reads_do_not_hide_an_unspanned_paralog(tmp_path):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+
+    fixture = _issue_1155_reads("hg38")
+    reads = [r for r in fixture if r.startswith("DYS425_1_")]
+    fields = next(r for r in fixture if r.startswith("DYS425_3_")).split("\t")
+    seq = fields[9][:30] + "AAC" * 20
+    fields[5], fields[9], fields[10] = "69M21I", seq, "I" * len(seq)
+    for i in range(2):
+        fields[0] = f"paralog_{i}"
+        reads.append("\t".join(fields))
+    bam = sam_to_bam(["@SQ\tSN:chrY\tLN:57227415", *reads], tmp_path / "paralog.bam")
+    _, table = analyze(
+        Path(bam), tmp_path / "result", build="hg38", selected=[_marker("DYS425")]
+    )
+    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
+    assert (row["status"], row["value"]) == ("not_callable", "")
+    header, values = list(csv.reader(table.with_name("paralog.ftdna.csv").open()))
+    assert dict(zip(header, values, strict=True))["DYS425"] == ""
+
+
+@needs_htslib
+@pytest.mark.parametrize("source,value", [("hg38", "13"), ("t2t", "12")])
+def test_issue_1155_same_dys589_read_has_same_value_on_all_builds(
+    tmp_path, source, value
+):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+    from wgsextract_cli.ydna.ystr.locations import revcomp
+
+    def reference_read(build):
+        return next(
+            r.split("\t")
+            for r in _issue_1155_reads(build, reference=True)
+            if r.startswith("DYS589_")
+        )
+
+    sequence = reference_read(source)[9]
+    for build, y_length in (("hg38", 57227415), ("hg19", 59373566), ("t2t", 62460029)):
+        fields = reference_read(build)
+        seq = revcomp(sequence) if (build == "t2t") != (source == "t2t") else sequence
+        # Use the same read bases on all builds, oriented as in a reference-aligned SAM.
+        fields[5], fields[9], fields[10] = f"{len(seq)}M", seq, "I" * len(seq)
+        reads = []
+        for i in range(4):
+            fields[0] = f"cross_build_{i}"
+            reads.append("\t".join(fields))
+        bam = sam_to_bam(
+            [f"@SQ\tSN:chrY\tLN:{y_length}", *reads], tmp_path / f"{build}.bam"
+        )
+        _, table = analyze(
+            Path(bam), tmp_path / "result", build=build, selected=[_marker("DYS589")]
+        )
+        (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
+        assert (row["status"], row["value"]) == ("called", value), build
+
+
+@needs_htslib
 @pytest.mark.parametrize("build", ["hg38", "hg19", "t2t"])
 @pytest.mark.parametrize("repeat_insertion", [False, True])
 def test_issue_1155_dys589_poly_t_boundary_is_not_a_fractional_allele(
@@ -351,6 +408,8 @@ def test_issue_1155_panel_builder_finds_inverted_and_duplicated_tracts():
     placed = locate_all(original, start, end, doubled)
     assert len(placed) == 2
     assert [doubled[lo:hi] for lo, hi, _strand in placed] == ["ATCTCT" * 10] * 2
+    # A unique anchor pair on each strand still does not identify a single tract.
+    assert locate(original, start, end, original + "N" * 500 + inverted) is None
 
 
 def test_ystr_panel_builder_missing_sources_require_explicit_download(tmp_path):

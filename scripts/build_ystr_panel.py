@@ -38,7 +38,13 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.ydna.ystr.locations import KMER, locate, locate_all, revcomp
+from wgsextract_cli.ydna.ystr.locations import (
+    KMER,
+    locate,
+    locate_all,
+    revcomp,
+    strand_placements,
+)
 
 SEARCH_PAD = 60
 MAX_WIDEN = 120
@@ -628,7 +634,13 @@ def main() -> None:
                 elif build == "hg38":
                     placements = [(s, e, "+")]
                 else:
-                    found = locate(ref38, s, e, ref)
+                    # Explicit multicopy cores are calibrated separately. Prefer the
+                    # source strand when both palindrome arms match a given core.
+                    found = (
+                        next(strand_placements(ref38, s, e, ref), None)
+                        if spec["kind"] == "multicopy"
+                        else locate(ref38, s, e, ref)
+                    )
                     if not found:
                         print(
                             f"{name} part {part}: not found in {build}", file=sys.stderr
