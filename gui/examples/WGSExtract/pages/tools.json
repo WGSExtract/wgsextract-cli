@@ -1,0 +1,175 @@
+{
+  "id": "tools",
+  "title": "pages.tools.title",
+  "summary": "pages.tools.summary",
+  "sidebarPlacement": "bottom",
+  "sections": [
+    {
+      "id": "tool-management",
+      "title": "sections.tools.tool-management.title",
+      "summary": "sections.tools.tool-management.summary",
+      "collapsible": false,
+      "controls": [
+        {
+          "id": "tools",
+          "label": "controls.tools.tool-management.tools.label",
+          "kind": "libraryList",
+          "tooltip": "controls.tools.tool-management.tools.tooltip",
+          "dataSource": {
+            "path": "scripts/run-wgsextract.sh",
+            "arguments": [
+              "--json",
+              "deps",
+              "list"
+            ],
+            "timeoutSeconds": 300,
+            "transform": {
+              "module": "transforms/tools.mjs",
+              "export": "items"
+            }
+          },
+          "columns": [
+            {
+              "id": "name",
+              "title": "columns.tools.tool-management.tools.name.title"
+            },
+            {
+              "id": "details",
+              "title": "columns.tools.tool-management.tools.details.title"
+            },
+            {
+              "id": "environment",
+              "title": "columns.tools.tool-management.tools.environment.title"
+            }
+          ],
+          "rowTemplate": {
+            "id": "{{id}}",
+            "title": "{{name}}",
+            "status": "{{status}}",
+            "values": {
+              "name": "{{name}}",
+              "details": "{{details}}",
+              "environment": "{{environment}}",
+              "environmentTools": "{{environmentTools}}",
+              "action": "{{action}}",
+              "note": "{{note}}"
+            }
+          },
+          "rowActions": [
+            {
+              "id": "tool-install",
+              "title": "actions.tools.tool-management.tool-install.title",
+              "tooltip": "actions.tools.tool-management.tool-install.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "deps",
+                  "install",
+                  "{{row.name}}"
+                ]
+              },
+              "iconName": "download",
+              "textIcon": "⬇️",
+              "visibleWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "install"
+                }
+              ]
+            },
+            {
+              "id": "tool-uninstall",
+              "title": "actions.tools.tool-management.tool-uninstall.title",
+              "tooltip": "actions.tools.tool-management.tool-uninstall.tooltip",
+              "role": "destructive",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "deps",
+                  "uninstall",
+                  "{{row.name}}"
+                ]
+              },
+              "confirm": {
+                "title": "actions.tools.tool-management.tool-uninstall.confirm.title",
+                "message": "actions.tools.tool-management.tool-uninstall.confirm.message",
+                "confirmButtonTitle": "actions.tools.tool-management.tool-uninstall.title",
+                "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
+              },
+              "iconName": "delete",
+              "textIcon": "🗑️",
+              "visibleWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "uninstall"
+                }
+              ]
+            },
+            {
+              "id": "tool-manual",
+              "title": "actions.tools.tool-management.tool-manual.title",
+              "tooltip": "actions.tools.tool-management.tool-manual.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "deps",
+                  "check",
+                  "--tool",
+                  "{{row.name}}"
+                ]
+              },
+              "visibleWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "manual"
+                }
+              ],
+              "disabledWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "manual"
+                }
+              ],
+              "disabledTooltip": "{{row.note}}",
+              "iconName": "download",
+              "textIcon": "⬇️"
+            },
+            {
+              "id": "tool-unavailable",
+              "title": "actions.tools.tool-management.tool-unavailable.title",
+              "tooltip": "actions.tools.tool-management.tool-unavailable.tooltip",
+              "command": {
+                "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+                "arguments": [
+                  "deps",
+                  "check",
+                  "--tool",
+                  "{{row.name}}"
+                ]
+              },
+              "visibleWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "unavailable"
+                }
+              ],
+              "disabledWhen": [
+                {
+                  "placeholder": "row.action",
+                  "equals": "unavailable"
+                }
+              ],
+              "disabledTooltip": "{{row.note}}",
+              "iconName": "unavailable",
+              "textIcon": "🚫"
+            }
+          ]
+        }
+      ],
+      "iconName": "tools",
+      "textIcon": "🧰"
+    }
+  ],
+  "iconName": "tools",
+  "textIcon": "🧰"
+}

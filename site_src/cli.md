@@ -117,7 +117,7 @@ Pick the line that matches your file and run its commands in order. Each command
 ::: card
 ### Setup
 - `ref`: Download and check reference genomes and annotation data.
-- `deps`: Check that the external tools are installed.
+- `deps`: Check, install and remove the external tools.
 - `example-genome`: Download public example genomes to practise on.
 - `sample`: Show recorded sample facts; correct sex or platform.
 - `config`: Show the settings in use and the config.toml path.

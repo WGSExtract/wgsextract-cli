@@ -8,11 +8,12 @@ A control, config setting or section can fill itself from a `dataSource`: a bund
   "arguments": ["--list"],
   "optionalArguments": [["--ref", "{{ref_path}}"]], // optional; a group is left out when a placeholder in it is empty
   "environment": { "LIBRARY": "{{ref_path}}" }, // optional
-  "workingDirectory": "data"                    // optional, in the bundle; the bundle root by default
+  "workingDirectory": "data",                   // optional, in the bundle; the bundle root by default
+  "timeoutSeconds": 120                         // optional; 15 by default
 }
 ```
 
-It must exit 0 within 15 seconds. It runs with `WGSEXTRACT_GUI_DATA_SOURCE=1`, and each field and config value as `WGSEXTRACT_GUI_FIELD_<ID>` and `WGSEXTRACT_GUI_CONFIG_<ID>`.
+It must exit 0 within 15 seconds, or the `timeoutSeconds` it declares. It runs with `WGSEXTRACT_GUI_DATA_SOURCE=1`, and each field and config value as `WGSEXTRACT_GUI_FIELD_<ID>` and `WGSEXTRACT_GUI_CONFIG_<ID>`.
 
 ## Transforms
 

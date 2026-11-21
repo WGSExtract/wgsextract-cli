@@ -159,10 +159,26 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
     directory, walking it: from a checkout's root, with its .pixi, that takes
     seconds. Given the manifest, it runs from an empty directory instead.
     """
+    packages = _locked_packages(pixi_cmd, env)
+    return packages is not None and PIXI_TOOL_PACKAGES.get(tool, tool) in packages
+
+
+# Each environment's locked packages for this platform, by Pixi, manifest and
+# environment: `deps list` asks for many tools, and the lockfile doesn't change
+# while the CLI runs. clear_tool_caches empties it.
+locked_packages: dict[tuple[str, ...], frozenset[str]] = {}
+
+
+def _locked_packages(pixi_cmd: str, env: str) -> frozenset[str] | None:
+    """The package names the lockfile gives this platform's `env`, or None
+    when Pixi can't say."""
     manifest = _pixi_manifest_args()
     if manifest and os.path.dirname(pixi_cmd):
         # A relative path (from PIXI_EXE or PATH) must still resolve from there.
         pixi_cmd = os.path.abspath(pixi_cmd)
+    key = (pixi_cmd, *manifest, env)
+    if key in locked_packages:
+        return locked_packages[key]
     command = [
         pixi_cmd,
         "list",
@@ -179,11 +195,16 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
                 result = _pixi_query(command, cwd=empty)
         else:
             result = _pixi_query(command)
-        packages = json.loads(result.stdout) if result.returncode == 0 else []
+        entries = json.loads(result.stdout) if result.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
-        return False
-    package = PIXI_TOOL_PACKAGES.get(tool, tool)
-    return any(entry.get("name") == package for entry in packages)
+        return None
+    if not isinstance(entries, list):
+        return None
+    names = frozenset(
+        str(entry.get("name")) for entry in entries if isinstance(entry, dict)
+    )
+    locked_packages[key] = names
+    return names
 
 
 def _join_command(command: list[str]) -> str:
@@ -218,6 +239,40 @@ def pixi_install_command(tool: str) -> str | None:
     return _join_command(
         [pixi_cmd or "pixi", "install", "--locked", *_pixi_manifest_args(), "-e", env]
     )
+
+
+def pixi_environment_argv(action: str, env: str) -> list[str] | None:
+    """``pixi install --locked`` (action "install") or ``pixi clean`` (action
+    "clean") for this installation's environment ``env``, or None without a
+    Pixi or without this installation's own manifest: Pixi would otherwise
+    find a workspace from the current directory, and act on another
+    project's environments."""
+    pixi_cmd = _resolve_pixi_command()
+    manifest = _pixi_manifest_args()
+    if not pixi_cmd or not manifest:
+        return None
+    options = ["--locked"] if action == "install" else []
+    return [pixi_cmd, action, *options, *manifest, "-e", env]
+
+
+def can_manage_environments() -> bool:
+    """Whether ``deps install`` / ``deps uninstall`` can run here: a Pixi and
+    this installation's own manifest (see ``pixi_environment_argv``)."""
+    return bool(_resolve_pixi_command() and _pixi_manifest_args())
+
+
+def locked_for_platform(tool: str) -> bool | None:
+    """Whether the lockfile gives this platform the package providing
+    ``tool`` in its Pixi environment; None when that can't be told (no Pixi,
+    no environment, or Pixi failed to answer)."""
+    env = PIXI_TOOL_ENVS.get(tool)
+    pixi_cmd = _resolve_pixi_command()
+    if env is None or not pixi_cmd:
+        return None
+    packages = _locked_packages(pixi_cmd, env)
+    if packages is None:
+        return None
+    return PIXI_TOOL_PACKAGES.get(tool, tool) in packages
 
 
 def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str | None:
