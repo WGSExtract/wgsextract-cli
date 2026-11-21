@@ -119,6 +119,10 @@
         "--parent-pid",
         "{{appPid}}",
         "serve",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "0",
         "--ready-json",
         "--allow",
         "{{home}}"

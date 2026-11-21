@@ -5,6 +5,7 @@ import { errorMessage } from "./errors.js";
 import type { JobServerAddress } from "./job-server-client.js";
 import { bundleEnvironment } from "./paths.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
+import { localJobServerURL } from "./local-job-server-url.js";
 
 const defaultStartupTimeoutSeconds = 60;
 
@@ -124,8 +125,9 @@ function readyAddress(line: string): JobServerAddress | undefined {
         const value: unknown = JSON.parse(line);
         if (value && typeof value === "object" && "url" in value && "token" in value) {
             const { url, token } = value;
-            if (typeof url === "string" && /^https?:\/\//.test(url) && typeof token === "string" && token) {
-                return { url: url.replace(/\/+$/, ""), token };
+            const local = typeof url === "string" ? localJobServerURL(url) : undefined;
+            if (local && typeof token === "string" && token) {
+                return { url: local, token };
             }
         }
     }
