@@ -4,7 +4,6 @@ import platform
 from pathlib import Path
 
 from .ref_library.assets import read_fai_lengths
-from .region_selection import selected_intervals
 
 CRAM_BYTES_PER_READ = 28
 BAM_BYTES_PER_READ = 100
@@ -30,8 +29,11 @@ def conversion_resources(
     # The full-HG002 mimalloc encoder retained up to 2.84 GiB at -@ 7.
     lengths = read_fai_lengths(reference)
     if lengths:
-        contigs = selected_intervals(region, lengths) if region else lengths
-        memory["reference_cache"] = sum(lengths[name] for name in contigs)
+        # Header M5 completion can read unselected contigs. Without a verified
+        # complete input header, even regional encodes need the whole reference.
+        memory["reference_cache"] = sum(lengths.values())
+        if region:
+            notes.append("Regional CRAM headers may load unselected reference contigs.")
         return memory, output, False
     if reference.lower().endswith((".gz", ".bgz", ".bgzf")):
         notes.append(

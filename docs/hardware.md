@@ -789,7 +789,8 @@ The largest CRAM was 14.90 GiB. Hashing and downloads are outside encoding
 timings; these are not whole-pipeline or CRAM 3.0 speed claims. Native working-set
 high-water counters were polled at 25 ms. Defender remained enabled throughout.
 Reference pages can remain resident, so Windows CRAM preflight includes a
-reference-cache allowance rather than extrapolating the slice's memory.
+full-reference cache allowance rather than extrapolating the slice's memory,
+including regional runs whose headers may fill missing M5 tags from other contigs.
 
 On the M1 Pro, all four workloads missed the same slice gate (−2.30% at best);
 no macOS allocator change followed. Native Windows sort/markdup/minimap2

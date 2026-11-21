@@ -25,8 +25,11 @@ import subprocess
 from functools import lru_cache
 from pathlib import Path
 
+from wgsextract_cli.core.dependencies import get_tool_path, pixi_env_prefix
 from wgsextract_cli.core.native_aligners import apple_silicon
+from wgsextract_cli.core.pixi_tools import is_pixi_tool_command
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.tool_catalog import PIXI_TOOL_ENVS
 from wgsextract_cli.core.utils import UsageError
 
 SETTINGS = ("auto", "off")
@@ -113,19 +116,36 @@ def bcftools_environment(value: str | None) -> dict[str, str]:
     return extra
 
 
+ExecutableIdentity = tuple[str, int, int, int, int]
+
+
+def _executable_identity(path: str) -> ExecutableIdentity:
+    resolved = Path(path).resolve()
+    stat = resolved.stat()
+    return str(resolved), stat.st_mtime_ns, stat.st_size, stat.st_dev, stat.st_ino
+
+
+def clear_allocator_caches() -> None:
+    """Drop activation results when dependency resolution is reset."""
+    _loads.cache_clear()
+    _samtools_variant_loads.cache_clear()
+
+
 @lru_cache(maxsize=8)
-def _samtools_variant_loads(system: str, candidate: str) -> bool:
+def _samtools_variant_loads(
+    system: ExecutableIdentity, candidate: ExecutableIdentity
+) -> bool:
     """Verify matching tool/HTS versions and activation of the static allocator."""
     try:
         baseline = subprocess.run(
-            [system, "--version"],
+            [system[0], "--version"],
             capture_output=True,
             text=True,
             errors="replace",
             timeout=60,
         )
         variant = subprocess.run(
-            [candidate, "--version"],
+            [candidate[0], "--version"],
             env={**os.environ, "MIMALLOC_SHOW_STATS": "1"},
             capture_output=True,
             text=True,
@@ -142,6 +162,31 @@ def _samtools_variant_loads(system: str, candidate: str) -> bool:
     )
 
 
+def _samtools_pair() -> tuple[str, str] | None:
+    system = get_tool_path("samtools")
+    if not system:
+        return None
+    if is_pixi_tool_command(system):
+        prefix = pixi_env_prefix(PIXI_TOOL_ENVS["samtools"])
+        if not prefix:
+            return None
+        system = next(
+            (
+                str(path)
+                for path in (
+                    prefix / "Library/bin/samtools.exe",
+                    prefix / "bin/samtools",
+                )
+                if path.is_file()
+            ),
+            None,
+        )
+        if not system:
+            return None
+    candidate = Path(system).with_name("samtools-mimalloc.exe")
+    return (system, str(candidate)) if candidate.is_file() else None
+
+
 def samtools_cram_executable(
     value: str | None, *, version: str, reference: str | None
 ) -> str:
@@ -156,15 +201,18 @@ def samtools_cram_executable(
         and version == "3.1"
         and reference
     ):
-        system = shutil.which("samtools")
-        candidate = Path(system).with_name("samtools-mimalloc.exe") if system else None
-        if (
-            system
-            and candidate
-            and candidate.is_file()
-            and _samtools_variant_loads(system, str(candidate))
-        ):
-            executable = str(candidate)
+        pair = _samtools_pair()
+        try:
+            loaded = bool(
+                pair
+                and _samtools_variant_loads(
+                    _executable_identity(pair[0]), _executable_identity(pair[1])
+                )
+            )
+        except OSError:
+            loaded = False
+        if pair and loaded:
+            executable = pair[1]
             allocator = "mimalloc"
         else:
             logging.info(

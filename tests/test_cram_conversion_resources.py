@@ -29,8 +29,9 @@ def _estimate(
     )
 
 
-def test_1123_windows_cram_reference_cache_exceeds_small_ram_budget(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("region", ["chrM", "chr1:100-"])
+def test_1195_regional_cram_unknown_m5_budgets_whole_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, region: str
 ) -> None:
     monkeypatch.setattr(platform, "system", lambda: "Windows")
     reference = tmp_path / "ref.fa"
@@ -42,8 +43,10 @@ def test_1123_windows_cram_reference_cache_exceeds_small_ram_budget(
     assert report.resources[0].status == "LOW"
     needed = report.resources[0].estimated_bytes
     assert needed is not None and needed > 2 * GIB
-    mitochondrial = _estimate(reference, tmp_path, "chrM")
-    assert mitochondrial.resources[0].status == "OK"
+    regional = _estimate(reference, tmp_path, region)
+    assert regional.resources[0].estimated_bytes == needed
+    assert regional.resources[0].status == "LOW"
+    assert any(resource.resource == "disk" for resource in regional.resources)
 
 
 def test_1123_unindexed_plain_reference_is_not_a_zero_memory_allowance(
