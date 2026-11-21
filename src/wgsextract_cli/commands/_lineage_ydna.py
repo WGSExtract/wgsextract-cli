@@ -214,6 +214,7 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
         min_score=params.min_score,
         ancient=params.ancient,
         no_ref_inference=params.no_ref_inference,
+        assume_reference=params.assume_reference,
     )
 
     try:

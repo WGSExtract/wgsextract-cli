@@ -208,8 +208,10 @@ a rerun calls again, with or without the gVCF.
 ## Evidence states
 
 `wgsextract_cli.core.reference_evidence` reads a gVCF (one written here, or
-another caller's, whose quality model it takes from its FORMAT/GQ
-declaration) and puts every base in one state. Where records overlap, the
+another caller's) and puts every base in one state. An explicit provenance
+quality model wins; otherwise a recorded bcftools `-g`/`--gvcf` option selects
+depth-only blocks, even if variants declare GQ. Other files use their FORMAT/GQ
+declaration. Filenames containing `-g` are not options. Where records overlap, the
 state higher in this table wins.
 
 | State | Meaning |
