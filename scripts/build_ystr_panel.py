@@ -640,15 +640,17 @@ def main() -> None:
                 for index, (bs, be, strand) in enumerate(placements):
                     left, right = ref[bs - KMER : bs], ref[be : be + KMER]
                     comparison_length = ref_len
+                    trim_boundary = ""
                     if name == "DYS589":
-                        # The widened flank includes an invariant poly-T base
-                        # gained in CHM13, not an extra base of the STR allele.
-                        allele = ref[bs:be]
-                        if strand == "-":
-                            allele = revcomp(allele)
-                        units = len(re.findall("TTATT", allele))
-                        hg38_units = len(re.findall("TTATT", ref38[s:e]))
-                        comparison_length = be - bs - (units - hg38_units) * period
+                        # The variable poly-T/AG boundary is outside the STR.
+                        # Exclude it in each read, not only in the references.
+                        boundary = re.match(r"T+AG", ref38[s:e])
+                        if boundary is None:
+                            raise PanelError("DYS589 lacks its poly-T/AG boundary")
+                        comparison_length -= len(boundary.group())
+                        trim_boundary = (
+                            "poly_t_prefix" if strand == "+" else "poly_a_suffix"
+                        )
                     copy_value = ""
                     if spec["kind"] == "multicopy" and core.copies is not None:
                         copy_value = str(int(core.copies))
@@ -667,6 +669,7 @@ def main() -> None:
                             "hg38_length": comparison_length,
                             "copy_value": copy_value,
                             "core_source": core.source,
+                            "trim_boundary": trim_boundary,
                             "strand": strand,
                         }
                     )

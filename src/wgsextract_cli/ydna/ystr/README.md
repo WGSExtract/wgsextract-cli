@@ -65,8 +65,9 @@ count. That matches capillary sizing (for example, DYS458 `17.2`).
 * **Reference orientation.** Opposite-strand tracts use swapped,
   reverse-complemented flanks in reference orientation. DYS448 and DYS589
   can therefore be called on T2T. DYS589's conserved flank is widened beyond
-  its poly-T boundary; a CHM13-specific non-STR base there is excluded from
-  the repeat-length comparison, so its reference allele is 12, not 12.1.
+  its poly-T boundary. The variable non-STR poly-T/AG segment is removed in
+  each reference and each read, so its CHM13 reference allele is 12, not
+  12.1. Indels inside the STR still produce fractional alleles.
 * **Too-long check.** Reads that contain only one flank set a lower bound on
   the length. Two or more bounds above the call make it `conflicting` (single
   copy) or `too_long` (multicopy), not a falsely short value.

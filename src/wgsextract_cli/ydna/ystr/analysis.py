@@ -344,8 +344,16 @@ def call_markers(
             target = shared if m.kind in ("multicopy", "pooled") else unique
             target[key(t)] = (contig, t.start, t.end, t.left, t.right)
     reads = list(reads)
+    boundaries = {
+        key(t): t.trim_boundary
+        for m in selected
+        for t in panel.get(m.group, ())
+        if t.trim_boundary
+    }
     measured = collect(
-        ((c, p, q) for c, p, q, mapq in reads if mapq >= min_mapq), unique
+        ((c, p, q) for c, p, q, mapq in reads if mapq >= min_mapq),
+        unique,
+        trim_boundaries=boundaries,
     )
     measured |= collect(((c, p, q) for c, p, q, _mapq in reads), shared)
 

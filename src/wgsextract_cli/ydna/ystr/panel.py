@@ -45,6 +45,7 @@ class Tract:
     right: str
     hg38_length: int  # comparison length; excludes build-specific non-STR changes
     copy_value: int | None  # multicopy/pooled markers: source count for this tract
+    trim_boundary: str = ""  # variable non-STR sequence inside the flanks
 
 
 def _int(text: str) -> int | None:
@@ -91,6 +92,7 @@ def tracts(build: str) -> dict[str, tuple[Tract, ...]]:
                         right=row["right"],
                         hg38_length=int(row["hg38_length"]),
                         copy_value=_int(row["copy_value"]),
+                        trim_boundary=row["trim_boundary"],
                     )
                 )
     # A summed marker needs every part; a copy of a multicopy marker may be

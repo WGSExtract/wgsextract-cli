@@ -2,6 +2,7 @@
 
 import csv
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -308,6 +309,43 @@ def test_issue_1155_dys425_disagreeing_homologs_are_not_guessed(tmp_path):
     assert (rows["DYS425"]["status"], rows["DYS425"]["value"]) == ("conflicting", "")
     # CHM13 has 12 repeat units plus a non-STR poly-T insertion: not 12.1.
     assert (rows["DYS589"]["status"], rows["DYS589"]["value"]) == ("called", "12")
+
+
+@needs_htslib
+@pytest.mark.parametrize("build", ["hg38", "hg19", "t2t"])
+@pytest.mark.parametrize("repeat_insertion", [False, True])
+def test_issue_1155_dys589_poly_t_boundary_is_not_a_fractional_allele(
+    tmp_path, build, repeat_insertion
+):
+    from wgsextract_cli.ydna.ystr.analysis import analyze
+    from wgsextract_cli.ydna.ystr.locations import revcomp
+
+    fields = next(r for r in _issue_1155_reads(build) if r.startswith("DYS589_")).split(
+        "\t"
+    )
+    seq = fields[9] if build != "t2t" else revcomp(fields[9])
+    boundary = re.match(r"T+AG", seq[30:])
+    assert boundary is not None
+    end = 30 + boundary.end()
+    seq = (
+        seq[:30] + "T" * 8 + seq[30:end] + ("A" if repeat_insertion else "") + seq[end:]
+    )
+    if build == "t2t":
+        seq = revcomp(seq)
+    reads = []
+    for i in range(4):
+        fields[0] = f"boundary_{i}"
+        fields[5], fields[9], fields[10] = f"{len(seq)}M", seq, "I" * len(seq)
+        reads.append("\t".join(fields))
+    bam = sam_to_bam(["@SQ\tSN:chrY\tLN:62460029", *reads], tmp_path / "boundary.bam")
+    _, table = analyze(
+        Path(bam), tmp_path / "result", build=build, selected=[_marker("DYS589")]
+    )
+    (row,) = list(csv.DictReader(table.open(), delimiter="\t"))
+    assert (row["status"], row["value"]) == (
+        "called",
+        "14.1" if repeat_insertion else "14",
+    )
 
 
 @needs_htslib
