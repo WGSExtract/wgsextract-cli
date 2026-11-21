@@ -18,9 +18,10 @@ When a step finishes, the journal (JSON, schema `wgsextract.steps/1`) records:
 
 - a key made from its settings, the versions of the tools it ran and the
   version of the step itself
-- the fingerprint of each input (see [Directory inputs](#directory-inputs)),
-  and the run of the step that made it
-- the size and [content fingerprint](result-manifest.md) of each output
+- the identity of each input (see [Integrity checks](#integrity-checks) and
+  [Directory inputs](#directory-inputs)), and the run of the step that made it
+- the identity of each output, including the files in an output folder (see
+  [Directory outputs](#directory-outputs))
 
 The internal journal's [JSON Schema](../src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json)
 is generated from the Python models used by its writers. Its `runningStep`
@@ -42,8 +43,13 @@ The log gives the reason for each step, for example:
 Skipping step extract: complete (2026-11-05T02:16:41+00:00).
 Running step align: an earlier run was interrupted during it.
 Running step align: settings changed: sample None -> 'Bea'.
-Running step align: x_aligned.bam changed size (1048576 -> 1048476 bytes; truncated or rewritten).
+Running step align: x_aligned.bam changed size (1048576 -> 1048476 bytes; truncated or rewritten) since the step wrote it.
+Running step annotate: its vcf out/snps.vcf.gz changed (sha256 full digest differs).
+Skipping step index: complete (2026-11-05T03:02:11+00:00; checked 1 sha256 full, 1 wgse-fp1 sampled).
 ```
+
+A skipped step's reason says how its inputs and outputs were checked, and the
+journal records each file's `digest` (`algorithm` and `strength`).
 
 Settings that don't change a step's output, such as threads and memory, are
 left out of its key. You can therefore resume with a different `--threads`.
@@ -82,6 +88,50 @@ installed annotation data (a new ClinVar or gnomAD release reruns
 for `mt-haplogroup` and, for
 DeepVariant in Docker, the image's ID, so replacing an image under the same
 tag reruns every stage.
+
+## Integrity checks
+
+Each file a step reads or writes is recorded with its size, modification time
+(to the nanosecond) and a digest of one of two strengths:
+
+| Files | Digest | Strength | On resume |
+|---|---|---|---|
+| up to 64 MiB | SHA-256 of the whole file | `full` | Hashed again on every check (about 40 ms for 64 MiB), so any change to its bytes reruns the step, even one that restores the size and modification time. |
+| over 64 MiB | `wgse-fp1`: the size and the first, middle and last MiB | `sampled` | Three 1 MiB reads (tens of ms, whatever the file's size). Accepted only while the size, sampled blocks **and modification time** are unchanged: a new modification time alone reruns the step, with the reason `was modified`. |
+
+So an edit in place to a large BAM or FASTQ, even one between the sampled
+blocks, reruns the steps that read it, while a resume, the GUI or a render
+never rereads 100 GB just to decide that nothing changed. Moving a file
+(`mv`) keeps its modification time and doesn't rerun anything; copying it
+without times (`cp` without `-p`) does. A large file deliberately edited and
+then given back its old modification time (`touch -r`) isn't seen; use
+`--force-step` after such a change, or `wgsextract sign` for full-content
+checksums. A full digest is never taken on trust: it is recomputed, so one
+recorded earlier can't vouch for a file that has since changed.
+
+A journal written before these digests runs each step once more, with the
+reason `was recorded by an earlier wgsextract without an integrity digest`.
+
+## Directory outputs
+
+A step whose output is a folder records the files in it. By default every
+file in the folder is required: adding, deleting, replacing or truncating one
+reruns the step, with a reason such as `report's contents changed (12 files,
+4096 bytes when written; now 11 files, 3900 bytes)`. Like
+[directory inputs](#directory-inputs), this uses each file's path, size and
+modification time, without reading it. Lock files and the hidden `.partial`
+files of unfinished writes are left out.
+
+A step can instead declare the folder's required members (`members=` when
+it reports the output). Each member then gets the [file checks](#integrity-checks)
+above, and a missing or changed one reruns the step (`report/table.tsv, a
+required member, is missing`). Anything else in the folder is disposable,
+such as a cache, and adding or removing it reruns nothing. A step that
+declares a member it didn't write fails rather than being recorded complete.
+
+Today the only folders recorded as step outputs are those a command run by
+`analyze comprehensive` reports writing (an Ensembl VEP cache it installed),
+which use the default, every file required.
 
 ## Directory inputs
 
