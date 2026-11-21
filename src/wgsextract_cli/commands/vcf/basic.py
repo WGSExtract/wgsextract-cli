@@ -69,14 +69,13 @@ def _select_vcf_input(args: argparse.Namespace) -> str | None:
     Pick the VCF a command should read.
 
     An explicit --vcf-input wins, then an explicit --input; otherwise the
-    configured default VCF, then the (possibly configured) --input.
+    genome-selected or configured VCF, then the configured input.
     """
     input_path = getattr(args, "input", None)
     vcf_input = getattr(args, "vcf_input", None)
-    default_vcf = settings.get("default_input_vcf")
     explicit_dests: set[str] = getattr(args, "_explicit_dests", set())
 
-    if vcf_input and ("vcf_input" in explicit_dests or vcf_input != default_vcf):
+    if vcf_input and "vcf_input" in explicit_dests:
         return str(vcf_input)
     if "input" in explicit_dests and input_path:
         return str(input_path)

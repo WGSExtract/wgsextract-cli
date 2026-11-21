@@ -1,20 +1,25 @@
 """--genome: a folder of the genome library, its genome-config.toml, and the
 inputs each command resolves from it."""
 
+import json
 import os
+import subprocess
 from argparse import Namespace
 from pathlib import Path
 
 import pytest
 
+from tests.htslib_helpers import bgzip_index, needs_tools
 from wgsextract_cli.cli.parser import build_parser, parse_args
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.genome_library import (
     GENOME_CONFIG_NAME,
     apply_genome_selection,
     pair_stem,
 )
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.main import main
 
 
 @pytest.fixture
@@ -158,7 +163,8 @@ def test_no_alignment_says_where_to_configure_one(library):
 def test_vcf_commands_resolve_the_vcf_and_clear_the_alignment(library):
     genome = _genome(library, "ken", "ken.bam", "calls/ken.vcf.gz")
 
-    args = _select("ken", command="vcf", vcf_cmd="filter", vcf_input=None)
+    args, explicit = parse_args(*build_parser(), ["vcf", "filter", "--genome", "ken"])
+    apply_genome_selection(args, explicit)
 
     assert args.vcf_input == str(genome / "calls" / "ken.vcf.gz")
     assert args.input is None
@@ -194,27 +200,109 @@ def test_phase_resolves_both_the_calls_and_the_reads(library):
 def test_explicit_vcf_input_is_kept(library):
     _genome(library, "ken", "a.vcf.gz", "b.vcf.gz")
 
-    args = _select(
-        "ken", {"vcf_input"}, command="vcf", vcf_cmd="filter", vcf_input="mine.vcf"
+    args, explicit = parse_args(
+        *build_parser(), ["vcf", "filter", "--genome", "ken", "--vcf-input", "mine.vcf"]
     )
+    apply_genome_selection(args, explicit)
 
     assert args.vcf_input == "mine.vcf"
 
 
 def test_ambiguous_vcfs_are_listed(library):
     _genome(library, "ken", "a.vcf.gz", "b.vcf")
+    args, explicit = parse_args(*build_parser(), ["vcf", "annotate", "--genome", "ken"])
 
     with pytest.raises(
         WGSExtractError, match=r"Ambiguous vcf files.*a\.vcf\.gz, b\.vcf"
     ):
-        _select("ken", command="vcf", vcf_cmd="annotate", vcf_input=None)
+        apply_genome_selection(args, explicit)
 
 
 def test_no_vcf_says_where_to_configure_one(library):
     _genome(library, "ken", "ken.bam")
+    args, explicit = parse_args(*build_parser(), ["qc", "vcf", "--genome", "ken"])
 
     with pytest.raises(WGSExtractError, match="No vcf file found"):
-        _select("ken", qc_cmd="vcf", command="qc", vcf_input=None)
+        apply_genome_selection(args, explicit)
+
+
+def _indexed_vcf(path: Path, pos: int) -> str:
+    path.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        f"chr1\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n",
+        encoding="utf-8",
+    )
+    return bgzip_index(path)
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("command", "selection"),
+    [
+        (("vcf", "filter"), "explicit"),
+        (("vcf", "filter"), "ambiguous"),
+        (("vcf", "filter"), "both-flags"),
+        (("vcf", "filter"), "genome-only"),
+        (("vcf", "table"), "ambiguous"),
+        (("vcf", "table"), "genome-only"),
+        (("qc", "vcf"), "ambiguous"),
+    ],
+)
+def test_1219_single_vcf_input_wins_over_genome_discovery(
+    tmp_path, capsys, command, selection
+):
+    genome = tmp_path / "genomes" / "A"
+    genome.mkdir(parents=True)
+    from_genome = _indexed_vcf(genome / "a.vcf", 10)
+    other = _indexed_vcf(tmp_path / "b.vcf", 20)
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"mygenomes_library = {json.dumps(str(genome.parent))}\n"
+        f"default_input_vcf = {json.dumps(from_genome if selection == 'both-flags' else other)}\n",
+        encoding="utf-8",
+    )
+    if selection in {"ambiguous", "both-flags"}:
+        _indexed_vcf(genome / "second.vcf", 30)
+
+    flags: list[str] = []
+    expected_input, expected_pos, expected_role = from_genome, "10", "vcf_input"
+    if selection != "genome-only":
+        flags = ["--input", other]
+        expected_input, expected_pos, expected_role = other, "20", "input"
+    if selection == "both-flags":
+        flags.extend(["--vcf-input", from_genome])
+        expected_input, expected_pos, expected_role = from_genome, "10", "vcf_input"
+
+    out = tmp_path / "out"
+    main([
+        "--config", str(config), *command, "--genome", "A",
+        *flags, "--outdir", str(out), "--json",
+    ])  # fmt: skip
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert [
+        (Path(entry["path"]).resolve(), entry["role"]) for entry in result["inputs"]
+    ] == [(Path(expected_input).resolve(), expected_role)]
+    if command[1] == "filter":
+        filtered = out / "filtered.vcf.gz"
+        bcftools = get_tool_path("bcftools")
+        assert bcftools is not None
+        positions = subprocess.check_output(
+            [bcftools, "query", "-f", "%POS\n", str(filtered)],
+            text=True,
+        )
+        assert positions.splitlines() == [expected_pos]
+        manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
+        assert manifest["inputs"] == result["inputs"]
+    elif command[1] == "table":
+        table = next(out.glob("*.tsv")).read_text()
+        assert table.splitlines()[1].split("\t")[:2] == ["chr1", expected_pos]
+    else:
+        report = (out / "b.vcf.gz.vcfstats.txt").read_text()
+        assert "ID\t0\t" in report and "b.vcf.gz" in report
 
 
 def test_trio_keeps_an_explicit_proband(library):
