@@ -11,7 +11,7 @@ export type EmitEvent = (event: LooseRecord) => Promise<void>;
 export async function streamNDJSON(
     response: ServerResponse,
     run: (emit: EmitEvent, signal: AbortSignal) => Promise<unknown>,
-    failureEvent: (message: string) => LooseRecord,
+    failureEvent: (message: string, error: unknown) => LooseRecord,
 ) {
     const abortController = new AbortController();
     response.on("close", () => {
@@ -49,7 +49,7 @@ export async function streamNDJSON(
             if (writeError != null) {
                 throw writeError;
             }
-            await writeNDJSON(response, failureEvent(errorMessage(error)));
+            await writeNDJSON(response, failureEvent(errorMessage(error), error));
             response.end();
         }
         catch (_writeError) {
@@ -59,6 +59,7 @@ export async function streamNDJSON(
 }
 
 async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
+    if (response.destroyed) throw new Error("Response closed.");
     if (response.write(`${JSON.stringify(event)}\n`)) {
         return;
     }
@@ -66,6 +67,7 @@ async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
         const cleanup = () => {
             response.off("drain", onDrain);
             response.off("error", onError);
+            response.off("close", onClose);
         };
         const onDrain = () => {
             cleanup();
@@ -75,7 +77,9 @@ async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
             cleanup();
             reject(error);
         };
+        const onClose = () => onError(new Error("Response closed."));
         response.once("drain", onDrain);
         response.once("error", onError);
+        response.once("close", onClose);
     });
 }

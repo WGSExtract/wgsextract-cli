@@ -259,7 +259,7 @@ class Handler(LimitedHandler):
         self._send_json(error.status, error.to_dict(), **headers)
 
     def _check_request(self, path: str) -> None:
-        for name in ("Host", "Origin", "Authorization", "Range"):
+        for name in ("Host", "Origin", "Authorization", "Range", "X-WGSE-Job-ID"):
             if len(self.headers.get_all(name, [])) > 1:
                 raise RequestError(
                     400, "bad_headers", "Duplicate request headers are refused."
@@ -389,13 +389,21 @@ class Handler(LimitedHandler):
         )
 
     def run_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
+        job_id = self.headers.get("X-WGSE-Job-ID")
+        if job_id is not None:
+            self.server.manager.check_job_id(job_id)
         op = find(match["op"])
         wait = _wait(query)
         body = self._body()
         params = params_from_json(op, body)
         params = self.server.guard.check(params)
         card = _flag(query, "card") if "card" in query else None
-        job = self.server.manager.submit(op, op.request_values(params), card=card)
+        job = self.server.manager.submit(
+            op,
+            op.request_values(params),
+            card=card,
+            job_id=job_id,
+        )
         if wait:
             job = self.server.manager.wait(job.id, wait) or job
         self._send_json(200 if job.done else 202, job_view(job, query))
@@ -589,7 +597,18 @@ def openapi_document(
                 "summary": op.summary,
                 "description": f"Runs `wgsextract {op.command}` as a {op.kind}."
                 + (_DELETES if op.may_delete else ""),
-                "parameters": [_WAIT, _FULL, _CARD],
+                "parameters": [
+                    _WAIT,
+                    _FULL,
+                    _CARD,
+                    {
+                        "name": "X-WGSE-Job-ID",
+                        "in": "header",
+                        "description": "Client-generated lowercase UUIDv4. Use GET /v1/jobs/{id} "
+                        "to recover the original job after losing the response.",
+                        "schema": {"type": "string", "format": "uuid"},
+                    },
+                ],
                 "requestBody": {
                     "required": True,
                     "content": {
@@ -601,7 +620,7 @@ def openapi_document(
                 "responses": {
                     "200": _response("Finished within ?wait", "Job"),
                     "202": _response("Queued or running", "Job"),
-                    **_errors(400, 401, 403, 404),
+                    **_errors(400, 401, 403, 404, 409),
                 },
             },
         }
