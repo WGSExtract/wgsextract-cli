@@ -296,9 +296,17 @@ def _restore_signal_handlers() -> Iterator[None]:
 @pytest.fixture
 def short_tmp_path() -> Iterator[Path]:
     """A temporary folder directly in the system temp folder, for paths built up
-    to a fixed length (Windows' MAX_PATH budget): pytest's ``tmp_path`` can be
-    longer than that alone, as under a worktree's certification basetemp."""
+    to a fixed length (Windows' 175-character library budget): pytest's
+    ``tmp_path`` can be longer than that alone, as under a worktree's
+    certification basetemp. Fails, rather than skips, if the system temp folder
+    itself leaves too little room."""
     path = Path(tempfile.mkdtemp(prefix="wgse-"))
+    if len(str(path.absolute())) > 120:
+        shutil.rmtree(path, ignore_errors=True)
+        pytest.fail(
+            f"{path} is too long to build 175-character paths under; "
+            "point TMPDIR (TEMP on Windows) at a shorter folder."
+        )
     yield path
     shutil.rmtree(path, ignore_errors=True)
 
