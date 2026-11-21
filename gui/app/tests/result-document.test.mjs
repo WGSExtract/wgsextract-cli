@@ -30,7 +30,7 @@ type RequireNone<T extends never> = T;
 // Reject even one optional key, including nullable/defaulted wire fields.
 type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
-type ErrorFieldsRequired = RequireNone<OptionalKeys<ResultErrorRecord>>;
+type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
 type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
 type ProvenanceFieldsRequired = RequireNone<OptionalKeys<ResultProvenanceRecord>>;
 type ReferenceFieldsRequired = RequireNone<OptionalKeys<ResultReferenceRecord>>;
@@ -50,9 +50,9 @@ const wire: ResultFileRecord = {
   metrics: { count: 1, ratio: 0.5, flag: true, missing: null, label: "test" },
 };
 const warning: ResultWarningRecord = { code: "low_coverage", message: "", details: { depth: 1 } };
-const error: ResultErrorRecord = { kind: "usage", message: "", code: null };
+const error: ResultErrorRecord = { kind: "usage", message: "" };
 // @ts-expect-error A canonical writer error uses a declared ErrorKind.
-const unknown: ResultErrorRecord = { kind: "future_kind", message: "", code: null };
+const unknown: ResultErrorRecord = { kind: "future_kind", message: "" };
 const normalized: ResultFile = { path: wire.path, role: wire.role, kind: wire.kind,
   exists: wire.exists, sizeBytes: wire.size_bytes, metrics: wire.metrics };
 const tolerant: ResultError = { kind: "future_kind", message: error.message };

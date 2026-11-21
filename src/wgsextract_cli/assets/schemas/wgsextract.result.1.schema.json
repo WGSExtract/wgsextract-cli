@@ -128,8 +128,7 @@
       },
       "required": [
         "kind",
-        "message",
-        "code"
+        "message"
       ],
       "additionalProperties": false
     },

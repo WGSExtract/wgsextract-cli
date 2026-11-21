@@ -54,7 +54,8 @@ no vep-rs cache, and Ensembl VEP and its cache are installed, `vep run`
 keeps using Ensembl VEP. It warns `vep_engine_fallback` with the switch:
 `wgsextract vep download` builds vep-rs's cache, and `--engine ensembl` or
 `vep_engine = "ensembl"` keeps Ensembl VEP and silences the warning. A run
-without the selected engine's local cache fails with `vep_cache_missing`.
+without the selected engine's local cache fails with `vep_cache_missing`, as
+does an Ensembl cache missing its metadata or chromosome directories.
 Download the matching release and assembly with `wgsextract vep download`
 (`--engine ensembl` for Ensembl VEP), then rerun annotation. Neither engine
 falls back to the online Ensembl database.

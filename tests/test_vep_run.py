@@ -53,6 +53,15 @@ sys.exit({exit_code})
 """
 
 
+def ensembl_test_cache(
+    root: Path, assembly: str = "GRCh38", version: str = "116"
+) -> Path:
+    release = root / "homo_sapiens" / f"{version}_{assembly}"
+    (release / "1").mkdir(parents=True)
+    (release / "info.txt").touch()
+    return root
+
+
 @pytest.fixture
 def fake_vep(tmp_path, monkeypatch):
     """Install a fake `vep`; returns a function giving the logged command lines.
@@ -62,8 +71,8 @@ def fake_vep(tmp_path, monkeypatch):
 
     # These are Ensembl VEP's command lines; vep-rs has its own tests.
     monkeypatch.setitem(settings, "vep_engine", "ensembl")
-    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
-    (tmp_path / "homo_sapiens" / "116_GRCh37").mkdir()
+    ensembl_test_cache(tmp_path)
+    ensembl_test_cache(tmp_path, "GRCh37")
     log = tmp_path / "vep_calls.jsonl"
 
     def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
@@ -107,8 +116,7 @@ def _value(cmd: list[str], flag: str) -> str:
 
 def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
     vcf = _vcf(tmp_path / "s.vcf.gz")
-    cache = tmp_path / "cache"
-    (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    cache = ensembl_test_cache(tmp_path / "cache")
 
     _vep("-i", vcf, "--vep-cache", str(cache), "--vep-assembly", "GRCh38", "-t", "3")
 
@@ -141,8 +149,7 @@ def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
 
     monkeypatch.delitem(settings, "vep_engine", raising=False)
     vcf = _vcf(tmp_path / "s.vcf.gz")
-    cache = tmp_path / "cache"
-    (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    cache = ensembl_test_cache(tmp_path / "cache")
 
     result = api.vep.run(
         VepRunParams(input=Path(vcf), vep_cache=cache, vep_assembly="GRCh38")
@@ -176,9 +183,9 @@ def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Ensembl VEP doesn't run on Windows"
 )
-@pytest.mark.parametrize("root_exists", [False, True])
+@pytest.mark.parametrize("cache_state", ["absent", "wrong_release", "incomplete"])
 def test_1238_ensembl_missing_cache_fails_without_database(
-    tmp_path, fake_vep, monkeypatch, capsys, root_exists
+    tmp_path, fake_vep, monkeypatch, capsys, cache_state
 ):
     from wgsextract_cli.main import main
 
@@ -186,8 +193,10 @@ def test_1238_ensembl_missing_cache_fails_without_database(
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     vcf = _vcf(tmp_path / "s.vcf.gz")
     missing = tmp_path / "no_cache"
-    if root_exists:
-        (missing / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    if cache_state == "wrong_release":
+        ensembl_test_cache(missing)
+    elif cache_state == "incomplete":
+        (missing / "homo_sapiens" / "115_GRCh38").mkdir(parents=True)
 
     params = VepRunParams(
         input=Path(vcf), engine="ensembl", vep_cache=missing,
@@ -414,7 +423,7 @@ def test_region_limits_a_vcf_input(tmp_path, fake_vep):
 
 def test_cache_downloaded_into_reference_library_is_used(tmp_path, fake_vep):
     lib = tmp_path / "lib"
-    (lib / "vep" / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    ensembl_test_cache(lib / "vep")
     vcf = _vcf(tmp_path / "s.vcf.gz")
 
     _vep("-i", vcf, "--ref", str(lib))
@@ -650,7 +659,7 @@ def test_api_expands_home_in_every_path(tmp_path, fake_vep, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     _vcf(tmp_path / "s.vcf.gz")
-    (tmp_path / "cache" / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    ensembl_test_cache(tmp_path / "cache")
 
     api.vep.run(
         VepRunParams(
@@ -705,7 +714,7 @@ def _command(lib, **overrides):
     ("build", "assembly"), [("hg38", "GRCh38"), ("hg19", "GRCh37"), (None, None)]
 )
 def test_assembly_follows_the_library_build(tmp_path, build, assembly):
-    (tmp_path / "homo_sapiens" / f"116_{assembly or 'GRCh38'}").mkdir(parents=True)
+    ensembl_test_cache(tmp_path, assembly or "GRCh38")
     cmd = _command(
         SimpleNamespace(build=build, fasta="/r/g.fa", vep_cache=str(tmp_path))
     )
@@ -717,7 +726,7 @@ def test_assembly_follows_the_library_build(tmp_path, build, assembly):
 
 
 def test_library_cache_used_when_no_cache_option(tmp_path):
-    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    ensembl_test_cache(tmp_path)
     lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
     cmd = _command(lib, vep_cache=None)
     assert _value(cmd, "--dir_cache") == str(tmp_path)
@@ -725,7 +734,7 @@ def test_library_cache_used_when_no_cache_option(tmp_path):
 
 
 def test_vep_fast_preset_replaces_everything(tmp_path):
-    (tmp_path / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+    ensembl_test_cache(tmp_path)
     lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
 
     assert "--everything" in _command(lib, preset="everything")

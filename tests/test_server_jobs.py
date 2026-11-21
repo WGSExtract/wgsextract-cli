@@ -32,7 +32,7 @@ from tests.test_server import (
 from tests.test_server import (
     work as work,
 )
-from tests.test_vep_run import _vcf
+from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import WGSExtractError
@@ -498,7 +498,7 @@ def test_1238_server_ensembl_requires_local_cache(
         assert "vep download --engine ensembl" in job["error"]["message"]
         assert not fake_vep()
 
-        (cache / "homo_sapiens" / "116_GRCh38").mkdir(parents=True)
+        ensembl_test_cache(cache)
         status, job = client.request("POST", "/ops/vep/run?wait=60", request)
 
     assert (status, job["status"]) == (200, "succeeded"), job

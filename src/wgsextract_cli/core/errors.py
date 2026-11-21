@@ -1,6 +1,6 @@
 """Operation exceptions and the structured error recorded in results."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Annotated, Literal
 
 from wgsextract_cli.core.output_schema import Constraints
@@ -24,4 +24,6 @@ class CodedError(WGSExtractError):
 class ResultError:
     kind: ErrorKind
     message: str
-    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")] | None = None
+    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")] | None = field(
+        default=None, metadata={"omit_none": True}
+    )

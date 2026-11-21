@@ -603,8 +603,6 @@ class CommandResult:
             self._tools.add(tool)
             self._tool_versions[tool] = version
 
-    # --- finishing -------------------------------------------------------
-
     def fail(
         self, kind: ErrorKind, message: str, exit_code: int, *, code: str | None = None
     ) -> None:
@@ -745,8 +743,10 @@ def _fail_unexpected(result: CommandResult, error: BaseException, message: str) 
 def _json_safe_dataclass(value: object) -> object:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _json_safe_dataclass(getattr(value, item.name))
+            item.name: _json_safe_dataclass(field_value)
             for item in dataclasses.fields(value)
+            if (field_value := getattr(value, item.name)) is not None
+            or not item.metadata.get("omit_none")
         }
     if isinstance(value, list):
         return [_json_safe_dataclass(v) for v in value]

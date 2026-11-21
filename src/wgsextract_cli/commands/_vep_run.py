@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -228,26 +229,20 @@ def _build_vep_command(
     if lib.fasta:
         vep_cmd += ["--fasta", lib.fasta]
 
-    # The first cache that exists: --vep-cache (or the configured one), the
-    # reference library's, then VEP's default.
-    candidates = [
-        str(engine.cache_root(Path(c)))
-        for c in (params.vep_cache, lib.vep_cache, expand_path("~/.vep"))
-        if c
-    ]
-    cache_dir = next((c for c in candidates if Path(c).is_dir()), candidates[0])
-    _require_cache(engine, Path(cache_dir), params.vep_cache_version, assembly)
+    raw_args = shlex.split(params.vep_args) if params.vep_args else []
+    cache_dir = _vep_cache_dir(params, lib, engine)
+    _check_annotation_cache(
+        engine, cache_dir, params.vep_cache_version, assembly, raw_args
+    )
     vep_cmd += [
-        "--offline", "--dir_cache", cache_dir, "--cache_version", params.vep_cache_version,
+        "--offline", "--dir_cache", str(cache_dir), "--cache_version", params.vep_cache_version,
     ]  # fmt: skip
     logging.info(LOG_MESSAGES["vep_using_cache"].format(path=cache_dir))
 
     vep_cmd += VEP_PRESETS[params.preset]
     if vcf_type in ("sv", "cnv"):
         vep_cmd += ["--overlaps", "--max_sv_size", "300000000", "--buffer_size", "500"]
-    if params.vep_args:
-        vep_cmd += shlex.split(params.vep_args)
-    return vep_cmd
+    return vep_cmd + raw_args
 
 
 def _assembly_of(build: str | None) -> str | None:
@@ -256,15 +251,69 @@ def _assembly_of(build: str | None) -> str | None:
     return next((a for a, b in _ASSEMBLY_BUILDS.items() if b == canonical), None)
 
 
-def _require_cache(
-    engine: VepEngine, cache_dir: Path, version: str, assembly: str | None
+def _vep_cache_dir(
+    params: VepRunParams, lib: ReferenceLibrary, engine: VepEngine
+) -> Path:
+    candidates = [
+        engine.cache_root(Path(c))
+        for c in (params.vep_cache, lib.vep_cache, expand_path("~/.vep"))
+        if c
+    ]
+    return next((c for c in candidates if c.is_dir()), candidates[0])
+
+
+def _check_annotation_cache(
+    engine: VepEngine,
+    cache_dir: Path,
+    version: str,
+    assembly: str | None,
+    raw_args: list[str],
 ) -> None:
-    species_dir = cache_dir / "homo_sapiens"
-    assemblies = (assembly,) if assembly else engine.assemblies
+    species = "homo_sapiens"
+    suffix = ""
+    if engine.name == "ensembl":
+        # Ensembl's raw, local-only flags are last on argv, so its cache
+        # overrides win. Keep passing the args through unchanged.
+        overrides = {}
+        for i, token in enumerate(raw_args):
+            flag, equals, value = token.lstrip("-").partition("=")
+            flag = flag.lower()
+            if token.startswith("-") and flag in {"refseq", "merged"}:
+                suffix = f"_{flag}"
+            if token.startswith("-") and flag in {
+                "assembly", "cache_version", "dir_cache", "species",
+            }:  # fmt: skip
+                if equals:
+                    overrides[flag] = value
+                elif i + 1 < len(raw_args):
+                    overrides[flag] = raw_args[i + 1]
+        version = overrides.get("cache_version", version)
+        assembly = overrides.get("assembly", assembly)
+        cache_dir = Path(overrides.get("dir_cache", str(cache_dir))).expanduser()
+        species = overrides.get("species", species)
+        if not re.fullmatch(r"[0-9]+", version) or not all(
+            re.fullmatch(r"[A-Za-z0-9_.-]+", part) and part not in (".", "..")
+            for part in (species, assembly or "unknown")
+        ):
+            raise WGSExtractError("Invalid Ensembl VEP cache options.")
+
+    species_dir = cache_dir / (species + suffix)
+    candidates = (
+        [species_dir / f"{version}_{assembly}"]
+        if assembly
+        else species_dir.glob(f"{version}_*")
+    )
     installed = [
         path
-        for candidate in assemblies
-        if (path := species_dir / f"{version}_{candidate}").is_dir()
+        for path in candidates
+        if path.is_dir()
+        and (
+            engine.name != "ensembl"
+            or (
+                (path / "info.txt").is_file()
+                and any(child.is_dir() for child in path.iterdir())
+            )
+        )
     ]
     if installed:
         if engine.name == "vep-rs" and len(installed) == 1:
@@ -272,11 +321,12 @@ def _require_cache(
         return
     location = species_dir / f"{version}_{assembly}" if assembly else species_dir
     assembly_arg = f" --assembly {assembly}" if assembly else ""
+    species_arg = f" --species {species}" if species != "homo_sapiens" else ""
     cache_root = cache_dir.parent if engine.cache_subdir else cache_dir
     raise _VepCacheMissingError(
-        f"No {engine.label} cache for release {version} in {location}. "
+        f"Missing or incomplete {engine.label} cache for release {version} in {location}. "
         f"Run `wgsextract vep download --engine {engine.name} "
-        f"--vep-version {version}{assembly_arg} --vep-cache {shlex.quote(str(cache_root))}` "
+        f"--vep-version {version}{assembly_arg}{species_arg} --vep-cache {shlex.quote(str(cache_root))}` "
         "before annotating, or select "
         "an installed cache with --vep-cache and --vep-cache-version.",
     )
@@ -351,6 +401,16 @@ def _run_vep_on_input(
                 LOG_MESSAGES["ref_required_for"].format(
                     task="variant calling from BAM/CRAM"
                 )
+            )
+        if is_bam and params.engine == "ensembl":
+            # Don't call a whole genome only to discover its cache is missing.
+            engine = vep_engine(params.engine)
+            _check_annotation_cache(
+                engine,
+                _vep_cache_dir(params, lib, engine),
+                params.vep_cache_version,
+                params.vep_assembly or _assembly_of(lib.build),
+                shlex.split(params.vep_args) if params.vep_args else [],
             )
 
         with tempfile.TemporaryDirectory(
