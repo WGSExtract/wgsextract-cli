@@ -106,6 +106,15 @@ First use of FTDNA/ISOGG requires an explicit `--download` if it is missing;
 subsequent runs are offline. `run.json` preserves the original table digest
 and separately records the correction module digest and audit.
 
+To regenerate the correction asset, run the builder with `--data` pointing to
+the pinned Yleaf cache, `--ybrowse` pointing to the archived YBrowse snapshot,
+and `--output out/y-polarity`. Compare the resulting tarball's SHA-256 with
+`trees.json` before publishing. Upload the tarball and `build_info.json` to a
+non-latest `yleaf-polarity-v1` data release; publish that data release before
+using its browser-download URL. The application PR can remain draft.
+For changed inputs, use a new data-release version and update the manifest
+only after reviewing the audit and public-sample before/after results.
+
 The YFull builder also audits polarity against each reference's known lineage:
 R1b for hg19/GRCh38 and J1 for T2T-CHM13v2 chrY. Override these with
 `--ref-haplogroup-hg19`, `--ref-haplogroup-hg38`, or `--ref-haplogroup-t2t`
