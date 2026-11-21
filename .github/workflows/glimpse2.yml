@@ -17,6 +17,8 @@ on:
       - tests/test_imputation.py
       - .github/workflows/glimpse2.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/compiler-cache/**
+      - .github/actions/apt-install/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:

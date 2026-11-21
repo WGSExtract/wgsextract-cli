@@ -6,16 +6,22 @@ from pathlib import Path
 
 from wgsextract_cli.core.builds import CHR1_LENGTH_BUILDS, build_from_path
 from wgsextract_cli.core.constants import REFERENCE_MODELS, REFGEN_BY_SNCOUNT
+from wgsextract_cli.core.ref_library.mitochondrial import (
+    CHM13_CHRM,
+    CHM13_CHRM_MD5,
+    RCRS_MD5,
+    fasta_mito,
+    header_md5,
+    sequence_md5,
+)
 
 _VCF_CONTIG_RE = re.compile(r"^##contig=<.*?\bID=([^,>]+).*?\blength=(\d+)")
-# The mitochondrial sequence is told apart by its length.
-MITO_BY_LENGTH = {16569: "rCRS", 16571: "Yoruba"}
 
 
 @dataclass(frozen=True)
 class ReferenceModel:
     name: str  # build or model, e.g. "hg38", "hs37d5", "T2Tv2.0"
-    mito: str  # "rCRS", "Yoruba", or "" when unknown
+    mito: str  # sequence identity/origin, or "" when unknown
     fasta: str  # catalog FASTA it matches, or "" when no single one does
     naming: str  # "Chr" (chr1), "Num" (1), or "" when neither
     contigs: int
@@ -55,10 +61,16 @@ def _naming(lengths: dict[str, int]) -> str:
     return ""
 
 
-def _mito(lengths: dict[str, int]) -> str:
+def _mito(header: str, lengths: dict[str, int], reference: str | None) -> str:
     for name in ("chrM", "MT", "chrMT", "M"):
         if name in lengths:
-            return MITO_BY_LENGTH.get(lengths[name], "")
+            if lengths[name] != 16569:
+                return ""
+            md5 = header_md5(header, name)
+            if not md5 and reference and Path(reference + ".fai").is_file():
+                sequence = fasta_mito(reference, name)
+                md5 = sequence_md5(sequence) if sequence else None
+            return {RCRS_MD5: "rCRS", CHM13_CHRM_MD5: CHM13_CHRM}.get(md5 or "", "")
     return ""
 
 
@@ -80,7 +92,8 @@ def identify_reference(
     naming, contigs = _naming(lengths), len(lengths)
 
     if signature and signature in REFERENCE_MODELS:
-        name, mito, fasta = REFERENCE_MODELS[signature]
+        name, _catalog_mito, fasta = REFERENCE_MODELS[signature]
+        mito = _mito(header, lengths, reference_fasta)
         return ReferenceModel(name, mito, fasta, naming, contigs, "signature")
 
     count_entry = REFGEN_BY_SNCOUNT.get(contigs)
@@ -94,7 +107,12 @@ def identify_reference(
         fasta = count_fasta if count_build == build else ""
         name = "T2T" if build == "t2t" else build
         return ReferenceModel(
-            name, _mito(lengths), fasta, naming, contigs, "chr1 length"
+            name,
+            _mito(header, lengths, reference_fasta),
+            fasta,
+            naming,
+            contigs,
+            "chr1 length",
         )
 
     # A chr1 of no known human length rules out the human references a contig
@@ -102,7 +120,12 @@ def identify_reference(
     if count_entry and not (chr1 is not None and count_build):
         name = _model_name(count_fasta) or count_build or count_fasta.split(".")[0]
         return ReferenceModel(
-            name, _mito(lengths), count_fasta, naming, contigs, "contig count"
+            name,
+            _mito(header, lengths, reference_fasta),
+            count_fasta,
+            naming,
+            contigs,
+            "contig count",
         )
 
     if reference_fasta:
