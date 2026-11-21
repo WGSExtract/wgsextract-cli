@@ -11,6 +11,7 @@ import csv
 import json
 import logging
 import math
+import re
 import subprocess
 import tempfile
 from bisect import bisect_right
@@ -20,8 +21,16 @@ from pathlib import Path
 
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.ref_library.models import sequence_lengths
+from wgsextract_cli.core.reference_evidence import parse_provenance
+from wgsextract_cli.core.reference_evidence_records import (
+    DEPTH_ONLY,
+    GQ,
+    State,
+    record_state,
+)
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.variant_confidence import Thresholds
 from wgsextract_cli.core.variant_files import vcf_index_chromosomes
 
 from .data import file_sha256, manifest
@@ -55,6 +64,7 @@ def _query_vcf(
     positions: set[int] | None = None,
     reference_sequence: str | None = None,
     min_quality: int = 20,
+    min_reads: int = 10,
 ) -> tuple[dict[int, Call], bool]:
     samples = run_command(
         ["bcftools", "query", "-l", str(path)], capture_output=True
@@ -64,12 +74,29 @@ def _query_vcf(
     header = run_command(
         ["bcftools", "view", "-h", str(path)], capture_output=True
     ).stdout
-    has_ad = "##FORMAT=<ID=AD," in header
+    provenance = next(
+        (p for line in header.splitlines() if (p := parse_provenance(line))), None
+    )
+    # bcftools may declare GQ for variant records while its reference blocks
+    # carry only MIN_DP. The caller's explicit gVCF mode identifies that model.
+    bcftools_blocks = re.search(
+        r"^##bcftools_callCommand=.*(?:--gvcf(?:=| )|-g ?)\d",
+        header,
+        re.MULTILINE,
+    )
+    quality_model = (
+        provenance.quality_model
+        if provenance
+        else DEPTH_ONLY
+        if bcftools_blocks or "##FORMAT=<ID=GQ," not in header
+        else GQ
+    )
     fields = [
         f"%{field}" if f"##FORMAT=<ID={field}," in header else "."
-        for field in ("GT", "AD", "DP", "GQ", "MIN_DP")
+        for field in ("GT", "AD", "DP", "GQ", "MIN_DP", "FT")
     ]
     block_depth_field = "%INFO/MIN_DP" if "##INFO=<ID=MIN_DP," in header else "."
+    block_end_field = "%INFO/END" if "##INFO=<ID=END," in header else "."
     region_args: list[str] = []
     if any(Path(str(path) + suffix).is_file() for suffix in (".tbi", ".csi")):
         contigs = vcf_index_chromosomes(path)
@@ -86,7 +113,9 @@ def _query_vcf(
             "-i",
             'CHROM="Y" || CHROM="chrY"',
             "-f",
-            "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%FILTER\\t"
+            "%CHROM\\t%POS\\t"
+            + block_end_field
+            + "\\t%REF\\t%ALT\\t%FILTER\\t"
             + block_depth_field
             + "[\\t"
             + "\\t".join(fields)
@@ -100,6 +129,7 @@ def _query_vcf(
     calls = {}
     seen = set()
     marker_positions = sorted(positions or ())
+    has_reference_evidence = False
     for line in text.splitlines():
         (
             _,
@@ -114,6 +144,7 @@ def _query_vcf(
             dp,
             gq,
             min_dp,
+            ft,
         ) = line.split("\t")
         pos = int(position)
         if pos in seen:
@@ -122,11 +153,10 @@ def _query_vcf(
         genotype = gt_call(ref, alt, gt)
         quality = float(gq) if gq != "." else None
         reference_block = (
-            int(end) > pos
+            end != "."
+            and int(end) >= pos
             and len(ref) == 1
             and alt in (".", "<NON_REF>", "<*>")
-            and genotype is not None
-            and genotype.base == ref
         )
         depth_metrics = [
             int(value)
@@ -135,7 +165,7 @@ def _query_vcf(
         ]
         reads = min(depth_metrics) if depth_metrics else 0
         description = ""
-        if site_filter != "PASS":
+        if site_filter != "PASS" or ft not in (".", "PASS"):
             description = "Filtered or unassessed variant"
         elif "." in gt.replace("|", "/").split("/") or gt == "":
             description = "Missing genotype"
@@ -165,16 +195,44 @@ def _query_vcf(
                 call = replace(call, description="Genotype and allele depths disagree")
         elif not description and not depth_metrics:
             call = replace(call, description="Missing depth evidence")
-        calls[pos] = call
-        # A FASTA supplies bases, not callability. Only an explicit reference
-        # block can prove that an otherwise absent marker was assessed.
-        if reference_sequence and positions and reference_block:
-            minimums = [int(value) for value in (min_dp, info_min_dp) if value != "."]
-            if not minimums:
-                continue
+        if genotype and genotype.base == ref:
+            has_reference_evidence = True
+        callable_block = False
+        if reference_block:
+            evidence_fields = [
+                "Y",
+                position,
+                ".",
+                ref,
+                alt,
+                ".",
+                site_filter,
+                f"END={end};MIN_DP={info_min_dp}",
+                "GT:DP:GQ:MIN_DP:FT",
+                f"{gt}:{dp}:{gq}:{min_dp}:{ft}",
+            ]
+            callable_block = not (
+                call.description
+                or record_state(
+                    evidence_fields,
+                    quality_model,
+                    Thresholds(min_reads, min_reads, min_quality, min_quality),
+                    ploidy=2,  # Yleaf's --min-reads is already a haploid threshold.
+                )
+                != State.CALLABLE_REFERENCE
+            )
             # DP/AD at the block's first position (or an average DP) does not
             # prove depth at any interior marker. MIN_DP is a block-wide floor.
-            block_call = replace(call, reads=min(call.reads, *minimums))
+            if not callable_block:
+                call = replace(
+                    call,
+                    base="NA",
+                    description=call.description or "Unassessed reference block",
+                )
+        calls[pos] = call
+        # A FASTA supplies bases, not callability. Keep rejected block spans
+        # unknown, including in the explicit upstream reference-assumption mode.
+        if reference_sequence and positions and reference_block:
             first = bisect_right(marker_positions, pos)
             last = bisect_right(
                 marker_positions, min(int(end), len(reference_sequence))
@@ -182,9 +240,14 @@ def _query_vcf(
             for marker_pos in marker_positions[first:last]:
                 calls.setdefault(
                     marker_pos,
-                    replace(block_call, base=reference_sequence[marker_pos - 1]),
+                    replace(
+                        call,
+                        base=reference_sequence[marker_pos - 1]
+                        if callable_block
+                        else "NA",
+                    ),
                 )
-    return calls, has_ad
+    return calls, has_reference_evidence
 
 
 def _reference_sequence(reference: Path) -> str:
@@ -262,6 +325,7 @@ def analyze(
     min_score: float = 0.95,
     ancient: bool = False,
     no_ref_inference: bool = False,
+    assume_reference: bool = False,
 ) -> Path:
     """Write .out/.fmf/.info, hg_prediction.hg and run.json; never delete user data.
 
@@ -278,6 +342,11 @@ def analyze(
             "Invalid Yleaf read/quality/majority/prediction threshold."
         )
     is_vcf = input_path.name.lower().endswith((".vcf", ".vcf.gz", ".bcf"))
+    if assume_reference and (no_ref_inference or not is_vcf):
+        raise WGSExtractError(
+            "--assume-reference requires VCF input and cannot be combined with "
+            "--no-ref-inference."
+        )
     if not is_vcf and input_path.suffix.lower() not in (".bam", ".cram"):
         raise WGSExtractError(
             "Native Yleaf accepts BAM, CRAM or single-sample VCF/BCF."
@@ -325,12 +394,35 @@ def analyze(
                 if not no_ref_inference:
                     assert reference is not None
                     reference_sequence = _reference_sequence(reference)
-                calls, _ = _query_vcf(
+                calls, has_reference_evidence = _query_vcf(
                     input_path,
                     positions={m.pos for m in markers},
                     reference_sequence=reference_sequence,
                     min_quality=quality,
+                    min_reads=min_reads,
                 )
+                if not has_reference_evidence:
+                    warn(
+                        "y_reference_evidence_missing",
+                        "The Y VCF has no reference-call evidence. Results may be "
+                        "incomplete; use a gVCF or all-sites VCF. Missing sites "
+                        "are not confirmed callable.",
+                    )
+                if assume_reference:
+                    assert reference_sequence is not None
+                    warn(
+                        "y_reference_assumed",
+                        "Assuming the reference at absent Y markers for upstream "
+                        "Yleaf compatibility; this can bias the haplogroup.",
+                    )
+                    for marker in markers:
+                        if marker.pos <= len(reference_sequence):
+                            calls.setdefault(
+                                marker.pos,
+                                Call(
+                                    reference_sequence[marker.pos - 1], min_reads, 100.0
+                                ),
+                            )
                 total_reads = "VCF"
             else:
                 calls, total_reads = _alignment_calls(
@@ -390,6 +482,7 @@ def analyze(
                     "base_majority": majority,
                     "min_score": min_score,
                     "reference_inference": is_vcf and not no_ref_inference,
+                    "assume_reference": assume_reference,
                 },
                 indent=2,
             )

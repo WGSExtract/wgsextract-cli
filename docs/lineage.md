@@ -26,8 +26,15 @@ the user's directory is never deleted. Missing build tables require explicit
 `--download` consent for SHA-256-verified downloads from this repository's
 `yleaf-data-v4.1.6` release into the configured reference library. Cached tables
 work offline; see [network consent](privacy.md).
-CRAM and variant-only VCF inference require a matching `--ref`;
+CRAM decoding and gVCF block expansion require a matching `--ref`;
 use `--no-ref-inference` for targeted VCF panels. Align FASTQ first.
+Absent VCF markers are unknown unless confirmed callable by a reference block
+passing the caller's quality model and block-wide MIN_DP thresholds (bcftools
+reference blocks are depth-only; GQ-based callers also require GQ); all-sites REF calls are accepted
+at their recorded positions. Variant-only VCFs warn that results may be
+incomplete and suggest gVCF/all-sites input. `--assume-reference` explicitly
+opts into upstream Yleaf's unsafe missing-site reference assumption for parity
+checks; it may bias predictions toward the reference genome's Y lineage.
 
 Choose `--tree yfull|yfull_v10|ftdna|isogg`. Default `yfull` pins YFull YTree
 14.06.0 by SHA-256 and records the version. Register custom trees in

@@ -121,6 +121,14 @@ or single-sample INFO/MIN_DP meeting the read threshold). DP/AD at a block's
 first position or its average DP does not prove interior callability. An explicit no-call
 inside a block remains unknown. `--no-ref-inference` disables block expansion
 for targeted panels.
+bcftools gVCF blocks are depth-only reference evidence: passing filters and
+adequate MIN_DP establish callability without block GQ. Other GQ-based gVCFs
+must supply adequate GQ. This uses the shared [reference-evidence](reference-evidence.md)
+classifier and Yleaf's read/quality thresholds.
+Variant-only VCFs emit `y_reference_evidence_missing` and suggest gVCF or
+all-sites VCF input. `--assume-reference` opts into the unsafe upstream
+missing-site assumption for parity checks, emits `y_reference_assumed`, and
+is mutually exclusive with `--no-ref-inference`.
 
 `vcf snp` and other raw bcftools caller outputs may have `FILTER=.`, meaning
 no site-filter assessment was performed. They are deliberately not treated

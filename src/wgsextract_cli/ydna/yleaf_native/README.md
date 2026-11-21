@@ -15,15 +15,28 @@ optional reference FASTA. The CLI exposes the same settings through
 
 The adapter calls only the existing samtools/bcftools tools, not Yleaf.
 No tools or full reference genomes are automatically installed/downloaded.
-CRAM requires the matching reference. Variant-only VCF inference also needs
+CRAM requires the matching reference. VCF block expansion also needs
 the matching reference (`--ref`, or the configured reference library).
 An incompatible detected FASTA/build combination is rejected, including when
 `--build` overrides input metadata; pass a matching `--ref` explicitly.
-It treats missing variants as matching the reference, exactly as upstream;
-this is **not coverage evidence**. For targeted panels, use
-`--no-ref-inference` so absent sites cannot become inferred genotypes.
-As upstream, GT-only VCFs use their first allele and bypass read thresholds;
-AD uses the reference versus the highest-depth alternate (not the sum of AD).
+Absent VCF markers remain unknown unless inside an explicit reference block
+with reference GT, passing filters, and block-wide MIN_DP meeting `--min-reads`.
+GQ-based reference evidence also requires GQ meeting `--base-quality`.
+bcftools gVCF blocks use the shared depth-only evidence model: they do not
+carry block GQ, even when their variants do. The `##wgseReferenceEvidence`
+quality model, bcftools' gVCF command header, or a VCF without a GQ declaration
+identifies depth-only evidence. All-sites VCFs supply explicit REF calls.
+Variant-only files emit `y_reference_evidence_missing`: results may be
+incomplete; prefer a gVCF or all-sites VCF. `--no-ref-inference` disables
+block expansion. GT-only files without depth fail evidence QC; mixed Y
+genotypes are unknown, and AD majority uses all allele depths.
+
+`--assume-reference` (API `assume_reference=True`) explicitly restores upstream
+Yleaf's assumption that absent VCF markers match `--ref`. It is unsafe for
+variant-only or low-coverage files and can bias results toward the reference
+genome's lineage. It emits `y_reference_assumed`, records the opt-in in
+`run.json`, requires VCF input and a reference, and cannot be combined with
+`--no-ref-inference`. Observed failed/no-call sites are never replaced.
 
 Outputs in `<outdir>/yleaf/`:
 
@@ -292,5 +305,6 @@ replays an upstream marker table and compares haplogroup, all QC values and
 QC-relevant marker counts. Supplying the original input/build additionally
 compares full extraction `.out`/`.fmf` rows normalized for numeric serialization
 and order. Add `--yleaf-parity-ref` for CRAM or VCF reference inference; without
-it, VCF parity disables reference inference. The unordered, truncated final
+it, VCF parity disables reference inference. With a VCF and reference, the
+extraction parity test opts into `assume_reference=True`. The unordered, truncated final
 marker display is excluded; complete marker tables are compared instead.
