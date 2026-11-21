@@ -1,5 +1,6 @@
 import ast
 import functools
+import itertools
 import os
 import signal
 from collections.abc import Callable, Iterator
@@ -202,6 +203,22 @@ def _isolate_session_config(
     settings.update(saved)
 
 
+_HOMES = pytest.StashKey[tuple[Path, "itertools.count[int]"]]()
+
+
+def _new_home(config: pytest.Config, factory: pytest.TempPathFactory) -> Path:
+    """A fresh, empty home directory. All homes share one parent and are
+    numbered here: tmp_path_factory.mktemp lists the whole base temporary
+    directory on each call, so a home apiece from it slowed every later test
+    as they piled up (#1218)."""
+    if _HOMES not in config.stash:
+        config.stash[_HOMES] = (factory.mktemp("homes"), itertools.count())
+    parent, numbers = config.stash[_HOMES]
+    home = parent / str(next(numbers))
+    home.mkdir()
+    return home
+
+
 @pytest.fixture(autouse=True)
 def _isolate_user_config(
     request: pytest.FixtureRequest,
@@ -225,7 +242,7 @@ def _isolate_user_config(
             for line in real.splitlines()
             if not line.lstrip().startswith("state_directory")
         )
-    _isolate(monkeypatch, tmp_path_factory.mktemp("home"), real)
+    _isolate(monkeypatch, _new_home(request.config, tmp_path_factory), real)
     try:
         yield
     finally:
