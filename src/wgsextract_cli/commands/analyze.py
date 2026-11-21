@@ -73,12 +73,12 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
 
     input_file = job.input
     vcf_inputs = list(job.vcf_inputs or ())
-    env_vcf = None if batch_sample else settings.get("vcf_input_paths")
-    if not vcf_inputs and env_vcf:
-        if isinstance(env_vcf, list):
-            vcf_inputs = env_vcf
+    configured_vcfs = None if explicit else settings.get("vcf_input_paths")
+    if configured_vcfs:
+        if isinstance(configured_vcfs, list):
+            vcf_inputs = configured_vcfs
         else:
-            vcf_inputs = env_vcf.split()
+            vcf_inputs = configured_vcfs.split()
 
     if not input_file and not vcf_inputs:
         raise UsageError(LOG_MESSAGES["input_required"])

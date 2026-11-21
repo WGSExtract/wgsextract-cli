@@ -1,8 +1,114 @@
+import json
 import os
 import shutil
 import unittest
+from pathlib import Path
 
-from tests.smoke_utils import REPO_ROOT, ensure_fake_data, run_cli, yleaf_tables_cached
+import pytest
+
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_htslib,
+    sam_to_bam,
+    snp_sample,
+    vcf_calls,
+    write_fasta,
+)
+from tests.smoke_utils import (
+    REPO_ROOT,
+    ensure_fake_data,
+    run_cli,
+    state_directory_setting,
+    yleaf_tables_cached,
+)
+from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.utils import run_command
+
+
+@needs_htslib
+@pytest.mark.parametrize("selection", ["bam", "configured", "bam-and-vcf"])
+def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
+    tmp_path: Path, selection: str
+) -> None:
+    sample = snp_sample(tmp_path, "@RG\tID:rg\tSM:sample_b", snps=(1550,))
+    b_call = sample.calls[0]
+    sequence = Path(sample.ref).read_text().splitlines()[1]
+    a_ref = sequence[999]
+    a_alt = "C" if a_ref == "A" else "A"
+    a_call = ("chr1", "1000", a_ref, a_alt, "1/1")
+
+    header = "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n"
+    columns = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"
+
+    def sample_vcf(name: str, call: tuple[str, ...]) -> str:
+        chrom, pos, ref, alt, gt = call
+        path = tmp_path / f"{name}.vcf"
+        path.write_text(
+            header
+            + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+            + f"{columns}\tFORMAT\t{name}\n"
+            + f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t99\tPASS\t.\tGT\t{gt}\n"
+        )
+        return bgzip_index(path)
+
+    configured_vcf = sample_vcf("sample_a", a_call)
+    clinical = tmp_path / "clinvar.vcf"
+    clinical.write_text(
+        header
+        + '##INFO=<ID=CLNSIG,Number=.,Type=String,Description="Significance">\n'
+        + columns
+        + "\n"
+        + "".join(
+            f"{chrom}\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\tCLNSIG=Pathogenic\n"
+            for chrom, pos, ref, alt, _ in (a_call, b_call)
+        )
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"reference_library = {json.dumps(str(tmp_path))}\n"
+        + f"clinvar_vcf_path = {json.dumps(bgzip_index(clinical))}\n"
+        + f"vcf_input_paths = [{json.dumps(configured_vcf)}]\n"
+    )
+    outdir = tmp_path / "out"
+    args = []
+    expected_inputs = set()
+    reference = sample.ref
+    if selection != "configured":
+        # Select hg38 ploidy; a non-rCRS chrM skips mitochondrial classification.
+        reference = str(
+            write_fasta(tmp_path / "hg38.fa", {"chr1": sequence, "chrM": "A" * 100})
+        )
+        sam = run_command(
+            [get_tool_path("samtools"), "view", "-h", sample.bam],
+            capture_output=True,
+        ).stdout.splitlines()
+        sam.insert(2, "@SQ\tSN:chrM\tLN:100")
+        bam = sam_to_bam(sam, tmp_path / "sample_b.bam")
+        args += ["--input", bam]
+        expected_inputs.add(("input", bam))
+    if selection == "bam-and-vcf":
+        explicit_vcf = sample_vcf("sample_b", b_call)
+        args += ["--vcf-inputs", explicit_vcf]
+        expected_inputs.add(("vcf_input", explicit_vcf))
+    elif selection == "configured":
+        expected_inputs.add(("vcf_input", configured_vcf))
+
+    code, stdout, stderr = run_cli([
+        "--config", str(config), "analyze", "comprehensive", "--ref", reference,
+        "--threads", "1", "--outdir", str(outdir), *args,
+    ])  # fmt: skip
+    assert code == 0, stdout + stderr
+    manifest = json.loads((outdir / "analyze.manifest.json").read_text())
+    assert {(r["role"], r["path"]) for r in manifest["inputs"]} == expected_inputs
+    findings = [
+        call
+        for record in manifest["outputs"]
+        if record["role"] == "significant_variants"
+        for call in vcf_calls(record["path"])
+    ]
+    assert findings == [a_call if selection == "configured" else b_call]
+    assert (outdir / "snps.vcf.gz").exists() == (selection == "bam")
 
 
 class TestAnalyzeComprehensive(unittest.TestCase):
