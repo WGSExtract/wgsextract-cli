@@ -177,6 +177,7 @@ def test_requests_need_the_token_and_a_local_host(client):
         ([], 411),
         ([("Transfer-Encoding", "chunked")], 400),
         ([("Content-Length", "0"), ("Content-Length", "0")], 400),
+        ([("Content-Length", "\xa00")], 400),
     ],
 )
 def test_bad_lengths_are_refused_and_errors_close_the_connection(

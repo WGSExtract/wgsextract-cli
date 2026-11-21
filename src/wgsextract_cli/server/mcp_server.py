@@ -221,10 +221,10 @@ class McpTools:
             params = self.guard.check(params)
             arguments = op.request_values(params)
             job = self.manager.submit(op, arguments)
-            if started is not None:
-                started(job.id)
             if op.kind != "query":
                 return job.view(), False
+            if started is not None:
+                started(job.id)
             job = self._follow(job, progress)
             return job.view(), job.status != "succeeded"
         if name in QUERIES:

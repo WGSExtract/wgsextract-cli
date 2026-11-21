@@ -282,10 +282,11 @@ class Handler(LimitedHandler):
         lengths = self.headers.get_all("Content-Length", [])
         if not lengths:
             raise RequestError(411, "bad_length", "Content-Length is required.")
+        value = lengths[0].strip(" \t")
         try:
             length = (
-                int(lengths[0])
-                if len(lengths) == 1 and re.fullmatch(r"[0-9]+", lengths[0].strip())
+                int(value)
+                if len(lengths) == 1 and re.fullmatch(r"[0-9]+", value)
                 else -1
             )
         except ValueError:
