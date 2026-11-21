@@ -2788,8 +2788,9 @@ with `dataclasses.replace` and call `issue_url` for a new link.
 
 ## `api.deps`
 
-`deps check`: which bioinformatics tools this installation finds, where,
-and in what version.
+`deps check` and `deps list`: which bioinformatics tools this
+installation finds, where, and in what version; `deps install` and
+`deps uninstall`: add or remove an optional tool's Pixi environment.
 
 `check` without `tool` lists every mandatory and optional tool. The
 result's `details` hold `mandatory` and `optional`: one
@@ -2799,6 +2800,19 @@ a missing one). It fails with exit code 3 (error kind
 checks that one tool: its path is `details["path"]` and the result's text,
 and a missing tool fails the same way, naming the command that installs it
 when there is one.
+
+`list` reports the same, plus `details["tools"]`: every tool, those not
+built for this platform included, with its `group` ("mandatory" or
+"optional"), `status` ("installed", "missing" or "unavailable"), its own
+Pixi `environment` and the `environment_tools` it provides,
+`can_install` and `can_uninstall`, and a `note` (how to install it
+yourself, or why it can't be had). It doesn't fail on a missing tool.
+
+`install` downloads and installs the Pixi environment that provides an
+optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
+(`pixi clean -e <env>`), and with it the other tools in that environment.
+Tools that come with the CLI itself, or that you install yourself, are
+refused with how to get them.
 
 ### `api.deps.check(DepsCheckParams)`
 
@@ -2811,6 +2825,41 @@ Check the installed tools (see `DepsCheckParams`).
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `tool` | `str \| None` | `None` | `--tool` | The one tool to check (e.g. samtools); fails if it is missing. |
+
+### `api.deps.list_tools(DepsListParams)`
+
+CLI: `wgsextract deps list`.
+
+List every tool and its status (see `DepsListParams`).
+
+`DepsListParams`: List every tool, its status and whether it can be installed or removed.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+
+### `api.deps.install(DepsInstallParams)`
+
+CLI: `wgsextract deps install`.
+
+Install an optional tool's Pixi environment (see `DepsInstallParams`).
+
+`DepsInstallParams`: Download and install the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
+
+### `api.deps.uninstall(DepsUninstallParams)`
+
+CLI: `wgsextract deps uninstall`.
+
+Remove an optional tool's Pixi environment (see `DepsUninstallParams`).
+
+`DepsUninstallParams`: Remove the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
 
 ## `api.examples`
 

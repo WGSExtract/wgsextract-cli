@@ -75,6 +75,7 @@ url("./fonts/bootstrap-icons.woff?dd67030699838ea613ee6dbda90effa6") format("wof
 .bi-play-fill::before { content: "\f4f4"; }
 .bi-scissors::before { content: "\f528"; }
 .bi-search::before { content: "\f52a"; }
+.bi-slash-circle::before { content: "\f567"; }
 .bi-sliders::before { content: "\f56b"; }
 .bi-soundwave::before { content: "\f57c"; }
 .bi-table::before { content: "\f5aa"; }
