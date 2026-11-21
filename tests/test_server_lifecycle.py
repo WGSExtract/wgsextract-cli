@@ -15,7 +15,7 @@ import pytest
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
-from tests.smoke_utils import get_cli_command
+from tests.smoke_utils import get_cli_command, state_directory_setting
 from tests.test_server import (
     FAKE_DIR,
     Client,
@@ -136,11 +136,18 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
-def test_1254_sigint_during_http_request_dispatch_exits_cleanly(work: Path) -> None:
+@pytest.mark.parametrize(
+    ("stop_signal", "remote"),
+    [(signal.SIGINT, False), (signal.SIGTERM, True)],
+    ids=["loopback-sigint", "wildcard-sigterm"],
+)
+def test_1254_signal_during_http_request_dispatch_exits_cleanly(
+    tmp_path: Path, work: Path, stop_signal: int, remote: bool
+) -> None:
     # Let the actual HTTP request finish before returning from the OS thread
-    # startup boundary, then deliver SIGINT before the accept loop resumes.
-    code = """
-import os, signal, threading
+    # startup boundary, then deliver the stop signal before the accept loop resumes.
+    code = f"""
+import os, threading
 from wgsextract_cli.main import main
 
 start = threading.Thread.start
@@ -149,13 +156,21 @@ def interrupt_start(thread):
     if threading.current_thread() is threading.main_thread():
         thread.join(timeout=10)
         assert not thread.is_alive()
-        os.kill(os.getpid(), signal.SIGINT)
+        os.kill(os.getpid(), {stop_signal})
 
 threading.Thread.start = interrupt_start
 main()
 """
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + '[server]\nallowed_hosts=["genomes.example"]\n'
+    )
+    args = ["--config", str(config), "serve", "--allow", str(work), "--ready-json"]
+    if remote:
+        args += ["--listen", "0.0.0.0", "--public-url", "https://genomes.example"]
     with subprocess.Popen(
-        [sys.executable, "-c", code, "serve", "--allow", str(work), "--ready-json"],
+        [sys.executable, "-c", code, *args],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
@@ -163,11 +178,15 @@ main()
         try:
             assert proc.stdout is not None
             info = json.loads(proc.stdout.readline())
-            client = Client(info["url"].removesuffix("/v1"))
-            status, index = client.request("GET", "", token=info["token"])
+            bind = info.get("bind_url", info["url"]).removesuffix("/v1")
+            client = Client(bind.replace("0.0.0.0", "127.0.0.1"))
+            headers = {"Host": "genomes.example"} if remote else None
+            status, index = client.request(
+                "GET", "", token=info["token"], headers=headers
+            )
             assert status == 200 and str(work.resolve()) in index["allowed_paths"]
             assert proc.wait(timeout=10) == 0
-            assert not (state_directory() / "server" / "server.json").exists()
+            assert not (tmp_path / "state" / "server" / "server.json").exists()
         finally:
             if proc.poll() is None:
                 proc.kill()
