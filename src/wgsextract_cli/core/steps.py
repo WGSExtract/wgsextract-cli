@@ -6,9 +6,13 @@ finishes, the step journal (``<output>.steps.json``, beside the workflow's
 main output) records:
 
 - a key from the step's params, tool versions and definition version
-- each input's fingerprint (for a directory, of every file's relative path,
-  size and mtime) and, when an earlier step made it, that step's run
-- each output's size and fingerprint
+- each input's identity and, when an earlier step made it, that step's run
+- each output's identity (for a directory, its files or declared members)
+
+A file's identity is its size, mtime and a digest: a full SHA-256 up to
+``FULL_DIGEST_LIMIT``, recomputed at every check, and above it sampled blocks
+trusted only while the mtime is unchanged. A directory's is every file's
+relative path, size and mtime. See docs/step-resume.md.
 
 On a later run the step is skipped when its key matches, its inputs are
 unchanged, the steps that made them haven't rerun, and every output is still
@@ -35,7 +39,6 @@ import hashlib
 import json
 import logging
 import os
-import stat
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -49,7 +52,6 @@ from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.step_documents import SCHEMA as SCHEMA
 from wgsextract_cli.core.step_documents import (
     CompleteStepDocument,
-    DirectoryIdentity,
     DirectoryOutput,
     FileOutput,
     InputIdentity,
@@ -58,6 +60,16 @@ from wgsextract_cli.core.step_documents import (
     RunningStepDocument,
     extend_output,
 )
+from wgsextract_cli.core.step_identity import (
+    METADATA_DIGEST,
+    NotARegularFile,
+    directory_drift,
+    directory_identity,
+    file_drift,
+    file_identity,
+    input_drift,
+    strengths,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 if TYPE_CHECKING:
@@ -65,7 +77,6 @@ if TYPE_CHECKING:
 
 JOURNAL_SUFFIX = ".steps.json"
 RUN_TAG = "WGSEXTRACT_STEP_RUN"
-DIRECTORY_FINGERPRINT_PREFIX = "wgse-dir1:"
 
 
 @dataclass(frozen=True)
@@ -176,89 +187,6 @@ def _tool_versions(tools: Sequence[str]) -> dict[str, str | None]:
     from wgsextract_cli.core.results import tool_version
 
     return {tool: tool_version(tool) for tool in sorted(set(tools))}
-
-
-def _fingerprint(path: Path) -> str | None:
-    from wgsextract_cli.core.sample_workspace import file_fingerprint
-
-    return file_fingerprint(path)
-
-
-def _transient(name: str) -> bool:
-    """Lock files and staged partial outputs, which come and go while a
-    directory's data stays the same."""
-    return name.endswith((".lock", ".guard")) or (
-        name.startswith(".") and ".partial" in name
-    )
-
-
-def _name_bytes(text: str) -> bytes:
-    # File names that aren't valid UTF-8 reach Python as lone surrogates.
-    return text.encode("utf-8", "surrogateescape")
-
-
-def _link_target(path: str) -> str:
-    try:
-        return os.readlink(path)
-    except OSError:
-        return "?"
-
-
-def _directory_identity(root: Path) -> DirectoryIdentity:
-    """The identity of a directory's contents, without reading any file.
-
-    Hashes each file's path relative to ``root``, size and mtime (ns), in
-    sorted order, so adding, removing, renaming, resizing or rewriting a file
-    changes it. Symbolic links are followed (each directory once), and their
-    targets hashed too, so repointing one changes it. A folder that can't be
-    listed, ``root`` included, is hashed as unreadable. Costs one stat per
-    file, so a VEP cache of tens of thousands of files takes well under a
-    second.
-    """
-    digest = hashlib.sha256(b"wgse-dir1\0")
-    files = total = 0
-    seen: set[tuple[int, int]] = set()
-    pending = [(root, "")]
-    while pending:
-        directory, prefix = pending.pop()
-        try:
-            info = directory.stat()
-            if (info.st_dev, info.st_ino) in seen:
-                continue
-            seen.add((info.st_dev, info.st_ino))
-            with os.scandir(directory) as listing:
-                entries = sorted(listing, key=lambda entry: entry.name)
-        except OSError:
-            digest.update(_name_bytes(f"{prefix}\0unreadable\n"))
-            continue
-        subdirectories = []
-        for entry in entries:
-            if _transient(entry.name):
-                continue
-            name = prefix + entry.name
-            with contextlib.suppress(OSError):
-                if entry.is_symlink():
-                    target = _link_target(entry.path)
-                    digest.update(_name_bytes(f"{name}\0link\0{target}\n"))
-            try:
-                info = entry.stat()
-            except OSError:
-                digest.update(_name_bytes(f"{name}\0unreadable\n"))
-                continue
-            if stat.S_ISDIR(info.st_mode):
-                subdirectories.append((Path(entry.path), name + "/"))
-            elif stat.S_ISREG(info.st_mode):
-                files += 1
-                total += info.st_size
-                line = f"{name}\0{info.st_size}\0{info.st_mtime_ns}\n"
-                digest.update(_name_bytes(line))
-        # Depth first, in name order: the same tree always hashes the same.
-        pending.extend(reversed(subdirectories))
-    return {
-        "files": files,
-        "size": total,
-        "fingerprint": DIRECTORY_FINGERPRINT_PREFIX + digest.hexdigest(),
-    }
 
 
 def _report(message: str) -> None:
@@ -542,14 +470,18 @@ class StepJournal:
             item["from_step"] = producer
             item["from_run"] = self._steps[producer].get("run_id")
         if resolved.is_file():
-            item["size"] = resolved.stat().st_size
-            item["fingerprint"] = _fingerprint(resolved)
+            file = file_identity(resolved)
+            item["size"] = file["size"]
+            item["mtime_ns"] = file["mtime_ns"]
+            item["fingerprint"] = file["fingerprint"]
+            item["digest"] = file["digest"]
         elif resolved.is_dir():
+            directory = directory_identity(resolved)
             item["kind"] = "directory"
-            directory = _directory_identity(resolved)
             item["files"] = directory["files"]
             item["size"] = directory["size"]
             item["fingerprint"] = directory["fingerprint"]
+            item["digest"] = METADATA_DIGEST
         else:
             item["missing"] = True
         return item
@@ -610,19 +542,22 @@ class StepJournal:
             return run("an earlier run was interrupted during it", partial=same)
         if record.get("key") != key:
             return run(self._key_change(step, record, tools))
-        if changed := self._changed_input(record, inputs):
+        checked: list[Mapping[str, Any]] = list(inputs.values())
+        if changed := self._changed_input(record, inputs, checked):
             return run(changed)
-        if stale := self._stale_output(step, record):
+        if stale := self._stale_output(step, record, checked):
             return run(stale)
         finished = record.get("finished", "an earlier run")
-        return Decision(step, False, f"complete ({finished})", key, record)
+        summary = strengths(checked)
+        reason = f"complete ({finished}" + (f"; checked {summary})" if summary else ")")
+        return Decision(step, False, reason, key, record)
 
     def _same_inputs(
         self, record: Mapping[str, Any], inputs: Mapping[str, Mapping[str, Any]]
     ) -> bool:
         recorded = {item.get("role"): item for item in record.get("inputs") or []}
         return all(
-            recorded.get(role, {}).get("fingerprint") == item.get("fingerprint")
+            role in recorded and input_drift(recorded[role], item) is None
             for role, item in inputs.items()
         )
 
@@ -650,7 +585,10 @@ class StepJournal:
         return "its settings changed"
 
     def _changed_input(
-        self, record: Mapping[str, Any], inputs: Mapping[str, Mapping[str, Any]]
+        self,
+        record: Mapping[str, Any],
+        inputs: Mapping[str, Mapping[str, Any]],
+        checked: list[Mapping[str, Any]],
     ) -> str | None:
         recorded = {item.get("role"): item for item in record.get("inputs") or []}
         for role in sorted(set(recorded) - set(inputs)):
@@ -664,34 +602,29 @@ class StepJournal:
                 return f"its {role} {item['path']} is missing"
             if item.get("from_step") and item.get("from_run") != old.get("from_run"):
                 return f"step {item['from_step']} rebuilt its {role}"
-            if item.get("fingerprint") != old.get("fingerprint"):
-                return self._changed(role, item["path"], old)
+            if drift := input_drift(old, item):
+                return f"its {role} {item['path']} {drift}"
         # Inputs a step reported only once it ran (a child command's data files).
         for role, old in recorded.items():
             if role in inputs or old.get("declared", True):
                 continue
             path = Path(old["path"])
-            now: str | None
-            if old.get("kind") == "directory" and path.is_dir():
-                now = _directory_identity(path)["fingerprint"]
-            elif path.is_file():
-                now = _fingerprint(path)
-            else:
-                return self._changed(role, path, old)
-            if now != old.get("fingerprint"):
-                return self._changed(role, path, old)
+            if not (
+                path.is_file() or (old.get("kind") == "directory" and path.is_dir())
+            ):
+                return f"its {role} {path} is missing or changed"
+            now = self._input(role, path)
+            checked.append(now)
+            if drift := input_drift(old, now):
+                return f"its {role} {path} {drift}"
         return None
 
-    @staticmethod
-    def _changed(role: str, path: PathInput, old: Mapping[str, Any]) -> str:
-        if old.get("kind") == "directory" and not old.get("fingerprint"):
-            return (
-                f"its {role} {path} is a directory whose contents an earlier "
-                "wgsextract didn't record"
-            )
-        return f"its {role} {path} changed"
-
-    def _stale_output(self, step: Step, record: Mapping[str, Any]) -> str | None:
+    def _stale_output(
+        self,
+        step: Step,
+        record: Mapping[str, Any],
+        checked: list[Mapping[str, Any]],
+    ) -> str | None:
         outputs = {
             str(self.resolve(item["path"])): item
             for item in record.get("outputs") or []
@@ -706,15 +639,17 @@ class StepJournal:
             if not path.exists():
                 return f"{path.name} is missing"
             if item.get("kind") == "directory" or path.is_dir():
-                continue
-            size = path.stat().st_size
-            if size != item.get("size"):
-                return (
-                    f"{path.name} changed size ({item.get('size')} -> {size} bytes; "
-                    "truncated or rewritten)"
-                )
-            if _fingerprint(path) != item.get("fingerprint"):
-                return f"{path.name} changed since the step wrote it"
+                stale = directory_drift(path, item, checked)
+            else:
+                try:
+                    identity = file_identity(path)
+                except NotARegularFile:
+                    return f"{path.name} is no longer a regular file"
+                checked.append(identity)
+                stale = file_drift(item, identity)
+                stale = stale and f"{path.name} {stale} since the step wrote it"
+            if stale:
+                return stale
         return None
 
     def decide(self, step: Step, *, after: Sequence[Decision] = ()) -> Decision:
@@ -804,15 +739,27 @@ class StepJournal:
                     f"Step {step.name} finished without writing {resolved}."
                 )
             identity: OutputDocument
+            members = extra.pop("members", None)
             if resolved.is_dir():
-                identity = DirectoryOutput(
-                    path=self._stored_path(resolved), kind="directory"
+                identity = self._directory_output(step, resolved, members)
+            elif members is not None:
+                raise WGSExtractError(
+                    f"Step {step.name} declared members of {resolved}, a file."
                 )
             else:
+                try:
+                    file = file_identity(resolved)
+                except NotARegularFile:
+                    raise WGSExtractError(
+                        f"Step {step.name} wrote {resolved}, which isn't a "
+                        "regular file, so it can't be recorded for resume."
+                    ) from None
                 identity = FileOutput(
                     path=self._stored_path(resolved),
-                    size=resolved.stat().st_size,
-                    fingerprint=_fingerprint(resolved),
+                    size=file["size"],
+                    mtime_ns=file["mtime_ns"],
+                    fingerprint=file["fingerprint"],
+                    digest=file["digest"],
                 )
             outputs.append(extend_output(identity, extra))
         inputs: list[InputIdentity] = [
@@ -843,6 +790,40 @@ class StepJournal:
         self._tag_processes(None)
         logging.info(f"Step {step.name} complete in {seconds:.0f} s.")
 
+    def _directory_output(
+        self, step: Step, path: Path, members: object
+    ) -> DirectoryOutput:
+        contents = directory_identity(path)
+        identity = DirectoryOutput(
+            path=self._stored_path(path),
+            kind="directory",
+            files=contents["files"],
+            size=contents["size"],
+            fingerprint=contents["fingerprint"],
+            digest=METADATA_DIGEST,
+        )
+        if members is None:
+            return identity
+        if not isinstance(members, list) or not all(
+            isinstance(m, str) for m in members
+        ):
+            raise WGSExtractError(
+                f"Step {step.name}: members of {path} must be relative paths."
+            )
+        identity["members"] = {}
+        for member in sorted(set(members)):
+            file = path / member
+            if Path(member).is_absolute() or ".." in Path(member).parts:
+                raise WGSExtractError(
+                    f"Step {step.name}: member {member} isn't inside {path}."
+                )
+            if not file.is_file():
+                raise WGSExtractError(
+                    f"Step {step.name} finished without writing {file}."
+                )
+            identity["members"][Path(member).as_posix()] = file_identity(file)
+        return identity
+
     def retire(self, step: str, paths: Sequence[PathInput] | None = None) -> None:
         """Note that ``step``'s outputs ``paths`` (default: all of them) were
         deleted on purpose after use, so later steps can still vouch for what
@@ -868,6 +849,9 @@ class StepRun:
     metrics: dict[str, object] = field(default_factory=dict)
 
     def add_output(self, path: PathInput, **details: object) -> None:
+        """Record an output beyond ``Step.outputs``. For a directory,
+        ``members=[relative paths]`` declares the files it must keep; the
+        rest of it is then disposable (see docs/step-resume.md)."""
         self.outputs.append((path, _json_mapping(details)))
 
     def add_input(self, role: str, path: PathInput) -> None:

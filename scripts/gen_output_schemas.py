@@ -23,7 +23,9 @@ from wgsextract_cli.core.step_documents import (  # noqa: E402
 )
 from wgsextract_cli.core.step_documents import (  # noqa: E402
     CompleteStepDocument,
+    Digest,
     DirectoryOutput,
+    FileIdentity,
     FileOutput,
     InputIdentity,
     JournalDocument,
@@ -54,6 +56,8 @@ def documents() -> dict[Path, dict[str, object]]:
             InputIdentity: Shape("input"),
             FileOutput: Shape("fileOutput"),
             DirectoryOutput: Shape("directoryOutput"),
+            Digest: Shape("digest"),
+            FileIdentity: Shape("fileIdentity"),
         },
         schema_id="urn:wgsextract:schema:steps:1",
         title=STEP_SCHEMA,

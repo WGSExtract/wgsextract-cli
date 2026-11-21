@@ -99,6 +99,12 @@
             }
           ]
         },
+        "mtime_ns": {
+          "type": "integer"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
         "from_step": {
           "type": "string"
         },
@@ -119,6 +125,29 @@
       "required": [
         "role",
         "path"
+      ]
+    },
+    "digest": {
+      "type": "object",
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "sha256",
+            "wgse-fp1",
+            "wgse-dir1"
+          ]
+        },
+        "strength": {
+          "enum": [
+            "full",
+            "sampled",
+            "metadata"
+          ]
+        }
+      },
+      "required": [
+        "algorithm",
+        "strength"
       ]
     },
     "completeStep": {
@@ -208,6 +237,9 @@
         "size": {
           "type": "integer"
         },
+        "mtime_ns": {
+          "type": "integer"
+        },
         "fingerprint": {
           "anyOf": [
             {
@@ -217,12 +249,17 @@
               "type": "null"
             }
           ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
         }
       },
       "required": [
         "path",
         "size",
-        "fingerprint"
+        "mtime_ns",
+        "fingerprint",
+        "digest"
       ]
     },
     "directoryOutput": {
@@ -233,11 +270,63 @@
         },
         "kind": {
           "const": "directory"
+        },
+        "files": {
+          "type": "integer"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "members": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/fileIdentity"
+          }
         }
       },
       "required": [
         "path",
-        "kind"
+        "kind",
+        "files",
+        "size",
+        "fingerprint",
+        "digest"
+      ]
+    },
+    "fileIdentity": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "type": "integer"
+        },
+        "mtime_ns": {
+          "type": "integer"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "size",
+        "mtime_ns",
+        "fingerprint",
+        "digest"
       ]
     }
   }
