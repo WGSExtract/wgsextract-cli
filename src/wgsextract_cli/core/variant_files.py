@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import shutil
+import stat
 import subprocess
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
@@ -133,7 +134,7 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
                         index.unlink(missing_ok=True)
                     else:
                         published[index] = _publish_vcf_index(
-                            csi if index.suffix == ".csi" else tbi, index
+                            csi if index.suffix == ".csi" else tbi, index, vcf
                         )
             finally:
                 _check_published_indexes(vcf, generation, published)
@@ -170,10 +171,17 @@ def _stage_vcf_for_indexing(
     return _vcf_index_generation(staged)
 
 
-def _publish_vcf_index(source: Path, destination: Path) -> os.stat_result:
+def _publish_vcf_index(source: Path, destination: Path, vcf: Path) -> os.stat_result:
     # Keep the staged index available for the other name of the same format.
     duplicate = source.with_name("publish")
     shutil.copy2(source, duplicate)
+    try:
+        previous_mode = destination.stat().st_mode
+    except FileNotFoundError:
+        # A new index shouldn't be readable by users who cannot read the VCF.
+        duplicate.chmod(stat.S_IMODE(duplicate.stat().st_mode) & vcf.stat().st_mode)
+    else:
+        duplicate.chmod(stat.S_IMODE(previous_mode))
     identity = duplicate.stat()
     duplicate.replace(destination)
     return identity

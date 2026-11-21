@@ -8,6 +8,7 @@ import logging
 import os
 import random
 import shlex
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -565,6 +566,43 @@ def test_1231_refresh_does_not_overwrite_a_siblings_short_index(rewritten_vcf):
         ensure_vcf_indexed(vcf)
 
     assert _index_test_query(str(sibling), 90000) == "rs90000\n"
+
+
+@needs_htslib
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1231_refresh_preserves_restrictive_index_permissions(rewritten_vcf):
+    vcf = rewritten_vcf
+    csi = Path(f"{vcf}.csi")
+    csi.chmod(0o600)
+    previous = os.umask(0o022)
+    try:
+        ensure_vcf_indexed(vcf)
+    finally:
+        os.umask(previous)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+    assert stat.S_IMODE(csi.stat().st_mode) == 0o600
+
+
+@needs_htslib
+def test_1231_refresh_preserves_compressed_annotation_table_support(tmp_path):
+    sample = _vcf(tmp_path / "sample.vcf", ["chr1\t100\t.\tA\tG\t50\tPASS\t."])
+    table = tmp_path / "annotation.tab"
+    table.write_text(
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\trs123\tA\tG\t.\t.\t.\n",
+        encoding="utf-8",
+    )
+    compressed = tmp_path / "annotation.tab.gz"
+    with compressed.open("wb") as output:
+        run_command(["bgzip", "-c", table], stdout=output)
+
+    run_wgsextract(
+        "vcf", "annotate", "--input", sample, "--ann-vcf", str(compressed),
+        "--cols", "CHROM,POS,ID,REF,ALT", "--outdir", str(tmp_path),
+    )  # fmt: skip
+
+    assert _index_test_query(str(tmp_path / "annotated.vcf.gz"), 100) == "rs123\n"
 
 
 @needs_htslib
