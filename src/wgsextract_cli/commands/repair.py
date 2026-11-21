@@ -2,7 +2,6 @@ import argparse
 import gzip
 import io
 import logging
-import re
 import subprocess
 import sys
 import tempfile
@@ -19,7 +18,7 @@ from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
-from wgsextract_cli.core.temp_directory import input_scratch_directory
+from wgsextract_cli.core.temp_directory import input_scratch_directory, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -30,6 +29,7 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 
 from ._extract_helpers import cleanup_files
+from ._ftdna_vcf import repair_vcf_stream
 
 # Records between cancellation checks in the stream copies.
 _CHECK_EVERY = 10_000
@@ -139,6 +139,7 @@ def repair_vcf_file(params: RepairFtdnaVcfParams) -> None:
 
 
 def _repair_vcf_to(input_path: str, output_path: str) -> tuple[int, int]:
+    spool_dir = scratch_parent(Path(output_path).parent)
     if input_path.lower().endswith(".bcf"):
         with tempfile.NamedTemporaryFile(
             mode="w+",
@@ -157,7 +158,9 @@ def _repair_vcf_to(input_path: str, output_path: str) -> tuple[int, int]:
                     output_path, "w", encoding="utf-8", newline="\n"
                 ) as repaired_output,
             ):
-                return repair_vcf_stream(vcf_input, repaired_output)
+                return repair_vcf_stream(
+                    vcf_input, repaired_output, spool_dir=spool_dir
+                )
         finally:
             try:
                 Path(tmp_path).unlink()
@@ -168,7 +171,7 @@ def _repair_vcf_to(input_path: str, output_path: str) -> tuple[int, int]:
             _open_text_variant_input(input_path) as vcf_input,
             open(output_path, "w", encoding="utf-8", newline="\n") as repaired_output,
         ):
-            return repair_vcf_stream(vcf_input, repaired_output)
+            return repair_vcf_stream(vcf_input, repaired_output, spool_dir=spool_dir)
 
 
 def _refuse_json_in_pipe_mode() -> None:
@@ -199,27 +202,6 @@ def repair_bam_stream(input_stream: TextIO, output_stream: TextIO) -> tuple[int,
         if fields and " " in fields[0]:
             fields[0] = fields[0].replace(" ", ":")
             repaired += 1
-        output_stream.write("\t".join(fields) + "\n")
-    return records, repaired
-
-
-def repair_vcf_stream(input_stream: TextIO, output_stream: TextIO) -> tuple[int, int]:
-    """Copy VCF text, dropping invalid FILTER characters; returns the record
-    count and how many records were changed."""
-    records = repaired = 0
-    for line in input_stream:
-        if line.startswith("#"):
-            output_stream.write(line)
-            continue
-        records += 1
-        if not records % _CHECK_EVERY:
-            checkpoint()
-        fields = line.rstrip("\n").split("\t")
-        if len(fields) > 6:
-            cleaned = re.sub(r"[^A-Za-z0-9_.;-]", "", fields[6])
-            if cleaned != fields[6]:
-                fields[6] = cleaned
-                repaired += 1
         output_stream.write("\t".join(fields) + "\n")
     return records, repaired
 

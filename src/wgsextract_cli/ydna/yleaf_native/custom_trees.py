@@ -113,7 +113,11 @@ def configured_tree_step() -> tuple[dict[str, Any], dict[str, str]]:
 
     tree_id = str(settings.get("y_tree") or DEFAULT_TREE)
     if tree_id in MANIFEST["trees"]:
-        return {"id": tree_id, "version": MANIFEST["trees"][tree_id]["version"]}, {}
+        meta = MANIFEST["trees"][tree_id]
+        identity = {"id": tree_id, "version": meta["version"]}
+        if polarity := meta.get("modules", {}).get("polarity"):
+            identity["polarity_sha256"] = polarity["sha256"]
+        return identity, {}
     try:
         spec = parse_entry(tree_id, configured_trees()[tree_id])
     except (KeyError, WGSExtractError):

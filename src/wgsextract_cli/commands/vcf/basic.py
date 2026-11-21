@@ -64,24 +64,29 @@ from .contig_calling import call_small_variants, calling_contigs, calling_jobs
 P = TypeVar("P", bound=Params)
 
 
-def _select_vcf_input(args: argparse.Namespace) -> str | None:
+def _vcf_input_option(args: argparse.Namespace) -> Literal["vcf_input", "input"] | None:
     """
     Pick the VCF a command should read.
 
     An explicit --vcf-input wins, then an explicit --input; otherwise the
-    configured default VCF, then the (possibly configured) --input.
+    genome-selected or configured VCF, then the configured input.
     """
     input_path = getattr(args, "input", None)
     vcf_input = getattr(args, "vcf_input", None)
-    default_vcf = settings.get("default_input_vcf")
     explicit_dests: set[str] = getattr(args, "_explicit_dests", set())
 
-    if vcf_input and ("vcf_input" in explicit_dests or vcf_input != default_vcf):
-        return str(vcf_input)
+    if vcf_input and "vcf_input" in explicit_dests:
+        return "vcf_input"
     if "input" in explicit_dests and input_path:
-        return str(input_path)
-    selected = vcf_input if vcf_input else input_path
-    return str(selected) if selected else None
+        return "input"
+    if vcf_input:
+        return "vcf_input"
+    return "input" if input_path else None
+
+
+def _select_vcf_input(args: argparse.Namespace) -> str | None:
+    option = _vcf_input_option(args)
+    return str(getattr(args, option)) if option else None
 
 
 def require_vcf_input(params: _VcfFileParams) -> str:
@@ -103,12 +108,10 @@ def resolve_vcf_input(args: argparse.Namespace) -> None:
     if getattr(args, "proband", None):
         args.input = args.vcf_input = None
         return
-    selected = _select_vcf_input(args)
-    given = getattr(args, "input", None)
-    if selected is not None and given is not None and selected == str(given):
+    option = _vcf_input_option(args)
+    if option != "vcf_input":
         args.vcf_input = None
-    else:
-        args.vcf_input = selected
+    if option != "input":
         args.input = None
 
 

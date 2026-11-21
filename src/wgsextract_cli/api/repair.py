@@ -2,7 +2,7 @@
 make standard tools reject them.
 
 ``ftdna_bam`` replaces the spaces in read names with ``:``; ``ftdna_vcf``
-drops the characters VCF forbids from the FILTER column. Each writes
+maps legacy FILTER expressions to declared IDs (docs/ftdna-vcf-repair.md). Each writes
 ``<input stem>_repaired.bam`` (or ``.vcf``) in ``outdir``, else beside the
 input, or the ``output`` path. The result's metrics count the records read
 (``records``) and changed (``repaired_records``). The CLI also repairs a
@@ -59,8 +59,11 @@ class RepairFtdnaBamParams(_RepairParams):
 @dataclass(frozen=True, kw_only=True)
 class RepairFtdnaVcfParams(_RepairParams):
     """Copy an FTDNA VCF (plain, gzipped or BCF) to a plain VCF whose FILTER
-    values hold only the characters VCF allows (``Low Qual;q<10`` becomes
-    ``LowQual;q10``), so bcftools and VEP accept it."""
+    IDs are all declared, so bcftools and VEP accept it. Legacy expressions
+    become IDs that keep their meaning (``DP=1`` becomes ``DP1``, ``QUAL=12``
+    ``Q40``); ones it can't interpret become ``FTDNA_UNKNOWN`` with a
+    warning. Failed calls never become PASS, and the original expressions
+    are kept in ``INFO/FTDNA_FILTER``. See docs/ftdna-vcf-repair.md."""
 
     COMMAND = "repair ftdna-vcf"
 

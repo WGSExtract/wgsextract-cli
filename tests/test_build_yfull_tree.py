@@ -121,6 +121,23 @@ def _build(args: list[str], output: Path) -> dict[str, dict[str, bytes]]:
 
 
 @pytest.mark.skipif(not shutil.which("samtools"), reason="samtools required")
+def test_issue1168_reference_filter_does_not_hide_recurrence_in_build_audit(
+    tmp_path: Path,
+) -> None:
+    args = _inputs(tmp_path)
+    with (tmp_path / "snps_hg38.csv").open("a") as stream:
+        stream.write("chrY,point,snp,10,10,M9,C,T\n")
+    args += ["--ref-haplogroup-hg38", "R1"]
+    positions = _build(args, tmp_path / "out")["positions"]
+    info = json.loads(positions["build_info.json"])["builds"]["hg38"]
+    assert info["reference_mismatch"] == 1
+    assert info["polarity"]["recurrent_not_audited"] == 2
+    assert info["polarity"]["path_ref_ancestral"] == 1  # M2, not M1
+    assert b"\tM1\t" in positions["hg38/new_positions.txt"]
+    assert b"\tM9\t" not in positions["hg38/new_positions.txt"]
+
+
+@pytest.mark.skipif(not shutil.which("samtools"), reason="samtools required")
 def test_modules_hold_tree_and_build_marker_tables_reproducibly(
     tmp_path: Path,
 ) -> None:
