@@ -135,17 +135,29 @@ _N_COLUMN = BINS_TABLE[2].name
 _Raw = tuple[str, int, int | None, list[int]]  # name, length, Ns, depth bands
 
 
+def _non_n_bands(ns: int, bins: list[int]) -> list[int]:
+    """Depth 0 / 1-3 / 4-7 / 8+ counts of the non-N bases.
+
+    Ns are depth 0 unless reads overlap them (an isolated N, a gap's edge).
+    Depth gives counts, not positions, so such covered Ns leave the deepest
+    bands, where reads spanning them sit, keeping each share within 100 %."""
+    counts = [max(bins[0] - ns, 0), *bins[1:]]
+    excess = max(ns - bins[0], 0)
+    for band in (3, 2, 1):
+        taken = min(excess, counts[band])
+        counts[band] -= taken
+        excess -= taken
+    return counts
+
+
 def _bins_row(name: str, length: int, ns: int, bins: list[int]) -> tuple[Value, ...]:
     callable_bp = max(length - ns, 0)
-    # Ns have no reads, so they are depth 0; reads overlapping the edge of an N
-    # run can't make the non-N zero count negative.
-    counts = [max(bins[0] - ns, 0), *bins[1:]]
     return (
         name,
         length,
         ns,
         *bins,
-        *(count / callable_bp if callable_bp else 0.0 for count in counts),
+        *(c / callable_bp if callable_bp else 0.0 for c in _non_n_bands(ns, bins)),
     )
 
 
@@ -189,7 +201,8 @@ def render_bins(rows: list[tuple[Value, ...]], region: str | None = None) -> str
     pools = {"Total": [0] * 6, "Other": [0] * 6}  # length, Ns, four bands
     for row in rows:
         name = str(row[0])
-        values = [int(str(v)) for v in row[1:7]]
+        length, ns, *bins = (int(str(v)) for v in row[1:7])
+        values = [length, ns, *_non_n_bands(ns, bins)]
         primary = (
             region is not None or is_primary_contig(name) or contig_key(name) == "M"
         )
@@ -209,7 +222,7 @@ def render_bins(rows: list[tuple[Value, ...]], region: str | None = None) -> str
         f"{'4 to 7':>10}{'8 or More':>11}{'1 or More':>11}",
     ]
     for name, (length, ns, _zero, low, mid, high) in shown:
-        of = length - ns
+        of = max(length - ns, 0)
         lines.append(
             f"{name:<10}{_fmt_len(length):>10}{_fmt_len(ns):>9}{pct(low, of):>10}"
             f"{pct(mid, of):>10}{pct(high, of):>11}{pct(low + mid + high, of):>11}"

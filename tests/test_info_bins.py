@@ -355,3 +355,12 @@ def test_with_bins_csv_prints_the_bins_rows_as_csv(tmp_path: Path, capsys):
     rows = list(csv.reader(capsys.readouterr().out.splitlines()))
     assert rows[-2][:4] == ["Seq Name", "Model Len", "Model N Len", "Depth 0 bases"]
     assert rows[-1][:5] == ["chrY", "4", "0", "3", "1"]
+
+
+def test_reads_over_an_n_base_keep_shares_within_100_percent():
+    """HG01356: reads spanning chrM's one N read as 100.01 % at 8 or more."""
+    from wgsextract_cli.commands.info.bins import render_bins
+
+    # Seq Name, Model Len, Model N Len, depth 0, 1-3, 4-7, 8+ bases
+    lines = render_bins([("chrM", 16569, 1, 0, 0, 0, 16569)]).splitlines()
+    assert next(ln for ln in lines if ln.startswith("chrM")).split()[-2] == "100.00"
