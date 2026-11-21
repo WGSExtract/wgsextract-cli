@@ -170,21 +170,56 @@ def test_requests_need_the_token_and_a_local_host(client):
     assert (status, body["error"]["code"]) == (403, "bad_origin")
 
 
-def test_bad_lengths_are_refused_and_errors_close_the_connection(client):
-    # PR #422 review: a negative Content-Length read the body to EOF, and an
-    # error left an unread body to be parsed as the next request.
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ([("Content-Length", "-1")], 400),
+        ([], 411),
+        ([("Transfer-Encoding", "chunked")], 400),
+        ([("Content-Length", "0"), ("Content-Length", "0")], 400),
+        ([("Content-Length", "\xa00")], 400),
+    ],
+)
+def test_bad_lengths_are_refused_and_errors_close_the_connection(
+    client, headers, status
+):
+    # #1209: invalid or missing framing must be rejected before reading a body.
     host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
     connection = http.client.HTTPConnection(host, int(port), timeout=30)
     connection.putrequest("POST", "/v1/ops/info")
     connection.putheader("Authorization", "Bearer " + TOKEN)
     connection.putheader("Content-Type", "application/json")
-    connection.putheader("Content-Length", "-1")
+    for name, value in headers:
+        connection.putheader(name, value)
     connection.endheaders()
     response = connection.getresponse()
-    assert response.status == 400
+    assert response.status == status
     assert json.loads(response.read())["error"]["code"] == "bad_length"
     assert response.headers["Connection"] == "close"
     connection.close()
+
+
+def test_1209_job_log_tails_text_and_disallows_caching(client, tmp_path, work):
+    status, job = client.request(
+        "POST", "/ops/example-genome/list?wait=10", {"target_root": str(work)}
+    )
+    assert status == 200
+    job_id = job["id"]
+    content = b"old\r\n" * 20_000 + b"boundary\r\n" + b"x" * 65_530 + b"\r\nend"
+    (tmp_path / "state" / "jobs" / f"{job_id}.log").write_bytes(content)
+    path = f"/jobs/{job_id}/log"
+
+    assert client.request("GET", f"{path}?tail=-1")[0] == 400
+    request = urllib.request.Request(
+        client.url + path + "?tail=2", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.read() == b"x" * 65_530 + b"\nend\n"
+    assert client.request("GET", f"{path}?tail=0") == (
+        200,
+        content.decode().replace("\r\n", "\n") + "\n",
+    )
 
 
 def test_a_client_resetting_its_connection_prints_no_traceback(client, capfd):

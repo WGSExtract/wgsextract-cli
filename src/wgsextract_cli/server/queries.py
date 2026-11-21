@@ -185,18 +185,27 @@ def _tsv_rows(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:
             )
 
 
-def _parquet_rows(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:
+def _parquet_rows(
+    path: Path, columns: set[str]
+) -> Iterator[tuple[int, dict[str, Any]]]:
     from wgsextract_cli.core.table_writer import require_pyarrow
 
     try:
         pq = require_pyarrow()
     except WGSExtractError as e:
         raise RequestError(400, "usage", str(e)) from None
+    from pyarrow import ArrowException
+
     number = 0
-    for batch in pq.ParquetFile(path).iter_batches():
-        for row in batch.to_pylist():
-            number += 1
-            yield number, row
+    try:
+        with pq.ParquetFile(path) as parquet:
+            present = [name for name in parquet.schema_arrow.names if name in columns]
+            for batch in parquet.iter_batches(columns=present):
+                for row in batch.to_pylist():
+                    number += 1
+                    yield number, row
+    except ArrowException as e:
+        raise RequestError(400, "usage", f"Can't read {path}: {e}") from None
 
 
 def _json_value(value: Any) -> Any:
@@ -272,6 +281,7 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> VariantPage:
         rank = CONFIDENCE_RANK.get(str(row.get("confidence") or ""), -1)
         return least < 0 or rank >= least
 
+    wanted = arguments.columns or COLUMN_NAMES
     name = path.name.lower()
     if name.endswith(".sqlite"):
         # Narrow with the database's indexes; keep() decides. An rsID can be
@@ -289,7 +299,18 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> VariantPage:
             values.extend(region)
         rows = _sqlite_rows(path, after, where, values)
     elif name.endswith(".parquet"):
-        rows = _parquet_rows(path)
+        columns = set(wanted)
+        if gene is not None:
+            columns.add("gene")
+        if rsid is not None:
+            columns.add("rsid")
+        if region is not None:
+            columns.update(("chrom", "pos"))
+        if clinvar:
+            columns.add("clinvar_significance")
+        if least >= 0:
+            columns.add("confidence")
+        rows = _parquet_rows(path, columns)
     elif name.endswith((".tsv", ".tsv.gz")):
         rows = _tsv_rows(path)
     else:
@@ -298,7 +319,6 @@ def query_variants(guard: PathGuard, arguments: VariantInputs) -> VariantPage:
             "usage",
             "path must be a vcf table output: *_variants.tsv, .parquet or .sqlite.",
         )
-    wanted = arguments.columns or COLUMN_NAMES
     found: list[dict[str, object]] = []
     next_cursor = None
     last = after
