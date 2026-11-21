@@ -119,6 +119,7 @@ Responses are compact JSON, except viewer file bytes. Errors are
 | 403 | A path outside the allowed folders (`path_not_allowed`), a request that deletes data (`destructive`), or a bad Host or Origin |
 | 404 | Unknown operation or job |
 | 409 | Cancelling a finished job |
+| 411 | Missing `Content-Length` on an operation submission |
 
 A failed analysis is not an HTTP error. Its job finishes with status
 `failed` and the manifest's `error`.
@@ -168,6 +169,14 @@ flight was rejected.
 `exit_code` and `error`, and the operation's result manifest as `result`.
 The manifest's `provenance` (tool versions and the full parameters) appears
 only with `full=1`, to keep responses short.
+
+Operation submissions require `Content-Length` (use `0` for an empty body).
+Requests using `Transfer-Encoding` are rejected with 400.
+
+The event stream keeps the latest 1,024 events per job for active jobs and
+the 128 most recently finished jobs. Reconnecting with an older event ID
+returns only the events still in memory. Older job records and logs remain
+available on disk, but their events are not replayed.
 
 ### Lookups
 
