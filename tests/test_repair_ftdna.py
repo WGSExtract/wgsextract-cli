@@ -125,6 +125,7 @@ def test_repair_bam_writer_failure_is_reported(tmp_path, capsys):
     bam = _ftdna_bam(tmp_path / "ok.bam")
     locked = tmp_path / "locked"
     locked.mkdir(mode=0o500)
+    output = locked / "y.bam"
     try:
         with pytest.raises(SystemExit) as exit_info:
             main(
@@ -134,13 +135,14 @@ def test_repair_bam_writer_failure_is_reported(tmp_path, capsys):
                     "--input",
                     bam,
                     "--output",
-                    str(locked / "y.bam"),
+                    str(output),
                 ]
             )
     finally:
         locked.chmod(0o700)
     assert exit_info.value.code == 1
-    assert "Permission denied" in capsys.readouterr().err
+    message = capsys.readouterr().err
+    assert "Permission denied" in message and str(output) in message
     assert list(locked.iterdir()) == []
 
 
@@ -346,6 +348,19 @@ def test_1224_failed_bam_repair_preserves_previous_output(tmp_path):
         )
     assert output.read_bytes() == original
     assert list(dest.iterdir()) == [output]
+
+
+def test_1224_bam_repair_is_reproducible_at_the_same_destination(tmp_path):
+    source = _ftdna_bam(tmp_path / "kit.bam")
+    output = tmp_path / "fixed.bam"
+    args = ["repair", "ftdna-bam", "--input", source, "--output", str(output)]
+
+    main(args)
+    first = output.read_bytes()
+    main(args)
+
+    assert output.read_bytes() == first
+    assert _records(str(output))[0][0] == "FTDNA:read:7"
 
 
 def test_1224_vcf_repair_leaves_index_like_neighbors_alone(tmp_path):

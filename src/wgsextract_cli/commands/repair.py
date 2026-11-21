@@ -89,8 +89,9 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
             stderr=read_err,
         )
         writer = popen(
-            ["samtools", "view", "-b", "-o", staged, "-"],
+            ["samtools", "view", "-b", "-"],
             stdin=subprocess.PIPE,
+            stdout=staged,
             stderr=write_err,
         )
         assert reader.stdout is not None and writer.stdin is not None
@@ -124,7 +125,6 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
             raise WGSExtractError(
                 f"FTDNA BAM repair failed in {label} (exit {code}): {_tail(err)}"
             )
-        checkpoint()
     _record_repair(output_path, "repaired_alignment", counts)
     logging.info("Repaired FTDNA BAM written to %s", output_path)
 
@@ -136,9 +136,10 @@ def repair_vcf_file(params: RepairFtdnaVcfParams) -> None:
     output_path = _repair_output_path(params, ".vcf")
     output_dir = Path(output_path).parent
     with _stage_repair(output_path, ".vcf") as staged:
-        with open(staged, "w", encoding="utf-8", newline="\n") as repaired_output:
+        with io.TextIOWrapper(
+            staged, encoding="utf-8", newline="\n"
+        ) as repaired_output:
             counts = _repair_vcf_to(input_path, repaired_output, output_dir)
-        checkpoint()
     _record_repair(output_path, "repaired_vcf", counts)
     logging.info("Repaired FTDNA VCF written to %s", output_path)
 
@@ -230,19 +231,37 @@ def _repair_output_path(
 
 
 @contextmanager
-def _stage_repair(output: str, extension: str) -> Iterator[str]:
+def _stage_repair(output: str, extension: str) -> Iterator[IO[bytes]]:
     parent = Path(output).parent
-    parent.mkdir(parents=True, exist_ok=True)
-    temp = tempfile.NamedTemporaryFile(
-        dir=parent, prefix=".wgse-repair-", suffix=extension, delete=False
-    )
-    staged = temp.name
     try:
-        temp.close()  # samtools and Windows need the path closed before reopening it.
-        yield staged
-        os.replace(staged, output)
+        parent.mkdir(parents=True, exist_ok=True)
+        temp = tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=parent,
+            prefix=".wgse-repair-",
+            suffix=extension,
+            delete=False,
+        )
+    except OSError as exc:
+        raise WGSExtractError(
+            f"Cannot stage repaired output {output}: {exc.strerror or exc}"
+        ) from exc
+    staged = Path(temp.name)
+    identity = None
+    try:
+        with temp:
+            identity = os.fstat(temp.fileno())
+            yield temp.file
+        checkpoint()
+        if not os.path.samestat(staged.lstat(), identity):
+            raise WGSExtractError(f"Staging file changed for repaired output {output}.")
+        staged.replace(output)
     finally:
-        Path(staged).unlink(missing_ok=True)
+        try:
+            if identity is None or os.path.samestat(staged.lstat(), identity):
+                staged.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
 
 
 def _input_was_explicit(args: argparse.Namespace) -> bool:
