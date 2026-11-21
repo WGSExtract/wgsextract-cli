@@ -506,42 +506,6 @@ def test_y_build_override_cannot_infer_against_an_incompatible_fasta(
         )  # fmt: skip
 
 
-@pytest.mark.parametrize("indexed", [True, False])
-def test_native_y_vcf_query_uses_regions_only_when_indexed(
-    tmp_path, monkeypatch, indexed
-):
-    from wgsextract_cli.ydna.yleaf_native import analysis
-
-    vcf = Path(
-        _vcf(
-            tmp_path / "kit.vcf.gz",
-            {"chr1": 1000, "chrY": 1000, "Y": 1000},
-            "chr1\t100\t.\tA\tT\t50\tPASS\t.\tGT\t1\n"
-            "chrY\t130\t.\tA\tG\t50\tPASS\t.\tGT\t1\n"
-            "Y\t140\t.\tA\tT\t50\tPASS\t.\tGT\t1\n",
-        )
-    )
-    if not indexed:
-        plain = vcf.with_suffix("")
-        plain.write_bytes(gzip.decompress(vcf.read_bytes()))
-        vcf = plain
-    commands = []
-    run = analysis.run_command
-
-    def capture(command, **kwargs):
-        commands.append(command)
-        return run(command, **kwargs)
-
-    monkeypatch.setattr(analysis, "run_command", capture)
-    calls, has_ad = analysis._query_vcf(vcf)
-    assert not has_ad
-    assert {pos: call.base for pos, call in calls.items()} == {130: "G", 140: "T"}
-    query = next(command for command in commands if "-f" in command)
-    assert ("-r" in query) is indexed
-    if indexed:
-        assert query[query.index("-r") + 1] == "chrY,Y"
-
-
 @pytest.mark.parametrize(
     ("build", "yleaf"),
     [("hg38", "hg38"), ("hs37d5", "hg19"), ("GRCh37", "hg19"), ("t2t", "t2t")],

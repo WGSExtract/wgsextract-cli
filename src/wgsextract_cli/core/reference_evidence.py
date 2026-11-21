@@ -14,7 +14,8 @@ how it was made: the engine and its version, its quality model (``gq``: blocks
 carry GQ; ``depth_only``: bcftools blocks carry only DP/MIN_DP), its bands, the
 assessed region and the bases its ploidy policy excludes (ploidy 0, such as a
 woman's chrY). A gVCF without the header (another tool's) is read with the
-model its FORMAT/GQ declaration implies and no exclusions.
+model its recorded bcftools gVCF options or FORMAT/GQ declaration imply,
+and no exclusions.
 
 Public imports stay here. ``reference_evidence_records`` shares the record
 states and interval sweep with ``clair3_reference_shadow``, which owns the
@@ -32,7 +33,7 @@ import tempfile
 from bisect import bisect_right
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import InitVar, dataclass, field, replace
 from functools import cached_property
 from pathlib import Path
 
@@ -42,12 +43,14 @@ from wgsextract_cli.core.clair3_reference_shadow import (
 from wgsextract_cli.core.clair3_reference_shadow import (
     CLAIR3_DELETION_SPAN as CLAIR3_DELETION_SPAN,
 )
-from wgsextract_cli.core.clair3_reference_shadow import (
-    classified_records as _classified,
-)
+from wgsextract_cli.core.clair3_reference_shadow import classify_spans as classify_spans
 from wgsextract_cli.core.clair3_reference_shadow import query_intervals
 from wgsextract_cli.core.paths import PathInput
-from wgsextract_cli.core.reference_evidence_records import _RANK, _merge, _sweep
+from wgsextract_cli.core.reference_evidence_records import (
+    _RANK,
+    _merge,
+    bcftools_gvcf_header,
+)
 from wgsextract_cli.core.reference_evidence_records import (
     DEPTH_ONLY as DEPTH_ONLY,
 )
@@ -318,6 +321,20 @@ def _joined(spans: Iterable[Span]) -> Iterator[Span]:
         yield pending
 
 
+def quality_model_from_header(header: str) -> str:
+    """Shared caller model; bcftools block depth does not imply block GQ."""
+    provenance = next(
+        (p for line in header.splitlines() if (p := parse_provenance(line))), None
+    )
+    if provenance:
+        return provenance.quality_model
+    return (
+        DEPTH_ONLY
+        if bcftools_gvcf_header(header) or "##FORMAT=<ID=GQ," not in header
+        else GQ
+    )
+
+
 _CONTIG_ID = re.compile(r"^##contig=<(?:.*?,)?ID=([^,>]+)", re.MULTILINE)
 
 
@@ -329,15 +346,20 @@ class ReferenceEvidence:
 
     path: str
     known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
+    header_text: InitVar[str | None] = None
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
     deletion_shadow: bool = field(init=False)
 
-    def __post_init__(self) -> None:
-        header = run_command(
-            ["bcftools", "view", "-h", self.path], capture_output=True
-        ).stdout
+    def __post_init__(self, header_text: str | None) -> None:
+        header = (
+            header_text
+            if header_text is not None
+            else run_command(
+                ["bcftools", "view", "-h", self.path], capture_output=True
+            ).stdout
+        )
         declared = header_contig_lengths(header)
         self.lengths = {}
         for name in _CONTIG_ID.findall(header):
@@ -352,12 +374,7 @@ class ReferenceEvidence:
         self.deletion_shadow = engine == "clair3" or (
             engine is None and "\n##source=Clair3" in f"\n{header}"
         )
-        has_gq = "##FORMAT=<ID=GQ," in header
-        self.quality_model = (
-            self.provenance.quality_model
-            if self.provenance
-            else (GQ if has_gq else DEPTH_ONLY)
-        )
+        self.quality_model = quality_model_from_header(header)
 
     def assessed(self) -> list[Interval] | None:
         """The intervals the caller assessed, or None when unknown."""
@@ -491,11 +508,18 @@ class ReferenceEvidence:
         return intervals
 
     def spans(
-        self, thresholds: Thresholds, regions: Iterable[Interval] | None = None
+        self,
+        thresholds: Thresholds,
+        regions: Iterable[Interval] | None = None,
+        *,
+        records: Iterator[list[str]] | None = None,
+        ploidy: int | None = None,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
-        where the caller assessed them and not assessed elsewhere."""
+        where the caller assessed them and not assessed elsewhere.
+        ``records`` supplies a sorted, already-open single-sample stream;
+        missing records remain not assessed. ``ploidy`` overrides GT encoding."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -513,7 +537,25 @@ class ReferenceEvidence:
         if not wanted:
             return
         assessed = self.assessed()
-        observed = self._observed(wanted, thresholds, order)
+        observed = (
+            self._observed(wanted, thresholds, order)
+            if records is None
+            else classify_spans(
+                records,
+                self.quality_model,
+                thresholds,
+                wanted,
+                deletion_shadow=self.deletion_shadow,
+                record_ploidy=(
+                    (lambda _c, _s, _e: ploidy)
+                    if ploidy is not None
+                    else self.provenance.record_ploidy
+                    if self.provenance
+                    else None
+                ),
+                missing_state=State.NOT_ASSESSED,
+            )
+        )
         spans: Iterator[Span] = observed
         if assessed is not None:
             spans = _overlay(
@@ -558,16 +600,15 @@ class ReferenceEvidence:
                 assert process.stdout is not None
                 try:
                     records = (line.rstrip("\n").split("\t") for line in process.stdout)
-                    yield from _sweep(
+                    yield from classify_spans(
+                        records,
+                        self.quality_model,
+                        thresholds,
                         wanted,
-                        _classified(
-                            records,
-                            self.quality_model,
-                            thresholds,
-                            self.deletion_shadow,
-                            self.provenance.record_ploidy if self.provenance else None,
-                        ),
-                        order,
+                        deletion_shadow=self.deletion_shadow,
+                        record_ploidy=self.provenance.record_ploidy
+                        if self.provenance
+                        else None,
                     )
                 finally:
                     process.stdout.close()

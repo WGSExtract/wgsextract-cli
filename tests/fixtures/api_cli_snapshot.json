@@ -14582,7 +14582,7 @@
    }
   },
   "lineage y-haplogroup": {
-   "help": "usage: wgsextract lineage y-haplogroup [-h] [--download | --no-download] [--build {hg19,hg38,t2t}]\n                                       [--tree TREE] [--ancient] [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n8 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract lineage y-haplogroup [-h] [--download | --no-download] [--build {hg19,hg38,t2t}]\n                                       [--tree TREE] [--ancient] [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n9 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -15052,12 +15052,28 @@
       "const": true,
       "default": false,
       "dest": "no_ref_inference",
-      "exclusive_group": null,
+      "exclusive_group": 1,
       "help": "VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--no-ref-inference"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "assume_reference",
+      "exclusive_group": 1,
+      "help": "VCF: assume --ref at absent markers for upstream Yleaf parity. Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--assume-reference"
       ],
       "required": false,
       "type": null
@@ -51020,6 +51036,7 @@
     "tree"
    ],
    "ancient": true,
+   "assume_reference": false,
    "atomic_output": false,
    "base_majority": 80,
    "base_quality": 15,
