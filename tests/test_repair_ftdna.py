@@ -323,7 +323,7 @@ def test_1185_legacy_ftdna_filters_become_declared_ids_that_keep_their_meaning(
         "101": "PASS", "102": ".", "103": "DP1", "104": "DPM", "105": "DPF",
         "106": "Q40", "107": "QF", "108": "GTL", "109": "DP1;Q40",
         "110": "LowQual;DP1", "111": "q10;s50", "112": "FTDNA_UNKNOWN",
-        "113": "FTDNA_UNKNOWN", "114": "DP1",
+        "113": "FTDNA_UNKNOWN", "114": "DP1", "115": "PASS", "116": "DP1",
     }  # fmt: skip
     assert rows["109"][1] == "DP%3D1,QUAL%3D19.1"  # original evidence kept
     assert rows["112"][1] == "Low%20Coverage"
@@ -388,7 +388,7 @@ def test_1185_malformed_record_fails_without_partial_output(
     bad.write_text(_CORPUS.read_text() + "chrY\t200\t.\tA\n")
     out = tmp_path / "fixed.vcf"
     result = _repair_json(capsys, bad, out)
-    assert result["status"] == "failed" and "Line 24" in result["error"]["message"]
+    assert result["status"] == "failed" and "Line 26" in result["error"]["message"]
     assert not out.exists()
 
     config = tmp_path / "config.toml"

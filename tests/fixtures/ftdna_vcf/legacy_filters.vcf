@@ -21,3 +21,5 @@ chrY	111	.	A	G	40	q10;s50	DP=5;HG=R-L21	GT	1
 chrY	112	.	A	T	41	Low Coverage	DP=3	GT	1
 chrY	113	.	A	C	42	DP<5	DP=4	GT	1
 chrY	114	.	A	G	43	PASS;DP=1	DP=1	GT	1
+chrY	115	.	A	T	44	PASS;PASS	DP=22	GT	1
+chrY	116	.	A	C	45	.;DP=1	DP=1	GT	1

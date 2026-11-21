@@ -104,6 +104,8 @@ class _Plan:
             if value in ("PASS", "."):
                 continue
             for token in _tokens(value):
+                if token == "PASS":
+                    continue
                 if _is_id(token) and token not in self.header.filters:
                     if token not in self.undeclared:
                         self.undeclared.append(token)
@@ -146,7 +148,7 @@ class _Plan:
         ids: list[str] = []
         evidence: list[str] = []
         for token in _tokens(value):
-            if _is_id(token):
+            if token == "PASS" or _is_id(token):
                 ids.append(token)
                 continue
             legacy = _LEGACY.fullmatch(token)
@@ -162,10 +164,14 @@ class _Plan:
 
 
 def _tokens(value: str) -> list[str]:
-    """A failed FILTER value's entries; PASS alongside a failure is dropped
-    and an empty value is one unknown entry."""
+    """A FILTER value's entries, less ``.`` and any PASS beside a failure.
+    Only PASS entries stay ``["PASS"]``; no entries at all (an empty value)
+    is one unknown entry."""
     tokens = [token.strip() for token in value.split(";")]
-    return [token for token in tokens if token and token != "PASS"] or [value]
+    failures = [token for token in tokens if token not in ("", ".", "PASS")]
+    if failures:
+        return failures
+    return ["PASS"] if "PASS" in tokens else [value]
 
 
 def _is_id(token: str) -> bool:

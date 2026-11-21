@@ -32,7 +32,9 @@ Each `;`-separated entry of a FILTER value is handled on its own:
 | anything else (`Low Coverage`, `DP<5`, empty) | `FTDNA_UNKNOWN` | failed a vendor filter of unknown meaning |
 
 - A failed call never becomes `PASS`: `PASS` next to a failing entry
-  (`PASS;DP=1`) is dropped, and the remaining failure is kept.
+  (`PASS;DP=1`) is dropped, and the remaining failure is kept. A value of only
+  `PASS` entries (`PASS;PASS`) becomes `PASS`, and a `.` entry beside others
+  is dropped.
 - Several entries stay several IDs (`DP=1;QUAL=19.1` becomes `DP1;Q40`).
 - Each replaced expression is kept, percent-encoded, in `INFO/FTDNA_FILTER`
   (`DP%3D1,QUAL%3D19.1`), so the original evidence is still in the file.
