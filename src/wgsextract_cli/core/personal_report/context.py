@@ -219,7 +219,15 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
 
 
 def _files(source: Source) -> set[str]:
-    return {_key(p) for p in [*source.sample_files(), *source.files("outputs")]}
+    outside_calls = (
+        source.locate(str(record["path"]))
+        for record in source.records("inputs")
+        if record.get("role") == "pharmcat_outside_call" and record.get("path")
+    )
+    return {
+        _key(p)
+        for p in [*source.sample_files(), *source.files("outputs"), *outside_calls]
+    }
 
 
 def sample_groups(sources: Sequence[Source]) -> list[list[Source]]:
@@ -245,6 +253,19 @@ def _roots(group: Sequence[Source]) -> list[Path]:
     return [p for key, p in roots.items() if key not in produced]
 
 
+def _selection_paths(group: Sequence[Source]) -> list[Path]:
+    # An align run can produce the first selectable file from FASTQs that
+    # aren't report inputs. Its alignment still identifies a sample group.
+    return _roots(group) or list(
+        {
+            path
+            for source in group
+            for path in source.files("outputs")
+            if path.name.lower().endswith(_ALIGNMENT_SUFFIXES + _VCF_SUFFIXES)
+        }
+    )
+
+
 def select_sample(
     sources: Sequence[Source], input_file: Path | None, *, workspace: bool
 ) -> list[Source]:
@@ -263,7 +284,8 @@ def select_sample(
             or (
                 workspace
                 and not any(
-                    p.name.lower().endswith(_ALIGNMENT_SUFFIXES) for p in _roots(g)
+                    p.name.lower().endswith(_ALIGNMENT_SUFFIXES)
+                    for p in _selection_paths(g)
                 )
             )
         ]
@@ -271,12 +293,14 @@ def select_sample(
             (s for g in kept for s in g), key=lambda s: (s.finished, str(s.manifest))
         )
     if not workspace:
-        rooted_groups = [roots for group in groups if (roots := _roots(group))]
-        if len(rooted_groups) > 1:
-            paths = sorted(str(path) for roots in rooted_groups for path in roots)
+        choices = [
+            group_paths for group in groups if (group_paths := _selection_paths(group))
+        ]
+        if len(choices) > 1:
+            labels = sorted(str(path) for choice in choices for path in choice)
             raise UsageError(
                 "The folder has results of several samples ("
-                + ", ".join(paths)
+                + ", ".join(labels)
                 + "); choose one with --input."
             )
     return list(sources)
@@ -290,7 +314,7 @@ def sample_sources(
     return select_sample(
         collect_sources(folder, results),
         input_file,
-        workspace=workspace.path.exists() or workspace.is_genome_folder,
+        workspace=workspace.is_genome_folder,
     )
 
 

@@ -72,11 +72,9 @@ def test_an_input_limits_the_report_to_that_samples_runs(tmp_path):
 
 @needs_tools("samtools")
 @pytest.mark.parametrize(
-    "compare_samples", [False, True], ids=["separate", "relatedness"]
+    "evidence", ["separate", "relatedness", "aligned_from_reads", "file_override"]
 )
-def test_1221_report_distinguishes_same_named_bams_by_provenance(
-    tmp_path, compare_samples
-):
+def test_1221_report_distinguishes_same_named_bams_by_provenance(tmp_path, evidence):
     folder = tmp_path / "shared"
     first, second = folder / "first", folder / "second"
     for directory, base in ((first, "A"), (second, "T")):
@@ -116,6 +114,16 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(
         "tsv",
     )
     expected = {Path(result["manifest"]) for result in (sorted_run, descendant)}
+    if evidence == "aligned_from_reads":
+        expected.add(
+            _manifest(
+                first,
+                "alignment",
+                "align",
+                inputs=((first / "sample.fastq.gz", "fastq_r1"),),
+                outputs=((first / "sample.bam", "alignment"),),
+            )
+        )
     report_args = ("report", "--workspace", str(folder))
     connected = run(*report_args, "--outdir", str(tmp_path / "connected"))
     assert {Path(item["path"]) for item in connected["inputs"]} == expected
@@ -129,7 +137,7 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(
         "--format",
         "tsv",
     )
-    if compare_samples:
+    if evidence == "relatedness":
         _manifest(
             folder,
             "relatedness",
@@ -138,6 +146,16 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(
                 (directory / "sample.bam", "input") for directory in (first, second)
             ),
         )
+    elif evidence == "aligned_from_reads":
+        _manifest(
+            second,
+            "alignment",
+            "align",
+            inputs=((second / "sample.fastq.gz", "fastq_r1"),),
+            outputs=((second / "sample.bam", "alignment"),),
+        )
+    elif evidence == "file_override":
+        SampleWorkspace(folder).set_overrides({"sex": "Female"}, first_bam)
     outdir = tmp_path / "report"
     report_args += ("--outdir", str(outdir))
     code, output = _cli(*report_args, "--json")
@@ -163,6 +181,34 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(
     assert [
         source["manifest"] for source in report["sections"]["overview"]["sources"]
     ] == [f"first/{Path(descendant['manifest']).name}"]
+
+
+@pytest.mark.parametrize("selection", [None, "sample.bam", "calls.vcf"])
+def test_1221_report_keeps_explicit_pharmcat_outside_call_lineage(tmp_path, selection):
+    bam = _touch(tmp_path / "sample.bam")
+    vcf = _touch(tmp_path / "calls.vcf")
+    calls = _touch(tmp_path / "sample.outside.tsv", "CYP2D6\t*1/*2\n")
+    cyrius = _manifest(
+        tmp_path,
+        "cyrius",
+        "typing cyp2d6",
+        inputs=((bam, "input"),),
+        outputs=((calls, "pharmcat_outside_call"),),
+    )
+    pharmcat = _manifest(
+        tmp_path,
+        "pharmcat",
+        "vcf pharmcat",
+        inputs=((vcf, "vcf_input"), (calls, "pharmcat_outside_call")),
+        status="failed",
+    )
+    args = ("--input", str(tmp_path / selection)) if selection else ()
+    code, output = _cli("report", "--workspace", str(tmp_path), "--json", *args)
+    assert code == 0, output
+    result = json.loads(output)
+    assert {
+        Path(item["path"]) for item in result["inputs"] if item["role"] == "manifest"
+    } == {cyrius, pharmcat}
 
 
 def test_in_a_workspace_runs_on_another_alignment_stay_out(tmp_path):
