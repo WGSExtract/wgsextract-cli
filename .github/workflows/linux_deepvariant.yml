@@ -18,6 +18,8 @@ on:
       - packaging/wgse-deepvariant/**
       - .github/workflows/linux_deepvariant.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/compiler-cache/**
+      - .github/actions/apt-install/**
       - "!**/*.md"
   push:
     branches: [main]

@@ -464,6 +464,7 @@ or gene.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
 | `cram_version` | `str` | `'3.0'` | `--cram-version` | CRAM version to output (default: 3.0 for better compatibility) One of: `2.1`, `3.0`, `3.1` |
+| `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | Only native Windows CRAM 3.1 encoding with a local reference uses the validated samtools-mimalloc variant; unavailable variants fall back to samtools. The compatibility default CRAM 3.0 is unchanged. One of: `auto`, `off` |
 
 ### `api.bam.to_bam(BamToBamParams)`
 

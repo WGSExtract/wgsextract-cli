@@ -28,10 +28,12 @@ from wgsextract_cli.core.ref_library.mitochondrial import (
     CHM13_CHRM,
     CHM13_CHRM_MD5,
     RCRS_MD5,
+    fasta_mito,
+    header_md5,
     mito_origin,
     ref_agreement,
 )
-from wgsextract_cli.core.ref_library.models import MITO_BY_LENGTH, sequence_lengths
+from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import (
     Scalar,
@@ -51,7 +53,6 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
-    chromosome_aliases,
     get_bam_header,
     get_chr_name,
     verify_paths_exist,
@@ -504,19 +505,19 @@ def _mito_check(
         chr_m = names[0] if names else chr_m
     header = get_bam_header(path, cram_opt)
     length = sequence_lengths(header).get(chr_m)
-    if length is not None and MITO_BY_LENGTH.get(length) != "rCRS":
-        if MITO_BY_LENGTH.get(length) == "Yoruba":
+    if length is not None and length != 16569:
+        if length == 16571:
             return SYSTEM_MESSAGES["YorubaWarning"], None
         return (
             f"{chr_m} is {length} bp, not the 16569 bp rCRS that Haplogrep's "
             "positions refer to.",
             None,
         )
-    md5 = _header_md5(header, chr_m)
+    md5 = header_md5(header, chr_m)
     origin = {CHM13_CHRM_MD5: CHM13_CHRM, RCRS_MD5: "rCRS"}.get(md5 or "")
     if fasta:
         # The reference variants are called against outranks the header.
-        sequence = _fasta_mito(fasta, chr_m)
+        sequence = fasta_mito(fasta, chr_m)
         called_on = mito_origin(sequence) if sequence else None
         # Either way round, reads aligned to one chrM would be called against
         # the other's positions.
@@ -556,33 +557,6 @@ def _mito_check(
         "chrM; `wgsextract realign` re-maps a BAM or CRAM.",
         origin,
     )
-
-
-def _fasta_mito(fasta: str, chr_m: str) -> str | None:
-    """The FASTA's mitochondrial sequence under any of its names, or None."""
-    for name in dict.fromkeys((chr_m, *chromosome_aliases(chr_m))):
-        result = run_command(
-            ["samtools", "faidx", fasta, name], capture_output=True, check=False
-        )
-        if result.returncode == 0 and result.stdout.count("\n") > 1:
-            return "".join(result.stdout.splitlines()[1:])
-    return None
-
-
-def _header_md5(header: str, contig: str) -> str | None:
-    """The MD5 a BAM @SQ (M5) or VCF ##contig (md5) line gives ``contig``."""
-    for line in header.splitlines():
-        if line.startswith("@SQ"):
-            tags = dict(f.split(":", 1) for f in line.split("\t")[1:] if ":" in f)
-            if tags.get("SN") == contig:
-                return tags.get("M5", "").lower() or None
-        elif line.startswith("##contig=<"):
-            fields = dict(
-                f.split("=", 1) for f in line[10:].rstrip(">").split(",") if "=" in f
-            )
-            if fields.get("ID") == contig:
-                return fields.get("md5", "").strip("\"'").lower() or None
-    return None
 
 
 def _scalar(value: str | None) -> Scalar:

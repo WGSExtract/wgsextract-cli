@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from wgsextract_cli.core import conversion_resources as _conversion
 from wgsextract_cli.core.alignment.samtools_commands import parse_memory
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.resource_volumes import reference_evidence_demands
@@ -39,8 +40,8 @@ GATK_WORKER_BYTES = 6 * GIB
 # Conservative 30x envelope: 680M reads -> 81.6 GB sort spill, 19.0 GB CRAM.
 # H2's binned-quality CRAM was only 8.63 GB; don't assume all inputs compress so well.
 SORT_BYTES_PER_READ = 120
-CRAM_BYTES_PER_READ = 28
-BAM_BYTES_PER_READ = 100
+CRAM_BYTES_PER_READ = _conversion.CRAM_BYTES_PER_READ
+BAM_BYTES_PER_READ = _conversion.BAM_BYTES_PER_READ
 FASTQ_BYTES_PER_READ = 100
 # HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
 # Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
@@ -459,6 +460,7 @@ def estimate_resources(
     demands: list[tuple[str, str, int | None]] = []
     staged_phases: list[list[tuple[str, str, int | None]]] | None = None
     memory_components: dict[str, int]
+    memory_unknown = False
     output: int | None
     temporary: int | None = 0
     if operation in {"align", "realign"}:
@@ -696,12 +698,8 @@ def estimate_resources(
         )
         temporary = None if disk_reads is None else disk_reads * SORT_BYTES_PER_READ
     elif operation in {"to-bam", "to-cram"}:
-        memory_components = {"codecs": (count + 1) * 64 * 1024**2, "overhead": GIB // 4}
-        output = (
-            None
-            if disk_reads is None
-            else disk_reads
-            * (CRAM_BYTES_PER_READ if operation == "to-cram" else BAM_BYTES_PER_READ)
+        memory_components, output, memory_unknown = _conversion.conversion_resources(
+            count, disk_reads, reference, region, operation, notes
         )
     elif operation == "deepvariant" and deepvariant_native:
         calling = dv_calling_regions(
@@ -1004,7 +1002,7 @@ def estimate_resources(
     resources = [
         ResourceEstimate(
             "memory",
-            sum(memory_components.values()),
+            None if memory_unknown else sum(memory_components.values()),
             available_memory,
             memory_components,
         )

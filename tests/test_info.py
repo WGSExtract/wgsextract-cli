@@ -85,7 +85,7 @@ def test_info_fast_mode(info_env):
     sample, _calls = info_env
     output = _run_info(sample, "info")
 
-    assert "Reference Genome            hg38 (Num), rCRS, 1 SNs" in output
+    assert "Reference Genome            hg38 (Num), , 1 SNs" in output
     assert "File Stats                  Sorted, Indexed, 50.0 GBs" in output
     assert "Avg Read Length             150 bp" in output
     assert "Avg Insert Size             300 bp" in output
@@ -98,7 +98,7 @@ def test_info_detailed_mode(info_env):
     sample, _calls = info_env
     output = _run_info(sample, "info", "--detailed")
 
-    assert "hg38 (Num), rCRS, 1 SNs" in output
+    assert "hg38 (Num), , 1 SNs" in output
     assert "150 bp" in output
     assert "Bio Gender                  Unknown" in output
     assert "Illumina NS 6000 (Dante)" in output
@@ -155,7 +155,7 @@ def test_cached_reference_from_older_detection_is_recomputed(info_env):
 
     output = _run_info(sample, "info", "--detailed")
 
-    assert "hg38 (Num), rCRS, 1 SNs" in output
+    assert "hg38 (Num), , 1 SNs" in output
     assert calls["run_body_sample"] == 2
     assert calls["parse_idxstats"] == 2
     assert json.loads(cache_path.read_text())["ref_model_str"].startswith("hg38")

@@ -113,7 +113,7 @@ fastp = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/
 htslib = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/htslib-1.24-wgse_2.conda", sha256 = "cf4d42c7c0a3b0867394485bed2511296b84e819deac1577cb132971a686c4f9" }
 minimap2 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/minimap2-2.31-wgse_1.conda", sha256 = "1cd0e2770487968abf684a04fbe591f1f81d23d60b2edd30c5207a19fe547bbf" }
 samblaster = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samblaster-0.1.26-wgse_2.conda", sha256 = "195387af307f978dee16cac77ad332c7943a118a6c2c66c20d3fa5afd27b1003" }
-samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samtools-1.24-wgse_3.conda", sha256 = "5aeb7f62293a8dd1b3e75982d53b258be02d38a39a81ff3ff76dec530190ad48" }
+samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda", sha256 = "91d89b823a9f91359d2e7f10897b482f502bce9699dae5a11792a55bfc7ae851" }
 # windows-tools-end
 
 # FreeBayes' only osx-arm64 build pins htslib 1.21, which conflicts with the

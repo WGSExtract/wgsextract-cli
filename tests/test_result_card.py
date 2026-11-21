@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from tests.smoke_utils import ensure_fake_data, run_cli
+from tests.smoke_utils import ensure_fake_data, run_cli, state_directory_setting
 from tests.test_server import Mcp, _serve
 from wgsextract_cli import __version__
 from wgsextract_cli.cli.dispatch import dispatch_command
@@ -222,7 +222,10 @@ def test_cli_result_card_setting_and_no_card_override(tmp_path):
         pytest.skip("samtools not found in PATH")
     ensure_fake_data(str(FAKE_DIR))
     config = tmp_path / "config.toml"
-    config.write_text("result_card = true\n", encoding="utf-8")
+    config.write_text(
+        state_directory_setting(tmp_path) + "result_card = true\n",
+        encoding="utf-8",
+    )
     base = ["--config", str(config), "extract", "mt-bam", "--input"]
     base += [str(FAKE_DIR / "fake.bam"), "--ref", str(FAKE_DIR / "fake_ref.fa")]
 
