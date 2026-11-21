@@ -224,9 +224,10 @@ def test_native_vcf_quality_and_unsupported_masks_survive_canonical_aadr_export(
         )
 
 
-def _deep_library(tmp_path: Path, length: int) -> Path:
-    """A reference library whose absolute path is ``length`` characters."""
-    library = tmp_path
+def _deep_library(root: Path, length: int) -> Path:
+    """A reference library under ``root`` whose absolute path is ``length``
+    characters."""
+    library = root
     while (missing := length - len(str(library.absolute())) - 1) > 0:
         # Never leave a single character, which needs a separator too.
         library /= "d" * (missing if missing <= 40 else min(40, missing - 2))
@@ -280,12 +281,12 @@ def _run_gvcf(
 
 
 def test_native_gvcf_reference_blocks_are_calls_and_gaps_are_no_calls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, short_tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fasta = _native_library(tmp_path, monkeypatch)
     # Issue #419: the deepest library Windows' 260-character MAX_PATH allows
     # for its caches; htslib must open the cached native targets there.
-    library = _deep_library(tmp_path, 175)
+    library = _deep_library(short_tmp_path, 175)
     monkeypatch.setitem(settings, "reference_library", str(library))
     out = tmp_path / "outputs"
     calls, _result = _run_gvcf(tmp_path, fasta, out)
@@ -343,10 +344,10 @@ def test_chm13_cache_is_reused_and_ignores_full_digest_caches(
 
 
 def test_windows_library_too_deep_for_caches_runs_uncached_with_a_warning(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, short_tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fasta = _native_library(tmp_path, monkeypatch)
-    library = _deep_library(tmp_path, 176)
+    library = _deep_library(short_tmp_path, 176)
     monkeypatch.setitem(settings, "reference_library", str(library))
     calls, _result = _run_gvcf(tmp_path, fasta, tmp_path / "expected")
     shutil.rmtree(library / "microarray", ignore_errors=True)

@@ -2,8 +2,10 @@ import ast
 import functools
 import itertools
 import os
+import shutil
 import signal
 import sys
+import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -289,6 +291,16 @@ def _restore_signal_handlers() -> Iterator[None]:
     yield
     for sig, handler in saved.items():
         signal.signal(sig, handler)
+
+
+@pytest.fixture
+def short_tmp_path() -> Iterator[Path]:
+    """A temporary folder directly in the system temp folder, for paths built up
+    to a fixed length (Windows' MAX_PATH budget): pytest's ``tmp_path`` can be
+    longer than that alone, as under a worktree's certification basetemp."""
+    path = Path(tempfile.mkdtemp(prefix="wgse-"))
+    yield path
+    shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture
