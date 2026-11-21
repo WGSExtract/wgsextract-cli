@@ -9,19 +9,27 @@ faster. It is used only on macOS arm64 when the package is installed beside
 bcftools; the CLI never installs it at runtime. A probe checks once per process
 that bcftools actually loads it (macOS drops ``DYLD_*`` variables for protected
 binaries), and anything unexpected falls back to the system allocator.
+
+Native Windows standalone CRAM 3.1 encoding can select the validated static
+samtools variant beside the system build. Other samtools workloads retain their
+allocator; the CLI never downloads either allocator at runtime.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import platform
 import shutil
 import subprocess
 from functools import lru_cache
 from pathlib import Path
 
+from wgsextract_cli.core.dependencies import get_tool_path, pixi_env_prefix
 from wgsextract_cli.core.native_aligners import apple_silicon
+from wgsextract_cli.core.pixi_tools import is_pixi_tool_command
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.tool_catalog import PIXI_TOOL_ENVS
 from wgsextract_cli.core.utils import UsageError
 
 SETTINGS = ("auto", "off")
@@ -106,3 +114,111 @@ def bcftools_environment(value: str | None) -> dict[str, str]:
         extra = _apple_silicon_environment()
     current_result().add_metrics(bcftools_allocator="mimalloc" if extra else "system")
     return extra
+
+
+ExecutableIdentity = tuple[str, int, int, int, int]
+
+
+def _executable_identity(path: str) -> ExecutableIdentity:
+    resolved = Path(path).resolve()
+    stat = resolved.stat()
+    return str(resolved), stat.st_mtime_ns, stat.st_size, stat.st_dev, stat.st_ino
+
+
+def clear_allocator_caches() -> None:
+    """Drop activation results when dependency resolution is reset."""
+    _loads.cache_clear()
+    _samtools_variant_loads.cache_clear()
+
+
+@lru_cache(maxsize=8)
+def _samtools_variant_loads(
+    system: ExecutableIdentity, candidate: ExecutableIdentity
+) -> bool:
+    """Verify matching tool/HTS versions and activation of the static allocator."""
+    try:
+        baseline = subprocess.run(
+            [system[0], "--version"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=60,
+        )
+        variant = subprocess.run(
+            [candidate[0], "--version"],
+            env={**os.environ, "MIMALLOC_SHOW_STATS": "1"},
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return (
+        baseline.returncode == variant.returncode == 0
+        and baseline.stdout.splitlines()[:2] == variant.stdout.splitlines()[:2]
+        and "subproc 0" in variant.stderr
+        and "peak commit:" in variant.stderr
+    )
+
+
+def _samtools_pair() -> tuple[str, str] | None:
+    system = get_tool_path("samtools")
+    if not system:
+        return None
+    if is_pixi_tool_command(system):
+        prefix = pixi_env_prefix(PIXI_TOOL_ENVS["samtools"])
+        if not prefix:
+            return None
+        system = next(
+            (
+                str(path)
+                for path in (
+                    prefix / "Library/bin/samtools.exe",
+                    prefix / "bin/samtools",
+                )
+                if path.is_file()
+            ),
+            None,
+        )
+        if not system:
+            return None
+    candidate = Path(system).with_name("samtools-mimalloc.exe")
+    return (system, str(candidate)) if candidate.is_file() else None
+
+
+def samtools_cram_executable(
+    value: str | None, *, version: str, reference: str | None
+) -> str:
+    """Select only the measured Windows standalone CRAM 3.1 encoder."""
+    executable = "samtools"
+    allocator = "system"
+    setting = mimalloc_setting(value)
+    if (
+        setting == "auto"
+        and platform.system() == "Windows"
+        and platform.machine().lower() in {"amd64", "x86_64"}
+        and version == "3.1"
+        and reference
+    ):
+        pair = _samtools_pair()
+        try:
+            loaded = bool(
+                pair
+                and _samtools_variant_loads(
+                    _executable_identity(pair[0]), _executable_identity(pair[1])
+                )
+            )
+        except OSError:
+            loaded = False
+        if pair and loaded:
+            executable = pair[1]
+            allocator = "mimalloc"
+        else:
+            logging.info(
+                "samtools uses the system allocator: the matching native Windows "
+                "mimalloc variant is unavailable or failed its activation probe."
+            )
+    logging.info(f"samtools CRAM {version} uses the {allocator} allocator.")
+    current_result().add_metrics(samtools_allocator=allocator)
+    return executable
