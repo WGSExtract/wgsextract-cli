@@ -55,15 +55,16 @@ signature, so one could mask regions the other doesn't). Installing a genome
 the release didn't measure counts its Ns once, into the library's own
 `genomes/reference_ncounts.tsv`.
 
-`info` and genotype QC take an alignment's counts from the entry for the
-`--ref` FASTA's name and the header's signature, else from that FASTA's own
-`_ncnt.csv` (`ref count-ns` writes it and `_nbin.csv` beside the FASTA, or in
-`--outdir`), else from the entry for the header's signature. A contig gets a
-count only at the length it was measured at. An alignment to a reference
-outside the table, such as a catalog genome with an added spike-in contig,
-gets no counts from other genomes, only an `n_counts_unavailable` warning
-(`n_counts_ambiguous` when genomes sharing its signature differ); run `ref
-count-ns` on its FASTA and pass it with `--ref`. Maintainers regenerate the
+`info` and genotype QC take the counts for a `--ref` FASTA from its entry
+under the header's signature, else from that FASTA's own `_ncnt.csv` (`ref
+count-ns` writes it and `_nbin.csv` beside the FASTA, or in `--outdir`; only
+rows with a length apply), else from its entry under its name alone; never
+from another genome. Without `--ref`, they use the entry for the header's
+signature. A contig gets a count only at the length it was measured at, and
+none when two of the header's contigs share a name (chr1 and 1). Otherwise
+they warn `n_counts_unavailable` (`n_counts_ambiguous` when genomes sharing
+the signature differ) and leave the N gaps in; run `ref count-ns` on the
+reference's FASTA and pass it with `--ref`. Maintainers regenerate the
 shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;

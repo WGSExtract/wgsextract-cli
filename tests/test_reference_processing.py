@@ -16,6 +16,7 @@ import threading
 import zipfile
 import zlib
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -736,3 +737,15 @@ def test_an_interrupted_bootstrap_extraction_is_resumed_review_514(
         assert (lib / name).read_bytes() == data
     assert not (lib / BOOTSTRAP_FILENAME).exists()
     assert not list(lib.rglob("*.partial"))
+
+
+@needs_htslib
+def test_unwritable_n_count_table_does_not_fail_the_install(tmp_path, monkeypatch):
+    """Review of #1271: recording N counts is optional; a write failure must
+    not turn a verified install into an error."""
+    _fake_download(monkeypatch, {_genome()["url"]: gzip.compress(FASTA)})
+    monkeypatch.setattr(
+        ncount_table, "add_to_library", Mock(side_effect=PermissionError("read-only"))
+    )
+    assert rp.download_and_process_genome(_genome(), str(tmp_path))
+    assert get_genome_status("hs38.fa.gz", str(tmp_path)) == "installed"

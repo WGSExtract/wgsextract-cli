@@ -313,8 +313,8 @@ def load_n_counts(
 
     The sidecar is tab-separated with ``#`` comment/header lines and columns
     SN, NumBP, NumNs, ... (numbers may contain thousands separators). A
-    two-column ``SN,NumNs`` CSV is also accepted. Given ``lengths``, a row
-    with a NumBP applies only to a contig of that length.
+    two-column ``SN,NumNs`` CSV is also accepted. Given ``lengths``, only rows
+    with a NumBP that matches the contig's length apply.
     """
     if not ref_path or not Path(ref_path).is_file():
         return {}
@@ -341,10 +341,10 @@ def load_n_counts(
                     continue
                 name, count = row[0].strip(), row[2] if len(row) >= 3 else row[1]
                 try:
-                    if (
-                        lengths is not None
-                        and len(row) >= 3
-                        and lengths.get(name) != int(row[1].replace(",", ""))
+                    # Without a NumBP, a row can't show it fits this contig.
+                    if lengths is not None and (
+                        len(row) < 3
+                        or lengths.get(name) != int(row[1].replace(",", ""))
                     ):
                         continue
                     n_counts[contig_key(name)] = int(
@@ -677,6 +677,7 @@ def generate_chrom_table(
             stats_mito.append(row)
         elif chromnum != "*":
             stats_altcont[2] += mod_len
+            stats_altcont[3] += n_count
             stats_altcont[4] += map_seg
             stats_altcont[8] += bases
 

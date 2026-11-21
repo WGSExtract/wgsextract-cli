@@ -803,7 +803,9 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
         build = build or build_from_path(Path(resolved_ref).name)
         current_result().set_reference(resolved_ref, build)
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)
-    reference_ns = reference_n_lengths(sequence_lengths(header), md5_sig, resolved_ref)
+    # Only a FASTA the user chose names the N counts; one found to decode the
+    # input says nothing the header's signature doesn't.
+    reference_ns = reference_n_lengths(sequence_lengths(header), md5_sig, user_fasta)
     n_lengths = reference_ns.n_lengths
     by_targets = isinstance(params, CalculateCoverageParams) and params.by is not None
     # A partial span keeps every coordinate, so its N counts don't matter.

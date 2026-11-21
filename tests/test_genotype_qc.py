@@ -22,6 +22,7 @@ from wgsextract_cli.core.genotype_qc import (
     warn_low_depth,
 )
 from wgsextract_cli.core.microarray.templates import GenotypeTally
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 
@@ -52,7 +53,12 @@ def sample(tmp_path_factory):
 
 
 def _warnings(caplog) -> list[str]:
-    return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    """Logged warnings, less the fake genomes' unmeasured N counts."""
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "N counts are unknown" not in r.getMessage()
+    ]
 
 
 def test_region_targets():
@@ -327,6 +333,10 @@ def test_depths_detected_with_other_n_counts_are_measured_again(tmp_path):
     sample_workspace.record(
         "target_depths", bam, stale, method="BAM index", confidence="high"
     )
-    depths, source = genotype_qc.target_depths(bam)
+    result = CommandResult(command="vcf")
+    with collecting(result):
+        depths, source = genotype_qc.target_depths(bam)
     assert depths[genotype_qc.AUTOSOMES] == pytest.approx(1.0)  # 1,000 bases / 1 kb
     assert not source.startswith(sample_workspace.WORKSPACE_FILE)
+    # Review of #1271: an unmeasured reference's depth says it keeps its Ns.
+    assert [w.code for w in result.warnings] == ["n_counts_unavailable"]

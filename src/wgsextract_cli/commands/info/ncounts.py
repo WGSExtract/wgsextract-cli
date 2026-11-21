@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
@@ -22,37 +23,50 @@ class ReferenceNs(NamedTuple):
 
 
 def reference_n_lengths(
-    lengths: Mapping[str, int], signature: str | None, reference: str | None
+    lengths: Mapping[str, int], signature: str | None, selected: str | None
 ) -> ReferenceNs:
     """N counts of the header's reference, by `contig_key`; only a contig of
-    the measured length gets its count. In order: the N-count table entry for
-    the ``--ref`` FASTA's name and the header's signature; that FASTA's own
-    ``_ncnt.csv`` (ref count-ns); the one entry (or several identical ones)
-    for the signature; an entry under the FASTA's name alone."""
-    fasta = Path(reference) if reference and Path(reference).is_file() else None
+    the measured length gets its count, and none whose key two of the header's
+    contigs share (chr1 and 1).
+
+    For a ``selected`` FASTA (the user's --ref): its N-count table entry under
+    the header's signature, else its own ``_ncnt.csv`` (ref count-ns), else its
+    entry under its name alone (a subset header); never another genome's.
+    Otherwise the table entry for the signature, unless genomes sharing it
+    differ."""
+    fasta = Path(selected) if selected and Path(selected).is_file() else None
     folders = [reference_genomes_dir(resolve_reference_library())]
     if fasta:
         folders.append(str(fasta.parent))
     table = ncount_table.load_table(folders)
-    name = fasta.name if fasta else None
+    keys = Counter(contig_key(name) for name in lengths)
+
+    def applied(counts: Mapping[str, int]) -> ReferenceNs:
+        counts = {k: ns for k, ns in counts.items() if keys[k] == 1}
+        return ReferenceNs(counts, None) if counts else _unavailable()
 
     def measured(entry: ncount_table.ReferenceNCounts) -> ReferenceNs:
-        counts = {
-            contig_key(seq): ns
-            for seq, (length, ns) in entry.sequences.items()
-            if lengths.get(seq) == length
-        }
-        if entry.sequences and not counts:  # none of its contigs are here
-            return _unavailable()
-        return ReferenceNs(counts, None)
+        if not entry.sequences:  # a genome without Ns
+            return ReferenceNs({}, None)
+        return applied(
+            {
+                contig_key(seq): ns
+                for seq, (length, ns) in entry.sequences.items()
+                if lengths.get(seq) == length
+            }
+        )
 
-    named = ncount_table.find_counts(table, signature, name)
-    if named and named[0].reference == name:
-        return measured(named[0])
-    if fasta and Path(n_count_paths(str(fasta))[0]).is_file():
-        return ReferenceNs(load_n_counts(str(fasta), lengths), None)
-    if len(named) > 1:
-        names = ", ".join(sorted(e.reference for e in named))
+    if fasta:
+        named = [e for e in table if e.reference == fasta.name]
+        exact = [e for e in named if e.signature == signature]
+        if exact:
+            return measured(exact[0])
+        if Path(n_count_paths(str(fasta))[0]).is_file():
+            return applied(load_n_counts(str(fasta), lengths))
+        return measured(named[0]) if named else _unavailable()
+    matches = ncount_table.find_counts(table, signature, None)
+    if len(matches) > 1:
+        names = ", ".join(sorted(e.reference for e in matches))
         return ReferenceNs(
             {},
             (
@@ -62,10 +76,7 @@ def reference_n_lengths(
                 "FASTA with --ref to choose.",
             ),
         )
-    by_name = [e for e in table if e.reference == name]
-    if named or by_name:
-        return measured((named or by_name)[0])
-    return _unavailable()
+    return measured(matches[0]) if matches else _unavailable()
 
 
 def _unavailable() -> ReferenceNs:

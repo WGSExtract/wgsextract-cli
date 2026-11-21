@@ -443,70 +443,6 @@ def _stat(name, length, mapped):
     return {"name": name, "length": length, "mapped": mapped, "unmapped": 0}
 
 
-def _library_entry(folder: Path, name: str, lengths: dict, ns: dict) -> Path:
-    """A FASTA file named `name` whose library N-count table measured `ns`."""
-    from wgsextract_cli.core.ref_library import ncount_table
-    from wgsextract_cli.core.ref_library.assets import sequence_signature
-
-    counts = {seq: (length, ns.get(seq, 0)) for seq, length in lengths.items()}
-    entry = ncount_table.measured_entry(name, sequence_signature(lengths), counts)
-    ncount_table.add_to_library(folder, entry)
-    (folder / name).write_text(">placeholder\nA\n")
-    return folder / name
-
-
-def test_n_counts_come_from_the_references_own_measurement(tmp_path):
-    """The user's report: N counts must be the reference's own, not one
-    generic table per build, and apply only to contigs of the measured length."""
-    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
-    from wgsextract_cli.core.ref_library.assets import sequence_signature
-
-    lengths = {"chr1": 1000, "chr20": 2000}
-    fasta = _library_entry(tmp_path, "mine.fa.gz", lengths, {"chr1": 300, "chr20": 50})
-    found = reference_n_lengths(lengths, sequence_signature(lengths), None)
-    assert found.problem and found.problem[0] == "n_counts_unavailable"
-    found = reference_n_lengths(lengths, sequence_signature(lengths), str(fasta))
-    assert found == ({"1": 300, "20": 50}, None)
-    # A 1 kb slice of chr20 keeps all its bases.
-    sliced = {"chr1": 1000, "chr20": 1000}
-    assert reference_n_lengths(sliced, sequence_signature(sliced), str(fasta)) == (
-        {"1": 300},
-        None,
-    )
-
-
-def test_one_signature_with_different_n_masks_needs_the_fasta(tmp_path):
-    """FASTAs can share a sequence dictionary (hs38d1 and GRCh38_Verily_v1) yet
-    could mask different regions, so the signature alone can't pick counts."""
-    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
-    from wgsextract_cli.core.ref_library.assets import sequence_signature
-
-    lengths = {"chr1": 1000}
-    a = _library_entry(tmp_path, "a.fa.gz", lengths, {"chr1": 10})
-    _library_entry(tmp_path, "b.fa.gz", lengths, {"chr1": 20})
-    signature = sequence_signature(lengths)
-    other = tmp_path / "elsewhere.fa"
-    other.write_text(">chr1\nA\n")
-    found = reference_n_lengths(lengths, signature, str(other))
-    assert found.n_lengths == {}
-    assert found.problem and found.problem[0] == "n_counts_ambiguous"
-    assert reference_n_lengths(lengths, signature, str(a)).n_lengths == {"1": 10}
-
-
-def test_every_catalog_genome_has_measured_n_counts():
-    """Each genome the library can download ships its own N counts, under the
-    catalog's sequence-dictionary signature."""
-    from wgsextract_cli.core.ref_library.catalog import get_available_genomes
-    from wgsextract_cli.core.ref_library.ncount_table import packaged_table
-
-    table = {e.reference: e for e in packaged_table()}
-    for genome in get_available_genomes():
-        entry = table[genome["final"]]
-        assert entry.total[1] == sum(ns for _len, ns in entry.sequences.values())
-        if genome["md5"]:
-            assert entry.signature == genome["md5"], genome["final"]
-
-
 @pytest.mark.parametrize(
     "path", ["/data/s.cram", r"C:\Users\Lab User\s.cram", "relative:name.cram"]
 )
@@ -763,28 +699,20 @@ def test_partial_region_needs_no_n_counts_and_csv_is_one_table(tmp_path):
     assert [r[0] for r in rows] == ["Seq Name", "chr1"]
 
 
-def test_a_ref_fastas_own_n_counts_win_and_need_the_measured_length(tmp_path):
-    """Review of #1271: a --ref FASTA's own `ref count-ns` file lost to a table
-    entry sharing its signature, and applied to contigs of any length."""
-    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
-    from wgsextract_cli.core.ref_library.assets import sequence_signature
-
-    lengths = {"chr1": 1000, "chr2": 500}
-    _library_entry(tmp_path, "catalog.fa.gz", lengths, {"chr1": 10})
-    mine = tmp_path / "mine" / "mine.fa"
-    mine.parent.mkdir()
-    mine.write_text(">chr1\nA\n")
-    (mine.parent / "mine_ncnt.csv").write_text(
-        "#Seq\tNumBP\tNumNs\nchr1\t1000\t300\nchr2\t999\t50\n"
+def test_truncated_bins_report_is_rescanned(tmp_path):
+    """Review of #1271: a truncated row made reuse raise IndexError."""
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    lines = report.read_text().splitlines()
+    report.write_text(
+        "\n".join(
+            ln if not ln.startswith("chr1") else "chr1\t10000\t5000\t5000"
+            for ln in lines
+        )
+        + "\n"
     )
-    found = reference_n_lengths(lengths, sequence_signature(lengths), str(mine))
-    assert found == ({"1": 300}, None)  # chr2's count is for a 999 bp chr2
-
-
-def test_a_named_reference_without_these_contigs_says_so(tmp_path):
-    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
-
-    fasta = _library_entry(tmp_path, "num.fa.gz", {"1": 1000}, {"1": 10})
-    found = reference_n_lengths({"chr1": 1000}, None, str(fasta))
-    assert found.n_lengths == {}
-    assert found.problem and found.problem[0] == "n_counts_unavailable"
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"

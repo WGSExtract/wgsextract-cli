@@ -275,7 +275,11 @@ def _record_n_counts(
     if counts is None:
         return
     entry = ncount_table.measured_entry(name, signature, counts)
-    ncount_table.add_to_library(genomes_dir, entry)
+    try:
+        ncount_table.add_to_library(genomes_dir, entry)
+    except (OSError, WGSExtractError) as e:
+        # The genome is installed; only its N counts go unrecorded.
+        logging.warning(f"Could not record the N bases of {name}: {e}")
 
 
 def download_bootstrap(

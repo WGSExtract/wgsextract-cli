@@ -291,8 +291,9 @@ def target_depths(
     value = fact.value if fact is not None else None
     override = fact is not None and fact.source == "override"
     n_lengths: dict[str, int] | None = None
+    problem: tuple[str, str] | None = None
     try:
-        n_lengths = alignment_n_lengths(alignment, ref).n_lengths
+        n_lengths, problem = alignment_n_lengths(alignment, ref)
     except (OSError, WGSExtractError) as e:
         logging.debug(f"Could not read the N counts for {alignment}: {e}")
         if not override:
@@ -307,6 +308,8 @@ def target_depths(
         and (override or (fact.method or "").endswith(tag))
     ):
         origin = "your override" if override else (fact.method or "").removesuffix(tag)
+        if problem and not override:
+            warn(*problem)
         return {k: float(v) for k, v in value.items()}, (
             f"{sample_workspace.WORKSPACE_FILE} ({origin})"
         )
@@ -330,6 +333,8 @@ def target_depths(
             method=source + tag,
             confidence="high",
         )
+    if problem:
+        warn(*problem)
     return depths, source
 
 

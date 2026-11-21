@@ -172,6 +172,8 @@ def _read_bins(path: Path) -> list[_Raw]:
     with_ns = bool(lines) and _N_COLUMN in lines[0]
     raw: list[_Raw] = []
     for row in lines[1:]:
+        if len(row) < (11 if with_ns else 10):
+            raise ValueError(f"Truncated depth-bin row: {row}")
         values = [int(v) for v in row[1 : 7 if with_ns else 6]]
         ns = values.pop(1) if with_ns else None
         raw.append((row[0], values[0], ns, values[1:5]))
