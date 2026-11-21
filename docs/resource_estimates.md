@@ -1,5 +1,21 @@
 # CLI resource preflight and reusable estimates
 
+For measured Apple Silicon GATK PairHMM slice timings, see
+[NEON prototype evidence](hardware.md#experimental-apple-silicon-neon-pairhmm).
+These are not full-chromosome or whole-genome measurements and do not
+change the caller's resource-budget formulas.
+The incomplete full-chr20 Java trial reached only chr20:29,840,219 after
+283.6 traversal minutes before cancellation; it supplies neither a completed
+runtime nor peak-RSS estimate. Do not size a full-chromosome run by multiplying
+the 10–20 Mb slice time: slow pericentromeric regions are absent from that slice.
+The replacement 12.551 Mb panel measured **6,632.06 s Java → 725.96 s
+NEON double**, with maximum process RSS **1,883.9 → 1,509.2 MiB**.
+Its **9.14× observed speedup is not scientifically qualified**: nine reference
+blocks and eight final-VCF annotation rows fail the strict parity gate.
+PairHMM still consumes 40.3% and 64.0% of NEON CLI wall in its two difficult
+windows. See the linked per-window evidence and limitations; neither these
+maxima nor the aggregate speedup size an unpartitioned full genome.
+
 ## Pipeline benchmarks
 
 `wgsextract benchmark --help` lists datasets and profiles. Start with

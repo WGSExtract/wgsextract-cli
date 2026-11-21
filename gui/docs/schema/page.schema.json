@@ -370,6 +370,17 @@
           "description": "The placeholder (without braces) naming the job's main input, shown in the app's Jobs list. Without it, the list shows the first file path control the command uses, skipping folders; give it when that would be an output, a folder input or a URL.",
           "type": "string",
           "minLength": 1
+        },
+        "resultCard": {
+          "description": "Asks for the run's result card (the manifest's resultDocument.cardArguments, or card=1 for a job) and shows it over the app when the run ends. For analysis actions whose result the user reads. See docs/result-documents.md.",
+          "type": "boolean",
+          "default": false
+        },
+        "openOutput": {
+          "description": "Output roles, in order of preference: when the run ends, the first output with one of them opens in the system's default app, such as a tool's own HTML report. See docs/result-documents.md.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
         }
       }
     },

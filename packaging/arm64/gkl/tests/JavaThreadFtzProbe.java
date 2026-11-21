@@ -102,7 +102,8 @@ public final class JavaThreadFtzProbe {
             hmm.done();
             check(tag + "/after_done");
         }
-        boolean enforce = "aarch64".equals(System.getProperty("os.arch"));
+        String arch = System.getProperty("os.arch");
+        boolean enforce = "aarch64".equals(arch) || "arm64".equals(arch);
         if (failures.isEmpty()) {
             System.out.println("FP-STATE-CLEAN: no flush-to-zero leak into Java threads");
         } else if (enforce) {

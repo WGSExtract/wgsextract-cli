@@ -1,0 +1,12 @@
+diff --git a/src/main/java/com/intel/gkl/NativeLibraryLoader.java b/src/main/java/com/intel/gkl/NativeLibraryLoader.java
+--- a/src/main/java/com/intel/gkl/NativeLibraryLoader.java
++++ b/src/main/java/com/intel/gkl/NativeLibraryLoader.java
+@@ -92,5 +92,8 @@
+         if (os.startsWith("windows")) {
+             return "windows-aarch64/";
+         }
++        if (os.startsWith("mac")) {
++            return "darwin-aarch64/";
++        }
+         return "unsupported-aarch64/";
+     }

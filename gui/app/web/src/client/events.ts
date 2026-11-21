@@ -9,6 +9,7 @@ import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadCon
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
 import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
@@ -218,6 +219,9 @@ export function bindEvents(bootstrap: Bootstrap) {
                 scheduleRender();
             }
         });
+    });
+    elements("[data-result-card]").forEach((button) => {
+        button.addEventListener("click", () => void openResultCard(button.dataset.resultCard ?? "", state.labels));
     });
     elements("[data-result-open-setup]").forEach((button) => {
         button.addEventListener("click", async () => {

@@ -64,7 +64,7 @@ export async function runAction(
     const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "wgsextract-gui-result-")) : undefined;
     const documentPath = documentDirectory ? path.join(documentDirectory, "result.json") : "";
     try {
-        const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath), resolvedContext);
+        const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath, action.resultCard === true), resolvedContext);
         const executable = isPlatformScriptReference(rendered.executable, bundleRoot)
             ? await resolvePlatformScriptPath(rendered.executable, bundleRoot)
             : rendered.executable;

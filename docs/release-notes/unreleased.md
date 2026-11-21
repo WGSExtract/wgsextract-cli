@@ -3,6 +3,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `vcf gatk --pair-hmm-neon JAR` (opt-in, Apple Silicon) runs GATK
+  HaplotypeCaller's PairHMM with GKL's NEON kernels in double precision
+  instead of GATK's Java fallback: about 9x faster over five HG002 chr20
+  windows, with identical sites, alleles, GT and FILTER. A few reads near the
+  informative cutoff are counted differently in difficult regions (9 of
+  306,024 reference blocks, 8 final records), so it is not the default. Build
+  the sidecar jar as `packaging/arm64/gkl/README.md` describes (#1117).
 - Native `wgse-deepvariant` 0.4.1 optimizes Apple Silicon small-model CPU
   work and realigner CIGAR parsing without changing inference or defaults.
   On HG002 35x whole genome, M1 Pro (32 GiB), ten workers, batch 1024 with

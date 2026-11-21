@@ -32,7 +32,7 @@ export async function runActionPreferringServer(
     const operation = action.serverOperation;
     if (operation && jobServer && !signal?.aborted) {
         const parameters = renderedParameters(operation, await contextWithFileState(context, bundleRoot));
-        const job = await startServerJob(jobServer, operation.operation, parameters);
+        const job = await startServerJob(jobServer, operation.operation, parameters, action.resultCard === true);
         if (job) {
             return runJob(job.address, job.id, `${operation.operation} ${JSON.stringify(parameters)}`, signal, emit, resultSpec);
         }
@@ -41,13 +41,13 @@ export async function runActionPreferringServer(
 }
 
 /** Starts the job, restarting a server that stopped answering once; undefined when no job was created. */
-async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord): Promise<{ address: JobServerAddress; id: string } | undefined> {
+async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean): Promise<{ address: JobServerAddress; id: string } | undefined> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
         const address = await jobServer.address();
         if (!address) {
             return undefined;
         }
-        const started = await startJob(address, operation, parameters);
+        const started = await startJob(address, operation, parameters, card);
         if (started.started) {
             return { address, id: started.job.id };
         }
