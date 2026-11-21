@@ -1,6 +1,7 @@
 """Publish completed outputs without replacing previous files on failure."""
 
 import contextlib
+import logging
 import os
 import shutil
 import stat
@@ -128,13 +129,21 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
 def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
     """Publish validated files staged on the destination volume.
 
-    All destinations must share a parent. List the primary file last so
-    readers cannot see it with mismatched companions during publication.
+    All destinations must share a parent. List the primary file last so it
+    is absent while its companions are being replaced.
     """
-    from wgsextract_cli.core.utils import WGSExtractError
+    from wgsextract_cli.core.file_lock import exclusive_lock
 
     files = list(staged_to_final.items())
-    parent = files[0][1].parent
+    if files:
+        parent = files[-1][1].parent
+        with exclusive_lock(parent / ".wgse_publish"):
+            _publish_output_set(files, parent)
+
+
+def _publish_output_set(files: list[tuple[Path, Path]], parent: Path) -> None:
+    from wgsextract_cli.core.utils import WGSExtractError
+
     existing: list[Path] = []
     for staged, final in files:
         if not staged.is_file() or not staged.stat().st_size:
@@ -147,25 +156,35 @@ def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
             raise WGSExtractError(
                 f"Cannot replace {final}: not a regular file or symlink"
             )
+        if stat.S_ISLNK(mode):
+            try:
+                mode = final.stat().st_mode
+            except FileNotFoundError:
+                pass
+        if stat.S_ISREG(mode):
+            staged.chmod(mode & 0o777)
         existing.append(final)
 
     backup_dir = Path(tempfile.mkdtemp(dir=parent, prefix=".wgse_previous_"))
     retired: list[tuple[Path, Path]] = []
-    published: list[Path] = []
+    publishing: list[tuple[Path, Path]] = []
     try:
         for number, final in enumerate(reversed(existing)):
             backup = backup_dir / str(number)
-            final.replace(backup)
             retired.append((final, backup))
+            final.replace(backup)
         for staged, final in files:
+            publishing.append((staged, final))
             staged.replace(final)
-            published.append(final)
     except BaseException:
         try:
-            for final in reversed(published):
-                final.unlink(missing_ok=True)
+            # Cancellation can arrive just after a rename returns.
+            for staged, final in reversed(publishing):
+                if not staged.exists():
+                    final.unlink(missing_ok=True)
             for final, backup in reversed(retired):
-                backup.replace(final)
+                if os.path.lexists(backup):
+                    backup.replace(final)
         except OSError as error:
             raise WGSExtractError(
                 f"Could not restore previous outputs; remaining backups are in {backup_dir}"
@@ -173,4 +192,9 @@ def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
         backup_dir.rmdir()
         raise
     else:
-        shutil.rmtree(backup_dir)
+        try:
+            shutil.rmtree(backup_dir)
+        except OSError as error:
+            logging.warning(
+                "Could not remove previous outputs in %s: %s", backup_dir, error
+            )
