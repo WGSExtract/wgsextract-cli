@@ -158,6 +158,11 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
     meta = tree_metadata(tree_id)
     spec: dict[str, Any] = meta["modules"][module]
     root = module_root(tree_id, module, library)
+    label = (
+        spec["folder"]
+        if module == "polarity"
+        else f"{spec['folder']} {meta['version']}"
+    )
     files: dict[str, Any] = spec["files"]
     if verified(root, files):
         return root
@@ -178,7 +183,7 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
                 resolve_release_digest=False,
             ):
                 raise WGSExtractError(
-                    f"Cannot download the verified {spec['folder']} data "
+                    f"Cannot download the verified {label} data "
                     "module. If offline, connect once to populate the reference "
                     "library."
                 )
@@ -194,7 +199,7 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
                 shutil.rmtree(staging, ignore_errors=True)
         except (OSError, tarfile.TarError) as error:
             raise WGSExtractError(
-                f"Unable to prepare the {spec['folder']} data module: {error}"
+                f"Unable to prepare the {label} data module: {error}"
             ) from error
         finally:
             archive.unlink(missing_ok=True)
