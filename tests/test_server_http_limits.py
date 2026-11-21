@@ -264,14 +264,14 @@ def test_1173_review_config_lists_saved_and_default_server_settings(
         check=True,
     )
     rows = {
-        line.split()[0]: line
+        line.split()[0]: line.split()
         for line in result.stdout.splitlines()
         if line.startswith("server.")
     }
-    assert "0.0.0.0:8080" in rows["server.listen"]
-    assert "https://genomes.example" in rows["server.public_url"]
-    assert "[SET]" in rows["server.viewer_files"]
-    assert "[DEFAULT/UNSET]" in rows["server.max_connections"]
+    assert rows["server.listen"][1:] == ["0.0.0.0:8080", "[SET]"]
+    assert rows["server.public_url"][1:] == ["https://genomes.example", "[SET]"]
+    assert rows["server.viewer_files"][-1] == "[SET]"
+    assert rows["server.max_connections"][-1] == "[DEFAULT/UNSET]"
 
 
 def test_1173_review_explicit_cli_port_overrides_saved_listen_port(
