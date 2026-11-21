@@ -10,13 +10,27 @@ import stat
 import tempfile
 import unicodedata
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextvars import ContextVar
 from pathlib import Path
 
 from wgsextract_cli.core.paths import PathInput
 
 _enabled: ContextVar[bool | None] = ContextVar("atomic_outputs", default=None)
+_publication_locks: ContextVar[contextlib.ExitStack | None] = ContextVar(
+    "publication_locks", default=None
+)
+
+
+@contextlib.contextmanager
+def output_publication_scope() -> Iterator[None]:
+    """Retain output-set locks until this invocation writes its result manifest."""
+    with contextlib.ExitStack() as locks:
+        token = _publication_locks.set(locks)
+        try:
+            yield
+        finally:
+            _publication_locks.reset(token)
 
 
 def atomic_outputs_enabled() -> bool:
@@ -129,7 +143,11 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
             os.fsync(stream.fileno())
 
 
-def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
+def publish_output_set(
+    staged_to_final: Mapping[Path, Path],
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> None:
     """Publish validated files staged on the destination volume.
 
     All destinations must share a parent. List the primary file last so it
@@ -143,8 +161,13 @@ def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
         # Normalize case and Unicode for output directories on insensitive filesystems.
         name = unicodedata.normalize("NFC", primary.name.casefold())
         key = hashlib.sha256(os.fsencode(name)).hexdigest()[:32]
-        with exclusive_lock(primary.parent / f".wgse_publish-{key}"):
-            _publish_output_set(files, primary.parent)
+        lock = exclusive_lock(
+            primary.parent / f".wgse_publish-{key}", checkpoint=checkpoint
+        )
+        with contextlib.ExitStack() as local:
+            scope = _publication_locks.get()
+            (local if scope is None else scope).enter_context(lock)
+            _publish_output_set(files, primary.parent, checkpoint)
 
 
 def _preserve_output_permissions(
@@ -173,7 +196,9 @@ def _preserve_output_permissions(
             os.setxattr(staged, acl_name, acl)
 
 
-def _publish_output_set(files: list[tuple[Path, Path]], parent: Path) -> None:
+def _publish_output_set(
+    files: list[tuple[Path, Path]], parent: Path, checkpoint: Callable[[], None] | None
+) -> None:
     from wgsextract_cli.core.utils import WGSExtractError
 
     existing: list[Path] = []
@@ -197,6 +222,8 @@ def _publish_output_set(files: list[tuple[Path, Path]], parent: Path) -> None:
             _preserve_output_permissions(final, staged, info)
         existing.append(final)
 
+    if checkpoint is not None:
+        checkpoint()
     backup_dir = Path(tempfile.mkdtemp(dir=parent, prefix=".wgse_previous_"))
     retired: list[tuple[Path, Path]] = []
     publishing: list[tuple[Path, Path]] = []

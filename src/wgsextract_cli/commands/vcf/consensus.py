@@ -5,6 +5,7 @@ import tempfile
 from itertools import islice
 from pathlib import Path
 
+from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vcf import VcfToFastaParams
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.dependency_checks import (
@@ -438,7 +439,7 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
                 with fasta.open("wb") as f:
                     run_pipeline(stages, stdout=f, description="Consensus generation")
             run_command(["samtools", "faidx", str(fasta)], capture_output=True)
-            publish_output_set(outputs)
+            publish_output_set(outputs, checkpoint=checkpoint)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Consensus generation failed: {e}") from e
 

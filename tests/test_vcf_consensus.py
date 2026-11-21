@@ -3,15 +3,19 @@
 import gzip
 import logging
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
 from tests.fake_tool_launchers import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import consensus
 from wgsextract_cli.core.atomic_output import atomic_output_mode
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -350,6 +354,31 @@ def test_1236_successful_retry_keeps_private_consensus_permissions(tmp_path):
         "chr1": _with(12, "C")
     }
     assert fasta.stat().st_mode & 0o777 == 0o600
+
+
+def test_1236_cancelled_api_retry_waiting_to_publish_preserves_outputs(tmp_path):
+    out = tmp_path / "out"
+    ref = tmp_path / "ref.fa"
+    vcf = tmp_path / "v.vcf.gz"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    expected = _consensus_outputs(out)
+    _vcf(vcf, _rec(12, "T", "C", "1/1"))
+    params = api.vcf.VcfToFastaParams(input=vcf, ref=ref, outdir=out, chain=True)
+    cancel = api.CancelToken()
+    guard = next(out.glob(".wgse_publish-*.guard"))
+
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        with exclusive_lock(guard.with_suffix("")):
+            run = workers.submit(api.vcf.to_fasta, params, cancel=cancel, check=False)
+            deadline = time.monotonic() + 10
+            while not any(out.glob(".wgse_publish_*/*.gzi")):
+                assert not run.done(), run.result()
+                assert time.monotonic() < deadline, "consensus never reached indexing"
+                time.sleep(0.01)
+            cancel.cancel()
+            assert run.result(timeout=5).status == "cancelled"
+
+    assert _consensus_outputs(out) == expected
 
 
 def test_1222_structural_variant_end_does_not_mask_uncovered_bases(tmp_path):
