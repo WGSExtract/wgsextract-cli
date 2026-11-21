@@ -7,11 +7,12 @@ import io
 import json
 import logging
 import tarfile
+from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
-from tests.http_server import serving
+from tests.http_server import RangeServer, serving
 from tests.yleaf_helpers import MARKERS, make_data
 from wgsextract_cli.core.config import get_config_path, reload_settings
 from wgsextract_cli.core.ref_library import downloads
@@ -58,12 +59,24 @@ def _pins(files: dict[str, bytes]) -> dict[str, dict]:
 @pytest.fixture
 def served(tmp_path, monkeypatch):
     """The yfull modules on a local server; Yleaf's own data stays synthetic."""
+    yleaf = make_data(tmp_path / "yleaf-data")
+    isogg = yleaf / "hg38/isogg_positions_hg38.txt"
+    isogg.write_text(MARKERS + "Y\tM-transition\tR1b1\t135\tC>T\tC\tT\n")
+    audit = yleaf / "polarity.json"
+    audit_data = json.loads(audit.read_text())
+    audit_data["tables"]["isogg/hg38"]["sha256"] = hashlib.sha256(
+        isogg.read_bytes()
+    ).hexdigest()
+    audit.write_text(json.dumps(audit_data))
     archives = {
         "tree": ("yfull-tree-1.0.tar.gz", TREE_FILES),
         "positions": ("yfull-ybrowse-positions-1.0.tar.gz", POSITIONS_FILES),
+        "polarity": (
+            "y-polarity-1.0.tar.gz",
+            {"polarity.json": (yleaf / "polarity.json").read_bytes()},
+        ),
     }
     blobs = {name: _archive(files) for name, files in archives.values()}
-    yleaf = make_data(tmp_path / "yleaf-data")
     monkeypatch.setattr(trees, "ensure_data", lambda *a, **k: yleaf)
     monkeypatch.setattr(downloads.time, "sleep", lambda s: None)
     library = tmp_path / "reflib"
@@ -85,8 +98,20 @@ def served(tmp_path, monkeypatch):
             for module, (name, files) in archives.items()
         }
         meta = {**trees.MANIFEST["trees"]["yfull"], "version": "1.0"}
-        meta.update(data="modules", modules=modules)
+        meta.update(
+            data="modules",
+            modules={key: modules[key] for key in ("tree", "positions")},
+        )
         monkeypatch.setitem(trees.MANIFEST["trees"], "yfull", meta)
+        for tree in ("ftdna", "isogg"):
+            monkeypatch.setitem(
+                trees.MANIFEST["trees"],
+                tree,
+                {
+                    **trees.MANIFEST["trees"][tree],
+                    "modules": {"polarity": modules["polarity"]},
+                },
+            )
         server.library = library  # type: ignore[attr-defined]
         yield server
 
@@ -103,6 +128,7 @@ def kit(tmp_path) -> str:
             f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT:DP\t1:20\n"
             for pos in (100, 110, 120, 130)
         )
+        + "chrY\t135\t.\tC\tT\t50\tPASS\t.\tGT:DP\t1:20\n"
     )
     return bgzip_index(plain)
 
@@ -124,8 +150,43 @@ def _installed(server) -> set[str]:
 
 
 def test_other_trees_never_fetch_either_yfull_module(served, kit, tmp_path):
-    assert _call(kit, tmp_path / "out", "--tree", "isogg") == "R1b1"
-    assert not served.paths and _installed(served) == set()
+    # Issue #1168: the new independent polarity module still needs explicit
+    # consent. It does not fetch either YFull tree/positions module.
+    with pytest.raises(WGSExtractError, match="--download"):
+        _call(kit, tmp_path / "offline", "--tree", "isogg")
+    assert not served.paths
+    assert _call(kit, tmp_path / "out", "--tree", "isogg", "--download") == "R1b1"
+    assert set(served.paths) == {"y-polarity-1.0.tar.gz"}
+    assert _installed(served) == set()
+    served.paths.clear()
+    assert _call(kit, tmp_path / "cached", "--tree", "isogg") == "R1b1"
+    assert not served.paths
+
+
+def test_issue1168_polarity_module_is_shared_offline_between_trees(
+    served: RangeServer, kit: str, tmp_path: Path
+) -> None:
+    _call(kit, tmp_path / "first", "--tree", "isogg", "--download")
+    assert set(served.paths) == {"y-polarity-1.0.tar.gz"}
+    served.paths.clear()
+    _call(kit, tmp_path / "second", "--tree", "ftdna")
+    assert not served.paths
+    first = json.loads((tmp_path / "first/yleaf/run.json").read_text())
+    second = json.loads((tmp_path / "second/yleaf/run.json").read_text())
+    assert (
+        first["marker_panel"]["polarity"]["sha256"]
+        == second["marker_panel"]["polarity"]["sha256"]
+    )
+
+
+def test_issue1168_isogg_ancient_keeps_evidence_from_its_shared_panel(
+    served: RangeServer, kit: str, tmp_path: Path
+) -> None:
+    assert _call(kit, tmp_path / "regular", "--tree", "isogg", "--download") == "R1b1"
+    assert _call(kit, tmp_path / "ancient", "--tree", "isogg", "--ancient") == "R1b1"
+    regular = (tmp_path / "regular/yleaf/kit/kit.out").read_text()
+    assert "\t135\tM-transition\tR1b1\tC>T\t" in regular
+    assert (tmp_path / "ancient/yleaf/kit/kit.out").read_text() == regular
 
 
 def test_yfull_with_own_markers_fetches_only_the_tree_module(served, kit, tmp_path):
