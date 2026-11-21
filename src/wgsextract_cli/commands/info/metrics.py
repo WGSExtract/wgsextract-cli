@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
+from wgsextract_cli.core.builds import build_from_path
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import (
     N_ADJUST,
     SEQUENCERS,
 )
+from wgsextract_cli.core.cytobands import CHROMOSOME_LENGTHS
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths
@@ -61,8 +62,8 @@ def is_long_read_library(avg_len: float, header: str, qname: str | None) -> bool
 
 
 def is_primary_contig(name: str) -> bool:
-    key = contig_key(name)
-    return key.isdigit() or key in {"X", "Y"}
+    """An autosome or sex chromosome: numbered (human, dog) or a cat's A1-F2."""
+    return re.fullmatch(r"\d+|[XY]|[A-F][1-4]", contig_key(name)) is not None
 
 
 def determine_sequencer(qname: str | None, header: str = "") -> str:
@@ -586,21 +587,50 @@ def parse_idxstats(filepath: str) -> tuple[list[IdxStat], int, int, int]:
     return stats, genome_len, total_mapped, total_unmapped
 
 
+def builtin_n_table(model_name: str, fasta: str) -> str | None:
+    """The `N_ADJUST` table measured from this reference variant, if one was.
+
+    GRCh38 variants with identical contig lengths differ by up to 14 Mb of N
+    (the analysis sets mask more). An unidentified one gets UCSC hg38's, which
+    every measured variant has (Ensembl's chrY has 2.8 Mb more), so no sequence
+    is ever left out; its own counts (ref count-ns) are exact."""
+    build = build_from_path(model_name)
+    if build == "t2t":
+        return "99"  # gapless
+    if build == "hg19":
+        return "37"  # hg19, GRCh37 and hs37d5 share their N runs
+    if build != "hg38":
+        return None
+    if model_name.lower().startswith("hs38") or "analysis_set" in fasta:
+        return "38"
+    return "hg38"
+
+
 def contig_n_lengths(
     contig_lengths: Mapping[str, int],
-    ref_model_name: str,
+    table: str | None,
     n_counts: Mapping[str, int] | None = None,
 ) -> dict[str, int]:
     """Per-contig N (unsequenceable) base counts by `contig_key`, which depth
     and breadth leave out of each contig's length.
 
-    The hardcoded N counts describe the standard full-length assemblies, so they
-    apply only when chr1 has a canonical length; a trimmed or custom reference
-    with the same contig names would otherwise get a negative effective length.
-    N counts measured from the actual reference (ref count-ns) always apply."""
-    build = {"hg38": "38", "hg19": "37"}.get(build_from_path(ref_model_name) or "")
-    standard = build_from_chr1_length(dict(contig_lengths)) is not None
-    known = N_ADJUST.get(build, {}) if build and standard else {}
+    A built-in `table` count applies only to a contig of its assembly's length;
+    a trimmed or custom contig of the same name keeps all its bases. N counts
+    measured from the actual reference (ref count-ns) always apply."""
+    build = {"37": "hg19", "38": "hg38", "hg38": "hg38"}.get(table or "")
+    expected = dict(
+        zip(
+            [*map(str, range(1, 23)), "X", "Y"],
+            CHROMOSOME_LENGTHS.get(build or "", []),
+            strict=False,
+        )
+    )
+    lengths = {contig_key(name): length for name, length in contig_lengths.items()}
+    known = {
+        key: ns
+        for key, ns in N_ADJUST.get(table or "", {}).items()
+        if ns == 0 or (key in lengths and lengths[key] == expected.get(key))
+    }
     return {**known, **(n_counts or {})}
 
 
@@ -612,12 +642,15 @@ def generate_chrom_table(
     coverage_map: Mapping[str, str] | None = None,
     n_counts: Mapping[str, int] | None = None,
     mapped_bases: Mapping[str, float] | None = None,
+    n_lengths: Mapping[str, int] | None = None,
 ) -> list[list[Any]]:
     """Build the detailed per-chromosome metrics table: [key, name, length,
     N count, mapped segments, mapped Gbases, mean depth, breadth, mapped bases].
 
     A contig's mapped bases are its segments x `avg_len`, unless
-    `mapped_bases` (by contig name) measures them, as long reads need."""
+    `mapped_bases` (by contig name) measures them, as long reads need.
+    `n_lengths` (from `contig_n_lengths`) defaults to the model's built-in
+    counts under the measured `n_counts`."""
     valid_autos, valid_somal, valid_mito = (
         [str(i) for i in range(1, 23)],
         ["X", "Y"],
@@ -663,8 +696,14 @@ def generate_chrom_table(
     if coverage_map is None:
         coverage_map = {}
 
-    n_adjust_map = contig_n_lengths(
-        {s["name"]: s["length"] for s in idx_stats}, ref_model_name, n_counts
+    n_adjust_map = (
+        n_lengths
+        if n_lengths is not None
+        else contig_n_lengths(
+            {s["name"]: s["length"] for s in idx_stats},
+            builtin_n_table(ref_model_name, ""),
+            n_counts,
+        )
     )
 
     stats_total: list[Any] = ["T", "Total", 0, 0, 0, 0.0, 0.0, "", 0.0]

@@ -200,8 +200,8 @@ def test_thresholds_come_from_config(tmp_path, caplog):
 
 
 def test_chrY_only_cram_keeps_the_assembly_n_adjustment(tmp_path):
-    # A chrY extract keeps the full GRCh38 header; chrY is 57.2 Mb with
-    # 33.6 Mb of N, so 10x over its non-N bases is 4.1x over its length.
+    # A chrY extract keeps the full GRCh38 header; an unidentified GRCh38's
+    # chrY has at least 30.8 Mb of N, so depth is over its 26.4 Mb of sequence.
     header = "@SQ\tSN:chr1\tLN:248956422\n@SQ\tSN:chrY\tLN:57227415\n"
     cram = tmp_path / "y.cram"
     cram.touch()
@@ -218,7 +218,7 @@ def test_chrY_only_cram_keeps_the_assembly_n_adjustment(tmp_path):
     ):
         depths = warn_low_depth(str(cram), {CHR_Y})
     assert depths == pytest.approx(
-        {AUTOSOMES: 0.0, CHR_X: 0.0, CHR_Y: 10.0, MTDNA: 0.0}
+        {AUTOSOMES: 0.0, CHR_X: 0.0, CHR_Y: 236_363_550 / 26_415_183, MTDNA: 0.0}
     )
 
 

@@ -6,7 +6,7 @@ import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -595,17 +595,75 @@ def test_detailed_coverage_bins_leave_ns_out_and_feed_detailed_info(tmp_path):
     rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
     chr1 = next(r for r in csv.DictReader(rows, delimiter="\t"))
     assert chr1["Model N Len"] == "5000"
-    assert chr1["Depth 0 bases"] == "0"
+    assert chr1["Depth 0 bases"] == "5000"  # the Ns, which the fractions leave out
+    assert float(chr1["Depth 0 fraction"]) == 0.0
     assert float(chr1["Depth 1-3 fraction"]) == 1.0
 
-    # Even without the metrics cache, the saved coverage result is reused.
+    # Without the metrics cache, Detailed Info reuses the saved coverage result.
+    (tmp_path / "s.bam.wgse_info.json").unlink()
     _run_info(
         bam, "info", "--detailed", "--no-cache", "--ref", str(ref), "--format", "tsv"
     )
     assert _table_breadth(tmp_path / "s.bam_chromosomes.tsv")["chr1"] == "100"
 
 
-def test_bins_report_from_before_n_column_is_not_current(tmp_path):
+def _bins_total(text: str) -> str:
+    return next(ln for ln in text.splitlines() if ln.startswith("Total")).split()[-2]
+
+
+def test_n_counts_counted_after_detailed_coverage_update_it_without_rescan(
+    tmp_path, monkeypatch
+):
+    """Review of the N-aware bins: a reference counted (ref count-ns) after a
+    run must change the reused reports, not leave the old figures."""
+    from wgsextract_cli.commands.info import bins
+
+    bam, ref = _half_n_genome(tmp_path)
+    ncnt = tmp_path / "ref_ncnt.csv"
+    counts = ncnt.read_text()
+    ncnt.unlink()
+    manifest = json.loads(
+        _run_info(
+            bam,
+            "--json",
+            "info",
+            "calculate-coverage",
+            "--with-bins",
+            "--ref",
+            str(ref),
+        )
+    )
+    assert "n_counts_unavailable" in {w["code"] for w in manifest["warnings"]}
+    assert _table_breadth_from_cache(tmp_path)["chr1"] == "50 %"
+
+    ncnt.write_text(counts)
+    status = json.loads(
+        _run_info(bam, "--json", "info", "calculate-coverage", "--status")
+    )
+    assert status["details"]["current"] is True
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
+    )
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    assert next(csv.DictReader(rows, delimiter="\t"))["Model N Len"] == "5000"
+    assert _table_breadth_from_cache(tmp_path)["chr1"] == "100 %"
+
+
+def _table_breadth_from_cache(folder: Path) -> dict[str, str]:
+    cache = json.loads((folder / "s.bam.wgse_info.json").read_text())
+    rows = list(csv.reader(io.StringIO(cache["chrom_table_csv"])))
+    col = rows[0].index("Breadth Coverage")
+    return {r[0]: r[col] for r in rows[1:]}
+
+
+def test_bins_report_from_before_n_column_is_reused_with_ns(tmp_path, monkeypatch):
+    from wgsextract_cli.commands.info import bins
+
     bam, ref = _half_n_genome(tmp_path)
     _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
     report = tmp_path / "s.bam_coverage_bins.tsv"
@@ -615,11 +673,11 @@ def test_bins_report_from_before_n_column_is_not_current(tmp_path):
         if not line.startswith("#")
     ]
     report.write_text("\n".join(old) + "\n")
-    status = json.loads(
-        _run_info(bam, "--json", "info", "calculate-coverage", "--status")
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
     )
-    assert status["details"]["current"] is False
     rerun = _run_info(
         bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
     )
-    assert "N Len" in rerun
+    assert _bins_total(rerun) == "93.10"
+    assert "Model N Len" in report.read_text()

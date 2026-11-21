@@ -1,11 +1,12 @@
 import argparse
 import csv
+import hashlib
 import io
 import json
 import logging
 import os
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -67,6 +68,7 @@ from .metrics import (
     SEX_MEASUREMENT_UNAVAILABLE,
     IdxStat,
     SexCall,
+    builtin_n_table,
     contig_key,
     contig_n_lengths,
     determine_sequencer,
@@ -585,6 +587,10 @@ def _fast_metrics(
     }
 
 
+def n_lengths_digest(n_lengths: Mapping[str, int]) -> str:
+    return hashlib.sha256(json.dumps(sorted(n_lengths.items())).encode()).hexdigest()
+
+
 def reference_model_name(described: str) -> str:
     """The model in a `ReferenceModel.describe()` line: "hg38 (Chr), rCRS, 195
     SNs" and "Cat_Fca126, , 71 SNs" (no chr1, so no naming) alike."""
@@ -597,6 +603,7 @@ def _detailed_metrics(
     total_unmapped: int,
     coverage_map: dict[str, str],
     n_counts: dict[str, int],
+    n_lengths: dict[str, int],
     mapped_bases: dict[str, float] | None = None,
     input_file: str | None = None,
     reference: str | None = None,
@@ -620,7 +627,7 @@ def _detailed_metrics(
         gender,
         ref_model_name,
         coverage_map,
-        n_counts=n_counts,
+        n_lengths=n_lengths,
         mapped_bases=mapped_bases,
     )
     total_row = next(r for r in chrom_table if r[1] == "Total")
@@ -669,8 +676,8 @@ def _detailed_metrics(
         "sex_call": list(call),
         "sex_inference_version": SEX_INFERENCE_VERSION,
         "refined_ns": bool(n_counts),
-        # Breadth before this left the reference's N bases in its denominator.
-        "breadth_excludes_ns": True,
+        # The N counts depth and breadth left out; new ones recompute the table.
+        "n_lengths_digest": n_lengths_digest(n_lengths),
         "file_content": ", ".join(k for k, v in content.items() if v),
         "depth_method": DEPTH_SAMPLED if mapped_bases is not None else DEPTH_COUNTED,
         # Marks the depths current; left out when long reads couldn't be
@@ -804,11 +811,17 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
         build = build or build_from_path(Path(resolved_ref).name)
         current_result().set_reference(resolved_ref, build)
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)
-    n_lengths = contig_n_lengths(
-        sequence_lengths(header),
-        reference_model_name(ref_model[0]),
-        load_n_counts(resolved_ref),
-    )
+    n_counts = load_n_counts(resolved_ref)
+    n_table = builtin_n_table(reference_model_name(ref_model[0]), ref_model[1])
+    n_lengths = contig_n_lengths(sequence_lengths(header), n_table, n_counts)
+    by_targets = isinstance(params, CalculateCoverageParams) and params.by is not None
+    if (detailed or bins) and not by_targets and not n_counts and n_table is None:
+        warn(
+            "n_counts_unavailable",
+            "Reference N counts are unknown for this reference, so depth and "
+            "breadth include its N gaps; run `wgsextract ref count-ns --ref "
+            "FASTA` and give the FASTA with --ref to leave them out.",
+        )
     metadata = provenance(
         [input_file],
         reference_build=build,
@@ -832,6 +845,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             table_format or "tsv",
             metadata,
             n_lengths=n_lengths,
+            display="csv" if as_csv else "tsv",
         )
         current_result().add_output(bins_tsv, "coverage_bins")
         return
@@ -930,6 +944,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
                 metadata,
                 reuse=True,
                 n_lengths=n_lengths,
+                display="csv" if as_csv else "table",
             )
             current_result().add_output(bins_path, "coverage_bins")
         return
@@ -997,7 +1012,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
                 )
             )
             and not data.get("mapping_failed")
-            and data.get("breadth_excludes_ns")
+            and data.get("n_lengths_digest") == n_lengths_digest(n_lengths)
             and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
             and (not sex_unavailable or alignment_index(input_file) is None)
         ):
@@ -1074,7 +1089,8 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             idx_stats,
             total_unmapped,
             coverage_map,
-            load_n_counts(resolved_ref),
+            n_counts,
+            n_lengths,
             mapped_bases,
             input_file,
             resolved_ref,
@@ -1105,6 +1121,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             metadata,
             reuse=True,
             n_lengths=n_lengths,
+            display="csv" if as_csv else "table",
         )
         current_result().add_output(bins_tsv, "coverage_bins")
     # A region-limited coverage table describes only part of the file, so it
