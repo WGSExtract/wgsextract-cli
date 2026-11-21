@@ -573,6 +573,23 @@ test("review regression: the 40-tab cap drops finished tabs before a running job
   }
 });
 
+test("#1235: a truncated submission stream leaves the recovery ID in Jobs", async (t) => {
+  resetState();
+  state.labels.terminalJobSubmissionUnknown = "The server may still be running this job.";
+  const stream = setupStreamResponse();
+  t.mock.method(globalThis, "fetch", async () => stream.response);
+  const run = runAction({
+    title: "Coverage", command: { executable: "tool" }, serverOperation: { operation: "coverage" },
+  }, { fieldValues: {} }, actionReference, { prerequisitesChecked: true });
+  stream.write({ type: "submission-pending", jobID: "original-job-id" });
+  stream.close();
+  await run;
+  const [job] = state.jobHistory;
+  assert.equal(job.kind, "error");
+  assert.match(job.body, /may still be running/);
+  assert.match(job.body, /original-job-id/);
+});
+
 test("an action's result document reaches its terminal tab, and a usage error its notice until the next run", async () => {
   resetState();
   const originalFetch = globalThis.fetch;

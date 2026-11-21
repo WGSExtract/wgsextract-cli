@@ -13,7 +13,7 @@ export interface JobServer {
     /** The running server's address, starting it on first use; undefined when it can't be started. */
     address: () => Promise<JobServerAddress | undefined>;
     /** Stops the server; the next `address()` starts a new one. */
-    stop: () => void;
+    stop: (onlyAddress?: JobServerAddress) => void;
 }
 
 /**
@@ -24,6 +24,7 @@ export interface JobServer {
 export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProcess: RunProcess): JobServer {
     let starting: Promise<JobServerAddress | undefined> | undefined;
     let stopper: AbortController | undefined;
+    let currentAddress: JobServerAddress | undefined;
 
     async function start(): Promise<JobServerAddress | undefined> {
         const controller = new AbortController();
@@ -62,6 +63,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
                     }
                     const address = readyAddress(line);
                     if (address) {
+                        currentAddress = address;
                         announced = true;
                         clearTimeout(timer);
                         resolve(address);
@@ -82,6 +84,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
                     if (stopper === controller) {
                         starting = undefined;
                         stopper = undefined;
+                        currentAddress = undefined;
                     }
                 });
         });
@@ -92,10 +95,12 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
             starting ??= start();
             return starting;
         },
-        stop: () => {
+        stop: (onlyAddress) => {
+            if (onlyAddress && currentAddress !== onlyAddress) return;
             stopper?.abort();
             starting = undefined;
             stopper = undefined;
+            currentAddress = undefined;
         },
     };
 }
@@ -127,7 +132,7 @@ function readyAddress(line: string): JobServerAddress | undefined {
             const { url, token } = value;
             const local = typeof url === "string" ? localJobServerURL(url) : undefined;
             if (local && typeof token === "string" && token) {
-                return { url: local, token };
+                return { url: local, token, clientJobIDs: "client_job_ids" in value && value.client_job_ids === true };
             }
         }
     }

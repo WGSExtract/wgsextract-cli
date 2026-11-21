@@ -9,7 +9,7 @@ import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
 import { streamNDJSON, type EmitEvent } from "./ndjson.js";
-import { runActionPreferringServer } from "./job-server-action.js";
+import { JobSubmissionUnknown, runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
 import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
@@ -201,7 +201,9 @@ export function createRequestHandler(context: RequestHandlerContext) {
                     await rememberLastResultDocument(bundleRoot, action, event.result);
                     return emit({ ...event, result: { ...event.result, lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot) } });
                 }, resultSpec),
-                (error) => ({ type: "error", error }),
+                (error, cause) => cause instanceof JobSubmissionUnknown
+                    ? { type: "submission-unknown", jobID: cause.jobID }
+                    : { type: "error", error },
             );
         },
         "/api/result/open": jsonRoute(context, async (body) => {
