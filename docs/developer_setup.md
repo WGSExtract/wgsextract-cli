@@ -63,10 +63,10 @@ Other optional environments are documented with their features:
 Cyrius permits noncommercial use only, no distribution/modification, and
 is not bundled.
 
-On macOS, the `bio-tools` environments use pthreads OpenBLAS so `bcftools` does
-not load LLVM OpenMP through GSL. LLVM OpenMP can report `OMP: Error #15` when a
-previous process with the same PID left an incomplete registration file, even
-when no second OpenMP runtime is loaded.
+On macOS, the `bio-tools` environments use Apple's Accelerate BLAS so
+`bcftools` does not load LLVM OpenMP through GSL. LLVM OpenMP can report
+`OMP: Error #15` when a previous process with the same PID left an incomplete
+registration file, even when no second OpenMP runtime is loaded.
 
 ### Benchmarking on macOS
 

@@ -94,9 +94,9 @@ sambamba = ">=1.0.1,<2"
 bcftools = "==1.24"
 
 [feature.bio-tools.target.osx.dependencies]
-# bcftools loads OpenBLAS through GSL. The OpenMP build can abort on a stale
-# PID registration file even with only one runtime loaded (#1257).
-libopenblas = { build = "pthreads_*" }
+# bcftools loads CBLAS through GSL. OpenMP-backed BLAS can abort on stale PID
+# registration even with only one runtime loaded (#1257).
+libcblas = { build = "*_accelerate" }
 
 [feature.bio-tools.target.osx-arm64.dependencies]
 # Override-enabled mimalloc for bcftools; published by mimalloc.yml.
