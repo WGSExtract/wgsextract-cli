@@ -11,14 +11,18 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 import urllib.request
 from dataclasses import dataclass
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.error import HTTPError, URLError
 
 from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.download_progress import redact_urls, retryable_http_status
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.resource_estimates import (
@@ -284,6 +288,25 @@ def _check_download(dest: Path, expected: _Sum) -> None:
     Path(f"{dest}.ok").touch()
 
 
+def _read_checksum_listing(url: str) -> str:
+    attempts = 3
+    for attempt in range(1, attempts + 1):
+        checkpoint()
+        try:
+            with urllib.request.urlopen(url, timeout=60) as response:
+                data: bytes = response.read()
+            return data.decode()
+        except (URLError, ConnectionError, TimeoutError, IncompleteRead) as error:
+            if isinstance(error, HTTPError):
+                error.close()
+                if not retryable_http_status(error.code):
+                    raise
+            if attempt == attempts:
+                raise
+            time.sleep(2 ** (attempt - 1))
+    raise AssertionError("Checksum listing retry loop did not run")
+
+
 def _expected_sums(
     listing_url: str, cache: dict[str, dict[str, _Sum]]
 ) -> dict[str, _Sum]:
@@ -291,23 +314,28 @@ def _expected_sums(
     and blocks) or an md5sum.txt. An unreadable listing fails: it can't tell
     a missing file from a lost one."""
     if listing_url not in cache:
+        location = redact_urls(listing_url)
         md5 = listing_url.endswith("md5sum.txt")
         sums: dict[str, _Sum] = {}
         try:
-            with urllib.request.urlopen(listing_url, timeout=60) as r:
-                for line in r.read().decode().splitlines():
-                    parts = line.split()
-                    if md5 and len(parts) == 2 and len(parts[0]) == 32:
-                        sums[parts[1].lstrip("*")] = parts[0].lower()
-                    elif not md5 and len(parts) >= 3:
-                        sums[parts[-1]] = (int(parts[0]), int(parts[1]))
-        except (OSError, ValueError) as e:
+            for line in _read_checksum_listing(listing_url).splitlines():
+                parts = line.split()
+                if md5 and len(parts) == 2 and len(parts[0]) == 32:
+                    sums[parts[1].lstrip("*")] = parts[0].lower()
+                elif not md5 and len(parts) >= 3:
+                    sums[parts[-1]] = (int(parts[0]), int(parts[1]))
+        except (OSError, ValueError, IncompleteRead) as error:
+            detail = (
+                f"HTTP {error.code}"
+                if isinstance(error, HTTPError)
+                else redact_urls(str(error), sources=(listing_url,))
+            )
             raise WGSExtractError(
-                f"Could not read {listing_url} ({e}); try again, or use "
+                f"Could not read {location} ({detail}); try again, or use "
                 "the other --mirror."
-            ) from e
+            ) from None
         if not sums:
-            raise WGSExtractError(f"{listing_url} lists no files.")
+            raise WGSExtractError(f"{location} lists no files.")
         cache[listing_url] = sums
     return cache[listing_url]
 

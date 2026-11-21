@@ -11,6 +11,12 @@ from typing import BinaryIO, Protocol
 
 ProgressCallback = Callable[[int, int, float], None]
 
+
+def retryable_http_status(code: int) -> bool:
+    """Retry throttling and server errors, not other client errors."""
+    return code == 429 or 500 <= code < 600
+
+
 # Malformed URLs can contain spaces/quotes; do not expose their query tails.
 _URL_PATTERN = re.compile(
     r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\r\n<>]+?"

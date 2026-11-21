@@ -1,4 +1,6 @@
+import hashlib
 import json
+import logging
 import os
 import secrets
 import threading
@@ -6,7 +8,8 @@ from http.server import BaseHTTPRequestHandler
 
 import pytest
 
-from tests.http_server import DownloadHTTPServer
+from tests.http_server import DownloadHTTPServer, serving
+from wgsextract_cli.core.download_progress import DownloadCancelled
 from wgsextract_cli.core.ref_library import downloads, segmented
 from wgsextract_cli.core.ref_library.segmented import ranged_size
 
@@ -173,3 +176,100 @@ def test_a_server_that_ignores_ranges_gets_one_connection(server, tmp_path):
 
     assert dest.read_bytes() == DATA
     assert not (tmp_path / "big.bin.partial.segments").exists()
+
+
+def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
+    tmp_path, monkeypatch, caplog
+):
+    with serving(DATA) as srv:
+        srv.get_errors["hs38.fa.gz"] = [503, 503]
+        monkeypatch.setattr(segmented, "ATTEMPTS", 2)
+        dest = tmp_path / "hs38.fa.gz"
+        signed_url = f"{srv.url}?sig=fixture-signature#fixture-fragment"
+
+        with (
+            caplog.at_level(logging.DEBUG),
+            pytest.raises(OSError, match="503") as failure,
+        ):
+            segmented.download_segmented(signed_url, str(dest), len(DATA))
+
+    state = (tmp_path / "hs38.fa.gz.partial.segments").read_text()
+    assert srv.url in caplog.text and "Retrying" in caplog.text
+    for text in (state, caplog.text, str(failure.value)):
+        assert "fixture-signature" not in text and "fixture-fragment" not in text
+    assert srv.url not in state
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "array",
+        "legacy",
+        "missing-offset",
+        "bad-count",
+        "changed-url",
+        "short",
+        "no-head",
+    ],
+)
+def test_1210_unusable_segment_state_restarts_download(tmp_path, damage, monkeypatch):
+    monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
+    dest = tmp_path / "hs38.fa.gz"
+    partial = tmp_path / "hs38.fa.gz.partial"
+    state_path = tmp_path / "hs38.fa.gz.partial.segments"
+    partial.write_bytes(b"x" * len(DATA))
+    with serving(DATA) as srv:
+        url = f"{srv.url}?sig=old-signature"
+        counts = {str(start): 1000 for start in range(0, len(DATA), 1000)}
+        state = {
+            "url_sha256": hashlib.sha256(url.encode()).hexdigest(),
+            "size": len(DATA),
+            "received": counts,
+        }
+        if damage == "legacy":
+            del state["url_sha256"]
+            state["url"] = url
+        elif damage == "missing-offset":
+            counts["1"] = counts.pop("0")
+        elif damage in {"bad-count", "no-head"}:
+            counts["0"] = -1
+        elif damage == "changed-url":
+            url = f"{srv.url}?sig=new-signature"
+        elif damage == "short":
+            partial.write_bytes(b"short")
+        state_path.write_text(json.dumps([] if damage == "array" else state))
+        if damage == "no-head":
+            srv.head_status = 405
+
+        assert downloads.download_file(
+            url, str(dest), progress_callback=lambda *_: None, use_cache=False
+        )
+        if damage == "no-head":
+            assert srv.gets() == [None]
+    assert dest.read_bytes() == DATA
+
+
+@pytest.mark.parametrize("cancelled", [False, True], ids=["ranges", "cancel"])
+def test_1210_state_write_failure_preserves_segmented_error(
+    tmp_path, caplog, cancelled
+):
+    dest = tmp_path / "hs38.fa.gz"
+    (tmp_path / "hs38.fa.gz.partial.segments.tmp").mkdir()
+    cancel = threading.Event()
+    with serving(DATA) as srv:
+        if cancelled:
+            cancel.set()
+        else:
+            srv.ignore_ranges = True
+        kind = DownloadCancelled if cancelled else segmented.RangesUnsupported
+
+        with pytest.raises(kind) as failure:
+            segmented.download_segmented(
+                f"{srv.url}?sig=fixture-signature",
+                str(dest),
+                len(DATA),
+                cancel_event=cancel,
+            )
+
+    assert "fixture-signature" not in str(failure.value)
+    assert "Could not save download progress" in caplog.text

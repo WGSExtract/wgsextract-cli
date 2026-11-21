@@ -86,6 +86,10 @@ def _samtools_reads_urls() -> bool:
     return "libcurl=yes" in version
 
 
+def clear_remote_input_cache() -> None:
+    _samtools_reads_urls.cache_clear()
+
+
 @dataclass(frozen=True)
 class RemoteFile:
     """A remote file's size and a fingerprint that changes with its content:
@@ -104,7 +108,10 @@ def remote_file(url: str) -> RemoteFile:
             headers = response.headers
     except (URLError, OSError, ValueError, HTTPException) as error:
         raise WGSExtractError(f"Can't reach {shown(url)}: {error}") from error
-    size = int(headers.get("Content-Length") or 0)
+    try:
+        size = int(headers.get("Content-Length", "0"))
+    except ValueError:
+        raise WGSExtractError(f"Invalid Content-Length for {shown(url)}.") from None
     validator = headers.get("ETag") or headers.get("Last-Modified")
     if validator:
         identity = f"{url}\n{size}\n{validator}"
