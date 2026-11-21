@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.8"
+version = "0.8.9"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
@@ -57,6 +57,10 @@ openjdk = "17.*"
 bcftools = ">=1.18"
 htslib = ">=1.18"
 
+[feature.pharmcat.target.osx.dependencies]
+# Keep the isolated PharmCAT bcftools off OpenMP-backed CBLAS too (#1257).
+libcblas = { build = "*_accelerate" }
+
 [feature.pharmcat.target.win-64.dependencies]
 # pharmcat-windows-tools-begin
 bcftools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda", sha256 = "5b462dffdec0d1f38fd6c07010b74554f1e6b484e3cbc8987a5488cfcc80b799" }
@@ -92,6 +96,11 @@ sambamba = ">=1.0.1,<2"
 [feature.bio-tools.target.linux-aarch64.dependencies]
 # Match the qualified x64 calling version; do not introduce architecture drift.
 bcftools = "==1.24"
+
+[feature.bio-tools.target.osx.dependencies]
+# bcftools loads CBLAS through GSL. OpenMP-backed BLAS can abort on stale PID
+# registration even with only one runtime loaded (#1257).
+libcblas = { build = "*_accelerate" }
 
 [feature.bio-tools.target.osx-arm64.dependencies]
 # Override-enabled mimalloc for bcftools; published by mimalloc.yml.
