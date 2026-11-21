@@ -154,21 +154,21 @@
           "license": "CC-BY-SA (version not stated)",
           "source": "YBrowse snapshot ybrowse-snps_hg38-2026-11-05.csv.gz",
           "notice": "Licence: Y marker polarity corrections are a separate CC-BY-SA YBrowse data module (NOTICE-YBrowse.md).",
-          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v1/y-polarity-1.tar.gz",
-          "sha256": "571ab2f2cfe4631adee4c7fa718993e7a7c3be81f667867af1f25edd8c4a0e1f",
-          "size": 20444,
+          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v2/y-polarity-2.tar.gz",
+          "sha256": "b1390df008e40b03024ec251b5a689190aaad7ae1e148e61260bff8547585f1f",
+          "size": 11448,
           "files": {
             "NOTICE-YBrowse.md": {
-              "sha256": "646f6863bd0eb93d1eecb65416a78169a6e4866e61e95744f9bf341ebc33d5dc",
-              "size": 587
+              "sha256": "15a3becfdc7515dd602da80ecc01ad9c26fe73935f188f8e5149722dedd5f24d",
+              "size": 588
             },
             "build_info.json": {
-              "sha256": "ad3dea75e45804ca16a0a2bb511eb43fc1325c71e89a39900da20a9b842df1ed",
-              "size": 2678
+              "sha256": "af3e164bbc8a8d58bd8d8dd798eb18d8860741f5b4f5383322bbd322340b7716",
+              "size": 4894
             },
             "polarity.json": {
-              "sha256": "ab8025091b1c53730c96048e1984252092ee7d6e60cc8e3297bc333f6c300cd7",
-              "size": 184568
+              "sha256": "b62293650e901f7b924cc4d5c2f1c2086c446df62c8acc2120f5b4aa862c8771",
+              "size": 91574
             }
           }
         }
@@ -197,21 +197,21 @@
           "license": "CC-BY-SA (version not stated)",
           "source": "YBrowse snapshot ybrowse-snps_hg38-2026-11-05.csv.gz",
           "notice": "Licence: Y marker polarity corrections are a separate CC-BY-SA YBrowse data module (NOTICE-YBrowse.md).",
-          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v1/y-polarity-1.tar.gz",
-          "sha256": "571ab2f2cfe4631adee4c7fa718993e7a7c3be81f667867af1f25edd8c4a0e1f",
-          "size": 20444,
+          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v2/y-polarity-2.tar.gz",
+          "sha256": "b1390df008e40b03024ec251b5a689190aaad7ae1e148e61260bff8547585f1f",
+          "size": 11448,
           "files": {
             "NOTICE-YBrowse.md": {
-              "sha256": "646f6863bd0eb93d1eecb65416a78169a6e4866e61e95744f9bf341ebc33d5dc",
-              "size": 587
+              "sha256": "15a3becfdc7515dd602da80ecc01ad9c26fe73935f188f8e5149722dedd5f24d",
+              "size": 588
             },
             "build_info.json": {
-              "sha256": "ad3dea75e45804ca16a0a2bb511eb43fc1325c71e89a39900da20a9b842df1ed",
-              "size": 2678
+              "sha256": "af3e164bbc8a8d58bd8d8dd798eb18d8860741f5b4f5383322bbd322340b7716",
+              "size": 4894
             },
             "polarity.json": {
-              "sha256": "ab8025091b1c53730c96048e1984252092ee7d6e60cc8e3297bc333f6c300cd7",
-              "size": 184568
+              "sha256": "b62293650e901f7b924cc4d5c2f1c2086c446df62c8acc2120f5b4aa862c8771",
+              "size": 91574
             }
           }
         }

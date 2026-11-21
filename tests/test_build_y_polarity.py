@@ -4,6 +4,7 @@ import csv
 import gzip
 import json
 import shutil
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -21,9 +22,36 @@ from wgsextract_cli.ydna.yleaf_native.trees import YleafTree
 
 
 def _module(
-    tmp_path: Path, rows: str, independent: str, *, reverse_t2t: bool = False
+    tmp_path: Path,
+    rows: str,
+    independent: str,
+    *,
+    reverse_t2t: bool = False,
+    legacy_overlay: bool = False,
+    tree: dict[str, list[str]] | None = None,
+    reference_bases: dict[int, str] | None = None,
 ) -> tuple[Path, Path]:
     data = tmp_path / "data"
+    if tree is None:
+        tree = {
+            'ROOT (Y-Chromosome "Adam")': ["CT-M168", "C"],
+            "CT-M168": ["R", "J-M267"],
+            "R-M207": ["R-M343"],
+            "R-M343": ["R1b"],
+            "R": ["R-M207"],
+            "R1b": [],
+            "J-M267": ["J1"],
+            "J1": [],
+            "C": [],
+        }
+    tree_folder = data / "hg_prediction_tables"
+    tree_folder.mkdir(parents=True)
+    for name in ("ftdna", "isogg"):
+        selected = dict(tree)
+        if name == "ftdna" and legacy_overlay:
+            selected["CF"] = ["R-M343"]
+        (tree_folder / f"{name}_tree.json").write_text(json.dumps(selected))
+    references = {}
     for genome in ("hg38", "hg19", "t2t"):
         folder = data / genome
         folder.mkdir(parents=True)
@@ -37,8 +65,22 @@ def _module(
                 row[4] = f"{row[5]}->{row[6]}"
                 lifted.append("\t".join(row) + "\n")
             target_rows = "".join(lifted)
-        for tree in ("ftdna", "isogg"):
-            (folder / f"{tree}_positions_{genome}.txt").write_text(target_rows)
+        for name in ("ftdna", "isogg"):
+            (folder / f"{name}_positions_{genome}.txt").write_text(target_rows)
+        target = list(csv.reader(target_rows.splitlines(), delimiter="\t"))
+        bases = {int(row[3]): row[6] for row in target}
+        for pos, base in (reference_bases or {}).items():
+            if genome == "t2t" and reverse_t2t:
+                pos = 60000001 - pos
+                base = base.translate(str.maketrans("ACGT", "TGCA"))
+            bases[pos] = base
+        sequence = bytearray(b"N" * max(bases))
+        for pos, base in bases.items():
+            sequence[pos - 1] = ord(base)
+        reference = folder / "chrY.fa"
+        reference.write_bytes(b">chrY\n" + sequence + b"\n")
+        subprocess.run(["samtools", "faidx", str(reference)], check=True)
+        references[genome] = reference
         if genome != "hg38":
             chain = "hg38ToHg19" if genome == "hg19" else "hg38ToHs1"
             with gzip.open(folder / f"{chain}.over.chain.gz", "wt") as stream:
@@ -47,18 +89,21 @@ def _module(
                     f"chain 1 chrY 60000000 + 0 60000000 chrY 60000000 {strand} 0 60000000 1\n60000000\n\n"
                 )
     snapshot = tmp_path / "snps_hg38.csv"
-    snapshot.write_text("seqid,start,end,Name,allele_anc,allele_der\n" + independent)
+    snapshot.write_text(
+        "seqid,start,end,Name,allele_anc,allele_der,YCC_haplogroup,ISOGG_haplogroup\n"
+        + independent
+    )
     output = tmp_path / "module"
-    spec = build(data, snapshot, output)
+    spec = build(data, snapshot, output, references)
     installed = tmp_path / "installed"
     installed.mkdir()
-    extract_archive(output / "y-polarity-1.tar.gz", installed, spec["files"])
+    extract_archive(output / "y-polarity-2.tar.gz", installed, spec["files"])
     return data, installed / "polarity.json"
 
 
 @pytest.mark.skipif(not shutil.which("bcftools"), reason="bcftools required")
 @pytest.mark.parametrize("base,expected", [("A", "R-M343"), ("C", "NA")])
-def test_issue1168_ct_backbone_reversal_changes_ftdna_haplogroup(
+def test_issue1168_ct_reversal_ignores_legacy_overlay_and_changes_ftdna_haplogroup(
     tmp_path: Path, base: str, expected: str
 ) -> None:
     # CTS109 is C>A at GRCh38 chrY:2865577 in the pinned YBrowse snapshot;
@@ -68,7 +113,13 @@ def test_issue1168_ct_backbone_reversal_changes_ftdna_haplogroup(
         "chrY\tM207\tR-M207\t15581983\tA->G\tA\tG\n"
         "chrY\tM343\tR-M343\t2887824\tC->A\tC\tA\n"
     )
-    data, audit = _module(tmp_path, rows, "chrY,2865577,2865577,CTS109,C,A\n")
+    data, audit = _module(
+        tmp_path,
+        rows,
+        "chrY,2865577,2865577,CTS109,C,A,CT-M168,CT-M168\n",
+        legacy_overlay=True,
+        reference_bases={2865577: "A"},
+    )
     tree_file = tmp_path / "tree.json"
     tree_file.write_text(
         json.dumps(
@@ -153,9 +204,10 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
     data, audit = _module(
         tmp_path,
         rows,
-        "chrY,10,10,transition,C,T\nchrY,20,20,recovered,A,G\n"
-        "chrY,30,30,recurrent,G,A\n"
-        "chrY,40,40,ambiguous,G,A\nchrY,41,41,ambiguous,G,A\n",
+        "chrY,10,10,transition,C,T,R,R\nchrY,20,20,recovered,A,G,R,R\n"
+        "chrY,30,30,recurrent,G,A,R,R\n"
+        "chrY,40,40,ambiguous,G,A,R,R\nchrY,41,41,ambiguous,G,A,R,R\n",
+        reference_bases={10: "T", 20: "G"},
     )
     table = data / "hg38/ftdna_positions_hg38.txt"
     markers, _ = correct_polarity(
@@ -177,9 +229,14 @@ def test_issue1168_ancient_filter_follows_corrected_polarity_and_preserves_recur
         ("ambiguous", "D"),
     ]
     rebuilt = tmp_path / "rebuilt"
-    build(data, tmp_path / "snps_hg38.csv", rebuilt)
-    assert (rebuilt / "y-polarity-1.tar.gz").read_bytes() == (
-        tmp_path / "module/y-polarity-1.tar.gz"
+    build(
+        data,
+        tmp_path / "snps_hg38.csv",
+        rebuilt,
+        {genome: data / genome / "chrY.fa" for genome in ("hg38", "hg19", "t2t")},
+    )
+    assert (rebuilt / "y-polarity-2.tar.gz").read_bytes() == (
+        tmp_path / "module/y-polarity-2.tar.gz"
     ).read_bytes()
     table.write_text(rows + "chrY\tnew\tR\t50\tA->G\tA\tG\n")
     with pytest.raises(WGSExtractError, match="source table"):
@@ -219,8 +276,9 @@ def test_issue1168_reverse_strand_correction_uses_target_build_alleles(
     data, audit = _module(
         tmp_path,
         "chrY\tCTS109\tCT-M168\t2865577\tA->C\tA\tC\n",
-        "chrY,2865577,2865577,CTS109,C,A\n",
+        "chrY,2865577,2865577,CTS109,C,A,CT-M168,CT-M168\n",
         reverse_t2t=True,
+        reference_bases={2865577: "A"},
     )
     table = data / "t2t/ftdna_positions_t2t.txt"
     markers, _ = correct_polarity(
@@ -230,3 +288,60 @@ def test_issue1168_reverse_strand_correction_uses_target_build_alleles(
     assert [
         (row.marker.ancestral, row.marker.derived, row.state) for row in passing
     ] == [("G", "T", "D")]
+
+
+def test_issue1168_sister_branch_reversal_preserves_original_states(
+    tmp_path: Path,
+) -> None:
+    data, audit = _module(
+        tmp_path,
+        "chrY\tFGC24780\tR\t10\tA->G\tA\tG\n"
+        "chrY\tCTS109\tCT-M168\t20\tA->C\tA\tC\n"
+        "chrY\tcontrol\tC\t30\tA->G\tA\tG\n",
+        "chrY,10,10,FGC24780,G,A,C,C\nchrY,20,20,CTS109,C,A,CT-M168,CT-M168\n",
+        reference_bases={10: "G", 20: "A"},
+    )
+    table = data / "hg38/ftdna_positions_hg38.txt"
+    markers, _ = correct_polarity(
+        read_markers(table), table, audit, "ftdna", "hg38", ancient=False
+    )
+    passing, _ = match_markers(
+        markers, {10: Call("G", 30, 100), 20: Call("A", 30, 100)}
+    )
+    assert [(row.marker.name, row.state) for row in passing] == [
+        ("FGC24780", "D"),
+        ("CTS109", "D"),
+    ]
+    assert (
+        json.loads(audit.read_text())["tables"]["ftdna/hg38"]["audit"][
+            "branch_disagreement_not_corrected"
+        ]
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "branch,base,reason",
+    [("R", "G", "path_ref_ancestral"), ("C", "A", "off_path_ref_derived")],
+)
+def test_issue1168_reference_lineage_gate_rejects_wrong_flips(
+    tmp_path: Path, branch: str, base: str, reason: str
+) -> None:
+    data, audit = _module(
+        tmp_path,
+        f"chrY\twrong\t{branch}\t10\tA->G\tA\tG\n",
+        f"chrY,10,10,wrong,G,A,{branch},{branch}\n",
+        reference_bases={10: base},
+    )
+    table = data / "hg38/ftdna_positions_hg38.txt"
+    markers, _ = correct_polarity(
+        read_markers(table), table, audit, "ftdna", "hg38", ancient=False
+    )
+    passing, _ = match_markers(markers, {10: Call(base, 30, 100)})
+    assert passing[0].state == ("D" if base == "G" else "A")
+    assert (
+        json.loads(audit.read_text())["tables"]["ftdna/hg38"]["audit"][
+            f"{reason}_not_corrected"
+        ]
+        == 1
+    )
