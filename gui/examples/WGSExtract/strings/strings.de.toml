@@ -41,7 +41,7 @@
 "actions.info-bam.info-commands.clear-cache.title" = "Info-Cache leeren"  # i18n-source-hash:fd26fce5
 "actions.info-bam.info-commands.clear-cache.tooltip" = "Löschen Sie die zwischengespeicherte .wgse_info.json für die aktuelle Eingabedatei."  # i18n-source-hash:e9e8e870
 "actions.info-bam.info-commands.calculate-coverage.title" = "Detaillierte Abdeckung"  # i18n-source-hash:2d8de3a4
-"actions.info-bam.info-commands.calculate-coverage.tooltip" = "Erzeugen Sie einen vollständigen Bericht zur Abdeckungsbreite und danach die Tiefenklassen (0, 1-3, 4-7 und 8+ Reads) je Chromosom. Dieser berechnet genau, wie viel des Genoms erfolgreich sequenziert wurde. Zeit: 1-3 Stunden; Speicherplatz: 1-2 GB."  # i18n-source-hash:4df83dea
+"actions.info-bam.info-commands.calculate-coverage.tooltip" = "Erzeugen Sie einen vollständigen Bericht zur Abdeckungsbreite und danach die Tiefenklassen (0, 1-3, 4-7 und 8+ Reads) je Chromosom. Dieser berechnet genau, wie viel des Genoms ohne seine N-Lücken erfolgreich sequenziert wurde; die Karte zeigt die Tiefenklassen, und Detailinfo ergänzt danach die Spalte zur Abdeckungsbreite. Zeit: 1-3 Stunden; Speicherplatz: 1-2 GB."  # i18n-source-hash:1b50c9ab
 "actions.info-bam.info-commands.coverage-sample.title" = "Abdeckung schätzen"  # i18n-source-hash:a6aba99c
 "actions.info-bam.info-commands.coverage-sample.tooltip" = "Schätzen Sie die Abdeckungsbreite durch Zufallsstichproben. Schnell und näherungsweise; für genaue Werte verwenden Sie „Detaillierte Abdeckung“."  # i18n-source-hash:91f6b993
 "sections.info-bam.bam-commands.title" = "BAM/CRAM-Verwaltung"  # i18n-source-hash:48ce1911

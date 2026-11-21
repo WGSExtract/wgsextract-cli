@@ -17,9 +17,11 @@ from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
     DEV_TABLE,
     MOVED_TO_DEV,
+    SERVER_SETTINGS,
     SETTINGS,
     DevSettings,
     InvalidSetting,
+    ServerSettings,
     Settings,
     check_values,
 )
@@ -108,6 +110,15 @@ def _validate_config_types(
     *,
     allow_invalid_threads: bool = False,
 ) -> None:
+    server = config.get("server", {})
+    if not isinstance(server, Mapping):
+        raise WGSExtractError(f"Invalid [server] table in {config_path}.")
+    try:
+        list(check_values(server, SERVER_SETTINGS))
+    except InvalidSetting as error:
+        raise WGSExtractError(
+            f"Invalid setting 'server.{error.key}' in {config_path}: {error}"
+        ) from None
     for key, new_key in MOVED_TO_DEV.items():
         if key in config:
             raise WGSExtractError(
@@ -279,11 +290,18 @@ def load_config() -> dict[str, Any]:
         - SETTINGS.keys()
         - CONFIG_ALIASES.keys()
         - MOVED_TO_DEV.keys()
-        - {DEV_TABLE},
+        - {DEV_TABLE, "server"},
         [*SETTINGS, *CONFIG_ALIASES],
         str(config_path),
     )
     dev = config.get(DEV_TABLE)
+    server = config.get("server")
+    if isinstance(server, dict):
+        _warn_unknown(
+            server.keys() - SERVER_SETTINGS.keys(),
+            SERVER_SETTINGS,
+            f"the [server] table of {config_path}",
+        )
     if isinstance(dev, dict):
         _warn_unknown(
             dev.keys() - DEV_SETTINGS.keys(),
@@ -409,6 +427,18 @@ def settings_from(values: Mapping[str, object]) -> Settings:
     return Settings(
         **cast(dict[str, Any], given),
         dev=DevSettings(**cast(dict[str, Any], dev_values)),
+        server=ServerSettings(
+            **cast(
+                dict[str, Any],
+                {
+                    name: value
+                    for _, name, value in check_values(
+                        cast(Mapping[str, object], values.get("server", {})),
+                        SERVER_SETTINGS,
+                    )
+                },
+            )
+        ),
     )
 
 
@@ -421,28 +451,30 @@ def settings_suspended() -> Iterator[None]:
         yield
 
 
-def _update_dev_table(config: dict[str, Any], updates: object) -> None:
-    """Merge ``updates`` into config's [dev] table the way save_config merges
+def _update_table(
+    config: dict[str, Any], updates: object, table_name: str, paths: frozenset[str]
+) -> None:
+    """Merge ``updates`` into a settings table the way save_config merges
     top-level settings: None or "" clears a key, and None clears the table."""
     if updates is None:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
         return
     if not isinstance(updates, Mapping):
-        config[DEV_TABLE] = updates  # rejected by _validate_config_types
+        config[table_name] = updates  # rejected by _validate_config_types
         return
-    current = config.get(DEV_TABLE)
+    current = config.get(table_name)
     dev = dict(current) if isinstance(current, Mapping) else {}
     for key, value in updates.items():
         if value is None or value == "":
             dev.pop(key, None)
-        elif key in DEV_PATH_SETTINGS:
+        elif key in paths:
             dev[key] = _normalize_path_setting(value)
         else:
             dev[key] = value
     if dev:
-        config[DEV_TABLE] = dev
+        config[table_name] = dev
     else:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
 
 
 def save_config(updates: dict[str, Any]) -> None:
@@ -465,8 +497,13 @@ def save_config(updates: dict[str, Any]) -> None:
     for legacy_key in LEGACY_SETTINGS:
         current_config.pop(legacy_key, None)
     for key, value in updates.items():
-        if key == DEV_TABLE:
-            _update_dev_table(current_config, value)
+        if key in (DEV_TABLE, "server"):
+            _update_table(
+                current_config,
+                value,
+                key,
+                DEV_PATH_SETTINGS if key == DEV_TABLE else frozenset(),
+            )
             continue
         if key in MOVED_TO_DEV:
             if value is None or value == "":
