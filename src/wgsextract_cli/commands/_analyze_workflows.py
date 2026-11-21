@@ -18,6 +18,7 @@ from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
+from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.result_card import CARD_ROLE
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
@@ -223,49 +224,6 @@ def _vcf_output_tag(vcf_path: str, v_type: str) -> str:
 
 def _filename_key(name: str) -> str:
     return unicodedata.normalize("NFC", name.casefold())
-
-
-def vcf_workflow_inputs(vcfs: Sequence[str], outdir: str) -> list[tuple[str, str, str]]:
-    """Plan (source, type, output tag) before any annotation step writes."""
-    types = [detect_vcf_type(vcf) for vcf in vcfs]
-    tags = [_vcf_output_tag(vcf, kind) for vcf, kind in zip(vcfs, types, strict=True)]
-    keys = [_filename_key(tag) for tag in tags]
-    used = set(keys)
-    if len(used) == len(keys):
-        return list(zip(vcfs, types, tags, strict=True))
-
-    counts = Counter(keys)
-    sources = [Path(vcf).parent.resolve() / Path(vcf).name for vcf in vcfs]
-    protected = {*sources, *(path.resolve() for path in sources)}
-    source_paths = {_filename_key(str(path)) for path in protected}
-    source_dirs = {
-        _filename_key(str(parent)) for path in protected for parent in path.parents
-    }
-    output_dir = Path(outdir).resolve()
-    # Reserve existing names and assign suffixes in source order, independent
-    # of the order the user passes the same inputs on a resumed run.
-    suffixes: Counter[str] = Counter()
-    for i in sorted(range(len(vcfs)), key=lambda i: (str(sources[i]), vcfs[i])):
-        key = keys[i]
-        if counts[key] == 1:
-            continue
-        while True:
-            suffixes[key] += 1
-            candidate = f"{tags[i]}-{suffixes[key]}"
-            candidate_key = _filename_key(candidate)
-            if candidate_key in used:
-                continue
-            work_dir = (output_dir / f"work_{candidate}").resolve()
-            output = output_dir / f"significant_{candidate}.vcf.gz"
-            if (
-                _filename_key(str(work_dir)) in source_dirs
-                or _filename_key(str(output)) in source_paths
-            ):
-                continue
-            used.add(candidate_key)
-            tags[i] = candidate
-            break
-    return list(zip(vcfs, types, tags, strict=True))
 
 
 # bcftools `~` uses POSIX basic regex: "|" and "()" are literals, so match each
@@ -662,7 +620,7 @@ def run_vcf_workflow(
     current_result().add_output(
         discovery_vcf,
         "significant_variants",
-        metrics={"source_vcf": str(Path(vcf_path).absolute())},
+        metrics={"source_vcf": str(absolute_path(vcf_path))},
     )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}

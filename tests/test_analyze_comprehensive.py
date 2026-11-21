@@ -57,10 +57,13 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
         f"reference_library = '{lib}'\nclinvar_vcf_path = '{clinvar}'\n"
         + state_directory_setting(tmp_path)
     )
+    linked_output = out / "significant_snp-indel_calls-4.vcf.gz"
+    if os.name != "nt":
+        linked_output.symlink_to(next(iter(source_ids)))
     results = []
     for vcfs in (list(source_ids), list(reversed(source_ids))):
         code, stdout, stderr = run_cli([
-            "--config", str(cfg), "analyze", "comprehensive", "--outdir", str(out),
+            "--config", str(cfg), "analyze", "comprehensive", "--outdir", str(out / ".." / "out"),
             "--threads", "1", "--vcf-inputs", *vcfs,
         ])  # fmt: skip
         assert code == 0, stderr
@@ -76,6 +79,9 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
         }
         assert {source: ids(path) for source, path in paths.items()} == source_ids
         assert {source: ids(source) for source in vcfs} == source_ids
+        if os.name != "nt":
+            assert linked_output.is_symlink()
+            assert str(linked_output) not in paths.values()
         independent_source = str(out / "work_snp-indel_calls-3" / "calls-1.vcf.gz")
         assert (
             Path(paths[independent_source]).name
@@ -94,6 +100,25 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
         results.append((paths, manifest["metrics"]["steps_run"]))
     assert results[0][0] == results[1][0]
     assert [ran for _, ran in results] == [2 * len(source_ids), 0]
+
+
+@needs_htslib
+def test_1223_existing_annotation_folder_cannot_contain_an_input(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    folder = out / "work_snp-indel_calls"
+    folder.mkdir(parents=True)
+    inside = write_vcf(folder / "nested.vcf.gz", [(100, "nested", "50", ".")])
+    calls = write_vcf(tmp_path / "calls.vcf.gz", [(200, "calls", "50", ".")])
+
+    code, _, stderr = run_cli([
+        "analyze", "comprehensive", "--outdir", str(out), "--vcf-inputs", calls, inside,
+    ])  # fmt: skip
+    assert code == 2
+    assert str(folder) in stderr and "--outdir" in stderr
+    assert ids(inside) == ["nested"]
+    assert not (out / "analyze.steps.json").exists()
 
 
 @needs_htslib

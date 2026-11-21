@@ -81,6 +81,8 @@ gets a numbered suffix. VCFs whose names don't collide keep their usual
 output names. The summary shows the source paths when filenames match.
 The manifest records the source path as `source_vcf` on each
 significant-variants output.
+If an output using the usual name would overwrite a selected input, use a
+different `--outdir`.
 
 `wgsextract report --genome ID` reads earlier manifests without running tools.
 Its local HTML, Markdown, JSON and findings table cover overview/QC, Y/mtDNA,
