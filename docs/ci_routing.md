@@ -793,8 +793,9 @@ push, every three hours and on manual dispatch, *Auto-merge conflict watch*
 auto-merge is enabled and whose mergeability is `CONFLICTING`
 `auto-merge-blocked`, creating the label if needed, and comments once asking
 the author to merge the base branch. It comments before labelling, and skips
-the comment if one was posted since the label was last removed, so a failed
-run retries without repeating it. The label is removed when the PR merges
+the comment if the workflow posted one since the label was last removed, so a
+failed run retries without repeating it. One PR's API failure doesn't stop the
+others; the run fails at the end. The label is removed when the PR merges
 cleanly again or auto-merge is turned off. It waits for GitHub to compute an
 auto-merging PR's mergeability after a push and leaves it alone if that stays
 unknown. `--dry-run` reports without changing anything.
@@ -802,8 +803,9 @@ unknown. `--dry-run` reports without changing anything.
 Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
 the stdlib-only release-note fragment check (#1281), so a PR adding only a
 fragment under `docs/release-notes/unreleased/` needs no other runner. With the
-base, it also fails a PR or queue group that adds a `vX.Y.Z.md` while
-fragments remain: they landed after the release notes were assembled.
+base (a PR merge commit's first parent, or the queue group's base), it also
+fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
+fragments remain, so none is left out of that release or announced twice.
 
 ## Cache plan
 

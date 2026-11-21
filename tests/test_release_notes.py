@@ -137,6 +137,7 @@ def repository(tmp_path: Path) -> Path:
     root = tmp_path / "repo"
     notes = notes_dir(root / "docs" / "release-notes", {})
     (notes / "unreleased" / "7-fix.md").write_text("## Fixes\n\n- Fix.\n")
+    (root / "pyproject.toml").write_text('[project]\nversion = "0.8.9"\n')
     git(root, "init", "-q", "-b", "main")
     git(root, "add", "-A")
     git(root, "commit", "-qm", "base")
@@ -181,3 +182,17 @@ def test_1281_fragment_landing_after_assembly_fails_the_release_check(
     git(repository, "add", "-A")
     git(repository, "commit", "-qm", "next fragment")
     assert run(notes, "check", "--base", "main") == 0
+
+
+def test_1281_version_bump_without_assembled_notes_fails_the_check(
+    repository: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # release.yml can publish a draft without a notes file; its fragments
+    # would otherwise be announced again by the next release.
+    notes = repository / "docs" / "release-notes"
+    git(repository, "checkout", "-qb", "release-0.9.0")
+    (repository / "pyproject.toml").write_text('[project]\nversion = "0.9.0"\n')
+    git(repository, "commit", "-qam", "bump")
+
+    assert run(notes, "check", "--base", "main") == 1
+    assert "version becomes 0.9.0" in capsys.readouterr().err

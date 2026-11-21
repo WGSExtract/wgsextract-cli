@@ -106,10 +106,12 @@ jobs:
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
       # Stdlib-only and instant, so fragment-only PRs need no extra runner.
       # A release's queue commit must not leave late fragments unassembled.
+      # PR runs check out the merge commit, whose first parent is the base it
+      # was built on; the event's base.sha can be older.
       - name: Check release-note fragments
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
-        run: python3 scripts/release_notes.py check --base "$BASE"
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: python3 scripts/release_notes.py check --base "${QUEUE_BASE:-HEAD^1}"
 
   draft-fast:
     name: Draft lint and fast tests

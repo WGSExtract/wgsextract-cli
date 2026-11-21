@@ -12,9 +12,9 @@ sections below, each a `## Section` heading followed by a `- ` list of entries.
 `assemble` writes docs/release-notes/vX.Y.Z.md from every fragment, grouped by
 section in the order below and by number within a section, then deletes the
 fragments; the release PR adds the summary and the app's changes by hand (see
-docs/releasing.md). With --base, `check` also fails when the change since REF
-adds a vX.Y.Z.md while fragments remain: they landed after the notes were
-assembled and would be left out of that release.
+docs/releasing.md). With --base, `check` also fails when the change since REF is
+a release (it adds a vX.Y.Z.md or bumps pyproject.toml's version) while
+fragments remain, so none is left out of that release or announced twice.
 """
 
 from __future__ import annotations
@@ -116,8 +116,16 @@ def git(notes: Path, *args: str) -> list[str] | None:
     ).stdout.splitlines()
 
 
+def project_version(notes: Path, revision: str) -> str | None:
+    text = git(notes, "show", f"{revision}:pyproject.toml") or []
+    return next(
+        (m[1] for line in text if (m := re.fullmatch(r'version = "([^"]+)"', line))),
+        None,
+    )
+
+
 def released(notes: Path, base: str) -> list[str]:
-    """Release notes files added since base."""
+    """What since base makes this a release: added notes files, a version bump."""
     added = git(
         notes,
         "diff",
@@ -130,13 +138,17 @@ def released(notes: Path, base: str) -> list[str]:
     )
     if added is None:
         raise ValueError(f"{notes.parents[1]} is not a git checkout")
-    return [
-        Path(path).name
+    releases = [
+        f"{Path(path).name} is added here"
         for path in added
         if Path(path).parent == Path("docs/release-notes")
         and Path(path).stem.startswith("v")
         and VERSION.fullmatch(Path(path).stem)
     ]
+    version = project_version(notes, "HEAD")
+    if version != project_version(notes, base):
+        releases.append(f"the version becomes {version} here")
+    return releases
 
 
 def previous(notes: Path, version: tuple[int, ...]) -> str | None:
@@ -207,10 +219,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Cannot compare with {args.base}: {error}", file=sys.stderr)
                 return 1
             errors += [
-                f"{name} is added here, but {len(fragments)} fragment(s) in "
-                "unreleased/ landed after it was assembled: move their entries "
-                "into it and delete them"
-                for name in added
+                f"{reason}, but {len(fragments)} fragment(s) remain in "
+                "unreleased/: the release must assemble them (move late ones' "
+                "entries into its notes file and delete them)"
+                for reason in added
             ]
         if errors:
             print("Release-note fragments are invalid:", file=sys.stderr)

@@ -86,7 +86,11 @@ class FakeGitHub(GitHub):
             assert data is not None
             self.comments.setdefault(number, []).append(data["body"])
             self.timeline.setdefault(number, []).append(
-                {"__typename": "IssueComment", "body": data["body"]}
+                {
+                    "__typename": "IssueComment",
+                    "body": data["body"],
+                    "author": {"login": "github-actions"},
+                }
             )
             return {}
         raise AssertionError(f"Unexpected GitHub call: {method} {path}")
@@ -244,10 +248,11 @@ def test_1281_disabled_auto_merge_clears_label_without_mergeability() -> None:
 def test_1281_failed_label_is_retried_without_a_second_comment() -> None:
     github = FakeGitHub()
     github.add(1205, "CONFLICTING")
+    github.add(1206, "CONFLICTING")
     github.label_failures = 1
 
-    with pytest.raises(subprocess.CalledProcessError):
-        watch(github, sleep=no_sleep)
+    # One PR's failure doesn't stop the next one.
+    assert watch(github, sleep=no_sleep) == {1205: "failed", 1206: "flagged"}
     assert len(github.comments[1205]) == 1 and github.labels(1205) == set()
 
     assert watch(github, sleep=no_sleep) == {1205: "flagged"}
@@ -263,3 +268,18 @@ def test_1281_a_new_conflict_after_a_clean_merge_is_announced_again() -> None:
     assert watch(github, sleep=no_sleep) == {1205: "cleared"}
     assert watch(github, sleep=no_sleep) == {1205: "flagged"}
     assert len(github.comments[1205]) == 2
+
+
+def test_1281_a_pasted_marker_does_not_count_as_the_notification() -> None:
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING")
+    github.timeline[1205] = [
+        {
+            "__typename": "IssueComment",
+            "body": "Quoting: <!-- auto-merge-blocked -->",
+            "author": {"login": "someone"},
+        }
+    ]
+
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert len(github.comments[1205]) == 1

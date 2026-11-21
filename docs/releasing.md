@@ -52,7 +52,8 @@ it.
    the fragments. Then add a short summary under the title and the app's
    changes under `## Desktop app`. If a fragment lands on main before the
    release PR merges, the PR's checks fail: move its entries into the notes
-   file and delete it. The deprecated commands are also listed in
+   file and delete it; a version bump that leaves fragments fails the same
+   way. The deprecated commands are also listed in
    `DEPRECATIONS` in
    `src/wgsextract_cli/commands/registry.py`. A command deprecated in one minor
    release is removed in the next, so a release that reaches a deprecation's

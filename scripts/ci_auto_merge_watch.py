@@ -9,6 +9,8 @@ when the conflict is gone. It only calls the GitHub API (stdlib + gh).
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +20,8 @@ from scripts.ci_github import GitHub
 
 LABEL = "auto-merge-blocked"
 MARKER = "<!-- auto-merge-blocked -->"
+# Only the workflow's own comments count; anyone can paste the marker.
+WATCHER = {"github-actions", "github-actions[bot]"}
 COMMENT = (
     MARKER + "\nAuto-merge is enabled, but this pull request conflicts with "
     "`{base}`, so GitHub won't add it to the merge queue. Merge `{base}` into "
@@ -49,7 +53,7 @@ query($owner: String!, $name: String!, $number: Int!) {
       timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, UNLABELED_EVENT]) {
         nodes {
           __typename
-          ... on IssueComment { body }
+          ... on IssueComment { body author { login } }
           ... on UnlabeledEvent { label { name } }
         }
       }
@@ -116,7 +120,11 @@ def announced(github: GitHub, number: int) -> bool:
     """A comment since the label was last removed means the author was told."""
     items = graphql(github, TIMELINE, number=number)["pullRequest"]
     for item in reversed(items["timelineItems"]["nodes"]):
-        if item["__typename"] == "IssueComment" and MARKER in item["body"]:
+        if (
+            item["__typename"] == "IssueComment"
+            and (item["author"] or {}).get("login") in WATCHER
+            and MARKER in item["body"]
+        ):
             return True
         if item["__typename"] == "UnlabeledEvent" and item["label"]["name"] == LABEL:
             return False
@@ -142,37 +150,52 @@ def watch(
     for pr in pulls:
         if pr.pending:
             actions[pr.number] = "unknown"
-            continue
-        if pr.blocked and not pr.labelled:
+        elif pr.blocked and not pr.labelled:
             actions[pr.number] = "flagged"
-            if dry_run:
-                continue
-            # Comment before labelling so a failed run is retried; the timeline
-            # stops a retry after a failed label from repeating the comment.
-            if not announced(github, pr.number):
-                github.api(
-                    "POST",
-                    f"issues/{pr.number}/comments",
-                    {"body": COMMENT.format(base=pr.base)},
-                )
-            if not label_exists:
-                github.api(
-                    "POST",
-                    "labels",
-                    {
-                        "name": LABEL,
-                        "color": "d93f0b",
-                        "description": "Auto-merge is enabled but the PR "
-                        "conflicts with its base; merge the base branch",
-                    },
-                )
-                label_exists = True
-            github.api("POST", f"issues/{pr.number}/labels", {"labels": [LABEL]})
         elif pr.labelled and not pr.blocked:
             actions[pr.number] = "cleared"
-            if not dry_run:
+        else:
+            continue
+        if dry_run or actions[pr.number] == "unknown":
+            continue
+        if actions[pr.number] == "flagged" and not label_exists:
+            github.api(
+                "POST",
+                "labels",
+                {
+                    "name": LABEL,
+                    "color": "d93f0b",
+                    "description": "Auto-merge is enabled but the PR conflicts "
+                    "with its base; merge the base branch",
+                },
+            )
+            label_exists = True
+        # One PR's API failure must not stop the others; main reports it.
+        try:
+            if actions[pr.number] == "cleared":
                 github.api("DELETE", f"issues/{pr.number}/labels/{LABEL}")
+            else:
+                flag(github, pr)
+        except (subprocess.CalledProcessError, RuntimeError) as error:
+            print(
+                f"#{pr.number}: {getattr(error, 'stderr', '') or error}",
+                file=sys.stderr,
+            )
+            actions[pr.number] = "failed"
     return actions
+
+
+def flag(github: GitHub, pr: Pull) -> None:
+    """Tell the author, then label."""
+    # Comment before labelling so a failed run is retried; the timeline stops
+    # a retry after a failed label from repeating the comment.
+    if not announced(github, pr.number):
+        github.api(
+            "POST",
+            f"issues/{pr.number}/comments",
+            {"body": COMMENT.format(base=pr.base)},
+        )
+    github.api("POST", f"issues/{pr.number}/labels", {"labels": [LABEL]})
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -193,7 +216,7 @@ def main(argv: list[str] | None = None) -> int:
     for number, action in sorted(actions.items()):
         print(f"#{number}: {action}")
     print(f"{sum(a == 'flagged' for a in actions.values())} newly blocked PR(s).")
-    return 0
+    return 1 if "failed" in actions.values() else 0
 
 
 if __name__ == "__main__":
