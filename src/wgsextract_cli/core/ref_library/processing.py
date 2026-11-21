@@ -240,7 +240,9 @@ def download_and_process_genome(
             # Do not advertise a rejected mirror as installed or trust it on retry.
             _remove_genome_files(final_path)
             return False
-    _record_n_counts(final_path, genome_data["final"], target_dir, status_callback)
+    _record_n_counts(
+        final_path, genome_data["final"], target_dir, status_callback, cancel_event
+    )
     return True
 
 
@@ -249,9 +251,11 @@ def _record_n_counts(
     name: str,
     genomes_dir: str,
     status_callback: Callable[[str], None] | None,
+    cancel_event: CancelEvent | None,
 ) -> None:
     """Measure a genome's N bases into its library's table, unless the release's
-    table or the library's already has them."""
+    table or the library's already has them. A cancelled count records none,
+    so the next processing counts again."""
     from wgsextract_cli.core.ref_library import ncount_table
     from wgsextract_cli.core.ref_library.ncount import count_sequence_ns
 
@@ -262,9 +266,13 @@ def _record_n_counts(
     if status_callback:
         status_callback("Processing: Counting N bases...")
     try:
-        counts = count_sequence_ns(fasta)
+        counts = count_sequence_ns(
+            fasta, lambda: cancel_event is not None and cancel_event.is_set()
+        )
     except (OSError, EOFError, ValueError) as e:
         logging.warning(f"Could not count the N bases of {name}: {e}")
+        return
+    if counts is None:
         return
     entry = ncount_table.measured_entry(name, signature, counts)
     ncount_table.add_to_library(genomes_dir, entry)

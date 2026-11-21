@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.builds import build_from_path
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -307,12 +306,15 @@ def long_read_mapped_pct(idx_stats: Sequence[IdxStat], primary_share: float) -> 
     return round(100 * primary / (primary + unmapped), 2) if primary else 0.0
 
 
-def load_n_counts(ref_path: str | None) -> dict[str, int]:
+def load_n_counts(
+    ref_path: str | None, lengths: Mapping[str, int] | None = None
+) -> dict[str, int]:
     """Load per-contig N counts from the reference's ``<prefix>_ncnt.csv`` sidecar.
 
     The sidecar is tab-separated with ``#`` comment/header lines and columns
     SN, NumBP, NumNs, ... (numbers may contain thousands separators). A
-    two-column ``SN,NumNs`` CSV is also accepted.
+    two-column ``SN,NumNs`` CSV is also accepted. Given ``lengths``, a row
+    with a NumBP applies only to a contig of that length.
     """
     if not ref_path or not Path(ref_path).is_file():
         return {}
@@ -337,9 +339,15 @@ def load_n_counts(ref_path: str | None) -> dict[str, int]:
                     row = next(csv.reader([line]))
                 if len(row) < 2:
                     continue
-                count = row[2] if len(row) >= 3 else row[1]
+                name, count = row[0].strip(), row[2] if len(row) >= 3 else row[1]
                 try:
-                    n_counts[contig_key(row[0].strip())] = int(
+                    if (
+                        lengths is not None
+                        and len(row) >= 3
+                        and lengths.get(name) != int(row[1].replace(",", ""))
+                    ):
+                        continue
+                    n_counts[contig_key(name)] = int(
                         float(count.strip().replace(",", ""))
                     )
                 except ValueError:
@@ -634,9 +642,7 @@ def generate_chrom_table(
         valid_mito = ["M"]
         build = "Cat"
     else:
-        build = {"hg38": "38", "hg19": "37"}.get(
-            build_from_path(ref_model_name) or "", "99"
-        )
+        build = "Human"
 
     stats_autos: list[list[Any]] = []
     stats_somal: list[list[Any]] = []

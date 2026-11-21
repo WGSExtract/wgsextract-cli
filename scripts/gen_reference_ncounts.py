@@ -53,7 +53,7 @@ def main() -> int:
             folder / name for folder in args.source for name in sorted(names) if name
         ]
         for fasta in filter(Path.is_file, candidates):
-            counts = count_sequence_ns(str(fasta))
+            counts = count_sequence_ns(str(fasta)) or {}
             signature = sequence_signature({k: v[0] for k, v in counts.items()})
             if expected and signature != expected:
                 print(f"{final}: {fasta} has signature {signature}, not {expected}")

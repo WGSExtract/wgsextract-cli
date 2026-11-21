@@ -861,8 +861,8 @@ def test_issue_825_library_delete_removes_a_genome_and_what_was_made_from_it(
     fasta = genomes / "tiny.fa.gz"
     api.ref.index(RefIndexParams(ref=fasta, aligner="bwa"))
     Path(f"{fasta}.wgse-sa16").write_bytes(b"dense")
-    # Installing measured tiny's N counts; they never change, so they stay.
-    kept = {"reference_ncounts.tsv", *(p.name for p in genomes.glob("other*"))}
+    kept = {"reference_ncounts.tsv", ".reference_ncounts.tsv.guard"}  # never stale
+    kept |= {p.name for p in genomes.glob("other*")}
     # The index build left its lock's guard, which isn't listed as deleted.
     made = {
         p.name: p.stat().st_size

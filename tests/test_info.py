@@ -476,8 +476,8 @@ def test_n_counts_come_from_the_references_own_measurement(tmp_path):
 
 
 def test_one_signature_with_different_n_masks_needs_the_fasta(tmp_path):
-    """hs38d1 and GRCh38_Verily_v1 share a sequence dictionary but could mask
-    different regions, so the signature alone can't pick their counts."""
+    """FASTAs can share a sequence dictionary (hs38d1 and GRCh38_Verily_v1) yet
+    could mask different regions, so the signature alone can't pick counts."""
     from wgsextract_cli.commands.info.ncounts import reference_n_lengths
     from wgsextract_cli.core.ref_library.assets import sequence_signature
 
@@ -761,3 +761,30 @@ def test_partial_region_needs_no_n_counts_and_csv_is_one_table(tmp_path):
     out = _run_info(bam, "info", "--csv", *args, "--with-bins")
     rows = list(csv.reader(out.splitlines()))
     assert [r[0] for r in rows] == ["Seq Name", "chr1"]
+
+
+def test_a_ref_fastas_own_n_counts_win_and_need_the_measured_length(tmp_path):
+    """Review of #1271: a --ref FASTA's own `ref count-ns` file lost to a table
+    entry sharing its signature, and applied to contigs of any length."""
+    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
+    from wgsextract_cli.core.ref_library.assets import sequence_signature
+
+    lengths = {"chr1": 1000, "chr2": 500}
+    _library_entry(tmp_path, "catalog.fa.gz", lengths, {"chr1": 10})
+    mine = tmp_path / "mine" / "mine.fa"
+    mine.parent.mkdir()
+    mine.write_text(">chr1\nA\n")
+    (mine.parent / "mine_ncnt.csv").write_text(
+        "#Seq\tNumBP\tNumNs\nchr1\t1000\t300\nchr2\t999\t50\n"
+    )
+    found = reference_n_lengths(lengths, sequence_signature(lengths), str(mine))
+    assert found == ({"1": 300}, None)  # chr2's count is for a 999 bp chr2
+
+
+def test_a_named_reference_without_these_contigs_says_so(tmp_path):
+    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
+
+    fasta = _library_entry(tmp_path, "num.fa.gz", {"1": 1000}, {"1": 10})
+    found = reference_n_lengths({"chr1": 1000}, None, str(fasta))
+    assert found.n_lengths == {}
+    assert found.problem and found.problem[0] == "n_counts_unavailable"

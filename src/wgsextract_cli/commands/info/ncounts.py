@@ -8,6 +8,7 @@ from typing import NamedTuple
 
 from wgsextract_cli.core.ref_library import ncount_table
 from wgsextract_cli.core.ref_library.assets import (
+    n_count_paths,
     reference_genomes_dir,
     resolve_reference_library,
 )
@@ -23,21 +24,35 @@ class ReferenceNs(NamedTuple):
 def reference_n_lengths(
     lengths: Mapping[str, int], signature: str | None, reference: str | None
 ) -> ReferenceNs:
-    """N counts of the header's reference, from the N-count table entry for its
-    signature (and FASTA name, when two FASTAs share a signature), else from
-    the given FASTA's own ``_ncnt.csv`` (ref count-ns). Only a contig of the
-    measured length gets its count."""
+    """N counts of the header's reference, by `contig_key`; only a contig of
+    the measured length gets its count. In order: the N-count table entry for
+    the ``--ref`` FASTA's name and the header's signature; that FASTA's own
+    ``_ncnt.csv`` (ref count-ns); the one entry (or several identical ones)
+    for the signature; an entry under the FASTA's name alone."""
     fasta = Path(reference) if reference and Path(reference).is_file() else None
     folders = [reference_genomes_dir(resolve_reference_library())]
     if fasta:
         folders.append(str(fasta.parent))
     table = ncount_table.load_table(folders)
     name = fasta.name if fasta else None
-    matches = ncount_table.find_counts(table, signature, name) or [
-        e for e in table if e.reference == name
-    ]
-    if len(matches) > 1:
-        names = ", ".join(sorted(e.reference for e in matches))
+
+    def measured(entry: ncount_table.ReferenceNCounts) -> ReferenceNs:
+        counts = {
+            contig_key(seq): ns
+            for seq, (length, ns) in entry.sequences.items()
+            if lengths.get(seq) == length
+        }
+        if entry.sequences and not counts:  # none of its contigs are here
+            return _unavailable()
+        return ReferenceNs(counts, None)
+
+    named = ncount_table.find_counts(table, signature, name)
+    if named and named[0].reference == name:
+        return measured(named[0])
+    if fasta and Path(n_count_paths(str(fasta))[0]).is_file():
+        return ReferenceNs(load_n_counts(str(fasta), lengths), None)
+    if len(named) > 1:
+        names = ", ".join(sorted(e.reference for e in named))
         return ReferenceNs(
             {},
             (
@@ -47,17 +62,13 @@ def reference_n_lengths(
                 "FASTA with --ref to choose.",
             ),
         )
-    if matches:
-        return ReferenceNs(
-            {
-                contig_key(seq): ns
-                for seq, (length, ns) in matches[0].sequences.items()
-                if lengths.get(seq) == length
-            },
-            None,
-        )
-    if counts := load_n_counts(str(fasta) if fasta else None):
-        return ReferenceNs(counts, None)
+    by_name = [e for e in table if e.reference == name]
+    if named or by_name:
+        return measured((named or by_name)[0])
+    return _unavailable()
+
+
+def _unavailable() -> ReferenceNs:
     return ReferenceNs(
         {},
         (

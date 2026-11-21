@@ -148,7 +148,7 @@ def _cached_depths(
 
 
 def _counted_depths(
-    alignment: str, outdir: str | None, ref: str | None
+    alignment: str, outdir: str | None, ref: str | None, n_lengths: dict[str, int]
 ) -> tuple[dict[str, float], str] | None:
     """Depths from CRAM container base totals or BAM index read counts, with
     `info`'s N adjustment."""
@@ -158,11 +158,9 @@ def _counted_depths(
         generate_chrom_table,
         parse_idxstats,
     )
-    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
     from wgsextract_cli.commands.info.render import sampled_mapped_bases
     from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.builds import build_from_chr1_length
-    from wgsextract_cli.core.ref_library.assets import sequence_signature
     from wgsextract_cli.core.ref_library.models import sequence_lengths
 
     unknown: set[str] = set()
@@ -247,7 +245,7 @@ def _counted_depths(
         avg_len,
         "Unknown",
         build_from_chr1_length(lengths) or "",
-        n_counts=reference_n_lengths(lengths, sequence_signature(lengths), ref)[0],
+        n_counts=n_lengths,
         mapped_bases=measured,
     )
     rows = ((row[1], row[2], row[3], row[8]) for row in table)
@@ -292,15 +290,16 @@ def target_depths(
     fact = sample_workspace.known("target_depths", alignment)
     value = fact.value if fact is not None else None
     override = fact is not None and fact.source == "override"
-    n_basis: str | None = None
-    if not override:
-        try:
-            n_basis = n_lengths_digest(alignment_n_lengths(alignment, ref).n_lengths)
-        except (OSError, WGSExtractError) as e:
-            logging.debug(f"Could not read the N counts for {alignment}: {e}")
+    n_lengths: dict[str, int] | None = None
+    try:
+        n_lengths = alignment_n_lengths(alignment, ref).n_lengths
+    except (OSError, WGSExtractError) as e:
+        logging.debug(f"Could not read the N counts for {alignment}: {e}")
+        if not override:
             return None
+    n_basis = n_lengths_digest(n_lengths) if n_lengths is not None else None
     # A detected depth stands only for the N counts it left out.
-    tag = f" [N {n_basis[:12]}]" if n_basis else ""
+    tag = f" [N {n_basis[:12]}]" if n_basis else " [N unknown]"
     if (
         fact is not None
         and isinstance(value, dict)
@@ -316,7 +315,7 @@ def target_depths(
         if found is not None:
             depths, source = found, "cached `info --detailed` metrics"
         else:
-            counted = _counted_depths(alignment, outdir, ref)
+            counted = _counted_depths(alignment, outdir, ref, n_lengths or {})
             if counted is None:
                 return None
             depths, source = counted

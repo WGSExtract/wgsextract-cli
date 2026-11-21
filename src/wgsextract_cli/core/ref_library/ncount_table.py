@@ -7,8 +7,8 @@ into a library that the table lacks is measured then, and its counts go into
 that library's own ``reference_ncounts.tsv``, which is read alongside.
 
 An entry is keyed by the FASTA's file name and its sequence-dictionary
-signature: FASTAs with one signature can still mask different regions with N
-(hs38d1 and GRCh38_Verily_v1), so the signature alone doesn't name the counts.
+signature: FASTAs with one signature (hs38d1 and GRCh38_Verily_v1) could mask
+different regions with N, so the signature alone doesn't name the counts.
 Rows list each sequence with N bases; a ``*`` row gives the genome's totals,
 so a genome without Ns still has an entry.
 """
@@ -24,6 +24,7 @@ from importlib import resources
 from pathlib import Path
 
 from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.paths import PathInput
 
 TABLE_NAME = "reference_ncounts.tsv"
@@ -121,14 +122,13 @@ def measured_entry(
 
 
 def add_to_library(genomes_dir: PathInput, entry: ReferenceNCounts) -> None:
-    """Record a genome's counts in its library's table."""
-    entries = {e.key: e for e in library_table(genomes_dir)}
-    entries[entry.key] = entry
-    atomic_write(
-        Path(genomes_dir, TABLE_NAME),
-        format_table(entries.values()).encode(),
-        new_mode=0o666,
-    )
+    """Record a genome's counts in its library's table, under a lock so that
+    concurrent installs don't drop each other's entries."""
+    path = Path(genomes_dir, TABLE_NAME)
+    with exclusive_lock(path.with_name(f".{TABLE_NAME}")):
+        entries = {e.key: e for e in library_table(genomes_dir)}
+        entries[entry.key] = entry
+        atomic_write(path, format_table(entries.values()).encode(), new_mode=0o666)
 
 
 def find_counts(

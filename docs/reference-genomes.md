@@ -50,15 +50,21 @@ Depth and breadth leave out each reference's N (unsequenceable) bases,
 counted from that reference's own FASTA, upper- and lowercase alike. The
 release ships the counts of every catalog genome in
 `assets/reference/reference_ncounts.tsv`, read at run time, keyed by FASTA
-file name and sequence-dictionary signature (two FASTAs can share a signature
-yet mask different regions). Installing a genome the release didn't measure
-counts its Ns once, into the library's own `genomes/reference_ncounts.tsv`.
-`info` finds an alignment's counts by its header's signature, using the
-`--ref` FASTA's name when several genomes share it (`n_counts_ambiguous`
-otherwise). For a FASTA outside the catalog, `ref count-ns` writes
-`_ncnt.csv` and `_nbin.csv` beside it, or in `--outdir`, which `info --ref`
-then reads. Maintainers regenerate the shipped table with
-`scripts/gen_reference_ncounts.py`.
+file name and sequence-dictionary signature (two FASTAs can share a
+signature, so one could mask regions the other doesn't). Installing a genome
+the release didn't measure counts its Ns once, into the library's own
+`genomes/reference_ncounts.tsv`.
+
+`info` and genotype QC take an alignment's counts from the entry for the
+`--ref` FASTA's name and the header's signature, else from that FASTA's own
+`_ncnt.csv` (`ref count-ns` writes it and `_nbin.csv` beside the FASTA, or in
+`--outdir`), else from the entry for the header's signature. A contig gets a
+count only at the length it was measured at. An alignment to a reference
+outside the table, such as a catalog genome with an added spike-in contig,
+gets no counts from other genomes, only an `n_counts_unavailable` warning
+(`n_counts_ambiguous` when genomes sharing its signature differ); run `ref
+count-ns` on its FASTA and pass it with `--ref`. Maintainers regenerate the
+shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.

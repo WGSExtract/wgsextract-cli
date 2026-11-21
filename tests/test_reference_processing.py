@@ -102,7 +102,9 @@ def _assert_installed(lib: Path, final: str) -> Path:
         f"{path.name}.fai",
         f"{path.name}.gzi",
         Path(rp.reference_dict_path(path)).name,
-        "reference_ncounts.tsv",  # the genome's N counts, measured on processing
+        # The genome's N counts, measured on processing, and their lock.
+        "reference_ncounts.tsv",
+        ".reference_ncounts.tsv.guard",
     }
     assert not leftovers
     return path
