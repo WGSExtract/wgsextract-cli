@@ -173,6 +173,9 @@ def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
     ]
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Ensembl VEP doesn't run on Windows"
+)
 @pytest.mark.parametrize("root_exists", [False, True])
 def test_1238_ensembl_missing_cache_fails_without_database(
     tmp_path, fake_vep, monkeypatch, capsys, root_exists
