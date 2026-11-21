@@ -17,12 +17,21 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize(
     ("step", "detached"),
-    [("install", False), ("deps", False), ("deps", True), ("concurrent", False)],
+    [
+        ("install", False),
+        ("deps", False),
+        ("deps", True),
+        ("concurrent", False),
+        ("finalization", False),
+        ("layout", False),
+    ],
     ids=[
         "install-fails",
         "verification-fails",
         "detached-verification-fails",
         "concurrent-upgrade",
+        "finalization-fails",
+        "optional-envs-cannot-relocate",
     ],
 )
 def test_1211_failed_upgrade_keeps_the_previous_app(
@@ -44,7 +53,12 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
     (app / "reference/keep.fa").write_text("user reference")
     (app / "pixi.toml").write_text("previous manifest")
     (installation / "wgsextract").write_text("previous launcher")
-    (installation / "install-manifest.json").write_text("previous install record")
+    (installation / "uninstall.sh").write_text("#!/bin/sh\n# previous uninstaller\n")
+    install_record = installation / "install-manifest.json"
+    if step == "finalization":
+        install_record.mkdir()
+        install_record /= "keep"
+    install_record.write_text("previous install record")
     local_envs = app / ".pixi/envs"
     envs = tmp_path / "detached/envs" if detached else local_envs
     (envs / "default").mkdir(parents=True)
@@ -52,11 +66,15 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
     if detached:
         local_envs.parent.mkdir()
         local_envs.symlink_to(envs, target_is_directory=True)
+    if step in {"finalization", "layout"}:
+        (local_envs / "gatk").mkdir()
+        (local_envs / "gatk/keep").write_text("working optional environment")
 
     binary = tmp_path / "pixi"
+    candidate_detached = tmp_path / "detached/envs" if step == "layout" else envs
     create_env = (
-        f'ln -s "{envs}" .pixi/envs && mkdir -p "{envs}/default"'
-        if detached
+        f'ln -s "{candidate_detached}" .pixi/envs && mkdir -p "{candidate_detached}/default"'
+        if detached or step == "layout"
         else "mkdir -p .pixi/envs/default"
     )
     second_log = tmp_path / "second-upgrade.log"
@@ -77,7 +95,7 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
         "  printf partial > .pixi/envs/default/keep\n"
         f"{second_upgrade}"
         f"  [ '{step}' != install ] || {{ echo 'injected install failure' >&2; exit 42; }}\n"
-        'elif [ "$3" = deps ]; then\n'
+        f"elif [ \"$3\" = deps ] && [ '{step}' = deps ]; then\n"
         "  echo 'injected deps failure' >&2; exit 42\n"
         "fi\n"
     )
@@ -90,33 +108,48 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
         "WGSEXTRACT_ARCHIVE_URL": str(archive),
         "WGSEXTRACT_NO_OPEN": "1",
     }
+    if detached or step == "layout":
+        env["WGSEXTRACT_PIXI_ENV_DIR"] = str(candidate_detached.parent)
     if detached:
-        env["WGSEXTRACT_PIXI_ENV_DIR"] = str(envs.parent)
-    result = subprocess.run(
-        [str(SH), str(ROOT / "install.sh")],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+        envs.parent.chmod(0o555)
+    try:
+        result = subprocess.run(
+            [str(SH), str(ROOT / "install.sh")],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    finally:
+        if detached:
+            envs.parent.chmod(0o755)
 
-    assert result.returncode == 42, result.stderr
-    assert f"injected {step} failure" in result.stderr
+    if step in {"finalization", "layout"}:
+        assert result.returncode == 1, result.stderr
+        assert (local_envs / "gatk/keep").read_text() == "working optional environment"
+        assert (
+            "install-manifest.json"
+            if step == "finalization"
+            else "optional Pixi environments"
+        ) in result.stderr
+    else:
+        assert result.returncode == 42, result.stderr
+        assert f"injected {step} failure" in result.stderr
     assert (app / "pixi.toml").read_text() == "previous manifest"
     assert (app / "reference/keep.fa").read_text() == "user reference"
     assert (local_envs / "default/keep").read_text() == "working environment"
     assert (installation / "wgsextract").read_text() == "previous launcher"
-    assert (
-        installation / "install-manifest.json"
-    ).read_text() == "previous install record"
+    assert "previous uninstaller" in (installation / "uninstall.sh").read_text()
+    assert install_record.read_text() == "previous install record"
     assert not list(installation.glob(".source-download.*"))
+    assert not list(installation.glob(".wgse-launcher.*"))
     assert not (installation / ".app-install-lock").exists()
     if step == "concurrent":
         log = second_log.read_text()
         assert "Could not lock" in log
         assert log.splitlines()[-1] == "1"
     if detached:
-        assert list(envs.parent.iterdir()) == [envs]
+        assert list(envs.iterdir()) == [envs / "default"]
 
 
 @pytest.mark.parametrize("location", ["explicit", "path", "home"])

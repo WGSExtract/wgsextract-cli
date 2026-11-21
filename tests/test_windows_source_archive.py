@@ -40,9 +40,16 @@ def _bootstrap_env(app: Path, archive: Path, temp_dir: Path) -> dict[str, str]:
     }
 
 
-@pytest.mark.parametrize("malformed", ["missing-manifest", "corrupt-zip"])
+@pytest.mark.parametrize(
+    ("malformed", "reason"),
+    [
+        ("missing-manifest", "pixi.toml"),
+        ("missing-package", "src/wgsextract_cli"),
+        ("corrupt-zip", "ExtractToDirectory"),
+    ],
+)
 def test_1211_windows_bootstrap_rejects_bad_archives_without_touching_user_files(
-    tmp_path: Path, malformed: str
+    tmp_path: Path, malformed: str, reason: str
 ) -> None:
     app = tmp_path / "installed app"
     previous_stage = app / "tmp/bootstrap"
@@ -54,12 +61,15 @@ def test_1211_windows_bootstrap_rejects_bad_archives_without_touching_user_files
     temp_dir = tmp_path / "system temp"
     temp_dir.mkdir()
     archive = tmp_path / "source.zip"
-    if malformed == "missing-manifest":
+    if malformed != "corrupt-zip":
         with zipfile.ZipFile(archive, "w") as bundle:
             bundle.writestr("source/should-not-copy.txt", "partial update")
             bundle.writestr("source/existing.txt", "replacement")
             bundle.writestr("source/pixi.lock", "lock")
             bundle.writestr("source/scripts/bootstrap_windows_prereqs.ps1", "")
+            bundle.writestr("source/pyproject.toml", "package manifest")
+            if malformed != "missing-manifest":
+                bundle.writestr("source/pixi.toml", "manifest")
     else:
         archive.write_text("not a ZIP")
 
@@ -90,12 +100,45 @@ def test_1211_windows_bootstrap_rejects_bad_archives_without_touching_user_files
         timeout=30,
     )
     assert result.returncode != 0, result.stdout
-    assert (
-        "pixi.toml" if malformed == "missing-manifest" else "ExtractToDirectory"
-    ) in result.stderr
+    assert reason in result.stderr
     assert sentinel.read_text() == "user data"
     assert existing_file.read_text() == "previous file"
     assert not (app / "should-not-copy.txt").exists()
+    assert not list(temp_dir.glob("wgse-bootstrap-*"))
+
+
+@pytest.mark.parametrize("shell", SHELLS or [None])
+def test_1211_windows_cleanup_retries_locked_staging_after_an_archive_failure(
+    tmp_path: Path, shell: str | None
+) -> None:
+    if shell is None:
+        pytest.skip("PowerShell is not installed")
+    app = tmp_path / "installed app"
+    app.mkdir()
+    temp_dir = tmp_path / "system temp"
+    temp_dir.mkdir()
+    archive = tmp_path / "source.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        bundle.writestr("source/keep.txt", "must not install")
+    script = tmp_path / "bootstrap.ps1"
+    script.write_text(
+        "$locked = $true\n"
+        "function Remove-Item {\n"
+        "    param([string]$LiteralPath, [switch]$Recurse, [switch]$Force)\n"
+        "    if ($script:locked) { $script:locked = $false; throw 'Simulated file lock' }\n"
+        "    Microsoft.PowerShell.Management\\Remove-Item @PSBoundParameters\n"
+        "}\n" + _bootstrap_command() + "\n"
+    )
+    result = subprocess.run(
+        [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)],
+        env=_bootstrap_env(app, archive, temp_dir),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "pixi.toml" in result.stderr
+    assert not list(app.iterdir())
     assert not list(temp_dir.glob("wgse-bootstrap-*"))
 
 
@@ -112,6 +155,8 @@ def test_windows_archive_module_mismatch_does_not_break_install(
         bundle.writestr("source/pixi.toml", "manifest")
         bundle.writestr("source/pixi.lock", "lock")
         bundle.writestr("source/scripts/bootstrap_windows_prereqs.ps1", "")
+        bundle.writestr("source/pyproject.toml", "package manifest")
+        bundle.writestr("source/src/wgsextract_cli/__init__.py", "")
         bundle.writestr("source/folder with spaces/data.txt", "payload")
     app = tmp_path / "installed app"
     if installer == "gui":

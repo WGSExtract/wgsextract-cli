@@ -19,6 +19,8 @@ On macOS it checks for Xcode Command Line Tools first.
 When upgrading, the installer restores the previous app if Pixi setup or
 verification fails. A successful upgrade rebuilds the default environment.
 If the Pixi environment location stays the same, optional environments are kept.
+The installer refuses to move existing local optional environments to a
+detached location because their installed files can contain absolute paths.
 
 Linux ARM64 phase 1 supports default alignment/CRAM/calling/export, VEP,
 native Yleaf-derived Y-DNA analysis and Haplogrep 3. GATK fails before
