@@ -96,6 +96,42 @@ after deployment.
 
 ## Coverage
 
+### Cheap optional-tool integrations (#1199)
+
+`optional_tools.yml` runs exactly one Ubuntu x64 job for selected contamination,
+FreeBayes, LongTR, modkit and ExpansionHunter-dependent tests. The PR router intersects the static
+import graph's affected test files with these suites; unrelated changes allocate
+no optional-tool runner. Merge groups use the diff's affected tests for this lane,
+not the full OS safety selection, so docs-only and GUI-only queue entries do not
+allocate an optional runner. Changes to this workflow, its PR caller/router,
+runner, Ubuntu CI or the shared Pixi setup also exercise the integrations themselves. Drafts allocate no
+runner. Main/nightly Ubuntu runs retain all five suites, subject to the existing
+exact-head nightly guard. Manual dispatch of `optional_tools.yml` validates just
+this small lane on a branch.
+Before the new workflow reaches main, dispatch the existing `ubuntu_ci.yml`
+with `optional-tools-only=true` on the branch instead. This explicit manual
+override skips its normal jobs; default dispatches, PRs, main and schedules
+retain their existing coverage.
+
+The existing pinned Pixi action installs `dev verifybamid2 freebayes longtr modkit expansionhunter`
+under the separate lockfile-keyed `optional-tools` cache family, seeded only from
+main. Fixtures are synthetic: no reference bootstrap, full genome or sample
+download is needed. Every selected tool must resolve before pytest; every JUnit
+report must contain executed tests and zero skips/errors/failures. This lane does
+not reuse passed-test hashes or platform certification, so a green OS suite with
+optional-tool skips cannot substitute for real integration coverage. Both the PR
+area verdict and merge-queue `required` check depend on it. The Ubuntu caller
+delegates PR/queue coverage to the router, preventing duplicate Linux jobs.
+
+FreeBayes runs its six caller cases, LongTR its tiny repeat suite, and modkit its
+two BAM/CRAM parity cases. ExpansionHunter's prefix-gated hg19 catalog regression
+uses its existing fake caller boundary; it is not a real caller qualification.
+Other tests keep their existing OS coverage.
+Measure hosted setup/test duration in the workflow run rather than assuming a
+warm-cache cost. Large Clair3/model-backed native DeepVariant integrations and
+real-data suites requiring external inputs remain separate follow-ups, not silent
+new downloads.
+
 ### Setup-heavy checks and repeated nightly coverage (#1045)
 
 PR installer checks and the Ubuntu app-bundle command test run only when the

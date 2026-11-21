@@ -126,6 +126,7 @@ DOCS_ONLY_SCRIPTS = frozenset(
         "scripts/pr_checks_ready.py",
         "scripts/validate_github_actions.py",
         "scripts/validate_site_sources.py",
+        "scripts/ci_optional_tools.py",
     }
 )
 
