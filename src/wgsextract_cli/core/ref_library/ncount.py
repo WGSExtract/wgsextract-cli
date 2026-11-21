@@ -183,3 +183,12 @@ def _write_sequence(
     totals.n_count += n_count
     totals.large_runs += len(large)
     totals.small_runs += small_runs
+
+
+def count_sequence_ns(fasta: str) -> dict[str, tuple[int, int]]:
+    """Each sequence's (length, N bases) in a (optionally compressed) FASTA."""
+    with _open_fasta(fasta) as fasta_file:
+        return {
+            s.name: (s.length, sum(end - start for start, end in s.runs))
+            for s in _iter_sequences(fasta_file)
+        }

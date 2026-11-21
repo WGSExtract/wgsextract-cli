@@ -42,8 +42,23 @@ remain build evidence. Tool command-history lines in VCF headers are not.
 sequence-dictionary signature, failing on mismatch.
 `ref library --install` also verifies the signature after indexing.
 The catalog's `md5` is a sequence-name/length dictionary signature,
-**not a FASTA content checksum**. `ref count-ns` writes `_ncnt.csv` and
-`_nbin.csv` beside the FASTA, or in `--outdir`.
+**not a FASTA content checksum**.
+
+### N counts
+
+Depth and breadth leave out each reference's N (unsequenceable) bases,
+counted from that reference's own FASTA, upper- and lowercase alike. The
+release ships the counts of every catalog genome in
+`assets/reference/reference_ncounts.tsv`, read at run time, keyed by FASTA
+file name and sequence-dictionary signature (two FASTAs can share a signature
+yet mask different regions). Installing a genome the release didn't measure
+counts its Ns once, into the library's own `genomes/reference_ncounts.tsv`.
+`info` finds an alignment's counts by its header's signature, using the
+`--ref` FASTA's name when several genomes share it (`n_counts_ambiguous`
+otherwise). For a FASTA outside the catalog, `ref count-ns` writes
+`_ncnt.csv` and `_nbin.csv` beside it, or in `--outdir`, which `info --ref`
+then reads. Maintainers regenerate the shipped table with
+`scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.

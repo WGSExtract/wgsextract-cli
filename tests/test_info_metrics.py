@@ -636,28 +636,3 @@ def test_all_n_contig_leaves_breadth_total_alone():
         {"chr1": (10, 10), "chr2": (0, 10)}, with_total=True, excluded={"2": 10}
     )
     assert result == {"1": "100 %", "TOTAL_EST": "100 %"}
-
-
-_HG38 = dict(
-    zip(
-        [f"chr{c}" for c in [*range(1, 23), "X", "Y"]],
-        [248956422, 242193529, 198295559, 190214555, 181538259, 170805979,
-         159345973, 145138636, 138394717, 133797422, 135086622, 133275309,
-         114364328, 107043718, 101991189, 90338345, 83257441, 80373285,
-         58617616, 64444167, 46709983, 50818468, 156040895, 57227415],
-        strict=True,
-    )
-)  # fmt: skip
-
-
-def test_builtin_n_counts_skip_custom_contigs_and_unknown_variants():
-    """Review: a canonical chr1 let a 50 Mb custom chrY lose 33.6 Mb of Ns, and
-    any hg38 got the analysis set's counts, ~14 Mb more than UCSC hg38's."""
-    custom = {**_HG38, "chrY": 50_000_000}
-    ns = metrics.contig_n_lengths(custom, metrics.builtin_n_table("hs38DH", ""))
-    assert ns["1"] > 0 and "Y" not in ns
-    # An unidentified GRCh38 gets only the Ns every variant has.
-    shared = metrics.contig_n_lengths(_HG38, metrics.builtin_n_table("hg38", ""))
-    assert shared["5"] == 272_881 < ns["5"]
-    measured = metrics.contig_n_lengths(custom, None, {"Y": 7})
-    assert measured == {"Y": 7}

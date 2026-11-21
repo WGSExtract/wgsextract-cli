@@ -163,11 +163,10 @@ excluded, while overlapping mates count separately. A whole contig's
 reference N bases are shown as `Model N Len` and left out of the fractions'
 denominators, once (v4's double N subtraction is not reproduced); `Depth 0
 bases` still counts them. A partial `--region` keeps every coordinate. N
-counts come from the reference's `_ncnt.csv` (`ref count-ns`), else from
-built-in counts for GRCh37/hg19, T2T, the GRCh38 analysis sets and hs38
-builds, and, for any other GRCh38, the N runs every GRCh38 variant shares;
-built-in counts apply only to contigs of that assembly's length. Otherwise an
-`n_counts_unavailable` warning says breadth and depth include the N gaps. The printed rows are TSV (CSV with `info --csv`).
+counts are each reference's own, measured from its FASTA (see [reference
+genomes](reference-genomes.md#n-counts)) and applied only to contigs of the
+measured length; without them an `n_counts_unavailable` warning says breadth
+and depth include the N gaps. The printed rows are TSV (CSV with `info --csv`).
 `--with-bins` also runs the normal coverage summary but shows the bin table
 (v4's "Bin Coverage by Sequence Name") in its place, and reuses up-to-date
 whole-file reports, applying the current N counts; `info --detailed` then

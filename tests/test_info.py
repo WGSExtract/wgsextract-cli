@@ -51,7 +51,6 @@ def info_env(tmp_path, monkeypatch):
         "get_file_stats": (50.0, True),
         "run_body_sample": BODY_SAMPLE,
         "parse_idxstats": IDXSTATS,
-        "load_n_counts": {},
     }
     calls: dict[str, int] = {}
     for name, value in mocks.items():
@@ -444,25 +443,68 @@ def _stat(name, length, mapped):
     return {"name": name, "length": length, "mapped": mapped, "unmapped": 0}
 
 
-def test_chrom_table_skips_full_assembly_n_counts_for_trimmed_contigs():
-    # A 1 Mb slice of hg19 chr20 must not get chr20's ~3.5 Mb of N gaps.
-    table = metrics.generate_chrom_table(
-        [_stat("20", 1_000_001, 50_000)], 100.0, "Unknown", "hg19 (Chr)"
-    )
-    chr20 = next(row for row in table if row[1] == "20")
-    assert chr20[3] == 0
-    assert chr20[6] > 0  # positive average read depth
+def _library_entry(folder: Path, name: str, lengths: dict, ns: dict) -> Path:
+    """A FASTA file named `name` whose library N-count table measured `ns`."""
+    from wgsextract_cli.core.ref_library import ncount_table
+    from wgsextract_cli.core.ref_library.assets import sequence_signature
+
+    counts = {seq: (length, ns.get(seq, 0)) for seq, length in lengths.items()}
+    entry = ncount_table.measured_entry(name, sequence_signature(lengths), counts)
+    ncount_table.add_to_library(folder, entry)
+    (folder / name).write_text(">placeholder\nA\n")
+    return folder / name
 
 
-def test_chrom_table_applies_n_counts_to_standard_assembly():
-    table = metrics.generate_chrom_table(
-        [_stat("1", 249_250_621, 10), _stat("20", 63_025_520, 10)],
-        100.0,
-        "Unknown",
-        "hg19 (Chr)",
+def test_n_counts_come_from_the_references_own_measurement(tmp_path):
+    """The user's report: N counts must be the reference's own, not one
+    generic table per build, and apply only to contigs of the measured length."""
+    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
+    from wgsextract_cli.core.ref_library.assets import sequence_signature
+
+    lengths = {"chr1": 1000, "chr20": 2000}
+    fasta = _library_entry(tmp_path, "mine.fa.gz", lengths, {"chr1": 300, "chr20": 50})
+    found = reference_n_lengths(lengths, sequence_signature(lengths), None)
+    assert found.problem and found.problem[0] == "n_counts_unavailable"
+    found = reference_n_lengths(lengths, sequence_signature(lengths), str(fasta))
+    assert found == ({"1": 300, "20": 50}, None)
+    # A 1 kb slice of chr20 keeps all its bases.
+    sliced = {"chr1": 1000, "chr20": 1000}
+    assert reference_n_lengths(sliced, sequence_signature(sliced), str(fasta)) == (
+        {"1": 300},
+        None,
     )
-    chr20 = next(row for row in table if row[1] == "20")
-    assert chr20[3] > 0
+
+
+def test_one_signature_with_different_n_masks_needs_the_fasta(tmp_path):
+    """hs38d1 and GRCh38_Verily_v1 share a sequence dictionary but could mask
+    different regions, so the signature alone can't pick their counts."""
+    from wgsextract_cli.commands.info.ncounts import reference_n_lengths
+    from wgsextract_cli.core.ref_library.assets import sequence_signature
+
+    lengths = {"chr1": 1000}
+    a = _library_entry(tmp_path, "a.fa.gz", lengths, {"chr1": 10})
+    _library_entry(tmp_path, "b.fa.gz", lengths, {"chr1": 20})
+    signature = sequence_signature(lengths)
+    other = tmp_path / "elsewhere.fa"
+    other.write_text(">chr1\nA\n")
+    found = reference_n_lengths(lengths, signature, str(other))
+    assert found.n_lengths == {}
+    assert found.problem and found.problem[0] == "n_counts_ambiguous"
+    assert reference_n_lengths(lengths, signature, str(a)).n_lengths == {"1": 10}
+
+
+def test_every_catalog_genome_has_measured_n_counts():
+    """Each genome the library can download ships its own N counts, under the
+    catalog's sequence-dictionary signature."""
+    from wgsextract_cli.core.ref_library.catalog import get_available_genomes
+    from wgsextract_cli.core.ref_library.ncount_table import packaged_table
+
+    table = {e.reference: e for e in packaged_table()}
+    for genome in get_available_genomes():
+        entry = table[genome["final"]]
+        assert entry.total[1] == sum(ns for _len, ns in entry.sequences.values())
+        if genome["md5"]:
+            assert entry.signature == genome["md5"], genome["final"]
 
 
 @pytest.mark.parametrize(
@@ -681,3 +723,41 @@ def test_bins_report_from_before_n_column_is_reused_with_ns(tmp_path, monkeypatc
     )
     assert _bins_total(rerun) == "93.10"
     assert "Model N Len" in report.read_text()
+
+
+def test_bins_report_from_1203_is_not_double_n_subtracted(tmp_path, monkeypatch):
+    """Review of #1271: #1203 saved depth 0 less the Ns; reusing it subtracted
+    them again."""
+    from wgsextract_cli.commands.info import bins
+
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    lines = report.read_text().splitlines()
+    for i, line in enumerate(lines):
+        cols = line.split("\t")
+        if cols[0] == "chr1":  # as #1203 wrote it: 5,000 Ns, none uncovered
+            lines[i] = "\t".join([*cols[:3], "0", *cols[4:]])
+    report.write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
+    )
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"
+    rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    assert next(csv.DictReader(rows, delimiter="\t"))["Depth 0 bases"] == "5000"
+
+
+def test_partial_region_needs_no_n_counts_and_csv_is_one_table(tmp_path):
+    """Review of #1271: a partial span keeps every coordinate, so it must not
+    ask for N counts; with --csv and --with-bins only the bins CSV prints."""
+    bam, ref = _half_n_genome(tmp_path)
+    (tmp_path / "ref_ncnt.csv").unlink()
+    args = ("calculate-coverage", "-r", "chr1:1-6000", "--ref", str(ref))
+    manifest = json.loads(_run_info(bam, "--json", "info", *args))
+    assert "n_counts_unavailable" not in {w["code"] for w in manifest["warnings"]}
+    out = _run_info(bam, "info", "--csv", *args, "--with-bins")
+    rows = list(csv.reader(out.splitlines()))
+    assert [r[0] for r in rows] == ["Seq Name", "chr1"]

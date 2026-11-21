@@ -25,7 +25,7 @@ from wgsextract_cli.commands.ref import library_commands
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.ref_library import downloads
+from wgsextract_cli.core.ref_library import downloads, ncount_table
 from wgsextract_cli.core.ref_library import processing as rp
 from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
@@ -102,6 +102,7 @@ def _assert_installed(lib: Path, final: str) -> Path:
         f"{path.name}.fai",
         f"{path.name}.gzi",
         Path(rp.reference_dict_path(path)).name,
+        "reference_ncounts.tsv",  # the genome's N counts, measured on processing
     }
     assert not leftovers
     return path
@@ -125,7 +126,10 @@ def test_download_installs_an_indexed_bgzf_genome(tmp_path, monkeypatch, kind):
         assert "Processing: Recompressing (BGZF)..." not in statuses
     else:
         assert statuses[0] == "Processing: Recompressing (BGZF)..."
-    assert statuses[-1] == "Processing: Indexing FASTA..."
+    # The release never measured this genome, so processing counts its Ns.
+    assert statuses[-1] == "Processing: Counting N bases..."
+    (entry,) = ncount_table.library_table(path.parent)
+    assert (entry.reference, entry.sequences) == ("hs38.fa.gz", {"chrA": (3100, 100)})
 
 
 @needs_htslib
@@ -160,9 +164,13 @@ def test_installed_genome_is_reindexed_without_downloading(tmp_path, monkeypatch
     path = tmp_path / "genomes" / "hs38.fa.gz"
     Path(rp.reference_dict_path(path)).unlink()
 
-    assert rp.download_and_process_genome(_genome(), str(tmp_path))
+    statuses: list[str] = []
+    assert rp.download_and_process_genome(
+        _genome(), str(tmp_path), status_callback=statuses.append
+    )
     assert len(calls) == 1
     _assert_installed(tmp_path, "hs38.fa.gz")
+    assert "Processing: Counting N bases..." not in statuses  # already measured
 
 
 @needs_htslib
@@ -390,10 +398,10 @@ def test_remove_genome_removes_download_state_and_aligner_indexes(tmp_path):
 
 @pytest.mark.parametrize("sidecar", ["hs38_ncnt.csv", "hs38_nbin.csv"])
 def test_has_ref_ns_finds_either_n_count_file(tmp_path, sidecar):
-    assert not rp.has_ref_ns("hs38.fa.gz", "")
-    assert not rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
-    _touch(tmp_path / "genomes" / sidecar)
-    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
+    assert rp.has_ref_ns("hs38.fa.gz", "")  # the release measured it
+    assert not rp.has_ref_ns("mine.fa.gz", str(tmp_path))
+    _touch(tmp_path / "genomes" / sidecar.replace("hs38", "mine"))
+    assert rp.has_ref_ns("mine.fa.gz", str(tmp_path))
 
 
 # --- bootstrap ----------------------------------------------------------------

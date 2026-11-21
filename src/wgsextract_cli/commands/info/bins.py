@@ -282,11 +282,14 @@ def run_depth_bins(
     ):
         logging.info("Using existing depth-bin report %s", output)
         saved = _read_bins(output)
-        rows = [
-            _bins_row(name, length, ns_of(name), bins)
-            for name, length, _ns, bins in saved
-        ]
-        if any(ns != ns_of(name) for name, _length, ns, _bins in saved):
+        # Depth 0 is what the bands leave of a whole contig: reports from
+        # #1203 (the first N-aware bins) saved it less the Ns.
+        raw = [(n, length, [length - sum(b[1:]), *b[1:]]) for n, length, _, b in saved]
+        rows = [_bins_row(n, length, ns_of(n), bins) for n, length, bins in raw]
+        if any(
+            (ns, bins[0]) != (ns_of(n), raw_bins[0])
+            for (n, _, ns, bins), (_, _, raw_bins) in zip(saved, raw, strict=True)
+        ):
             write_table(output, BINS_TABLE, rows, table_format, metadata=metadata)
         _show_bins(rows, region, display)
         return output

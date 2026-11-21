@@ -1,12 +1,11 @@
 import argparse
 import csv
-import hashlib
 import io
 import json
 import logging
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -68,22 +67,20 @@ from .metrics import (
     SEX_MEASUREMENT_UNAVAILABLE,
     IdxStat,
     SexCall,
-    builtin_n_table,
     contig_key,
-    contig_n_lengths,
     determine_sequencer,
     generate_chrom_table,
     get_file_stats,
     infer_sex_call,
     is_long_read_library,
     is_missing_cram_reference,
-    load_n_counts,
     long_read_lengths,
     long_read_mapped_pct,
     parse_idxstats,
     record_sex,
     run_body_sample,
 )
+from .ncounts import n_lengths_digest, reference_n_lengths
 from .render import (
     MAPPING_UNAVAILABLE,
     exact_mapped_read_pct,
@@ -587,10 +584,6 @@ def _fast_metrics(
     }
 
 
-def n_lengths_digest(n_lengths: Mapping[str, int]) -> str:
-    return hashlib.sha256(json.dumps(sorted(n_lengths.items())).encode()).hexdigest()
-
-
 def reference_model_name(described: str) -> str:
     """The model in a `ReferenceModel.describe()` line: "hg38 (Chr), rCRS, 195
     SNs" and "Cat_Fca126, , 71 SNs" (no chr1, so no naming) alike."""
@@ -602,7 +595,6 @@ def _detailed_metrics(
     idx_stats: list[Any],
     total_unmapped: int,
     coverage_map: dict[str, str],
-    n_counts: dict[str, int],
     n_lengths: dict[str, int],
     mapped_bases: dict[str, float] | None = None,
     input_file: str | None = None,
@@ -627,7 +619,7 @@ def _detailed_metrics(
         gender,
         ref_model_name,
         coverage_map,
-        n_lengths=n_lengths,
+        n_counts=n_lengths,
         mapped_bases=mapped_bases,
     )
     total_row = next(r for r in chrom_table if r[1] == "Total")
@@ -675,7 +667,7 @@ def _detailed_metrics(
         "gender": gender,
         "sex_call": list(call),
         "sex_inference_version": SEX_INFERENCE_VERSION,
-        "refined_ns": bool(n_counts),
+        "refined_ns": bool(n_lengths),
         # The N counts depth and breadth left out; new ones recompute the table.
         "n_lengths_digest": n_lengths_digest(n_lengths),
         "file_content": ", ".join(k for k, v in content.items() if v),
@@ -811,17 +803,13 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
         build = build or build_from_path(Path(resolved_ref).name)
         current_result().set_reference(resolved_ref, build)
     ref_model = _guess_ref_model(md5_sig, header, user_fasta)
-    n_counts = load_n_counts(resolved_ref)
-    n_table = builtin_n_table(reference_model_name(ref_model[0]), ref_model[1])
-    n_lengths = contig_n_lengths(sequence_lengths(header), n_table, n_counts)
+    reference_ns = reference_n_lengths(sequence_lengths(header), md5_sig, resolved_ref)
+    n_lengths = reference_ns.n_lengths
     by_targets = isinstance(params, CalculateCoverageParams) and params.by is not None
-    if (detailed or bins) and not by_targets and not n_counts and n_table is None:
-        warn(
-            "n_counts_unavailable",
-            "Reference N counts are unknown for this reference, so depth and "
-            "breadth include its N gaps; run `wgsextract ref count-ns --ref "
-            "FASTA` and give the FASTA with --ref to leave them out.",
-        )
+    # A partial span keeps every coordinate, so its N counts don't matter.
+    partial = bool(region) and ":" in str(region)
+    if (detailed or bins) and not by_targets and not partial and reference_ns.problem:
+        warn(*reference_ns.problem)
     metadata = provenance(
         [input_file],
         reference_build=build,
@@ -897,13 +885,14 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             n_lengths,
         )
         current_result().set_details({"region": region, "breadth": coverage})
-        if as_csv:
+        with_bins = isinstance(params, CalculateCoverageParams) and params.with_bins
+        if as_csv and not with_bins:  # with bins, their CSV is the one stream
             stream = io.StringIO(newline="")
             writer = csv.writer(stream, lineterminator="\n")
             writer.writerow(["Seq Name", "Breadth Coverage"])
             writer.writerows(coverage.items())
             human_output(stream.getvalue(), end="")
-        else:
+        elif not as_csv:
             human_output(
                 f"Region: {region}\nSeq Name\tBreadth Coverage\n"
                 + "".join(f"{name}\t{breadth}\n" for name, breadth in coverage.items())
@@ -931,7 +920,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
                 },
             )
             current_result().add_output(path, "coverage_table")
-        if isinstance(params, CalculateCoverageParams) and params.with_bins:
+        if with_bins:
             from .bins import run_depth_bins
 
             bins_path = run_depth_bins(
@@ -1089,7 +1078,6 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             idx_stats,
             total_unmapped,
             coverage_map,
-            n_counts,
             n_lengths,
             mapped_bases,
             input_file,
