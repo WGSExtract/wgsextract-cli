@@ -136,6 +136,44 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+def test_1254_sigint_during_http_request_dispatch_exits_cleanly(work: Path) -> None:
+    # Let the actual HTTP request finish before returning from the OS thread
+    # startup boundary, then deliver SIGINT before the accept loop resumes.
+    code = """
+import os, signal, threading
+from wgsextract_cli.main import main
+
+start = threading.Thread.start
+def interrupt_start(thread):
+    start(thread)
+    if threading.current_thread() is threading.main_thread():
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+        os.kill(os.getpid(), signal.SIGINT)
+
+threading.Thread.start = interrupt_start
+main()
+"""
+    with subprocess.Popen(
+        [sys.executable, "-c", code, "serve", "--allow", str(work), "--ready-json"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    ) as proc:
+        try:
+            assert proc.stdout is not None
+            info = json.loads(proc.stdout.readline())
+            client = Client(info["url"].removesuffix("/v1"))
+            status, index = client.request("GET", "", token=info["token"])
+            assert status == 200 and str(work.resolve()) in index["allowed_paths"]
+            assert proc.wait(timeout=10) == 0
+            assert not (state_directory() / "server" / "server.json").exists()
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
 @pytest.mark.parametrize("stop_signal", [signal.SIGINT, signal.SIGTERM])
 def test_799_interrupting_http_discovery_announcement_exits_cleanly(
     work: Path, stop_signal: int
