@@ -586,6 +586,24 @@ def parse_idxstats(filepath: str) -> tuple[list[IdxStat], int, int, int]:
     return stats, genome_len, total_mapped, total_unmapped
 
 
+def contig_n_lengths(
+    contig_lengths: Mapping[str, int],
+    ref_model_name: str,
+    n_counts: Mapping[str, int] | None = None,
+) -> dict[str, int]:
+    """Per-contig N (unsequenceable) base counts by `contig_key`, which depth
+    and breadth leave out of each contig's length.
+
+    The hardcoded N counts describe the standard full-length assemblies, so they
+    apply only when chr1 has a canonical length; a trimmed or custom reference
+    with the same contig names would otherwise get a negative effective length.
+    N counts measured from the actual reference (ref count-ns) always apply."""
+    build = {"hg38": "38", "hg19": "37"}.get(build_from_path(ref_model_name) or "")
+    standard = build_from_chr1_length(dict(contig_lengths)) is not None
+    known = N_ADJUST.get(build, {}) if build and standard else {}
+    return {**known, **(n_counts or {})}
+
+
 def generate_chrom_table(
     idx_stats: Sequence[IdxStat],
     avg_len: float,
@@ -645,15 +663,9 @@ def generate_chrom_table(
     if coverage_map is None:
         coverage_map = {}
 
-    # The hardcoded N counts describe the standard full-length assemblies, so use
-    # them only when chr1 has a canonical length; a trimmed or custom reference
-    # with the same contig names would otherwise get a negative effective length.
-    # N counts measured from the actual reference (ref count-ns) always apply.
-    contig_lengths = {s["name"]: s["length"] for s in idx_stats}
-    is_standard_assembly = build_from_chr1_length(contig_lengths) is not None
-    n_adjust_map = N_ADJUST.get(build, {}).copy() if is_standard_assembly else {}
-    if n_counts:
-        n_adjust_map.update(n_counts)
+    n_adjust_map = contig_n_lengths(
+        {s["name"]: s["length"] for s in idx_stats}, ref_model_name, n_counts
+    )
 
     stats_total: list[Any] = ["T", "Total", 0, 0, 0, 0.0, 0.0, "", 0.0]
     stats_altcont: list[Any] = ["O", "Other", 0, 0, 0, 0.0, 0.0, "", 0.0]

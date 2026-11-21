@@ -41,7 +41,7 @@
 "actions.info-bam.info-commands.clear-cache.title" = "Vider le cache d’infos"  # i18n-source-hash:fd26fce5
 "actions.info-bam.info-commands.clear-cache.tooltip" = "Supprimer le .wgse_info.json mis en cache pour le fichier d’entrée actuel."  # i18n-source-hash:e9e8e870
 "actions.info-bam.info-commands.calculate-coverage.title" = "Couverture détaillée"  # i18n-source-hash:2d8de3a4
-"actions.info-bam.info-commands.calculate-coverage.tooltip" = "Générer un rapport complet de largeur de couverture, puis les classes de profondeur (0, 1-3, 4-7 et 8+ lectures) par chromosome. Cela calcule avec précision la part du génome qui a été séquencée avec succès. Durée : 1 à 3 heures ; espace : 1 à 2 Go."  # i18n-source-hash:4df83dea
+"actions.info-bam.info-commands.calculate-coverage.tooltip" = "Générer un rapport complet de largeur de couverture, puis les classes de profondeur (0, 1-3, 4-7 et 8+ lectures) par chromosome. Cela calcule avec précision la part du génome, hors lacunes N, qui a été séquencée avec succès ; la carte affiche les classes de profondeur, puis Infos détaillées ajoute la colonne de largeur. Durée : 1 à 3 heures ; espace : 1 à 2 Go."  # i18n-source-hash:1b50c9ab
 "actions.info-bam.info-commands.coverage-sample.title" = "Échantillonner la couverture"  # i18n-source-hash:a6aba99c
 "actions.info-bam.info-commands.coverage-sample.tooltip" = "Estimer la largeur de couverture par échantillonnage aléatoire. Rapide et approximatif ; utilisez « Couverture détaillée » pour des valeurs exactes."  # i18n-source-hash:91f6b993
 "sections.info-bam.bam-commands.title" = "Gestion BAM / CRAM"  # i18n-source-hash:48ce1911

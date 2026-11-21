@@ -56,6 +56,7 @@ from wgsextract_cli.core.variant_files import (
     verify_paths_exist,
 )
 
+from . import coverage as reports
 from .metrics import (
     DEPTH_COUNTED,
     DEPTH_SAMPLED,
@@ -67,6 +68,7 @@ from .metrics import (
     IdxStat,
     SexCall,
     contig_key,
+    contig_n_lengths,
     determine_sequencer,
     generate_chrom_table,
     get_file_stats,
@@ -83,11 +85,8 @@ from .metrics import (
 from .render import (
     MAPPING_UNAVAILABLE,
     exact_mapped_read_pct,
-    is_fresh_output,
     region_file_tag,
     render_info,
-    run_full_coverage,
-    run_sampled_coverage,
     sampled_mapped_bases,
     sampled_primary_share,
 )
@@ -140,11 +139,13 @@ def _save_cache(path: str, data: dict[str, Any]) -> bool:
 
 
 def _print_detailed(
-    data: dict[str, Any], as_csv: bool, sample: tuple[str, str]
+    data: dict[str, Any], as_csv: bool, sample: tuple[str, str], show: bool = True
 ) -> None:
     _note_mixed_platforms(data, *sample)
     _record_info(data, sample[0])
     _record_facts(data, *sample)
+    if not show:
+        return
     if as_csv:
         human_output(data["chrom_table_csv"], end="")
     else:
@@ -161,7 +162,7 @@ CHROMOSOME_TABLE = (
     Column(
         "breadth_pct",
         "REAL",
-        "Percentage of bases covered by a read (see the breadth metadata).",
+        "Percentage of non-N bases covered by a read (see the breadth metadata).",
         "g",
     ),
 )
@@ -584,39 +585,6 @@ def _fast_metrics(
     }
 
 
-def _coverage_map(
-    info_cmd: str | None,
-    input_p: str,
-    resolved_ref: str | None,
-    idx_stats: list[Any],
-    outdir: str,
-    region: str | None,
-) -> dict[str, str]:
-    path = _coverage_path(info_cmd, input_p, outdir, region)
-    stem = str(Path(outdir, Path(input_p).name))
-    if info_cmd == "calculate-coverage":
-        return run_full_coverage(
-            input_p,
-            resolved_ref,
-            path,
-            region=region,
-            # Whole-file results from older releases (samtools depth | awk).
-            legacy_p=None if region else f"{stem}_bincvg.csv",
-        )
-    if info_cmd == "coverage-sample":
-        return run_sampled_coverage(input_p, resolved_ref, idx_stats, path, region)
-    return {}
-
-
-def _coverage_path(
-    info_cmd: str | None, input_p: str, outdir: str, region: str | None
-) -> str:
-    stem = str(Path(outdir, Path(input_p).name)) + region_file_tag(region)
-    if info_cmd == "calculate-coverage":
-        return f"{stem}_coverage.tsv"
-    return f"{stem}_samplecvg.json"
-
-
 def reference_model_name(described: str) -> str:
     """The model in a `ReferenceModel.describe()` line: "hg38 (Chr), rCRS, 195
     SNs" and "Cat_Fca126, , 71 SNs" (no chr1, so no naming) alike."""
@@ -701,6 +669,8 @@ def _detailed_metrics(
         "sex_call": list(call),
         "sex_inference_version": SEX_INFERENCE_VERSION,
         "refined_ns": bool(n_counts),
+        # Breadth before this left the reference's N bases in its denominator.
+        "breadth_excludes_ns": True,
         "file_content": ", ".join(k for k, v in content.items() if v),
         "depth_method": DEPTH_SAMPLED if mapped_bases is not None else DEPTH_COUNTED,
         # Marks the depths current; left out when long reads couldn't be
@@ -769,33 +739,6 @@ def _mapped_reads(
     }
 
 
-def _coverage_status(params: CalculateCoverageParams) -> None:
-    """Whether the whole-file reports ``--with-bins`` writes exist and are newer
-    than the input, so a run would show them again instead of rescanning."""
-    reports: dict[str, Path] = {}
-    if params.input:
-        source = Path(params.input).expanduser()
-        folder = Path(params.outdir).expanduser() if params.outdir else source.parent
-        reports = {
-            role: folder / f"{source.name}{suffix}"
-            for role, suffix in (
-                ("coverage", "_coverage.tsv"),
-                ("coverage_bins", "_coverage_bins.tsv"),
-            )
-        }
-    current = bool(reports) and all(
-        is_fresh_output(str(path), str(source)) for path in reports.values()
-    )
-    current_result().set_details(
-        {"current": current, **{role: str(path) for role, path in reports.items()}}
-    )
-    human_output(
-        "Coverage reports: "
-        + ("current" if current else "not current")
-        + "".join(f"\n  {path}" for path in reports.values())
-    )
-
-
 def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     """``info`` and its coverage subcommands; ``as_csv`` prints the detailed
     table as CSV (CLI only)."""
@@ -803,7 +746,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     from wgsextract_cli.core.warnings import print_warning
 
     if isinstance(params, CalculateCoverageParams) and params.status:
-        _coverage_status(params)
+        reports.coverage_status(params)
         return
     start_time = time.time()
     verify_dependencies(["samtools"])
@@ -845,6 +788,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     logging.debug(f"Header fetch took {time.time() - t0:.3f}s")
 
     md5_sig = calculate_bam_md5(input_file, header=header)
+    user_fasta = ref if ref and is_fasta_path(ref) else None
     resolved_ref = resolve_reference(ref, md5_sig)
     # resolve_reference hands back a --ref folder as is when no FASTA in it
     # matches; only a file is a resolved reference.
@@ -859,6 +803,12 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     if resolved_ref and Path(resolved_ref).is_file():
         build = build or build_from_path(Path(resolved_ref).name)
         current_result().set_reference(resolved_ref, build)
+    ref_model = _guess_ref_model(md5_sig, header, user_fasta)
+    n_lengths = contig_n_lengths(
+        sequence_lengths(header),
+        reference_model_name(ref_model[0]),
+        load_n_counts(resolved_ref),
+    )
     metadata = provenance(
         [input_file],
         reference_build=build,
@@ -881,6 +831,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             region,
             table_format or "tsv",
             metadata,
+            n_lengths=n_lengths,
         )
         current_result().add_output(bins_tsv, "coverage_bins")
         return
@@ -922,8 +873,14 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             IdxStat(name=name, length=length, mapped=0, unmapped=0)
             for name, length in sequence_lengths(header).items()
         ]
-        coverage = _coverage_map(
-            info_cmd, input_file, resolved_ref, stats, outdir, region
+        coverage = reports.coverage_map(
+            info_cmd,
+            input_file,
+            resolved_ref,
+            stats,
+            outdir,
+            region,
+            n_lengths,
         )
         current_result().set_details({"region": region, "breadth": coverage})
         if as_csv:
@@ -972,12 +929,10 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
                 "tsv",
                 metadata,
                 reuse=True,
+                n_lengths=n_lengths,
             )
             current_result().add_output(bins_path, "coverage_bins")
         return
-
-    user_fasta = ref if ref and is_fasta_path(ref) else None
-    ref_model = _guess_ref_model(md5_sig, header, user_fasta)
 
     json_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
@@ -1042,6 +997,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
                 )
             )
             and not data.get("mapping_failed")
+            and data.get("breadth_excludes_ns")
             and data.get("sex_inference_version") == SEX_INFERENCE_VERSION
             and (not sex_unavailable or alignment_index(input_file) is None)
         ):
@@ -1069,8 +1025,14 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     idx_stats, _genome_len, _total_mapped, total_unmapped = parse_idxstats(input_file)
     logging.debug(f"Idxstats took {time.time() - t0:.3f}s")
 
-    coverage_map = _coverage_map(
-        info_cmd, input_file, resolved_ref, idx_stats, outdir, region
+    coverage_map = reports.coverage_map(
+        info_cmd,
+        input_file,
+        resolved_ref,
+        idx_stats,
+        outdir,
+        region,
+        n_lengths,
     )
     mapped_bases = None
     long_reads = data.get("avg_read_len", 0) > LONG_READ_MIN_LEN
@@ -1124,10 +1086,13 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     if data["metrics"]["ard_mapped"] < 10:
         print_warning("LowCoverageWarning")
 
-    _print_detailed(data, as_csv, (input_file, header))
+    with_bins = isinstance(params, CalculateCoverageParams) and params.with_bins
+    # With bins, their table is the report; the chromosome table, breadth and
+    # all, is cached for `info --detailed`.
+    _print_detailed(data, as_csv, (input_file, header), show=not with_bins)
     if table_format:
         _export_tables(data, table_stem, table_format, metadata)
-    if isinstance(params, CalculateCoverageParams) and params.with_bins:
+    if with_bins:
         from .bins import run_depth_bins
 
         bins_tsv = run_depth_bins(
@@ -1139,6 +1104,7 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             "tsv",
             metadata,
             reuse=True,
+            n_lengths=n_lengths,
         )
         current_result().add_output(bins_tsv, "coverage_bins")
     # A region-limited coverage table describes only part of the file, so it
