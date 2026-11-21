@@ -160,6 +160,7 @@ def test_partial_variants_only_vcf_is_refused(tmp_path, sample):
     assert result.exit_code == 1
     assert "lists only variants" in result.error.message
     assert not (tmp_path / "v.ancestry.tsv").exists()
+    assert not (tmp_path / "wgse" / "v.ancestry.tsv").exists()
 
 
 @needs_htslib
@@ -169,6 +170,7 @@ def test_too_few_sites_are_refused(tmp_path, sample):
     assert result.exit_code == 1
     assert "1,500" in result.error.message
     assert not (tmp_path / "few.ancestry.tsv").exists()
+    assert not (tmp_path / "wgse" / "few.ancestry.tsv").exists()
 
 
 @needs_htslib
