@@ -36,6 +36,10 @@ from housekeeping import LAB, lab_key, mark_used
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
+# Installs Ubuntu packages with mirror fallback, time limits and a clear error
+# (exit 75) when no Ubuntu mirror answers. Containers run it as /apt-install.sh.
+APT_INSTALL = REPO / ".github" / "actions" / "apt-install" / "apt-install.sh"
+APT_MOUNT = ["-v", f"{APT_INSTALL}:/apt-install.sh:ro"]
 # The guest's architecture is the host's. Each architecture's images, downloads
 # and SSH key live in their own directory.
 X64_HOST = sys.platform.startswith("linux") and platform.machine().lower() in (
@@ -568,8 +572,7 @@ def build_iso() -> None:
     with zipfile.ZipFile(work / "pack.zip") as z:
         z.extractall(work)
     script = (
-        "set -e; apt-get update -qq; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "
-        "aria2 cabextract wimtools chntpw genisoimage >/dev/null; "
+        "set -e; bash /apt-install.sh aria2 cabextract wimtools chntpw genisoimage; "
         "sed -i 's/\\r$//' uup_download_linux.sh; "
         # Patch convert.sh after the script downloads it, right before it runs.
         "sed -i 's#^  ./files/convert.sh wim#  sed -i s,efisys.bin,efisys_noprompt.bin, "
@@ -577,7 +580,7 @@ def build_iso() -> None:
         f"bash uup_download_linux.sh; {give_back('/w')}"
     )
     subprocess.run(
-        [docker(), "run", "--rm", "-v", f"{work}:/w", "-w", "/w", "ubuntu:24.04",
+        [docker(), "run", "--rm", *APT_MOUNT, "-v", f"{work}:/w", "-w", "/w", "ubuntu:24.04",
          "sh", "-c", script],
         check=True,
     )  # fmt: skip
@@ -640,12 +643,13 @@ def make_iso(media: Path, out: Path, label: str) -> None:
         )  # fmt: skip
         return
     script = (
-        "apt-get update -qq && apt-get install -y -qq genisoimage >/dev/null && "
+        "bash /apt-install.sh genisoimage && "
         f"genisoimage -quiet -J -r -V {label} -o /out/{out.name} /media && "
         f"{give_back('/out/' + out.name)}"
     )
     subprocess.run(
-        [docker(), "run", "--rm", "-v", f"{media}:/media:ro", "-v", f"{out.parent}:/out",
+        [docker(), "run", "--rm", *APT_MOUNT, "-v", f"{media}:/media:ro",
+         "-v", f"{out.parent}:/out",
          "ubuntu:24.04", "sh", "-c", script],
         check=True,
     )  # fmt: skip
