@@ -490,6 +490,8 @@ class ChunkedAlignment:
 
     def _state(self, groups: list[Chunk]) -> dict[str, Any]:
         key = self._key(groups)
+        if token := execution_context.current().cancel:
+            token.raise_if_cancelled()
         path = self.workdir / "state.json"
         state: dict[str, Any] | None = None
         if self.resume:

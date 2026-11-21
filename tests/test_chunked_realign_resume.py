@@ -15,10 +15,11 @@ import pytest
 from tests.htslib_helpers import needs_tools
 from tests.test_chunked_realign import GROUP_SORT, MAPPING, _view
 from tests.test_chunked_realign import ont as ont
-from wgsextract_cli.api import CancelToken
+from wgsextract_cli.api import Cancelled, CancelToken
 from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.chunked_alignment import ChunkedAlignment, Region
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.process_registry import proc_registry
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -69,10 +70,8 @@ def test_1208_resume_rebuilds_chunks_after_extraction_options_change(
     assert ("ML:B:" in records) == (setting == "decode")
 
 
-@needs_tools("samtools", "minimap2")
-def test_1208_resume_detects_a_changed_version_behind_a_mapper_wrapper(
-    tmp_path, chunked_run, caplog
-):
+@pytest.fixture
+def wrapped_mapper(tmp_path, chunked_run):
     minimap2 = get_tool_path("minimap2")
     assert minimap2 is not None
     version = tmp_path / "version"
@@ -81,26 +80,72 @@ def test_1208_resume_detects_a_changed_version_behind_a_mapper_wrapper(
     )
     wrapper = tmp_path / "mapper wrapper.py"
     wrapper.write_text(
-        "import subprocess, sys\n"
+        "import subprocess, sys, time\n"
         "from pathlib import Path\n"
         "if sys.argv[1:] == ['--version']:\n"
+        "    if Path(__file__).with_name('pause-probe').exists():\n"
+        "        Path(__file__).with_name('stage-started').touch()\n"
+        "        time.sleep(5)\n"
         "    print(Path(__file__).with_name('version').read_text().strip())\n"
         "else:\n"
         f"    sys.exit(subprocess.call({_tool_command_parts(minimap2)!r} + sys.argv[1:]))\n"
     )
     quote = subprocess.list2cmdline if os.name == "nt" else shlex.join
-    wrapped = replace(
+    return replace(
         chunked_run,
         mapper=[quote([sys.executable, str(wrapper)]), *chunked_run.mapper[1:]],
     )
+
+
+@needs_tools("samtools", "minimap2")
+def test_1208_resume_detects_a_changed_version_behind_a_mapper_wrapper(
+    tmp_path, wrapped_mapper, caplog
+):
     with caplog.at_level("INFO"):
-        wrapped.run()
-        version.write_text("3.0-r1\n")
+        wrapped_mapper.run()
+        (tmp_path / "version").write_text("3.0-r1\n")
         caplog.clear()
-        wrapped.run()
+        wrapped_mapper.run()
     assert "Resuming the chunked alignment" not in caplog.text
     assert "Aligning chunk" in caplog.text
-    _view("quickcheck", wrapped.output)
+    _view("quickcheck", wrapped_mapper.output)
+
+
+def _cancel_when_started(started: Path, token: CancelToken) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if started.exists():
+            token.cancel()
+            return
+        time.sleep(0.01)
+
+
+@needs_tools("samtools", "minimap2")
+def test_1208_cancelled_version_probe_leaves_saved_resume_state(
+    tmp_path, wrapped_mapper, caplog
+):
+    wrapped_mapper.run()
+    (tmp_path / "pause-probe").touch()
+    token = CancelToken()
+    scope = object()
+    disconnect = token.on_cancel(lambda: proc_registry.cancel(scope))
+    thread = execution_context.context_thread(
+        _cancel_when_started, args=(tmp_path / "stage-started", token), daemon=True
+    )
+    thread.start()
+    try:
+        with execution_context.bound(cancel=token, process_scope=scope):
+            with pytest.raises(Cancelled):
+                wrapped_mapper.run()
+    finally:
+        thread.join()
+        disconnect()
+        proc_registry.accept_new(scope)
+
+    (tmp_path / "pause-probe").unlink()
+    with caplog.at_level("INFO"):
+        wrapped_mapper.run()
+    assert "Resuming the chunked alignment" in caplog.text
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="bash PATH shims")
@@ -138,15 +183,9 @@ def test_1208_cancel_token_interrupts_active_chunk_pipeline(
     monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
     token = CancelToken()
 
-    def cancel_active_pipeline() -> None:
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            if started.exists():
-                token.cancel()
-                return
-            time.sleep(0.01)
-
-    thread = execution_context.context_thread(cancel_active_pipeline, daemon=True)
+    thread = execution_context.context_thread(
+        _cancel_when_started, args=(started, token), daemon=True
+    )
     thread.start()
     try:
         with (
