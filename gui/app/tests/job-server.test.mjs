@@ -271,29 +271,27 @@ test("cancelling a server action cancels its job", async (t) => {
     if (event.type === "start") controller.abort();
   });
 
-  test("#1235: a recovered job is cancelled even when the action stream has already closed", async (t) => {
-    const bundle = await withBundle(t);
-    const jobServer = bundle.startServer();
-    const controller = new AbortController();
-    const fetchJob = globalThis.fetch;
-    t.mock.method(globalThis, "fetch", async (url, options) => {
-      try {
-        return await fetchJob(url, options);
-      } finally {
-        if (options?.method === "POST") controller.abort();
-      }
-    });
-    await assert.rejects(run(bundle, action("cancel-recovered"), jobServer, controller.signal, undefined, (event) => {
-      assert.notEqual(event.type, "start");
-    }), /Process cancelled/);
-    const address = await jobServer.address();
-    const { jobs } = await (await fetchJob(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
-    assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
-  });
-
   await assert.rejects(running, /Process cancelled\./);
   const address = await jobServer.address();
   const { jobs } = await (await fetch(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
+  assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
+});
+
+test("#1235: a recovered job is cancelled even when the action stream has already closed", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer();
+  const controller = new AbortController();
+  const fetchJob = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    const response = await fetchJob(url, options);
+    if (options?.method === "POST") controller.abort();
+    return response;
+  });
+  await assert.rejects(run(bundle, action("cancel-recovered"), jobServer, controller.signal, undefined, (event) => {
+    assert.notEqual(event.type, "start");
+  }), /Process cancelled/);
+  const address = await jobServer.address();
+  const { jobs } = await (await fetchJob(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
   assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
 });
 
