@@ -125,6 +125,10 @@ bcftools gVCF blocks are depth-only reference evidence: passing filters and
 adequate MIN_DP establish callability without block GQ. Other GQ-based gVCFs
 must supply adequate GQ. This uses the shared [reference-evidence](reference-evidence.md)
 classifier and Yleaf's read/quality thresholds.
+Overlapping records and Clair3 deletion shadows use the same shared interval
+rules. Every observed REF/END span is protected from missing-site assumptions,
+including deletions and failed/no-call interiors. Assumed marker reports retain
+zero observed reads.
 Variant-only VCFs emit `y_reference_evidence_missing` and suggest gVCF or
 all-sites VCF input. `--assume-reference` opts into the unsafe upstream
 missing-site assumption for parity checks, emits `y_reference_assumed`, and

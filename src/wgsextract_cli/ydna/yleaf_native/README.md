@@ -36,7 +36,12 @@ Yleaf's assumption that absent VCF markers match `--ref`. It is unsafe for
 variant-only or low-coverage files and can bias results toward the reference
 genome's lineage. It emits `y_reference_assumed`, records the opt-in in
 `run.json`, requires VCF input and a reference, and cannot be combined with
-`--no-ref-inference`. Observed failed/no-call sites are never replaced.
+`--no-ref-inference`. Observed REF/END spans are reserved, including deletions
+and failed/no-call interiors; overlapping evidence uses the shared precedence
+and Clair3 deletion-shadow rules. Observed positions are never replaced.
+Assumed rows retain zero observed reads in the marker reports; their explicit
+compatibility flag, not invented coverage, permits them through read QC.
+If all reference evidence fails QC, the incomplete-evidence warning still applies.
 
 Outputs in `<outdir>/yleaf/`:
 
