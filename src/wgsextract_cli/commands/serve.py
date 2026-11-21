@@ -111,6 +111,10 @@ def _run(args: argparse.Namespace) -> None:
 
         require_sdk()
     configured = typed_settings()
+    if transport and (args.listen or args.public_url):
+        raise UsageError(
+            "--listen and --public-url are for the HTTP/JSON API, not MCP."
+        )
     port = _option_int(
         args.port,
         configured.server_mcp_port if transport == "http" else configured.server_port,
@@ -165,7 +169,18 @@ def _run(args: argparse.Namespace) -> None:
             )
         else:
             _serve_http(
-                manager, guard, port, state / "server.json", ready_json=args.ready_json
+                manager,
+                guard,
+                port,
+                state / "server.json",
+                ready_json=args.ready_json,
+                listen=args.listen or configured.server.listen,
+                explicit_port=args.port is not None,
+                public_url=args.public_url
+                if args.public_url is not None
+                else configured.server.public_url,
+                ignore_saved_public_url=args.listen is not None
+                and args.public_url is None,
             )
     finally:
         manager.shutdown()
@@ -244,16 +259,52 @@ def _serve_http(
     discovery: Path,
     *,
     ready_json: bool,
+    listen: str = "127.0.0.1",
+    explicit_port: bool = False,
+    public_url: str | None = None,
+    ignore_saved_public_url: bool = False,
 ) -> None:
     from wgsextract_cli.server.http_api import Server
+    from wgsextract_cli.server.listener import exact_headers, parse_listener
 
     token = secrets.token_urlsafe(32)
     try:
-        server = Server(port, token, manager, guard)
+        options = typed_settings().server
+        listener = parse_listener(listen, port)
+        if listener.loopback and ignore_saved_public_url:
+            public_url = None
+        if explicit_port:
+            from wgsextract_cli.server.listener import Listener
+
+            listener = Listener(listener.address, port)
+        server = Server(
+            listener.port,
+            token,
+            manager,
+            guard,
+            listen=listener.address,
+            allowed_hosts=exact_headers(options.allowed_hosts, origins=False),
+            allowed_origins=exact_headers(options.allowed_origins, origins=True),
+            viewer_files=options.viewer_files,
+            public_url=public_url,
+            max_connections=options.max_connections,
+            header_timeout_seconds=options.header_timeout_seconds,
+        )
+    except ValueError as e:
+        raise UsageError(str(e)) from None
     except OSError as e:
-        raise UsageError(f"Can't listen on 127.0.0.1:{port}: {e}") from None
+        raise UsageError(f"Can't listen on {listen}: {e}") from None
     url = server.url + "/v1"
     try:
+        if not server.loopback:
+            logging.warning(
+                "Listening on %s: exposes the entire authenticated HTTP/JSON API "
+                "(jobs, cancellation, logs, lookups%s) to this interface. "
+                "HTTP is unencrypted; protect tokens and genome data with an "
+                "operator-configured TLS reverse proxy and firewall.",
+                server.bind_url,
+                ", viewer file bytes" if server.viewer_files else "",
+            )
         _announce(
             f"WGS Extract server on {url}",
             url,
@@ -262,6 +313,7 @@ def _serve_http(
             guard,
             f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
             ready_json=ready_json,
+            bind_url=server.bind_url if not server.loopback else None,
         )
         server.serve_forever()
     except (KeyboardInterrupt, SystemExit):
@@ -280,6 +332,7 @@ def _announce(
     hint: str,
     *,
     ready_json: bool,
+    bind_url: str | None = None,
 ) -> None:
     """Save the private discovery file and tell the user (on stderr) and, with
     --ready-json, the program that started the server (on stdout) where the
@@ -289,9 +342,13 @@ def _announce(
     from wgsextract_cli.server.jobs import write_private_json
 
     address = {"url": url, "token": token, "pid": os.getpid()}
+    if bind_url is not None:
+        address["bind_url"] = bind_url
     write_private_json(discovery, address)
+    listen_line = f"Listen interface: {bind_url}\n" if bind_url else ""
     print(
         f"{title}\n"
+        f"{listen_line}"
         f"Token: {token}\n"
         f"  (also in {discovery}, readable by you only)\n"
         f"Allowed folders: {', '.join(map(str, guard.roots)) or 'none'}\n"

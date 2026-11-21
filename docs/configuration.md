@@ -147,7 +147,7 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `quiet_mode` | boolean | `false` | Enable quiet mode (errors only) |
 | `log_dir` | string, path (`~` expands) | unset | Opt-in directory for unique persistent DEBUG run logs and provenance; it keeps the newest 100 runs |
 | `state_directory` | string, path (`~` expands) | unset | Folder for the last-run record and saved bug reports (report-issue); default: state/ in the data folder |
-| `server_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port) |
+| `server_port` | integer, 0 to 65535 | `0` | Default HTTP/JSON listen port (0: any free port); an embedded server.listen port overrides this default, and explicit --port wins |
 | `server_allowed_paths` | string or array of strings, path (`~` expands) | unset | Folders (a string or an array) `wgsextract serve` requests may read and write, besides mygenomes_library, reference_library, reference_genome_library and output_directory |
 | `server_mcp_transport` | `stdio` or `http` | `"stdio"` | How `wgsextract serve --mcp` speaks MCP: stdio, or http (streamable HTTP on 127.0.0.1 with a per-launch token; needs the optional 'mcp' package) |
 | `server_mcp_port` | integer, 0 to 65535 | `0` | Port `wgsextract serve --mcp-transport http` listens on at 127.0.0.1 (0: any free port) |
@@ -227,6 +227,20 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `pgs_keep_ambiguous` | boolean | `false` | Keep palindromic SNPs only with independently verified forward-strand alleles |
 
 Older names still read: `dataset_library` (`mygenomes_library`), `father_vcf` (`father_vcf_path`), `genome_library` (`mygenomes_library`), `genomes` (`mygenomes_library`), `haplocheck_path` (`haplocheck_executable`), `haplogrep_path` (`haplogrep_executable`), `input` (`input_path`), `input_vcf` (`default_input_vcf`), `jar_dir` (`jar_directory`), `memory` (`memory_limit`), `mother_vcf` (`mother_vcf_path`), `outdir` (`output_directory`), `ref` (`reference_fasta`), `reflib` (`reference_library`), `threads` (`cpu_threads`), `vep_cache` (`vep_cache_directory`).
+
+## The [server] table
+
+Operator opt-ins for HTTP/JSON listening and viewer files. See [server mode](server.md#remote-http-access) for exposure and TLS requirements.
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `listen` | string | `"127.0.0.1"` | HTTP listen address[:port]; explicit --port overrides the embedded port; loopback by default |
+| `allowed_hosts` | string or array of strings | unset | Exact external Host headers, including ports; never wildcards |
+| `allowed_origins` | string or array of strings | unset | Exact app origins allowed to read viewer files; never wildcards |
+| `viewer_files` | boolean | `false` | Enable authenticated, guarded viewer byte ranges |
+| `public_url` | string | unset | Advertised HTTP/HTTPS client origin; required for non-loopback listening, with its authority in allowed_hosts |
+| `max_connections` | integer, 1 to 256 | `32` | Maximum accepted HTTP connections, including unauthenticated peers |
+| `header_timeout_seconds` | number, 0.1 to 60 | `10.0` | Absolute request-header and keep-alive idle deadline; does not limit authenticated responses |
 
 ## The [dev] table
 

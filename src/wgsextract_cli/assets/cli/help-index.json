@@ -151,7 +151,7 @@
 {"path":"sign verify","tier":"advanced","summary":"Check a SHA256SUMS manifest's OpenSSH signature against a trusted key, then re-hash every listed file.","key_flags":["--signature","--public-key","--allowed-signers","--identity"]},
 {"path":"score pgs","tier":"advanced","summary":"Score an additive PGS Catalog or custom file locally.","key_flags":["--no-download","--build","--pgs-id","--trait","--scoring-file","--sample","--plink2-check","--no-keep-ambiguous","--confident-bed","--min-match"]},
 {"path":"benchmark","tier":"advanced","summary":"Time the main workflows on test data.","key_flags":["--profile","--coverage","--full-size","--build","--region","--keep-going","--suite","--dataset"]},
-{"path":"serve","tier":"advanced","summary":"Local HTTP/JSON and MCP server for apps and AI agents.","key_flags":["--port","--allow","--max-jobs","--mcp","--mcp-transport","--allow-jobs","--allow-destructive","--ready-json","--openapi"]}
+{"path":"serve","tier":"advanced","summary":"Local HTTP/JSON and MCP server for apps and AI agents.","key_flags":["--listen","--public-url","--port","--allow","--max-jobs","--mcp","--mcp-transport","--allow-jobs","--allow-destructive","--ready-json","--openapi"]}
 ],
 "topics":[
 {"name":"references","summary":"Reference genomes: what they are, where they come from."},
