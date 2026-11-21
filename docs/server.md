@@ -159,7 +159,8 @@ A submission can include `X-WGSE-Job-ID` with a client-generated lowercase
 UUIDv4. The HTTP server advertises this as `"client_job_ids": true` in its
 discovery file and `--ready-json` output. If the reply is lost, look up the
 original job with `GET /v1/jobs/{id}`.
-The server returns `409` if that ID already exists and does not start a second job.
+After reading the request body, the server returns `409` if that ID already
+exists, without decoding the JSON or starting a second job.
 A lookup that does not find the job is not proof that a submission still in
 flight was rejected.
 

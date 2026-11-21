@@ -199,6 +199,45 @@ def test_bad_lengths_are_refused_and_errors_close_the_connection(
     connection.close()
 
 
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [(1, (409, "job_id_in_use")), (2, (400, "bad_length"))],
+    ids=["complete-malformed-json", "truncated-body"],
+)
+def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expected):
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    path = "/ops/example-genome/list"
+    status, job = client.request(
+        "POST",
+        path + "?wait=30",
+        {"target_root": str(work)},
+        headers={"X-WGSE-Job-ID": job_id},
+    )
+    assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
+
+    # Headers and body can arrive separately. Closing with unread bytes can
+    # abort the connection before the client sees the 409 on Windows.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=30)
+    try:
+        connection.putrequest("POST", "/v1" + path)
+        connection.putheader("Authorization", "Bearer " + TOKEN)
+        connection.putheader("X-WGSE-Job-ID", job_id)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(length))
+        connection.endheaders()
+        connection.send(b"{")
+        assert connection.sock is not None
+        connection.sock.shutdown(socket.SHUT_WR)
+        with connection.getresponse() as response:
+            assert (
+                response.status,
+                json.loads(response.read())["error"]["code"],
+            ) == expected
+    finally:
+        connection.close()
+
+
 def test_1209_job_log_tails_text_and_disallows_caching(client, tmp_path, work):
     status, job = client.request(
         "POST", "/ops/example-genome/list?wait=10", {"target_root": str(work)}
