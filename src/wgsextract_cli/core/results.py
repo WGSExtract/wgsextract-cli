@@ -38,6 +38,7 @@ from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import execution_context
+from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
 from wgsextract_cli.core.output_schema import Constraints
 
 SCHEMA_ID: Final = "wgsextract.result/1"
@@ -51,7 +52,6 @@ EXIT_MISSING_DEPENDENCY = 3
 
 Scalar = str | int | float | bool | None
 Status = Literal["ok", "failed", "cancelled"]
-ErrorKind = Literal["failure", "usage", "missing_dependency", "cancelled"]
 Fingerprint = Annotated[
     Annotated[str, Constraints(pattern="^wgse-fp1:[0-9a-f]{64}$")] | None,
     Constraints(
@@ -273,12 +273,6 @@ class ResultWarning:
     code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")]
     message: str
     details: dict[str, Scalar] = field(default_factory=dict)
-
-
-@dataclass
-class ResultError:
-    kind: ErrorKind
-    message: str
 
 
 @dataclass
@@ -609,12 +603,12 @@ class CommandResult:
             self._tools.add(tool)
             self._tool_versions[tool] = version
 
-    # --- finishing -------------------------------------------------------
-
-    def fail(self, kind: ErrorKind, message: str, exit_code: int) -> None:
+    def fail(
+        self, kind: ErrorKind, message: str, exit_code: int, *, code: str | None = None
+    ) -> None:
         self.status = "cancelled" if kind == "cancelled" else "failed"
         self.exit_code = exit_code
-        self.error = ResultError(kind, _redact_strings(message))
+        self.error = ResultError(kind, _redact_strings(message), code)
 
     def manifest_path(self) -> Path | None:
         if self._manifest_stem is not None:
@@ -697,6 +691,9 @@ def fail_from_exception(
     elif isinstance(error, MissingDependencyError):
         logging.error(str(error))
         result.fail("missing_dependency", str(error), EXIT_MISSING_DEPENDENCY)
+    elif isinstance(error, CodedError):
+        logging.error(str(error))
+        result.fail("failure", str(error), EXIT_FAILURE, code=error.code)
     elif isinstance(error, WGSExtractError):
         logging.error(str(error))
         _fail_unexpected(result, error, str(error))
@@ -746,8 +743,10 @@ def _fail_unexpected(result: CommandResult, error: BaseException, message: str) 
 def _json_safe_dataclass(value: object) -> object:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         return {
-            item.name: _json_safe_dataclass(getattr(value, item.name))
+            item.name: _json_safe_dataclass(field_value)
             for item in dataclasses.fields(value)
+            if (field_value := getattr(value, item.name)) is not None
+            or not item.metadata.get("omit_none")
         }
     if isinstance(value, list):
         return [_json_safe_dataclass(v) for v in value]

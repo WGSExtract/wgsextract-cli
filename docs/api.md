@@ -2966,7 +2966,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
-| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |
+| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
 | `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |

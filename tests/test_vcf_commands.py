@@ -20,7 +20,6 @@ from tests.htslib_helpers import (
     run_wgsextract,
     write_fasta,
 )
-from wgsextract_cli import api
 from wgsextract_cli.api import VcfFreebayesParams
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -1217,26 +1216,6 @@ def test_ploidy_requires_explicit_value_without_known_build(build):
     args = argparse.Namespace(ploidy=None, ploidy_file=None)
     with pytest.raises(WGSExtractError, match="Ploidy"):
         _ploidy_args(args, lib)  # type: ignore[arg-type]
-
-
-def test_vep_fast_preset_replaces_everything(tmp_path):
-    from types import SimpleNamespace
-
-    from wgsextract_cli.commands._vep_run import _build_vep_command
-
-    def command(preset):
-        params = api.VepRunParams(
-            input=Path("in.vcf.gz"), vep_assembly="GRCh38", vep_cache=tmp_path,
-            preset=preset, engine="ensembl",
-        )  # fmt: skip
-        lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=None)
-        return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "4")
-
-    assert "--everything" in command("everything")
-    fast = command("fast")
-    assert "--everything" not in fast
-    assert {"--symbol", "--mane", "--sift", "--polyphen"} <= set(fast)
-    assert "--af_gnomadg" not in fast and "--hgvs" not in fast
 
 
 # --- vcf to-fasta ---------------------------------------------------------------

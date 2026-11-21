@@ -30,7 +30,7 @@ type RequireNone<T extends never> = T;
 // Reject even one optional key, including nullable/defaulted wire fields.
 type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
-type ErrorFieldsRequired = RequireNone<OptionalKeys<ResultErrorRecord>>;
+type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
 type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
 type ProvenanceFieldsRequired = RequireNone<OptionalKeys<ResultProvenanceRecord>>;
 type ReferenceFieldsRequired = RequireNone<OptionalKeys<ResultReferenceRecord>>;

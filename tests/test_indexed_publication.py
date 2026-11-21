@@ -11,7 +11,7 @@ import pytest
 from tests.htslib_helpers import needs_tools, snp_sample
 from tests.test_parabricks import gpu as gpu
 from tests.test_parabricks import linux as linux
-from tests.test_vep_run import _vcf
+from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
@@ -37,8 +37,7 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
     if engine == "vep":
         request.getfixturevalue("fake_vep")
         source = Path(_vcf(tmp_path / "sample.vcf.gz"))
-        cache = tmp_path / "cache"
-        cache.mkdir()
+        cache = ensembl_test_cache(tmp_path / "cache")
         params = api.VepRunParams(
             input=source, outdir=output, vep_cache=cache, vep_assembly="GRCh38",
             engine="ensembl", force=True, threads=1,
