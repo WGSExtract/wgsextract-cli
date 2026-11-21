@@ -77,6 +77,7 @@ def test_cancelled_vcf_repair_leaves_no_partial_output(tmp_path):
 
     assert (result.status, result.exit_code) == ("cancelled", 130)
     assert not (tmp_path / "big_repaired.vcf").exists()
+    assert not (tmp_path / "wgse" / "big_repaired.vcf").exists()
 
 
 def test_repair_expands_home_in_api_paths(tmp_path, monkeypatch):

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.core.utils import run_command
 
 SCRIPT = (
@@ -41,7 +42,9 @@ def test_1090_viewer_matches_bam_cram_vcf_with_cli_library(tmp_path: Path) -> No
     )
     config = tmp_path / "config.toml"
     config.write_text(
-        f"reference_library = {json.dumps(str(library))}\n", encoding="utf-8"
+        state_directory_setting(tmp_path)
+        + f"reference_library = {json.dumps(str(library))}\n",
+        encoding="utf-8",
     )
     bam = Path(
         sam_to_bam(
