@@ -149,7 +149,7 @@ def _run_comprehensive(
     results: list[AnalyzeResult] = []
     if vcf_inputs:
         _print(f"\nSTAGE: Processing Input VCFs ({len(vcf_inputs)} files)")
-        for vcf, v_type, tag in vcf_workflow_inputs(vcf_inputs):
+        for vcf, v_type, tag in vcf_workflow_inputs(vcf_inputs, outdir):
             res = run_vcf_workflow(job, vcf, v_type, outdir, journal, output_tag=tag)
             if res:
                 results.append(res)

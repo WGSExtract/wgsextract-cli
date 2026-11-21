@@ -225,17 +225,27 @@ def _filename_key(name: str) -> str:
     return unicodedata.normalize("NFC", name.casefold())
 
 
-def vcf_workflow_inputs(vcfs: Sequence[str]) -> list[tuple[str, str, str]]:
+def vcf_workflow_inputs(vcfs: Sequence[str], outdir: str) -> list[tuple[str, str, str]]:
     """Plan (source, type, output tag) before any annotation step writes."""
     types = [detect_vcf_type(vcf) for vcf in vcfs]
     tags = [_vcf_output_tag(vcf, kind) for vcf, kind in zip(vcfs, types, strict=True)]
     keys = [_filename_key(tag) for tag in tags]
-    counts = Counter(keys)
     used = set(keys)
+    if len(used) == len(keys):
+        return list(zip(vcfs, types, tags, strict=True))
+
+    counts = Counter(keys)
+    sources = [Path(vcf).parent.resolve() / Path(vcf).name for vcf in vcfs]
+    protected = {*sources, *(path.resolve() for path in sources)}
+    source_paths = {_filename_key(str(path)) for path in protected}
+    source_dirs = {
+        _filename_key(str(parent)) for path in protected for parent in path.parents
+    }
+    output_dir = Path(outdir).resolve()
     # Reserve existing names and assign suffixes in source order, independent
     # of the order the user passes the same inputs on a resumed run.
     suffixes: Counter[str] = Counter()
-    for i in sorted(range(len(vcfs)), key=lambda i: str(Path(vcfs[i]).absolute())):
+    for i in sorted(range(len(vcfs)), key=lambda i: (str(sources[i]), vcfs[i])):
         key = keys[i]
         if counts[key] == 1:
             continue
@@ -243,10 +253,18 @@ def vcf_workflow_inputs(vcfs: Sequence[str]) -> list[tuple[str, str, str]]:
             suffixes[key] += 1
             candidate = f"{tags[i]}-{suffixes[key]}"
             candidate_key = _filename_key(candidate)
-            if candidate_key not in used:
-                used.add(candidate_key)
-                tags[i] = candidate
-                break
+            if candidate_key in used:
+                continue
+            work_dir = (output_dir / f"work_{candidate}").resolve()
+            output = output_dir / f"significant_{candidate}.vcf.gz"
+            if (
+                _filename_key(str(work_dir)) in source_dirs
+                or _filename_key(str(output)) in source_paths
+            ):
+                continue
+            used.add(candidate_key)
+            tags[i] = candidate
+            break
     return list(zip(vcfs, types, tags, strict=True))
 
 
@@ -535,7 +553,7 @@ def run_vcf_workflow(
     """Annotates and filters a single VCF file based on its type, as the
     steps annotate and discovery. ``after``: the step that made the VCF."""
     tag = output_tag or _vcf_output_tag(vcf_path, v_type)
-    _print(f"\nSub-Stage: Processing {v_type.upper()} ({vcf_path})")
+    _print(f"\nSub-Stage: Processing {v_type.upper()} ({Path(vcf_path).name})")
 
     # Define targeted annotations per type
     if v_type == "snp-indel":
@@ -656,9 +674,12 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
     _print("GENOMIC ANALYSIS SUMMARY REPORT")
     _print("=" * 60)
 
+    basenames = Counter(_filename_key(Path(res["input"]).name) for res in results)
     total_sig = 0
     for res in results:
-        _print(f"[{res['type'].upper()}] {res['input']}")
+        basename = Path(res["input"]).name
+        source = res["input"] if basenames[_filename_key(basename)] > 1 else basename
+        _print(f"[{res['type'].upper()}] {source}")
         _print(f"  Significant variants: {res['count']}")
         _print(f"  Results file: {res['output']}")
         total_sig += res["count"]

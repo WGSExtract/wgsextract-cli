@@ -29,20 +29,24 @@ from wgsextract_cli.core.utils import run_command
 
 @needs_htslib
 def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -> None:
+    out = tmp_path / "out"
     source_ids = {}
     for folder, name, positions in (
-        ("caller-a", "calls.vcf.gz", [100]),
-        ("caller-b", "calls.vcf.gz", [200, 300]),
-        ("caller-c", "calls-1.vcf.gz", [400]),
+        (tmp_path / "caller-a", "calls.vcf.gz", [100]),
+        (tmp_path / "caller-b", "calls.vcf.gz", [200, 300]),
+        (out / "work_snp-indel_calls-3", "calls-1.vcf.gz", [400]),
+        (out, "significant_snp-indel_calls-2.vcf.gz", [500]),
     ):
-        directory = tmp_path / folder
-        directory.mkdir()
+        folder.mkdir(parents=True, exist_ok=True)
         records = [(pos, f"call{pos}", "50", ".") for pos in positions]
-        source_ids[write_vcf(directory / name, records)] = [r[1] for r in records]
+        source_ids[write_vcf(folder / name, records)] = [r[1] for r in records]
 
     clinvar = write_vcf(
         tmp_path / "clinvar.vcf.gz",
-        [(pos, f"cv{pos}", ".", "CLNSIG=Pathogenic") for pos in (100, 200, 300, 400)],
+        [
+            (pos, f"cv{pos}", ".", "CLNSIG=Pathogenic")
+            for pos in (100, 200, 300, 400, 500)
+        ],
         ["CLNSIG"],
         header='##INFO=<ID=CLNDN,Number=.,Type=String,Description="d">',
     )
@@ -53,7 +57,6 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
         f"reference_library = '{lib}'\nclinvar_vcf_path = '{clinvar}'\n"
         + state_directory_setting(tmp_path)
     )
-    out = tmp_path / "out"
     results = []
     for vcfs in (list(source_ids), list(reversed(source_ids))):
         code, stdout, stderr = run_cli([
@@ -72,19 +75,25 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
             record["metrics"]["source_vcf"]: record["path"] for record in significant
         }
         assert {source: ids(path) for source, path in paths.items()} == source_ids
-        independent_source = str(tmp_path / "caller-c" / "calls-1.vcf.gz")
+        assert {source: ids(source) for source in vcfs} == source_ids
+        independent_source = str(out / "work_snp-indel_calls-3" / "calls-1.vcf.gz")
         assert (
             Path(paths[independent_source]).name
             == "significant_snp-indel_calls-1.vcf.gz"
         )
         for source, path in paths.items():
-            summary = stdout.split(f"[SNP-INDEL] {source}\n", 1)[1]
-            assert f"Results file: {path}" in summary.split("----------------", 1)[0]
+            basename = Path(source).name
+            label = source if basename == "calls.vcf.gz" else basename
+            _, marker, summary = stdout.partition(f"[SNP-INDEL] {label}\n")
+            assert marker
+            section = summary.split("----------------", 1)[0]
+            assert f"Significant variants: {len(source_ids[source])}" in section
+            assert f"Results file: {path}" in section
         steps = manifest["details"]["steps"]
         assert len({step["step"] for step in steps}) == 2 * len(source_ids)
         results.append((paths, manifest["metrics"]["steps_run"]))
     assert results[0][0] == results[1][0]
-    assert [ran for _, ran in results] == [6, 0]
+    assert [ran for _, ran in results] == [2 * len(source_ids), 0]
 
 
 @needs_htslib

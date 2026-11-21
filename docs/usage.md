@@ -78,8 +78,9 @@ from that alignment unless you supply matching `--vcf-inputs` or use
 
 When VCFs in one comprehensive run would have the same output name, each
 gets a numbered suffix. VCFs whose names don't collide keep their usual
-output names. The summary shows the source path for each result, and the
-manifest records it as `source_vcf` on each significant-variants output.
+output names. The summary shows the source paths when filenames match.
+The manifest records the source path as `source_vcf` on each
+significant-variants output.
 
 `wgsextract report --genome ID` reads earlier manifests without running tools.
 Its local HTML, Markdown, JSON and findings table cover overview/QC, Y/mtDNA,
