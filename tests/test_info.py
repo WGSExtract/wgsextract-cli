@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 import os
@@ -10,7 +11,7 @@ from unittest.mock import patch
 import pytest
 
 from tests.htslib_helpers import sam_to_bam
-from wgsextract_cli.commands.info import metrics, render, runner
+from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import WGSExtractError
@@ -199,11 +200,11 @@ def test_region_coverage_does_not_poison_whole_genome_cache(info_env, monkeypatc
     sample, _calls = info_env
     seen = []
 
-    def fake_full_coverage(input_p, ref_p, out_p, region=None, legacy_p=None):
+    def fake_full_coverage(input_p, ref_p, out_p, region=None, legacy_p=None, **_):
         seen.append((os.path.basename(out_p), legacy_p))
         return {"1": "42 %"}
 
-    monkeypatch.setattr(runner, "run_full_coverage", fake_full_coverage)
+    monkeypatch.setattr(coverage, "run_full_coverage", fake_full_coverage)
     region_out = _run_info(sample, "info", "calculate-coverage", "-r", "1:1-1000")
     assert "42 %" in region_out
     assert seen == [("sample.bam_1_1_1000_coverage.tsv", None)]
@@ -529,3 +530,96 @@ def test_readable_reads_do_not_warn_about_unreadable_reads(info_env, capsys):
     sample, _calls = info_env
     codes = {w["code"] for w in _run_info_json(sample, capsys)["warnings"]}
     assert not codes & {"cram_reference_missing", "reads_unreadable"}
+
+
+def _half_n_genome(tmp_path: Path) -> tuple[Path, Path]:
+    """chr1: 5 kb of sequence then 5 kb of N, all its sequence read; chr2: 800 bp,
+    half read. The reference carries its count-ns sidecar."""
+    if not get_tool_path("samtools"):
+        pytest.skip("samtools not available")
+    ref = tmp_path / "ref.fa"
+    ref.write_text(f">chr1\n{'ACGT' * 1250}{'N' * 5000}\n>chr2\n{'ACGT' * 200}\n")
+    (tmp_path / "ref_ncnt.csv").write_text(
+        "#Seq\tNumBP\tNumNs\tNumNreg\nchr1\t10000\t5000\t1\nchr2\t800\t0\t0\n"
+    )
+    read, qual = "A" * 100, "I" * 100
+    records = [
+        f"{contig}r{pos}\t0\t{contig}\t{pos}\t60\t100M\t*\t0\t0\t{read}\t{qual}"
+        for contig, end in (("chr1", 5001), ("chr2", 401))
+        for pos in range(1, end, 100)
+    ]
+    header = ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:10000"]
+    header.append("@SQ\tSN:chr2\tLN:800")
+    return Path(sam_to_bam(header + records, tmp_path / "s.bam")), ref
+
+
+def _table_breadth(path: Path) -> dict[str, str]:
+    rows = [line.split("\t") for line in path.read_text().splitlines()]
+    rows = [r for r in rows if not r[0].startswith("#")]
+    col = rows[0].index("breadth_pct")
+    return {r[0]: r[col] for r in rows[1:]}
+
+
+def test_breadth_leaves_reference_ns_out_of_the_length(tmp_path):
+    """Breadth divided by the whole model length, Ns included, so a fully read
+    contig with gaps reported well under 100 %."""
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--ref", str(ref), "--format", "tsv")
+    assert _table_breadth(tmp_path / "s.bam_chromosomes.tsv") == {
+        "chr1": "100",
+        "chr2": "50",
+        "Total": "93",  # 5,400 read of the 5,800 non-N bases
+    }
+
+    sampled = _run_info(bam, "info", "coverage-sample", "--ref", str(ref), "-r", "chr1")
+    assert "~100 %" in sampled
+    # A partial span's share of the Ns is unknown, so it is a plain fraction.
+    part = _run_info(
+        bam, "info", "calculate-coverage", "--ref", str(ref), "-r", "chr1:1-6000"
+    )
+    assert "83 %" in part
+
+
+def test_detailed_coverage_bins_leave_ns_out_and_feed_detailed_info(tmp_path):
+    """Detailed Coverage (--with-bins) shows the v4 bin table, N column and
+    N-free percentages; Detailed Info then shows the breadth it measured."""
+    bam, ref = _half_n_genome(tmp_path)
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert shown.startswith("Bin Coverage by Sequence Name")
+    total = next(line for line in shown.splitlines() if line.startswith("Total"))
+    assert total.split()[-2:] == ["93.10", "%"]  # 5,400 of 5,800 non-N bases
+
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    chr1 = next(r for r in csv.DictReader(rows, delimiter="\t"))
+    assert chr1["Model N Len"] == "5000"
+    assert chr1["Depth 0 bases"] == "0"
+    assert float(chr1["Depth 1-3 fraction"]) == 1.0
+
+    # Even without the metrics cache, the saved coverage result is reused.
+    _run_info(
+        bam, "info", "--detailed", "--no-cache", "--ref", str(ref), "--format", "tsv"
+    )
+    assert _table_breadth(tmp_path / "s.bam_chromosomes.tsv")["chr1"] == "100"
+
+
+def test_bins_report_from_before_n_column_is_not_current(tmp_path):
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    old = [
+        "\t".join(c for i, c in enumerate(line.split("\t")) if i != 2)
+        for line in report.read_text().splitlines()
+        if not line.startswith("#")
+    ]
+    report.write_text("\n".join(old) + "\n")
+    status = json.loads(
+        _run_info(bam, "--json", "info", "calculate-coverage", "--status")
+    )
+    assert status["details"]["current"] is False
+    rerun = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert "N Len" in rerun
