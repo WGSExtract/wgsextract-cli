@@ -93,12 +93,14 @@ partial files. See [hardware-specific index requirements](../hardware.md#cpu-ali
 for native versions that do not need `.0123`.
 
 `align` always validates and publishes atomically, even with `--no-atomic-output`,
-so validation failure preserves previous alignments. `--atomic-output` (or
+so validation failure preserves previous alignments. `vcf to-fasta` also stages
+its FASTA, indexes, and requested chain beside their destinations; if generation
+or indexing fails, the previous files are unchanged. `--atomic-output` (or
 `atomic_outputs = true`) opts realign, SNP/InDel/GATK/FreeBayes callers and
 main extract writers into rename publication, with indexes generated afterward.
 Failed writes preserve previous files. Other commands keep the opt-in default:
 staged paths alter tool provenance headers and can need extra disk.
-`--no-atomic-output` disables their configured opt-in, never alignment safety.
+`--no-atomic-output` disables their configured opt-in, not alignment or consensus safety.
 This adds no resume/skip behaviour; see [step journals](../step-resume.md).
 
 ## Keep-awake

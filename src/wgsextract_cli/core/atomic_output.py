@@ -1,10 +1,12 @@
-"""Publish one completed output without replacing a previously valid file."""
+"""Publish completed outputs without replacing previous files on failure."""
 
 import contextlib
 import os
+import shutil
 import stat
+import tempfile
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextvars import ContextVar
 from pathlib import Path
 
@@ -121,3 +123,54 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
+
+
+def publish_output_set(staged_to_final: Mapping[Path, Path]) -> None:
+    """Publish validated files staged on the destination volume.
+
+    All destinations must share a parent. List the primary file last so
+    readers cannot see it with mismatched companions during publication.
+    """
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    files = list(staged_to_final.items())
+    parent = files[0][1].parent
+    existing: list[Path] = []
+    for staged, final in files:
+        if not staged.is_file() or not staged.stat().st_size:
+            raise WGSExtractError(f"Output writer did not produce a nonempty {final}")
+        try:
+            mode = final.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if not (stat.S_ISREG(mode) or stat.S_ISLNK(mode)):
+            raise WGSExtractError(
+                f"Cannot replace {final}: not a regular file or symlink"
+            )
+        existing.append(final)
+
+    backup_dir = Path(tempfile.mkdtemp(dir=parent, prefix=".wgse_previous_"))
+    retired: list[tuple[Path, Path]] = []
+    published: list[Path] = []
+    try:
+        for number, final in enumerate(reversed(existing)):
+            backup = backup_dir / str(number)
+            final.replace(backup)
+            retired.append((final, backup))
+        for staged, final in files:
+            staged.replace(final)
+            published.append(final)
+    except BaseException:
+        try:
+            for final in reversed(published):
+                final.unlink(missing_ok=True)
+            for final, backup in reversed(retired):
+                backup.replace(final)
+        except OSError as error:
+            raise WGSExtractError(
+                f"Could not restore previous outputs; remaining backups are in {backup_dir}"
+            ) from error
+        backup_dir.rmdir()
+        raise
+    else:
+        shutil.rmtree(backup_dir)

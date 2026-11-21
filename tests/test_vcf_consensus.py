@@ -8,6 +8,7 @@ import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
 from wgsextract_cli.commands.vcf import consensus
+from wgsextract_cli.core.atomic_output import atomic_output_mode
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -232,17 +233,42 @@ def test_missing_reference_fails_before_writing(tmp_path):
     assert not list(tmp_path.glob("*consensus*"))
 
 
-def test_failure_while_writing_removes_partial_outputs(tmp_path, monkeypatch):
-    def fail(stages, stdout=None, description=""):
-        stdout.write(b"partial")
-        Path(tmp_path / "out" / "v_consensus.chain").write_text("partial")
-        raise WGSExtractError("consensus died")
+@pytest.mark.parametrize("previous_result", [False, True], ids=["first-run", "retry"])
+def test_1236_ref_mismatch_leaves_consensus_outputs_untouched(
+    tmp_path, previous_result
+):
+    out = tmp_path / "out"
+    with atomic_output_mode(True):
+        if previous_result:
+            assert _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain") == {
+                "chr1": _with(12, "T", 2)
+            }
+            names = (
+                "v_consensus.fa.gz",
+                "v_consensus.fa.gz.fai",
+                "v_consensus.fa.gz.gzi",
+                "v_consensus.chain",
+            )
+            expected = {name: (out / name).read_bytes() for name in names}
+        else:
+            expected = {}
+        with pytest.raises(WGSExtractError, match="does not match the REF allele"):
+            _to_fasta(tmp_path, _rec(12, "A", "C", "1/1"), "--chain")
 
-    monkeypatch.setattr(consensus, "run_pipeline", fail)
-    (tmp_path / "out").mkdir()
-    with pytest.raises(WGSExtractError, match="consensus died"):
-        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain", contigs=("chr1",))
-    assert list((tmp_path / "out").iterdir()) == []
+    assert {path.name for path in out.iterdir()} == expected.keys()
+    assert {name: (out / name).read_bytes() for name in expected} == expected
+
+
+def test_1236_blocked_index_destination_leaves_no_partial_consensus(tmp_path):
+    out = tmp_path / "out"
+    blocked = out / "v_consensus.fa.gz.gzi"
+    blocked.mkdir(parents=True)
+
+    with pytest.raises(WGSExtractError, match=blocked.name):
+        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+
+    assert list(out.iterdir()) == [blocked]
+    assert blocked.is_dir()
 
 
 def test_1222_structural_variant_end_does_not_mask_uncovered_bases(tmp_path):

@@ -6,6 +6,7 @@ from itertools import islice
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfToFastaParams
+from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -360,8 +361,8 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
     verify_paths_exist({"--ref": ref})
 
     stem = input_stem(input_vcf)
-    out_fasta = str(Path(outdir, f"{stem}_consensus.fa.gz"))
-    out_chain = str(Path(outdir, f"{stem}_consensus.chain")) if params.chain else None
+    out_fasta = Path(outdir, f"{stem}_consensus.fa.gz")
+    out_chain = Path(outdir, f"{stem}_consensus.chain") if params.chain else None
     input_vcf = ensure_vcf_prepared(input_vcf)
     sample = _pick_sample(input_vcf, params.sample)
 
@@ -387,21 +388,27 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
         consensus_cmd += ["--missing", "N"]
     if mask:
         consensus_cmd += ["--mask", mask]
-    if out_chain:
-        consensus_cmd += ["--chain", out_chain]
-
     logging.info(
         LOG_MESSAGES["generating_consensus"].format(output=out_fasta)
         + (f" (region {region})" if region else "")
     )
-    partials = [out_fasta, out_fasta + ".fai", out_fasta + ".gzi"]
-    # Only remove outputs this run started writing, so a failure while
-    # preparing inputs leaves an earlier result intact.
-    writing = False
     try:
-        with tempfile.TemporaryDirectory(
-            dir=scratch_parent(outdir), prefix=".wgse_consensus_"
-        ) as w:
+        with (
+            tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_publish_") as staging,
+            tempfile.TemporaryDirectory(
+                dir=scratch_parent(outdir), prefix=".wgse_consensus_"
+            ) as w,
+        ):
+            fasta = Path(staging, "consensus.fa.gz")
+            outputs = {
+                Path(f"{fasta}{ext}"): Path(f"{out_fasta}{ext}")
+                for ext in (".fai", ".gzi")
+            }
+            if out_chain:
+                chain = Path(staging, "consensus.chain")
+                consensus_cmd += ["--chain", str(chain)]
+                outputs[chain] = out_chain
+            outputs[fasta] = out_fasta
             vcf = _prepare_vcf(input_vcf, contigs, region, sample, gvcf, threads, w)
             vcf = _match_ambiguous_ref_bases(vcf, ref, threads, w)
             if uncalled == "n":
@@ -428,15 +435,11 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
                     consensus_cmd + ["--fasta-ref", "-", vcf],
                 ]
             stages.append(["bgzip", "--threads", threads, "-c"])
-            writing = True
-            with open(out_fasta, "wb") as f:
+            with fasta.open("wb") as f:
                 run_pipeline(stages, stdout=f, description="Consensus generation")
-        run_command(["samtools", "faidx", out_fasta], capture_output=True)
+            run_command(["samtools", "faidx", str(fasta)], capture_output=True)
+            publish_output_set(outputs)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-        outputs = partials + ([out_chain] if out_chain else [])
-        for path in outputs if writing else []:
-            if Path(path).exists():
-                Path(path).unlink()
         raise WGSExtractError(f"Consensus generation failed: {e}") from e
 
     logging.info(f"Consensus FASTA written to {out_fasta}")
