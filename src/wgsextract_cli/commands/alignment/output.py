@@ -92,6 +92,7 @@ def run_streamed_alignment(
     read_length: float | None = None,
     output_profile: str = "default",
     compression_threads: str | None = None,
+    dense_sa: Path | None = None,
 ) -> None:
     """Run the aligner (after any upstream stages feeding it), mark duplicates
     (with duplicate_marker's choice, or not at all for long reads: None), sort,
@@ -122,6 +123,7 @@ def run_streamed_alignment(
                         read_length=read_length,
                         expected_reads=expected_reads,
                         output_profile=output_profile,
+                        dense_sa=dense_sa,
                     )
                     if exact_reads is not None:
                         check_primary_reads(staged, exact_reads, ref)

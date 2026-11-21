@@ -125,6 +125,9 @@ up to 2 GiB per sort thread (stepping down to 256M when needed to fit all worker
 followed by a bounded merge. Generated FASTQs are removed after the validated alignment checkpoint
 unless `--keep-fastq`; user-provided FASTQs are never deleted. Failed stages
 retain checkpoints in the reported workspace for unchanged-input recovery.
+Resume checks the input files, reference indexes and alignment settings; unrelated
+files in the working directory do not affect it. If an index changed or the
+checkpoint predates these checks, move the reported workspace aside before rerunning.
 
 Whole HG00235x validation for #872 (low-memory Metal) retained all835,260,415
 ordered SAM records: **4.50h alignment**, **6.44h alignment plus postprocessing

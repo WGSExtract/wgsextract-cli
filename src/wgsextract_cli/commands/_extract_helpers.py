@@ -16,6 +16,7 @@ from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.region_selection import is_region_file
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.run_log import is_run_log_path
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
@@ -308,10 +309,15 @@ def _fastq_stages(
     out_other: PathInput | None = None,
     from_stdin: bool = False,
     memory_threads: str | None = None,
-) -> list[list[str]]:
-    view = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
-    view += cram_opt or []
-    view += ["-" if from_stdin else fspath(input_path), *([region] if region else [])]
+) -> list[Sequence[str | Path]]:
+    view: list[str | Path] = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
+    if cram_opt:
+        view.extend(
+            Path(arg) if i and cram_opt[i - 1] in ("-T", "--reference") else arg
+            for i, arg in enumerate(cram_opt)
+        )
+    source = fspath(input_path) if is_url(input_path) else Path(input_path)
+    view.extend(["-" if from_stdin else source, *([region] if region else [])])
     collate = ["samtools", "collate", "-u", "-O", "--no-PG", "-@", threads]
     collate += [
         "-n",
@@ -379,7 +385,7 @@ def paired_fastq_stream(
     temp_parent: PathInput,
     cram_opt: list[str] | None = None,
     memory_threads: str | None = None,
-) -> Iterator[list[list[str]]]:
+) -> Iterator[list[Sequence[str | Path]]]:
     """Interleaved pairs; ``memory_threads`` keeps sort RAM separate from codecs."""
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or temp_parent, prefix=".collate_"

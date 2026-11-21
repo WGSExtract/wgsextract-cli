@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -14,14 +15,16 @@ from tests.htslib_helpers import needs_tools, write_fasta
 from tests.prepared_data import sparse_truncate
 from tests.test_alignment_commands import _samtools, _short_reads
 from wgsextract_cli import api
+from wgsextract_cli.commands._extract_helpers import paired_fastq_stream
 from wgsextract_cli.commands.align import read_group, run_streamed_alignment
 from wgsextract_cli.core import native_aligners, results
 from wgsextract_cli.core.alignment.memory import bwa_gpu_memory, estimate_mapping_memory
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.pixi_tools import is_pixi_tool_command
 from wgsextract_cli.core.resource_estimates import estimate_resources
 from wgsextract_cli.core.staged_alignment import run_staged_alignment, workspace_path
-from wgsextract_cli.core.utils import WGSExtractError, run_pipeline
+from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 GIB = 1024**3
 
@@ -39,6 +42,108 @@ def _align(reads, ref, out, *, native="off", prefer=None):
         )
     )
     return out / "reads_aligned.bam", result
+
+
+def _stage_reads(tmp_path, reads, *, aligner="bwa", staged_output=None, chunks=7):
+    output = str(tmp_path / "staged.bam")
+    return run_staged_alignment(
+        [[aligner, "mem", "-t", "1", "-R", read_group("reads"),
+          Path(reads.ref), Path(reads.r1), Path(reads.r2)]],
+        output,
+        staged_output or output,
+        memory="16M",
+        fmt="BAM",
+        ref=reads.ref,
+        chunk_records=chunks,
+        expected_reads=280,
+    )  # fmt: skip
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue1206_pixi_wrapped_samtools_writes_indexed_bam(tmp_path, monkeypatch):
+    pixi = shutil.which("pixi")
+    if not pixi:
+        pytest.skip("Pixi required to test the tool fallback")
+    bwa = get_tool_path("bwa")
+    reads = _short_reads(tmp_path)
+    baseline, _ = _align(reads, reads.ref, tmp_path / "baseline")
+    expected = _samtools("view", baseline)
+    # Simulate launching the installed Python CLI outside Pixi.
+    path = [
+        entry
+        for entry in os.get_exec_path()
+        if not shutil.which("samtools", path=entry)
+    ]
+    try:
+        with monkeypatch.context() as env:
+            env.setenv("PATH", os.pathsep.join(path))
+            env.setenv("PIXI_EXE", pixi)
+            env.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+            clear_tool_caches()
+            samtools = get_tool_path("samtools")
+            if not samtools or not is_pixi_tool_command(samtools):
+                pytest.skip("samtools must be available through Pixi fallback")
+            _stage_reads(tmp_path, reads, aligner=bwa, chunks=100)
+    finally:
+        clear_tool_caches()
+    output = tmp_path / "staged.bam"
+    assert (tmp_path / "staged.bam.bai").is_file()
+    assert _samtools("view", output) == expected
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue1206_resume_ignores_file_named_like_thread_count(tmp_path, monkeypatch):
+    reads = _short_reads(tmp_path)
+    baseline, _ = _align(reads, reads.ref, tmp_path / "baseline")
+    with pytest.raises(WGSExtractError):
+        _stage_reads(tmp_path, reads, staged_output=str(tmp_path))
+    workspace = workspace_path(str(tmp_path / "staged.bam"))
+    checkpoint = (workspace / "parts.json").read_bytes()
+
+    monkeypatch.chdir(tmp_path)
+    Path("1").write_text("not a pipeline input")
+    _stage_reads(tmp_path, reads)
+
+    assert (workspace / "parts.json").read_bytes() == checkpoint
+    assert _samtools("view", tmp_path / "staged.bam") == _samtools("view", baseline)
+
+    # The same resume must reject changes to a real FASTQ argument.
+    with Path(reads.r1).open("a") as fastq:
+        fastq.write("\n")
+    with pytest.raises(WGSExtractError, match="checkpoint inputs/settings changed"):
+        _stage_reads(tmp_path, reads)
+
+
+@pytest.mark.parametrize(
+    ("aligner", "index_suffix"),
+    [
+        ("bwa", ".amb"),
+        ("bwa", ".ann"),
+        ("bwa-mem2", ".0123"),
+        ("bwa-mem2", ".bwt.2bit.64"),
+    ],
+)
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue1206_resume_rejects_changed_bwa_index(tmp_path, aligner, index_suffix):
+    if get_tool_path(aligner) is None:
+        pytest.skip(f"{aligner} unavailable")
+    reads = _short_reads(tmp_path)
+    run_command([aligner, "index", reads.ref])
+    with pytest.raises(WGSExtractError):
+        _stage_reads(tmp_path, reads, aligner=aligner, staged_output=str(tmp_path))
+    workspace = workspace_path(str(tmp_path / "staged.bam"))
+    assert json.loads((workspace / "parts.json").read_text())["complete"]
+
+    with Path(reads.ref + index_suffix).open("ab") as index:
+        index.write(b"\n")
+    result = results.CommandResult(command="align")
+    with (
+        results.collecting(result),
+        pytest.raises(WGSExtractError, match="checkpoint inputs/settings changed"),
+    ):
+        _stage_reads(tmp_path, reads, aligner=aligner)
+    assert not (tmp_path / "staged.bam").exists()
+    assert any(w.code == "staged_alignment_retained" for w in result.warnings)
 
 
 @pytest.mark.parametrize("fmt", ["BAM", "CRAM"])
@@ -443,52 +548,40 @@ def test_issue872_post_merge_validation_reports_retained_workspace(tmp_path):
 
 
 @needs_tools("bwa", "samtools", "samblaster")
-def test_issue872_stream_resume_ignores_only_collation_scratch_path(tmp_path):
+def test_issue1206_stream_resume_ignores_extraction_scratch_paths(tmp_path):
     reads = _short_reads(tmp_path)
     baseline, _ = _align(reads, reads.ref, tmp_path / "baseline")
     output = str(tmp_path / "streamed.bam")
 
-    def commands(scratch):
-        return [
-            ["samtools", "collate", "-u", "-O", "-T", scratch, baseline],
-            ["samtools", "fastq", "-n", "-"],
-            [
-                "bwa",
-                "mem",
-                "-p",
-                "-K",
-                "100000000",
-                "-R",
-                read_group("reads"),
-                reads.ref,
-                "-",
-            ],
-        ]
+    aligner = [
+        "bwa", "mem", "-p", "-K", "100000000", "-R", read_group("reads"),
+        Path(reads.ref), "-",
+    ]  # fmt: skip
+    stream = {"threads": "1", "memory": "16M", "temp_parent": tmp_path}
+
+    def run(staged_output):
+        with paired_fastq_stream(baseline, **stream) as stages:
+            run_staged_alignment(
+                [*stages, aligner],
+                output,
+                staged_output,
+                memory="16M",
+                fmt="BAM",
+                ref=reads.ref,
+                expected_reads=280,
+                chunk_records=7,
+            )
 
     with pytest.raises(WGSExtractError):
-        run_staged_alignment(
-            commands(tmp_path / "collate-first"),
-            output,
-            str(tmp_path),
-            memory="16M",
-            fmt="BAM",
-            ref=reads.ref,
-            expected_reads=280,
-            chunk_records=7,
-        )
+        run(str(tmp_path))
     checkpoint = (workspace_path(output) / "parts.json").read_bytes()
-    run_staged_alignment(
-        commands(tmp_path / "collate-second"),
-        output,
-        output,
-        memory="16M",
-        fmt="BAM",
-        ref=reads.ref,
-        expected_reads=280,
-        chunk_records=7,
-    )
+    run(output)
     assert (workspace_path(output) / "parts.json").read_bytes() == checkpoint
     assert len(_samtools("view", output).splitlines()) == 280
+    with baseline.open("ab") as bam:
+        bam.write(b"\n")
+    with pytest.raises(WGSExtractError, match="checkpoint inputs/settings changed"):
+        run(output)
 
 
 @needs_tools("bwa", "samtools", "samblaster")

@@ -416,12 +416,12 @@ def align_bwa(
         *aligner.mem_argv(), "-K", BWA_BATCH_BASES, "-t", setup.alignment_threads or setup.threads,
         "-R", read_group(setup.stem, job.sample, job.platform),
     ]  # fmt: skip
-    align_cmd += [setup.ref, setup.r1]
+    ref = Path(setup.ref)
     try:
         command = (
-            [*align_cmd[:-2], "-p", setup.ref, "-"]
+            [*align_cmd, "-p", ref, "-"]
             if upstream
-            else align_cmd + ([job.r2] if job.r2 else [])
+            else [*align_cmd, ref, Path(setup.r1), *([Path(job.r2)] if job.r2 else [])]
         )
         run_streamed_alignment(
             command,
@@ -439,6 +439,7 @@ def align_bwa(
             compression_threads=setup.compression_threads,
             retire_fastqs=job.retire_fastqs,
             read_length=job.input_reads.read_length if job.input_reads else None,
+            dense_sa=aligner.dense_sa,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"{aligner.binary} alignment failed: {e}") from e
