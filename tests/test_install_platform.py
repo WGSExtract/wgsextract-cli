@@ -17,8 +17,13 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.parametrize(
     ("step", "detached"),
-    [("install", False), ("deps", False), ("deps", True)],
-    ids=["install-fails", "verification-fails", "detached-verification-fails"],
+    [("install", False), ("deps", False), ("deps", True), ("concurrent", False)],
+    ids=[
+        "install-fails",
+        "verification-fails",
+        "detached-verification-fails",
+        "concurrent-upgrade",
+    ],
 )
 def test_1211_failed_upgrade_keeps_the_previous_app(
     tmp_path: Path, step: str, detached: bool
@@ -54,11 +59,23 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
         if detached
         else "mkdir -p .pixi/envs/default"
     )
+    second_log = tmp_path / "second-upgrade.log"
+    second_upgrade = ""
+    if step == "concurrent":
+        other_pixi = tmp_path / "working-pixi"
+        other_pixi.write_text("#!/bin/sh\nexit 0\n")
+        other_pixi.chmod(0o755)
+        second_upgrade = (
+            f'  PIXI="{other_pixi}" sh "{ROOT / "install.sh"}" > "{second_log}" 2>&1 '
+            f'|| echo "$?" >> "{second_log}"\n'
+            "  echo 'injected concurrent failure' >&2; exit 42\n"
+        )
     binary.write_text(
         "#!/bin/sh\nset -eu\n"
         'if [ "$1" = install ]; then\n'
         f"  {create_env}\n"
         "  printf partial > .pixi/envs/default/keep\n"
+        f"{second_upgrade}"
         f"  [ '{step}' != install ] || {{ echo 'injected install failure' >&2; exit 42; }}\n"
         'elif [ "$3" = deps ]; then\n'
         "  echo 'injected deps failure' >&2; exit 42\n"
@@ -93,6 +110,11 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
         installation / "install-manifest.json"
     ).read_text() == "previous install record"
     assert not list(installation.glob(".source-download.*"))
+    assert not (installation / ".app-install-lock").exists()
+    if step == "concurrent":
+        log = second_log.read_text()
+        assert "Could not lock" in log
+        assert log.splitlines()[-1] == "1"
     if detached:
         assert list(envs.parent.iterdir()) == [envs]
 

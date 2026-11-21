@@ -515,6 +515,8 @@ WORK_DIR=""
 pixi_work_dir=""
 INSTALL_DIR_CREATED=0
 APP_COMMITTED=0
+APP_LOCK="$INSTALL_DIR/.app-install-lock"
+APP_LOCK_HELD=0
 DETACHED_BACKUP=""
 DETACHED_ENVS=""
 
@@ -572,6 +574,9 @@ cleanup() {
     [ -z "$WORK_DIR" ] || rm -rf "$WORK_DIR"
     [ -z "$DETACHED_BACKUP" ] || rm -rf "$DETACHED_BACKUP"
     [ -z "$pixi_work_dir" ] || rm -rf "$pixi_work_dir"
+    if [ "$APP_LOCK_HELD" -eq 1 ]; then
+        rmdir "$APP_LOCK"
+    fi
     if [ "$INSTALL_DIR_CREATED" -eq 1 ]; then
         rmdir "$INSTALL_DIR" 2>/dev/null || true
     fi
@@ -586,6 +591,10 @@ if [ ! -d "$INSTALL_DIR" ]; then
     mkdir -p "$INSTALL_DIR"
     INSTALL_DIR_CREATED=1
 fi
+if ! (umask 077; mkdir "$APP_LOCK"); then
+    fail "Could not lock $INSTALL_DIR. If another installer is running, wait for it to finish. If an interrupted installer left $APP_LOCK, check for a saved app before removing the lock."
+fi
+APP_LOCK_HELD=1
 WORK_DIR="$(make_staging_directory "$INSTALL_DIR" ".source-download")"
 
 ARCHIVE="$WORK_DIR/wgsextract-cli.tar.gz"

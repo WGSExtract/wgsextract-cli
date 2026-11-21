@@ -69,7 +69,7 @@ def test_1211_windows_bootstrap_rejects_bad_archives_without_touching_user_files
             "cmd.exe",
             "/d",
             "/c",
-            WINDOWS_INSTALLER.name,
+            r".\install_windows.bat",
             "--allow-nonempty-bootstrap-dir",
         ]
     elif SHELLS:

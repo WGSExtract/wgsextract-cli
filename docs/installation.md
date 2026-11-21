@@ -17,8 +17,8 @@ directory (or beside a downloaded `install.sh`) with the app in `app/`,
 Pixi files in `.pixi/`, and the `wgsextract` launcher and `uninstall.sh`.
 On macOS it checks for Xcode Command Line Tools first.
 When upgrading, the installer restores the previous app if Pixi setup or
-verification fails. A successful upgrade rebuilds the default environment
-and keeps optional environments that the new installation does not replace.
+verification fails. A successful upgrade rebuilds the default environment.
+If the Pixi environment location stays the same, optional environments are kept.
 
 Linux ARM64 phase 1 supports default alignment/CRAM/calling/export, VEP,
 native Yleaf-derived Y-DNA analysis and Haplogrep 3. GATK fails before
