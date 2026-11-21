@@ -26,7 +26,9 @@ from wgsextract_cli.core.utils import run_command
 
 
 @needs_htslib
-@pytest.mark.parametrize("selection", ["bam", "configured", "bam-and-vcf"])
+@pytest.mark.parametrize(
+    "selection", ["bam", "configured", "configured-pair", "bam-and-vcf"]
+)
 def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
     tmp_path: Path, selection: str
 ) -> None:
@@ -85,13 +87,16 @@ def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
         ).stdout.splitlines()
         sam.insert(2, "@SQ\tSN:chrM\tLN:100")
         bam = sam_to_bam(sam, tmp_path / "sample_b.bam")
-        args += ["--input", bam]
         expected_inputs.add(("input", bam))
+        with config.open("a") as stream:
+            stream.write(f"input_path = {json.dumps(bam)}\n")
+        if selection != "configured-pair":
+            args += ["--input", bam]
     if selection == "bam-and-vcf":
         explicit_vcf = sample_vcf("sample_b", b_call)
         args += ["--vcf-inputs", explicit_vcf]
         expected_inputs.add(("vcf_input", explicit_vcf))
-    elif selection == "configured":
+    elif selection in {"configured", "configured-pair"}:
         expected_inputs.add(("vcf_input", configured_vcf))
 
     code, stdout, stderr = run_cli([
@@ -107,7 +112,9 @@ def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
         if record["role"] == "significant_variants"
         for call in vcf_calls(record["path"])
     ]
-    assert findings == [a_call if selection == "configured" else b_call]
+    assert findings == [
+        a_call if selection in {"configured", "configured-pair"} else b_call
+    ]
     assert (outdir / "snps.vcf.gz").exists() == (selection == "bam")
 
 

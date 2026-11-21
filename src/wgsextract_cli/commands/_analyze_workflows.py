@@ -68,6 +68,7 @@ class AnalyzeJob:
     dry_run: bool = False
     debug: bool = False
     keep_awake: bool | None = None
+    input_from_config: bool = False
     # A batch's sample: the configured batch file and VCFs don't apply.
     batch_sample: bool = False
 

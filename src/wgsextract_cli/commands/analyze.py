@@ -46,11 +46,15 @@ def run_comprehensive(
     params: AnalyzeComprehensiveParams,
     debug: bool = False,
     keep_awake: bool | None = None,
+    input_from_config: bool = False,
 ) -> None:
     """The ``analyze comprehensive`` operation (``api.analyze.comprehensive``).
     ``debug`` and ``keep_awake`` are passed on to the steps' subcommands."""
     job = AnalyzeJob(
-        **job_values(params, AnalyzeJob), debug=debug, keep_awake=keep_awake
+        **job_values(params, AnalyzeJob),
+        debug=debug,
+        keep_awake=keep_awake,
+        input_from_config=input_from_config,
     )
     cmd_comprehensive(job)
 
@@ -62,18 +66,23 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
     log_dependency_info(["bcftools", "samtools", "tabix"])
     thresholds_from(job)  # reject crossed thresholds from config before any work
 
-    # The configured batch file and VCFs are defaults for a run given no inputs;
-    # never for a batch's own samples, or each would re-run the batch.
     batch_sample = job.batch_sample
-    explicit = job.input or job.vcf_inputs or batch_sample
-    batch_file = job.batch or (None if explicit else settings.get("batch_file_path"))
+    has_inputs = job.input or job.vcf_inputs or batch_sample
+    batch_file = job.batch or (None if has_inputs else settings.get("batch_file_path"))
     if batch_file:
         run_batch_comprehensive(job, batch_file)
         return
 
     input_file = job.input
     vcf_inputs = list(job.vcf_inputs or ())
-    configured_vcfs = None if explicit else settings.get("vcf_input_paths")
+    # CLI alignment and VCF defaults can be configured together, but a selected
+    # alignment (including --genome) must never borrow VCFs from that config.
+    configured_vcfs = (
+        settings.get("vcf_input_paths")
+        if not (vcf_inputs or batch_sample)
+        and (not input_file or job.input_from_config)
+        else None
+    )
     if configured_vcfs:
         if isinstance(configured_vcfs, list):
             vcf_inputs = configured_vcfs
