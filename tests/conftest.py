@@ -3,6 +3,7 @@ import functools
 import itertools
 import os
 import signal
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 import pytest
 
 from tests.fake_tools import FakePixi
+from tests.macos_openmp import sweep_unwritten_openmp_registrations
 from tests.smoke_utils import isolate_home, state_directory_setting
 from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
@@ -152,8 +154,11 @@ _CHECKOUT_STATE = repo_root() / "state"
 _CHECKOUT_STATE_EXISTED = _CHECKOUT_STATE.exists()
 
 
-def pytest_sessionstart() -> None:
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
     """Initialize real/session test defaults explicitly, not during config import."""
+    if sys.platform == "darwin" and not hasattr(session.config, "workerinput"):
+        sweep_unwritten_openmp_registrations(Path("/private/tmp"))
     reload_settings()
 
 

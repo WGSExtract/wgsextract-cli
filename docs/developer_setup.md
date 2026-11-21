@@ -63,6 +63,12 @@ Other optional environments are documented with their features:
 Cyrius permits noncommercial use only, no distribution/modification, and
 is not bundled.
 
+On macOS, `bio-tools` environments and the separate `pharmcat` environment
+use Apple's Accelerate BLAS so `bcftools` does not load LLVM OpenMP through
+GSL. Before starting workers, pytest removes only current-user, unwritten
+OpenMP registration files whose PID is absent. For other tools and manual
+cleanup, see [OpenMP troubleshooting](installation.md#macos-openmp-error-15-with-unknown-library).
+
 ### Benchmarking on macOS
 
 Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
