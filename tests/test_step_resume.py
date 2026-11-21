@@ -235,3 +235,259 @@ def test_process_exiting_during_the_tag_scan_is_skipped(
     processes = [FakeProcess(101, None), FakeProcess(102, {RUN_TAG: "run-1"})]
     monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: iter(processes))
     assert tagged_processes({"run-1"}) == ["tool102 (pid 102)"]
+
+
+# Issue #1181 (resume integrity): inputs over 3 MiB were compared by sampled
+# blocks only, so an edit between them reused a stale step, and a directory
+# output was recorded by its kind alone, so deleting a file in it didn't rerun.
+
+MIB = 1 << 20
+
+
+def copy_step(root: Path, source: Path) -> tuple[str, Path]:
+    """Run a step that copies ``source``; return why it ran or was skipped."""
+    output = root / "copy.bin"
+    with StepJournal(root / "copy.steps.json", "synthetic", ResumePolicy()) as j:
+        decision = j.decide(Step("copy", inputs={"source": source}, outputs=(output,)))
+        if decision.run:
+            with j.running(decision):
+                shutil.copyfile(source, output)
+    return ("ran: " if decision.run else "skipped: ") + decision.reason, output
+
+
+def edit_byte(path: Path, offset: int, *, keep_mtime: bool = False) -> None:
+    info = path.stat()
+    with open(path, "r+b") as stream:
+        stream.seek(offset)
+        old = stream.read(1)
+        stream.seek(offset)
+        stream.write(bytes([old[0] ^ 0xFF]))
+    if keep_mtime:
+        os.utime(path, ns=(info.st_atime_ns, info.st_mtime_ns))
+    else:
+        later = info.st_mtime_ns + 1_000_000_000
+        os.utime(path, ns=(later, later))
+
+
+def test_1181_edit_outside_sampled_blocks_reruns_the_step(tmp_path: Path) -> None:
+    source = tmp_path / "reads.bin"
+    source.write_bytes(os.urandom(8 * MIB))
+    copy_step(tmp_path, source)
+    assert copy_step(tmp_path, source)[0].startswith("skipped: complete"), (
+        "an unchanged input reuses the step"
+    )
+
+    # The issue's case: one byte at 2 MiB, which the sampled fingerprint
+    # (first, middle and last MiB) never reads.
+    edit_byte(source, 2 * MIB)
+    reason, output = copy_step(tmp_path, source)
+
+    assert reason.startswith("ran: its source")
+    assert "sha256 full digest differs" in reason
+    assert output.read_bytes() == source.read_bytes()
+
+
+def test_1181_recorded_digest_cannot_vouch_for_an_edit_that_restores_mtime(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "reads.bin"
+    source.write_bytes(os.urandom(8 * MIB))
+    copy_step(tmp_path, source)
+
+    edit_byte(source, 2 * MIB, keep_mtime=True)
+
+    assert copy_step(tmp_path, source)[0].startswith("ran: its source")
+
+
+def test_1181_large_input_is_reused_until_modified(tmp_path: Path) -> None:
+    from wgsextract_cli.core.step_identity import FULL_DIGEST_LIMIT
+
+    source = tmp_path / "reads.bin"
+    with open(source, "wb") as stream:
+        stream.truncate(FULL_DIGEST_LIMIT + 8 * MIB)
+    copy_step(tmp_path, source)
+    # Moved (rename keeps the mtime): still the same data.
+    moved = tmp_path / "moved.bin"
+    source.rename(moved)
+    reason, _ = copy_step(tmp_path, moved)
+    assert reason.startswith("skipped: complete")
+    assert "wgse-fp1 sampled" in reason
+
+    edit_byte(moved, 2 * MIB)
+    reason, _ = copy_step(tmp_path, moved)
+    assert reason.startswith("ran: its source")
+    assert "was modified" in reason
+
+
+def test_1181_journal_reports_digest_algorithm_and_strength(tmp_path: Path) -> None:
+    source = tmp_path / "reads.bin"
+    source.write_bytes(b"ACGT" * 1000)
+    copy_step(tmp_path, source)
+    record = json.loads((tmp_path / "copy.steps.json").read_text())["steps"]["copy"]
+    full = {"algorithm": "sha256", "strength": "full"}
+    assert record["inputs"][0]["digest"] == full
+    assert record["outputs"][0]["digest"] == full
+
+    reason, _ = copy_step(tmp_path, source)
+    assert reason.endswith("checked 2 sha256 full)")
+
+
+def test_1181_journal_without_digests_reruns_with_a_reason(tmp_path: Path) -> None:
+    source = tmp_path / "reads.bin"
+    source.write_bytes(b"ACGT" * 1000)
+    copy_step(tmp_path, source)
+    journal = tmp_path / "copy.steps.json"
+    document = json.loads(journal.read_text())
+    for item in document["steps"]["copy"]["inputs"]:
+        item.pop("digest")
+    journal.write_text(json.dumps(document))
+
+    reason, _ = copy_step(tmp_path, source)
+
+    assert "without an integrity digest" in reason
+    assert copy_step(tmp_path, source)[0].startswith("skipped: complete")
+
+
+class Report:
+    """A step writing a report folder: ``table.tsv`` and ``plot.svg``, plus a
+    ``cache`` it may later reuse or lose."""
+
+    def __init__(self, root: Path, members: list[str] | None = None) -> None:
+        self.root = root
+        self.folder = root / "report"
+        self.members = members
+
+    def run(self) -> str:
+        with StepJournal(self.root / "r.steps.json", "synthetic", ResumePolicy()) as j:
+            decision = j.decide(Step("report", outputs=(self.folder,)))
+            if decision.run:
+                with j.running(decision) as handle:
+                    self.folder.mkdir(exist_ok=True)
+                    (self.folder / "table.tsv").write_text("gene\tcalls\nAPOE\t2\n")
+                    (self.folder / "plot.svg").write_text("<svg/>")
+                    (self.folder / "cache").mkdir(exist_ok=True)
+                    (self.folder / "cache" / "tiles.bin").write_bytes(b"0" * 64)
+                    if self.members is not None:
+                        handle.add_output(self.folder, members=self.members)
+        return ("ran: " if decision.run else "skipped: ") + decision.reason
+
+
+@pytest.mark.parametrize("change", ["delete", "replace", "truncate"])
+@pytest.mark.parametrize("members", [None, ["table.tsv", "plot.svg"]])
+def test_1181_changed_required_member_of_directory_output_reruns(
+    tmp_path: Path, change: str, members: list[str] | None
+) -> None:
+    report = Report(tmp_path, members)
+    report.run()
+    assert report.run().startswith("skipped: complete")
+    table = report.folder / "table.tsv"
+    if change == "delete":
+        table.unlink()
+    elif change == "replace":
+        rewrite(table, "gene\tcalls\nAPOE\t3\n")
+    else:
+        table.write_text("gene")
+
+    assert report.run().startswith("ran: ")
+    assert table.read_text() == "gene\tcalls\nAPOE\t2\n"
+    assert report.run().startswith("skipped: complete")
+
+
+def test_1181_disposable_member_of_directory_output_does_not_rerun(
+    tmp_path: Path,
+) -> None:
+    report = Report(tmp_path, ["table.tsv", "plot.svg"])
+    report.run()
+    shutil.rmtree(report.folder / "cache")
+    (report.folder / "table.tsv.lock").write_text("")
+    assert report.run().startswith("skipped: complete")
+
+
+def test_1181_without_declared_members_every_file_is_required(tmp_path: Path) -> None:
+    report = Report(tmp_path)
+    report.run()
+    (report.folder / "table.tsv.lock").write_text("")
+    assert report.run().startswith("skipped: complete")
+    (report.folder / "cache" / "tiles.bin").unlink()
+    assert "report's contents changed" in report.run()
+
+
+def test_1181_declared_member_must_exist(tmp_path: Path) -> None:
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    report = Report(tmp_path, ["table.tsv", "summary.html"])
+    with pytest.raises(WGSExtractError, match="summary.html"):
+        report.run()
+
+
+def plan(root: Path, step: Step) -> str:
+    """The dry-run reason for ``step`` in ``root``'s copy journal."""
+    with StepJournal(
+        root / "copy.steps.json", "synthetic", ResumePolicy(dry_run=True)
+    ) as journal:
+        decision = journal.decide(step)
+    return ("ran: " if decision.run else "skipped: ") + decision.reason
+
+
+def test_1181_output_replaced_by_a_fifo_reruns_without_blocking(
+    tmp_path: Path,
+) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("this system has no named pipes")
+    source = tmp_path / "reads.bin"
+    source.write_bytes(b"ACGT" * 1000)
+    _, output = copy_step(tmp_path, source)
+    output.unlink()
+    os.mkfifo(output)
+
+    reason = plan(tmp_path, Step("copy", inputs={"source": source}, outputs=(output,)))
+
+    assert reason == "ran: copy.bin is no longer a regular file"
+
+
+def test_1181_unreadable_large_input_is_not_a_digest_match(tmp_path: Path) -> None:
+    from wgsextract_cli.core.step_identity import FULL_DIGEST_LIMIT
+
+    if os.name == "nt" or os.geteuid() == 0:
+        pytest.skip("needs POSIX permissions that bind this user")
+    source = tmp_path / "reads.bin"
+    with open(source, "wb") as stream:
+        stream.truncate(FULL_DIGEST_LIMIT + MIB)
+    _, output = copy_step(tmp_path, source)
+    # A completion whose sampled read failed recorded no fingerprint.
+    journal = tmp_path / "copy.steps.json"
+    document = json.loads(journal.read_text())
+    document["steps"]["copy"]["inputs"][0]["fingerprint"] = None
+    journal.write_text(json.dumps(document))
+    source.chmod(0)
+    try:
+        reason = plan(
+            tmp_path, Step("copy", inputs={"source": source}, outputs=(output,))
+        )
+    finally:
+        source.chmod(0o644)
+
+    assert reason.startswith("ran: its source")
+    assert "couldn't be read to verify its digest" in reason
+
+
+def test_1181_skip_reason_counts_inputs_a_step_reported_while_running(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.core.step_identity import FULL_DIGEST_LIMIT
+
+    reference = tmp_path / "reference.fa"
+    with open(reference, "wb") as stream:
+        stream.truncate(FULL_DIGEST_LIMIT + MIB)
+    output = tmp_path / "calls.txt"
+    step = Step("call", outputs=(output,))
+    with StepJournal(tmp_path / "copy.steps.json", "synthetic", ResumePolicy()) as j:
+        with j.running(j.decide(step)) as handle:
+            # A child command names its reference only once it runs.
+            handle.add_input("reference", reference)
+            output.write_text("calls")
+
+    reason = plan(tmp_path, step)
+
+    assert reason.startswith("skipped: complete")
+    assert reason.endswith("checked 1 sha256 full, 1 wgse-fp1 sampled)")
