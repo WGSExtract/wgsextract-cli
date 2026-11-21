@@ -13,6 +13,7 @@ from typing import Any
 
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
+from wgsextract_cli.cli.hints import quote
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.atomic_output import atomic_output
@@ -208,6 +209,9 @@ def _build_vep_command(
     vcf_type: str,
     lib: ReferenceLibrary,
     threads: str,
+    *,
+    assembly: str | None = None,
+    cache_dir: Path | None = None,
 ) -> list[str]:
     engine = vep_engine(params.engine)
     # One element: run_command splits wrapper commands itself and keeps a path
@@ -217,11 +221,7 @@ def _build_vep_command(
     vep_cmd.append({"vcf": "--vcf", "json": "--json", "tab": "--tab"}[params.format])
 
     # Without a reference library, the VCF's own contigs name the assembly.
-    assembly = (
-        params.vep_assembly
-        or _assembly_of(lib.build)
-        or _assembly_of(get_vcf_build(vep_input_vcf))
-    )
+    assembly = assembly or _vep_assembly(params, lib, vep_input_vcf)
     require_assembly(engine, assembly)
     if assembly:
         vep_cmd += ["--assembly", assembly]
@@ -230,10 +230,7 @@ def _build_vep_command(
         vep_cmd += ["--fasta", lib.fasta]
 
     raw_args = shlex.split(params.vep_args) if params.vep_args else []
-    cache_dir = _vep_cache_dir(params, lib, engine)
-    _check_annotation_cache(
-        engine, cache_dir, params.vep_cache_version, assembly, raw_args
-    )
+    cache_dir = cache_dir or _vep_cache_dir(params, lib, engine)
     vep_cmd += [
         "--offline", "--dir_cache", str(cache_dir), "--cache_version", params.vep_cache_version,
     ]  # fmt: skip
@@ -249,6 +246,16 @@ def _assembly_of(build: str | None) -> str | None:
     """VEP's name for a reference build, if it has one."""
     canonical = canonical_build(build)
     return next((a for a, b in _ASSEMBLY_BUILDS.items() if b == canonical), None)
+
+
+def _vep_assembly(
+    params: VepRunParams, lib: ReferenceLibrary, vcf: str | None
+) -> str | None:
+    return (
+        params.vep_assembly
+        or _assembly_of(lib.build)
+        or (_assembly_of(get_vcf_build(vcf)) if vcf else None)
+    )
 
 
 def _vep_cache_dir(
@@ -320,13 +327,23 @@ def _check_annotation_cache(
             _warn_about_cache_gaps(installed[0])
         return
     location = species_dir / f"{version}_{assembly}" if assembly else species_dir
-    assembly_arg = f" --assembly {assembly}" if assembly else ""
-    species_arg = f" --species {species}" if species != "homo_sapiens" else ""
+    assembly_hint = (
+        ""
+        if assembly
+        else "Could not infer the assembly. Replace ASSEMBLY with the input build "
+        "and use the same --assembly for download and annotation. "
+    )
+    download_species = species + suffix
+    species_arg = (
+        f" --species {download_species}" if download_species != "homo_sapiens" else ""
+    )
     cache_root = cache_dir.parent if engine.cache_subdir else cache_dir
     raise _VepCacheMissingError(
         f"Missing or incomplete {engine.label} cache for release {version} in {location}. "
+        f"{assembly_hint}"
         f"Run `wgsextract vep download --engine {engine.name} "
-        f"--vep-version {version}{assembly_arg}{species_arg} --vep-cache {shlex.quote(str(cache_root))}` "
+        f"--vep-version {version} --assembly {assembly or 'ASSEMBLY'}"
+        f"{species_arg} --vep-cache {quote(str(cache_root))}` "
         "before annotating, or select "
         "an installed cache with --vep-cache and --vep-cache-version.",
     )
@@ -388,9 +405,6 @@ def _run_vep_on_input(
 
     start_time = time.time()
     try:
-        # Inside the try: one bad file fails its own row, not the whole batch.
-        if not is_bam:
-            ensure_vcf_indexed(current_input)
         md5_sig = calculate_bam_md5(current_input, None) if is_bam else None
         ref = str(params.ref) if params.ref else None
         lib = ReferenceLibrary(ref, md5_sig, input_path=current_input)
@@ -402,16 +416,16 @@ def _run_vep_on_input(
                     task="variant calling from BAM/CRAM"
                 )
             )
-        if is_bam and params.engine == "ensembl":
-            # Don't call a whole genome only to discover its cache is missing.
-            engine = vep_engine(params.engine)
-            _check_annotation_cache(
-                engine,
-                _vep_cache_dir(params, lib, engine),
-                params.vep_cache_version,
-                params.vep_assembly or _assembly_of(lib.build),
-                shlex.split(params.vep_args) if params.vep_args else [],
-            )
+        engine = vep_engine(params.engine)
+        assembly = _vep_assembly(params, lib, None if is_bam else current_input)
+        require_assembly(engine, assembly)
+        cache_dir = _vep_cache_dir(params, lib, engine)
+        raw_args = shlex.split(params.vep_args) if params.vep_args else []
+        _check_annotation_cache(
+            engine, cache_dir, params.vep_cache_version, assembly, raw_args
+        )
+        if not is_bam:
+            ensure_vcf_indexed(current_input)
 
         with tempfile.TemporaryDirectory(
             dir=scratch_parent(outdir), prefix=".wgse_vep_"
@@ -426,6 +440,17 @@ def _run_vep_on_input(
                 _call_variants_for_vep(
                     params, current_input, lib.fasta, lib, threads, vep_input_vcf
                 )
+                if assembly is None:
+                    assembly = _assembly_of(get_vcf_build(vep_input_vcf))
+                    require_assembly(engine, assembly)
+                    if assembly:
+                        _check_annotation_cache(
+                            engine,
+                            cache_dir,
+                            params.vep_cache_version,
+                            assembly,
+                            raw_args,
+                        )
 
             if params.add_chr:
                 chr_vcf = str(Path(work, "with_chr.vcf"))
@@ -441,7 +466,14 @@ def _run_vep_on_input(
             # run leaves nothing that a rerun would skip as done.
             vep_output = str(Path(work, "vep" + Path(final_output).suffix))
             vep_cmd = _build_vep_command(
-                params, vep_input_vcf, vep_output, vcf_type, lib, threads
+                params,
+                vep_input_vcf,
+                vep_output,
+                vcf_type,
+                lib,
+                threads,
+                assembly=assembly,
+                cache_dir=cache_dir,
             )
             if params.format == "vcf":
                 # bgzipped as it's written: a genome's uncompressed VEP VCF is

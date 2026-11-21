@@ -85,8 +85,8 @@ class VepRunParams(Params):
         None,
         help="Path to VEP cache directory (e.g., $HOME/.vep)",
         doc="VEP cache folder (default: config vep_cache_directory, else the "
-        "reference library's, else ~/.vep). VEP runs offline when it exists, "
-        "else queries Ensembl's database.",
+        "reference library's, else ~/.vep). VEP runs offline. If the cache is "
+        "missing, vep_cache_missing tells you how to fetch it with vep download.",
         path="directory",
         config_key="vep_cache_directory",
     )
