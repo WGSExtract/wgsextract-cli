@@ -3945,7 +3945,7 @@
    }
   },
   "bam to-cram": {
-   "help": "usage: wgsextract bam to-cram [-h] [-r REGION] [--gene GENE] [--cram-version {2.1,3.0,3.1}]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --gene GENE           Filter by Gene Name (e.g. BRCA1, KCNQ2)\n  --cram-version {2.1,3.0,3.1}\n                        CRAM version to output (default: 3.0 for better compatibility)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract bam to-cram --input sample.bam --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <input stem>.cram (+ .crai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract bam to-cram [-h] [-r REGION] [--gene GENE] [--cram-version {2.1,3.0,3.1}]\n                              [--mimalloc {auto,off}]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --gene GENE           Filter by Gene Name (e.g. BRCA1, KCNQ2)\n  --cram-version {2.1,3.0,3.1}\n                        CRAM version to output (default: 3.0 for better compatibility)\n  --mimalloc {auto,off}\n                        Windows CRAM 3.1: use the installed native mimalloc encoder (auto) or\n                        system allocator (off). Default: config mimalloc, else auto.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract bam to-cram --input sample.bam --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <input stem>.cram (+ .crai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -4293,6 +4293,25 @@
       "nargs": null,
       "option_strings": [
        "--cram-version"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "auto",
+       "off"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "mimalloc",
+      "exclusive_group": null,
+      "help": "Windows CRAM 3.1: use the installed native mimalloc encoder (auto) or system allocator (off). Default: config mimalloc, else auto.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--mimalloc"
       ],
       "required": false,
       "type": null
@@ -49639,6 +49658,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parent_pid": null,
    "quiet": false,
@@ -49669,6 +49689,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parent_pid": null,
    "quiet": false,

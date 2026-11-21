@@ -43,6 +43,7 @@ jobs:
       setup_checks: ${{ steps.diff.outputs.setup_checks }}
       move_modules: ${{ steps.diff.outputs.move_modules }}
       tests: ${{ steps.diff.outputs.tests }}
+      optional_tests: ${{ steps.diff.outputs.optional_tests }}
       ci: ${{ steps.diff.outputs.ci }}
       ci_tests: ${{ steps.diff.outputs.ci_tests }}
       ubuntu_tests: ${{ steps.diff.outputs.ubuntu_tests }}
@@ -204,6 +205,13 @@ jobs:
               subprocess.run(["ruff", "check", "--isolated", "--target-version", "py313", "--select", "E9,F63,F7,F82", "--", *gui], check=True)
           PY
 
+  optional-tools:
+    needs: changes
+    if: github.event.pull_request.draft != true && needs.changes.result == 'success' && needs.changes.outputs.optional_tests != '[]'
+    uses: ./.github/workflows/optional_tools.yml
+    with:
+      tests: ${{ needs.changes.outputs.optional_tests }}
+
   ubuntu:
     needs: changes
     if: github.event.pull_request.draft != true && needs.changes.result == 'success' && !(needs.changes.outputs.linux_x64 == 'true' && needs.changes.outputs.generic == 'true') && needs.changes.outputs.ubuntu_tests != '[]'
@@ -339,7 +347,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&
@@ -369,7 +377,7 @@ jobs:
   required:
     # A late skipped draft suite must never satisfy the ready run's required check.
     name: ${{ github.event.pull_request.draft && 'required (draft)' || 'required' }}
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, ubuntu, windows, gitleaks, native-smoke, pages, ready-gate]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, windows, gitleaks, native-smoke, pages, ready-gate]
     # Run after failed dependencies, but let whole-run cancellation stop this
     # gate. A cancelled dependency in an otherwise active run still fails below.
     # Draft events allocate no runner, including this summary.
