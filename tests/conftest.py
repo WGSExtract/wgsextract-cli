@@ -210,11 +210,13 @@ def _new_home(config: pytest.Config, factory: pytest.TempPathFactory) -> Path:
     """A fresh, empty home directory. All homes share one parent and are
     numbered here: tmp_path_factory.mktemp lists the whole base temporary
     directory on each call, so a home apiece from it slowed every later test
-    as they piled up (#1218)."""
+    as they piled up (#1218). Names keep a "home" prefix: issue reports
+    redact the home folder's name as the user name, and a bare number would
+    redact numbers in report text."""
     if _HOMES not in config.stash:
         config.stash[_HOMES] = (factory.mktemp("homes"), itertools.count())
     parent, numbers = config.stash[_HOMES]
-    home = parent / str(next(numbers))
+    home = parent / f"home{next(numbers)}"
     home.mkdir()
     return home
 
