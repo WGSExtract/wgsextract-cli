@@ -151,6 +151,8 @@ test("#1212: a deleted viewer file returns 404 and a missing library returns 403
     assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 404);
     await rm(f.library, { recursive: true });
     assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 403);
+    await writeFile(f.library, "not a directory");
+    assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 403);
 });
 
 test("#1090: traversal, directories, symlink escapes and changed file targets cannot be served", async (t) => {

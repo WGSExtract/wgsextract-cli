@@ -9,6 +9,7 @@ import { HttpError, isErrnoCode } from "./errors.js";
 const maximumReadBytes = 32 * 1024 * 1024;
 const idleLifetimeMs = 60 * 60 * 1000;
 const maximumSessions = 8;
+const outsideLibraries = "Viewer path is outside the configured libraries.";
 export const viewerTokenHeader = "x-gfc-viewer-token";
 
 export function requireViewerLoopback(request: IncomingMessage) {
@@ -24,35 +25,43 @@ function inside(file: string, root: string) {
 }
 
 function rethrowUnlessMissing(error: unknown): undefined {
-    if (!isErrnoCode(error, "ENOENT")) {
+    if (!isErrnoCode(error, "ENOENT", "ENOTDIR")) {
         throw error;
     }
     return undefined;
 }
 
+class MissingViewerPath extends HttpError {}
+
+export function isMissingViewerPath(error: unknown): boolean {
+    return error instanceof MissingViewerPath || isErrnoCode(error, "ENOENT", "ENOTDIR");
+}
+
 /** Both the spelling and canonical target must be inside the same configured library. */
 export async function guardedViewerPath(file: string, roots: string[]): Promise<string> {
     if (!path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).includes("..")) {
-        throw new HttpError(403, "Viewer path is outside the configured libraries.");
+        throw new HttpError(403, outsideLibraries);
     }
     const absolute = path.resolve(file);
     let canonical: string | undefined;
+    let hasUnavailableRoot = false;
     for (const root of roots) {
         if (!inside(absolute, root)) {
             continue;
         }
         const canonicalRoot = await realpath(root).catch(rethrowUnlessMissing);
-        if (canonicalRoot === undefined) {
+        if (canonicalRoot === undefined || !(await stat(canonicalRoot).catch(rethrowUnlessMissing))?.isDirectory()) {
+            hasUnavailableRoot = true;
             continue;
         }
         canonical ??= await realpath(absolute).catch(rethrowUnlessMissing);
         if (canonical === undefined) {
-            throw new HttpError(404, "Viewer file not found.");
+            throw new MissingViewerPath(404, "Viewer file not found.");
         }
         if (inside(canonical, canonicalRoot)) {
             const info = await stat(canonical).catch(rethrowUnlessMissing);
             if (!info) {
-                throw new HttpError(404, "Viewer file not found.");
+                throw new MissingViewerPath(404, "Viewer file not found.");
             }
             if (!info.isFile()) {
                 throw new HttpError(403, "Viewer paths must be regular files.");
@@ -60,7 +69,10 @@ export async function guardedViewerPath(file: string, roots: string[]): Promise<
             return canonical;
         }
     }
-    throw new HttpError(403, "Viewer path is outside the configured libraries.");
+    if (canonical === undefined && hasUnavailableRoot) {
+        throw new MissingViewerPath(403, outsideLibraries);
+    }
+    throw new HttpError(403, outsideLibraries);
 }
 
 interface Grant {

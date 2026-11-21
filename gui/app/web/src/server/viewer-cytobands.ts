@@ -2,8 +2,7 @@ import { open } from "node:fs/promises";
 import path from "node:path";
 import { shellQuote } from "../../../shared/rendering.js";
 import { cytobandChromosomeLengths, type ViewerCytoband, type ViewerCytobands } from "../../../shared/viewer-cytobands.js";
-import { errnoCode } from "./errors.js";
-import { guardedViewerPath } from "./viewer-files.js";
+import { guardedViewerPath, isMissingViewerPath } from "./viewer-files.js";
 import { viewerContigAliases, viewerReferenceMetadata } from "./viewer-reference-metadata.js";
 
 const maxTableBytes = 1024 * 1024;
@@ -40,7 +39,7 @@ export async function installedViewerCytobands(fasta: string, referenceRoot: str
             await handle.close();
         }
     } catch (error) {
-        return notice(["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "") ? "cytobandMissing" : "cytobandInvalid");
+        return notice(isMissingViewerPath(error) ? "cytobandMissing" : "cytobandInvalid");
     }
     if (!text.endsWith("\n")) return notice("cytobandInvalid");
     const bands: ViewerCytoband[] = [];

@@ -3,7 +3,7 @@ import path from "node:path";
 import { type LocalTrack, ViewerFileError } from "../../../shared/genome-viewer.js";
 import { errnoCode } from "./errors.js";
 import { expandWorkspaceToken } from "./paths.js";
-import { guardedViewerPath } from "./viewer-files.js";
+import { guardedViewerPath, isMissingViewerPath } from "./viewer-files.js";
 import { validateViewerTrack } from "./viewer-track-metadata.js";
 
 export async function supplementalViewerTracks(paths: string[], fasta: string, roots: string[], bundleRoot: string): Promise<LocalTrack<string>[]> {
@@ -19,7 +19,7 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
         try {
             await guardedViewerPath(file, roots);
         } catch (error) {
-            if (["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) throw new ViewerFileError("trackMissing", name);
+            if (isMissingViewerPath(error)) throw new ViewerFileError("trackMissing", name);
             throw error;
         }
         const lower = name.toLowerCase();
