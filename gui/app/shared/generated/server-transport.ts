@@ -75,6 +75,7 @@ export interface JobEvent {
 export interface JobError {
     kind?: string;
     message?: string;
+    code?: string | null;
 }
 
 export interface Job {

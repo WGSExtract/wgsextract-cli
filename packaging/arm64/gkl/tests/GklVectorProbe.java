@@ -25,7 +25,7 @@ import org.broadinstitute.hellbender.utils.smithwaterman.SmithWatermanJavaAligne
  * default float-then-double path), native double and GATK's Java LoglessPairHMM, plus native
  * and Java Smith-Waterman CIGARs, so x86 AVX and Arm NEON outputs can be diffed bit-for-bit.
  *
- * Usage: GklVectorProbe GKL_TESTDATA_DIR OUT_DIR RANDOM_CASES THREADS
+ * Usage: GklVectorProbe GKL_TESTDATA_DIR OUT_DIR RANDOM_CASES THREADS [pairhmm-only]
  */
 public final class GklVectorProbe {
     private static final byte[] BASES = {'A', 'C', 'G', 'T'};
@@ -190,6 +190,7 @@ public final class GklVectorProbe {
         Path out = Path.of(argv[1]);
         int randomCases = Integer.parseInt(argv[2]);
         int threads = Integer.parseInt(argv[3]);
+        boolean pairhmmOnly = argv.length == 5 && argv[4].equals("pairhmm-only");
         Files.createDirectories(out);
         IntelGKLUtils utils = new IntelGKLUtils();
         if (!utils.load(null)) {
@@ -220,6 +221,8 @@ public final class GklVectorProbe {
         LoglessPairHMM java = new LoglessPairHMM();
         java.initialize(1024, 1024);
         long cells = 0;
+        double maxFloatError = 0;
+        double maxDoubleError = 0;
         try (PrintWriter tsv = new PrintWriter(out.resolve("pairhmm.tsv").toFile(), "UTF-8")) {
             tsv.println("source\tindex\tread_len\thap_len\tnative_float\tnative_double\tjava\texpected");
             int index = 0;
@@ -229,6 +232,17 @@ public final class GklVectorProbe {
                     Case c = batch.get(i);
                     double j = java.computeReadLikelihoodGivenHaplotypeLog10(c.hap(), c.read(),
                             c.qual(), c.ins(), c.del(), c.gcp(), true, null);
+                    if (pairhmmOnly) {
+                        double floatError = Math.abs(floats.get(b)[i] - j);
+                        double doubleError = Math.abs(doubles.get(b)[i] - j);
+                        // contract: GKL 0.8.11 PairHmmUnitTest uses 1e-5 log10 tolerance.
+                        if (!(floatError <= 1e-5) || !(doubleError <= 1e-5)) {
+                            throw new IllegalStateException("Native/Java likelihood mismatch: "
+                                    + floatError + ", " + doubleError);
+                        }
+                        maxFloatError = Math.max(maxFloatError, floatError);
+                        maxDoubleError = Math.max(maxDoubleError, doubleError);
+                    }
                     cells += (long) c.read().length * c.hap().length;
                     tsv.printf("%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s%n", c.source(), index++,
                             c.read().length, c.hap().length, bits(floats.get(b)[i]),
@@ -248,6 +262,11 @@ public final class GklVectorProbe {
             best = Math.min(best, System.nanoTime() - start);
         }
         hmm.done();
+        if (pairhmmOnly) {
+            System.err.printf("PairHMM Java parity passed: float max abs=%g double max abs=%g%n",
+                    maxFloatError, maxDoubleError);
+            return;
+        }
 
         IntelSmithWaterman sw = new IntelSmithWaterman();
         if (!sw.load(null)) {

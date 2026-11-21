@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { openGenomeViewer } from "./genome-viewer-launcher.js";
+import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
 import { configValueKey } from "../../../shared/rendering.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { clamp } from "./dom.js";
@@ -9,6 +9,7 @@ import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadCon
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
 import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
@@ -37,7 +38,7 @@ let bundleLoadInFlight = false;
 let installedGlobalBundleLoadHandler = false;
 let installedGlobalAboutHandler = false;
 export function bindEvents(bootstrap: Bootstrap) {
-    app.querySelector("[data-genome-viewer-open]")?.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels));
+    bindGenomeViewerEvents();
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();
@@ -218,6 +219,9 @@ export function bindEvents(bootstrap: Bootstrap) {
                 scheduleRender();
             }
         });
+    });
+    elements("[data-result-card]").forEach((button) => {
+        button.addEventListener("click", () => void openResultCard(button.dataset.resultCard ?? "", state.labels));
     });
     elements("[data-result-open-setup]").forEach((button) => {
         button.addEventListener("click", async () => {

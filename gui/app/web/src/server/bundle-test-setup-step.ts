@@ -6,13 +6,14 @@ import { runSetup, setupCommandForStep } from "./setup-runner.js";
 import { makeReport, outputExpectationFailure, setupCommandSummary, setupResultLine } from "./bundle-test-report.js";
 import { timeoutRunProcess } from "./bundle-test-timeout.js";
 import type { BundleManifest } from "../../../shared/types.js";
-import type { BundleTestStep, BundleTestStepOptions, BundleTestStepReport } from "./bundle-test-types.js";
+import type { BundleTestRuntime, BundleTestStep, BundleTestStepOptions, BundleTestStepReport } from "./bundle-test-types.js";
 
 export async function runSetupTestStep(
     step: BundleTestStep,
     index: number,
     manifest: BundleManifest,
     workspaceRoot: string,
+    runtime: BundleTestRuntime,
     options: BundleTestStepOptions,
 ): Promise<BundleTestStepReport> {
     const started = new Date();
@@ -43,6 +44,7 @@ export async function runSetupTestStep(
 
     const timeoutState = { timedOut: false };
     const runProcess = timeoutRunProcess(options.runProcess, step.timeoutSeconds, timeoutState);
+    runtime.context.setupReady = false;
     try {
         const summary = await runSetup(manifest, workspaceRoot, runProcess, (event) => {
             switch (event.type) {
@@ -63,6 +65,7 @@ export async function runSetupTestStep(
                     break;
             }
         });
+        runtime.context.setupReady = summary.status === "ok" || summary.status === "warning";
         if (summary.status === "failed") {
             error = error ?? "Setup failed.";
         }

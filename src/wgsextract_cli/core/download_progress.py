@@ -11,6 +11,12 @@ from typing import BinaryIO, Protocol
 
 ProgressCallback = Callable[[int, int, float], None]
 
+
+def retryable_http_status(code: int) -> bool:
+    """Retry throttling and server errors, not other client errors."""
+    return code == 429 or 500 <= code < 600
+
+
 # Malformed URLs can contain spaces/quotes; do not expose their query tails.
 _URL_PATTERN = re.compile(
     r"\b[a-zA-Z][a-zA-Z0-9+.-]*://[^\r\n<>]+?"
@@ -18,19 +24,20 @@ _URL_PATTERN = re.compile(
 )
 
 
+def redact_url(url: str) -> str:
+    """Display a known URL's location without credentials or signed queries."""
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        return urllib.parse.urlunsplit(
+            (parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", "")
+        )
+    except ValueError:
+        return "<redacted-url>"
+
+
 def redact_urls(text: str, *, sources: Iterable[str] = ()) -> str:
     """Keep URL locations in diagnostics without credentials or signed queries."""
-
-    def redact(match: re.Match[str]) -> str:
-        try:
-            parsed = urllib.parse.urlsplit(match.group())
-            return urllib.parse.urlunsplit(
-                (parsed.scheme, parsed.netloc.rsplit("@", 1)[-1], parsed.path, "", "")
-            )
-        except ValueError:
-            return "<redacted-url>"
-
-    text = _URL_PATTERN.sub(redact, text)
+    text = _URL_PATTERN.sub(lambda match: redact_url(match.group()), text)
     # Client errors may echo a relative request path or credentials without a URL.
     for source in sources:
         try:

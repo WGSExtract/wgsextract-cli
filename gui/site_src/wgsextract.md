@@ -1,10 +1,10 @@
 ---
 output: 'wgsextract.html'
-title: 'WGSExtract and WGS Extract GUI'
-description: 'WGSExtract v0.8.8 workflows and how the first real app shaped WGS Extract GUI.'
+title: 'WGSExtract and GUI-for-CLI'
+description: 'WGSExtract v0.8.9 workflows and how the first real app shaped GUI-for-CLI.'
 eyebrow: 'First real app'
-heading: 'WGSExtract made WGS Extract GUI prove itself.'
-lede: 'The WGSExtract bundle is the first real application built through WGS Extract GUI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
+heading: 'WGS Extract CLI made GUI-for-CLI prove itself.'
+lede: 'The WGSExtract bundle is the first real application built through GUI-for-CLI. It pushed the project beyond demo controls into setup, command execution, data state, localization, and packaged releases.'
 actions: 'GUI Architecture|architecture.html; Documentation|docs.html'
 footer_title: 'WGSExtract'
 footer_text: 'A real workflow drove the generic app shell.'
@@ -15,7 +15,7 @@ footer_text: 'A real workflow drove the generic app shell.'
 ::: section-head
 ## Why this bundle mattered
 
-WGSExtract gave WGS Extract GUI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.
+WGSExtract gave GUI-for-CLI a real target: a genomics workflow with long-running tools, user-selected files, setup state, reference data, and packaging expectations.
 :::
 
 ::: grid three
@@ -44,7 +44,7 @@ WGSExtract exercises data sources, state-dependent actions, persisted settings, 
 ::: wrap
 ## What the app exposes
 
-The desktop app bundles **WGSExtract CLI v0.8.8**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
+The desktop app bundles **WGSExtract CLI v0.8.9**. A **Basic / Advanced** switch in the sidebar keeps everyday controls up front; Advanced mode covers the CLI's remaining user options, and Basic runs commands with the hidden settings at their defaults. Nanopore reads work through the actions already in the app with no settings to change, and opt-in controls cover the rest. They start blank or unchecked, so automatic detection and `config.toml` defaults keep applying.
 
 ### Oxford Nanopore in existing actions
 
@@ -77,7 +77,7 @@ Native Linux ARM64 DeepVariant is CLI only, because Linux ARM64 desktop installe
 
 ### Controls from earlier releases
 
-These came with [GUI #171](https://github.com/WGSExtract/gui-for-cli/pull/171). They start unchecked or blank, inheriting CLI/config defaults rather than forcing them off.
+These came with [GUI #171](https://github.com/theontho/gui-for-cli/pull/171). They start unchecked or blank, inheriting CLI/config defaults rather than forcing them off.
 
 - **FASTQ:** aggregate existing FastQC reports into offline MultiQC HTML, with file and directory pickers and explicit report replacement. MultiQC must already be available; this action neither installs it nor runs FastQC.
 - **Extract and Library:** optional Poz Y-BAM regions (GRCh37/38), unmapped FASTQs, and allele-annotated yBrowse Y-SNP calling on matching indexed GRCh38. Install the pinned yBrowse resource explicitly from Library first.
@@ -90,7 +90,7 @@ AADR 2M is excluded from `all`: explicitly install its pinned metadata from Libr
 
 CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real TOML booleans and numbers, including `false`. Earlier CLI releases also fixed fresh Windows installation, added warnings for invalid configuration values, and improved alignment reproducibility, memory preflight, and native Windows full-genome validation. Tool and platform requirements still vary by workflow.
 
-[Download v0.8.8](index.html), read the [v0.8.8 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.8) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.8/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
+[Download v0.8.9](index.html), read the [v0.8.9 release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.9) and [ONT limitations](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.9/docs/ont.md), or see the [workflow details and prerequisites](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md).
 :::
 :::
 
@@ -107,7 +107,7 @@ CLI setup is native on Windows, without WSL or MSYS2, and GUI settings save real
 - localized strings and semantic icon maps;
 - bundle-specific packaging and app identity.
 
-Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to WGS Extract GUI so another CLI tool can reuse the same shell.
+Those requirements are generic. The WGSExtract app is concrete, but the runtime behavior belongs to GUI-for-CLI so another CLI tool can reuse the same shell.
 :::
 :::
 

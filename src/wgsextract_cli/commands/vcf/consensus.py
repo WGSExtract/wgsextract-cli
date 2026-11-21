@@ -5,7 +5,9 @@ import tempfile
 from itertools import islice
 from pathlib import Path
 
+from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vcf import VcfToFastaParams
+from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -14,6 +16,7 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
+from wgsextract_cli.core.reference_evidence import header_declares_gvcf
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
@@ -61,7 +64,13 @@ _IUPAC_BASES = {
 
 
 def is_gvcf(vcf_path: str) -> bool:
-    """Whether a VCF has gVCF reference blocks (so absent sites are uncalled)."""
+    """Detect declared gVCFs before probing for reference blocks."""
+    header = run_command(
+        ["bcftools", "view", "-h", vcf_path], capture_output=True
+    ).stdout
+    if header_declares_gvcf(header):
+        return True
+
     proc = popen(
         ["bcftools", "view", "-H", vcf_path],
         stdout=subprocess.PIPE,
@@ -353,8 +362,8 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
     verify_paths_exist({"--ref": ref})
 
     stem = input_stem(input_vcf)
-    out_fasta = str(Path(outdir, f"{stem}_consensus.fa.gz"))
-    out_chain = str(Path(outdir, f"{stem}_consensus.chain")) if params.chain else None
+    out_fasta = Path(outdir, f"{stem}_consensus.fa.gz")
+    out_chain = Path(outdir, f"{stem}_consensus.chain") if params.chain else None
     input_vcf = ensure_vcf_prepared(input_vcf)
     sample = _pick_sample(input_vcf, params.sample)
 
@@ -380,56 +389,58 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
         consensus_cmd += ["--missing", "N"]
     if mask:
         consensus_cmd += ["--mask", mask]
-    if out_chain:
-        consensus_cmd += ["--chain", out_chain]
-
     logging.info(
         LOG_MESSAGES["generating_consensus"].format(output=out_fasta)
         + (f" (region {region})" if region else "")
     )
-    partials = [out_fasta, out_fasta + ".fai", out_fasta + ".gzi"]
-    # Only remove outputs this run started writing, so a failure while
-    # preparing inputs leaves an earlier result intact.
-    writing = False
     try:
         with tempfile.TemporaryDirectory(
-            dir=scratch_parent(outdir), prefix=".wgse_consensus_"
-        ) as w:
-            vcf = _prepare_vcf(input_vcf, contigs, region, sample, gvcf, threads, w)
-            vcf = _match_ambiguous_ref_bases(vcf, ref, threads, w)
-            if uncalled == "n":
-                uncalled_bed = str(Path(w, "uncalled.bed"))
-                logging.info("Finding positions the VCF does not cover...")
-                write_uncalled_mask(vcf, lengths, uncalled_bed, region, include)
-                consensus_cmd += ["--mask", uncalled_bed]
-            consensus_include = include
-            if params.haplotype == "iupac":
-                # IUPAC codes can't express a heterozygous indel, which
-                # bcftools would apply in full; apply homozygous indels only.
-                samples = get_vcf_samples(vcf)
-                index = samples.index(sample) if sample in samples else 0
-                het_indel = f'(TYPE!~"indel" || GT[{index}]!="het")'
-                consensus_include = (
-                    f"({include}) && {het_indel}" if include else het_indel
-                )
-            if consensus_include:
-                consensus_cmd += ["--include", consensus_include]
-            stages = [consensus_cmd + ["--fasta-ref", ref, vcf]]
-            if region:
-                stages = [
-                    ["samtools", "faidx", ref, region],
-                    consensus_cmd + ["--fasta-ref", "-", vcf],
-                ]
-            stages.append(["bgzip", "--threads", threads, "-c"])
-            writing = True
-            with open(out_fasta, "wb") as f:
-                run_pipeline(stages, stdout=f, description="Consensus generation")
-        run_command(["samtools", "faidx", out_fasta], capture_output=True)
+            dir=outdir, prefix=".wgse_publish_", ignore_cleanup_errors=True
+        ) as staging:
+            fasta = Path(staging, "consensus.fa.gz")
+            outputs = {
+                Path(f"{fasta}{ext}"): Path(f"{out_fasta}{ext}")
+                for ext in (".fai", ".gzi")
+            }
+            if out_chain:
+                chain = Path(staging, "consensus.chain")
+                consensus_cmd += ["--chain", str(chain)]
+                outputs[chain] = out_chain
+            outputs[fasta] = out_fasta
+            with tempfile.TemporaryDirectory(
+                dir=scratch_parent(outdir), prefix=".wgse_consensus_"
+            ) as w:
+                vcf = _prepare_vcf(input_vcf, contigs, region, sample, gvcf, threads, w)
+                vcf = _match_ambiguous_ref_bases(vcf, ref, threads, w)
+                if uncalled == "n":
+                    uncalled_bed = str(Path(w, "uncalled.bed"))
+                    logging.info("Finding positions the VCF does not cover...")
+                    write_uncalled_mask(vcf, lengths, uncalled_bed, region, include)
+                    consensus_cmd += ["--mask", uncalled_bed]
+                consensus_include = include
+                if params.haplotype == "iupac":
+                    # IUPAC codes can't express a heterozygous indel, which
+                    # bcftools would apply in full; apply homozygous indels only.
+                    samples = get_vcf_samples(vcf)
+                    index = samples.index(sample) if sample in samples else 0
+                    het_indel = f'(TYPE!~"indel" || GT[{index}]!="het")'
+                    consensus_include = (
+                        f"({include}) && {het_indel}" if include else het_indel
+                    )
+                if consensus_include:
+                    consensus_cmd += ["--include", consensus_include]
+                stages = [consensus_cmd + ["--fasta-ref", ref, vcf]]
+                if region:
+                    stages = [
+                        ["samtools", "faidx", ref, region],
+                        consensus_cmd + ["--fasta-ref", "-", vcf],
+                    ]
+                stages.append(["bgzip", "--threads", threads, "-c"])
+                with fasta.open("wb") as f:
+                    run_pipeline(stages, stdout=f, description="Consensus generation")
+            run_command(["samtools", "faidx", str(fasta)], capture_output=True)
+            publish_output_set(outputs, checkpoint=checkpoint)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
-        outputs = partials + ([out_chain] if out_chain else [])
-        for path in outputs if writing else []:
-            if Path(path).exists():
-                Path(path).unlink()
         raise WGSExtractError(f"Consensus generation failed: {e}") from e
 
     logging.info(f"Consensus FASTA written to {out_fasta}")

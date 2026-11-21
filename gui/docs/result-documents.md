@@ -3,6 +3,7 @@
 A command can describe its run as a JSON result document: the files it wrote, warnings, key metrics, and why it failed. When a bundle says which of its commands write one, the app reads the document instead of the log:
 
 - outputs are listed under the run's output, each with **Open** and **Show in Folder**;
+- an analysis action can show its result when the run ends, even with the terminal collapsed: its result card (`resultCard`) over the app, or a report the tool wrote (`openOutput`) in the system's default app;
 - warnings and metrics are shown in the same summary, not left in the log;
 - a refused option is shown next to the action's button, and a missing tool offers **Open Setup**;
 - bundle test plans can check the document instead of the printed text.
@@ -39,6 +40,29 @@ record; optional historical report fields remain optional.
 
 - An action that runs as a job on the bundle's [job server](job-server.md) gets its document from the job's `result`, whatever the mode.
 - **Open** and **Show in Folder** work only for the files a document listed, and for the document's own saved copy (`manifest`). A relative path is relative to the bundle workspace the action ran in.
+- WGS Extract also offers **Show in viewer** for existing BAM/CRAM and bgzip
+  VCF/gVCF outputs. Add `metrics.locus: "chr1:200-400"` to an output to open
+  that interval; a document-level `metrics.locus` applies when the output has
+  none. Use 1-based inclusive coordinates. The viewer ignores invalid loci,
+  gene symbols and rsIDs and opens the first chromosome instead. This link
+  does not grant filesystem access: the existing My Genomes and reference
+  library guards still apply. See [Genome viewer](genome-viewer.md).
+- A result card is shown only when a document listed it and its name ends in `.card.html`. The app reads it as text and shows it in a frame sandboxed without scripts, forms, popups or navigation.
+
+## Showing an analysis result
+
+Most actions just complete; their outputs are listed in the run's output. An action whose result the user reads, such as a report or an identification, can show it when the run ends:
+
+```jsonc
+// manifest.json
+"resultDocument": { ..., "cardArguments": ["--card"] }
+// a page's action
+{ "id": "info", ..., "resultCard": true }
+{ "id": "multiqc", ..., "openOutput": ["multiqc_report"] }
+```
+
+- **`resultCard: true`** adds the manifest's `resultDocument.cardArguments` to the command (`wgsextract --card` writes `<name>.card.html`, an output with role `result_card`), or asks the [job server](job-server.md) for the job's card. When the run ends, the card pops up over the app, naming the file it is shown from; **View Card** in the run's output shows any card again.
+- **`openOutput`** lists output roles in order of preference. When the run ends, the first output the run wrote with one of them opens in the system's default app, as **Open** does. Use it for a tool's own report, such as an HTML page that needs scripts the card frame doesn't allow.
 
 ## The last run
 
@@ -58,6 +82,16 @@ Each is empty until such a run happens, so put it in `optionalArguments`, or tes
 ```
 
 ## Failures
+
+WGS Extract's report actions need the installed CLI. They remain disabled until
+setup succeeds, with an explanation to copy setup output into a GitHub issue
+when setup itself fails. Setup output is not a CLI run document and cannot be
+reported with `--last-failed`.
+
+Conditions can use `setupReady`: `"true"` after setup completes successfully
+(including warnings), or when a bundle has no setup steps for the current
+platform; `"false"` before, during, or after a failed setup. Headless bundle
+tests apply the same readiness gate and update it after each setup run.
 
 The document's `error.kind` decides what the app shows next to the action's button until it runs again:
 

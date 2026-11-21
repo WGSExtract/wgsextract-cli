@@ -28,7 +28,7 @@ import time
 import zipfile
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from concurrent.futures import Future
+from concurrent.futures import Future, wait
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -52,6 +52,7 @@ from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import (
     UsageError,
@@ -213,7 +214,7 @@ _TEMP_PER_MB = {"spliceai": 9.4e6, "revel": 2.1e6}
 
 
 def fastvep_version() -> str:
-    """The fastVEP version on PATH: the 0.5 series this was validated with."""
+    """The resolved fastVEP version: the 0.5 series this was validated with."""
     raw = get_tool_version("fastvep") or ""
     match = _SUPPORTED_FASTVEP.search(raw)
     if not match:
@@ -226,7 +227,7 @@ def fastvep_version() -> str:
 
 def folder(reflib: str | Path) -> Path:
     """The library's ACMG folder: the GFF3, ``sources/`` and ``sa/``."""
-    return Path(reflib, "ref", "acmg")
+    return download_path(reflib, "acmg")
 
 
 def default_sa_dir(reflib: str | Path) -> Path:
@@ -237,7 +238,7 @@ def acmg_sa_dir(
     library_root: str | Path | None, sa_dir: str | Path | None
 ) -> Path | None:
     """The databases ``vcf acmg`` reads: ``sa_dir`` when given (or
-    configured), else the library's ``ref/acmg/sa`` when it is there."""
+    configured), else the library's ``downloads/acmg/sa`` when it is there."""
     if sa_dir:
         return Path(expand_path(sa_dir))
     built = default_sa_dir(library_root) if library_root else None
@@ -476,7 +477,7 @@ def make_plan(
 
 def library_spliceai_path(reflib: str | Path) -> Path:
     """Where ``ref spliceai`` installs the library's GRCh38 SpliceAI VCF."""
-    return Path(reflib, "ref", "spliceai_hg38.vcf.gz")
+    return download_path(reflib, "spliceai_hg38.vcf.gz")
 
 
 def library_spliceai(reflib: str | Path) -> Path | None:
@@ -1370,6 +1371,13 @@ def build(
             lambda step, part: submit(attempt, step.name, run.build_revel, step, part),
         )
 
+    def finish(future: Future[Any]) -> None:
+        # An unbounded Future.result() cannot deliver pending Python signals
+        # while its lock is waiting on Windows.
+        while not future.done():
+            wait((future,), timeout=0.1)
+        future.result()
+
     try:
         for step in by_source.pop("", []):
             attempt(step.name, run.run, step)
@@ -1385,10 +1393,10 @@ def build(
             if steps
         ]
         for future in prepared:
-            future.result()
+            finish(future)
         # Every build is submitted once the preparations are done.
         for future in list(futures):
-            future.result()
+            finish(future)
         succeeded = not failed
     except BaseException:
         run.cancel.set()

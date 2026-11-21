@@ -81,3 +81,12 @@ def test_1131_native_cuda_cannot_silently_select_parabricks_or_scattering(
             gpu=gpu,
             scatter=scatter,
         )
+
+
+def test_1131_native_cuda_and_neon_cannot_be_selected_together() -> None:
+    with pytest.raises(UsageError, match="cannot be combined with --pair-hmm-neon"):
+        VcfGatkParams(
+            input=Path("reads.bam"),
+            pair_hmm_cuda=Path("cuda.jar"),
+            pair_hmm_neon=Path("neon.jar"),
+        )

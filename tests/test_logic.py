@@ -404,8 +404,8 @@ class TestCLILogic(unittest.TestCase):
         Path(ref_path).write_text(">chr1\nACGT\n")
         configured_reflib = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, configured_reflib)
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
 
@@ -421,12 +421,12 @@ class TestCLILogic(unittest.TestCase):
         self.addCleanup(shutil.rmtree, configured_reflib)
         ref_path = os.path.join(ref_root, "fake_ref_hg38.fa")
         Path(ref_path).write_text(">chr1\nACGT\n")
-        os.makedirs(os.path.join(ref_root, "ref"))
-        Path(os.path.join(ref_root, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(ref_root, "downloads"))
+        Path(os.path.join(ref_root, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t3\t4\n"
         )
 
@@ -443,8 +443,8 @@ class TestCLILogic(unittest.TestCase):
         os.makedirs(os.path.join(ref_root, "ref"))
         ref_path = os.path.join(ref_root, "ref", "fake_ref_hg38.fa")
         Path(ref_path).write_text(">chr1\nACGT\n")
-        os.makedirs(os.path.join(configured_reflib, "ref"))
-        Path(os.path.join(configured_reflib, "ref", "genes_hg38.tsv")).write_text(
+        os.makedirs(os.path.join(configured_reflib, "downloads"))
+        Path(os.path.join(configured_reflib, "downloads", "genes_hg38.tsv")).write_text(
             "symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t2\n"
         )
 

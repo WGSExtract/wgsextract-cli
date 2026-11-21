@@ -2,10 +2,13 @@ import argparse
 import gzip
 import io
 import logging
-import re
+import os
+import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import IO, TextIO
 
@@ -19,7 +22,7 @@ from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
-from wgsextract_cli.core.temp_directory import input_scratch_directory
+from wgsextract_cli.core.temp_directory import input_scratch_directory, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -29,7 +32,7 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 
-from ._extract_helpers import cleanup_files
+from ._ftdna_vcf import repair_vcf_stream
 
 # Records between cancellation checks in the stream copies.
 _CHECK_EVERY = 10_000
@@ -62,7 +65,6 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
         raise WGSExtractError(f"Input BAM/CRAM does not exist: {input_path}")
     verify_dependencies(["samtools"])
     output_path = _repair_output_path(params, ".bam")
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     cram_opt: list[str] = []
     if input_path.lower().endswith(".cram"):
@@ -77,7 +79,7 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
         cram_opt = ["-T", ref]
 
     with (
-        cleanup_files(on_failure=[output_path]),
+        _stage_repair(output_path, ".bam") as staged,
         tempfile.TemporaryFile() as read_err,
         tempfile.TemporaryFile() as write_err,
     ):
@@ -87,8 +89,9 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
             stderr=read_err,
         )
         writer = popen(
-            ["samtools", "view", "-b", "-o", output_path, "-"],
+            ["samtools", "view", "-b", "-"],
             stdin=subprocess.PIPE,
+            stdout=staged,
             stderr=write_err,
         )
         assert reader.stdout is not None and writer.stdin is not None
@@ -131,44 +134,43 @@ def repair_vcf_file(params: RepairFtdnaVcfParams) -> None:
     if not Path(input_path).is_file():
         raise WGSExtractError(f"Input VCF/BCF does not exist: {input_path}")
     output_path = _repair_output_path(params, ".vcf")
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    with cleanup_files(on_failure=[output_path]):
-        counts = _repair_vcf_to(input_path, output_path)
+    output_dir = Path(output_path).parent
+    with _stage_repair(output_path, ".vcf") as staged:
+        with io.TextIOWrapper(
+            staged, encoding="utf-8", newline="\n"
+        ) as repaired_output:
+            counts = _repair_vcf_to(input_path, repaired_output, output_dir)
     _record_repair(output_path, "repaired_vcf", counts)
     logging.info("Repaired FTDNA VCF written to %s", output_path)
 
 
-def _repair_vcf_to(input_path: str, output_path: str) -> tuple[int, int]:
+def _repair_vcf_to(
+    input_path: str, repaired_output: TextIO, output_dir: Path
+) -> tuple[int, int]:
+    spool_dir = scratch_parent(output_dir)
     if input_path.lower().endswith(".bcf"):
         with tempfile.NamedTemporaryFile(
             mode="w+",
             suffix=".vcf",
             delete=False,
             encoding="utf-8",
-            dir=input_scratch_directory(Path(output_path).parent),
+            dir=input_scratch_directory(output_dir),
         ) as tmp_vcf:
             tmp_path = tmp_vcf.name
         try:
             with open(tmp_path, "wb") as vcf_output:
                 run_command(["bcftools", "view", input_path], stdout=vcf_output)
-            with (
-                open(tmp_path, encoding="utf-8", errors="replace") as vcf_input,
-                open(
-                    output_path, "w", encoding="utf-8", newline="\n"
-                ) as repaired_output,
-            ):
-                return repair_vcf_stream(vcf_input, repaired_output)
+            with open(tmp_path, encoding="utf-8", errors="replace") as vcf_input:
+                return repair_vcf_stream(
+                    vcf_input, repaired_output, spool_dir=spool_dir
+                )
         finally:
             try:
                 Path(tmp_path).unlink()
             except OSError:
                 pass
-    else:
-        with (
-            _open_text_variant_input(input_path) as vcf_input,
-            open(output_path, "w", encoding="utf-8", newline="\n") as repaired_output,
-        ):
-            return repair_vcf_stream(vcf_input, repaired_output)
+    with _open_text_variant_input(input_path) as vcf_input:
+        return repair_vcf_stream(vcf_input, repaired_output, spool_dir=spool_dir)
 
 
 def _refuse_json_in_pipe_mode() -> None:
@@ -203,27 +205,6 @@ def repair_bam_stream(input_stream: TextIO, output_stream: TextIO) -> tuple[int,
     return records, repaired
 
 
-def repair_vcf_stream(input_stream: TextIO, output_stream: TextIO) -> tuple[int, int]:
-    """Copy VCF text, dropping invalid FILTER characters; returns the record
-    count and how many records were changed."""
-    records = repaired = 0
-    for line in input_stream:
-        if line.startswith("#"):
-            output_stream.write(line)
-            continue
-        records += 1
-        if not records % _CHECK_EVERY:
-            checkpoint()
-        fields = line.rstrip("\n").split("\t")
-        if len(fields) > 6:
-            cleaned = re.sub(r"[^A-Za-z0-9_.;-]", "", fields[6])
-            if cleaned != fields[6]:
-                fields[6] = cleaned
-                repaired += 1
-        output_stream.write("\t".join(fields) + "\n")
-    return records, repaired
-
-
 def _repair_output_path(
     params: RepairFtdnaBamParams | RepairFtdnaVcfParams, extension: str
 ) -> str:
@@ -234,9 +215,53 @@ def _repair_output_path(
         outdir = expand_path(params.outdir or absolute_path(input_path).parent)
         name = f"{input_stem(input_path)}_repaired{extension}"
         output = str(absolute_path(Path(outdir, name)))
-    if Path(output).resolve() == Path(input_path).resolve():
+    destination = Path(output)
+    try:
+        aliases_input = destination.samefile(input_path)
+    except FileNotFoundError:
+        aliases_input = False
+    if aliases_input:
         raise WGSExtractError(f"Output {output} would overwrite the input.")
+    try:
+        if not stat.S_ISREG(destination.lstat().st_mode):
+            raise WGSExtractError(f"Output {output} is not a regular file.")
+    except FileNotFoundError:
+        pass
     return output
+
+
+@contextmanager
+def _stage_repair(output: str, extension: str) -> Iterator[IO[bytes]]:
+    parent = Path(output).parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+        temp = tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=parent,
+            prefix=".wgse-repair-",
+            suffix=extension,
+            delete=False,
+        )
+    except OSError as exc:
+        raise WGSExtractError(
+            f"Cannot stage repaired output {output}: {exc.strerror or exc}"
+        ) from exc
+    staged = Path(temp.name)
+    identity = None
+    try:
+        with temp:
+            identity = os.fstat(temp.fileno())
+            yield temp.file
+        checkpoint()
+        if not os.path.samestat(staged.lstat(), identity):
+            raise WGSExtractError(f"Staging file changed for repaired output {output}.")
+        staged.replace(output)
+    finally:
+        try:
+            if identity is None or os.path.samestat(staged.lstat(), identity):
+                staged.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
 
 
 def _input_was_explicit(args: argparse.Namespace) -> bool:

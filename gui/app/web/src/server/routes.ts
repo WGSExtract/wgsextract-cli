@@ -9,14 +9,15 @@ import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
 import { streamNDJSON, type EmitEvent } from "./ndjson.js";
-import { runActionPreferringServer } from "./job-server-action.js";
+import { JobSubmissionUnknown, runActionPreferringServer } from "./job-server-action.js";
 import type { ActionEvent } from "./action-runner.js";
 import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-result-documents.js";
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
+import { readResultCard } from "./result-card.js";
 import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
-import { configPath, distModulePath, normalizeContext } from "./paths.js";
+import { appSupportDirectory, configPath, distModulePath, normalizeContext } from "./paths.js";
 import { pickPath, type NativePickerEndpoint } from "./path-picker.js";
 import { optionalString, parseActionReference, parseBundleStatePatch, parseCommandContext, parseLabels, parseManifestLocation, parsePrecheckTarget, requestObject, requiredString } from "./request-bodies.js";
 import { applySecurityHeaders, contentSecurityPolicy, guardRequest } from "./request-guard.js";
@@ -25,6 +26,10 @@ import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
 import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
+import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
+import { RemoteViewerConnection } from "./remote-viewer-connection.js";
+import { RemoteViewer } from "./remote-viewer.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -59,6 +64,8 @@ export interface RequestHandlerContext {
     manifest: BundleManifest;
     maxBodyBytes: number;
     nativePicker?: NativePickerEndpoint | undefined;
+    /** Backend-only credential storage override for embedding hosts and tests. */
+    remoteViewerConfigFile?: string;
     repoRoot: string;
     runProcess: RunProcess;
     shutdown: (reason: string) => void;
@@ -76,6 +83,13 @@ export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
     const pickedBundlePaths = new Set<string>();
     const resultPaths = new ResultPaths();
+    const viewerFiles = new ViewerFiles();
+    const remoteViewer = new RemoteViewer(new RemoteViewerConnection(
+        context.remoteViewerConfigFile ?? path.join(appSupportDirectory(), "RemoteViewer", "config.toml"),
+    ));
+    const requireRemoteViewer = () => {
+        if (context.manifest.id !== "wgs-extract") throw new HttpError(403, "remoteUnavailable");
+    };
     // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
     let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
@@ -95,6 +109,76 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/viewer.css": (response, headOnly) => staticFile(path.join(context.distRoot, "web", "viewer.css"), "text/css; charset=utf-8", response, headOnly),
     };
     const postRoutes: Record<string, (request: IncomingMessage, response: ServerResponse) => Promise<void>> = {
+        "/api/viewer/open": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const tracks = body.tracks ?? [];
+            if (!Array.isArray(tracks) || tracks.some((track) => typeof track !== "string" || !track.trim() || track.length > 4096)) {
+                throw new HttpError(400, "Viewer tracks must be local file paths.");
+            }
+            if (tracks.length > 16) {
+                json(response, { problem: "trackLimit" });
+                return;
+            }
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
+        },
+        "/api/viewer/close": jsonRoute(context, async (body) => {
+            viewerFiles.revoke(requiredString(body, "id"));
+            remoteViewer.revoke(requiredString(body, "id"));
+            return { ok: true };
+        }),
+        "/api/viewer/remote/status": jsonRoute(context, async () => {
+            requireRemoteViewer();
+            return remoteViewer.connection.status();
+        }),
+        "/api/viewer/remote/import": async (request, response) => {
+            requireRemoteViewer();
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const owner = requiredString(body, "requestID");
+            const generation = remoteViewer.beginImport(owner);
+            const close = () => {
+                if (!response.writableFinished) remoteViewer.connection.cancelImport(owner);
+            };
+            response.once("close", close);
+            try {
+                if (response.destroyed) throw new HttpError(409, "remoteConnectionChanged");
+                const picked = await pickPath({ kind: "file", title: requiredString(body, "title"), nativePicker: context.nativePicker });
+                if (picked.cancelled) {
+                    json(response, await remoteViewer.connection.status());
+                    return;
+                }
+                const status = await remoteViewer.connection.import(picked.path, generation);
+                json(response, status);
+            } finally {
+                response.off("close", close);
+                remoteViewer.connection.finishImport(owner);
+            }
+        },
+        "/api/viewer/remote/forget": jsonRoute(context, async () => {
+            requireRemoteViewer();
+            remoteViewer.revokeAll();
+            await remoteViewer.connection.forget();
+            return {};
+        }),
+        "/api/viewer/remote/open": async (request, response) => {
+            requireRemoteViewer();
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const controller = new AbortController();
+            const close = () => {
+                if (!response.writableFinished) controller.abort();
+            };
+            response.once("close", close);
+            if (response.destroyed) controller.abort();
+            try {
+                json(response, await remoteViewer.open(requiredString(body, "requestID"), requiredString(body, "id"),
+                    requiredString(body, "path"), requiredString(body, "index"), requiredString(body, "reference"),
+                    requiredString(body, "locus"), body.confirmed === true, controller.signal));
+            } finally {
+                response.off("close", close);
+            }
+        },
         "/api/datasource": jsonRoute(context, async (body) => {
             const location = parseManifestLocation(body.source);
             const payload = await runDataSource(resolveDataSource(context.manifest, location), commandContext(body, context), context.bundleRoot, context.runProcess);
@@ -117,13 +201,16 @@ export function createRequestHandler(context: RequestHandlerContext) {
                     await rememberLastResultDocument(bundleRoot, action, event.result);
                     return emit({ ...event, result: { ...event.result, lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot) } });
                 }, resultSpec),
-                (error) => ({ type: "error", error }),
+                (error, cause) => cause instanceof JobSubmissionUnknown
+                    ? { type: "submission-unknown", jobID: cause.jobID }
+                    : { type: "error", error },
             );
         },
         "/api/result/open": jsonRoute(context, async (body) => {
             await openResultPath(requiredString(body, "path"), body.reveal === true, resultPaths, context.runProcess, context.bundleRoot);
             return { ok: true };
         }),
+        "/api/result/card": jsonRoute(context, async (body) => readResultCard(requiredString(body, "path"), resultPaths, context.bundleRoot)),
         "/api/precheck": jsonRoute(context, async (body) => {
             const target = parsePrecheckTarget(body.target);
             const labels = parseLabels(body.labels);
@@ -228,6 +315,16 @@ export function createRequestHandler(context: RequestHandlerContext) {
             guardRequest(request, url.pathname, { apiToken: context.apiToken, hostnames: context.hostnames ?? [] });
             const method = request.method ?? "GET";
             const headOnly = method === "HEAD";
+            if (url.pathname.startsWith("/viewer-remote-data/")) {
+                await remoteViewer.serve(request, response, url.pathname);
+                return;
+            }
+            if (url.pathname.startsWith("/viewer-data/")) {
+                requireViewerLoopback(request);
+                const library = await viewerLibraries(context);
+                await viewerFiles.serve(request, response, url.pathname, library.roots, library.key);
+                return;
+            }
             if (method === "GET" || method === "HEAD") {
                 await handleGet(url, request, response, context, staticRoutes[url.pathname], headOnly);
                 return;

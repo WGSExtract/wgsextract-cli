@@ -1,10 +1,11 @@
 # Linux CUDA PairHMM prototype
 
 This is an experimental GATK **4.6.2.0 / GKL 0.8.11** native-resource
-sidecar, not Parabricks. It is not a qualified release: HG002 chr20 calls,
-gVCF blocks and whole-genome timing must pass before recommending it.
-Only [preliminary 1 Mb timings](../../docs/hardware.md#experimental-native-cuda-pairhmm-for-gatk)
-are available, not an established end-to-end acceleration claim.
+sidecar, not Parabricks. On the RTX 3090, GKL/CUDA decoded gVCF and
+genotyped VCF records matched exactly on HG002 chr20 and the public
+HG00096 full mapped reference. See the
+[measurements and limits](../../docs/hardware.md#experimental-native-cuda-pairhmm-for-gatk).
+This is not a general release, truth-set, or controlled speedup qualification.
 
 ## Interface and arithmetic
 
@@ -59,8 +60,9 @@ wgsextract vcf gatk --input reads.bam --ref reference.fa \
   --reference-evidence gvcf --outdir out/calls
 ```
 
-This cannot be combined with Parabricks `--gpu`, `--scatter` or Ultima's
-flow likelihood model, which does not use this PairHMM.
+This is a local option, not available over the server API. It cannot be
+combined with Parabricks `--gpu`, `--scatter`, `--pair-hmm-neon` or
+Ultima's flow likelihood model, which does not use this PairHMM.
 
 For an individual standalone GATK invocation, put this resource-only jar
 on the JVM's bootstrap append path:
@@ -95,12 +97,45 @@ the unavailable-GPU fallback. The CUDA pass computed 63,936 actual GPU pairs
 per thread configuration (including repeat checks). A real 5 kb
 HaplotypeCaller fixture with a heterozygous SNP, insertion and deletion also
 produced identical complete VCF and gVCF bodies through the CLI.
-These tests do not establish HG002 chr20 or whole-genome acceptance.
 
 Reproduce the SNP/insertion/deletion case with
 `tests/haplotypecaller.sh GATK_JAR SIDECAR_JAR OUT_DIR [THREADS]`.
 It needs samtools and bcftools in addition to the JDK, and checks every
 VCF/gVCF body field as well as the expected three heterozygous calls.
+
+### Reproduce the calling comparison
+
+Use the same local alignment, matching FASTA, dictionary and index for
+every backend. The measured runs used standalone GATK, one monolithic
+HaplotypeCaller per backend, `-Xmx4g -XX:ActiveProcessorCount=1`, and:
+
+```text
+HaplotypeCaller --sample-ploidy 2 --native-pair-hmm-threads 1 \
+  --pair-hmm-implementation AVX_LOGLESS_CACHING_OMP \
+  -ERC GVCF -GQB 10 -GQB 20 -GQB 30 -GQB 60
+```
+
+Append the sidecar on the JVM bootstrap path only for CUDA. For the
+chr20 Java comparison omit the sidecar and select `LOGLESS_CACHING`.
+Use `-L chr20` with the HG002 PCR-free 35× BAM and GRCh38 no-alt reference.
+For public `HG00096.final.cram` use the matching `hs38DH.fa` and a BED
+containing `[0, length)` for every sequence in FASTA index order. For this
+CRAM with HTSJDK 4.2.0, pass the same separate mapped-only CRAI to both
+backends with `--read-index`: keep all 80,777 original mapped entries
+unchanged and omit the nine unmapped entries. Do not edit the original
+index. The mapped interval policy intentionally excludes unmapped reads;
+regional reader checks sampled mapped-read preservation rather than
+exhaustively proving it. Fixed ploidy 2 is a comparison baseline, not
+sex-chromosome ploidy guidance.
+
+Run `GenotypeGVCFs` separately on each caller's gVCF against the same
+reference, without prepending the sidecar. Decode both gVCFs and both
+final VCFs (`bcftools view -H`), check successful decoding, then compare
+each complete record body directly. Also check indexes, sample/GT and
+reference coverage and verify that the CUDA caller's GPU pair count is
+nonzero. Do not compare compressed-file checksums to infer record parity.
+The [full measurement record](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7071143485)
+includes reference coverage, counts and resource observations.
 
 ## Prior art and licensing
 

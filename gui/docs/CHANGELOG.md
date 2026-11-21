@@ -3,7 +3,19 @@
 All notable changes to this project are tracked here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## [0.8.9] - 2026-11-21
+
+### Added
+- A built-in genome viewer: **Genome viewer** in the sidebar, or **View reads** beside a BAM/CRAM/VCF input, shows reads and variants with the matching installed reference, offline. BAM, CRAM and indexed VCF/gVCF results get **Show in viewer**; a single-region **Extract custom** result opens at its extracted locus. It adds local BED, bedGraph and bigWig tracks, installed RefSeq gene spans with gene-symbol search and installed cytobands, and **Connect and view remote file** views files on a WGS Extract server after consent to each transfer ([genome-viewer.md](genome-viewer.md)).
+- A **Tools** page, below Reference Genomes, lists every mandatory and optional tool from the dependency check (`wgsextract deps list`): whether it is installed, its version and the Pixi environment it comes from. Optional tools packaged in Pixi environments of their own get **Install** (`wgsextract deps install`) and **Uninstall** (`wgsextract deps uninstall`, after a confirmation naming every tool that environment provides); a tool this computer can't have shows **Not available**, and one the user installs (plink2, Dorado) **Install it yourself**, each with the reason as its tooltip.
+- An action that needs a missing optional tool (FastQC with MultiQC merging, `vcf gatk`, `score pgs --plink2-check` and the like) opens the missing-prerequisites dialog as a missing genome does, with **Install and Continue** when the app can install the tool.
+- A data source may declare `timeoutSeconds` (15 by default).
+- Analysis actions show their result when the run ends, even while the terminal is collapsed. An action with `resultCard: true` gets a result card: the self-contained page `wgsextract --card` writes, with the printed result, warnings, outputs, tool versions and input file. It pops up over the app, naming the `.card.html` it is shown from, and **View Card** shows it again. An action with `openOutput` opens a report its tool wrote in the system's default app. The manifest's `resultDocument.cardArguments` asks commands for the card, and jobs get `?card=1`. WGSExtract shows cards for its info, coverage, identification, haplogroup, Y-STR, typing, VCF QC, trio, full-analysis and manifest-verification actions. It opens the FastQC (MultiQC when made), FastP, MultiQC, Personal Report and PharmCAT reports.
+
+### Changed
+- Bug-report actions stay off until setup succeeds; setup checks an already installed Pixi and stops, naming its path and version, when it is too old.
+- Bump the bundled WGSExtract CLI installer target to `v0.8.9` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.9)).
+- Actions take an `advancedTitle`, shown instead of `title` in Advanced mode. WGSExtract's Variant Calling **Default** button is now **BCFTools** in Basic and **BCFTools, Delly** in Advanced, naming the callers each mode can run (Advanced adds SVs and CNVs, called with Delly).
 
 ## [0.8.8] - 2026-11-18
 

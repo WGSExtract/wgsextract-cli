@@ -1,7 +1,10 @@
 """Focused server mcp regressions."""
 
+import io
 import json
 import shutil
+import sys
+import threading
 from pathlib import Path
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
@@ -27,6 +30,72 @@ from tests.test_server import (
 from tests.test_server import (
     work as work,
 )
+from wgsextract_cli.server.jobs import JobManager
+from wgsextract_cli.server.mcp_server import McpServer
+from wgsextract_cli.server.operations import PathGuard
+
+
+def test_1209_stdio_cancel_before_started_stops_worker_without_reply(tmp_path):
+    submitted = threading.Event()
+    release = threading.Event()
+
+    class PausedSubmit(JobManager):
+        def submit(self, op, params, **kwargs):
+            job = super().submit(op, params, **kwargs)
+            submitted.set()
+            assert release.wait(10)
+            return job
+
+    manager = PausedSubmit(
+        tmp_path / "jobs",
+        config_path=None,
+        worker_command=[
+            sys.executable,
+            "-c",
+            "import sys; sys.stdin.readline(); sys.stdin.readline()",
+        ],
+    )
+    stdout = io.StringIO()
+    server = McpServer(manager, PathGuard([tmp_path]), allow_jobs=True, stdout=stdout)
+    server.handle_line(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "example_genome_list",
+                    "arguments": {"target_root": str(tmp_path)},
+                },
+            }
+        )
+    )
+    try:
+        assert submitted.wait(10)
+        server.handle_line(
+            '{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}'
+        )
+        release.set()
+        job = manager.wait(manager.summaries()[0]["id"], 5)
+        assert job is not None and job.status == "cancelled"
+    finally:
+        release.set()
+        server.serve(io.StringIO())
+    assert stdout.getvalue() == ""
+
+
+def test_1209_mcp_job_status_rejects_boolean_wait(work):
+    mcp = Mcp("--allow", str(work), "--allow-jobs")
+    try:
+        job = mcp.call("example_genome_list", target_root=str(work))[
+            "structuredContent"
+        ]
+        for value in (True, False):
+            result = mcp.call("job_status", job_id=job["id"], wait_seconds=value)
+            assert result["isError"] is True
+            assert result["structuredContent"]["error"]["code"] == "usage"
+    finally:
+        mcp.close()
 
 
 def test_read_only_mcp_info_saves_nothing(tmp_path, fake_data):

@@ -155,6 +155,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -462,7 +479,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags.",
+      "help": "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -773,6 +790,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -1075,6 +1109,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -1416,6 +1467,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -1932,6 +2000,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -2234,6 +2319,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -2549,6 +2651,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -2852,6 +2971,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -3245,6 +3381,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -3587,6 +3740,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -3775,7 +3945,7 @@
    }
   },
   "bam to-cram": {
-   "help": "usage: wgsextract bam to-cram [-h] [-r REGION] [--gene GENE] [--cram-version {2.1,3.0,3.1}]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --gene GENE           Filter by Gene Name (e.g. BRCA1, KCNQ2)\n  --cram-version {2.1,3.0,3.1}\n                        CRAM version to output (default: 3.0 for better compatibility)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract bam to-cram --input sample.bam --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <input stem>.cram (+ .crai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract bam to-cram [-h] [-r REGION] [--gene GENE] [--cram-version {2.1,3.0,3.1}]\n                              [--mimalloc {auto,off}]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --gene GENE           Filter by Gene Name (e.g. BRCA1, KCNQ2)\n  --cram-version {2.1,3.0,3.1}\n                        CRAM version to output (default: 3.0 for better compatibility)\n  --mimalloc {auto,off}\n                        Windows CRAM 3.1: use the installed native mimalloc encoder (auto) or\n                        system allocator (off). Default: config mimalloc, else auto.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract bam to-cram --input sample.bam --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <input stem>.cram (+ .crai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -3923,6 +4093,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -4111,6 +4298,25 @@
       "type": null
      },
      {
+      "choices": [
+       "auto",
+       "off"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "mimalloc",
+      "exclusive_group": null,
+      "help": "Windows CRAM 3.1: use the installed native mimalloc encoder (auto) or system allocator (off). Default: config mimalloc, else auto.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--mimalloc"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
       "choices": null,
       "class": "_HelpAllAction",
       "const": null,
@@ -4285,6 +4491,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -4691,6 +4914,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5081,6 +5321,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5390,6 +5647,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -5693,6 +5967,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -6153,6 +6444,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -6573,7 +6881,7 @@
    }
   },
   "deps": {
-   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check     Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n              installed and accessible in your system path.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -6595,12 +6903,27 @@
      },
      {
       "choices": [
-       "check"
+       "check",
+       "list",
+       "install",
+       "uninstall"
       ],
       "help": [
        [
         "check",
         "Verify that all required bioinformatics tools (samtools, bcftools, etc.) are installed and accessible in your system path."
+       ],
+       [
+        "list",
+        "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it."
+       ],
+       [
+        "install",
+        "Download and install the Pixi environment that provides an optional tool (e.g. gatk)."
+       ],
+       [
+        "uninstall",
+        "Remove the Pixi environment that provides an optional tool, and the other tools in it."
        ]
       ],
       "required": true,
@@ -6734,6 +7057,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -7042,6 +7382,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -7391,6 +7748,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -7693,6 +8067,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -8138,6 +8529,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -8537,6 +8945,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -8839,6 +9264,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -9204,6 +9646,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -9546,6 +10005,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -9849,6 +10325,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -10164,6 +10657,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -10467,6 +10977,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -10851,6 +11378,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -11176,6 +11720,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -11479,6 +12040,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -11810,6 +12388,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -12135,6 +12730,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -12381,7 +12993,7 @@
    }
   },
   "info calculate-coverage": {
-   "help": "usage: wgsextract info calculate-coverage [-h] [-r REGION] [--bins] [--with-bins] [--by BED]\n                                          [--min-depth N] [--format {tsv,parquet}] [--status]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the\n                        assessed scope (all targets must fit inside it); otherwise the whole\n                        alignment header is the assessed scope\n  --bins                Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming\n                        pass.\n  --with-bins           After the coverage table, also report the --bins depth breadth; an up-to-\n                        date whole-file bins report is shown again instead of rescanned.\n  --by BED              Report depth per target of this BED (e.g. from 'panel bed'): mean, median\n                        and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus\n                        off-target enrichment\n  --min-depth N         With --by, list targets whose mean depth is below this (default: 30)\n  --format {tsv,parquet}\n                        Also save the per-chromosome table and the QC stats as <input>_chromosomes\n                        and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. With\n                        --bins or --by, that table's format instead\n  --status              Only report whether the --with-bins reports in --outdir are newer than the\n                        input (current), so a run would show them again\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract info calculate-coverage --input sample.cram\n  wgsextract info calculate-coverage --input sample.cram --bins --format parquet\n  wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20\n  wgsextract info calculate-coverage --input sample.cram --status\n\noutputs (in the output directory unless noted):\n  <input file name>_coverage.tsv, or with --bins <input file\n  name>_coverage_bins.tsv (depth bands, or .parquet with --format parquet)\n  instead; with --with-bins both .tsv files. With --by,\n  <input>_<bed>_target_coverage.tsv (depth per target) and\n  <input>_<bed>_target_summary.txt (on- and off-target depth, enrichment and\n  targets below --min-depth). --status writes nothing.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract info calculate-coverage [-h] [-r REGION] [--bins] [--with-bins] [--by BED]\n                                          [--min-depth N] [--format {tsv,parquet}] [--status]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the\n                        assessed scope (all targets must fit inside it); otherwise the whole\n                        alignment header is the assessed scope\n  --bins                Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the non-N\n                        bases in one streaming pass.\n  --with-bins           Also measure the --bins depth breadth and show its table in place of the\n                        coverage table, which info --detailed then shows; up-to-date whole-file\n                        reports are shown again instead of rescanned.\n  --by BED              Report depth per target of this BED (e.g. from 'panel bed'): mean, median\n                        and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus\n                        off-target enrichment\n  --min-depth N         With --by, list targets whose mean depth is below this (default: 30)\n  --format {tsv,parquet}\n                        Also save the per-chromosome table and the QC stats as <input>_chromosomes\n                        and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. With\n                        --bins or --by, that table's format instead\n  --status              Only report whether the --with-bins reports in --outdir are newer than the\n                        input (current), so a run would show them again\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract info calculate-coverage --input sample.cram\n  wgsextract info calculate-coverage --input sample.cram --bins --format parquet\n  wgsextract info calculate-coverage --input sample.bam --by panel.bed --min-depth 20\n  wgsextract info calculate-coverage --input sample.cram --status\n\noutputs (in the output directory unless noted):\n  <input file name>_coverage.tsv, or with --bins <input file\n  name>_coverage_bins.tsv (depth bands, or .parquet with --format parquet)\n  instead; with --with-bins both .tsv files. With --by,\n  <input>_<bed>_target_coverage.tsv (depth per target) and\n  <input>_<bed>_target_summary.txt (on- and off-target depth, enrichment and\n  targets below --min-depth). --status writes nothing.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools; minutes on a 30x\n  genome.\n",
    "parser": {
     "actions": [
      {
@@ -12529,6 +13141,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -12687,7 +13316,7 @@
       "default": false,
       "dest": "bins",
       "exclusive_group": null,
-      "help": "Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass.",
+      "help": "Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the non-N bases in one streaming pass.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -12703,7 +13332,7 @@
       "default": false,
       "dest": "with_bins",
       "exclusive_group": null,
-      "help": "After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned.",
+      "help": "Also measure the --bins depth breadth and show its table in place of the coverage table, which info --detailed then shows; up-to-date whole-file reports are shown again instead of rescanned.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -12954,6 +13583,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -13279,6 +13925,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -13630,6 +14293,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -13902,7 +14582,7 @@
    }
   },
   "lineage y-haplogroup": {
-   "help": "usage: wgsextract lineage y-haplogroup [-h] [--download | --no-download] [--build {hg19,hg38,t2t}]\n                                       [--tree TREE] [--ancient] [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n8 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract lineage y-haplogroup [-h] [--download | --no-download] [--build {hg19,hg38,t2t}]\n                                       [--tree TREE] [--ancient] [--tree-links] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --build {hg19,hg38,t2t}\n                        Override the detected reference build for this run.\n  --tree TREE           Haplogroup tree: yfull (the pinned YFull YTree release), yfull_v10 (YFull\n                        10.01), ftdna, isogg, or a config.toml [y_trees.<id>] tree (default:\n                        config y_tree, else yfull).\n  --ancient             Use ancient-DNA marker tables.\n  --tree-links          Print YFull and FTDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n9 advanced options not shown; 'wgsextract lineage y-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage y-haplogroup --input sample.cram\n\noutputs (in the output directory unless noted):\n  yleaf/: hg_prediction.hg, the per-sample .out/.fmf/.info reports and\n  run.json; prints the haplogroup and the tree's name and version.\n\nneeds:\n  bcftools, samtools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -14050,6 +14730,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -14355,12 +15052,28 @@
       "const": true,
       "default": false,
       "dest": "no_ref_inference",
-      "exclusive_group": null,
+      "exclusive_group": 1,
       "help": "VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--no-ref-inference"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "assume_reference",
+      "exclusive_group": 1,
+      "help": "VCF: assume --ref at absent markers for upstream Yleaf parity. Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--assume-reference"
       ],
       "required": false,
       "type": null
@@ -14572,6 +15285,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -14993,6 +15723,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -15295,6 +16042,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -15693,6 +16457,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -16348,6 +17129,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -16780,6 +17578,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -17082,6 +17897,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -17466,6 +18298,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -17804,6 +18653,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -18242,6 +19108,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -18577,6 +19460,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -18924,6 +19824,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -19249,6 +20166,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -19552,6 +20486,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -19949,6 +20900,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -20275,6 +21243,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -20534,7 +21519,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags.",
+      "help": "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -20838,7 +21823,7 @@
    }
   },
   "ref": {
-   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome or annotation data a command line needs that\n                        isn't installed, and how to install it.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome, annotation data or optional tools a command\n                        line needs that aren't installed, and how to install them.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).\n    cytobands           Validate installed hg19/hg38 UCSC cytobands; download missing data only\n                        with --download.\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -20876,6 +21861,7 @@
        "test-genome",
        "needs",
        "gene-map",
+       "cytobands",
        "clinvar",
        "revel",
        "phylop",
@@ -20948,11 +21934,15 @@
        ],
        [
         "needs",
-        "Report the reference genome or annotation data a command line needs that isn't installed, and how to install it."
+        "Report the reference genome, annotation data or optional tools a command line needs that aren't installed, and how to install them."
        ],
        [
         "gene-map",
         "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1)."
+       ],
+       [
+        "cytobands",
+        "Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download."
        ],
        [
         "clinvar",
@@ -21134,6 +22124,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -21442,6 +22449,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -21789,6 +22813,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -22108,6 +23149,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -22455,6 +23513,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -22758,6 +23833,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -23092,6 +24184,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -23401,6 +24510,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -23704,6 +24830,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -24051,6 +25194,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -24370,6 +25530,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -24704,6 +25881,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -25026,6 +26220,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -25411,6 +26622,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -25768,6 +26996,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -26107,6 +27352,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -26486,6 +27748,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -26805,6 +28084,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -27139,6 +28435,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -27442,6 +28755,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -27789,6 +29119,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -28108,6 +29455,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -28488,6 +29852,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -28791,6 +30172,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -29172,6 +30570,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -29474,6 +30889,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -29805,6 +31237,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -30124,6 +31573,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -30536,6 +32002,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -30838,6 +32321,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -31336,6 +32836,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -31638,6 +33155,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -31993,6 +33527,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -32414,6 +33965,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -32722,6 +34290,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -32877,7 +34462,7 @@
    }
   },
   "typing hla": {
-   "help": "usage: wgsextract typing hla [-h] [--download | --no-download] [--hla-index FASTA]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --hla-index FASTA     T1K allele index (hla_dna_seq.fa). Default: <reference\n                        library>/ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if\n                        missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract typing hla [-h] [--download | --no-download] [--hla-index FASTA]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --hla-index FASTA     T1K allele index (hla_dna_seq.fa). Default: <reference\n                        library>/downloads/t1k_hla; --download confirms building it from IPD-\n                        IMGT/HLA if missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing hla --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.\n\nneeds:\n  run-t1k, samtools, t1k-build.pl; depending on options and inputs, also:\n  bcftools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -33025,6 +34610,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -33183,7 +34785,7 @@
       "default": null,
       "dest": "hla_index",
       "exclusive_group": null,
-      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/ref/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
+      "help": "T1K allele index (hla_dna_seq.fa). Default: <reference library>/downloads/t1k_hla; --download confirms building it from IPD-IMGT/HLA if missing.",
       "metavar": "FASTA",
       "nargs": null,
       "option_strings": [
@@ -33367,6 +34969,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -33676,6 +35295,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -34199,6 +35835,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -34501,6 +36154,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -34865,6 +36535,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -35217,6 +36904,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -35597,6 +37301,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -35801,7 +37522,7 @@
    }
   },
   "vcf clair3": {
-   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--gpu]\n                             [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR      Clair3 model directory, or the name of a bundled model, matching the\n                        reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config\n                        clair3_model; default: chosen from the basecaller metadata.\n  --gpu                 Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see\n                        docs/ont.md).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on a\n                        GPU), or not (none). Default: config reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: docker,\n  run_clair3.sh, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf clair3 [-h] [-r REGION] [--model NAME|DIR] [--gpu]\n                             [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chr20:1-1000000)\n  --model NAME|DIR      Clair3 model directory, or the name of a bundled model, matching the\n                        reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config\n                        clair3_model; default: chosen from the basecaller metadata.\n  --gpu                 Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's\n                        Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on\n                        CUDA; MPS varies), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf clair3 --help-all' lists them.\n\nexamples:\n  wgsextract vcf clair3 --input ont.bam\n\noutputs (in the output directory unless noted):\n  clair3.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; depending on options and inputs, also: docker,\n  run_clair3.sh, sambamba, wgse-clair3; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -35949,6 +37670,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -36123,7 +37861,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
+      "help": "Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -36174,7 +37912,7 @@
       "default": null,
       "dest": "reference_evidence",
       "exclusive_group": null,
-      "help": "Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on a GPU), or not (none). Default: config reference_evidence, else none.",
+      "help": "Also write reference evidence: a gVCF, clair3.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs ~2.4x the time on a CPU, ~4.3x on CUDA; MPS varies), or not (none). Default: config reference_evidence, else none.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -36358,6 +38096,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -36744,6 +38499,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -36965,7 +38737,7 @@
    }
   },
   "vcf deepvariant": {
-   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu]\n                                  [--reference-evidence {none,gvcf}] [--force] [--force-step STEP]\n                                  [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (README).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, deepvariant.g.vcf.gz (+ .tbi),\n                        beside the unchanged variant VCF (gvcf; costs ~5 percent more time, ~25\n                        with Parabricks), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n6 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with\n  --reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf deepvariant [-h] [-r REGION] [--wes] [--ont] [--pacbio] [--gpu]\n                                  [--reference-evidence {none,gvcf}] [--force] [--force-step STEP]\n                                  [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --wes                 Set model type to WES (default: WGS)\n  --ont                 Alias for --model-type ONT_R104 (R10.4.1 only; x86-64).\n  --pacbio              Alias for --model-type PACBIO.\n  --gpu                 NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else\n                        Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-\n                        parabricks).\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, deepvariant.g.vcf.gz (+ .tbi),\n                        beside the unchanged variant VCF (gvcf; costs ~5 percent more time, ~25\n                        with Parabricks), or not (none). Default: config reference_evidence, else\n                        none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        stage_reads, make_examples, call_variants, postprocess_variants.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n6 advanced options not shown; 'wgsextract vcf deepvariant --help-all' lists them.\n\nexamples:\n  wgsextract vcf deepvariant --input sample.cram\n  wgsextract vcf deepvariant --input hifi.bam --pacbio\n  wgsextract vcf deepvariant --input sample.cram --force-step call_variants\n\noutputs (in the output directory unless noted):\n  deepvariant.vcf.gz (+ .tbi) and deepvariant.vcf.gz.steps.json; with\n  --reference-evidence gvcf also deepvariant.g.vcf.gz (+ .tbi); until it\n  finishes, the stages' work in .deepvariant.work, where a rerun resumes.\n\nneeds:\n  samtools, tabix; depending on options and inputs, also: bcftools, docker,\n  run_deepvariant, wgse-deepvariant, sambamba; hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37113,6 +38885,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -37374,7 +39163,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README).",
+      "help": "NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-parabricks).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -37679,6 +39468,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -38076,6 +39882,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -38264,7 +40087,7 @@
    }
   },
   "vcf gatk": {
-   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--pair-hmm-cuda PAIR_HMM_CUDA]\n                           [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).\n  --pair-hmm-cuda PAIR_HMM_CUDA\n                        Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with\n                        GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md.\n                        Not with --gpu or --scatter.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--pair-hmm-cuda PAIR_HMM_CUDA]\n                           [--pair-hmm-neon PAIR_HMM_NEON] [--reference-evidence {none,gvcf}]\n                           [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see\n                        docs/hardware.md#nvidia-gpus-parabricks).\n  --pair-hmm-cuda PAIR_HMM_CUDA\n                        Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with\n                        GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md.\n                        Not with --gpu or --scatter.\n  --pair-hmm-neon PAIR_HMM_NEON\n                        Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for\n                        GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See\n                        packaging/arm64/gkl/README.md. Not with --gpu or --scatter.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -38412,6 +40235,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -38586,7 +40426,7 @@
       "default": false,
       "dest": "gpu",
       "exclusive_group": null,
-      "help": "Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
+      "help": "Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -38607,6 +40447,22 @@
       "nargs": null,
       "option_strings": [
        "--pair-hmm-cuda"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "pair_hmm_neon",
+      "exclusive_group": null,
+      "help": "Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See packaging/arm64/gkl/README.md. Not with --gpu or --scatter.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--pair-hmm-neon"
       ],
       "required": false,
       "type": null
@@ -38837,6 +40693,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -39195,6 +41068,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -39597,6 +41487,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -39970,6 +41877,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -40262,7 +42186,7 @@
    }
   },
   "vcf pharmcat": {
-   "help": "usage: wgsextract vcf pharmcat [-h] [--download | --no-download] [--vcf-input VCF_INPUT]\n                               [--pharmcat-dir PHARMCAT_DIR] [--absent-to-ref]\n                               [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf pharmcat [-h] [--download | --no-download] [--vcf-input VCF_INPUT]\n                               [--pharmcat-dir PHARMCAT_DIR] [--absent-to-ref]\n                               [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip, curl; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -40410,6 +42334,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -40845,6 +42786,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -41181,6 +43139,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -41580,6 +43555,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -41938,6 +43930,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -42290,6 +44299,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -42742,6 +44768,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -43078,6 +45121,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -43526,6 +45586,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -43964,6 +46041,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -44384,6 +46478,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -44832,6 +46943,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -45313,6 +47441,23 @@
      },
      {
       "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
       "class": "_GlobalStoreTrue",
       "const": true,
       "default": "==SUPPRESS==",
@@ -45615,6 +47760,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -46047,6 +48209,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -46604,6 +48783,23 @@
       "nargs": 0,
       "option_strings": [
        "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
       ],
       "required": false,
       "type": null
@@ -47493,6 +49689,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parent_pid": null,
    "quiet": false,
@@ -47523,6 +49720,7 @@
    "log_dir": null,
    "log_file": null,
    "memory": null,
+   "mimalloc": null,
    "outdir": null,
    "parent_pid": null,
    "quiet": false,
@@ -48854,6 +51052,7 @@
     "tree"
    ],
    "ancient": true,
+   "assume_reference": false,
    "atomic_output": false,
    "base_majority": 80,
    "base_quality": 15,
@@ -51623,6 +53822,7 @@
    "no_gpu_memory_check": false,
    "outdir": null,
    "pair_hmm_cuda": null,
+   "pair_hmm_neon": null,
    "parent_pid": null,
    "qc_min_depth": 3.0,
    "quiet": false,
@@ -51657,6 +53857,7 @@
    "no_gpu_memory_check": false,
    "outdir": null,
    "pair_hmm_cuda": null,
+   "pair_hmm_neon": null,
    "parent_pid": null,
    "qc_min_depth": null,
    "quiet": false,

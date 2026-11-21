@@ -14,13 +14,14 @@ packaging/windows-arm64/recipes/*/patches/*.patch -whitespace
 src/wgsextract_cli/assets/microarray/raw_file_templates/head/* -text whitespace=cr-at-eol
 
 # The CHM13 manifest and payloads are verified byte-for-byte at runtime.
-src/wgsextract_cli/assets/microarray/chm13/v1/* -text
+src/wgsextract_cli/assets/microarray/chm13/v2/* -text
 
 # Audited terms are pinned by sources.json and copied verbatim to release assets.
 src/wgsextract_cli/assets/resource_terms/** -text
 
 # Patches for upstream sources keep their exact bytes (some upstream files are CRLF).
 packaging/windows/recipes/**/*.patch -text -whitespace
+native/clair3/patches/*.patch -text -whitespace
 
 # Bundled catalogs are pinned by SHA-256 (provenance.json).
 src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf

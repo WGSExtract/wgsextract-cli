@@ -1,6 +1,6 @@
 # Prerequisites
 
-Some actions need data that the user installs separately, such as a reference genome. A bundle can declare a check that the app runs before such an action. If the check reports that something is missing, the action doesn't start. Instead a dialog names what is missing and offers three choices:
+Some actions need data or tools that the user installs separately, such as a reference genome or an optional tool. A bundle can declare a check that the app runs before such an action. If the check reports that something is missing, the action doesn't start. Instead a dialog names what is missing and offers three choices:
 
 - **Install and Continue**: the app checks again, installs each item that is still missing, showing each install in its own terminal tab, then runs the action. An item installed while the dialog was open is skipped. If an install fails, the action doesn't run.
 - **Continue**: the user has installed it themselves. The app checks again, and runs the action only if nothing is missing any more; otherwise the dialog stays and says so.
@@ -39,6 +39,8 @@ The app runs `command` with the command line appended, in the bundle workspace. 
 
 - `id` names the item when the app asks for it to be installed.
 - `installArguments` are run with `command.executable` to install the item. They are `null` when the app can't install it.
+
+WGSExtract also reports a missing optional tool (`"kind": "tool"`, installed with `wgsextract deps install <tool>`, or `null` for a tool the user installs).
 
 An empty list means the action can run. So does a check that exits non-zero, prints no such report, or takes longer than a minute. The app logs why on its console and runs the action, which then reports the problem itself.
 

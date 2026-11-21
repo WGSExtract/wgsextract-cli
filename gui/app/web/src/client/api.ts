@@ -2,6 +2,7 @@ type ApiOptions = {
     method?: string;
     body?: unknown;
     signal?: AbortSignal;
+    keepalive?: boolean;
 };
 
 type TokenGlobal = typeof globalThis & { __GFC_API_TOKEN__?: unknown };
@@ -29,6 +30,7 @@ function requestInit(options: ApiOptions): RequestInit {
         method,
         cache: "no-store",
         headers,
+        ...(options.keepalive ? { keepalive: true } : {}),
         ...(method !== "GET" ? { body: JSON.stringify(options.body ?? {}) } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
     };

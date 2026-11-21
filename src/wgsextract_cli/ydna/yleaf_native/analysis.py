@@ -10,25 +10,19 @@
 import csv
 import json
 import logging
-import math
 import subprocess
 import tempfile
-from bisect import bisect_right
 from collections import Counter
-from dataclasses import replace
 from pathlib import Path
 
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
-from wgsextract_cli.core.variant_files import vcf_index_chromosomes
 
 from .data import file_sha256, manifest
 from .markers import (
     Call,
-    ad_call,
-    gt_call,
     match_markers,
     pileup_call,
     read_markers,
@@ -41,150 +35,13 @@ from .predict import (
     prediction_row,
 )
 from .trees import YleafTree, ensure_tree
+from .vcf_calls import query_vcf as _query_vcf
 
 CREDIT = (
     "Native Yleaf (Erasmus MC; Ralf et al., Mol Biol Evol 2018, "
     "doi:10.1093/molbev/msy032)"
 )
 Y_NAMES = ("Y", "chrY")
-
-
-def _query_vcf(
-    path: Path,
-    *,
-    positions: set[int] | None = None,
-    reference_sequence: str | None = None,
-    min_quality: int = 20,
-) -> tuple[dict[int, Call], bool]:
-    samples = run_command(
-        ["bcftools", "query", "-l", str(path)], capture_output=True
-    ).stdout.splitlines()
-    if len(samples) != 1:
-        raise WGSExtractError("Y haplogroup analysis requires a single-sample VCF.")
-    header = run_command(
-        ["bcftools", "view", "-h", str(path)], capture_output=True
-    ).stdout
-    has_ad = "##FORMAT=<ID=AD," in header
-    fields = [
-        f"%{field}" if f"##FORMAT=<ID={field}," in header else "."
-        for field in ("GT", "AD", "DP", "GQ", "MIN_DP")
-    ]
-    block_depth_field = "%INFO/MIN_DP" if "##INFO=<ID=MIN_DP," in header else "."
-    region_args: list[str] = []
-    if any(Path(str(path) + suffix).is_file() for suffix in (".tbi", ".csi")):
-        contigs = vcf_index_chromosomes(path)
-        if contigs:
-            regions = [name for name in contigs if name in Y_NAMES]
-            if not regions:
-                raise WGSExtractError("Input VCF has no records on chromosome Y.")
-            region_args = ["-r", ",".join(regions)]
-    text = run_command(
-        [
-            "bcftools",
-            "query",
-            *region_args,
-            "-i",
-            'CHROM="Y" || CHROM="chrY"',
-            "-f",
-            "%CHROM\\t%POS\\t%END\\t%REF\\t%ALT\\t%FILTER\\t"
-            + block_depth_field
-            + "[\\t"
-            + "\\t".join(fields)
-            + "]\\n",
-            str(path),
-        ],
-        capture_output=True,
-    ).stdout
-    if not text.strip():
-        raise WGSExtractError("Input VCF has no records on chromosome Y.")
-    calls = {}
-    seen = set()
-    marker_positions = sorted(positions or ())
-    for line in text.splitlines():
-        (
-            _,
-            position,
-            end,
-            ref,
-            alt,
-            site_filter,
-            info_min_dp,
-            gt,
-            ad,
-            dp,
-            gq,
-            min_dp,
-        ) = line.split("\t")
-        pos = int(position)
-        if pos in seen:
-            continue
-        seen.add(pos)
-        genotype = gt_call(ref, alt, gt)
-        quality = float(gq) if gq != "." else None
-        reference_block = (
-            int(end) > pos
-            and len(ref) == 1
-            and alt in (".", "<NON_REF>", "<*>")
-            and genotype is not None
-            and genotype.base == ref
-        )
-        depth_metrics = [
-            int(value)
-            for value in (min_dp, dp, info_min_dp if reference_block else ".")
-            if value != "."
-        ]
-        reads = min(depth_metrics) if depth_metrics else 0
-        description = ""
-        if site_filter != "PASS":
-            description = "Filtered or unassessed variant"
-        elif "." in gt.replace("|", "/").split("/") or gt == "":
-            description = "Missing genotype"
-        elif genotype is None:
-            description = "Ambiguous or unsupported Y genotype"
-        elif quality is not None and (
-            not math.isfinite(quality) or quality < min_quality
-        ):
-            description = "Below genotype quality"
-        call = Call(
-            genotype.base if genotype else "NA",
-            reads,
-            100.0,
-            description,
-            gt,
-            site_filter,
-            quality,
-        )
-        if not description and ad != ".":
-            evidence = ad_call(ref, alt, ad)
-            call = replace(
-                call,
-                reads=min(reads, evidence.reads) if depth_metrics else evidence.reads,
-                percentage=evidence.percentage,
-            )
-            if genotype and evidence.base != genotype.base:
-                call = replace(call, description="Genotype and allele depths disagree")
-        elif not description and not depth_metrics:
-            call = replace(call, description="Missing depth evidence")
-        calls[pos] = call
-        # A FASTA supplies bases, not callability. Only an explicit reference
-        # block can prove that an otherwise absent marker was assessed.
-        if reference_sequence and positions and reference_block:
-            minimums = [int(value) for value in (min_dp, info_min_dp) if value != "."]
-            if not minimums:
-                continue
-            # DP/AD at the block's first position (or an average DP) does not
-            # prove depth at any interior marker. MIN_DP is a block-wide floor.
-            block_call = replace(call, reads=min(call.reads, *minimums))
-            first = bisect_right(marker_positions, pos)
-            last = bisect_right(
-                marker_positions, min(int(end), len(reference_sequence))
-            )
-            for marker_pos in marker_positions[first:last]:
-                calls.setdefault(
-                    marker_pos,
-                    replace(block_call, base=reference_sequence[marker_pos - 1]),
-                )
-    return calls, has_ad
 
 
 def _reference_sequence(reference: Path) -> str:
@@ -262,6 +119,7 @@ def analyze(
     min_score: float = 0.95,
     ancient: bool = False,
     no_ref_inference: bool = False,
+    assume_reference: bool = False,
 ) -> Path:
     """Write .out/.fmf/.info, hg_prediction.hg and run.json; never delete user data.
 
@@ -278,6 +136,11 @@ def analyze(
             "Invalid Yleaf read/quality/majority/prediction threshold."
         )
     is_vcf = input_path.name.lower().endswith((".vcf", ".vcf.gz", ".bcf"))
+    if assume_reference and (no_ref_inference or not is_vcf):
+        raise WGSExtractError(
+            "--assume-reference requires VCF input and cannot be combined with "
+            "--no-ref-inference."
+        )
     if not is_vcf and input_path.suffix.lower() not in (".bam", ".cram"):
         raise WGSExtractError(
             "Native Yleaf accepts BAM, CRAM or single-sample VCF/BCF."
@@ -309,7 +172,28 @@ def analyze(
     )
     marker_file = pos_file or selected.positions(build, ancient)
     panel_source = "custom" if pos_file else selected.origin
-    markers = read_markers(marker_file)
+    polarity = None
+    if not pos_file and selected.polarity_file is not None:
+        from .polarity import correct_polarity
+
+        regular_file = selected.positions(build)
+        filter_damage = ancient and marker_file != regular_file
+        marker_file = regular_file
+        markers = read_markers(marker_file)
+        markers, polarity = correct_polarity(
+            markers,
+            marker_file,
+            selected.polarity_file,
+            selected.id,
+            build,
+            ancient=filter_damage,
+        )
+        logging.info(
+            "Y marker polarity: %s independently verified reversals corrected",
+            polarity["corrected"],
+        )
+    else:
+        markers = read_markers(marker_file)
     predictor = Predictor(selected.tree_file, selected.qc)
     sample = input_path.name
     for suffix in (".vcf.gz", ".vcf", ".bcf", ".bam", ".cram"):
@@ -325,12 +209,40 @@ def analyze(
                 if not no_ref_inference:
                     assert reference is not None
                     reference_sequence = _reference_sequence(reference)
-                calls, _ = _query_vcf(
+                calls, has_reference_evidence = _query_vcf(
                     input_path,
                     positions={m.pos for m in markers},
                     reference_sequence=reference_sequence,
                     min_quality=quality,
+                    min_reads=min_reads,
+                    majority=majority,
+                    work=Path(temp),
                 )
+                if not has_reference_evidence:
+                    warn(
+                        "y_reference_evidence_missing",
+                        "No callable reference evidence was found at the Y markers. Results may be "
+                        "incomplete; use a gVCF or all-sites VCF. Missing sites "
+                        "are not confirmed callable.",
+                    )
+                if assume_reference:
+                    assert reference_sequence is not None
+                    warn(
+                        "y_reference_assumed",
+                        "Assuming the reference at absent Y markers for upstream "
+                        "Yleaf compatibility; this can bias the haplogroup.",
+                    )
+                    for marker in markers:
+                        if marker.pos <= len(reference_sequence):
+                            calls.setdefault(
+                                marker.pos,
+                                Call(
+                                    reference_sequence[marker.pos - 1],
+                                    0,
+                                    100.0,
+                                    assumed_reference=True,
+                                ),
+                            )
                 total_reads = "VCF"
             else:
                 calls, total_reads = _alignment_calls(
@@ -383,6 +295,7 @@ def analyze(
                         if pos_file
                         else selected.identifier(marker_file),
                         "sha256": file_sha256(marker_file),
+                        **({"polarity": polarity} if polarity is not None else {}),
                     },
                     "citation": CREDIT,
                     "min_reads": min_reads,
@@ -390,6 +303,7 @@ def analyze(
                     "base_majority": majority,
                     "min_score": min_score,
                     "reference_inference": is_vcf and not no_ref_inference,
+                    "assume_reference": assume_reference,
                 },
                 indent=2,
             )

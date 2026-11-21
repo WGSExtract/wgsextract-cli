@@ -21,6 +21,8 @@ footer_link_href: 'wgs-guide.html'
 
 A microarray or SNP chip file is not a complete genome. It is a compact table of markers that a downstream service knows how to read. WGS Extract builds these files by looking up target positions in your aligned WGS data and writing the requested vendor-style format.
 
+See the [microarray guide](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/microarray.md){.inline-link} for quality gates, coordinate projection, output reuse and vendor identity/strand policies.
+
 Start with one target format and a small region if you are checking plumbing. Every run writes the combined kit (all chips' markers); `--formats all` writes only that, and a comma-separated list adds vendor files. If a target site has too little coverage or ambiguous data, the simulated result may be missing or no-called depending on the format and command behavior.
 
 Each output gets an `.inputs.json` file beside it recording what made it: the input and reference files, the formats and every option that changes genotypes. Running the same command again reuses outputs whose inputs are unchanged. A changed input, reference or option regenerates them. Adding a format generates only that format, from the kept combined kit.
@@ -167,7 +169,7 @@ Annotation tools such as VEP add biological context. Download annotation data wi
 :::
 
 ::: callout
-{{ text: **NVIDIA GPU option:** `align`, `realign`, `vcf gatk` and `vcf deepvariant` accept `--gpu` for Parabricks on Linux x86_64. Prepare Docker, NVIDIA Container Toolkit, a suitable GPU (16 GB+), and the Parabricks image yourself; the CLI only validates them. Native Windows/macOS and Linux ARM64 GPU paths are unsupported; WSL2 is untested. Ultima flow workflows are not supported by this path. See [GPU setup](https://github.com/WGSExtract/wgsextract-cli#nvidia-gpus-parabricks){.inline-link} and [hardware and acceleration](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md){.inline-link}. }}
+{{ text: **NVIDIA GPU option:** `align`, `realign`, `vcf gatk` and `vcf deepvariant` accept `--gpu` for Parabricks on Linux x86_64. Prepare Docker, NVIDIA Container Toolkit, a suitable GPU (16 GB+), and the Parabricks image yourself; the CLI only validates them. Native Windows/macOS and Linux ARM64 GPU paths are unsupported; WSL2 is untested. Ultima flow workflows are not supported by this path. See [GPU setup](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md#nvidia-gpus-parabricks){.inline-link} and [hardware and acceleration](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/hardware.md){.inline-link}. }}
 :::
 :::
 :::

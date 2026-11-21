@@ -87,6 +87,16 @@ if [ "${3:-}" = watchdog ]; then
     fi
     "$aligner" --cpu-upstream mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq > cpu-hang.sam \
         2> cpu-hang.log
+    # #1228: a command must not run on Metal if its watchdog cannot start.
+    for backend in metal auto; do
+        status=0
+        "$aligner" --backend "$backend" --gpu-inject-watchdog-start-failure --gpu-policy all \
+            mem -t 4 -K 20000 reference.fa pairs-R1.fq pairs-R2.fq \
+            > "watchdog-start-$backend.sam" 2> "watchdog-start-$backend.log" || status=$?
+        grep -q 'could not start the Metal watchdog thread' "watchdog-start-$backend.log"
+        if [ "$backend" = metal ]; then test "$status" -eq 1; else test "$status" -eq 0; fi
+        same cpu-hang.sam "watchdog-start-$backend.sam"
+    done
     for stage in collect_seeds locate_rows rescue_align extend; do
         status=0
         "$aligner" --metal --gpu-inject-hang "$stage" --gpu-policy all --gpu-rescue-batch 7 \

@@ -594,12 +594,12 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     out_gvcf = str(Path(outdir, GVCF_NAME)) if gvcf else None
     # Absolute, like the journal's paths, so stage files match their records.
     work = absolute_path(Path(outdir, WORK_DIRECTORY))
-    from .caller_ploidy import calling_ploidy, require_diploid, write_intervals
+    from .caller_ploidy import calling_ploidy, haploid_contig_policy, write_intervals
 
     ploidy = calling_ploidy(input_file, ref, caller.lib, outdir, region, commas=False)
     called_region = region
-    if native:
-        require_diploid(ploidy, "wgse-deepvariant")
+    if native and any(i.ploidy != 2 for i in ploidy):
+        native.require_haploid()
     if not any(i.ploidy for i in ploidy):
         raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
     if any(i.ploidy == 0 for i in ploidy):
@@ -613,8 +613,16 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
             )
     haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
     par = None
+    policy = ploidy
     if haploid:
-        par_intervals = [i for i in ploidy if i.chrom in haploid and i.ploidy == 2]
+        policy = haploid_contig_policy(
+            input_file,
+            ref,
+            caller.lib,
+            outdir,
+            ploidy,
+        )
+        par_intervals = [i for i in policy if i.chrom in haploid and i.ploidy == 2]
         if par_intervals:
             par = write_intervals(
                 absolute_path(Path(outdir, ".deepvariant.policy", "par.bed")),
@@ -682,10 +690,10 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 region, checkpoint, batch_size, postprocess, int(threads),
                 str(work / GVCF_NAME) if gvcf else None,
             )  # fmt: skip
-            if haploid:
-                dv_args += ["--haploid_contigs", ",".join(haploid)]
-                if par is not None:
-                    dv_args += ["--par_regions_bed", host_path(par)]
+        if haploid:
+            dv_args += ["--haploid_contigs", ",".join(haploid)]
+            if par is not None:
+                dv_args += ["--par_regions_bed", par if native else host_path(par)]
 
         def preflight(fresh: bool) -> None:
             """State the host requirement; refuse a shortfall only when
@@ -740,18 +748,20 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         if launcher.image:
             recorded_image = dict(image_record(launcher.image))
             _migrate_image(journal, launcher.image, recorded_image)
-        evidence = None
-        if out_gvcf:
-            if native:
-                version = f"wgse-deepvariant {native.version}"
-            elif launcher.image:
-                version = str(recorded_image["image"])
-            else:
-                version = f"run_deepvariant ({local_dv})"
-            evidence = (
-                out_gvcf,
-                caller_provenance("deepvariant", version, ploidy, called_region),
-            )
+        if native:
+            version = f"wgse-deepvariant {native.version}"
+        elif launcher.image:
+            version = str(recorded_image["image"])
+        else:
+            version = f"run_deepvariant ({local_dv})"
+        provenance = caller_provenance(
+            "deepvariant",
+            version,
+            ploidy,
+            called_region,
+            policy_intervals=policy,
+        )
+        evidence = (out_gvcf, provenance) if out_gvcf else None
         logging.info(LOG_MESSAGES["vcf_calling_deepvariant"].format(output=out_vcf))
         try:
             done = _run_stages(
@@ -773,6 +783,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
                 ),
                 out_vcf=out_vcf,
                 evidence=evidence,
+                provenance=provenance,
                 preflight=None if journal.dry_run else preflight,
             )  # fmt: skip
         except (OSError, subprocess.SubprocessError) as e:

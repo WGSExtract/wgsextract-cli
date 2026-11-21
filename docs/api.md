@@ -130,8 +130,8 @@ reports `with_bins` writes are `current` (both newer than the input).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
-| `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
-| `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
+| `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the non-N bases in one streaming pass. |
+| `with_bins` | `bool` | `False` | `--with-bins` | Also measure the --bins depth breadth and show its table in place of the coverage table, which info --detailed then shows; up-to-date whole-file reports are shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
 | `min_depth` | `int` | `30` | `--min-depth` | With --by, list targets whose mean depth is below this (default: 30) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed; None saves none. With bins or by, that table's format instead (None: tsv). One of: `tsv`, `parquet` |
@@ -464,6 +464,7 @@ or gene.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
 | `cram_version` | `str` | `'3.0'` | `--cram-version` | CRAM version to output (default: 3.0 for better compatibility) One of: `2.1`, `3.0`, `3.1` |
+| `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | Only native Windows CRAM 3.1 encoding with a local reference uses the validated samtools-mimalloc variant; unavailable variants fall back to samtools. The compatibility default CRAM 3.0 is unchanged. One of: `auto`, `off` |
 
 ### `api.bam.to_bam(BamToBamParams)`
 
@@ -829,7 +830,7 @@ workspace.
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
 | `long_read` | `bool` | `False` | `--long-read` | Treat the reads as long reads (PacBio/ONT) and align them with pbmm2 or minimap2. |
@@ -869,7 +870,7 @@ settings and tools are unchanged.
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2/pbmm2 preset. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
@@ -1509,8 +1510,9 @@ Call with GATK; output role `variants`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks). |
 | `pair_hmm_cuda` | `Path \| None` | `None` | `--pair-hmm-cuda` | Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md. Not with --gpu or --scatter. |
+| `pair_hmm_neon` | `Path \| None` | `None` | `--pair-hmm-neon` | Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See packaging/arm64/gkl/README.md. Not with --gpu or --scatter. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes gatk.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1542,7 +1544,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `pacbio` | `bool` | `False` | `--pacbio` | Alias for --model-type PACBIO. |
 | `checkpoint` | `Path \| None` | `None` | `--checkpoint` | A custom model: its directory, or a checkpoint prefix. |
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
-| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-parabricks). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1568,7 +1570,7 @@ Call with Clair3; output role `variants`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes clair3.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1754,6 +1756,7 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 | `min_score` | `float` | `0.95` | `--min-score` | Minimum QC score of a reported haplogroup prediction. |
 | `ancient` | `bool` | `False` | `--ancient` | Use ancient-DNA marker tables. |
 | `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites. |
+| `assume_reference` | `bool` | `False` | `--assume-reference` | VCF: assume --ref at absent markers for upstream Yleaf parity. Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.lineage.y_str(YStrParams)`
@@ -2151,6 +2154,23 @@ HG00096) in the My Genomes library. Reports whether it is installed;
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
+### `api.ref.cytobands(RefCytobandsParams)`
+
+CLI: `wgsextract ref cytobands`.
+
+Validate/install UCSC cytobands (output role `reference_resource`).
+Missing or invalid tables require explicit `download=True`.
+
+`RefCytobandsParams`: Validate installed UCSC cytobands; fetch a missing table only with
+`--download`. Installs primary-chromosome hg19/hg38 ideograms for the
+offline viewer; no sample data is sent.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `build` | `str` | `'hg38'` | `--build` | Cytoband assembly (default: hg38). One of: `hg38`, `hg19` |
+| `download` | `bool` | `False` | `--download` | Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; only the public assembly URL is requested, never sample data. |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder (default: config reference_library); an explicit FASTA resolves its library. |
+
 ### `api.ref.gene_map(RefGeneMapParams)`
 
 CLI: `wgsextract ref gene-map`.
@@ -2298,7 +2318,7 @@ fastVEP's databases. Shows each source's terms; reruns resume.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
-| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: ref/acmg/sa in the library). |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: downloads/acmg/sa in the library). |
 | `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
 | `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
 | `site_data` | `str \| None` | `None` | `--site-data` | per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB downloaded for a genome); vcf acmg reads each input's own sites of them. library builds them. Default: as the folder was built, else library. One of: `library`, `per-run` |
@@ -2343,7 +2363,7 @@ templates, or delete them. `microarray` builds a missing one itself.
 make standard tools reject them.
 
 `ftdna_bam` replaces the spaces in read names with `:`; `ftdna_vcf`
-drops the characters VCF forbids from the FILTER column. Each writes
+maps legacy FILTER expressions to declared IDs (docs/ftdna-vcf-repair.md). Each writes
 `<input stem>_repaired.bam` (or `.vcf`) in `outdir`, else beside the
 input, or the `output` path. The result's metrics count the records read
 (`records`) and changed (`repaired_records`). The CLI also repairs a
@@ -2374,8 +2394,11 @@ CLI: `wgsextract repair ftdna-vcf`.
 Repair an FTDNA VCF's FILTER column (see `RepairFtdnaVcfParams`).
 
 `RepairFtdnaVcfParams`: Copy an FTDNA VCF (plain, gzipped or BCF) to a plain VCF whose FILTER
-values hold only the characters VCF allows (`Low Qual;q<10` becomes
-`LowQual;q10`), so bcftools and VEP accept it.
+IDs are all declared, so bcftools and VEP accept it. Legacy expressions
+become IDs that keep their meaning (`DP=1` becomes `DP1`, `QUAL=12`
+`Q40`); ones it can't interpret become `FTDNA_UNKNOWN` with a
+warning. Failed calls never become PASS, and the original expressions
+are kept in `INFO/FTDNA_FILTER`. See docs/ftdna-vcf-repair.md.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2562,7 +2585,7 @@ decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one; download permits building it if missing. |
+| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's downloads/t1k_hla one; download permits building it if missing. |
 
 ### `api.genotyping.repeats(TypingStrParams)`
 
@@ -2769,8 +2792,9 @@ with `dataclasses.replace` and call `issue_url` for a new link.
 
 ## `api.deps`
 
-`deps check`: which bioinformatics tools this installation finds, where,
-and in what version.
+`deps check` and `deps list`: which bioinformatics tools this
+installation finds, where, and in what version; `deps install` and
+`deps uninstall`: add or remove an optional tool's Pixi environment.
 
 `check` without `tool` lists every mandatory and optional tool. The
 result's `details` hold `mandatory` and `optional`: one
@@ -2780,6 +2804,19 @@ a missing one). It fails with exit code 3 (error kind
 checks that one tool: its path is `details["path"]` and the result's text,
 and a missing tool fails the same way, naming the command that installs it
 when there is one.
+
+`list` reports the same, plus `details["tools"]`: every tool, those not
+built for this platform included, with its `group` ("mandatory" or
+"optional"), `status` ("installed", "missing" or "unavailable"), its own
+Pixi `environment` and the `environment_tools` it provides,
+`can_install` and `can_uninstall`, and a `note` (how to install it
+yourself, or why it can't be had). It doesn't fail on a missing tool.
+
+`install` downloads and installs the Pixi environment that provides an
+optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
+(`pixi clean -e <env>`), and with it the other tools in that environment.
+Tools that come with the CLI itself, or that you install yourself, are
+refused with how to get them.
 
 ### `api.deps.check(DepsCheckParams)`
 
@@ -2792,6 +2829,41 @@ Check the installed tools (see `DepsCheckParams`).
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `tool` | `str \| None` | `None` | `--tool` | The one tool to check (e.g. samtools); fails if it is missing. |
+
+### `api.deps.list_tools(DepsListParams)`
+
+CLI: `wgsextract deps list`.
+
+List every tool and its status (see `DepsListParams`).
+
+`DepsListParams`: List every tool, its status and whether it can be installed or removed.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+
+### `api.deps.install(DepsInstallParams)`
+
+CLI: `wgsextract deps install`.
+
+Install an optional tool's Pixi environment (see `DepsInstallParams`).
+
+`DepsInstallParams`: Download and install the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
+
+### `api.deps.uninstall(DepsUninstallParams)`
+
+CLI: `wgsextract deps uninstall`.
+
+Remove an optional tool's Pixi environment (see `DepsUninstallParams`).
+
+`DepsUninstallParams`: Remove the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
 
 ## `api.examples`
 
@@ -2895,7 +2967,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
-| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |
+| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
 | `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |

@@ -88,7 +88,13 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
     tail = LogTail()
     root = logging.getLogger()
     root.addHandler(tail)
-    with reserved as stdout, collecting(result, as_json=as_json):
+    from wgsextract_cli.core.atomic_output import output_publication_scope
+
+    with (
+        reserved as stdout,
+        collecting(result, as_json=as_json),
+        output_publication_scope(),
+    ):
         try:
             with (
                 _progress_line(args, result.command) as line,
@@ -98,10 +104,13 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
                 _run(args, explicit_dests, result)
         finally:
             root.removeHandler(tail)
+        card = _card_path(args, result)
         has_manifest = result.manifest_path() is not None
         result.finalize(probe_tools=as_json or has_manifest)
         try:
-            if has_manifest and (manifest := result.write_manifest()):
+            from wgsextract_cli.core.result_card import publish
+
+            if has_manifest and (manifest := publish(result, card)):
                 _index_output(args, manifest, result)
         except OSError as e:
             logging.warning(f"Could not write the result manifest: {e}")
@@ -124,6 +133,37 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
 
 def _to_stdout(text: str) -> None:
     print(text, end="")
+
+
+def card_wanted(command: str, requested: bool | None) -> bool:
+    """Whether a run of ``command`` writes a result card: as ``requested``
+    (--card/--no-card), else as config.toml's result_card. Help and settings
+    commands never do, so a config that asks for cards doesn't litter the
+    output folder with one per `config` run."""
+    if command.split()[:1] and command.split()[0] in READ_ONLY_COMMANDS:
+        return False
+    if requested is None:
+        from wgsextract_cli.core.config import settings
+
+        return bool(settings.get("result_card", False))
+    return requested
+
+
+def _card_path(args: argparse.Namespace, result: CommandResult) -> Path | None:
+    """Where this run's card goes, or None when it gets none. A run with a
+    card always writes its manifest too, for the full paths."""
+    command = str(getattr(args, "command", None) or "")
+    # A --status run only reports on existing outputs; it writes nothing.
+    if reports_status(args) or not card_wanted(command, getattr(args, "card", None)):
+        return None
+    from wgsextract_cli.core.result_card import card_path
+
+    path = card_path(result, getattr(args, "outdir", None))
+    if path is None:
+        from wgsextract_cli.core.result_card import NO_CARD
+
+        logging.info(NO_CARD)
+    return path
 
 
 def _progress_line(

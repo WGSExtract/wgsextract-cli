@@ -371,7 +371,7 @@ def test_path_guard_checks_where_hla_typing_would_build_its_index(
     outside = tmp_path / "outside"
     outside.mkdir()
     try:
-        (library / "ref").symlink_to(outside, target_is_directory=True)
+        (library / "downloads").symlink_to(outside, target_is_directory=True)
     except OSError:
         pytest.skip("can't create symlinks here")
     with pytest.raises(RequestError) as refused:

@@ -1,0 +1,2 @@
+gene	gene_id	transcript	canonical	mane_select	lof.pLI	lof.oe_ci.upper	mis.z_score	syn.z_score
+TINY1	ENSG00000000001	ENST00000000001	true	true	1.0	0.1	4.0	0.1

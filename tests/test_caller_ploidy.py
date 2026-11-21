@@ -150,9 +150,11 @@ def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(
     assert not (sex_par.root / "refused" / "gatk.vcf.gz").exists()
 
 
-def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, request):
+@pytest.mark.parametrize("version", ["0.1.1", "0.3.1"])
+def test_1136_native_deepvariant_refusal_explains_upgrade(sex_par, request, version):
     require_bare_name_fakes()
-    request.getfixturevalue("mac_native")
+    native = request.getfixturevalue("mac_native")
+    native.deepvariant.set_native_version(version)
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
     result = api.vcf.deepvariant(
         VcfDeepvariantParams(
@@ -166,8 +168,39 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, requ
         check=False,
     )
     assert result.status == "failed"
-    assert "wgse-deepvariant does not support this sex/PAR" in str(result.error)
+    assert "does not support this sex/PAR" in str(result.error)
+    assert "0.4.0" in str(result.error)
+    assert "pixi install -e deepvariant" in str(result.error)
+    assert "updated WGS Extract checkout" in str(result.error)
+    assert "PATH" in str(result.error)
     assert not (sex_par.root / "refused" / "deepvariant.vcf.gz").exists()
+
+
+def test_1103_native_policy_reaches_reference_and_calling_stages(sex_par, request):
+    require_bare_name_fakes()
+    native = request.getfixturevalue("mac_native")
+    native.deepvariant.set_native_version("0.4.0")
+    run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
+    result = api.vcf.deepvariant(
+        VcfDeepvariantParams(
+            input=sex_par.bam,
+            ref=sex_par.ref,
+            outdir=sex_par.root / "calls",
+            region="chrX",
+            model_type="WGS",
+            threads=1,
+        ),
+        check=False,
+    )
+    assert result.status == "ok", result.error
+    # contract: recalibration must precede both gVCF GQ binning and GT assignment.
+    for stage in ("make_examples", "postprocess_variants"):
+        opts = native.deepvariant.runs(f"wgse-deepvariant {stage}")[-1]["opts"]
+        assert opts["haploid_contigs"] == "chrX"
+        assert Path(opts["par_regions_bed"]).read_text().splitlines() == [
+            f"chrX\t{sex_par.boundary}\t{sex_par.boundary + 2000}"
+        ]
+    assert (sex_par.root / "calls" / "deepvariant.vcf.gz").is_file()
 
 
 @pytest.mark.parametrize(

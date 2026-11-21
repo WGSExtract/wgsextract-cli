@@ -15,6 +15,7 @@ from wgsextract_cli.api.ref import (
     RefCaddParams,
     RefClinvarParams,
     RefCountNsParams,
+    RefCytobandsParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -53,6 +54,9 @@ cmd_bootstrap = command_handler(
 )
 cmd_count_ns = command_handler(
     "wgsextract_cli.commands.ref.core_commands", "cmd_count_ns"
+)
+cmd_cytobands = command_handler(
+    "wgsextract_cli.commands.ref.cytobands", "cmd_cytobands"
 )
 cmd_dense_sa = command_handler("wgsextract_cli.commands.ref.dense_sa", "cmd_dense_sa")
 cmd_download = command_handler(
@@ -285,7 +289,7 @@ def register(
         "needs",
         None,
         cmd_ref_needs,
-        "Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.",
+        "Report the reference genome, annotation data or optional tools a command line needs that aren't installed, and how to install them.",
     )
     needs.add_argument(
         "--report-json",
@@ -299,6 +303,12 @@ def register(
         help="The wgsextract command line to check, after --.",
     )
     add("gene-map", RefGeneMapParams, cmd_gene_map, CLI_HELP["cmd_ref-gene-map"])
+    add(
+        "cytobands",
+        RefCytobandsParams,
+        cmd_cytobands,
+        "Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download.",
+    )
     for cls, run in RESOURCE_COMMANDS:
         name = cls.COMMAND.removeprefix("ref ")
         add(name, cls, run, _RESOURCE_HELP[name])

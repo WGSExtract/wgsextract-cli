@@ -114,6 +114,21 @@ function apiFetch(baseURL, route, { body, headers = {}, method } = {}) {
   });
 }
 
+test("#1090: opening viewer library files uses API authentication and cannot grant arbitrary paths", async (t) => {
+  const manifest = testManifest();
+  manifest.id = "wgs-extract";
+  manifest.pages[0].sections[0].controls[1].id = "wgs_settings";
+  const { baseURL, tempRoot } = await withTestServer(t, { manifest });
+  const outside = path.join(tempRoot, "outside.bam");
+  await writeFile(outside, "not a library file");
+  for (const route of ["/api/viewer/open", "/api/viewer/close"]) {
+    const response = await apiFetch(baseURL, route, { body: { path: outside, id: "unknown" }, headers: { "x-gfc-token": "" } });
+    assert.equal(response.status, 401);
+  }
+  const response = await apiFetch(baseURL, "/api/viewer/open", { body: { path: outside } });
+  assert.equal(response.status, 403);
+});
+
 /** fetch() cannot spoof Host, so attacks that rely on it go through http.request. */
 function rawRequest(port, route, { method = "POST", headers = {}, body = "" } = {}) {
   return new Promise((resolve, reject) => {
@@ -337,6 +352,37 @@ test("a declared result document is read from stdout, and only its files can be 
   assert.equal(unlisted.status, 403);
   assert.equal(listed.status, 200);
   assert.deepEqual(calls.runProcess.slice(1).map((call) => call.args), [[output]]);
+});
+
+test("only result cards listed in a result document can be shown, as text for a sandboxed frame", async (t) => {
+  const { baseURL, context, tempRoot } = await withTestServer(t);
+  context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"], cardArguments: ["--card"] };
+  context.manifest.pages[0].sections[0].actions[0].resultCard = true;
+  const card = path.join(tempRoot, "sample_info.card.html");
+  const table = path.join(tempRoot, "sample.tsv");
+  const stray = path.join(tempRoot, "other.card.html");
+  await writeFile(card, "<!doctype html><title>info</title><pre>Avg Read Length</pre>");
+  await writeFile(table, "a\tb");
+  await writeFile(stray, "<p>not from a run</p>");
+  const document = {
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [{ path: table, role: "table" }, { path: card, role: "result_card", kind: "html" }],
+  };
+  context.runProcess = async (executable) => ({ exitCode: 0, stdout: executable === "tool" ? JSON.stringify(document) : "", stderr: "" });
+
+  const events = await readNDJSON(await apiFetch(baseURL, "/api/run/stream", {
+    body: { action: { pageID: "main", sectionID: "run", actionID: "run" }, context: runContext },
+  }));
+  const shown = await apiFetch(baseURL, "/api/result/card", { body: { path: card } });
+  const notCard = await apiFetch(baseURL, "/api/result/card", { body: { path: table } });
+  const unlisted = await apiFetch(baseURL, "/api/result/card", { body: { path: stray } });
+
+  assert.match(events[0].command, /tool HG001 --json --card$/);
+  assert.equal(shown.status, 200);
+  assert.deepEqual(await shown.json(), { path: card, name: "sample_info.card.html", html: "<!doctype html><title>info</title><pre>Avg Read Length</pre>" });
+  assert.equal(notCard.status, 403);
+  assert.equal(unlisted.status, 403);
 });
 
 test("PR #530 review: a bug report reads the last action run in the app, not the CLI's last run", async (t) => {

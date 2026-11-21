@@ -13,12 +13,11 @@ from wgsextract_cli.core.table_writer import (
     Column,
     Value,
     table_path,
-    tsv_lines,
     write_table,
 )
 from wgsextract_cli.core.utils import WGSExtractError, popen
 
-from .metrics import IdxStat
+from .metrics import IdxStat, contig_key, is_primary_contig
 from .render import _cram_reference_opts, _resolve_sample_targets
 
 _DEPTH_CHUNK_BYTES = 8 << 20
@@ -108,20 +107,111 @@ _BANDS = ("0", "1-3", "4-7", "8+")
 BINS_TABLE = (
     Column("Seq Name", "TEXT", "Contig."),
     Column("Model Len", "INTEGER", "Contig (or --region) length in bases."),
+    Column(
+        "Model N Len",
+        "INTEGER",
+        "Reference N bases, left out of depth 0 and the fractions; whole contigs "
+        "only, as a partial span's share is unknown.",
+    ),
     *(
-        Column(f"Depth {band} bases", "INTEGER", f"Bases at depth {band}.")
+        Column(f"Depth {band} bases", "INTEGER", f"Non-N bases at depth {band}.")
         for band in _BANDS
     ),
     *(
         Column(
             f"Depth {band} fraction",
             "REAL",
-            f"Fraction of the length at depth {band}.",
+            f"Fraction of the non-N length at depth {band}.",
             ".8f",
         )
         for band in _BANDS
     ),
 )
+_N_COLUMN = BINS_TABLE[2].name
+
+
+def _bins_row(name: str, length: int, ns: int, bins: list[int]) -> tuple[Value, ...]:
+    # Ns have no reads, so they are depth 0; a read placed in an N run can't
+    # make the zero count negative.
+    ns = min(ns, bins[0])
+    counts = [bins[0] - ns, *bins[1:]]
+    callable_bp = length - ns
+    return (
+        name,
+        length,
+        ns,
+        *counts,
+        *(count / callable_bp if callable_bp else 0.0 for count in counts),
+    )
+
+
+def _read_bins_rows(path: Path) -> list[tuple[Value, ...]] | None:
+    """The rows of a TSV bins report, or None for one from before Ns were left
+    out (it has no N column)."""
+    lines = [
+        line.split("\t")
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    ]
+    if not lines or _N_COLUMN not in lines[0]:
+        return None
+    return [
+        (row[0], *(int(v) for v in row[1:7]), *(float(v) for v in row[7:11]))
+        for row in lines[1:]
+    ]
+
+
+def bins_report_current(path: Path, input_path: str) -> bool:
+    """A TSV bins report newer than the input, with Ns left out."""
+    from .render import is_fresh_output
+
+    try:
+        return is_fresh_output(str(path), input_path) and (
+            _read_bins_rows(path) is not None
+        )
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+def _fmt_len(bases: int) -> str:
+    if bases >= 1_000_000:
+        return f"{bases / 1_000_000:,.0f} M"
+    return f"{bases / 1_000:,.0f} K" if bases >= 1_000 else str(bases)
+
+
+def render_bins(rows: list[tuple[Value, ...]], region: str | None = None) -> str:
+    """The v4 "Bin Coverage by Sequence Name" table: the chromosomes and mtDNA,
+    their Total, and the other contigs pooled, as percentages of non-N bases."""
+    shown: list[tuple[str, list[int]]] = []
+    pools = {"Total": [0] * 6, "Other": [0] * 6}  # length, Ns, four bands
+    for row in rows:
+        name = str(row[0])
+        values = [int(str(v)) for v in row[1:7]]
+        primary = (
+            region is not None or is_primary_contig(name) or contig_key(name) == "M"
+        )
+        if primary:
+            shown.append((name, values))
+        pool = pools["Total" if primary else "Other"]
+        pool[:] = [a + b for a, b in zip(pool, values, strict=True)]
+    if not region:
+        shown += [(name, pool) for name, pool in pools.items() if pool[0]]
+
+    def pct(count: int, of: int) -> str:
+        return f"{count / of * 100:.2f} %" if of else "-"
+
+    lines = [
+        "Bin Coverage by Sequence Name (% of non-N bases)",
+        f"{'Seq Name':<10}{'Model Len':>10}{'N Len':>9}{'1 to 3':>10}"
+        f"{'4 to 7':>10}{'8 or More':>11}{'1 or More':>11}",
+    ]
+    for name, (length, ns, _zero, low, mid, high) in shown:
+        of = length - ns
+        lines.append(
+            f"{name:<10}{_fmt_len(length):>10}{_fmt_len(ns):>9}{pct(low, of):>10}"
+            f"{pct(mid, of):>10}{pct(high, of):>11}{pct(low + mid + high, of):>11}"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def run_depth_bins(
@@ -133,14 +223,16 @@ def run_depth_bins(
     table_format: str = "tsv",
     metadata: Mapping[str, str] | None = None,
     reuse: bool = False,
+    n_lengths: Mapping[str, int] | None = None,
 ) -> Path:
     """One samtools depth pass, default filters, both overlapping mates counted.
+    The `n_lengths` N bases (by `contig_key`) of whole contigs are left out.
 
     With ``reuse``, a whole-file TSV report written after the input last changed
     is shown again instead (``--with-bins``: the coverage table it follows is
     reused the same way). ``--bins`` alone always rescans.
     """
-    from .render import is_fresh_output, region_file_tag
+    from .render import region_file_tag
 
     Path(outdir).mkdir(parents=True, exist_ok=True)
     stem = Path(input_path).name + region_file_tag(region) + "_coverage_bins"
@@ -149,10 +241,10 @@ def run_depth_bins(
         reuse
         and not region
         and table_format == "tsv"
-        and is_fresh_output(str(output), input_path)
+        and bins_report_current(output, input_path)
     ):
         logging.info("Using existing depth-bin report %s", output)
-        human_output(output.read_text(encoding="utf-8"), end="")
+        human_output(render_bins(_read_bins_rows(output) or [], region), end="")
         return output
     selected = dict(lengths)
     command = ["samtools", "depth", *_cram_reference_opts(input_path, reference)]
@@ -185,16 +277,17 @@ def run_depth_bins(
                     process.kill()
                     process.wait()
 
-    rows: list[tuple[Value, ...]] = [
-        (
+    ns = n_lengths or {}
+    rows = [
+        _bins_row(
             name,
             selected[name],
-            *bins,
-            *(count / selected[name] if selected[name] else 0.0 for count in bins),
+            ns.get(contig_key(name), 0) if selected[name] == lengths[name] else 0,
+            bins,
         )
         for name, bins in counts.items()
     ]
     write_table(output, BINS_TABLE, rows, table_format, metadata=metadata)
-    human_output(tsv_lines(BINS_TABLE, rows), end="")
+    human_output(render_bins(rows, region), end="")
     logging.info("Depth-bin report saved to %s", output)
     return output

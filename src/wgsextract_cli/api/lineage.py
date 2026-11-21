@@ -135,6 +135,14 @@ class YHaplogroupParams(DownloadParams):
         help="VCF: use explicit genotypes only; otherwise --ref supplies bases "
         "inside callable reference blocks, never at unassessed sites.",
         action="store_true",
+        exclusive="reference-inference",
+    )
+    assume_reference: bool = param(
+        False,
+        help="VCF: assume --ref at absent markers for upstream Yleaf parity. "
+        "Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup.",
+        action="store_true",
+        exclusive="reference-inference",
     )
     qc_min_depth: float | None = depth_param()
 

@@ -34,6 +34,41 @@ manifest; it never updates them automatically. If yours is older, run
 
 `deps check` marks tools in optional Pixi environments (GATK, VEP, DeepVariant, ...) as missing. That's expected: install one when you need it with the `pixi install` command `deps check` prints. When the script installs Pixi or `just`, open a new terminal before using them (or add `~/.pixi/bin`, `%USERPROFILE%\.pixi\bin` on Windows, to `PATH`). Rerun the script at any time; `just setup` does the same once `just` is installed. `--skip-tests` (`-SkipTests` on Windows) skips the smoke tests.
 
+### Pixi environments
+
+Optional tools live in separate environments. From a source checkout or the
+installed `wgsextract-cli/app/`, run
+`pixi install --locked -e <environment>` explicitly before use.
+Feature commands never install dependencies: missing tools name the exact
+install command, including the app manifest path so it works from any directory.
+Installed tools outside PATH launch with `pixi run --no-install -e <environment>`.
+You may also run a whole command inside its installed environment.
+
+| Environment | Used for |
+| :--- | :--- |
+| `default` | Standard commands |
+| `pacbio` | pbmm2, pbsv, Sniffles; `pixi run -e pacbio wgsextract vcf sv --pacbio` |
+| `vep-rs` | Default `vep run` / `vep download`, all platforms; [engines](vep-engines.md) |
+| `vep` | `vep run --engine ensembl`, not native Windows |
+| `cyrius`, `smn`, `t1k`, `expansionhunter`, `longtr`, `strkit` | CYP2D6, SMN, HLA and repeat typing, Linux/macOS; [requirements/licences](variants.md#pharmacogenomics-and-repeat-typing) |
+| `pharmcat` | PharmCAT Python/Java/bcftools runtime |
+| `modkit` | Methylation pileup, Linux/macOS |
+| `verifybamid2` | Contamination QC, Linux/macOS |
+| `parquet` | pyarrow for `--format parquet`, e.g. `pixi run -e parquet wgsextract vcf table ... --format parquet`; no Windows ARM64; [details](parquet.md) |
+| `dev` | pytest, Ruff, mypy; automatically selected by development tasks |
+
+Other optional environments are documented with their features:
+[hardware](hardware.md), [ONT](ont.md), [MultiQC](interop.md#multiqc),
+[relatedness](relate.md), [imputation](imputation.md) and [ACMG](acmg.md).
+Cyrius permits noncommercial use only, no distribution/modification, and
+is not bundled.
+
+On macOS, `bio-tools` environments and the separate `pharmcat` environment
+use Apple's Accelerate BLAS so `bcftools` does not load LLVM OpenMP through
+GSL. Before starting workers, pytest removes only current-user, unwritten
+OpenMP registration files whose PID is absent. For other tools and manual
+cleanup, see [OpenMP troubleshooting](installation.md#macos-openmp-error-15-with-unknown-library).
+
 ### Benchmarking on macOS
 
 Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
@@ -56,6 +91,76 @@ gh pr create --fill
 ```
 
 `just` lists every recipe. Each wraps a `pixi run` task, so `pixi run test` and friends work without `just`.
+
+### Checks and test data
+
+Developer tasks select `dev` automatically:
+
+| Task | What it runs |
+| :--- | :--- |
+| `pixi run test` | Unit/integration tests, excluding end-to-end suites |
+| `pixi run test-ci` | Parallel tests, timings/JUnit and non-gating coverage under `out/` |
+| `pixi run smoke-test` | CLI smoke; `smoke-test-full` adds full-genome/pet tests |
+| `pixi run test-e2e` | Real-data end-to-end suites |
+| `pixi run test-e2e-fake` | Generated-data end-to-end (`pytest --fake-data`), also CI on Linux/macOS/Windows |
+| `pixi run test-remote` | Weekly live download availability, SpliceAI format and HG00096 kit/Omni concordance |
+| `pixi run lint` | Ruff, site-source and GitHub Actions validation |
+| `pixi run format` | `ruff format .` |
+| `pixi run typecheck` | Strict mypy on `src/wgsextract_cli` |
+| `pixi run site-build` | Rebuild [site](site_generation.md) |
+| `pixi run benchmark-dataset` | Rebuild release-backed mini-genome |
+| `pixi run stats` | Statistics; install [cloc](https://github.com/AlDanial/cloc) separately |
+
+With [just](https://github.com/casey/just), `just run <args>` runs the CLI.
+`just test`, `lint`, `fmt`, `typecheck`
+and `check` (all four) are aliases; `just ci` runs lint/type checks,
+regular tests and generated small/full-genome integration without formatting,
+keeping pytest scratch under `out/`.
+
+PR/main CI is bounded and cancels superseded runs. A separate lint-only
+environment runs Ruff, workflows and strict mypy without reference downloads;
+genomic jobs cache public hs38. Action updates retain full commit SHAs and
+version comments from allow-listed sources, not a duplicate validator SHA
+table. See [CI routing](ci_routing.md).
+
+The weekly **Pixi refresh** resolves within manifest pins, restores declared
+archive digests and validates the lock candidate with a read-only token.
+It force-pushes validated changes to fixed `automation/pixi-refresh` and
+opens/updates one PR; no change opens none and closes a superseded PR.
+CI waits for maintainer approval (“Approve workflows to run” or the PR-body
+command), then runs normal checks. It never auto-merges dependencies.
+Numerical-tool updates still need public small/full-genome byte-parity checks.
+
+Real-data tests use pytest options or config:
+
+```bash
+pixi run pytest tests/test_smoke_real_basics.py \
+  --real-input /data/HG002.cram --real-ref /data/reference/hs38.fa --real-region chr20
+```
+
+Options include `--real-input`, `--real-ref`, `--real-vcf`, `--real-region`,
+`--real-targets`, `--real-fastq-r1`/`--real-fastq-r2`, `--fake-data` and
+`--full-data` (see `tests/conftest.py`). Or set `real_genome_test_path` and
+`real_genome_tests_enabled = true` in `[dev]` at the end of config.toml.
+`download_cache = true` caches downloads under
+`$XDG_CACHE_HOME/wgsextract/downloads` (default `~/.cache/wgsextract/downloads`),
+pruned after `download_cache_ttl_seconds` (default one week).
+Former top-level settings, including `dev_download_cache` and
+`dev_download_cache_ttl_seconds`, now fail with their `[dev]` replacement.
+
+`wgsextract qc fake-data` generates BAM/CRAM/VCF/FASTQ for tests and reports;
+see [testing workflows](https://wgsextract.github.io/wgsextract-cli/workflows.html#testing).
+
+### Filesystem paths
+
+Use `pathlib.Path`. Shared helpers accept strings/`os.PathLike[str]`
+(`core.paths.PathInput`); keep Paths during manipulation, converting at
+string-based CLI/config/tool-wrapper/public-return boundaries.
+Use `input_stem`/`fasta_prefix` for compound genomic extensions and
+`append_suffix` for `.vcf.gz.tbi`/`.cram.crai` sidecars.
+`absolute_path` normalizes `..` without following symlinks; `Path.resolve()`
+compares real targets. Wrapper commands and samtools `out##idx##index`
+arguments stay strings; do not convert native Windows paths to POSIX spelling.
 
 ### The desktop app
 

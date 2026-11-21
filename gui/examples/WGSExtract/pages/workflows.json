@@ -148,6 +148,7 @@
       "actions": [
         {
           "id": "analyze-comprehensive",
+          "resultCard": true,
           "title": "actions.cli.analyze-comprehensive.title",
           "tooltip": "actions.cli.analyze-comprehensive.tooltip",
           "advancedOnly": true,
@@ -309,6 +310,7 @@
       "actions": [
         {
           "id": "report",
+          "openOutput": ["report_html"],
           "title": "actions.cli.report.title",
           "tooltip": "actions.cli.report.tooltip",
           "advancedOnly": true,
@@ -593,6 +595,7 @@
         },
         {
           "id": "sign-verify",
+          "resultCard": true,
           "title": "actions.cli.sign-verify.title",
           "tooltip": "actions.cli.sign-verify.tooltip",
           "advancedOnly": true,

@@ -1,8 +1,10 @@
-# CHM13 v1 coordinate asset
+# CHM13 v2 coordinate asset
 
 Generated coordinate metadata, not sample genotypes or manufacturer probe
 definitions. The installed marker-only template union and pinned AADR v66.p1
-panels provide 2,862,500 GRCh37/rCRS sites. Existing template/AADR provenance
+panels provide 2,986,594 GRCh37/rCRS sites: every CombinedKit v5 template
+(`CHM13_V2_FORMATS`), with FTDNA_V1_Affy lifted from NCBI36 and FTDNA's Y files
+from GRCh38. Existing template/AADR provenance
 applies to those inputs; upstream reference, chain and marker checksums are
 recorded in `manifest.json`.
 
@@ -20,7 +22,8 @@ the public AnVIL HG00096 CRAM. Other reference variants are not interchangeable.
 * `chm13-sites-*.bin.gz`: bounded delta/varint source-sorted coordinates,
   reciprocal status, orientation, REF diagnostics and native lookup permutation.
   Compressed SHA256:
-  `7f6cabc29769f400cfb0879d24f828d79a1de2aed843520f776bbb6694309b35`.
+  `3b027397307021e13b575df2e8e0020e552507e8f437dd67ae79ef01c8971601`.
+  The file name's `v1` is the codec version, unchanged since the v1 asset.
 * `mt-alignment-*.fa.gz`: pinned rCRS/original-CHM13 sequences and the
   origin-normalized mitochondrial alignment. Coordinates map back to the real
   native circular origin; ambiguous/N/gapped pairs are not called.

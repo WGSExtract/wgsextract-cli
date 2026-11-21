@@ -1,7 +1,9 @@
 import ast
 import functools
+import itertools
 import os
 import signal
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -9,6 +11,7 @@ from typing import Any
 import pytest
 
 from tests.fake_tools import FakePixi
+from tests.macos_openmp import sweep_unwritten_openmp_registrations
 from tests.smoke_utils import isolate_home, state_directory_setting
 from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
@@ -151,8 +154,11 @@ _CHECKOUT_STATE = repo_root() / "state"
 _CHECKOUT_STATE_EXISTED = _CHECKOUT_STATE.exists()
 
 
-def pytest_sessionstart() -> None:
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
     """Initialize real/session test defaults explicitly, not during config import."""
+    if sys.platform == "darwin" and not hasattr(session.config, "workerinput"):
+        sweep_unwritten_openmp_registrations(Path("/private/tmp"))
     reload_settings()
 
 
@@ -202,6 +208,24 @@ def _isolate_session_config(
     settings.update(saved)
 
 
+_HOMES = pytest.StashKey[tuple[Path, "itertools.count[int]"]]()
+
+
+def _new_home(config: pytest.Config, factory: pytest.TempPathFactory) -> Path:
+    """A fresh, empty home directory. All homes share one parent and are
+    numbered here: tmp_path_factory.mktemp lists the whole base temporary
+    directory on each call, so a home apiece from it slowed every later test
+    as they piled up (#1218). Names keep a "home" prefix: issue reports
+    redact the home folder's name as the user name, and a bare number would
+    redact numbers in report text."""
+    if _HOMES not in config.stash:
+        config.stash[_HOMES] = (factory.mktemp("homes"), itertools.count())
+    parent, numbers = config.stash[_HOMES]
+    home = parent / f"home{next(numbers)}"
+    home.mkdir()
+    return home
+
+
 @pytest.fixture(autouse=True)
 def _isolate_user_config(
     request: pytest.FixtureRequest,
@@ -225,7 +249,7 @@ def _isolate_user_config(
             for line in real.splitlines()
             if not line.lstrip().startswith("state_directory")
         )
-    _isolate(monkeypatch, tmp_path_factory.mktemp("home"), real)
+    _isolate(monkeypatch, _new_home(request.config, tmp_path_factory), real)
     try:
         yield
     finally:

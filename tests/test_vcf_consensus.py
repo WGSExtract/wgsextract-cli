@@ -2,12 +2,20 @@
 
 import gzip
 import logging
+import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
+from tests.fake_tool_launchers import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import consensus
+from wgsextract_cli.core.atomic_output import atomic_output_mode
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -16,10 +24,13 @@ pytestmark = needs_htslib
 REF = "ACGT" * 50
 
 
-def _vcf(path: Path, body: str, contigs=("chr1",), samples=("S",)) -> str:
+def _vcf(
+    path: Path, body: str, contigs=("chr1",), samples=("S",), *, header="", length=200
+) -> str:
     text = (
         "##fileformat=VCFv4.2\n"
-        + "".join(f"##contig=<ID={c},length=200>\n" for c in contigs)
+        + header
+        + "".join(f"##contig=<ID={c},length={length}>\n" for c in contigs)
         + '##FILTER=<ID=FAIL,Description="f">\n'
         '##INFO=<ID=END,Number=1,Type=Integer,Description="e">\n'
         '##INFO=<ID=SVTYPE,Number=1,Type=String,Description="s">\n'
@@ -35,11 +46,19 @@ def _vcf(path: Path, body: str, contigs=("chr1",), samples=("S",)) -> str:
     return bgzip_index(plain, path)
 
 
-def _to_fasta(tmp_path: Path, body: str, *argv: str, contigs=("chr1",), ref=None):
+def _to_fasta(
+    tmp_path: Path,
+    body: str,
+    *argv: str,
+    contigs=("chr1",),
+    ref=None,
+    header="",
+    seq=REF,
+):
     """Run `vcf to-fasta` and return {header: sequence} of the consensus."""
     ref_path = tmp_path / "ref.fa"
-    ref_path.write_text("".join(f">{c}\n{REF}\n" for c in ref or ("chr1",)))
-    vcf = _vcf(tmp_path / "v.vcf.gz", body, contigs)
+    ref_path.write_text("".join(f">{c}\n{seq}\n" for c in ref or ("chr1",)))
+    vcf = _vcf(tmp_path / "v.vcf.gz", body, contigs, header=header, length=len(seq))
     out = tmp_path / "out"
     run_wgsextract(
         "vcf", "to-fasta", "--input", vcf, "--ref", str(ref_path),
@@ -102,6 +121,43 @@ def test_uncalled_n_keeps_only_called_reference_and_masks_no_calls(tmp_path):
     body = _rec(12, "T", "C", "0/0") + _rec(16, "T", "G", "./.")
     seqs = _to_fasta(tmp_path, body, "--uncalled", "n", "--region", "chr1:1-20")
     assert seqs == {"chr1:1-20": "N" * 11 + "T" + "N" * 8}
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "##GVCFBlock0-20=minGQ=0(inclusive),maxGQ=20(exclusive)\n",
+        "##wgseReferenceEvidence=<Engine=bcftools,Version=1.23,QualityModel=depth>\n",
+    ],
+    ids=["gatk-band", "published-evidence"],
+)
+def test_1222_declared_gvcf_with_single_base_calls_masks_gaps(tmp_path, header):
+    body = _rec(2, "C", ".", "0/0") + _rec(4, "T", ".", "0/0")
+    seqs = _to_fasta(
+        tmp_path, body, "--uncalled", "auto", "--region", "chr1:1-5", header=header
+    )
+    assert seqs == {"chr1:1-5": "NCNTN"}
+
+
+def test_1222_declared_gvcf_with_late_block_masks_gaps(tmp_path):
+    ref = REF * 12
+    # More single-base calls than the fallback probe inspects.
+    body = "".join(_rec(pos, ref[pos - 1], ".", "0/0") for pos in range(1, 2101))
+    body += _rec(2102, "C", "<NON_REF>", "0/0", info="END=2104")
+    seqs = _to_fasta(
+        tmp_path,
+        body,
+        "--uncalled",
+        "auto",
+        "--region",
+        "chr1:2100-2106",
+        header=(
+            '##ALT=<ID=NON_REF,Description="Any non-reference allele">\n'
+            "##GVCFBlock0-20=minGQ=0(inclusive),maxGQ=20(exclusive)\n"
+        ),
+        seq=ref,
+    )
+    assert seqs == {"chr1:2100-2106": "TNCGTNN"}
 
 
 def test_gvcf_no_call_block_is_masked_whole(tmp_path):
@@ -184,24 +240,157 @@ def test_missing_reference_fails_before_writing(tmp_path):
     assert not list(tmp_path.glob("*consensus*"))
 
 
-def test_failure_while_writing_removes_partial_outputs(tmp_path, monkeypatch):
-    def fail(stages, stdout=None, description=""):
-        stdout.write(b"partial")
-        Path(tmp_path / "out" / "v_consensus.chain").write_text("partial")
-        raise WGSExtractError("consensus died")
-
-    monkeypatch.setattr(consensus, "run_pipeline", fail)
-    (tmp_path / "out").mkdir()
-    with pytest.raises(WGSExtractError, match="consensus died"):
-        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain", contigs=("chr1",))
-    assert list((tmp_path / "out").iterdir()) == []
+def _consensus_outputs(out: Path) -> dict[str, bytes]:
+    # The persistent lock serializes publishers; it is not a result artifact.
+    return {
+        path.name: path.read_bytes()
+        for path in out.iterdir()
+        if not path.match(".wgse_publish-*.guard")
+    }
 
 
-def test_is_gvcf_ignores_structural_variant_ends(tmp_path):
+@pytest.mark.parametrize("previous_result", [False, True], ids=["first-run", "retry"])
+def test_1236_ref_mismatch_leaves_consensus_outputs_untouched(
+    tmp_path, previous_result
+):
+    out = tmp_path / "out"
+    with atomic_output_mode(True):
+        if previous_result:
+            assert _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain") == {
+                "chr1": _with(12, "T", 2)
+            }
+            names = (
+                "v_consensus.fa.gz",
+                "v_consensus.fa.gz.fai",
+                "v_consensus.fa.gz.gzi",
+                "v_consensus.chain",
+            )
+            expected = {name: (out / name).read_bytes() for name in names}
+        else:
+            expected = {}
+        with pytest.raises(WGSExtractError, match="does not match the REF allele"):
+            _to_fasta(tmp_path, _rec(12, "A", "C", "1/1"), "--chain")
+
+    assert _consensus_outputs(out) == expected
+
+
+def test_1236_failed_faidx_retry_preserves_consensus(tmp_path, monkeypatch):
+    require_bare_name_fakes()
+    out = tmp_path / "out"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    previous = _consensus_outputs(out)
+    samtools = get_tool_path("samtools")
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "samtools",
+        "import os, sys\n"
+        "if sys.argv[1] == 'faidx' and sys.argv[2].endswith('.fa.gz'):\n"
+        "    sys.exit('cannot index consensus output')\n"
+        f"os.execv({samtools!r}, [{samtools!r}, *sys.argv[1:]])\n",
+    )
+    with monkeypatch.context() as env:
+        env.setenv("PATH", str(bindir), prepend=os.pathsep)
+        clear_tool_caches()
+        try:
+            with pytest.raises(WGSExtractError, match="cannot index consensus output"):
+                _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+        finally:
+            clear_tool_caches()
+    assert _consensus_outputs(out) == previous
+
+
+@pytest.mark.parametrize("publishing", [False, True], ids=["retiring", "publishing"])
+def test_1236_interrupt_after_rename_restores_prior_consensus(
+    tmp_path, monkeypatch, publishing
+):
+    out = tmp_path / "out"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    previous = _consensus_outputs(out)
+    replace = Path.replace
+    interrupted = False
+
+    def interrupted_replace(source, target):
+        nonlocal interrupted
+        result = replace(source, target)
+        matches = (
+            target == out / "v_consensus.fa.gz.gzi"
+            if publishing
+            else source == out / "v_consensus.fa.gz"
+        )
+        if matches and not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return result
+
+    monkeypatch.setattr(Path, "replace", interrupted_replace)
+    with pytest.raises(KeyboardInterrupt):
+        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+
+    assert _consensus_outputs(out) == previous
+
+
+def test_1236_blocked_index_destination_leaves_no_partial_consensus(tmp_path):
+    out = tmp_path / "out"
+    blocked = out / "v_consensus.fa.gz.gzi"
+    blocked.mkdir(parents=True)
+
+    with pytest.raises(WGSExtractError, match=blocked.name):
+        _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain")
+
+    assert [
+        path for path in out.iterdir() if not path.match(".wgse_publish-*.guard")
+    ] == [blocked]
+    assert blocked.is_dir()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1236_successful_retry_keeps_private_consensus_permissions(tmp_path):
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    fasta = tmp_path / "out" / "v_consensus.fa.gz"
+    fasta.chmod(0o600)
+
+    assert _to_fasta(tmp_path, _rec(12, "T", "C", "1/1"), "--chain") == {
+        "chr1": _with(12, "C")
+    }
+    assert fasta.stat().st_mode & 0o777 == 0o600
+
+
+def test_1236_cancelled_api_retry_waiting_to_publish_preserves_outputs(tmp_path):
+    out = tmp_path / "out"
+    ref = tmp_path / "ref.fa"
+    vcf = tmp_path / "v.vcf.gz"
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    expected = _consensus_outputs(out)
+    _vcf(vcf, _rec(12, "T", "C", "1/1"))
+    params = api.vcf.VcfToFastaParams(input=vcf, ref=ref, outdir=out, chain=True)
+    cancel = api.CancelToken()
+    guard = next(out.glob(".wgse_publish-*.guard"))
+
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        with exclusive_lock(guard.with_suffix("")):
+            run = workers.submit(api.vcf.to_fasta, params, cancel=cancel, check=False)
+            deadline = time.monotonic() + 10
+            while not any(out.glob(".wgse_publish_*/*.gzi")):
+                assert not run.done(), run.result()
+                assert time.monotonic() < deadline, "consensus never reached indexing"
+                time.sleep(0.01)
+            cancel.cancel()
+            assert run.result(timeout=5).status == "cancelled"
+
+    assert _consensus_outputs(out) == expected
+
+
+def test_1222_structural_variant_end_does_not_mask_uncovered_bases(tmp_path):
     sv = _rec(12, "T", "<DEL>", "1/1", info="SVTYPE=DEL;END=40")
-    assert not consensus.is_gvcf(_vcf(tmp_path / "sv.vcf.gz", sv))
+    assert _to_fasta(tmp_path, sv, "--uncalled", "auto") == {
+        "chr1": REF[:12] + REF[40:]
+    }
+
+
+def test_variant_with_non_ref_symbol_and_end_identifies_gvcf(tmp_path):
     block = _rec(1, "A", "C,<NON_REF>", "0/1", info="END=1")
-    assert consensus.is_gvcf(_vcf(tmp_path / "g.vcf.gz", block))
+    assert _to_fasta(tmp_path, block, "--uncalled", "auto") == {"chr1": "M" + "N" * 199}
 
 
 def test_uncalled_mask_lists_gaps_between_overlapping_records(tmp_path):

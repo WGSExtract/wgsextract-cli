@@ -539,10 +539,7 @@ class Genotypes:
         self.has_blocks = False
         # A gVCF of only single-base reference records (ALT ".") is known by
         # its header: WGS Extract's reference-evidence line or GATK's bands.
-        self.is_gvcf = any(
-            line.startswith((f"##{evidence.HEADER_KEY}=", "##GVCFBlock"))
-            for line in header.splitlines()
-        )
+        self.is_gvcf = evidence.header_declares_gvcf(header)
         command = [
             "bcftools",
             "query",

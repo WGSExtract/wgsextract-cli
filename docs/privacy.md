@@ -19,6 +19,12 @@ verified data is reused offline. `--no-download` overrides a persistent opt-in:
 allow_reference_downloads = false
 ```
 
+`ref cytobands` validates installed tables offline and requires its own
+explicit `--download` to fetch missing UCSC `cytoBand` data, even if the
+persistent setting is enabled. The request contains only the hg19/hg38 public
+assembly path on `hgdownload.soe.ucsc.edu`; no sample-derived data is sent.
+The genome viewer uses installed tables only and never requests UCSC data.
+
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.
@@ -44,6 +50,10 @@ available, use byte-identical public assets and the same consent. A mirror is
 not permission to download. No reference download sends sample files,
 genotypes or variant coordinates.
 
+`vep run` uses a local cache and fails if the required Ensembl cache is
+missing. Choosing `--engine ensembl` does not authorize sending variant
+queries. The separate `vep download` command fetches public data only.
+
 | Opt-in | Destination | Request data |
 | --- | --- | --- |
 | `qc ancestry --download` | GitHub WGSExtract releases/CDN | Pinned HGDP+1KG reference filename, not sample ancestry or positions |
@@ -61,11 +71,19 @@ genotypes or variant coordinates.
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
 | Desktop **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
 | Desktop **Setup**, reference/dataset download actions | GitHub, Pixi/Conda/PyPI registries and each selected resource publisher | Selected package versions, platform and public dataset identifiers, not sample information |
+| Desktop genome viewer **Connect and view remote file**, after transfer consent | The operator-selected server URL displayed in the viewer | Selected server-side sample/index/reference paths, adjacent FASTA index paths and genomic byte offsets; the backend authenticates with the server token and receives selected genomic/reference bytes |
 
 Opening an external report/documentation link is an explicit browser action;
 the browser's own privacy settings apply. Generated reports do not load remote
 scripts, fonts or images automatically. The desktop's UI and job server talk
-over authenticated loopback connections on this computer, not a remote service.
+over authenticated loopback connections on this computer. The optional
+[remote genome viewer](../gui/docs/genome-viewer.md#view-files-on-a-remote-server)
+uses that local backend to proxy explicitly selected server file ranges.
+Importing or restoring its private TOML configuration makes no remote request.
+The backend keeps the server token outside browser-delivered data; the viewer
+receives revocable per-file grants. HTTPS retains certificate validation;
+redirects and cookie forwarding are disabled. Plain HTTP exposes credentials
+and genomic traffic, so use an operator-managed TLS proxy or encrypted tunnel.
 Opening the desktop's Reference Genomes page reads only local/catalog metadata
 and cached sizes, including old sizes. **Look up sizes** requires confirmation
 of the destinations and requests before any remote size lookup.
@@ -82,7 +100,7 @@ behavior. Classification describes the baseline, before this change.
 | `extract` and `bam` families, `repair`, `align`, local-input `realign`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
-| VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | No | Local caches/indexes only; VEP cache missing names `vep download` |
+| VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
 | DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; `--pull=never`; no runtime dependency installation |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |

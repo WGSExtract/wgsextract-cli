@@ -6,6 +6,8 @@ writes at their own paths, as the calling user, so paths in arguments need no
 translation and outputs aren't owned by root.
 """
 
+import csv
+import io
 import json
 import logging
 import os
@@ -14,11 +16,11 @@ import sys
 import threading
 import uuid
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.execution_context import context_thread, current
 from wgsextract_cli.core.ref_library.lookup import REF_PATH
 from wgsextract_cli.core.steps import RUN_TAG
 from wgsextract_cli.core.utils import (
@@ -125,6 +127,16 @@ def link_chain(path: str) -> list[str]:
     return chain if target in chain else [*chain, target]
 
 
+def _bind_mount(path: str) -> list[str]:
+    if sys.platform == "win32" or ":" not in path:
+        return ["-v", f"{path}:{path}"]
+    # Both engines parse --mount as CSV, with separate source and target
+    # fields. Keep Docker Desktop's existing Windows drive-path syntax.
+    spec = io.StringIO()
+    csv.writer(spec).writerow(["type=bind", f"source={path}", f"target={path}"])
+    return ["--mount", spec.getvalue().removesuffix("\r\n")]
+
+
 def run_container(
     image: str,
     command: list[str],
@@ -140,7 +152,9 @@ def run_container(
 ) -> subprocess.CompletedProcess[str]:
     """Run ``command`` in ``image``. ``paths`` are the files and directories it
     reads or writes, and ``command`` names them by host_path; their directories
-    are mounted at the same paths in the container.
+    are mounted at the same paths in the container. POSIX mount paths with
+    both a colon and a comma or double quote require an engine with CSV
+    ``--mount`` support (Docker or Podman 4.9 and later).
 
     With ``oom_error``, an out-of-memory kill of any process in the container
     stops it and raises that message, for tools such as DeepVariant whose
@@ -171,13 +185,15 @@ def run_container(
     # gets an empty folder of its own (#636).
     cmd += ["-e", f"{REF_PATH}={CONTAINER_REF_PATH}"]
     for mount in mounts:
-        cmd += ["-v", f"{mount}:{mount}"]
+        cmd += _bind_mount(mount)
     name = f"wgsextract-{uuid.uuid4().hex[:12]}"
     cmd += ["--name", name]
     if tag := os.environ.get(RUN_TAG):
         # A rerun finds the container of a step whose wgsextract was killed.
         cmd += ["--label", f"{STEP_LABEL}={tag}"]
     cmd += [*(["-w", mounts[0]] if mounts else []), image, *command]
+    token = current().cancel
+    interrupted = False
     try:
         if oom_error is None:
             return run_command(cmd, capture_output=capture_output)
@@ -185,23 +201,52 @@ def run_container(
             try:
                 return run_command(cmd, capture_output=capture_output)
             except subprocess.CalledProcessError as error:
-                if oom_killed.wait(OOM_EVENT_GRACE):
+                if not (token and token.cancelled) and oom_killed.wait(OOM_EVENT_GRACE):
                     raise WGSExtractError(oom_error) from error
                 raise
     except (KeyboardInterrupt, SystemExit):
-        # Stopping `docker run` leaves its container running, and a shell as
-        # the container's PID 1 ignores the signals it forwards. engine_call works
-        # after the cancelled process registry refuses new ones.
-        with suppress(OSError, subprocess.SubprocessError):
-            engine_call([cmd[0], "kill", name])
+        interrupted = True
         raise
+    finally:
+        if interrupted or (token and token.cancelled):
+            # The engine, not the `docker run` process, owns the container.
+            _kill_container(cmd[0], name)
 
 
-def engine_call(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+def _kill_container(docker_path: str, name: str) -> None:
+    failures = []
+    # Cancellation can interrupt `run` between creation and start, when only
+    # force-removal works. Leave time for both calls before server escalation.
+    for args in (["kill"], ["rm", "-f"]):
+        try:
+            result = engine_call([docker_path, *args, name], timeout=10)
+        except (OSError, subprocess.SubprocessError) as error:
+            failures.append(f"{args[0]}: {error}")
+            continue
+        if result.returncode == 0:
+            return
+        stderr = result.stderr.strip()
+        if args[0] == "rm" and (
+            "no such container" in stderr.lower()
+            or "no container with name or id" in stderr.lower()
+        ):
+            return
+        failures.append(f"{args[0]}: {stderr or f'exit {result.returncode}'}")
+    logging.warning("Could not clean up container %s (%s).", name, "; ".join(failures))
+
+
+def engine_call(
+    cmd: list[str], *, timeout: float = 30
+) -> subprocess.CompletedProcess[str]:
     """A quick container engine query or command, bounded in case the daemon
     hangs. Unlike run_command, it works once the run has been cancelled."""
     return subprocess.run(
-        cmd, capture_output=True, text=True, errors="replace", timeout=30, check=False
+        cmd,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        timeout=timeout,
+        check=False,
     )
 
 
@@ -253,7 +298,7 @@ def _oom_watch(docker_path: str, name: str) -> Iterator[threading.Event]:
             if killed.is_set():
                 continue
             logging.error(f"A process in container {name} ran out of memory.")
-            run_command([docker_path, "kill", name], capture_output=True, check=False)
+            _kill_container(docker_path, name)
             # Only now: the caller reports the OOM once this is set.
             killed.set()
 

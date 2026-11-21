@@ -385,7 +385,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract --json ref test-genome",
     ),
     "ref needs": _h(
-        "Prints the missing reference genome or annotation data and the command "
+        "Prints the missing reference genome, annotation data or optional tool and the command "
         "that installs each; writes no files. With --json, the result's "
         "details.missing lists them.",
         "wgsextract ref needs -- info --input sample.cram",
@@ -422,6 +422,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "All_SNPs_hg38_ref.tab.gz (+ .tbi); --delete removes them.",
         "wgsextract ref microarray-targets",
         "wgsextract ref microarray-targets --delete",
+    ),
+    "ref cytobands": _h(
+        f"{_LIBRARY}/downloads/cytobands_hg19.tsv or cytobands_hg38.tsv; "
+        "validated zero-based UCSC primary-chromosome bands for offline viewing.",
+        "wgsextract ref cytobands --build hg38 --download",
+        "wgsextract ref cytobands --build hg19 --download",
+        "wgsextract ref cytobands --build hg38",
     ),
     "ref gene-map": _h(
         f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
@@ -460,7 +467,7 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref alphamissense",
     ),
     "ref acmg-data": _h(
-        f"{_LIBRARY}: ref/acmg/ holds the Ensembl GFF3, the downloads in "
+        f"{_LIBRARY}: downloads/acmg/ holds the Ensembl GFF3, the downloads in "
         "sources/ and fastVEP's databases with acmg_data.json in sa/ (or "
         "--sa-dir); --dry-run prints the plan and sizes only.",
         "wgsextract ref acmg-data --dry-run",
@@ -500,6 +507,20 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints each tool's status; writes no files.",
         "wgsextract deps check",
         "wgsextract deps check --tool samtools",
+    ),
+    "deps list": _h(
+        "Prints each tool's status and what can be done about it; writes no files.",
+        "wgsextract deps list",
+        "wgsextract --json deps list",
+    ),
+    "deps install": _h(
+        "Installs the tool's Pixi environment beside the CLI's own.",
+        "wgsextract deps install gatk",
+        "wgsextract deps install sniffles",
+    ),
+    "deps uninstall": _h(
+        "Removes the tool's Pixi environment, and the other tools in it.",
+        "wgsextract deps uninstall gatk",
     ),
     "panel bed": _h(
         "panel_<presets>[_<genes>]_<build>_pad<N>kb.bed, the genes named when "

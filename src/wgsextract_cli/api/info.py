@@ -76,14 +76,15 @@ class CalculateCoverageParams(Params):
     )
     bins: bool = param(
         False,
-        help="Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one "
-        "streaming pass.",
+        help="Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the "
+        "non-N bases in one streaming pass.",
         action="store_true",
     )
     with_bins: bool = param(
         False,
-        help="After the coverage table, also report the --bins depth breadth; "
-        "an up-to-date whole-file bins report is shown again instead of rescanned.",
+        help="Also measure the --bins depth breadth and show its table in place "
+        "of the coverage table, which info --detailed then shows; up-to-date "
+        "whole-file reports are shown again instead of rescanned.",
         action="store_true",
     )
     by: Path | None = param(

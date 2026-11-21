@@ -63,6 +63,7 @@
       "actions": [
         {
           "id": "basic-info",
+          "resultCard": true,
           "title": "actions.info-bam.info-commands.basic-info.title",
           "tooltip": "actions.info-bam.info-commands.basic-info.tooltip",
           "command": {
@@ -82,6 +83,7 @@
         },
         {
           "id": "detailed-info",
+          "resultCard": true,
           "title": "actions.info-bam.info-commands.detailed-info.title",
           "tooltip": "actions.info-bam.info-commands.detailed-info.tooltip",
           "command": {
@@ -106,6 +108,7 @@
         },
         {
           "id": "coverage-sample",
+          "resultCard": true,
           "title": "actions.info-bam.info-commands.coverage-sample.title",
           "tooltip": "actions.info-bam.info-commands.coverage-sample.tooltip",
           "command": {
@@ -131,6 +134,7 @@
         },
         {
           "id": "calculate-coverage",
+          "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
           "tooltip": "actions.info-bam.info-commands.calculate-coverage.tooltip",
           "estimatedDurationMinutes": 120,
@@ -166,6 +170,7 @@
         },
         {
           "id": "calculate-coverage-shown",
+          "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
           "tooltip": "actions.info-bam.info-commands.calculate-coverage.shownTooltip",
           "command": {
@@ -200,6 +205,7 @@
         },
         {
           "id": "coverage-by-bed",
+          "resultCard": true,
           "title": "actions.cli.coverage-by-bed.title",
           "tooltip": "actions.cli.coverage-by-bed.tooltip",
           "advancedOnly": true,
@@ -714,6 +720,7 @@
       "actions": [
         {
           "id": "bam-identify",
+          "resultCard": true,
           "title": "actions.cli.bam-identify.title",
           "tooltip": "actions.cli.bam-identify.tooltip",
           "advancedOnly": true,

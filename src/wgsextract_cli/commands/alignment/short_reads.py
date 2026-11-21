@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array
+from wgsextract_cli.core.alignment import bwa_index
 from wgsextract_cli.core.alignment.memory import (
     BWA_MEM3_CUDA_BYTES,
     BWA_MEM3_METAL_BYTES,
@@ -593,6 +594,15 @@ def bwa_mem2_index_ready(model: str, ref: str) -> bool:
     if model in {"bwa-mem3", "wgse-bwa-mem2"}:
         return bwa_mem2.has_bwa_mem3_index(ref)
     return bwa_mem2.has_index(ref)
+
+
+def bwa_index_suffixes(model: str) -> tuple[str, ...]:
+    """Sidecars read by the selected BWA build, including optional ALT data."""
+    if model in {"bwa-mem3", "wgse-bwa-mem2"}:
+        return (*bwa_mem2.BWA_MEM3_INDEX_SUFFIXES, ".alt")
+    if model == "bwa-mem2":
+        return (*bwa_mem2.INDEX_SUFFIXES, ".alt")
+    return (*bwa_index.INDEX_SUFFIXES, ".alt")
 
 
 def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> int:

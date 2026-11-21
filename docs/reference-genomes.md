@@ -36,6 +36,71 @@ placing it under a folder named `hg19` or `chm13` does not identify it.
 FASTA descriptions and assembly tags, and VCF reference/assembly metadata,
 remain build evidence. Tool command-history lines in VCF headers are not.
 
+## Verification and gene maps
+
+`ref verify` checks gzip integrity, the FASTA index and catalog
+sequence-dictionary signature, failing on mismatch.
+`ref library --install` also verifies the signature after indexing.
+The catalog's `md5` is a sequence-name/length dictionary signature,
+**not a FASTA content checksum**. `ref count-ns` writes `_ncnt.csv` and
+`_nbin.csv` beside the FASTA, or in `--outdir`.
+
+Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
+T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
+
+### Offline cytobands
+
+The library viewer can display chromosome ideograms from UCSC's public
+`cytoBand` data. Install the appropriate assembly explicitly:
+
+```sh
+wgsextract ref cytobands --build hg19 --download
+wgsextract ref cytobands --build hg38 --download
+```
+
+Use the same `config.toml` as the desktop, or pass `--ref /path/to/reference-library`.
+Without `--download`, the command validates the installed asset offline;
+missing or invalid data produces an error naming it and the explicit command.
+It does not inherit the persistent download opt-in. Tables are installed as
+`downloads/cytobands_hg19.tsv` and `downloads/cytobands_hg38.tsv` in the configured
+reference library. The viewer never downloads them.
+Validation-only runs record the table as an input and leave its installation
+manifest unchanged. The default is the configured reference library even when
+`reference_fasta` points elsewhere; only an explicit `--ref` FASTA selects its
+containing library. Repair hints retain the selected library and configuration.
+
+The installer checks pinned SHA-256 snapshots of `cytoBand.txt.gz`, gzip
+integrity, five columns, zero-based half-open coordinates, continuous chromosome
+coverage, band names and stains before publishing the table atomically.
+Only primary chromosomes 1–22, X and Y are retained; UCSC's unbanded alternate
+contigs are validated but excluded. Partial downloads use the standard
+URL-bound resume helper. UCSC changing a snapshot requires a reviewed pin update,
+not accepting unchecked replacement bytes.
+Downloads and publication are serialized per assembly. Completed archives use
+private staging without replacing user archives; new public tables follow the
+process umask. Installed tables must stay within the library, use LF or CRLF
+row endings and contain at most 10,000 primary bands, matching viewer validation.
+
+Source URLs are under
+`https://hgdownload.soe.ucsc.edu/goldenPath/{hg19,hg38}/database/cytoBand.txt.gz`.
+The [UCSC download terms](https://hgdownload.soe.ucsc.edu/downloads.html#terms)
+permit use of downloaded data for any purpose except directory-specific
+exceptions; see the [database README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt)
+and assembly credits. These are annotation data, not UCSC's separately licensed
+Genome Browser software. Credit UCSC and its assembly contributors. No new
+redistribution mirror is introduced.
+
+## Download safety
+
+Reference HTTP downloads resume only explicit `.partial` files bound to
+their source URL by a `.partial.source` hash sidecar. Segmented downloads
+record the URL hash and per-segment progress in `.partial.segments`.
+Legacy or invalid state and changed URLs cause the download to restart.
+Refreshing a complete file starts from zero and preserves it until replacement
+finishes and passes available checksums, then publishes atomically.
+Diagnostic URLs omit userinfo and queries, while requests keep the original
+URL. MD5-pinned benchmark files enter the dev cache only after verification.
+
 ## The test genome
 
 `wgsextract ref test-genome --install` downloads and verifies the small

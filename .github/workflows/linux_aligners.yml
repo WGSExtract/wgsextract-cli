@@ -23,6 +23,8 @@ on:
       - packaging/wgse-minimap2/**
       - .github/workflows/linux_aligners.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/compiler-cache/**
+      - .github/actions/apt-install/**
       - "!**/*.md"
   push:
     branches: [main]

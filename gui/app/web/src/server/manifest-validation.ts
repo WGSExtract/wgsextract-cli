@@ -82,6 +82,10 @@ export function validateDataSource(value: LooseRecord, path: string): void {
     if (value.workingDirectory != null) {
         validateBundledScriptPath(value.workingDirectory, `${path}.workingDirectory`);
     }
+    const timeoutSeconds = value.timeoutSeconds;
+    if (timeoutSeconds != null && !(typeof timeoutSeconds === "number" && Number.isFinite(timeoutSeconds) && timeoutSeconds > 0)) {
+        throw new BundleValidationError(`${path}.timeoutSeconds must be a positive number.`);
+    }
     if (value.transform != null) {
         const transform = value.transform as LooseRecord;
         validateBundledScriptPath(transform.module, `${path}.transform.module`);

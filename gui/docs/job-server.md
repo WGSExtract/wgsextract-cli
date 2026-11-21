@@ -44,28 +44,55 @@ A bundle can declare such a server in `manifest.json`. Its actions can then run 
 
 **Ready line.** Once the server is listening, it must print one line of JSON on stdout with its base URL and a bearer token: `{"url": "http://127.0.0.1:PORT/v1", "token": "..."}`. Other lines before it are ignored. A server that can't start may print `{"error": {"message": "..."}}` instead; the app logs that it refused to start, with the message, and falls back.
 
+Locally launched job servers must advertise a numeric loopback URL, such as
+`127.0.0.1` or `::1`. The app rejects external destinations and hostnames before
+sending bearer credentials or sample parameters. Requests refuse redirects,
+including redirects to another local service. WGS Extract's bundled command
+pins `--listen 127.0.0.1 --port 0`, overriding any saved server listen port or
+public URL. Explicit remote viewer connections use a separate consented path;
+they do not redirect ordinary jobs.
+
 **Restarts.** If the server exits, the next action starts it again. It stops with the app and when another bundle is loaded, like every other process the app started.
 
 **Fallback.** The app runs the action's `command` instead when:
 
 - the server can't be started;
 - it prints no ready line within `startupTimeoutSeconds`;
-- it refuses the job (any response other than 2xx with a job).
+- the connection is refused before the app can send the request, and restarting doesn't help;
+- the server explicitly rejects the submission before creating a job.
 
-The reason is logged on the app's console.
+If the reply is lost or doesn't identify the job, the app checks the original job ID
+if the server supports client-generated IDs.
+It never submits again or runs the command directly in this case. If it cannot
+recover the job, it warns the user to check the server before trying again, and
+includes the ID when the server supports it.
 
 ## Protocol
 
 Every request carries `Authorization: Bearer <token>`. Paths are relative to `url`.
+Servers that support client-generated IDs include `"client_job_ids": true` in the
+ready line. The GUI sends the ID header only to those servers.
 
 | Request | Response |
 | --- | --- |
-| `POST /ops/{operation}` with the parameters as a JSON body | 2xx with a job: `{"id": "...", "status": "..."}` |
+| `POST /ops/{operation}` with the parameters as a JSON body, `X-WGSE-Job-ID` when supported, and `?card=1` for an action with `resultCard` | 2xx with a job: `{"id": "...", "status": "..."}`. A server that uses the header sets `id` to the client-generated lowercase UUIDv4. |
 | `GET /jobs/{id}/events` | Server-sent events until the job has finished, then the stream ends. `status` events carry `{"status": ...}`; `progress` events carry `stage`, `message` and/or `fraction` (0–1). |
 | `GET /jobs/{id}` | The job; `exit_code` once it has finished, and `error` if it failed. The action's exit code is `exit_code`, else 0 for `succeeded` and 1 otherwise. When the bundle declares a [result document](result-documents.md) for the action, it is read from `result`. |
 | `GET /jobs/{id}/log?tail=0` | The job's whole log as text; it is added to the action's output. |
 | `DELETE /jobs/{id}` | Cancels the job. 409 means it had already finished. |
 
 When the user cancels the action, the app sends `DELETE` and follows the job's events until it has finished, for up to a minute.
+
+To explicitly reject before creating a job, return `{"error": {"code": "...", "message": "..."}}`
+with one of these status and code combinations:
+
+| Status | Code |
+| --- | --- |
+| 400 | `bad_length`, `bad_json`, `bad_headers`, `usage`, `invalid_job_id` |
+| 401 | `unauthorized` |
+| 403 | `bad_host`, `bad_origin`, `path_not_allowed`, `destructive` |
+| 404 | `unknown_op`, `not_found` |
+| 413 | `too_large` |
+| 503 | `stopping` |
 
 [WGSExtract CLI's `wgsextract serve`](../../docs/server.md) implements this protocol (`serve --ready-json`). The WGSExtract example bundle uses it for its coverage actions; with a bundled CLI older than that flag, they run their commands.

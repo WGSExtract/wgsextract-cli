@@ -34,8 +34,6 @@ class VepEngine:
     # Folder under the VEP cache folder holding this engine's
     # <species>/<release>_<assembly> caches ("" for the folder itself).
     cache_subdir: str
-    # Whether a missing cache may fall back to Ensembl's database.
-    database_fallback: bool
     # VEP options the engine accepts but ignores or can't honour: refused,
     # so a run never silently differs from Ensembl VEP's.
     refused_args: tuple[str, ...]
@@ -60,7 +58,6 @@ ENGINES = {
         tool="vep",
         cache_tools=("curl", "tar"),
         cache_subdir="",
-        database_fallback=True,
         refused_args=(),
         platforms=("linux", "darwin"),
         assemblies=("GRCh37", "GRCh38"),
@@ -71,7 +68,6 @@ ENGINES = {
         tool="vep-rs",
         cache_tools=("vep-cache-builder", "samtools"),
         cache_subdir="vep-rs",
-        database_fallback=False,
         # vep-rs reads no --custom source (accepted and ignored in 0.5) and
         # never connects to a database; the rest it refuses itself.
         refused_args=(

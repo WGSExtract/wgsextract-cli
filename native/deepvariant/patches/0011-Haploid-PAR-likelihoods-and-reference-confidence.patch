@@ -1,0 +1,462 @@
+Subject: [PATCH] Match Google 1.10 haploid/PAR likelihoods and gVCF confidence (#1103)
+
+Google v1.10.0 postprocess_variants.py:1070-1092,1197-1204,1300-1307
+zero and renormalize heterozygous mass after merging and simplifying.
+variant_caller.py:76-102,215-218 rescales counts to <=100 with ceil(ref ratio).
+variant_caller.py:220-257,323-334 uses log10(Phet)=-999 before
+normalization and GQ binning. GT and PL remain diploid-encoded, as upstream.
+
+diff --git a/deepvariant/native/cli.cc b/deepvariant/native/cli.cc
+index 28f7bbaa..02e2ecb1 100644
+--- a/deepvariant/native/cli.cc
++++ b/deepvariant/native/cli.cc
+@@ -68,6 +68,8 @@ ABSL_FLAG(std::string, small_model_path, "",
+ ABSL_DECLARE_FLAG(std::string, reads);
+ ABSL_DECLARE_FLAG(std::string, ref);
+ ABSL_DECLARE_FLAG(std::string, regions);
++ABSL_DECLARE_FLAG(std::string, haploid_contigs);
++ABSL_DECLARE_FLAG(std::string, par_regions_bed);
+ ABSL_DECLARE_FLAG(int, num_shards);
+ ABSL_DECLARE_FLAG(int, batch_size);
+ #if !defined(__APPLE__)
+@@ -1096,6 +1098,10 @@ int RunAll(int argc, char** argv) {
+     if (!gvcf_outfile.empty()) {
+       me_args.push_back(absl::StrCat("--gvcf=", gvcf_tfrecord_path));
+     }
++    me_args.push_back(absl::StrCat("--haploid_contigs=",
++                                   absl::GetFlag(FLAGS_haploid_contigs)));
++    me_args.push_back(absl::StrCat("--par_regions_bed=",
++                                   absl::GetFlag(FLAGS_par_regions_bed)));
+     // Per-model flags from example_info.json (pileup width, channels,
+     // thresholds, realigner, sort_by_haplotypes, etc.).
+     ApplyModelFlags(model_type, me_args);
+@@ -1177,6 +1183,10 @@ int RunAll(int argc, char** argv) {
+                                       gvcf_tfrecord_path));
+     }
+     // Per-model postprocess flags (e.g. WES multiallelic_mode=min).
++    pp_args.push_back(absl::StrCat("--haploid_contigs=",
++                                   absl::GetFlag(FLAGS_haploid_contigs)));
++    pp_args.push_back(absl::StrCat("--par_regions_bed=",
++                                   absl::GetFlag(FLAGS_par_regions_bed)));
+     for (const auto& f : PostprocessModelFlags(model_type)) pp_args.push_back(f);
+     if (phase_vcf) {
+       pp_args.push_back(
+diff --git a/deepvariant/native/make_examples_main.cc b/deepvariant/native/make_examples_main.cc
+index ada09e1d..96698cc7 100644
+--- a/deepvariant/native/make_examples_main.cc
++++ b/deepvariant/native/make_examples_main.cc
+@@ -128,6 +128,10 @@ ABSL_FLAG(std::string, reads, "", "BAM/CRAM file with aligned reads.");
+ ABSL_FLAG(std::string, ref, "", "Reference FASTA (.fai index required).");
+ // `--examples` is the canonical pipeline filespec — defined in call_variants.
+ ABSL_DECLARE_FLAG(std::string, examples);
++ABSL_FLAG(std::string, haploid_contigs, "",
++          "Comma- or space-separated haploid contigs (outside PAR).");
++ABSL_FLAG(std::string, par_regions_bed, "",
++          "BED of diploid PAR intervals on haploid contigs.");
+ ABSL_FLAG(std::string, regions, "",
+           "Whitespace-separated region strings (e.g. 'chr20 chr21:1-1000000')."
+           " Empty = all contigs.");
+@@ -1334,6 +1338,14 @@ static void FillAlleleFrequencyFromPon(
+
+ int RunMakeExamples(int argc, char** argv) {
+   absl::ParseCommandLine(argc, argv);
++  HaploidPolicy ploidy;
++  try {
++    ploidy = HaploidPolicy(absl::GetFlag(FLAGS_haploid_contigs),
++                          absl::GetFlag(FLAGS_par_regions_bed));
++  } catch (const std::exception& error) {
++    LOG(ERROR) << error.what();
++    return 1;
++  }
+
+   const std::string reads_path = absl::GetFlag(FLAGS_reads);
+   const std::string ref_path = absl::GetFlag(FLAGS_ref);
+@@ -2202,7 +2214,8 @@ int RunMakeExamples(int argc, char** argv) {
+     }
+
+     LOG(INFO) << "  read " << reads.size() << " reads from BAM";
+-    if (reads.empty()) continue;
++    // Empty partitions still contribute zero-depth gVCF reference evidence.
++    if (reads.empty() && !gvcf_writer) continue;
+
+     // RNA-seq: split reads on N (SKIP) CIGAR ops into per-exon sub-reads
+     // before candidate discovery / realignment / pileup. Mirrors upstream
+@@ -2221,7 +2234,7 @@ int RunMakeExamples(int argc, char** argv) {
+     // tracking see the realigned reads (matches upstream's flow).
+     DV_SIGNPOST_INTERVAL_BEGIN(Realigner, region_str.c_str());
+     std::vector<nucleus::genomics::v1::Read> working_reads;
+-    if (absl::GetFlag(FLAGS_realigner_enabled)) {
++    if (absl::GetFlag(FLAGS_realigner_enabled) && !reads.empty()) {
+       // Pre-scan AlleleCounter for the WindowSelector. Upstream
+       // (realigner/window_selector.py:_candidates_from_reads) builds
+       // a *dedicated* AlleleCounter with WindowSelector-specific
+@@ -2350,7 +2363,7 @@ int RunMakeExamples(int argc, char** argv) {
+           absl::GetFlag(FLAGS_p_error),
+           absl::GetFlag(FLAGS_gvcf_gq_binsize),
+           /*max_gq=*/50,
+-          absl::GetFlag(FLAGS_include_med_dp));
++          absl::GetFlag(FLAGS_include_med_dp), ploidy);
+       for (const auto& v : gvcf_rows) {
+         std::string serialized;
+         v.SerializeToString(&serialized);
+diff --git a/deepvariant/native/postprocess_main.cc b/deepvariant/native/postprocess_main.cc
+index 536a4db8..4ef1d55d 100644
+--- a/deepvariant/native/postprocess_main.cc
++++ b/deepvariant/native/postprocess_main.cc
+@@ -31,6 +31,7 @@
+
+ #include "deepvariant/merge_phased_reads.h"
+ #include "deepvariant/native/haplotypes.h"
++#include "deepvariant/native/ploidy.h"
+ #include "deepvariant/native/tfrecord.h"
+ #include "deepvariant/protos/deepvariant.pb.h"
+ #include "absl/flags/flag.h"
+@@ -56,6 +57,8 @@
+ ABSL_FLAG(std::string, infile, "", "Input CVO TFRecord path (may be sharded).");
+ ABSL_DECLARE_FLAG(std::string, ref);
+ ABSL_DECLARE_FLAG(std::string, sample_name);
++ABSL_DECLARE_FLAG(std::string, haploid_contigs);
++ABSL_DECLARE_FLAG(std::string, par_regions_bed);
+ ABSL_FLAG(std::string, output_vcf_outfile, "", "Output VCF path.");
+ ABSL_FLAG(std::string, gvcf_outfile, "", "gVCF output path (optional).");
+ ABSL_FLAG(std::string, nonvariant_site_tfrecord_path, "",
+@@ -596,6 +599,14 @@ nucleus::genomics::v1::VcfHeader MakeVcfHeader(
+
+ int RunPostprocessVariants(int argc, char** argv) {
+   absl::ParseCommandLine(argc, argv);
++  HaploidPolicy ploidy;
++  try {
++    ploidy = HaploidPolicy(absl::GetFlag(FLAGS_haploid_contigs),
++                          absl::GetFlag(FLAGS_par_regions_bed));
++  } catch (const std::exception& error) {
++    LOG(ERROR) << error.what();
++    return 1;
++  }
+
+   const std::string infile = absl::GetFlag(FLAGS_infile);
+   const std::string outfile = absl::GetFlag(FLAGS_output_vcf_outfile);
+@@ -965,6 +976,13 @@ int RunPostprocessVariants(int argc, char** argv) {
+       }
+       like = std::move(like_pruned);
+
++      // Google merge_predictions simplifies before testing PAR overlap.
++      SimplifyVariantAlleles(&variant);
++      if (ploidy.IsHaploid(variant.reference_name(), variant.start(),
++                           variant.end())) {
++        CorrectNonautosomeProbabilities(&like, n_alts + 1);
++      }
++
+       // argmax genotype.
+       int best = 0;
+       for (int i = 1; i < n_gt; ++i) {
+diff --git a/deepvariant/native/gvcf_emit.cc b/deepvariant/native/gvcf_emit.cc
+index ed178f06..a8e6e0e5 100644
+--- a/deepvariant/native/gvcf_emit.cc
++++ b/deepvariant/native/gvcf_emit.cc
+@@ -45,7 +45,13 @@ int Log10PtrueToPhred(double log10_p_ref, int max_gq) {
+
+ // Compute reference-confidence likelihoods + GQ for one site, given ref/total
+ // read counts and per-base error rate. Returns log10 probs in [ref, het, alt].
+-void ReferenceConfidence(int n_ref, int n_total, double p_error,
++void ReferenceConfidence(int n_ref, int n_total, double p_error, bool haploid,
+                           double* log10_p_ref, double* log10_p_het,
+                           double* log10_p_alt) {
++  // Google v1.10.0 variant_caller.py:76-102,215-218 (cache limit 100).
++  // Only likelihood inputs are scaled; block MIN_DP/MED_DP keep raw counts.
++  if (n_total > 100) {
++    n_ref = static_cast<int>(std::ceil((n_ref / (1.0 * n_total)) * 100));
++    n_total = 100;
++  }
+   if (n_total <= 0) {
+@@ -61,6 +67,7 @@ void ReferenceConfidence(int n_ref, int n_total, double p_error,
+     *log10_p_het = -n_total * std::log10(2.0);
+     *log10_p_alt = n_ref * logp + n_alts * log1p;
+   }
++  if (haploid) *log10_p_het = -999.0;
+   NormalizeLog10Probs(log10_p_ref, log10_p_het, log10_p_alt);
+ }
+
+@@ -86,6 +93,7 @@ struct SiteEntry {
+   int raw_gq;
+   double log10_probs[3];
+   bool gl_is_valid;  // true if max(log10_probs) == log10_probs[0]
++  bool haploid;
+ };
+
+ bool IsCanonicalDnaBase(const std::string& s) {
+@@ -98,7 +106,8 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+     const std::vector<learning::genomics::deepvariant::AlleleCountSummary>&
+         summaries,
+     const std::string& sample_name,
+-    double p_error, int gq_resolution, int max_gq, bool include_med_dp) {
++    double p_error, int gq_resolution, int max_gq, bool include_med_dp,
++    const HaploidPolicy& ploidy) {
+   std::vector<nucleus::genomics::v1::Variant> out;
+   if (summaries.empty()) return out;
+
+@@ -115,8 +124,9 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+       // Skip non-canonical (N, IUPAC) — upstream does the same.
+       continue;
+     }
++    e.haploid = ploidy.IsHaploid(e.ref_name, e.position, e.position + 1);
+     ReferenceConfidence(s.ref_supporting_read_count(), s.total_read_count(),
+-                         p_error, &e.log10_probs[0], &e.log10_probs[1],
++                         p_error, e.haploid, &e.log10_probs[0], &e.log10_probs[1],
+                          &e.log10_probs[2]);
+     e.raw_gq = Log10PtrueToPhred(e.log10_probs[0], max_gq);
+     e.quantized_gq = QuantizeGq(e.raw_gq, gq_resolution);
+@@ -136,6 +146,7 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+     while (j < entries.size() &&
+            entries[j].quantized_gq == first.quantized_gq &&
+            entries[j].gl_is_valid == first.gl_is_valid &&
++           entries[j].haploid == first.haploid &&
+            entries[j].position == entries[j - 1].position + 1 &&
+            entries[j].ref_name == first.ref_name) {
+       ++j;
+diff --git a/deepvariant/native/gvcf_emit.h b/deepvariant/native/gvcf_emit.h
+index faafef56..a0ef2ab0 100644
+--- a/deepvariant/native/gvcf_emit.h
++++ b/deepvariant/native/gvcf_emit.h
+@@ -15,6 +15,7 @@
+ #include <vector>
+
+ #include "deepvariant/protos/deepvariant.pb.h"
++#include "deepvariant/native/ploidy.h"
+ #include "third_party/nucleus/protos/variants.pb.h"
+
+ namespace deepvariant {
+@@ -41,6 +42,7 @@ std::vector<nucleus::genomics::v1::Variant> MakeGvcfRows(
+     double p_error = 1e-3,
+     int gq_resolution = 5,    // Matches upstream --gvcf_gq_binsize default.
+     int max_gq = 50,
+-    bool include_med_dp = false);
++    bool include_med_dp = false,
++    const HaploidPolicy& ploidy = HaploidPolicy());
+
+ }  // namespace deepvariant
+diff --git a/deepvariant/native/CMakeLists.txt b/deepvariant/native/CMakeLists.txt
+index 5ebd47c9..1f743feb 100644
+--- a/deepvariant/native/CMakeLists.txt
++++ b/deepvariant/native/CMakeLists.txt
+@@ -603,10 +603,16 @@ endif()  # APPLE: development and diagnostic executables
+ # ---------------------------------------------------------------------------
+ # deepvariant — main binary (CLI dispatcher)
+ # ---------------------------------------------------------------------------
++add_executable(wgse_ploidy_test "${CMAKE_CURRENT_SOURCE_DIR}/ploidy_test.cc")
++target_link_libraries(wgse_ploidy_test PRIVATE dv_make_examples_lib)
++add_custom_target(wgse_ploidy_check
++  COMMAND wgse_ploidy_test "${CMAKE_CURRENT_BINARY_DIR}/ploidy-test.bed"
++  DEPENDS wgse_ploidy_test)
+ add_executable(deepvariant
+   "${CMAKE_CURRENT_SOURCE_DIR}/cli.cc"
+ )
+ target_include_directories(deepvariant PRIVATE ${ME_INCLUDE_DIRS})
++add_dependencies(deepvariant wgse_ploidy_check)
+ target_compile_options(deepvariant PRIVATE ${ME_COMPILE_OPTS})
+
+ # Version metadata — captured at configure time and re-captured at every
+diff --git b/deepvariant/native/ploidy.h b/deepvariant/native/ploidy.h
+new file mode 100644
+index 00000000..2e3025ad
+--- /dev/null
++++ b/deepvariant/native/ploidy.h
+@@ -0,0 +1,99 @@
++#pragma once
++
++#include <algorithm>
++#include <cstdint>
++#include <cstdlib>
++#include <map>
++#include <set>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <vector>
++
++#include "htslib/hts.h"
++#include "htslib/kstring.h"
++
++namespace deepvariant {
++
++// Google 1.10 retains diploid GT/PL encoding, but removes heterozygous mass.
++inline void CorrectNonautosomeProbabilities(std::vector<double>* probabilities,
++                                            int n_alleles) {
++  if (probabilities->size() != n_alleles * (n_alleles + 1) / 2) {
++    throw std::invalid_argument("Probabilities do not match allele count");
++  }
++  size_t index = 0;
++  double sum = 0;
++  for (int h1 = 0; h1 < n_alleles; ++h1) {
++    for (int h2 = 0; h2 <= h1; ++h2, ++index) {
++      if (h1 != h2) (*probabilities)[index] = 0;
++      sum += (*probabilities)[index];
++    }
++  }
++  if (sum == 0) sum = 1;
++  for (double& p : *probabilities) p /= sum;
++}
++
++class HaploidPolicy {
++ public:
++  HaploidPolicy() = default;
++  HaploidPolicy(std::string contigs, const std::string& bed) {
++    std::replace(contigs.begin(), contigs.end(), ',', ' ');
++    std::istringstream names(contigs);
++    std::string name;
++    while (names >> name) contigs_.insert(name);
++    if (bed.empty()) return;
++    htsFile* file = hts_open(bed.c_str(), "r");
++    if (!file) throw std::invalid_argument("Cannot open PAR BED: " + bed);
++    kstring_t line = {0, 0, nullptr};
++    int status;
++    bool invalid = false;
++    while ((status = hts_getline(file, '\n', &line)) >= 0) {
++      std::string text(line.s, line.l);
++      if (text.empty() || text[0] == '#' || text.rfind("track ", 0) == 0 ||
++          text.rfind("browser ", 0) == 0) continue;
++      std::istringstream row(text);
++      int64_t start, end;
++      if (!(row >> name >> start >> end) || start < 0 || end <= start) {
++        invalid = true;
++        break;
++      }
++      par_[name].push_back({start, end});
++    }
++    free(line.s);
++    hts_close(file);
++    if (invalid || status < -1) {
++      throw std::invalid_argument("Invalid PAR BED: " + bed);
++    }
++    for (auto& item : par_) {
++      auto& intervals = item.second;
++      std::sort(intervals.begin(), intervals.end());
++      std::vector<std::pair<int64_t, int64_t>> merged;
++      for (const auto& interval : intervals) {
++        if (!merged.empty() && interval.first <= merged.back().second) {
++          merged.back().second = std::max(merged.back().second, interval.second);
++        } else {
++          merged.push_back(interval);
++        }
++      }
++      intervals = std::move(merged);
++    }
++  }
++
++  bool IsHaploid(const std::string& chrom, int64_t start, int64_t end) const {
++    if (!contigs_.count(chrom)) return false;
++    const auto found = par_.find(chrom);
++    if (found == par_.end()) return true;
++    const auto& intervals = found->second;
++    auto next = std::lower_bound(
++        intervals.begin(), intervals.end(), start,
++        [](const auto& interval, int64_t pos) { return interval.second <= pos; });
++    return next == intervals.end() || next->first >= end;
++  }
++
++ private:
++  std::set<std::string> contigs_;
++  std::map<std::string, std::vector<std::pair<int64_t, int64_t>>> par_;
++};
++
++}  // namespace deepvariant
+diff --git b/deepvariant/native/ploidy_test.cc b/deepvariant/native/ploidy_test.cc
+new file mode 100644
+index 00000000..f4c13104
+--- /dev/null
++++ b/deepvariant/native/ploidy_test.cc
+@@ -0,0 +1,94 @@
++#include "deepvariant/native/gvcf_emit.h"
++#include "deepvariant/native/ploidy.h"
++
++#include <cmath>
++#include <cstdio>
++#include <fstream>
++#include <iostream>
++#include <stdexcept>
++#include <vector>
++
++namespace {
++void Require(bool condition, const char* message) {
++  if (!condition) throw std::runtime_error(message);
++}
++}
++
++int main(int argc, char** argv) {
++  Require(argc == 2, "Supply the test BED path");
++  {
++    std::ofstream bed(argv[1]);
++    bed << "chrX\t10\t20\nchrX\t18\t25\n";
++  }
++  const deepvariant::HaploidPolicy policy("chrX, chrY chrM", argv[1]);
++  Require(policy.IsHaploid("chrX", 9, 10), "#1103: base before PAR");
++  Require(!policy.IsHaploid("chrX", 10, 11), "#1103: first PAR base");
++  Require(!policy.IsHaploid("chrX", 24, 25), "#1103: last PAR base");
++  Require(policy.IsHaploid("chrX", 25, 26), "#1103: base after PAR");
++  Require(!policy.IsHaploid("chrX", 9, 11), "#1103: indel overlaps PAR");
++  Require(!policy.IsHaploid("chr1", 0, 1), "#1103: autosome stays diploid");
++  Require(policy.IsHaploid("chrM", 0, 1), "#1103: mitochondrial contig");
++  std::vector<double> probabilities{0.1, 0.8, 0.1};
++  deepvariant::CorrectNonautosomeProbabilities(&probabilities, 2);
++  Require(probabilities == std::vector<double>({0.5, 0, 0.5}),
++          "#1103: het probability must be removed before calling");
++  probabilities = {0.1, 0.2, 0.1, 0.2, 0.3, 0.1};
++  deepvariant::CorrectNonautosomeProbabilities(&probabilities, 3);
++  Require(probabilities[1] == 0 && probabilities[3] == 0 &&
++          probabilities[4] == 0 && std::abs(probabilities[5] - 1.0 / 3) < 1e-12,
++          "#1103: all multiallelic heterozygotes must be removed");
++  probabilities = {0, 1, 0};
++  deepvariant::CorrectNonautosomeProbabilities(&probabilities, 2);
++  Require(probabilities == std::vector<double>({0, 0, 0}),
++          "#1103: Google zero-sum fallback is not uniform");
++
++  std::vector<learning::genomics::deepvariant::AlleleCountSummary> counts;
++  for (int pos = 8; pos < 27; ++pos) {
++    auto& count = counts.emplace_back();
++    count.set_reference_name("chrX");
++    count.set_position(pos);
++    count.set_ref_base("A");
++    count.set_ref_supporting_read_count(0);
++    count.set_total_read_count(0);
++  }
++  const auto rows = deepvariant::MakeGvcfRows(
++      counts, "test", 0.001, 5, 50, true, policy);
++  Require(rows.size() == 3, "#1103: zero-depth blocks must split at PAR edges");
++  Require(rows[0].start() == 8 && rows[0].end() == 10 &&
++          rows[1].start() == 10 && rows[1].end() == 25 &&
++          rows[2].start() == 25 && rows[2].end() == 27,
++          "#1103: gVCF partition coverage must have no gaps or overlaps");
++  const auto& haploid = rows[0].calls(0);
++  const auto& diploid = rows[1].calls(0);
++  Require(std::abs(haploid.genotype_likelihood(0) + std::log10(2.0)) < 1e-12 &&
++          haploid.genotype_likelihood(1) < -997 &&
++          std::abs(diploid.genotype_likelihood(0) + std::log10(3.0)) < 1e-12,
++          "#1103: haploid reference confidence must match Google 1.10");
++  Require(haploid.info().at("MIN_DP").values(0).int_value() == 0 &&
++          haploid.info().at("GQ").values(0).int_value() == 3 &&
++          diploid.info().at("GQ").values(0).int_value() == 1,
++          "#1103: retain depth and compute haploid GQ before binning");
++  counts.resize(1);
++  counts[0].set_ref_supporting_read_count(600);
++  counts[0].set_total_read_count(1000);
++  const auto high_depth = deepvariant::MakeGvcfRows(
++      counts, "test", 0.001, 5, 50, true, policy);
++  const auto& high_call = high_depth.at(0).calls(0);
++  Require(high_call.genotype(0) == 0 && high_call.genotype(1) == 0 &&
++          high_call.info().at("GQ").values(0).int_value() == 50,
++          "#1103: high-depth haploid reference must not become NoCall GQ 0");
++  Require(high_call.info().at("MIN_DP").values(0).int_value() == 1000 &&
++          high_call.info().at("MED_DP").values(0).int_value() == 1000,
++          "#1103: reference-confidence rescaling must preserve raw depth");
++  counts[0].set_ref_supporting_read_count(60);
++  counts[0].set_total_read_count(100);
++  const auto scaled = deepvariant::MakeGvcfRows(
++      counts, "test", 0.001, 5, 50, true, policy);
++  for (int i = 0; i < 3; ++i) {
++    Require(high_call.genotype_likelihood(i) ==
++            scaled.at(0).calls(0).genotype_likelihood(i),
++            "#1103: high-depth likelihoods must equal the upstream 100-read cap");
++  }
++  std::remove(argv[1]);
++  std::cout << "haploid/PAR likelihood and gVCF regressions passed\n";
++}

@@ -1,6 +1,8 @@
 import csv
 import logging
 import os
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -26,8 +28,10 @@ from ._analyze_workflows import (
     JOURNAL,
     AnalyzeJob,
     AnalyzeResult,
+    _filename_key,
     _print,
     _step_params,
+    _vcf_output_tag,
     detect_vcf_type,
     generate_summary_report,
     run_bam_chain,
@@ -46,11 +50,15 @@ def run_comprehensive(
     params: AnalyzeComprehensiveParams,
     debug: bool = False,
     keep_awake: bool | None = None,
+    input_from_config: bool = False,
 ) -> None:
     """The ``analyze comprehensive`` operation (``api.analyze.comprehensive``).
     ``debug`` and ``keep_awake`` are passed on to the steps' subcommands."""
     job = AnalyzeJob(
-        **job_values(params, AnalyzeJob), debug=debug, keep_awake=keep_awake
+        **job_values(params, AnalyzeJob),
+        debug=debug,
+        keep_awake=keep_awake,
+        input_from_config=input_from_config,
     )
     cmd_comprehensive(job)
 
@@ -62,23 +70,28 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
     log_dependency_info(["bcftools", "samtools", "tabix"])
     thresholds_from(job)  # reject crossed thresholds from config before any work
 
-    # The configured batch file and VCFs are defaults for a run given no inputs;
-    # never for a batch's own samples, or each would re-run the batch.
     batch_sample = job.batch_sample
-    explicit = job.input or job.vcf_inputs or batch_sample
-    batch_file = job.batch or (None if explicit else settings.get("batch_file_path"))
+    has_inputs = job.input or job.vcf_inputs or batch_sample
+    batch_file = job.batch or (None if has_inputs else settings.get("batch_file_path"))
     if batch_file:
         run_batch_comprehensive(job, batch_file)
         return
 
     input_file = job.input
     vcf_inputs = list(job.vcf_inputs or ())
-    env_vcf = None if batch_sample else settings.get("vcf_input_paths")
-    if not vcf_inputs and env_vcf:
-        if isinstance(env_vcf, list):
-            vcf_inputs = env_vcf
+    # CLI alignment and VCF defaults can be configured together, but a selected
+    # alignment (including --genome) must never borrow VCFs from that config.
+    configured_vcfs = (
+        settings.get("vcf_input_paths")
+        if not (vcf_inputs or batch_sample)
+        and (not input_file or job.input_from_config)
+        else None
+    )
+    if configured_vcfs:
+        if isinstance(configured_vcfs, list):
+            vcf_inputs = configured_vcfs
         else:
-            vcf_inputs = env_vcf.split()
+            vcf_inputs = configured_vcfs.split()
 
     if not input_file and not vcf_inputs:
         raise UsageError(LOG_MESSAGES["input_required"])
@@ -92,7 +105,8 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
 
     verify_paths_exist(paths_to_verify)
 
-    outdir = job.outdir if job.outdir else os.getcwd()
+    outdir = str(absolute_path(job.outdir or os.getcwd()))
+    vcf_plan = _plan_vcf_workflows(vcf_inputs, outdir, input_file)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     result = current_result()
     for vcf in vcf_inputs:
@@ -108,7 +122,7 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
 
     with StepJournal(Path(outdir, JOURNAL), "analyze comprehensive",
                      resume_policy(job)) as journal:  # fmt: skip
-        results = _run_comprehensive(job, journal, input_file, vcf_inputs, outdir)
+        results = _run_comprehensive(job, journal, input_file, vcf_plan, outdir)
     if journal.dry_run:
         return
 
@@ -121,11 +135,71 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
         )
 
 
+def _plan_vcf_workflows(
+    vcfs: Sequence[str], outdir: str, alignment: str | None
+) -> list[tuple[str, str, str]]:
+    """Plan (source, type, output tag) before the workflow writes anything."""
+    types = [detect_vcf_type(vcf) for vcf in vcfs]
+    tags = [_vcf_output_tag(vcf, kind) for vcf, kind in zip(vcfs, types, strict=True)]
+    keys = [_filename_key(tag) for tag in tags]
+    counts = Counter(keys)
+    used = set(keys)
+    sources = [Path(vcf).parent.resolve() / Path(vcf).name for vcf in vcfs]
+    protected = {*sources, *(path.resolve() for path in sources)}
+    if alignment:
+        protected.update((absolute_path(alignment), Path(alignment).resolve()))
+    source_paths = {_filename_key(str(path)) for path in protected}
+    source_dirs = {
+        _filename_key(str(parent)) for path in protected for parent in path.parents
+    }
+    output_dir = Path(outdir).resolve()
+
+    def overlaps_source(tag: str) -> Path | None:
+        work_dir = output_dir / f"work_{tag}"
+        output = output_dir / f"significant_{tag}.vcf.gz"
+        if any(
+            _filename_key(str(path)) in source_dirs
+            for path in (work_dir, work_dir.resolve())
+        ):
+            return work_dir
+        if any(
+            _filename_key(str(path)) in source_paths
+            for path in (output, output.resolve())
+        ):
+            return output
+        return None
+
+    for tag, key in zip(tags, keys, strict=True):
+        if counts[key] == 1 and (conflict := overlaps_source(tag)):
+            raise UsageError(
+                f"Planned VCF output overlaps an input: {conflict}. "
+                "Use a different --outdir."
+            )
+
+    # Reserve existing names and assign suffixes in source order, independent
+    # of the order the user passes the same inputs on a resumed run.
+    suffixes: Counter[str] = Counter()
+    for i in sorted(range(len(vcfs)), key=lambda i: (str(sources[i]), vcfs[i])):
+        key = keys[i]
+        if counts[key] == 1:
+            continue
+        while True:
+            suffixes[key] += 1
+            candidate = f"{tags[i]}-{suffixes[key]}"
+            candidate_key = _filename_key(candidate)
+            if candidate_key in used or overlaps_source(candidate):
+                continue
+            used.add(candidate_key)
+            tags[i] = candidate
+            break
+    return list(zip(vcfs, types, tags, strict=True))
+
+
 def _run_comprehensive(
     job: AnalyzeJob,
     journal: StepJournal,
     input_file: str | None,
-    vcf_inputs: list[str],
+    vcf_plan: list[tuple[str, str, str]],
     outdir: str,
 ) -> list[AnalyzeResult]:
     result = current_result()
@@ -138,11 +212,10 @@ def _run_comprehensive(
 
     # 2. VCF Processing (Independently per type)
     results: list[AnalyzeResult] = []
-    if vcf_inputs:
-        _print(f"\nSTAGE: Processing Input VCFs ({len(vcf_inputs)} files)")
-        for vcf in vcf_inputs:
-            v_type = detect_vcf_type(vcf)
-            res = run_vcf_workflow(job, vcf, v_type, outdir, journal)
+    if vcf_plan:
+        _print(f"\nSTAGE: Processing Input VCFs ({len(vcf_plan)} files)")
+        for vcf, v_type, tag in vcf_plan:
+            res = run_vcf_workflow(job, vcf, v_type, outdir, journal, output_tag=tag)
             if res:
                 results.append(res)
     elif input_file and not job.skip_calling:

@@ -54,6 +54,36 @@ parser still treats external/compact documents as unvalidated input.
   command's human-readable output and also read its result, such as the
   desktop app. It is not listed in `--help`. Like `--json`, it writes nothing
   when argparse rejects the arguments.
+- **`--card`.** This global option (or `result_card = true` in config.toml;
+  `--no-card` overrides it) also writes `<name>.card.html` beside the
+  manifest: `sample_MT.vcf.card.html` beside `sample_MT.vcf.manifest.json`.
+  The card is a page to view, print to PDF or share. It shows the command,
+  its status, what the command printed, metrics, warnings and output files,
+  with the WGS Extract and tool versions, the input files with their size and
+  an abbreviated fingerprint, the reference and when the run happened. Files
+  and URLs appear by name only. In the printed text, messages and metrics,
+  URLs, the run's files, its path options as given (missing or relative too)
+  and any other path that exists on the computer are cut to their names, and
+  the home folder to `~`, so sharing a card doesn't reveal your folders;
+  the manifest beside it keeps the full paths. The page is self-contained: no
+  scripts, nothing loaded from a network. A report-only command that reads
+  a sample, such as `info`, which otherwise writes no manifest, writes both
+  into its output folder (with no `--outdir`, where outputs go by default:
+  `output_directory` or `wgse/` beside the input), named after its input and
+  command (`sample.bam_info.card.html` and `sample.bam_info.manifest.json`); one
+  that reads no sample, such as `ref status`, writes no card. The card is
+  listed in the manifest's `outputs` with role `result_card`. A failed run's
+  card shows the error. Help and settings commands (`help`, `config`, `deps`,
+  `sample`, `serve`, `report-issue`) write no card, and neither does a
+  `--status` run or a run whose card would replace its `--log-file`. `wgsextract serve --card`
+  gives every job it runs a card, inside the folders the server may use; a
+  job started with `?card=1` (or `card=0`) gets one (or not) whatever the
+  server's default; otherwise jobs follow `result_card`. A read-only MCP
+  session writes none. The card and manifest are written together under a lock, so
+  concurrent runs on one sample can't pair one run's card with another's
+  manifest; a successful run removes an earlier failed attempt's card with
+  its manifest. Internal steps (`analyze`, `benchmark`) write no cards. The desktop app asks for cards only for its analysis
+  actions and shows each one when the run ends.
 
 ## Document
 
@@ -61,7 +91,7 @@ parser still treats external/compact documents as unvalidated input.
 | --- | --- |
 | `schema` | Always `"wgsextract.result/1"`. |
 | `command` | The subcommand path, e.g. `"vcf snp"` or `"lineage y-haplogroup"`. |
-| `status`, `exit_code`, `error` | `ok`, `failed` or `cancelled`; the process exit code; and `null` or `{kind, message}`, where `kind` is one of `failure`, `usage`, `missing_dependency` or `cancelled`. |
+| `status`, `exit_code`, `error` | `ok`, `failed` or `cancelled`; the process exit code; and `null` or `{kind, message}`, where `kind` is one of `failure`, `usage`, `missing_dependency` or `cancelled`. Some errors include a stable message `code`. |
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |

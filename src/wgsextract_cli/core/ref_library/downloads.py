@@ -27,6 +27,7 @@ from wgsextract_cli.core.download_progress import (
     curl_progress_args,
     redact_urls,
     require_http_url,
+    retryable_http_status,
 )
 from wgsextract_cli.core.network_policy import require_download
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -460,9 +461,9 @@ def _urllib_download(
     except _RESUMABLE:
         raise
     except URLError as e:
-        # A server error (5xx) or no connection at all (DNS, refused, network
-        # down) may pass; retry those. A client error (4xx) won't.
-        if not isinstance(e, HTTPError) or e.code >= 500:
+        if isinstance(e, HTTPError):
+            e.close()
+        if not isinstance(e, HTTPError) or retryable_http_status(e.code):
             raise ConnectionError(str(e)) from e
         logging.error("Download error: %s", redact_urls(str(e), sources=(url,)))
     except (

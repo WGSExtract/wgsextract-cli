@@ -157,6 +157,10 @@ def test_cache_key_tracks_templates_chain_catalogue_and_library(
     assert changed != original
     chain.write_bytes(b"different chain")
     assert cache.cache_directory(*args) != changed
+    # The v2 map's GRCh38 FTDNA Y templates join the union through hg38ToHg19.
+    lifted = cache.cache_directory(*args)
+    (tmp_path / "hg38ToHg19.over.chain.gz").write_bytes(b"chain")
+    assert cache.cache_directory(*args) != lifted
     assert cache.cache_directory(
         args[0], replace(catalogue, cache_key="changed"), args[2]
     ) != cache.cache_directory(*args)

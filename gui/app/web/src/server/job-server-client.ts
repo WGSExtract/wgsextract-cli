@@ -1,11 +1,13 @@
 import type { LooseRecord } from "../../../shared/types.js";
 import type { Job as TransportJob } from "../../../shared/generated/server-transport.js";
 import { errorMessage } from "./errors.js";
+import { localJobServerURL } from "./local-job-server-url.js";
 
 /** Where a running job server listens, as it announced on stdout. */
 export interface JobServerAddress {
     url: string;
     token: string;
+    clientJobIDs?: boolean;
 }
 
 /** A job record; servers may add fields. `exit_code` is set once the job has finished. */
@@ -22,23 +24,58 @@ export interface JobEvent {
 }
 
 export type StartJobResult =
-    | { started: true; job: JobRecord }
-    | { started: false; reason: string; unreachable: boolean };
+    | { kind: "accepted"; job: JobRecord }
+    | { kind: "rejected" | "unavailable" | "indeterminate"; reason: string };
 
-/** Starts `operation` as a job. A refused or failed request reports why; no job was created then. */
-export async function startJob(address: JobServerAddress, operation: string, parameters: LooseRecord): Promise<StartJobResult> {
-    let response: Response;
+const submissionTimeoutMs = 15_000;
+
+/** Starts a job once. A lost reply can be recovered by reading the original ID, not by submitting again. */
+export async function startJob(address: JobServerAddress, id: string | null, operation: string, parameters: LooseRecord, card = false): Promise<StartJobResult> {
+    if (!localJobServerURL(address.url)) {
+        return { kind: "rejected", reason: "Local job server requires a numeric loopback URL." };
+    }
+    let reason: string;
     try {
-        response = await request(address, "POST", `/ops/${operation}`, parameters);
+        const response = await request(address, "POST", `/ops/${operation}${card ? "?card=1" : ""}`,
+            parameters, AbortSignal.timeout(submissionTimeoutMs), id ? { "X-WGSE-Job-ID": id } : undefined);
+        const body = await response.json().catch(() => undefined) as LooseRecord | undefined;
+        if (response.ok && isJobRecord(body) && (id === null || body.id === id)) {
+            return { kind: "accepted", job: body };
+        }
+        reason = `HTTP ${response.status}: ${describeError(body)}`;
+        const code = responseErrorCode(body);
+        if (code && rejectionStatus.get(code) === response.status) {
+            return { kind: "rejected", reason };
+        }
+        if (response.status === 409 && code === "job_id_in_use") {
+            return { kind: "indeterminate", reason };
+        }
     }
     catch (error) {
-        return { started: false, reason: errorMessage(error), unreachable: true };
+        reason = errorMessage(error);
+        if (error instanceof Error && error.cause instanceof Error
+            && "code" in error.cause && error.cause.code === "ECONNREFUSED") {
+            return { kind: "unavailable", reason };
+        }
     }
-    const body = await response.json().catch(() => undefined) as LooseRecord | undefined;
-    if (!response.ok || !isJobRecord(body)) {
-        return { started: false, reason: `HTTP ${response.status}: ${describeError(body)}`, unreachable: false };
+    const job = id ? await getJob(address, id, AbortSignal.timeout(submissionTimeoutMs)).catch(() => undefined) : undefined;
+    return job ? { kind: "accepted", job } : { kind: "indeterminate", reason };
+}
+
+// Only the job server's explicit pre-acceptance errors allow direct fallback.
+const rejectionStatus = new Map([
+    ["bad_length", 400], ["bad_json", 400], ["bad_headers", 400], ["usage", 400], ["invalid_job_id", 400],
+    ["unauthorized", 401], ["bad_host", 403], ["bad_origin", 403], ["path_not_allowed", 403],
+    ["destructive", 403], ["unknown_op", 404], ["not_found", 404], ["too_large", 413],
+    ["stopping", 503],
+]);
+
+function responseErrorCode(body: LooseRecord | undefined): string | undefined {
+    const error = body?.error;
+    if (error && typeof error === "object" && "code" in error && typeof error.code === "string") {
+        return error.code;
     }
-    return { started: true, job: body };
+    return undefined;
 }
 
 /** Reads the job's server-sent events until the server ends the stream, which it does once the job has finished. */
@@ -69,10 +106,10 @@ export async function cancelJob(address: JobServerAddress, id: string): Promise<
     }
 }
 
-export async function getJob(address: JobServerAddress, id: string): Promise<JobRecord> {
-    const response = await request(address, "GET", `/jobs/${encodeURIComponent(id)}`);
+export async function getJob(address: JobServerAddress, id: string, signal?: AbortSignal): Promise<JobRecord> {
+    const response = await request(address, "GET", `/jobs/${encodeURIComponent(id)}`, undefined, signal);
     const body = await response.json().catch(() => undefined) as LooseRecord | undefined;
-    if (!response.ok || !isJobRecord(body)) {
+    if (!response.ok || !isJobRecord(body) || body.id !== id) {
         throw new Error(`Job ${id}: HTTP ${response.status}: ${describeError(body)}`);
     }
     return body;
@@ -84,12 +121,16 @@ export async function jobLog(address: JobServerAddress, id: string): Promise<str
     return response.ok ? response.text() : "";
 }
 
-function request(address: JobServerAddress, method: string, path: string, body?: LooseRecord, signal?: AbortSignal): Promise<Response> {
-    return fetch(`${address.url}${path}`, {
+function request(address: JobServerAddress, method: string, path: string, body?: LooseRecord, signal?: AbortSignal, headers?: Record<string, string>): Promise<Response> {
+    const local = localJobServerURL(address.url);
+    if (!local) return Promise.reject(new Error("Local job server requires a numeric loopback URL."));
+    return fetch(`${local}${path}`, {
         method,
+        redirect: "error",
         headers: {
             authorization: `Bearer ${address.token}`,
             ...(body ? { "content-type": "application/json" } : {}),
+            ...headers,
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
         ...(signal ? { signal } : {}),
@@ -120,7 +161,8 @@ function parseEvent(block: string): JobEvent | undefined {
 }
 
 function isJobRecord(value: LooseRecord | undefined): value is JobRecord {
-    return typeof value?.id === "string" && typeof value.status === "string";
+    return typeof value?.id === "string" && value.id.trim() !== "" && value.id !== "." && value.id !== ".."
+        && typeof value.status === "string" && value.status.trim() !== "";
 }
 
 function describeError(body: LooseRecord | undefined): string {

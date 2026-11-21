@@ -219,6 +219,7 @@ export function localizationLabels(table: StringMap = {}) {
         terminalNonzeroExitSummary: table["app.terminal.nonzeroExit.summary"] ??
             "The command exited with a non-zero status. Check the command output for details.",
         terminalProcessErrorTitle: table["app.terminal.processError.title"] ?? "Command failed",
+        terminalJobSubmissionUnknown: table["app.terminal.jobSubmissionUnknown"] ?? "The server may still be running this job. Check its status before trying again.",
         terminalProcessErrorSummary: table["app.terminal.processError.summary"] ?? "The command could not complete.",
         configLoadedFormat: table["app.config.loaded.format"] ?? "Loaded settings from %{path}",
         configLoadErrorFormat: table["app.config.loadError.format"] ?? "Could not load %{label}: %{error}",
@@ -244,25 +245,32 @@ export function localizationLabels(table: StringMap = {}) {
         resultUsageTitle: table["app.result.usage.title"] ?? "Check the selected options",
         resultMissingDependencyTitle: table["app.result.missingDependency.title"] ?? "A required tool is not installed",
         resultOpenSetupTitle: table["app.result.openSetup.title"] ?? "Open Setup",
-        prerequisitesTitle: table["app.prerequisites.title"] ?? "Required data is missing",
-        prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data that isn't installed yet:",
+        resultCardTitle: table["app.result.card.title"] ?? "Result card",
+        resultCardSourceFormat: table["app.result.card.sourceFormat"] ?? "Shown from %{file}",
+        resultCardViewTitle: table["app.result.card.view.title"] ?? "View Card",
+        resultCardCloseTitle: table["app.result.card.close.title"] ?? "Close",
+        prerequisitesTitle: table["app.prerequisites.title"] ?? "Something this command needs is missing",
+        prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data or tools that aren't installed yet:",
         prerequisitesStillMissingMessage: table["app.prerequisites.stillMissing"] ??
-            "It still isn't installed. Install it, or download it yourself and click Continue again.",
+            "It still isn't installed. Install it, or install it yourself and click Continue again.",
         prerequisitesManualNote: table["app.prerequisites.manualNote"] ??
-            "To download it yourself, install it from the library pages, then click Continue.",
+            "To install it yourself, use the library or Tools pages, then click Continue.",
         prerequisitesInstallButtonTitle: table["app.prerequisites.install"] ?? "Install and Continue",
         prerequisitesContinueButtonTitle: table["app.prerequisites.continue"] ?? "Continue",
         prerequisitesCancelButtonTitle: table["app.prerequisites.cancel"] ?? "Cancel",
-        prerequisitesCheckingTitle: table["app.prerequisites.checking"] ?? "Checking for required data…",
+        prerequisitesCheckingTitle: table["app.prerequisites.checking"] ?? "Checking for required data and tools…",
         prerequisitesInstallTitleFormat: table["app.prerequisites.installTitleFormat"] ?? "Install %{name}",
         libraryStatusLabels: {
             installed: table["library.status.installed"] ?? "installed",
             unindexed: table["library.status.unindexed"] ?? "unindexed",
             incomplete: table["library.status.incomplete"] ?? "incomplete",
             missing: table["library.status.missing"] ?? "missing",
+            unavailable: table["library.status.unavailable"] ?? "not available",
         },
         libraryTagLabels: {
             recommended: table["library.tags.recommended"] ?? "Recommended",
+            mandatory: table["library.tags.mandatory"] ?? "Mandatory",
+            optional: table["library.tags.optional"] ?? "Optional",
         },
     };
 }
@@ -315,7 +323,7 @@ function localizeRow<Row extends { tags?: RowTagSpec[] | undefined }>(row: Row, 
     };
 }
 function localizeAction(action: ActionSpec, table: StringMap): ActionSpec {
-    const localizedAction = localizeFields(action, table, ["title", "tooltip", "disabledTooltip"]);
+    const localizedAction = localizeFields(action, table, ["title", "advancedTitle", "tooltip", "disabledTooltip"]);
     if (action.confirm) {
         localizedAction.confirm = localizeFields(action.confirm, table, ["title", "message", "confirmButtonTitle", "cancelButtonTitle", "requiredText", "prompt"]);
     }

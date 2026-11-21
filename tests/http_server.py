@@ -25,6 +25,7 @@ class RangeServer:
     is cut off half-way, once. drop_starts: ranged GETs starting at
     these offsets are always cut off. head_status/get_status: answer HEAD/GET
     with this error; statuses[path]: answer requests for path with it.
+    get_errors[path]: sequence of error statuses to return before serving GETs.
     etags: send each file's ETag (a hash of its content), as S3 does.
     delays[path]: seconds to wait before answering a GET for path.
     headers[path]: extra headers sent with path (as x-goog-hash on GCS).
@@ -41,6 +42,7 @@ class RangeServer:
         self.head_status: int | None = None
         self.bare_416 = False  # leave Content-Range out of 416s, as Ensembl does
         self.statuses: dict[str, int] = {}
+        self.get_errors: dict[str, list[int]] = {}
         self.etags = False
         self.delays: dict[str, float] = {}
         self.headers: dict[str, dict[str, str]] = {}
@@ -105,6 +107,10 @@ class RangeServer:
                 spec = self.headers.get("Range")
                 server.requests.append(("GET", spec))
                 server.get_paths.append(path)
+                errors = server.get_errors.get(path)
+                if errors:
+                    self.send_error(errors.pop(0))
+                    return
                 data = self._body(path)
                 if data is None and path in server.statuses:
                     return

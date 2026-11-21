@@ -80,10 +80,11 @@ Reference genomes never go there: they live in reference_genome_library
         "Coverage and depth, and the low-depth warnings.",
         f"""\
 Depth is how many reads cover a position: "30x" means 30 reads per base on
-average. Breadth is the share of the genome covered at all. Low depth means
-more missing and wrong genotypes, so commands warn below {_DIPLOID_DEPTH:g}x on autosomes
-and {_HAPLOID_DEPTH:g}x on chrY and mtDNA (the qc_min_diploid_depth and
-qc_min_haploid_depth settings; --qc-min-depth for one run).
+average. Breadth is the share of the genome, less its N gaps, covered at all.
+Low depth means more missing and wrong genotypes, so commands warn below
+{_DIPLOID_DEPTH:g}x on autosomes and {_HAPLOID_DEPTH:g}x on chrY and mtDNA (the
+qc_min_diploid_depth and qc_min_haploid_depth settings; --qc-min-depth for one
+run).
   wgsextract info coverage-sample --input sample.cram
   wgsextract info calculate-coverage --input sample.cram
 

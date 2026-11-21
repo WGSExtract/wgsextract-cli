@@ -153,11 +153,12 @@ never become the latest release:
 - **Windows tools** (`windows-tools-N`): Actions > Windows Tools > Run
   workflow. See [windows.md](windows.md).
 - **macOS aligners** (`macos-aligners-N`): Actions > macOS Aligners > Run
-  workflow. It publishes the Apple Silicon `wgse-bwa` and `wgse-bwa-mem2`
-  tarballs built from `native/` (see [native/README.md](../native/README.md)).
-  The CLI does not use them yet. Each package carries its own version, printed
-  by `--version`: bump `WGSE_BWA_VERSION` in `native/bwa/CMakeLists.txt` or the
-  project version in `native/CMakeLists.txt` (`wgse-bwa-mem2`) when it changes.
+  workflow. It publishes the Apple Silicon `wgse-bwa`, `wgse-bwa-mem2`,
+  `wgse-bwa-mem3` and `wgse-minimap2` tarballs built from `native/` (see
+  [native/README.md](../native/README.md)). Each package carries its own version,
+  printed by `--version`: bump its `WGSE_*_VERSION` in the corresponding
+  `native/<aligner>/CMakeLists.txt` and, where present, its conda recipe when
+  it changes.
 - **Linux aligners** (`linux-aligners-N`): Actions > Linux Aligners > Run
   workflow. It publishes the `wgse-bwa` (x86-64 and ARM64), `wgse-bwa-mem3`
   and `wgse-minimap2` (x86-64) conda packages built from `native/` by

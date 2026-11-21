@@ -11,7 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
-import { isShownInUIMode, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
+import { actionTitledForUIMode, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting, ValueMap } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -217,7 +217,7 @@ export function renderSection(section: PageSection, page: BundlePage) {
     </section>
   `;
     }
-    const sectionActions = (section.actions ?? []).filter((action) => isShownInUIMode(action, state.uiMode));
+    const sectionActions = visibleActions(section.actions, state.uiMode);
     const controls = visibleControls(section, state.uiMode);
     // Empty header and controls blocks would still add their margins: a blank band above the first row.
     return `
@@ -318,7 +318,7 @@ export function renderTextControl(control: ControlSpec) {
     <div class="form-row">
       <label class="row-label" for="${escapeAttribute(inputID)}">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</label>
       ${control.kind === "path"
-        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button></span>`
+        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button>${state.manifest?.id === "wgs-extract" && ["bam_path", "vcf_path"].includes(control.id) && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(rawValue)) ? `<button type="button" class="secondary-button" data-view-reads="${escapeAttribute(control.id)}">${escapeHTML(state.labels.viewerStrings?.viewReads ?? "")}</button>` : ""}</span>`
         : input}
     </div>
   `;
@@ -488,7 +488,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
             return `<tr>
                       ${columns.map((column) => `<td>${renderRowCell(row, column)}</td>`).join("")}
                       ${(control.rowActions ?? []).length
-                ? `<td><div class="row-actions">${renderActions(control.rowActions ?? [], contextForRow, location, true)}</div></td>`
+                ? `<td><div class="row-actions">${renderActions((control.rowActions ?? []).map((action) => actionTitledForUIMode(action, state.uiMode)), contextForRow, location, true)}</div></td>`
                 : ""}
                     </tr>`;
         })

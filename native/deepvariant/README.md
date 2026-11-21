@@ -68,6 +68,49 @@ google/deepvariant#1085) with the patches in [`patches/`](patches):
 - **0010** (0.3.1) writes a PL value for every genotype of the gVCF's variant
   records, those with the `<*>` allele included, as Google's does: 0.3.0 left
   them out, so `A T,<*>` had 3 values instead of 6 (#999).
+- **0011** (0.4.0) implements Google's haploid/PAR likelihood recalibration
+  and reference confidence (#1103). `run`, `make_examples` and
+  `postprocess_variants` accept `--haploid_contigs` (comma- or space-separated)
+  and `--par_regions_bed` (zero-based half-open BED, plain or gzip).
+  Heterozygous probability mass is zeroed and the remaining mass normalized
+  after multiallelic merging and allele simplification, before GT/GQ/QUAL/
+  FILTER. Haploid gVCF reference likelihoods use log10(Phet) = -999 before
+  normalization and GQ binning, and reference blocks split at PAR boundaries.
+  Likelihood inputs are rescaled to at most 100 reads (rounding reference
+  counts up), while MIN_DP/MED_DP retain the original depths.
+  Empty-read partitions still emit zero-depth reference evidence rather than
+  leaving gaps; ambiguous reference bases remain omitted, as in Google's gVCF.
+  GT and Number=G PL retain Google's diploid encoding, not single-allele GTs.
+  The build runs native likelihood and PAR-edge regressions; the smoke test
+  checks staged flag propagation, retained PAR heterozygotes and gVCF coverage.
+- **0012** (0.4.1) traverses the Apple small model's hidden-layer weights
+  contiguously, so independent outputs use SIMD without changing each output's
+  input accumulation order or adding fast-math flags. The three-output final
+  layer and Linux computation are unchanged.
+- **0013** (0.4.1) compiles the realigner's fixed CIGAR regular expression once
+  per worker instead of once per read/haplotype alignment, with unchanged
+  parsing and no shared matching-cache contention.
+- **0014** (0.4.1) gates every Apple package build on bit-for-bit equality of
+  the production `DenseFp32` kernel with the exact pre-0012 scalar loop.
+  It checks 70/94/106 → 750 and 750 → 750 with deterministic signed zeros,
+  denormals, large magnitudes, mixed signs, rounding-sensitive cancellation
+  and varied finite FP32 inputs. Both use the same Objective-C++ build flags
+  and contraction settings; no tolerance or fast-math override is used.
+
+The haploid contract follows Google DeepVariant **v1.10.0**:
+[`postprocess_variants.py`, lines 1070–1092](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1070-L1092)
+(probability adjustment), [1197–1204](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1197-L1204)
+and [1300–1307](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/postprocess_variants.py#L1300-L1307)
+(biallelic and multiallelic calls), and
+[`variant_caller.py`, lines 220–257](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L220-L257)
+and [323–334](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L323-L334)
+(haploid reference confidence and base-wise PAR membership). Variant PAR
+membership uses overlap of the simplified variant; reference confidence uses
+the individual reference base, as upstream does. Its cached reference confidence
+rescales counts at [76–102](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L76-L102)
+and [215–218](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/variant_caller.py#L215-L218),
+with the default 100-read cache limit set by
+[`very_sensitive_caller.py`, lines 46–50](https://github.com/google/deepvariant/blob/v1.10.0/deepvariant/very_sensitive_caller.py#L46-L50).
 
 ## Same results as Google's image
 
@@ -148,6 +191,81 @@ See the [16 GB measurements](../../docs/apple-silicon-16gb.md#native-deepvariant
 for the version-labelled whole-genome timing projection; a whole genome was
 measured with 0.1.0, **not** 0.1.1.
 
+### Apple Silicon CPU hill-climb (0.4.1)
+
+The CPU changes in 0.4.1 were checked on the same HG002 35x chr20 input on
+an M1 Pro (eight performance and two efficiency cores, 32 GiB). Three
+interleaved, unprofiled observations per variant, with the same Apple Clang 21
+toolchain and Homebrew dependencies, gave these make_examples medians:
+
+| Change, ten workers | Wall seconds | CPU seconds, user + system |
+| --- | ---: | ---: |
+| Unchanged 0.4.0 source control | 149.55 | 1,378.19 |
+| Contiguous small-model hidden layers | 130.60 | 1,212.30 |
+| Plus per-worker CIGAR regex cache | **124.41** | **1,169.03** |
+
+That is **16.8% less wall time and 15.2% less CPU time** in make_examples for
+the combined changes, not a 16.8% whole-pipeline speedup. These development
+builds are not directly comparable with the older qualification timings or
+the self-contained release binary.
+
+The exact self-contained 0.4.1 superbuild was also checked against released
+0.4.0, with three unprofiled make_examples observations each: median wall
+**137.62 → 122.84 seconds** (10.7% less), median CPU **1,272.61 → 1,148.23
+seconds** (9.8% less). One complete staged run with gVCF took **252.37 →
+242.00 seconds** (4.1% less); inference and postprocessing were not changed.
+Do not substitute the development-build percentage for this release comparison.
+
+Each individual change retained all **210,390 VCF calls**, the sites, alleles,
+GT and FILTER of **1,743,980 gVCF records**, and all **1,533,590 complete
+reference-block rows** against released 0.4.0. The synthetic-genome smoke
+also checks staged VCF/gVCF equality with two versus three workers, haploid/PAR
+calls and reference coverage through an empty contig.
+
+Eight- and twelve-worker pilots took 139.22 and 124.19 seconds respectively;
+these pilots do not justify introducing a new thread default. Eight uses
+less CPU, but takes longer; twelve is effectively tied with ten here.
+macOS scheduled the workers; they were not pinned to P or E cores.
+Weights, inference backend, batch-size policy and CLI thread defaults are
+unchanged.
+
+Whole-genome confirmation on **2026-11-20**, HG002 NovaSeq PCR-free 35x on
+the same 32 GiB M1 Pro, ten workers, Metal FP32 batch 1024, gVCF enabled:
+
+| Measurement | Released 0.4.0 | Candidate 0.4.1 |
+| --- | ---: | ---: |
+| Wall seconds | 8,831.4 | 7,984.3 |
+| CPU seconds, user + system | 50,708.6 | 46,455.5 |
+| Peak RSS, GB (`time`) | 11.95 | 13.32 |
+| Peak temporary space, GB (5 s sampling) | 29.4 | 29.5 |
+| Swap growth, bytes | 0 | 0 |
+
+This measured whole-pipeline reduction is **9.6% wall / 8.4% CPU**, with
+approximately **1.4 GB more RSS**. One run per version, M1 Pro only; this
+does not qualify the **16 GB base M1**, whose whole-genome memory/swap
+confirmation remains follow-up. Decimal GB; RSS does not include all Metal
+buffers, and temporary space excludes inputs, reference and final outputs.
+
+The full non-header VCF and gVCF bodies are **exactly identical**, all columns:
+**7,709,239 VCF records**, **72,210,019 gVCF records**, including
+**64,500,780 entire reference blocks**. Matching SHA-256 hashes:
+
+- VCF: `f2f01ee66a6baca00e2d0c43dffb9020f5efaa12519d136f96339aef0a526942`
+- gVCF: `a21d0be63888a41df749ffd37af8ff1ae76a274601be04b2aed4a2a58ccf4b80`
+
+This is native 0.4.0 versus 0.4.1 equality, not byte equality with Google's
+image. [Raw result](https://github.com/WGSExtract/wgsextract-cli/issues/1116#issuecomment-7042830878);
+[resource estimates](../../docs/resource_estimates.md#apple-silicon-cpu-hill-climb)
+retain the measured envelopes and qualification limits.
+
+The 0.4.1 comparison uses a local candidate build. Shipping it requires a
+new `macos-deepvariant-N` release from the **macOS DeepVariant** workflow
+(`workflow_dispatch` with `release_tag`); ordinary main/PR builds do not
+publish it. Mac users install that release's 0.4.1 binary on PATH; the CLI
+discovers it there, so no macOS Pixi binary pin changes. Existing WGS weights
+are unchanged. The Linux Pixi environment remains pinned to 0.4.0 until a
+separate Linux release and checksum/lockfile update.
+
 ## Linux x86-64 and NVIDIA GPUs (CUDA)
 
 The Linux build is conda packages (`packaging/wgse-deepvariant`, built by
@@ -225,9 +343,12 @@ filters are all identical to Google's, as is a synthetic genome's VCF
 ### Installing on Linux
 
 From a checkout of this repository, `pixi install -e deepvariant` installs the
-CUDA build from `linux-deepvariant-3` (0.3.1), pinned by its checksum (about
+CUDA build from `linux-deepvariant-4` (0.4.0, build 2), pinned by its checksum (about
 3.9 GB; needs an NVIDIA driver for CUDA 12), and `vcf deepvariant` finds it
-there without `PATH`. A `wgse-deepvariant` on `PATH` comes first, so remove an
+there without `PATH`. Updating WGS Extract preserves an existing optional
+`deepvariant` environment. To upgrade from 0.3.1 or another older version,
+rerun `pixi install -e deepvariant` from the updated checkout before calling
+haploid chrX/Y/MT. A `wgse-deepvariant` on `PATH` comes first, so remove an
 older standalone install (such as 0.2.0, which sends ONT reads to Google's
 image) from `PATH`. Then download, check and unpack just the weights, which
 have the WGS and ONT_R104 models, and set `deepvariant_weights` in
@@ -235,24 +356,24 @@ have the WGS and ONT_R104 models, and set `deepvariant_weights` in
 
 ```bash
 mkdir wgse-deepvariant-weights && cd wgse-deepvariant-weights
-gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli \
+gh release download linux-deepvariant-4 -R WGSExtract/wgsextract-cli \
   -p 'wgse-deepvariant-weights-*' -p SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS && tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
-Otherwise, download the whole `linux-deepvariant-3` prerelease into an empty
+Otherwise, download the whole `linux-deepvariant-4` prerelease into an empty
 directory and check it:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download linux-deepvariant-3 -R WGSExtract/wgsextract-cli
+gh release download linux-deepvariant-4 -R WGSExtract/wgsextract-cli
 sha256sum -c SHA256SUMS
 tar -xzf wgse-deepvariant-weights-1.10.0.tar.gz
 ```
 
 Continue only if every file reports `OK`. Then install the package into a Pixi
 environment of its own, with this `pixi.toml` beside it (for the CPU-only
-build, name `..._cpu_wgse_0.conda` and drop `cuda = "12"`):
+build, name `..._cpu_wgse_2.conda` and use `platforms = ["linux-64"]`):
 
 ```toml
 [workspace]
@@ -261,7 +382,7 @@ channels = ["conda-forge", "bioconda"]
 platforms = [{ name = "linux-64-cuda", platform = "linux-64", cuda = "12" }]
 
 [dependencies]
-wgse-deepvariant = { path = "./wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda" }
+wgse-deepvariant = { path = "./wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda" }
 ```
 
 ```bash
@@ -286,6 +407,11 @@ still use Parabricks; see [docs/hardware.md](../../docs/hardware.md)). With
 and with its WGS-only weights (`wgse-deepvariant-weights-1.10.0-wgs`) an ONT
 run stops at the missing ONT_R104 files.
 
+Version 0.4.0 supports male chrX/Y non-PAR and mitochondrial haploid calling,
+while retaining diploid PAR heterozygotes and reference confidence in gVCF.
+The CLI's minimum-version check still rejects older native binaries for
+non-diploid policies.
+
 To build it, `cmake -S native/deepvariant` in an environment with conda-forge's
 `libabseil`, `libprotobuf`, `re2`, `htslib`, `libboost-headers`, `zlib` and
 `onnxruntime-cpp`, with `-DCMAKE_PREFIX_PATH` naming it, or build the package
@@ -300,7 +426,7 @@ executables), and check the archives against the published digests:
 
 ```bash
 mkdir wgse-deepvariant && cd wgse-deepvariant
-gh release download macos-deepvariant-3 -R WGSExtract/wgsextract-cli
+gh release download macos-deepvariant-4 -R WGSExtract/wgsextract-cli
 shasum -a 256 -c SHA256SUMS
 ```
 
@@ -330,7 +456,7 @@ wgse-deepvariant run --model_type=WGS --ref=ref.fa --reads=sample.bam \
 `wgsextract vcf deepvariant --input sample.cram --ref reference.fa` supplies
 the native reader with a temporary, local MD5 cache of the supplied FASTA.
 This avoids relying on the CRAM header's `UR` (which may name a missing file
-on the machine that made it): native 0.3.1 does not use `--ref` for CRAM
+on the machine that made it): native 0.4.0 does not use `--ref` for CRAM
 decoding and can otherwise silently write an empty VCF (#1061).
 The CLI checks matching contigs' `M5` checksums before starting the reader.
 
@@ -375,6 +501,16 @@ needs samtools. The macOS DeepVariant workflow
 (`.github/workflows/macos_deepvariant.yml`) converts the weights in Google's
 image, builds and smoke-tests the binary and, when run with a release tag,
 publishes both with a `SHA256SUMS`.
+
+The `deepvariant` build target always runs `wgse_ploidy_check` and, on
+macOS, `wgse_dense_check`, including package builds with `BUILD_TESTING=OFF`.
+A mismatch fails the build before installation or the synthetic-genome smoke
+test. The dense check links the production small-model library, not a second
+optimized implementation. To rerun it in the superbuild's `port-build-*`
+directory, use `cmake --build <port-build> --target wgse_dense_check` or
+`ctest --test-dir <port-build> -R wgse_dense_scalar_reference --output-on-failure`.
+The scalar-reference check is Apple-only; Linux's qualified math and conda
+recipe remain unchanged.
 
 ## Licences
 

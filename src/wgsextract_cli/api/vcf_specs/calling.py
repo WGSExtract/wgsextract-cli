@@ -345,14 +345,24 @@ class VcfGatkParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
+        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see "
+        "docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
     pair_hmm_cuda: Path | None = param(
         None,
+        local_only=True,
         help="Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK "
         "4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. "
         "See native/pairhmm/README.md. Not with --gpu or --scatter.",
+        path="file",
+    )
+    pair_hmm_neon: Path | None = param(
+        None,
+        local_only=True,
+        help="Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK "
+        "4.6.2.0, with Java fallback. Opt-in; not Parabricks. "
+        "See packaging/arm64/gkl/README.md. Not with --gpu or --scatter.",
         path="file",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -364,9 +374,15 @@ class VcfGatkParams(_CallerParams):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.pair_hmm_cuda is not None and self.pair_hmm_neon is not None:
+            raise UsageError("--pair-hmm-cuda cannot be combined with --pair-hmm-neon.")
         if self.pair_hmm_cuda is not None and (self.gpu or self.scatter):
             raise UsageError(
                 "--pair-hmm-cuda cannot be combined with --gpu or --scatter."
+            )
+        if self.pair_hmm_neon is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-neon cannot be combined with --gpu or --scatter."
             )
 
 
@@ -425,7 +441,8 @@ class VcfDeepvariantParams(_CallerParams):
     gpu: bool = param(
         False,
         help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
-        "else Parabricks; Ultima: Google's GPU image (README).",
+        "else Parabricks; Ultima: Google's GPU image "
+        "(docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -462,14 +479,14 @@ class VcfClair3Params(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
-        "Docker; see docs/ont.md).",
+        help="Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU "
+        "in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
         action="store_true",
     )
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
+        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on CUDA; MPS varies"
     )
 
 

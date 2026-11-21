@@ -23,6 +23,13 @@ sidecar for GATK 4.6.2.0, explicitly selected with
 `vcf gatk --pair-hmm-cuda JAR`. It is separate from these aligner builds
 and does not change `vcf gatk --gpu` (Parabricks).
 
+[The ARM64 GKL recipe](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117)
+also builds an experimental Apple Silicon PairHMM sidecar for
+`vcf gatk --pair-hmm-neon JAR`. It reuses GKL's native interface, selects
+double precision to preserve reference blocks, and falls back to Java if
+native loading fails. It is separate from the aligner builds and does not
+change `--gpu` (Parabricks).
+
 | Executable | Upstream | Notes |
 | --- | --- | --- |
 | `wgse-bwa` | BWA 0.7.19 | Native arm64 build. CPU by default (upstream code, with some steps replaced by exact faster versions); `--metal` is **experimental**. Low memory: about 6 GB for a human index. |
@@ -172,6 +179,12 @@ backend of `mem` (other commands ignore them):
   complete and correct);
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
+
+Starting with `wgse-bwa` 0.14.1, `wgse-bwa-mem2` 0.5.4, `wgse-bwa-mem3` 0.4.1
+and `wgse-minimap2` 0.4.1, the aligners refuse to submit GPU work and log
+the reason if the Metal watchdog thread cannot start. `--backend auto`
+finishes on the CPU and exits successfully; `--metal` also completes the
+alignments on the CPU, but exits 1 as for other GPU batch failures.
 
 `wgse-bwa-mem3`'s `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
 (BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and

@@ -108,7 +108,12 @@ from .bam import (
     BamUnsortParams,
 )
 from .benchmark import BenchmarkParams
-from .deps import DepsCheckParams
+from .deps import (
+    DepsCheckParams,
+    DepsInstallParams,
+    DepsListParams,
+    DepsUninstallParams,
+)
 from .examples import ExampleGenomeDownloadParams, ExampleGenomeListParams
 from .extract import (
     BamSubsetParams,
@@ -154,6 +159,7 @@ from .ref import (
     RefCaddParams,
     RefClinvarParams,
     RefCountNsParams,
+    RefCytobandsParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -240,6 +246,9 @@ __all__ = [
     "CoverageSampleParams",
     "CustomParams",
     "DepsCheckParams",
+    "DepsInstallParams",
+    "DepsListParams",
+    "DepsUninstallParams",
     "ExampleGenomeDownloadParams",
     "ExampleGenomeListParams",
     "ExtractRegionParams",
@@ -275,6 +284,7 @@ __all__ = [
     "RefCaddParams",
     "RefClinvarParams",
     "RefCountNsParams",
+    "RefCytobandsParams",
     "RefDenseSaParams",
     "RefDownloadParams",
     "RefGeneMapParams",

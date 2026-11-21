@@ -76,10 +76,6 @@ INSTALL_HINTS = {
     "Linux `pixi install -e deepvariant` (NVIDIA driver) or the CPU-only "
     "linux-deepvariant package on PATH, on a Mac a macos-deepvariant release on "
     "PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
-    "fastvep": "Bioconda builds fastVEP for x86-64 Linux and Intel macOS only "
-    "(`pixi install -e fastvep`). Elsewhere, download the fastVEP 0.5 release "
-    "for your system from https://github.com/Huang-lab/fastVEP/releases and "
-    "put fastvep on PATH.",
 }
 # What a tool still needs after its Pixi environment is installed.
 PIXI_SETUP_HINTS = {
@@ -109,7 +105,6 @@ PLATFORM_ONLY_TOOLS = {
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
     "somalier": ("linux", "darwin"),
-    "fastvep": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
     "GLIMPSE2_phase": ("linux", "darwin", "win32"),
@@ -229,6 +224,7 @@ PIXI_TOOL_ENVS = {
     "LongTR": "longtr",
     "strkit": "strkit",
     "run_clair3.sh": "clair3",
+    "wgse-clair3": "clair3",
     "wgse-deepvariant": "deepvariant",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
