@@ -107,6 +107,7 @@ export type LabelTextKey =
     | "terminalExitDetailFormat"
     | "terminalNonzeroExitSummary"
     | "terminalProcessErrorTitle"
+    | "terminalJobSubmissionUnknown"
     | "terminalProcessErrorSummary"
     | "configLoadedFormat"
     | "configLoadErrorFormat"
@@ -582,6 +583,8 @@ export interface TerminalEntry {
     truncated?: boolean;
     command?: string;
     status?: TerminalStatus;
+    /** Present until submission is confirmed; null before the app receives the ID. */
+    pendingJobID?: string | null;
     /** The action's result document, when its command printed one. */
     result?: ResultDocument;
     /** When a job (an action or setup run) started, in epoch milliseconds. */

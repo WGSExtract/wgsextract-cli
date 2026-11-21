@@ -314,6 +314,7 @@ def _serve_http(
             f"Try: curl -H 'Authorization: Bearer {token}' {url}/ops",
             ready_json=ready_json,
             bind_url=server.bind_url if not server.loopback else None,
+            client_job_ids=True,
         )
         server.serve_forever()
     except (KeyboardInterrupt, SystemExit):
@@ -333,6 +334,7 @@ def _announce(
     *,
     ready_json: bool,
     bind_url: str | None = None,
+    client_job_ids: bool = False,
 ) -> None:
     """Save the private discovery file and tell the user (on stderr) and, with
     --ready-json, the program that started the server (on stdout) where the
@@ -341,7 +343,13 @@ def _announce(
 
     from wgsextract_cli.server.jobs import write_private_json
 
-    address = {"url": url, "token": token, "pid": os.getpid()}
+    address: dict[str, str | int | bool] = {
+        "url": url,
+        "token": token,
+        "pid": os.getpid(),
+    }
+    if client_job_ids:
+        address["client_job_ids"] = True
     if bind_url is not None:
         address["bind_url"] = bind_url
     write_private_json(discovery, address)

@@ -219,6 +219,7 @@ export function localizationLabels(table: StringMap = {}) {
         terminalNonzeroExitSummary: table["app.terminal.nonzeroExit.summary"] ??
             "The command exited with a non-zero status. Check the command output for details.",
         terminalProcessErrorTitle: table["app.terminal.processError.title"] ?? "Command failed",
+        terminalJobSubmissionUnknown: table["app.terminal.jobSubmissionUnknown"] ?? "The server may still be running this job. Check its status before trying again.",
         terminalProcessErrorSummary: table["app.terminal.processError.summary"] ?? "The command could not complete.",
         configLoadedFormat: table["app.config.loaded.format"] ?? "Loaded settings from %{path}",
         configLoadErrorFormat: table["app.config.loadError.format"] ?? "Could not load %{label}: %{error}",

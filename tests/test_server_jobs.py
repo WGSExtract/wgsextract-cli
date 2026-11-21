@@ -40,6 +40,26 @@ from wgsextract_cli.server.operations import (
 )
 
 
+def test_1235_client_job_id_recovers_original_job_and_refuses_duplicate(client, work):
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    headers = {"X-WGSE-Job-ID": job_id}
+    path = "/ops/example-genome/list"
+    params = {"target_root": str(work)}
+    assert client.request("POST", path, params, headers=headers)[0] in (200, 202)
+
+    status, job = client.request("GET", f"/jobs/{job_id}?wait=30")
+    assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
+    status, error = client.request("POST", path, params, headers=headers)
+    assert (status, error["error"]["code"]) == (409, "job_id_in_use")
+    status, error = client.request("POST", path, {"unknown": True}, headers=headers)
+    assert (status, error["error"]["code"]) == (409, "job_id_in_use")
+    status, error = client.request(
+        "POST", path, params, headers={"X-WGSE-Job-ID": "invalid"}
+    )
+    assert (status, error["error"]["code"]) == (400, "invalid_job_id")
+    assert [job["id"] for job in client.request("GET", "/jobs")[1]["jobs"]] == [job_id]
+
+
 def test_jobs_writing_to_one_folder_run_one_at_a_time(
     tmp_path, work, fake_data, slow_coverage
 ):

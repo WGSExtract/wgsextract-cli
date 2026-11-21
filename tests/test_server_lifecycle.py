@@ -125,6 +125,7 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
         # --ready-json: the program that started the server reads it from stdout.
         assert proc.stdout is not None
         assert json.loads(proc.stdout.readline()) == info
+        assert info["client_job_ids"] is True
         if sys.platform != "win32":
             assert discovery.stat().st_mode & 0o777 == 0o600
         client = Client(info["url"].removesuffix("/v1"))
