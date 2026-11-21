@@ -5,12 +5,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, wait
+from contextlib import suppress
 from http.client import HTTPException
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -80,6 +82,12 @@ def _stream_gnomad_contig(
     mirror = mirror_for(url) if use_mirrors else None
     reported = 0
     download_error: list[str] = []
+    response_lock = threading.Lock()
+    response_socket: socket.socket | None = None
+
+    def cancelled() -> bool:
+        return cancel_event is not None and cancel_event.is_set()
+
     with open(partial, "wb") as out, tempfile.TemporaryFile() as err:
         query = popen(
             ["bcftools", "query", *_GNOMAD_V4_QUERY, "-"],
@@ -93,11 +101,15 @@ def _stream_gnomad_contig(
         sink = query.stdin
 
         def feed() -> None:
-            nonlocal reported
+            nonlocal reported, response_socket
             try:
+                if cancelled():
+                    return
                 if mirror:
                     staging = Path(part + ".mirror")
                     for chunk in mirror_chunks(mirror, staging, cancel_event):
+                        if cancelled():
+                            return
                         sink.write(chunk)
                         on_bytes(len(chunk))
                         reported += len(chunk)
@@ -107,12 +119,26 @@ def _stream_gnomad_contig(
                     digest = hashlib.sha256()
                     received = 0
                     with urlopen(url, timeout=120) as response:
-                        while chunk := response.read(1 << 20):
-                            sink.write(chunk)
-                            on_bytes(len(chunk))
-                            if pinned:
-                                digest.update(chunk)
-                            received += len(chunk)
+                        with response_lock:
+                            # Closing the buffered reader from another thread
+                            # can block on the same lock as the stalled read.
+                            response_socket = getattr(
+                                getattr(response.fp, "raw", None), "_sock", None
+                            )
+                        try:
+                            while not cancelled() and (chunk := response.read(1 << 20)):
+                                if cancelled():
+                                    return
+                                sink.write(chunk)
+                                on_bytes(len(chunk))
+                                if pinned:
+                                    digest.update(chunk)
+                                received += len(chunk)
+                        finally:
+                            with response_lock:
+                                response_socket = None
+                    if cancelled():
+                        return
                     if pinned:
                         if (
                             digest.hexdigest() != pinned["sha256"]
@@ -124,8 +150,9 @@ def _stream_gnomad_contig(
             except BrokenPipeError:
                 pass  # bcftools exited; its status says why
             except (OSError, HTTPException) as e:
-                download_error.append(f"download failed: {e}")
-                query.kill()
+                if not cancelled():
+                    download_error.append(f"download failed: {e}")
+                    query.kill()
             finally:
                 try:
                     sink.close()
@@ -135,9 +162,19 @@ def _stream_gnomad_contig(
         feeder = context_thread(target=feed, daemon=True)
         feeder.start()
         queried = wait_with_cancel(query, cancel_event)
-        feeder.join()
-        compressed = compress.wait() == 0
-        ok = queried and compressed and not download_error
+        while feeder.is_alive():
+            if cancelled() and not mirror:
+                with response_lock:
+                    if response_socket is not None:
+                        with suppress(OSError):
+                            response_socket.shutdown(socket.SHUT_RDWR)
+                # DNS or response headers may still be pending. The daemon
+                # will close the response without feeding it once it unblocks.
+                feeder.join(timeout=1)
+                break
+            feeder.join(timeout=0.1)
+        compressed = wait_with_cancel(compress, cancel_event)
+        ok = queried and compressed and not download_error and not cancelled()
         err.seek(0)
         detail = err.read().decode(errors="replace").strip().splitlines()[-3:]
     # Closed first: Windows can't rename or delete an open file.
@@ -145,7 +182,9 @@ def _stream_gnomad_contig(
         Path(partial).replace(part)
         return None
     Path(partial).unlink()
-    if mirror and not (cancel_event and cancel_event.is_set()):
+    if cancelled():
+        return "cancelled"
+    if mirror:
         logging.warning(
             "MIRROR_FALLBACK: gnomAD mirror failed; discarding partial AF rows "
             "and restarting %s from upstream.",

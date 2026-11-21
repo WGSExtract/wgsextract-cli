@@ -1,10 +1,12 @@
 import json
 import runpy
 import sys
+import threading
 from pathlib import Path
 
+from tests.http_server import serving
 from wgsextract_cli import api
-from wgsextract_cli.core import config
+from wgsextract_cli.core import config, constants
 from wgsextract_cli.core.ref_library import processing as reference_processing
 
 
@@ -12,6 +14,37 @@ def _bootstrap(path: str) -> bool:
     """The archive's download is tested elsewhere; it leaves the library."""
     Path(path).mkdir(parents=True, exist_ok=True)
     return True
+
+
+def test_1213_cancelled_bootstrap_does_not_retry(tmp_path, monkeypatch):
+    path = "bootstrap.tar.gz"
+    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    reflib = tmp_path / "library"
+    result = []
+
+    def on_progress(*_):
+        cancel.set()
+
+    def download():
+        result.append(
+            reference_processing.download_bootstrap(str(reflib), cancel, on_progress)
+        )
+
+    with serving(files={path: b"a" * (1 << 20)}) as server:
+        monkeypatch.setattr(constants, "BOOTSTRAP_URL", server.url_for(path))
+        server.body_pauses[path] = (1 << 18, started, release)
+        worker = threading.Thread(target=download, daemon=True)
+        worker.start()
+        try:
+            assert started.wait(5), "the bootstrap request never reached the server"
+            worker.join(2)
+            assert not worker.is_alive(), "cancelled bootstrap did not return promptly"
+            assert result == [False]
+            assert server.get_paths == [path]
+            assert not (reflib / constants.BOOTSTRAP_FILENAME).exists()
+        finally:
+            release.set()
+            worker.join(5)
 
 
 def test_bootstrap_saves_reference_library_when_unconfigured(

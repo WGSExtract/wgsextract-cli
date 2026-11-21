@@ -95,6 +95,7 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
     if not processes:
         return
 
+    groups: set[int] = set()
     for proc in processes:
         if proc.poll() is None:
             try:
@@ -115,20 +116,28 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
                             result.returncode,
                         )
                 else:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    pgid = os.getpgid(proc.pid)
+                    if pgid == proc.pid:
+                        groups.add(pgid)
+                        os.killpg(pgid, signal.SIGTERM)
+                    else:
+                        proc.terminate()
             except (OSError, subprocess.TimeoutExpired):
                 log = logging.warning if sys.platform == "win32" else logging.debug
                 log("Process %s could not be terminated.", proc.pid, exc_info=True)
 
     time.sleep(0.5)
 
+    # The launcher can exit on SIGTERM while a descendant ignores it.
+    for pgid in groups:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            logging.debug("Process group %s could not be killed.", pgid, exc_info=True)
     for proc in processes:
-        if proc.poll() is None:
+        if proc.pid not in groups and proc.poll() is None:
             try:
-                if sys.platform == "win32":
-                    proc.kill()
-                else:
-                    os.killpg(os.getpgid(proc.pid), getattr(signal, "SIGKILL", 9))
+                proc.kill()
             except OSError:
                 logging.debug(
                     "Process %s could not be killed.", proc.pid, exc_info=True

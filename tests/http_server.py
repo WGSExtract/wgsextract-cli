@@ -27,6 +27,7 @@ class RangeServer:
     with this error; statuses[path]: answer requests for path with it.
     etags: send each file's ETag (a hash of its content), as S3 does.
     delays[path]: seconds to wait before answering a GET for path.
+    body_pauses[path]: (prefix bytes, started, release) to stall a full GET.
     headers[path]: extra headers sent with path (as x-goog-hash on GCS).
     """
 
@@ -43,6 +44,7 @@ class RangeServer:
         self.statuses: dict[str, int] = {}
         self.etags = False
         self.delays: dict[str, float] = {}
+        self.body_pauses: dict[str, tuple[int, threading.Event, threading.Event]] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
         self.get_paths: list[str] = []
@@ -147,6 +149,13 @@ class RangeServer:
                         server.drops = max(0, server.drops - 1)
                     self.wfile.write(body[: len(body) // 2])
                     self.close_connection = True
+                    return
+                if code == 200 and path in server.body_pauses:
+                    length, started, release = server.body_pauses[path]
+                    self.wfile.write(body[:length])
+                    self.wfile.flush()
+                    started.set()
+                    release.wait(10)
                     return
                 self.wfile.write(body)
 

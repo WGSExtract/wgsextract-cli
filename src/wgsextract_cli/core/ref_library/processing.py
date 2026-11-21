@@ -290,6 +290,8 @@ def _download_bootstrap_archive(
 ) -> bool:
     logging.info(f"Downloading bootstrap from {url}...")
     for attempt in range(1, 4):
+        if cancel_event and cancel_event.is_set():
+            return False
         if download_file(
             url,
             dest_path,
@@ -299,6 +301,8 @@ def _download_bootstrap_archive(
             resolve_release_digest=False,
         ):
             return True
+        if cancel_event and cancel_event.is_set():
+            return False
         if attempt < 3:
             logging.warning(
                 "Bootstrap download failed; retrying (%s/3)...", attempt + 1

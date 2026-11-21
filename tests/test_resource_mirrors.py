@@ -291,6 +291,38 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     assert table.with_suffix(table.suffix + ".tbi").is_file()
 
 
+@needs_tools("bcftools", "bgzip")
+def test_1213_cancelled_gnomad_does_not_wait_for_stalled_body(
+    source, tmp_path, monkeypatch
+):
+    path = "upstream"
+    source.files[path] = b"a" * (2 << 20)
+    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    source.body_pauses[path] = (1, started, release)
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", source.url_for(path))
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+    result = []
+
+    def build():
+        result.append(
+            gnomad_af.build_gnomad_af(str(tmp_path), workers=1, cancel_event=cancel)
+        )
+
+    worker = threading.Thread(target=build, daemon=True)
+    worker.start()
+    try:
+        assert started.wait(5), "gnomAD did not begin streaming"
+        cancel.set()
+        worker.join(3)
+        assert not worker.is_alive(), "cancelled gnomAD stream did not return promptly"
+        assert result == [False]
+        assert source.get_paths == [path]
+        assert not list(tmp_path.rglob("*.gz*"))
+    finally:
+        release.set()
+        worker.join(5)
+
+
 def test_1046_pr_code_only_edits_probe_no_unrelated_hosts():
     before = {
         "https://upstream/stable-v1": {},

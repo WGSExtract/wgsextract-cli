@@ -8,17 +8,46 @@ core.utils, popen and run_command, do it themselves).
 """
 
 import ast
+import os
+import signal
 import subprocess
 import sys
+import threading
+from contextlib import suppress
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from wgsextract_cli.core import utils
-from wgsextract_cli.core.utils import popen, run_command
+from wgsextract_cli.core.process_registry import process_group_kwargs
+from wgsextract_cli.core.utils import popen, run_command, wait_with_cancel
 
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "wgsextract_cli"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires a POSIX shell and waitpid")
+def test_1213_wait_with_cancel_terminates_and_reaps_process_tree() -> None:
+    cancel = threading.Event()
+    with subprocess.Popen(
+        ["sh", "-c", """trap 'wait; exit 143' TERM; sleep 30 & echo "$!"; wait"""],
+        stdout=subprocess.PIPE,
+        **process_group_kwargs(),
+    ) as parent:
+        assert parent.stdout is not None
+        child_pid = int(parent.stdout.readline())
+        try:
+            os.kill(child_pid, 0)
+            cancel.set()
+            assert not wait_with_cancel(parent, cancel)
+            with pytest.raises(ChildProcessError):
+                os.waitpid(parent.pid, os.WNOHANG)
+            for pid in (parent.pid, child_pid):
+                with pytest.raises(ProcessLookupError):
+                    os.kill(pid, 0)
+        finally:
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 def _undecodable_text_calls(tree: ast.AST) -> list[int]:

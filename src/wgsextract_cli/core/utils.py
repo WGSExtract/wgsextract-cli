@@ -558,15 +558,14 @@ def wait_with_cancel(
     process: subprocess.Popen[str] | subprocess.Popen[bytes],
     cancel_event: CancelEvent | None = None,
 ) -> bool:
-    """Waits for a process while checking for a cancel event."""
+    """Wait for a process, terminating its tree and reaping it on cancellation."""
     while process.poll() is None:
         if cancel_event and cancel_event.is_set():
             logging.info(f"Terminating process {process.pid} due to cancellation.")
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
+            terminate_trees([process])
+            if process.poll() is None:
                 process.kill()
+            process.wait()
             return False
         time.sleep(0.1)
     return process.returncode == 0
