@@ -25,6 +25,11 @@ SNP site's values.
 base (`R` → `A`), as VCF requires, preventing full hs38DH calls aborting at
 ambiguous bases. Ordinary alleles are unchanged. `vcf to-fasta` reconciles
 compatible ambiguity in temporary input, not exported VCFs or called ALTs.
+With `--uncalled auto`, a gVCF declared by WGS Extract's reference-evidence
+header or GATK-style reference confidence bands masks uncovered bases as `N`,
+even if there are no multi-base reference blocks. Without a declaration,
+the command checks the first records for reference blocks; for a variant-only
+VCF, it leaves uncovered positions as reference bases.
 Regional `vcf to-fasta --uncalled n` reads only indexed overlapping records,
 including deletions/gVCF blocks beginning before the region; whole-genome
 masking is unchanged.

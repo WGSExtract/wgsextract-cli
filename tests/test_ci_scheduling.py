@@ -73,6 +73,27 @@ def test_second():
     result.assert_outcomes(passed=2)
 
 
+def test_1218_each_test_gets_its_own_empty_home(pytester: pytest.Pytester) -> None:
+    pytester.makeconftest("from tests.conftest import _isolate_user_config")
+    pytester.makepyfile(
+        """
+import os
+from pathlib import Path
+
+def test_first():
+    (Path(os.environ["HOME"]) / "left-behind").write_text("x")
+
+def test_second():
+    assert not (Path(os.environ["HOME"]) / "left-behind").exists()
+"""
+    )
+    (pytester.path / "out").mkdir()
+    result = pytester.runpytest_subprocess(
+        "--basetemp", str(pytester.path / "out" / "pytest")
+    )
+    result.assert_outcomes(passed=2)
+
+
 @pytest.mark.parametrize(
     ("tier", "skip", "passed", "deselected"),
     [

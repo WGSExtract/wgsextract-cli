@@ -92,6 +92,14 @@ GATK_MIN_MAPPING_QUALITY = 20
 CLAIR3_MIN_MAPPING_QUALITY = 5
 
 
+def header_declares_gvcf(header: str) -> bool:
+    """Recognize WGS Extract evidence and GATK-style reference confidence bands."""
+    return any(
+        line.startswith((f"##{HEADER_KEY}=", "##GVCFBlock"))
+        for line in header.splitlines()
+    )
+
+
 @dataclass(frozen=True)
 class Provenance:
     """What a ``##wgseReferenceEvidence`` header records."""
