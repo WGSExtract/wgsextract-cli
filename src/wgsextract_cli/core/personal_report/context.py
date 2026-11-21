@@ -38,6 +38,8 @@ from .rendering import (
 )
 
 COMMAND = "report"
+# Relatedness compares people; reading both inputs does not link their samples.
+_IGNORED_COMMANDS = (COMMAND, "qc relate")
 _ENDED = {"failed": "failed", "cancelled": "was cancelled"}
 NOT_ASSESSED = "not_assessed"
 CONFIDENCE = (*variant_confidence.LABELS, NOT_ASSESSED)
@@ -190,13 +192,13 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
     ``folder`` or outputs of a manifest already kept."""
     found: dict[str, Source] = {}
     for path, document in find_documents(folder):
-        if document.get("command") != COMMAND:
+        if document.get("command") not in _IGNORED_COMMANDS:
             found[_key(path)] = Source(Path(os.path.abspath(path)), document)
     candidates: dict[str, Source] = {}
     for directory in extra:
         for path, document in find_documents(directory):
             key = _key(path)
-            if document.get("command") != COMMAND and key not in found:
+            if document.get("command") not in _IGNORED_COMMANDS and key not in found:
                 candidates[key] = Source(Path(os.path.abspath(path)), document)
     produced = {_key(p) for source in found.values() for p in source.files("outputs")}
     while candidates:

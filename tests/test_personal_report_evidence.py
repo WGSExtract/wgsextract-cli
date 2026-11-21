@@ -71,7 +71,12 @@ def test_an_input_limits_the_report_to_that_samples_runs(tmp_path):
 
 
 @needs_tools("samtools")
-def test_1221_report_distinguishes_same_named_bams_by_provenance(tmp_path):
+@pytest.mark.parametrize(
+    "compare_samples", [False, True], ids=["separate", "relatedness"]
+)
+def test_1221_report_distinguishes_same_named_bams_by_provenance(
+    tmp_path, compare_samples
+):
     folder = tmp_path / "shared"
     first, second = folder / "first", folder / "second"
     for directory, base in ((first, "A"), (second, "T")):
@@ -124,6 +129,15 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(tmp_path):
         "--format",
         "tsv",
     )
+    if compare_samples:
+        _manifest(
+            folder,
+            "relatedness",
+            "qc relate",
+            inputs=tuple(
+                (directory / "sample.bam", "input") for directory in (first, second)
+            ),
+        )
     outdir = tmp_path / "report"
     report_args += ("--outdir", str(outdir))
     code, output = _cli(*report_args, "--json")
