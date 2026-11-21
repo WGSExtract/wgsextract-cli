@@ -15,11 +15,14 @@ const {
 const { pathPickerDefaultPath } = await import("../dist/web/src/client/path-picker-defaults.js");
 
 test("delegates path picking to the Tauri native picker bridge", async () => {
+  // On Windows a rooted path accepted by Node still needs a drive for Rust's Path::is_absolute.
+  const defaultPath = path.parse(process.cwd()).root.replace(/^[A-Za-z]:/, "");
   const server = createServer((request, response) => {
     const url = new URL(request.url, "http://127.0.0.1");
     assert.equal(url.pathname, "/pick");
     assert.equal(url.searchParams.get("kind"), "directory");
     assert.equal(url.searchParams.get("title"), "Choose output");
+    assert.equal(url.searchParams.get("defaultPath"), path.resolve(defaultPath));
     assert.equal(request.headers["x-gfc-token"], "picker-token");
     response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ path: "C:\\Users\\mac\\Documents", kind: "directory", cancelled: false }));
@@ -27,7 +30,7 @@ test("delegates path picking to the Tauri native picker bridge", async () => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   try {
-    assert.deepEqual(await pickPath({ kind: "directory", title: "Choose output", nativePicker: { port: address.port, token: "picker-token" } }), {
+    assert.deepEqual(await pickPath({ kind: "directory", title: "Choose output", defaultPath, nativePicker: { port: address.port, token: "picker-token" } }), {
       path: "C:\\Users\\mac\\Documents",
       kind: "directory",
       cancelled: false,
