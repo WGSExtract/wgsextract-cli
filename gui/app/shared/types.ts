@@ -107,6 +107,7 @@ export type LabelTextKey =
     | "terminalExitDetailFormat"
     | "terminalNonzeroExitSummary"
     | "terminalProcessErrorTitle"
+    | "terminalJobSubmissionUnknown"
     | "terminalProcessErrorSummary"
     | "configLoadedFormat"
     | "configLoadErrorFormat"

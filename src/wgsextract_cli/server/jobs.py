@@ -14,6 +14,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -265,15 +266,28 @@ class JobManager:
     # Changes ---------------------------------------------------------------
 
     def submit(
-        self, op: Operation, params: Mapping[str, Any], *, card: bool | None = None
+        self,
+        op: Operation,
+        params: Mapping[str, Any],
+        *,
+        card: bool | None = None,
+        job_id: str | None = None,
     ) -> Job:
+        if job_id is not None and not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            job_id,
+        ):
+            raise RequestError(
+                400, "invalid_job_id", "Job ID must be a lowercase UUIDv4."
+            )
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
         if self.default_outdir and "outdir" in effective and not params.get("outdir"):
             effective["outdir"] = self.default_outdir
         job = Job(
-            id=time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + secrets.token_hex(3),
+            id=job_id
+            or time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + secrets.token_hex(3),
             op=op.name,
             kind=op.kind,
             # Locks and workers see the folders the path checks approved.
@@ -298,6 +312,8 @@ class JobManager:
                 "job would save into the server's working folder.",
             )
         with self._lock:
+            if job.id in self._jobs:
+                raise RequestError(409, "job_id_in_use", "Job ID is already in use.")
             if self._stopping:
                 raise RequestError(503, "stopping", "The server is stopping.")
             self._jobs[job.id] = job

@@ -21,6 +21,7 @@ type ActionStreamEvent =
     | { type: "start"; command: string }
     | { type: "output"; text?: string }
     | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null; lastResultDocumentPaths?: LastResultDocumentPaths } }
+    | { type: "submission-unknown"; jobID: string }
     | { type: "error"; error?: string };
 
 export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference, options: { prerequisitesChecked?: boolean } = {}) {
@@ -141,6 +142,8 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             }
             break;
         }
+        case "submission-unknown":
+            throw new Error(`${state.labels.terminalJobSubmissionUnknown}\n${event.jobID}`);
         case "error":
             throw new Error(event.error ?? "Action failed.");
     }

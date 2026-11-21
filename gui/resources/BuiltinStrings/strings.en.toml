@@ -197,6 +197,7 @@
 "app.terminal.exitCode.detailFormat" = "%{command} exited with code %{code}."
 "app.terminal.nonzeroExit.summary" = "The command exited with a non-zero status. Check the command output for details."
 "app.terminal.processError.title" = "Command failed"
+"app.terminal.jobSubmissionUnknown" = "The server may still be running this job. Check its status before trying again. Job ID:"
 "app.terminal.processError.summary" = "The command could not complete."
 "app.config.loaded.format" = "Loaded settings from %{path}"
 "app.config.loadError.format" = "Could not load %{label}: %{error}"

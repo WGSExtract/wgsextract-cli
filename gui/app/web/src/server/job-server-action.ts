@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { interpolate } from "../../../shared/rendering.js";
 import { parseResultDocument, type ResultDocumentSpec } from "../../../shared/result-document.js";
 import type { ActionSpec, CommandContext, LooseRecord, RunProcess, ServerOperationSpec } from "../../../shared/types.js";
@@ -12,6 +13,12 @@ const cancelWaitMs = 60_000;
 
 /** The result keeps the end of a job's output, as it does for a command; all of it is still streamed. */
 const maxOutputBytes = 1_048_576;
+
+export class JobSubmissionUnknown extends Error {
+    constructor(readonly jobID: string) {
+        super(`Job submission could not be confirmed: ${jobID}`);
+    }
+}
 
 /**
  * Runs an action with a `serverOperation` as a job on the bundle's job server, and every
@@ -32,7 +39,7 @@ export async function runActionPreferringServer(
     const operation = action.serverOperation;
     if (operation && jobServer && !signal?.aborted) {
         const parameters = renderedParameters(operation, await contextWithFileState(context, bundleRoot));
-        const job = await startServerJob(jobServer, operation.operation, parameters, action.resultCard === true);
+        const job = await startServerJob(jobServer, operation.operation, parameters, action.resultCard === true, signal);
         if (job) {
             return runJob(job.address, job.id, `${operation.operation} ${JSON.stringify(parameters)}`, signal, emit, resultSpec);
         }
@@ -40,23 +47,22 @@ export async function runActionPreferringServer(
     return runAction(action, context, signal, bundleRoot, runProcess, emit, resultSpec);
 }
 
-/** Starts the job, restarting a server that stopped answering once; undefined when no job was created. */
-async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean): Promise<{ address: JobServerAddress; id: string } | undefined> {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-        const address = await jobServer.address();
-        if (!address) {
-            return undefined;
-        }
-        const started = await startJob(address, operation, parameters, card);
-        if (started.started) {
-            return { address, id: started.job.id };
-        }
-        console.warn(`Job server did not start '${operation}': ${started.reason}`);
-        if (!started.unreachable) {
-            return undefined;
-        }
-        jobServer.stop();
+/** Returns no job only when the server could not have accepted the submission. */
+async function startServerJob(jobServer: JobServer, operation: string, parameters: LooseRecord, card: boolean, signal?: AbortSignal): Promise<{ address: JobServerAddress; id: string } | undefined> {
+    const address = await jobServer.address();
+    if (!address || signal?.aborted) {
+        return undefined;
     }
+    const id = randomUUID();
+    const started = await startJob(address, id, operation, parameters, card);
+    if (started.kind === "accepted") {
+        return { address, id: started.job.id };
+    }
+    if (started.kind === "indeterminate") {
+        console.warn(`Could not confirm job ${id} for '${operation}': ${started.reason}`);
+        throw new JobSubmissionUnknown(id);
+    }
+    console.warn(`Job server did not accept '${operation}': ${started.reason}`);
     return undefined;
 }
 

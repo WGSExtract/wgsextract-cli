@@ -58,9 +58,12 @@ they do not redirect ordinary jobs.
 
 - the server can't be started;
 - it prints no ready line within `startupTimeoutSeconds`;
-- it refuses the job (any response other than 2xx with a job).
+- the connection is refused before the app can send the request;
+- the server explicitly rejects the submission before creating a job.
 
-The reason is logged on the app's console.
+If the reply is lost or doesn't identify the job, the app checks the original job ID.
+It never submits again or runs the command directly in this case. If it cannot
+recover the job, it reports the ID so the user can check the server before trying again.
 
 ## Protocol
 
@@ -68,7 +71,7 @@ Every request carries `Authorization: Bearer <token>`. Paths are relative to `ur
 
 | Request | Response |
 | --- | --- |
-| `POST /ops/{operation}` with the parameters as a JSON body, plus `?card=1` for an action with `resultCard` | 2xx with a job: `{"id": "...", "status": "..."}` |
+| `POST /ops/{operation}` with the parameters as a JSON body and `X-WGSE-Job-ID` set to a client-generated lowercase UUIDv4, plus `?card=1` for an action with `resultCard` | 2xx with a job: `{"id": "...", "status": "..."}`. The `id` matches the request header. |
 | `GET /jobs/{id}/events` | Server-sent events until the job has finished, then the stream ends. `status` events carry `{"status": ...}`; `progress` events carry `stage`, `message` and/or `fraction` (0–1). |
 | `GET /jobs/{id}` | The job; `exit_code` once it has finished, and `error` if it failed. The action's exit code is `exit_code`, else 0 for `succeeded` and 1 otherwise. When the bundle declares a [result document](result-documents.md) for the action, it is read from `result`. |
 | `GET /jobs/{id}/log?tail=0` | The job's whole log as text; it is added to the action's output. |

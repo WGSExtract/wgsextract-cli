@@ -11,7 +11,7 @@ export type EmitEvent = (event: LooseRecord) => Promise<void>;
 export async function streamNDJSON(
     response: ServerResponse,
     run: (emit: EmitEvent, signal: AbortSignal) => Promise<unknown>,
-    failureEvent: (message: string) => LooseRecord,
+    failureEvent: (message: string, error: unknown) => LooseRecord,
 ) {
     const abortController = new AbortController();
     response.on("close", () => {
@@ -49,7 +49,7 @@ export async function streamNDJSON(
             if (writeError != null) {
                 throw writeError;
             }
-            await writeNDJSON(response, failureEvent(errorMessage(error)));
+            await writeNDJSON(response, failureEvent(errorMessage(error), error));
             response.end();
         }
         catch (_writeError) {
