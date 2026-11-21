@@ -49,6 +49,10 @@ case "$1" in
       kill "$(cat "$state/run.pid")" ;;
   rm)
     [ "$2" = "-f" ] && [ "$3" = "$(cat "$state/created")" ] || exit 1
+    if [ -e "$state/refuse-removal" ]; then
+      echo "daemon refused removal" >&2
+      exit 1
+    fi
     mv "$state/created" "$state/removed" ;;
 esac
 """
@@ -93,15 +97,22 @@ def test_other_failures_keep_their_error(docker, monkeypatch):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell fake")
 @pytest.mark.parametrize(
-    ("oom_error", "before_start"),
-    [(None, False), ("out of memory", False), (None, True)],
+    ("oom_error", "before_start", "refuse_removal"),
+    [
+        (None, False, False),
+        ("out of memory", False, False),
+        (None, True, False),
+        (None, True, True),
+    ],
 )
-def test_issue_1207_cancel_token_does_not_leave_container(
-    docker, oom_error, before_start
+def test_issue_1207_cancel_token_cleans_up_or_warns(
+    docker, oom_error, before_start, refuse_removal, caplog
 ):
     (docker / "no-oom").touch()
     if before_start:
         (docker / "stop-before-start").touch()
+    if refuse_removal:
+        (docker / "refuse-removal").touch()
     token = CancelToken()
     scope = object()
     token.on_cancel(lambda: proc_registry.cancel(scope))
@@ -121,6 +132,11 @@ def test_issue_1207_cancel_token_does_not_leave_container(
     finally:
         worker.join()
         proc_registry.accept_new(scope)
+    if refuse_removal:
+        name = (docker / "created").read_text().strip()
+        assert name in caplog.text
+        assert "daemon refused removal" in caplog.text
+        return
     assert not (docker / "running").exists()
     assert not (docker / "created").exists()
     assert (

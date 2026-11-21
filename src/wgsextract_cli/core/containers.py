@@ -16,7 +16,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Iterable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -214,17 +214,39 @@ def run_container(
 
 
 def _kill_container(docker_path: str, name: str) -> None:
-    with suppress(OSError, subprocess.SubprocessError):
-        if engine_call([docker_path, "kill", name]).returncode != 0:
-            # Cancellation can interrupt `run` between creation and start.
-            engine_call([docker_path, "rm", "-f", name])
+    failures = []
+    # Cancellation can interrupt `run` between creation and start, when only
+    # force-removal works. Leave time for both calls before server escalation.
+    for args in (["kill"], ["rm", "-f"]):
+        try:
+            result = engine_call([docker_path, *args, name], timeout=10)
+        except (OSError, subprocess.SubprocessError) as error:
+            failures.append(f"{args[0]}: {error}")
+            continue
+        if result.returncode == 0:
+            return
+        stderr = result.stderr.strip()
+        if args[0] == "rm" and (
+            "no such container" in stderr.lower()
+            or "no container with name or id" in stderr.lower()
+        ):
+            return
+        failures.append(f"{args[0]}: {stderr or f'exit {result.returncode}'}")
+    logging.warning("Could not clean up container %s (%s).", name, "; ".join(failures))
 
 
-def engine_call(cmd: list[str]) -> subprocess.CompletedProcess[str]:
+def engine_call(
+    cmd: list[str], *, timeout: float = 30
+) -> subprocess.CompletedProcess[str]:
     """A quick container engine query or command, bounded in case the daemon
     hangs. Unlike run_command, it works once the run has been cancelled."""
     return subprocess.run(
-        cmd, capture_output=True, text=True, errors="replace", timeout=30, check=False
+        cmd,
+        capture_output=True,
+        text=True,
+        errors="replace",
+        timeout=timeout,
+        check=False,
     )
 
 
