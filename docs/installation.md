@@ -16,6 +16,11 @@ GitHub release, not `main`. It creates `wgsextract-cli/` in the current
 directory (or beside a downloaded `install.sh`) with the app in `app/`,
 Pixi files in `.pixi/`, and the `wgsextract` launcher and `uninstall.sh`.
 On macOS it checks for Xcode Command Line Tools first.
+When upgrading, the installer restores the previous app if Pixi setup or
+verification fails. A successful upgrade rebuilds the default environment.
+If the Pixi environment location stays the same, optional environments are kept.
+The installer refuses to move existing local optional environments to a
+detached location because their installed files can contain absolute paths.
 
 Linux ARM64 phase 1 supports default alignment/CRAM/calling/export, VEP,
 native Yleaf-derived Y-DNA analysis and Haplogrep 3. GATK fails before
@@ -32,7 +37,9 @@ curl -fsSL https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/main/inst
 On Windows, clone or download the repository and run `install_windows.bat`
 from PowerShell. It installs Pixi if missing, then the CLI and WGS Extract's
 native builds of samtools, bcftools, BWA, bwa-mem2, minimap2, fastp and
-samblaster into Pixi. No WSL or MSYS2 is needed. See [Windows](windows.md).
+samblaster into Pixi. The standalone installer checks the downloaded source
+archive in a private staging directory before copying it into the install
+directory. No WSL or MSYS2 is needed. See [Windows](windows.md).
 
 ## Installer options
 
@@ -48,7 +55,7 @@ running `install.sh`:
 | `WGSEXTRACT_BIN_DIR` | `$WGSEXTRACT_INSTALL_DIR` | CLI launcher directory |
 | `WGSEXTRACT_PIXI_HOME` | `$WGSEXTRACT_INSTALL_DIR/.pixi` when Pixi is missing | Install SHA-256-verified pinned Pixi here; an existing Pixi on `PATH` or in `~/.pixi` is reused |
 | `WGSEXTRACT_PIXI_CACHE_DIR` | `$WGSEXTRACT_INSTALL_DIR/.pixi/cache` | Pixi package cache |
-| `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environments, kept across updates |
+| `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environment location |
 | `WGSEXTRACT_NO_OPEN` | unset | `1` skips opening Finder on macOS |
 
 Leave `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_HOME`,
