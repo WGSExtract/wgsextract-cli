@@ -1,4 +1,7 @@
 #include "metal_extension.h"
+#if defined(__APPLE__) && defined(WGSE_METAL_BENCHMARK_TOOLS)
+#include "watchdog_test.h"
+#endif
 #include "metal_seeding_api.h"
 #include "rescue_api.h"
 
@@ -151,6 +154,11 @@ int run(int argc, char **argv) {
             else wgse_mem3_gpu_inject_interruptions(size_t(number));
             command_index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
+#ifdef __APPLE__
+        } else if (strcmp(option, "--gpu-inject-watchdog-start-failure") == 0) {
+            wgse::metal::inject_watchdog_start_failure();
+            ++command_index;
+#endif
         } else if (strcmp(option, "--gpu-inject-hang") == 0) {
             // Withholds the first GPU command whose label starts with value, as
             // a hung GPU would; the watchdog gives up on the GPU after 2 s.

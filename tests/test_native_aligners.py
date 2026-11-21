@@ -14,6 +14,7 @@ minimap2 cases live in the sibling test_native_aligners_* modules.
 """
 
 import json
+import logging
 from argparse import Namespace
 from pathlib import Path
 
@@ -44,6 +45,8 @@ if args[:1] == ["capabilities"]:
     sys.stdout.write({capabilities!r})
     sys.exit({status})
 backend = args[:2] if args[:1] == ["--backend"] else []
+if backend == ["--backend", "auto"] and {auto_diagnostic!r}:
+    print({auto_diagnostic!r}, file=sys.stderr, flush=True)
 os.execv({real!r}, [" ".join([{name!r}, *backend]), *args[len(backend):]])
 """
 
@@ -73,7 +76,9 @@ def _capabilities(tool, **overrides):
     return json.dumps(document) + "\n"
 
 
-def _install_build(bindir, engine, capabilities=None, status=0, real=None):
+def _install_build(
+    bindir, engine, capabilities=None, status=0, real=None, *, auto_diagnostic=""
+):
     """A wgse-<engine> in bindir running the real ``real`` (else ``engine``)."""
     name = f"wgse-{engine}"
     source = _FAKE_BUILD.format(
@@ -81,6 +86,7 @@ def _install_build(bindir, engine, capabilities=None, status=0, real=None):
         status=status,
         real=str((bindir / (real or engine)).resolve()),
         name=name,
+        auto_diagnostic=auto_diagnostic,
     )
     return python_tool(bindir, name, source)
 
@@ -187,6 +193,28 @@ def test_auto_aligns_with_wgse_bwa_on_metal_and_names_it(tmp_path, bwa_bin):
     assert native.provenance.tools["wgse-bwa"] == "0.7.1"
     assert _native(upstream) == {} and "wgse-bwa" not in upstream.provenance.tools
     assert not native.warnings
+
+
+@pytest.mark.usefixtures("apple_silicon")
+def test_metal_watchdog_start_failure_preserves_cpu_alignment_1228(
+    tmp_path, bwa_bin, caplog
+):
+    reads = _short_reads(tmp_path)
+    reason = "could not start the Metal watchdog thread"
+    _install_build(
+        bwa_bin,
+        "bwa",
+        auto_diagnostic=f"[wgse-bwa] CPU fallback: GPU watchdog: {reason}",
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        fallback_bam, result = _align(reads, tmp_path / "fallback")
+    cpu_bam, _ = _align(reads, tmp_path / "cpu", "--native-aligners", "off")
+
+    assert _samtools("view", fallback_bam) == _samtools("view", cpu_bam)
+    # The manifest names the selected backend; the log reports runtime fallback.
+    assert result.metrics["native_aligner_backend"] == "metal"
+    assert reason in caplog.text
 
 
 @pytest.mark.usefixtures("linux_x86_64")

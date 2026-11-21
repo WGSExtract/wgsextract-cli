@@ -161,6 +161,13 @@ for preset in map-hifi map-ont map-pb sr; do
             metal_run "$preset" interrupted 0 --gpu-inject-interruptions 1 -t 2
             grep -Eq '[1-9][0-9]* Metal interruptions' "metal.$preset.interrupted.log"
         fi
+        if [ "$gpu" = --metal ] && [ "$preset" = map-hifi ]; then
+            # #1228: without a watchdog, use CPU gap fills instead.
+            metal_run "$preset" watchdog-start 1 --gpu-inject-watchdog-start-failure -t 2
+            metal_run "$preset" auto-watchdog-start 0 --backend auto --gpu-inject-watchdog-start-failure -t 2
+            grep -q 'could not start the Metal watchdog thread' "metal.$preset.watchdog-start.log"
+            grep -q 'could not start the Metal watchdog thread' "metal.$preset.auto-watchdog-start.log"
+        fi
         metal_run "$preset" failed 1 --gpu-inject-failure -t 2
         grep -q 'a GPU batch failed (injected GPU failure)' "metal.$preset.failed.log"
         # --backend auto finishes on the CPU after a GPU failure and exits 0.

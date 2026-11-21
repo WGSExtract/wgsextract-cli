@@ -175,6 +175,11 @@ backend of `mem` (other commands ignore them):
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
 
+If the Metal watchdog thread cannot start, all four aligners refuse to submit
+GPU work and log the reason. `--backend auto` finishes on the CPU and exits
+successfully; `--metal` also completes the alignments on the CPU, but exits 1
+as for other GPU batch failures.
+
 `wgse-bwa-mem3`'s `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
 (BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
 `--compat=bwa-mem2` write exactly BWA's and BWA-MEM2's records, and `--fast`

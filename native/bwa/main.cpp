@@ -1,5 +1,8 @@
 #include "metal_backend.h"
 #include "seeding_types.h"
+#if defined(__APPLE__) && defined(WGSE_METAL_BENCHMARK_TOOLS)
+#include "watchdog_test.h"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -98,6 +101,11 @@ int run(int argc, char **argv) {
             wgse_set_dense_sa_files(strcmp(value, "off") != 0, force);
             command_index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
+#ifdef __APPLE__
+        } else if (strcmp(option, "--gpu-inject-watchdog-start-failure") == 0) {
+            wgse::metal::inject_watchdog_start_failure();
+            ++command_index;
+#endif
         } else if (strcmp(option, "--gpu-inject-failure") == 0) {
             wgse_inject_gpu_failure();
             ++command_index;

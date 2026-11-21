@@ -31,20 +31,20 @@ public:
     // are running. Every command buffer goes through here: with more running at
     // once, macOS aborts some (ImpactingInteractivity) to keep the display responsive.
     //
-    // GPU watchdog: once a command has run on the GPU for longer than
-    // watchdog_seconds() with no word from macOS (as on a hung paravirtual GPU),
-    // the runtime gives up on the GPU for the rest of the process. done then runs
-    // for every command in flight, whose status is not Completed, and later
-    // commits do not commit: done runs at once. So done always runs exactly once,
-    // and callers waiting for it finish their work on the CPU. Every GPU command
-    // must go through here (or run()) to be covered.
+    // GPU watchdog: if its thread cannot start, no command is submitted. If an
+    // in-flight command times out (as on a hung paravirtual GPU), done runs for
+    // every command in flight even though its status is not Completed. In both
+    // cases the runtime gives up on the GPU for the rest of the process, and
+    // later commits just run done at once. So done always runs exactly once and
+    // callers can finish their work on the CPU. Every GPU command must go
+    // through here (or run()) to be covered.
     // keep: buffers a command made with unretained references uses; they stay
     // alive until Metal completes the command, even after it is abandoned.
     static void commit(id<MTLCommandBuffer> command,
         void (^done)(id<MTLCommandBuffer>) = nil, NSArray *keep = nil);
     // Commits command and blocks until its done would run (completion or watchdog).
     static void run(id<MTLCommandBuffer> command);
-    // Why the watchdog gave up on the GPU, or empty. describe() also describes a
+    // Why the watchdog disabled the GPU, or empty. describe() also describes a
     // command that did not complete for another reason.
     static std::string hang();
     static std::string describe(id<MTLCommandBuffer> command);
