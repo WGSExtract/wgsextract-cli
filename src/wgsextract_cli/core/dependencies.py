@@ -80,8 +80,11 @@ tool_versions: dict[tuple[str, ...], str] = {}
 
 
 def clear_tool_caches() -> None:
+    from wgsextract_cli.core.mimalloc import clear_allocator_caches
+
     _resolve_tool_path.cache_clear()
     tool_versions.clear()
+    clear_allocator_caches()
 
 
 @lru_cache(maxsize=256)

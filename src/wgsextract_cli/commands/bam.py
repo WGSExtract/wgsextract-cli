@@ -28,6 +28,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.mimalloc import samtools_cram_executable
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem
@@ -316,6 +317,7 @@ def run_to_cram(params: BamToCramParams) -> None:
             output_dir=outdir,
             threads=threads,
             output_format="CRAM",
+            reference=resolved_ref,
             region=region,
         )
     )
@@ -325,11 +327,14 @@ def run_to_cram(params: BamToCramParams) -> None:
     logging.info(
         LOG_MESSAGES["converting_file"].format(input=input_path, output=out_file)
     )
+    encoder = samtools_cram_executable(
+        params.mimalloc, version=params.cram_version, reference=resolved_ref
+    )
     try:
         with cleanup_files(on_failure=[out_file]):
             run_command(
                 [
-                    "samtools",
+                    encoder,
                     "view",
                     "-Ch",
                     "--output-fmt-option",
