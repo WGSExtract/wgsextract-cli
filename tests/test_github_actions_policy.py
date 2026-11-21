@@ -16,6 +16,8 @@ import pytest as pytest
 from scripts import validate_github_actions as policy
 from scripts.check_remote_resources import live_test_targets as live_test_targets
 from scripts.ci_changes import routes as routes
+from scripts.ci_optional_tools import main as optional_main
+from scripts.ci_optional_tools import require_executed as require_executed
 
 
 @pytest.mark.skipif(
@@ -94,6 +96,74 @@ def test_1046_changed_resource_paths_retain_live_pr_behavior_checks(
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+@pytest.mark.parametrize("result", ["skipped", "failure", "error", "empty"])
+def test_1199_optional_ci_rejects_skipped_or_empty_results(
+    tmp_path: Path, result: str
+) -> None:
+    report = tmp_path / "result.xml"
+    report.write_text(
+        "<testsuites><testsuite>"
+        + (
+            f'<testcase name="contamination"><{result}/></testcase>'
+            if result != "empty"
+            else ""
+        )
+        + "</testsuite></testsuites>"
+    )
+    with pytest.raises(ValueError, match="Optional-tool tests"):
+        require_executed(report)
+    report.write_text(
+        '<testsuites><testsuite><testcase name="contamination"/></testsuite></testsuites>'
+    )
+    require_executed(report)
+
+
+def test_1199_optional_ci_is_cached_linux_only_and_required() -> None:
+    source = (WORKFLOWS / "optional_tools.yml").read_text()
+    assert "runs-on: ubuntu-latest" in source
+    assert "scope: optional-tools" in source and 'writer: "true"' in source
+    assert (
+        "environments: dev verifybamid2 freebayes longtr modkit expansionhunter"
+        in source
+    )
+    assert "scripts/ci_optional_tools.py" in source
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    assert "needs.changes.outputs.optional_tests != '[]'" in pr
+    for name in ("ready-gate", "required"):
+        job = pr.split(f"\n  {name}:\n", 1)[1]
+        needs = re.search(r"^\s+needs: \[(.*)\]$", job, re.M)
+        assert needs is not None and "optional-tools" in needs[1]
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    optional = ubuntu.split("\n  optional-tools:\n", 1)[1].split("\n  imputation:", 1)[
+        0
+    ]
+    assert "github.event_name != 'pull_request'" in optional
+    assert "platform-certified" not in optional
+    for workflow in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml"):
+        assert "optional_tools.yml" not in (WORKFLOWS / workflow).read_text()
+
+
+def test_1199_missing_optional_tool_fails_before_pytest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Tool availability is the OS boundary; missing binaries must not become
+    # successful pytest invocations whose integration fixture was skipped.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "wgsextract_cli.core.dependencies.get_tool_path", lambda tool: None
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["optional-tools", "--selection", '["tests/test_contamination.py"]'],
+    )
+    with pytest.raises(
+        ValueError, match="Required optional CI tool missing: verifybamid2"
+    ):
+        optional_main()
+    assert not list((tmp_path / "out/optional-tools").glob("*.xml"))
 
 
 def top_level_conjuncts(expression: str) -> list[str]:

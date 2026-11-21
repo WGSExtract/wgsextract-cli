@@ -14,6 +14,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.ci_moves import select_moves  # noqa: E402
+from scripts.ci_optional_tools import routed_suites  # noqa: E402
 from scripts.ci_select_tests import (  # noqa: E402
     SMOKE_TESTS,
     ci_path,
@@ -237,6 +238,11 @@ def main() -> None:
         f"setup_checks={str(setup_checks(paths) or args.force_install_lab).lower()}\n"
     )
     output += "move_modules=" + json.dumps(moves.modules if moves else []) + "\n"
+    output += (
+        "optional_tests="
+        + json.dumps([] if args.draft else routed_suites(paths, tests))
+        + "\n"
+    )
     output += (
         "docs_tests="
         + json.dumps(

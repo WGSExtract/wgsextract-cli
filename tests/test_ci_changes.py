@@ -15,6 +15,7 @@ from scripts import pr_checks_ready as pr_checks_ready
 from scripts.ci_changes import routes as routes
 from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
+from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
@@ -92,6 +93,7 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "routed": "true",
         "setup_checks": "true",
         "move_modules": "[]",
+        "optional_tests": "[]",
         "tests": "[]",
         "ci": "false",
         "ci_tests": "[]",
@@ -105,6 +107,36 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "windows_smoke": "false",
         "arm64_smoke": "false",
     }
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        ("src/wgsextract_cli/core/contamination.py", "tests/test_contamination.py"),
+        (
+            "src/wgsextract_cli/commands/qc/contamination.py",
+            "tests/test_contamination.py",
+        ),
+        ("tests/test_contamination.py", "tests/test_contamination.py"),
+        ("src/wgsextract_cli/commands/vcf/callers.py", "tests/test_vcf_callers.py"),
+        ("tests/test_methylation.py", "tests/test_methylation.py"),
+    ],
+)
+def test_1199_optional_tools_follow_affected_test_imports(
+    changed: str, expected: str
+) -> None:
+    selected = select_tests([changed])
+    assert expected in selected
+    assert expected in routed_suites([changed], selected)
+
+
+def test_1199_optional_lane_does_not_allocate_for_unrelated_changes() -> None:
+    paths = ["tests/test_bwa_mem2.py"]
+    assert routed_suites(paths, select_tests(paths)) == []
+    assert routed_suites(["README.md"], []) == []
+    assert "tests/test_contamination.py" in routed_suites(
+        ["scripts/ci_optional_tools.py"], []
+    )
 
 
 @pytest.mark.skipif(
