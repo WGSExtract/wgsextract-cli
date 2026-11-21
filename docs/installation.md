@@ -72,6 +72,26 @@ Guides write plain `wgsextract`; substitute your launcher.
 [Optional environments](developer_setup.md#pixi-environments) require explicit
 setup; the CLI never installs tools during a feature run.
 
+### macOS: OpenMP `Error #15` with “unknown library”
+
+An interrupted process can leave an unwritten LLVM OpenMP registration in
+`/private/tmp`. If macOS reuses that PID, OpenMP may report a duplicate runtime
+even when the new process loaded only one. The locked WGS Extract and PharmCAT
+environments use Accelerate for bcftools on macOS to avoid this startup path.
+Other environments can still load OpenMP, including STRkit, phasing, SMN,
+Somalier, FreeBayes, LongTR, bwa-mem3, Clair3, Cyrius and VEP. This can also
+affect GATK when it loads Homebrew's `libomp`.
+
+If the error persists, quit affected tools and inspect the entries with
+`ls -l /private/tmp/__KMP_REGISTERED_LIB_*`. For an individual entry, confirm
+it belongs to your account, is a regular file (not a symlink), and is empty or
+entirely zero-filled (`hexdump -C` shows its contents). Use `ps -p PID` with
+the numeric suffix and leave the file alone if that PID is active or if you
+are unsure. If the PID is absent, recheck immediately before deleting only
+that exact file with `rm /private/tmp/__KMP_REGISTERED_LIB_PID` (replace `PID`
+with the actual suffix). Never use `sudo` or a wildcard for removal. The CLI
+does not sweep the system temporary directory during normal use.
+
 ## Uninstall
 
 ```bash
