@@ -223,7 +223,8 @@ def main() -> None:
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
     queue_windows = queue_windows_required(paths)
-    tests = "all" if args.full_suite else select_tests(paths)
+    affected_tests = select_tests(paths)
+    tests = "all" if args.full_suite else affected_tests
     moves = None if args.full_suite else select_moves(args.base, args.head)
     if moves is not None:
         tests = moves.tests
@@ -240,7 +241,7 @@ def main() -> None:
     output += "move_modules=" + json.dumps(moves.modules if moves else []) + "\n"
     output += (
         "optional_tests="
-        + json.dumps([] if args.draft else routed_suites(paths, tests))
+        + json.dumps([] if args.draft else routed_suites(paths, affected_tests))
         + "\n"
     )
     output += (

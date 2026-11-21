@@ -139,6 +139,65 @@ def test_1199_optional_lane_does_not_allocate_for_unrelated_changes() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "changed", [".github/workflows/pr_ci.yml", "scripts/ci_changes.py"]
+)
+def test_1199_optional_caller_and_router_changes_exercise_integrations(
+    changed: str,
+) -> None:
+    assert "tests/test_contamination.py" in routed_suites(
+        [changed], select_tests([changed])
+    )
+
+
+@pytest.mark.parametrize(
+    ("changed", "contamination"),
+    [
+        ("README.md", False),
+        ("gui/app/shared/config.ts", False),
+        ("src/wgsextract_cli/core/contamination.py", True),
+    ],
+)
+def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
+    tmp_path: Path, changed: str, contamination: bool
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(tmp_path), *args], text=True
+        ).strip()
+
+    git("init", "--quiet")
+    git("config", "user.name", "CI routing test")
+    git("config", "user.email", "ci@example.invalid")
+    git("commit", "--quiet", "--allow-empty", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    path = tmp_path / changed
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("changed\n")
+    git("add", changed)
+    git("commit", "--quiet", "-m", "change")
+    script = Path(__file__).resolve().parents[1] / "scripts/ci_changes.py"
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            str(script),
+            "--base",
+            base,
+            "--head",
+            "HEAD",
+            "--full-suite",
+        ],
+        cwd=tmp_path,
+        text=True,
+    )
+    selected = dict(line.split("=", 1) for line in output.splitlines())
+    assert selected["ubuntu_tests"] == "all"
+    optional = json.loads(selected["optional_tests"])
+    assert ("tests/test_contamination.py" in optional) is contamination
+    if not contamination:
+        assert optional == []
+
+
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
 )

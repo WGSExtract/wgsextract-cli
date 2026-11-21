@@ -45,9 +45,11 @@ def routed_suites(paths: list[str], selection: list[str] | str) -> list[str]:
         path
         in {
             ".github/workflows/optional_tools.yml",
+            ".github/workflows/pr_ci.yml",
             ".github/workflows/ubuntu_ci.yml",
             ".github/actions/setup-pixi/action.yml",
             "scripts/ci_optional_tools.py",
+            "scripts/ci_changes.py",
         }
         for path in paths
     ):

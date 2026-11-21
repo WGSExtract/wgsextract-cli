@@ -101,8 +101,10 @@ after deployment.
 `optional_tools.yml` runs exactly one Ubuntu x64 job for selected contamination,
 FreeBayes, LongTR, modkit and ExpansionHunter-dependent tests. The PR router intersects the static
 import graph's affected test files with these suites; unrelated changes allocate
-no optional-tool runner. Changes to this workflow, its runner, Ubuntu CI or the
-shared Pixi setup also exercise the integrations themselves. Drafts allocate no
+no optional-tool runner. Merge groups use the diff's affected tests for this lane,
+not the full OS safety selection, so docs-only and GUI-only queue entries do not
+allocate an optional runner. Changes to this workflow, its PR caller/router,
+runner, Ubuntu CI or the shared Pixi setup also exercise the integrations themselves. Drafts allocate no
 runner. Main/nightly Ubuntu runs retain all five suites, subject to the existing
 exact-head nightly guard. Manual dispatch of `optional_tools.yml` validates just
 this small lane on a branch.
