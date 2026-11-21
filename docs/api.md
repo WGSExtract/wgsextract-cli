@@ -1755,6 +1755,7 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 | `min_score` | `float` | `0.95` | `--min-score` | Minimum QC score of a reported haplogroup prediction. |
 | `ancient` | `bool` | `False` | `--ancient` | Use ancient-DNA marker tables. |
 | `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites. |
+| `assume_reference` | `bool` | `False` | `--assume-reference` | VCF: assume --ref at absent markers for upstream Yleaf parity. Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.lineage.y_str(YStrParams)`
