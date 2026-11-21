@@ -49,7 +49,9 @@ Outputs in `<outdir>/yleaf/`:
 * `<sample>/<sample>.out`, `.fmf`, `.info`: observed/inferred and filtered markers.
 * `run.json`: upstream code/data tag, commit, build, the tree's id, name,
   version, date, license and source, ancient-panel/QC settings, and the selected
-  marker panel's identifier and SHA-256 (including custom panels).
+  marker panel's identifier and SHA-256 (including custom panels). Built-in
+  FTDNA/ISOGG runs also record the independently verified polarity module,
+  its SHA-256, correction count and build audit.
 
 Calls and QC values preserve v4.1.6 behavior, including recurrent-site and
 approximate-placement exclusions, 60% node consensus, deepest passing node,
@@ -96,6 +98,85 @@ backbone tables still come from the Yleaf data cache. Versions before #503
 used one combined pack in `<reference_library>/yleaf/trees/yfull/<version>/`
 (release `yleaf-tree-yfull-v<version>`); that folder is no longer read and can
 be deleted.
+
+### Independently audited polarity
+
+Yleaf's FTDNA/ISOGG marker tables contain ancestral/derived reversals (#1168).
+Our packager copies those upstream tables byte-for-byte; they are not errors
+in WGS Extract's YFull converter. A separately downloaded `y-polarity` module
+supplies corrections from the pinned 2026-11-05 YBrowse snapshot. No FTDNA or
+ISOGG tree/table is modified or republished.
+
+`scripts/build_y_polarity.py` builds this module offline from the exact Yleaf
+tables and the YBrowse snapshot already published on the YFull data release.
+It requires one independent single-base site with the same SNP name, position
+and reversed allele pair **and compatible branch placement**. A reversal on a
+sister branch can describe the same genotypes and must not be flipped.
+YBrowse's named branch must uniquely resolve to the source node or an ancestor,
+using native node names or unambiguous shared ISOGG marker placements (name,
+position and allele pair; recurrent sites excluded). Approximate or unplaced
+labels alone cannot establish placement. For hg19/T2T, the lift must reproduce the target
+position and alleles, with reverse-strand complementation. Recurrent sites,
+ambiguous names (including names shared with an indel), missing SNPs, different
+positions and different allele pairs are reported in `build_info.json`, not
+guessed. Every proposed correction also
+must leave the build's reference derived on its known lineage and ancestral
+off it: R-M343/R1b for hg38/hg19, J-M267/J1 for T2T. Unresolved reference
+descendants, ambiguous ancestry and reference mismatches remain uncorrected.
+The reference chrY identities and source tree digests are recorded.
+FTDNA's bundled JSON also contains marker-free legacy BT/CF/DE overlay links
+into native branches. For the audit, a duplicate parent is removed only when
+the alternative is the unique SNP-named parent represented in the source
+marker table; other ambiguous parentage is refused. Excluded overlay edges
+are counted separately in `tree_audit`.
+The runtime checks the source
+table's SHA-256 before interpreting it. With a distinct ancient table, damage
+filtering follows correction and excludes entire positions, so a recurrent
+site cannot become unique evidence. ISOGG uses the same table in both modes.
+`--pos-file` and custom trees bypass this module.
+
+The module is CC-BY-SA (version not stated), Thomas Krahn YSEQ, and contains
+only YBrowse-derived allele corrections, its input digests and attribution.
+First use of FTDNA/ISOGG requires an explicit `--download` if it is missing;
+both trees reuse the same verified module offline. `run.json` preserves the
+original table digest and separately records the correction module digest and
+audit. A changed module pin also invalidates the Y-lineage step on resume.
+
+To regenerate the correction asset, run the builder with `--data` pointing to
+the pinned Yleaf cache, `--ybrowse` pointing to the archived YBrowse snapshot,
+`--ref-hg38`, `--ref-hg19` and `--ref-t2t` pointing to indexed reference FASTAs,
+and `--output out/y-polarity`. Compare the resulting tarball's SHA-256 with
+`trees.json` before publishing. Upload the tarball and `build_info.json` to a
+non-latest `yleaf-polarity-v2` data release; publish that data release before
+using its browser-download URL. The application PR can remain draft.
+For changed inputs, use a new data-release version and update the manifest
+only after reviewing the audit and public-sample before/after results.
+Version 1 contained incorrect flips from name/coordinate-only matching and
+is superseded by version 2; do not use version 1.
+
+Version 2's pinned-input audit accepts:
+
+| Source | hg38 | hg19 | T2T |
+|---|---:|---:|---:|
+| FTDNA | 56 | 57 | 792 |
+| ISOGG | 3 | 2 | 41 |
+
+FTDNA hg38 leaves 101 branch disagreements, 4 reference-path contradictions,
+2 off-path contradictions and 4 unresolved reference descendants unchanged.
+T2T retains strand-complemented corrections while leaving 6,803 other allele
+disagreements unchanged. Full-chrY HG00096 (R-CTS110) and HG002 (J-FT299855)
+retain their calls: each gains 54 derived CT markers and one corrected
+ancestral off-path T marker, with no derived-to-ancestral change on its own
+path and no ancestral-to-derived change off it.
+
+The YFull builder also audits polarity against each reference's known lineage:
+R1b for hg19/GRCh38 and J1 for T2T-CHM13v2 chrY. Override these with
+`--ref-haplogroup-hg19`, `--ref-haplogroup-hg38`, or `--ref-haplogroup-t2t`
+for a different FASTA. A broad haplogroup cannot resolve its descendants;
+recurrent positions and ambiguous ancestry cannot establish polarity either.
+This audit runs before reference filtering, so a shared position is still
+counted as recurrent even if one row is later discarded. It is recorded in
+`build_info.json`, never used to silently flip reference-matching alleles.
 
 Each SNP group on a branch (`/`-separated aliases) becomes one marker when its
 aliases name exactly one GRCh38 chrY single-base substitution in YBrowse.

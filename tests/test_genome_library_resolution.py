@@ -1,12 +1,14 @@
 """--genome: a folder of the genome library, its genome-config.toml, and the
 inputs each command resolves from it."""
 
+import json
 import os
 from argparse import Namespace
 from pathlib import Path
 
 import pytest
 
+from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam
 from wgsextract_cli.cli.parser import build_parser, parse_args
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.genome_library import (
@@ -14,7 +16,8 @@ from wgsextract_cli.core.genome_library import (
     apply_genome_selection,
     pair_stem,
 )
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.main import main
 
 
 @pytest.fixture
@@ -215,6 +218,96 @@ def test_no_vcf_says_where_to_configure_one(library):
 
     with pytest.raises(WGSExtractError, match="No vcf file found"):
         _select("ken", qc_cmd="vcf", command="qc", vcf_input=None)
+
+
+def _indexed_vcf(path: Path, pos: int) -> str:
+    path.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        f"chr1\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT\t0/1\n",
+        encoding="utf-8",
+    )
+    return bgzip_index(path)
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("command", "selection"),
+    [
+        (("vcf", "filter"), "explicit"),
+        (("vcf", "filter"), "ambiguous"),
+        (("vcf", "filter"), "both-flags"),
+        (("vcf", "filter"), "same-path"),
+        (("vcf", "filter"), "genome-only"),
+        (("vcf", "table"), "ambiguous"),
+        (("vcf", "table"), "configured-default"),
+        (("qc", "vcf"), "ambiguous"),
+    ],
+)
+def test_1219_single_vcf_input_wins_over_genome_discovery(
+    tmp_path, capsys, command, selection
+):
+    genome = tmp_path / "genomes" / "A"
+    genome.mkdir(parents=True)
+    from_genome = str(genome / "a.vcf.gz")
+    if selection == "configured-default":
+        sam_to_bam(["@SQ\tSN:chr1\tLN:1000"], genome / "a.bam")
+    else:
+        _indexed_vcf(genome / "a.vcf", 10)
+    other = _indexed_vcf(tmp_path / "b.vcf", 20)
+    config = tmp_path / "config.toml"
+    default_vcf = from_genome if selection == "both-flags" else other
+    config.write_text(
+        f"mygenomes_library = {json.dumps(str(genome.parent))}\n"
+        f"default_input_vcf = {json.dumps(default_vcf)}\n",
+        encoding="utf-8",
+    )
+    if selection in {"ambiguous", "both-flags"}:
+        _indexed_vcf(genome / "second.vcf", 30)
+
+    flags: list[str] = []
+    expected_input, expected_pos, expected_role = from_genome, "10", "vcf_input"
+    if selection == "configured-default":
+        expected_input, expected_pos = other, "20"
+    elif selection != "genome-only":
+        flags = ["--input", other]
+        expected_input, expected_pos, expected_role = other, "20", "input"
+    if selection in {"both-flags", "same-path"}:
+        expected_role = "vcf_input"
+        if selection == "both-flags":
+            expected_input, expected_pos = from_genome, "10"
+        flags.extend(["--vcf-input", expected_input])
+
+    out = tmp_path / "out"
+    main([
+        "--config", str(config), *command, "--genome", "A",
+        *flags, "--outdir", str(out), "--json",
+    ])  # fmt: skip
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "ok"
+    assert [
+        (Path(entry["path"]).resolve(), entry["role"]) for entry in result["inputs"]
+    ] == [(Path(expected_input).resolve(), expected_role)]
+    if command[1] == "filter":
+        filtered = out / "filtered.vcf.gz"
+        positions = run_command(
+            ["bcftools", "query", "-f", "%POS\n", str(filtered)],
+            capture_output=True,
+        ).stdout
+        assert positions.splitlines() == [expected_pos]
+        manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
+        assert manifest["inputs"] == result["inputs"]
+    elif command[1] == "table":
+        table = next(out.glob("*.tsv")).read_text()
+        assert table.splitlines()[1].split("\t")[:2] == ["chr1", expected_pos]
+    else:
+        report = (out / "b.vcf.gz.vcfstats.txt").read_text()
+        assert any(
+            line.startswith("ID\t0\t") and line.endswith("b.vcf.gz")
+            for line in report.splitlines()
+        )
 
 
 def test_trio_keeps_an_explicit_proband(library):
