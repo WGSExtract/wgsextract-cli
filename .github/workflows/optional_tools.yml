@@ -1,0 +1,37 @@
+name: Optional tool integrations
+
+on:
+  workflow_call:
+    inputs:
+      tests:
+        type: string
+        default: all
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  optional-tools:
+    if: github.event.pull_request.draft != true && inputs.tests != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up cached optional tools
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev verifybamid2 freebayes longtr modkit expansionhunter
+          scope: optional-tools
+          writer: "true"
+      - name: Run selected optional integrations without skips
+        shell: bash
+        env:
+          TEST_SELECTION: ${{ inputs.tests || 'all' }}
+        run: pixi run --no-install -e dev python scripts/ci_optional_tools.py --selection "$TEST_SELECTION"
+      - name: Publish optional-tool results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: optional-tools
+          path: out/optional-tools/*.xml

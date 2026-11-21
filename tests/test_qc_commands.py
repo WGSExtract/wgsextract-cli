@@ -381,6 +381,7 @@ def test_vcf_qc_failure_leaves_no_partial_report(tmp_path):
     with pytest.raises(WGSExtractError):
         run_wgsextract("qc", "vcf", "--input", str(bad))
     assert not (tmp_path / "bad.vcf.vcfstats.txt").exists()
+    assert not (tmp_path / "wgse" / "bad.vcf.vcfstats.txt").exists()
 
 
 @needs_tools("fastqc")

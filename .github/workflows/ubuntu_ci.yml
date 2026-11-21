@@ -29,6 +29,11 @@ on:
   schedule:
     - cron: "11 6 * * *"
   workflow_dispatch:
+    inputs:
+      optional-tools-only:
+        description: Run only the cheap optional-tool integrations (branch validation).
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,7 +50,7 @@ jobs:
       workflow: ubuntu_ci.yml
   lint:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && !inputs.generic-certified }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.smoke-only && !inputs.generic-certified }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,7 +75,7 @@ jobs:
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.platform-certified && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: ubuntu
@@ -84,9 +89,16 @@ jobs:
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
       move-modules: ${{ inputs.move-modules || '[]' }}
 
+  optional-tools:
+    needs: nightly
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
+    uses: ./.github/workflows/optional_tools.yml
+    with:
+      tests: ${{ inputs.tests || 'all' }}
+
   imputation:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py')) }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py')) }}
     # GLIMPSE2 and Beagle from the opt-in imputation environment on HG002 1x
     # reads and chip genotypes (tests/fixtures/imputation_hg002).
     runs-on: ubuntu-latest
@@ -110,7 +122,7 @@ jobs:
   # align with minimap2, then Sniffles from the opt-in pacbio environment.
   ont-hg002:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py')) }}
+    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

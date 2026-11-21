@@ -68,12 +68,17 @@ snapshot() {
     sh "$HERE/inventory.sh" "$R/inventory-$1.txt" "$R"
 }
 
+# The user's own `sudo apt-get`, with time limits and outage reporting.
+APT_OUTAGE="$R/apt-outage.txt"
+# shellcheck source=scripts/installlab/guest/user-apt.sh
+. "$HERE/user-apt.sh"
+
 download_installer() {
     mkdir -p "$HOME/Downloads" && curl -fsSL -o "$DEB" "$LAB_GUI_INSTALLER_URL"
 }
 
 install_app() {
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$DEB" &&
+    user_apt install -y -q "$DEB" &&
         dpkg -s "$PACKAGE" && test -x "$APP_BIN" &&
         test -f /usr/share/applications/WGSExtract.desktop
 }
@@ -135,7 +140,7 @@ app_uninstall() {
     cat "$R/uninstall-result.json"
     [ "$rc" = 0 ] || { echo "the app's Uninstall exited $rc"; return 1; }
     # ...then removing the package, and what apt installed only for it.
-    sudo DEBIAN_FRONTEND=noninteractive apt-get remove --autoremove -y -q "$PACKAGE" &&
+    user_apt remove --autoremove -y -q "$PACKAGE" &&
         ! dpkg -s "$PACKAGE" 2>/dev/null
 }
 
@@ -153,12 +158,10 @@ if [ "$MODE" = "control" ]; then
     # A different WebKitGTK app (webkit-window.py) is installed, open for 4
     # minutes and removed: what GTK, WebKit and Mesa keep for any such app.
     set -- gir1.2-webkit2-4.1 python3-gi
-    # The log is the user's own file; only apt-get needs root.
-    # shellcheck disable=SC2024
-    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q "$@" > "$R/control-apt.log" 2>&1
+    user_apt install -y -q "$@" > "$R/control-apt.log" 2>&1
+    report_apt_outage
     xvfb-run -a -s "-screen 0 1280x800x24" python3 "$HERE/webkit-window.py" 240 > "$R/control-window.log" 2>&1
-    # shellcheck disable=SC2024
-    sudo DEBIAN_FRONTEND=noninteractive apt-get remove --autoremove -y -q "$@" >> "$R/control-apt.log" 2>&1
+    user_apt remove --autoremove -y -q "$@" >> "$R/control-apt.log" 2>&1
     snapshot after_install
     snapshot after_uninstall
     echo "scenario finished"
@@ -167,11 +170,13 @@ fi
 
 step download_installer download_installer
 step install_app install_app
+report_apt_outage
 step setup app_setup
 step optional_tools sh "$HERE/install-optional-tools.sh" "$APP_DATA" "$WORKSPACE" "$HOME/.local/share/$APP_ID"
 step actions app_actions
 snapshot after_install
 step uninstall app_uninstall
+report_apt_outage
 rm -f "$DEB"
 snapshot after_uninstall
 echo "scenario finished"

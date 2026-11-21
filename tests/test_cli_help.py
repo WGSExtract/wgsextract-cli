@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import hints, parser
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
@@ -356,7 +357,8 @@ def test_help_index_has_no_settings_from_the_users_config(tmp_path):
     }
     config = tmp_path / "config.toml"
     config.write_text(
-        "".join(f'{key} = "{value}"\n' for key, value in paths.items())
+        state_directory_setting(tmp_path)
+        + "".join(f'{key} = "{value}"\n' for key, value in paths.items())
         + "cpu_threads = 7\n",
         encoding="utf-8",
     )

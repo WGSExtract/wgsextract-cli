@@ -129,9 +129,8 @@ def build_windows_gui_installer(
 WINDOWS_GUI_BUILD = """
 set -eu
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq curl ca-certificates git build-essential make unzip nsis lld llvm clang clang-tools \
-  python3 python3-defusedxml >/dev/null
+bash /apt-install.sh curl ca-certificates git build-essential make unzip nsis lld llvm clang clang-tools \
+  python3 python3-defusedxml
 # clang-cl, llvm-rc and lld-link live in LLVM's own bin directory.
 export PATH="$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1):$PATH"
 /root/.cargo/bin/cargo --version 2>/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -155,9 +154,8 @@ chown -R "$HOST_UID:$HOST_GID" /out
 LINUX_GUI_BUILD = """
 set -eu
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq curl ca-certificates git build-essential pkg-config file xdg-utils \
-  libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev >/dev/null
+bash /apt-install.sh curl ca-certificates git build-essential pkg-config file xdg-utils \
+  libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 /root/.cargo/bin/cargo --version 2>/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
 . /root/.cargo/env
 curl -fsSL https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.xz | tar -xJ -C /opt
@@ -205,6 +203,7 @@ def in_container(gui_repo: Path, out: Path, script: str) -> None:
         mark_used(used)
     run([docker, "run", "--rm", "--platform", "linux/amd64",
          "-e", f"HOST_UID={os.getuid()}", "-e", f"HOST_GID={os.getgid()}",
+         *windows_vm.APT_MOUNT,
          "-v", f"{out}:/out", "-v", "wgse-lab-gui-cargo:/root/.cargo",
          "-v", "wgse-lab-gui-rustup:/root/.rustup",
          "-v", "wgse-lab-gui-target:/build/target",
