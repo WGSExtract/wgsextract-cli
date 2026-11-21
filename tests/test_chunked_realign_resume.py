@@ -119,13 +119,18 @@ def test_1208_cancel_token_interrupts_active_chunk_pipeline(
     real_tool = get_tool_path(tool)
     assert real_tool is not None
     started = tmp_path / "stage-started"
+    finished = tmp_path / "stage-finished"
+    slow_stage = (
+        "from pathlib import Path; import time; "
+        f"Path({str(started)!r}).touch(); time.sleep(5); "
+        f"Path({str(finished)!r}).touch()"
+    )
     shim = tmp_path / tool
     shim.write_text(
         "#!/usr/bin/env bash\n"
         f"stage={shlex.quote(active_stage)}\n"
         f'if [[ "{tool} $*" =~ $stage ]]; then\n'
-        f"  touch {shlex.quote(str(started))}\n"
-        "  exec sleep 5\n"
+        f"  exec {shlex.join([sys.executable, '-c', slow_stage])}\n"
         "fi\n"
         f'exec {shlex.join(_tool_command_parts(real_tool))} "$@"\n'
     )
@@ -151,4 +156,5 @@ def test_1208_cancel_token_interrupts_active_chunk_pipeline(
             chunked_run.run()
     finally:
         thread.join()
+    assert not finished.exists()
     assert not Path(chunked_run.output).exists()
