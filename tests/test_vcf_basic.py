@@ -8,6 +8,8 @@ import logging
 import os
 import random
 import shlex
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -421,10 +423,10 @@ def test_annotate_requires_input():
         run_wgsextract("vcf", "annotate", "--ann-vcf", "ann.vcf.gz")
 
 
-def _write_index_test_vcf(vcf: Path, *positions: int) -> None:
+def _write_index_test_vcf(vcf: Path, *positions: int, length: int = 100000) -> None:
     plain = vcf.with_suffix("")
     plain.write_text(
-        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100000>\n"
+        f"##fileformat=VCFv4.2\n##contig=<ID=chr1,length={length}>\n"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
         + "".join(f"chr1\t{pos}\trs{pos}\tA\tG\t50\tPASS\t.\n" for pos in positions),
         encoding="utf-8",
@@ -447,28 +449,122 @@ def rewritten_vcf(tmp_path):
     return vcf
 
 
-def _index_test_query(vcf: str) -> str:
+def _index_test_query(vcf: str, position: int = 50000) -> str:
     return run_command(
-        ["bcftools", "query", "-r", "chr1:50000-50000", "-f", "%ID\n", vcf],
+        ["bcftools", "query", "-r", f"chr1:{position}-{position}", "-f", "%ID\n", vcf],
         capture_output=True,
     ).stdout
 
 
 @needs_htslib
-@pytest.mark.parametrize("stale", ["csi", "tbi", "both"])
+@pytest.mark.parametrize("stale", ["csi", "tbi", "both", "short-name-csi"])
 def test_1231_refreshes_coexisting_indexes_after_vcf_rewrite(rewritten_vcf, stale):
     vcf = rewritten_vcf
     if stale != "both":
         options = ["-C"] if stale == "tbi" else []
         run_command(["tabix", "-f", *options, "-p", "vcf", vcf])
 
-    stale_ext = "csi" if stale == "both" else stale
-    assert _index_test_query(f"{vcf}##idx##{vcf}.{stale_ext}") == ""
+    csi = Path(f"{vcf}.csi")
+    if stale == "short-name-csi":
+        csi = csi.rename(vcf.with_suffix(".csi"))
+    stale_index = f"{vcf}.tbi" if stale == "tbi" else str(csi)
+    assert _index_test_query(f"{vcf}##idx##{stale_index}") == ""
     ensure_vcf_indexed(vcf)
 
     assert _index_test_query(str(vcf)) == "rs50000\n"
-    for ext in ("tbi", "csi"):
-        assert _index_test_query(f"{vcf}##idx##{vcf}.{ext}") == "rs50000\n"
+    for index in (f"{vcf}.tbi", csi):
+        assert _index_test_query(f"{vcf}##idx##{index}") == "rs50000\n"
+
+
+@needs_htslib
+@pytest.mark.parametrize("existing", [False, True], ids=["missing", "stale"])
+def test_1231_uses_csi_when_rewritten_positions_exceed_tbi(rewritten_vcf, existing):
+    vcf = rewritten_vcf
+    if not existing:
+        for ext in ("tbi", "csi"):
+            Path(f"{vcf}.{ext}").unlink()
+    _write_index_test_vcf(vcf, 600_000_000, length=700_000_000)
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf), 600_000_000) == "rs600000000\n"
+    assert not Path(f"{vcf}.tbi").exists()
+
+
+@needs_htslib
+@pytest.mark.skipif(os.name == "nt", reason="Uses a POSIX tool wrapper")
+def test_1231_index_refresh_fails_when_source_changes_mid_build(
+    rewritten_vcf, tmp_path, monkeypatch
+):
+    vcf = rewritten_vcf
+    ann = _vcf(tmp_path / "ann.vcf", ["chr1\t100\trs1\tA\tG\t.\t.\t."])
+    replacement = tmp_path / "replacement.vcf.gz"
+    _write_index_test_vcf(replacement, 50000, 60000)
+    tabix = get_tool_path("tabix")
+    assert tabix is not None
+    wrapper = tmp_path / "tabix"
+    # Run real tabix, then replace the input after the first index build.
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'{shlex.quote(tabix)} "$@" || exit $?\n'
+        'case "$*" in\n'
+        f'  *"-p vcf"*) [ ! -f {shlex.quote(str(replacement))} ] || '
+        f"mv {shlex.quote(str(replacement))} {shlex.quote(str(vcf))} ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "wgsextract_cli.main", "vcf", "annotate",
+            "--input", str(vcf), "--ann-vcf", ann, "--outdir", str(tmp_path),
+        ], capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode == 1
+    assert "changed while indexing" in result.stderr
+    assert not (tmp_path / "annotated.vcf.gz").exists()
+    assert _index_test_query(str(vcf), 60000) == ""
+
+
+@needs_htslib
+def test_1231_retries_after_a_backdated_rewrite_during_publication(
+    rewritten_vcf, tmp_path, monkeypatch
+):
+    vcf = rewritten_vcf
+    replacement = tmp_path / "replacement.vcf.gz"
+    _write_index_test_vcf(replacement, 90000)
+    os.utime(replacement, (900_000, 900_000))
+    replace = Path.replace
+
+    def swap_after_publish(path, target):
+        result = replace(path, target)
+        if Path(target) == Path(f"{vcf}.csi"):
+            replace(replacement, vcf)
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", swap_after_publish)
+        with pytest.raises(WGSExtractError, match="changed while indexing"):
+            ensure_vcf_indexed(vcf)
+
+    ensure_vcf_indexed(vcf)
+    assert _index_test_query(str(vcf), 90000) == "rs90000\n"
+
+
+@needs_htslib
+def test_1231_refresh_does_not_overwrite_a_siblings_short_index(rewritten_vcf):
+    vcf = rewritten_vcf
+    Path(f"{vcf}.csi").unlink()
+    sibling = vcf.with_suffix(".bgz")
+    _write_index_test_vcf(sibling, 90000)
+    run_command(["tabix", "-C", "-p", "vcf", sibling])
+    Path(f"{sibling}.csi").rename(sibling.with_suffix(".csi"))
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(sibling), 90000) == "rs90000\n"
 
 
 @needs_htslib

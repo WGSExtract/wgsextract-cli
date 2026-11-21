@@ -53,8 +53,11 @@ When a command prepares a BGZF-compressed VCF for indexed access, it rebuilds
 the sidecar indexes if any are older than the VCF. If a rebuild fails, the
 command stops instead of using the old index. If the input directory is
 read-only and needs a refresh, copy the VCF without its `.tbi` and `.csi`
-files to a writable directory and retry. Preserve matching indexes when
-moving a VCF: file dates alone cannot tell whether the pair matches.
+files to a writable directory and retry. VCFs with coordinates beyond TBI's
+range use CSI instead. Keep `.vcf.gz` and `.vcf.bgz` files with the same basename
+in separate directories if they use a shortened index name such as `sample.vcf.csi`.
+Preserve matching indexes when moving a VCF: file dates alone cannot tell whether
+the pair matches.
 
 File-writing commands record `<output>.manifest.json`: inputs and outputs
 with cheap fingerprints, metrics, structured warnings and provenance

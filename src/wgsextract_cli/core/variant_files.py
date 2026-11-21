@@ -1,7 +1,9 @@
+import contextlib
 import hashlib
 import logging
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from collections.abc import Iterable, Mapping, Sequence
@@ -61,46 +63,80 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
 
 
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
-    """Create a TBI when missing, or refresh all sidecars if any look stale."""
+    """Create an index when missing, or refresh all sidecars if any look stale."""
     vcf = Path(vcf_path)
     if vcf.suffix not in {".gz", ".bgz"}:
         # We can't index plain VCF easily with tabix
         return
 
     vcf_mtime = vcf.stat().st_mtime_ns
+    sibling = vcf.with_suffix(".bgz" if vcf.suffix == ".gz" else ".gz")
     indexes: list[tuple[int, Path]] = []
     for ext in (".tbi", ".csi"):
-        index = append_suffix(vcf, ext)
-        try:
-            indexes.append((index.stat().st_mtime_ns, index))
-        except FileNotFoundError:
-            continue
+        # HTSlib searches for both sample.vcf.gz.csi and sample.vcf.csi (and
+        # likewise for TBI). Inspect all names readers can select.
+        for index in (append_suffix(vcf, ext), vcf.with_suffix(ext)):
+            try:
+                mtime = index.stat().st_mtime_ns
+            except FileNotFoundError:
+                continue
+            if index == vcf.with_suffix(ext) and sibling.is_file():
+                raise WGSExtractError(
+                    f"{vcf} and {sibling} share the index name {index}. "
+                    "Copy the intended VCF without its indexes to a separate "
+                    "writable directory and retry."
+                )
+            indexes.append((mtime, index))
     # Age can trigger a refresh, but doesn't establish whether an index matches.
     if indexes and all(mtime >= vcf_mtime for mtime, _ in indexes):
         return
 
     # Publish the oldest index last so a partial publication doesn't clear the
-    # refresh trigger. Build both before publishing either.
+    # refresh trigger. Build every required format before publishing any.
     destinations = [index for _, index in sorted(indexes, reverse=True)] or [
         append_suffix(vcf, ".tbi")
     ]
+    from wgsextract_cli.core.dependencies import get_tool_path
+
+    tabix = get_tool_path("tabix")
+    if tabix is None:
+        raise MissingDependencyError("tabix dependency is required to index VCF files.")
     logging.info(LOG_MESSAGES["vcf_indexing"].format(path=vcf_path))
     try:
         with tempfile.TemporaryDirectory(prefix=".wgse-", dir=vcf.parent) as stage:
-            for index in destinations:
-                run_command(
-                    [
-                        "bcftools",
-                        "index",
-                        "--force",
-                        "--tbi" if index.suffix == ".tbi" else "--csi",
-                        "-o",
-                        Path(stage, index.suffix[1:]),
-                        vcf,
-                    ]
-                )
-            for index in destinations:
-                Path(stage, index.suffix[1:]).replace(index)
+            staged_vcf = Path(stage, "input.vcf.gz")
+            generation = _stage_vcf_for_indexing(vcf.resolve(strict=True), staged_vcf)
+            tbi = append_suffix(staged_vcf, ".tbi")
+            csi = append_suffix(staged_vcf, ".csi")
+            if any(index.suffix == ".tbi" for index in destinations):
+                try:
+                    run_command(
+                        [tabix, "-f", "-p", "vcf", staged_vcf], capture_output=True
+                    )
+                except subprocess.CalledProcessError as exc:
+                    if "cannot be stored in a tbi index" not in (exc.stderr or ""):
+                        raise
+                    tbi.unlink(missing_ok=True)
+            need_csi = not tbi.exists() or any(
+                index.suffix == ".csi" for index in destinations
+            )
+            if need_csi:
+                run_command([tabix, "-f", "-C", "-p", "vcf", staged_vcf])
+            if _vcf_index_generation(vcf) != generation:
+                raise WGSExtractError(f"VCF changed while indexing {vcf}; retry.")
+            published: dict[Path, os.stat_result] = {}
+            if need_csi and all(index.suffix != ".csi" for index in destinations):
+                destinations.insert(0, append_suffix(vcf, ".csi"))
+            try:
+                for index in destinations:
+                    if index.suffix == ".tbi" and not tbi.exists():
+                        index.unlink(missing_ok=True)
+                    else:
+                        published[index] = _publish_vcf_index(
+                            csi if index.suffix == ".csi" else tbi, index
+                        )
+            finally:
+                _check_published_indexes(vcf, generation, published)
     except MissingDependencyError:
         raise
     except (OSError, subprocess.SubprocessError) as exc:
@@ -110,6 +146,54 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
             "if the index cannot be written, copy the VCF without its indexes "
             "to a writable directory and retry."
         ) from exc
+
+
+def _vcf_index_generation(path: Path) -> tuple[int, int, int, int, int]:
+    info = path.stat()
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _stage_vcf_for_indexing(
+    source: Path, staged: Path
+) -> tuple[int, int, int, int, int]:
+    # tabix writes next to its input. Avoid copying whole genomes when links
+    # are available; a Windows account may not be allowed to create symlinks.
+    try:
+        staged.symlink_to(source)
+    except OSError:
+        try:
+            os.link(source, staged)
+        except OSError:
+            generation = _vcf_index_generation(source)
+            shutil.copyfile(source, staged)
+            return generation
+    return _vcf_index_generation(staged)
+
+
+def _publish_vcf_index(source: Path, destination: Path) -> os.stat_result:
+    # Keep the staged index available for the other name of the same format.
+    duplicate = source.with_name("publish")
+    shutil.copy2(source, duplicate)
+    identity = duplicate.stat()
+    duplicate.replace(destination)
+    return identity
+
+
+def _check_published_indexes(
+    vcf: Path,
+    generation: tuple[int, int, int, int, int],
+    published: Mapping[Path, os.stat_result],
+) -> None:
+    with contextlib.suppress(FileNotFoundError):
+        if _vcf_index_generation(vcf) == generation:
+            return
+    # A replacement can retain an older mtime, so the next run must not
+    # treat any index we just published as current.
+    for index, identity in published.items():
+        with contextlib.suppress(FileNotFoundError):
+            if os.path.samestat(index.stat(), identity):
+                index.unlink()
+    raise WGSExtractError(f"VCF changed while indexing {vcf}; retry.")
 
 
 def ensure_vcf_prepared(
