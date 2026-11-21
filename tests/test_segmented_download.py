@@ -216,6 +216,7 @@ def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
     ],
 )
 def test_1210_unusable_segment_state_restarts_download(tmp_path, damage, monkeypatch):
+    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     dest = tmp_path / "hs38.fa.gz"
     partial = tmp_path / "hs38.fa.gz.partial"
@@ -281,6 +282,7 @@ def test_1210_state_write_failure_preserves_segmented_error(
 def test_1210_failed_segment_checkpoint_cannot_resume_sparse_file_as_single(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
     monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     dest = tmp_path / "hs38.fa.gz"
