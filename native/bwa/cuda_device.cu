@@ -26,6 +26,14 @@ unsigned blocks(size_t threads) {
     return unsigned((threads + block_size - 1) / block_size);
 }
 
+// log2 of a power of two (cl.exe, nvcc's host compiler on Windows, has no
+// __builtin_ctzll).
+uint32_t exponent(uint64_t power) {
+    uint32_t shift = 0;
+    while (power >>= 1) ++shift;
+    return shift;
+}
+
 // Compacts each read's intervals (at most seed_output_capacity, strided) into
 // consecutive output at offsets[read].
 __global__ void gather_seeds(const SeedInterval *__restrict__ output,
@@ -271,7 +279,7 @@ public:
         p.seq_len = bwt.seq_len;
         p.sa_intv = static_cast<uint64_t>(bwt.sa_intv);
         std::copy_n(bwt.L2, 5, p.l2);
-        p.sa_shift = static_cast<uint32_t>(__builtin_ctzll(p.sa_intv));
+        p.sa_shift = exponent(p.sa_intv);
         sa_ready_ = true;
         return true;
     }

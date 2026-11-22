@@ -1,6 +1,13 @@
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 
+# clang-cl's -Wall is -Weverything; /W4 is clang's -Wall -Wextra.
+if(MSVC)
+    set(wgse_strict_warnings /W4 /WX)
+else()
+    set(wgse_strict_warnings -Wall -Wextra -Werror)
+endif()
+
 FetchContent_Declare(bwa
     URL https://github.com/lh3/bwa/archive/refs/tags/v0.7.19.tar.gz
     URL_HASH SHA256=cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
@@ -12,6 +19,15 @@ FetchContent_Declare(mem3
     URL_HASH SHA256=28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
     SOURCE_SUBDIR unused)
 FetchContent_MakeAvailable(bwa mem3)
+if(WIN32)
+    # The Windows bwa package's patch (64-bit file offsets, no POSIX pipes or
+    # shared memory): without it the human index fails to load ([ftell]).
+    file(READ "${bwa_SOURCE_DIR}/utils.h" bwa_utils_header)
+    if(NOT bwa_utils_header MATCHES "int64_t err_ftell")
+        message(FATAL_ERROR "${bwa_SOURCE_DIR} lacks packaging/windows/recipes/bwa/patches/"
+            "0001-windows-native-build.patch: point FETCHCONTENT_SOURCE_DIR_BWA at a patched copy")
+    endif()
+endif()
 
 # Bump when the wgse-bwa package changes; it is versioned separately from BWA.
 set(WGSE_BWA_VERSION 0.14.1)
@@ -46,19 +62,34 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/rescue_types.h" "${CMAKE_CURRENT_SOURCE_DIR}/rescue.metal")
 configure_file(seeding_source.h.in "${generated}/seeding_source.h" @ONLY)
 
+# POSIX for BWA on Windows: these shims, then packaging/windows's MinGW ones
+# (drand48, getrusage, binary I/O), as the Windows bwa package has.
+add_library(wgse_bwa_platform INTERFACE)
+if(WIN32)
+    set(windows_compat "${CMAKE_CURRENT_SOURCE_DIR}/../../packaging/windows/compat")
+    target_include_directories(wgse_bwa_platform BEFORE INTERFACE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../windows/include" "${windows_compat}/include")
+    target_compile_definitions(wgse_bwa_platform INTERFACE
+        $<$<COMPILE_LANGUAGE:C,CXX>:_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE _USE_MATH_DEFINES>)
+    target_compile_options(wgse_bwa_platform INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/FIwgse_msvc.h>)
+    target_link_libraries(wgse_bwa_platform INTERFACE psapi)
+endif()
+
 # The CPU backend's interleaved seeding runs each read as a C++20 coroutine.
 add_library(wgse_bwa_smem OBJECT smem_batch.cpp)
 set_target_properties(wgse_bwa_smem PROPERTIES CXX_STANDARD 20)
 target_include_directories(wgse_bwa_smem PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${generated}")
 target_include_directories(wgse_bwa_smem SYSTEM PRIVATE "${bwa_SOURCE_DIR}")
-target_compile_options(wgse_bwa_smem PRIVATE -Wall -Wextra -Werror)
+target_compile_options(wgse_bwa_smem PRIVATE ${wgse_strict_warnings})
+target_link_libraries(wgse_bwa_smem PRIVATE ZLIB::ZLIB wgse_bwa_platform)
 
 # bwa-mem3's rescue-window pruning behind wgse-bwa-mem2's adapter
 # (../bwa-mem2/wgse_rescue_prune.h), compiled apart: bwa-mem3's source
 # directory has headers named like BWA's.
 add_library(wgse_bwa_rescue_prune STATIC ../bwa-mem2/rescue_prune.cpp)
 target_include_directories(wgse_bwa_rescue_prune SYSTEM PRIVATE "${mem3_SOURCE_DIR}/src")
-target_compile_options(wgse_bwa_rescue_prune PRIVATE -Wall -Wextra -Werror)
+target_compile_options(wgse_bwa_rescue_prune PRIVATE ${wgse_strict_warnings})
+target_link_libraries(wgse_bwa_rescue_prune PRIVATE wgse_bwa_platform)
 
 # BWA plus the GPU scheduling and its devices, shared by the executable and the tests.
 set(device_sources)
@@ -66,6 +97,9 @@ if(APPLE)
     list(APPEND device_sources metal_device.mm)
 elseif(WGSE_CUDA)
     list(APPEND device_sources cuda_device.cu)
+endif()
+if(WIN32)
+    list(APPEND device_sources ../windows/msvc_compat.c "${windows_compat}/wgse_compat.c")
 endif()
 add_library(wgse_bwa_core STATIC ${bwa_sources} backend.cpp ${device_sources}
     $<TARGET_OBJECTS:wgse_bwa_smem>)
@@ -77,10 +111,14 @@ target_compile_definitions(wgse_bwa_core PRIVATE
 target_compile_options(wgse_bwa_core PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-Wno-unused-function -Wno-unused-but-set-variable
     $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-deprecated-non-prototype>>
-    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Werror>
+    $<$<COMPILE_LANGUAGE:CXX>:${wgse_strict_warnings}>
     $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc -Wall -Wextra -Werror>)
-target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads m wgse_bwa_rescue_prune)
-if(NOT APPLE)
+target_link_libraries(wgse_bwa_core PUBLIC ZLIB::ZLIB Threads::Threads wgse_bwa_rescue_prune
+    wgse_bwa_platform)
+if(NOT WIN32)
+    target_link_libraries(wgse_bwa_core PUBLIC m)
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # shm_open, as upstream's Makefile links on Linux (older glibc keeps it in librt).
     target_link_libraries(wgse_bwa_core PUBLIC rt)
 endif()
@@ -91,7 +129,8 @@ elseif(WGSE_CUDA)
     target_compile_definitions(wgse_bwa_core PRIVATE WGSE_HAVE_CUDA=1)
     target_include_directories(wgse_bwa_core PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
     target_compile_options(wgse_bwa_core PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings
+        $<IF:$<PLATFORM_ID:Windows>,-Xcompiler=/Zc:lambda,-Xcompiler=-Wall$<COMMA>-Wextra>>)
     # The static runtime needs only the NVIDIA driver at run time; without one,
     # the CUDA backend reports itself unavailable.
     target_link_libraries(wgse_bwa_core PUBLIC CUDA::cudart_static)
@@ -99,7 +138,7 @@ endif()
 
 add_executable(wgse-bwa main.cpp)
 target_compile_definitions(wgse-bwa PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
-target_compile_options(wgse-bwa PRIVATE -Wall -Wextra -Werror)
+target_compile_options(wgse-bwa PRIVATE ${wgse_strict_warnings})
 target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
 if(BUILD_TESTING)

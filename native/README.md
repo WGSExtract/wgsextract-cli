@@ -1349,6 +1349,25 @@ whichever GPU backend the build and machine have. CI's runners have no NVIDIA GP
 `.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
 but can't run their tests.
 
+On Windows x86-64, `wgse-bwa` alone builds (experimental, no package yet;
+[#1119](https://github.com/WGSExtract/wgsextract-cli/issues/1119)) with
+`clang-cl` from a Visual Studio x64 developer prompt, the static C runtime and
+`-DWGSE_CUDA=ON` for the CUDA backend (nvcc with `cl.exe` as its host
+compiler). [windows/](windows/) supplies the POSIX functions MSVC lacks, with
+[packaging/windows/compat](../packaging/windows/compat/); BWA's source must
+carry the Windows bwa package's
+[0001 patch](../packaging/windows/recipes/bwa/patches/0001-windows-native-build.patch):
+
+```powershell
+cmake -S native -B out/native-win -G Ninja -DCMAKE_BUILD_TYPE=Release `
+    -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER=lld-link `
+    -DWGSE_CUDA=ON -DBUILD_TESTING=OFF -DZLIB_ROOT=<static /MT zlib> -DZLIB_USE_STATIC_LIBS=ON `
+    -DFETCHCONTENT_SOURCE_DIR_BWA=<patched bwa-0.7.19>
+cmake --build out/native-win
+```
+
+The executable needs only Windows' own DLLs and, for `--cuda`, the NVIDIA driver.
+
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains
 available; `--dense-sa force`, which bypasses its memory check, is
