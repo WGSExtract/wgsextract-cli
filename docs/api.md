@@ -1407,7 +1407,7 @@ Call CNVs; output role `copy_number_variants`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region, a comma-separated list, or a BED file. |
 | `map` | `str \| None` | `None` | `-M`, `--map` | Deprecated and ignored: Delly 2 no longer uses mappability maps. |
 | `ploidy` | `int \| None` | `None` | `--ploidy` | Baseline ploidy for delly cnv (default: 2) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1432,7 +1432,7 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Delly/Sniffles: one region, a comma-separated list, or a BED file. pbsv: one region only. |
 | `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
 | `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. Detected PacBio gets this automatically, without CCS thresholds for subreads (CLR). |
 | `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data: use Sniffles (detected ONT input selects it automatically). |
@@ -1462,7 +1462,7 @@ command writes: `snps.vcf.gz` (`vcf snp`), `indels.vcf.gz`
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region or a comma-separated list (pbsv: one region only). BED files require Delly or Sniffles and no SNP/indel stage. |
 | `types` | `str` | `'snp,indel'` | `--types` | Comma-separated variant types to call: snp and indel (bcftools), sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel. |
 | `merge` | `bool` | `False` | `--merge` | Merge the called types into one variants.vcf.gz (+ .tbi), or variants.g.vcf.gz with the gVCF, in place of each type's own VCF. |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz (+ .tbi), with reference blocks, in place of snps.vcf.gz and indels.vcf.gz; none: the variant VCFs. Default: config reference_evidence, else none. One of: `none`, `gvcf` |

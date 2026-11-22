@@ -1,6 +1,7 @@
 """`vcf sv` (Delly, pbsv, Sniffles) and `vcf cnv` (Delly): Delly runs for real
 on a tiny genome with a 2 kb deletion; pbsv and Sniffles are stood in for."""
 
+import gzip
 import json
 import logging
 import os
@@ -21,10 +22,10 @@ from tests.htslib_helpers import (
     write_fasta,
 )
 from wgsextract_cli import api
-from wgsextract_cli.api import VcfSvParams
+from wgsextract_cli.api import VcfCallParams, VcfSvParams
 from wgsextract_cli.commands.vcf import structural
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 needs_delly = needs_tools("delly", "bcftools", "bgzip", "tabix", "samtools")
 
@@ -32,13 +33,18 @@ GENOME = 60_000
 DELETION = (30_000, 32_000)  # 0-based, half-open: missing from the sample
 
 
-def _sample(tmp_path: Path, deletion: bool = True) -> tuple[str, str]:
+def _sample(
+    tmp_path: Path, deletion: bool = True, *, reference_only_contig: bool = False
+) -> tuple[str, str]:
     """(BAM, reference): ~10,000 read pairs over chr1 of a sample missing
     DELETION; the BAM also lists a decoy contig the reference lacks, with one
     read whose mate is there."""
     rng = random.Random(1)
     seq = "".join(rng.choice("ACGT") for _ in range(GENOME))
-    ref = write_fasta(tmp_path / "ref.fa", {"chr1": seq})
+    contigs = {"chr1": seq}
+    if reference_only_contig:
+        contigs["chr2"] = "ACGT"
+    ref = write_fasta(tmp_path / "ref.fa", contigs)
     start, end = DELETION if deletion else (GENOME, GENOME)
     sample = seq[:start] + seq[end:]
 
@@ -96,6 +102,16 @@ def _run(command: str, bam: str, ref: str, outdir: Path, *extra: str) -> None:
     )  # fmt: skip
 
 
+def _combined_call(bam, ref, out, region, *, types="sv", check=True, **options):
+    return api.vcf.call(
+        VcfCallParams(
+            input=Path(bam), ref=Path(ref), outdir=out, threads=1,
+            types=types, region=region, **options,
+        ),
+        check=check,
+    )  # fmt: skip
+
+
 # --- Delly ----------------------------------------------------------------------
 
 
@@ -109,6 +125,77 @@ def test_delly_sv_finds_the_deletion(tmp_path, region):
     assert len(records) == 1 and _near_deletion(records)
     # The BCF and any region BAM are gone.
     assert sorted(p.name for p in out.iterdir()) == ["sv.vcf.gz", "sv.vcf.gz.tbi"]
+
+
+@needs_delly
+@pytest.mark.parametrize("command,bed", [("sv", False), ("sv", True), ("call", True)])
+def test_delly_1250_finds_deletion_in_later_region(tmp_path, command, bed):
+    bam, ref = _sample(tmp_path)
+    region = "chr1:1-10000 , chr1:20000-40000"
+    if bed:
+        path = tmp_path / "targets, with spaces.bed"
+        path.write_text("# targets\nchr1\t0\t10000\nchr1\t19999\t40000\n")
+        region = str(path)
+    out = tmp_path / "out"
+    if command == "call":
+        _combined_call(bam, ref, out, region)
+    else:
+        _run(command, bam, ref, out, "--region", region)
+    records = _records(out / "sv.vcf.gz")
+    assert len(records) == 1 and _near_deletion(records)
+
+
+@needs_delly
+@pytest.mark.parametrize(
+    "region,message",
+    [
+        ("chr1:1-10000,chr1:40000-20000", "Invalid interval"),
+        ("chr1:1-10000,chrUn_decoy", "not in the reference"),
+        ("chr1:1-10000,chr2", "not in the alignment header"),
+        ("chr1:1-10000,chr1:59000-61000", "out of bounds"),
+        ("chr1:1-10000,,chr1:20000-40000", "Empty interval"),
+    ],
+)
+def test_delly_1250_rejects_bad_interval_among_valid_ones(tmp_path, region, message):
+    bam, ref = _sample(tmp_path, reference_only_contig=True)
+    out = tmp_path / "out"
+    with pytest.raises(UsageError, match=message):
+        _run("sv", bam, ref, out, "--region", region)
+    assert not (out / "sv.vcf.gz").exists()
+
+
+@needs_delly
+def test_delly_1250_rejects_truncated_bed(tmp_path):
+    bam, ref = _sample(tmp_path)
+    bed = tmp_path / "truncated.bed.gz"
+    bed.write_bytes(gzip.compress(b"chr1\t19999\t40000\n")[:-1])
+    out = tmp_path / "out"
+    with pytest.raises(UsageError, match="Invalid region"):
+        _run("sv", bam, ref, out, "--region", str(bed))
+    assert not (out / "sv.vcf.gz").exists()
+
+
+@needs_delly
+def test_vcf_call_1250_keeps_snps_in_grouped_coordinate_interval(tmp_path):
+    bam, ref = _sample(tmp_path)
+    seq = Path(ref).read_text().splitlines()[1]
+    # Make a SNP in the first target, a SNP outside both targets, and a matching
+    # reference dictionary for the SNP caller (which does not allow a subset).
+    for pos in (5000, 15000):
+        seq = seq[: pos - 1] + ("C" if seq[pos - 1] == "A" else "A") + seq[pos:]
+    matched = write_fasta(
+        tmp_path / "matched.fa", {"chr1": seq, "chrUn_decoy": "N" * 1000}
+    )
+    out = tmp_path / "out"
+    _combined_call(
+        bam, matched, out, "chr1:1-10,000,chr1:20000-40000", types="snp,sv", ploidy="2"
+    )
+    query = run_command(
+        ["bcftools", "query", "-f", "%POS\n", str(out / "snps.vcf.gz")],
+        capture_output=True,
+    ).stdout.splitlines()
+    assert "5000" in query and "15000" not in query
+    assert _near_deletion(_records(out / "sv.vcf.gz"))
 
 
 @needs_delly
@@ -167,11 +254,11 @@ def test_cnv_region_cant_be_read_as_a_samtools_option(tmp_path):
 
 
 @needs_delly
-def test_region_bam_takes_the_reference_contigs(tmp_path):
+def test_region_bam_1250_takes_reference_contigs_without_duplicating_reads(tmp_path):
     bam, ref = _sample(tmp_path)
     region_bam = str(tmp_path / "region.bam")
     structural._extract_region_bam_with_reference_header(
-        bam, "chr1:4000-6000", ref, region_bam
+        bam, "chr1:4,000-5,500,chr1:5000-6000", ref, region_bam
     )
     samtools = get_tool_path("samtools")
     header = run_command([samtools, "view", "-H", region_bam], capture_output=True)
@@ -187,6 +274,28 @@ def test_region_bam_takes_the_reference_contigs(tmp_path):
     # The read whose mate is on the dropped decoy is kept, its mate unknown.
     mate = next(r for r in reads.splitlines() if r.startswith("d0\t")).split("\t")
     assert mate[2] == "chr1" and mate[6] == "*"
+
+
+@needs_htslib
+def test_region_bam_1250_is_indexable_in_reference_contig_order(tmp_path):
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 50, "chr2": "C" * 50})
+    bam = sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr2\tLN:50",
+            "@SQ\tSN:chr1\tLN:50",
+            "r2\t0\tchr2\t1\t60\t4M\t*\t0\t0\tCCCC\tIIII",
+            "r1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tAAAA\tIIII",
+        ],
+        tmp_path / "reverse.bam",
+    )
+    extracted = str(tmp_path / "selected.bam")
+    structural._extract_region_bam_with_reference_header(
+        bam, "chr2,chr1", str(ref), extracted
+    )
+    run_command(["samtools", "index", extracted])
+    reads = run_command(["samtools", "view", extracted], capture_output=True).stdout
+    assert [row.split("\t")[2] for row in reads.splitlines()] == ["chr1", "chr2"]
 
 
 @needs_delly
@@ -231,6 +340,14 @@ def test_delly_cnv_finds_the_deletion_and_takes_a_ploidy(tmp_path, caplog):
     assert "Ignoring --map" in caplog.text
     assert _near_deletion(_records(out / "cnv.vcf.gz"))
     assert sorted(p.name for p in out.iterdir()) == ["cnv.vcf.gz", "cnv.vcf.gz.tbi"]
+
+
+@needs_delly
+def test_delly_cnv_1250_finds_deletion_with_multiple_intervals(tmp_path):
+    bam, ref = _sample(tmp_path)
+    out = tmp_path / "out"
+    _run("cnv", bam, ref, out, "--region", "chr1:1-10000,chr1:10001-60000")
+    assert _near_deletion(_records(out / "cnv.vcf.gz"))
 
 
 # --- pbsv and Sniffles (stood in for) -------------------------------------------
@@ -450,6 +567,43 @@ def test_sniffles_takes_a_region_as_a_bed_file(tmp_path, long_read):
         "sniffles.vcf.gz",
         "sniffles.vcf.gz.tbi",
     ]
+
+
+@needs_htslib
+@pytest.mark.parametrize("bed", [False, True])
+def test_sniffles_1250_receives_every_region(tmp_path, long_read, bed):
+    callers, bam, ref = long_read
+    region = "chr1:1-10,chr1:20,000-40,000"
+    if bed:
+        path = tmp_path / "targets.bed"
+        path.write_text("track name=targets\nchr1\t0\t10\nchr1\t19999\t40000\n")
+        region = str(path)
+    out = tmp_path / "out"
+    _run("sv", bam, ref, out, "--caller", "sniffles", "--region", region)
+    (run,) = callers.runs
+    assert run["bed"].splitlines() == ["chr1\t0\t10", "chr1\t19999\t40000"]
+    assert _near_deletion(_records(out / "sniffles.vcf.gz"))
+
+
+@needs_htslib
+@pytest.mark.parametrize("bed", [False, True])
+def test_pbsv_1250_rejects_multi_region_before_any_call(tmp_path, long_read, bed):
+    callers, bam, ref = long_read
+    region = "chr1:1-10,chr1:20000-40000"
+    if bed:
+        path = tmp_path / "targets.bed"
+        path.write_text("chr1\t0\t10\nchr1\t19999\t40000\n")
+        region = str(path)
+    out = tmp_path / "out"
+    with pytest.raises(UsageError, match="pbsv supports one region only"):
+        _run("sv", bam, ref, out, "--caller", "pbsv", "--region", region)
+    result = _combined_call(
+        bam, ref, out, region, types="snp,sv", sv_caller="pbsv", ploidy="2", check=False
+    )
+    assert result.exit_code == 2
+    assert result.error and "pbsv supports one region only" in result.error.message
+    assert not callers.calls
+    assert not list(out.glob("*.vcf*"))
 
 
 @needs_htslib

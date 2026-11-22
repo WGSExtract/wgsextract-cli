@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import tempfile
 from pathlib import Path
@@ -25,7 +26,7 @@ from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .basic import record_variants, run_small_variants
 from .structural import _sv_caller as sv_caller
-from .structural import run_cnv, run_sv
+from .structural import mixed_call_region, run_cnv, run_sv, validate_pbsv_region
 
 #: The output role of each type's VCF, as its own command records it.
 TYPE_ROLES = {
@@ -95,6 +96,8 @@ def _preflight(params: VcfCallParams, types: list[str]) -> None:
         sv = _step_params(params, "sv")
         assert isinstance(sv, VcfSvParams)
         caller, _reason, _hifi = sv_caller(sv)
+        if caller == "pbsv":
+            validate_pbsv_region(sv.region)
         tools.append(caller)
     if "cnv" in types:
         tools.append("delly")
@@ -163,17 +166,27 @@ def run_call(params: VcfCallParams) -> None:
     types = call_types(params.types)
     _preflight(params, types)
     small = [kind for kind in types if kind in ("snp", "indel")]
+    small_params = params
+    if small and params.region is not None and ("sv" in types or "cnv" in types):
+        small_params = dataclasses.replace(
+            params,
+            region=mixed_call_region(
+                str(params.input),
+                str(params.ref) if params.ref else None,
+                params.region,
+            ),
+        )
     gvcf = params.reference_evidence == "gvcf"
     parts: list[str] = []
     if small and gvcf:
         logging.info("vcf call: writing the SNP and indel gVCF")
-        _run_step(params, small[0], gvcf=True, variants=False)
+        _run_step(small_params, small[0], gvcf=True, variants=False)
         parts.append(_output_for("reference_evidence"))
     for kind in types:
         if kind in small and gvcf:
             continue
         logging.info(f"vcf call: calling {kind}")
-        _run_step(params, kind, gvcf=False)
+        _run_step(small_params if kind in small else params, kind, gvcf=False)
         parts.append(_output_for(TYPE_ROLES[kind]))
     # Each step set the run's variant count to its own; the run's is their sum,
     # unknown when a count is: the gVCF, whose records include reference

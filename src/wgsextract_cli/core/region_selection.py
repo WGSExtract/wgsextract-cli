@@ -7,6 +7,29 @@ from pathlib import Path
 
 Intervals = dict[str, list[tuple[int, int]]]
 
+_REGION_NUMBER = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
+_REGION_SPAN = rf"(?:{_REGION_NUMBER}(?:-{_REGION_NUMBER}?)?|-{_REGION_NUMBER})"
+_COMMA_REGION_FIELD = re.compile(rf"\s*[^,\s]+:{_REGION_SPAN}\s*(?=,|$)|[^,]+")
+_COMMA = re.compile(r"\s*,\s*")
+
+
+def comma_region_items(region: str) -> list[str]:
+    """Split comma-separated literals without splitting grouped coordinates."""
+    items: list[str] = []
+    end = 0
+    for match in _COMMA_REGION_FIELD.finditer(region):
+        gap = region[end : match.start()]
+        if (items and not _COMMA.fullmatch(gap)) or (not items and gap):
+            raise ValueError("Empty interval in comma-separated selection.")
+        part = match[0].strip()
+        if not part:
+            raise ValueError("Empty interval in comma-separated selection.")
+        items.append(part)
+        end = match.end()
+    if not items or region[end:].strip():
+        raise ValueError("Empty interval in comma-separated selection.")
+    return items
+
 
 def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, int]:
     if selection in lengths:
@@ -26,28 +49,100 @@ def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, i
     return chrom, start - 1, end
 
 
-def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
+def _bed_intervals(path: str, *, bedpe: bool = False) -> list[tuple[str, int, int]]:
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
     rows = []
     with opener(path, "rt") as source:
         for line in source:
-            if not line.strip() or line.startswith(("#", "track", "browser")):
-                continue
             fields = line.split()
+            if (
+                not fields
+                or fields[0].startswith("#")
+                or fields[0] in {"track", "browser"}
+            ):
+                continue
             try:
-                if lower.endswith(".bedpe"):
+                if bedpe:
                     if fields[0] != fields[3]:
                         continue
                     chrom, start, end = fields[0], int(fields[1]), int(fields[5])
                 else:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-            except IndexError as error:
+            except (IndexError, ValueError) as error:
                 raise ValueError(f"Invalid interval: {line.strip()}") from error
             if start < 0 or end < start:
                 raise ValueError(f"Invalid interval: {line.strip()}")
             rows.append((chrom, start, end))
     return rows
+
+
+def is_bed_selection(region: str) -> bool:
+    return region.lower().endswith((".bed", ".bed.gz")) or is_region_file(region)
+
+
+def alignment_intervals(
+    region: str, reference: dict[str, int], alignment: dict[str, int]
+) -> Intervals:
+    """Strict selection for callers: no unknown contigs or clipped intervals.
+
+    Text ranges are 1-based inclusive; an omitted end extends to the end of
+    that contig. BED uses 0-based half-open coordinates.
+    """
+    intervals: Intervals = {}
+    if is_bed_selection(region):
+        rows = _bed_intervals(region)
+    else:
+        rows = []
+        for part in comma_region_items(region):
+            if any(
+                piece in reference or piece in alignment
+                for piece in part.split(",")[1:]
+            ):
+                raise ValueError(f"Ambiguous interval {part!r}; use a BED file.")
+            contig, colon, span = part.rpartition(":")
+            if (
+                part in reference
+                and contig in reference
+                and re.fullmatch(_REGION_SPAN, span)
+            ):
+                raise ValueError(f"Ambiguous interval {part!r}; use a BED file.")
+            if part in reference or part in alignment:
+                _check_contig(part, reference, alignment)
+            else:
+                contig = contig if colon else part
+                _check_contig(contig, reference, alignment)
+                if not colon or not re.fullmatch(_REGION_SPAN, span):
+                    raise ValueError(f"Invalid interval: {part}")
+                first, _, last = span.partition("-")
+                part = f"{contig}:{first or '1'}-{last or reference[contig]}"
+            rows.append(literal_region(part, reference))
+    for chrom, start, end in rows:
+        _check_contig(chrom, reference, alignment)
+        if start >= end or end > min(reference[chrom], alignment[chrom]):
+            raise ValueError(
+                f"Interval {chrom}:{start + 1}-{end} is empty or out of bounds."
+            )
+        intervals.setdefault(chrom, []).append((start, end))
+    if not intervals:
+        raise ValueError("Selection covers no reference bases.")
+    return _merge_intervals(intervals)
+
+
+def _check_contig(
+    chrom: str, reference: dict[str, int], alignment: dict[str, int]
+) -> None:
+    if chrom not in reference:
+        raise ValueError(f"Contig {chrom!r} is not in the reference.")
+    if chrom not in alignment:
+        raise ValueError(f"Contig {chrom!r} is not in the alignment header.")
+
+
+def write_bed_intervals(path: Path, intervals: Intervals) -> None:
+    with path.open("w", encoding="utf-8", newline="\n") as destination:
+        for chrom, ranges in intervals.items():
+            for start, end in ranges:
+                destination.write(f"{chrom}\t{start}\t{end}\n")
 
 
 def is_region_file(region: str | None) -> bool:
@@ -100,7 +195,7 @@ def selected_intervals(
     intervals: Intervals = {}
     for selection in region_items(region, commas=commas):
         if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = _bed_intervals(selection)
+            rows = _bed_intervals(selection, bedpe=selection.lower().endswith(".bedpe"))
         else:
             rows = [literal_region(selection, lengths)]
         for chrom, start, end in rows:
@@ -109,6 +204,12 @@ def selected_intervals(
             start, end = min(start, lengths[chrom]), min(end, lengths[chrom])
             if end > start:
                 intervals.setdefault(chrom, []).append((start, end))
+    if not intervals:
+        raise ValueError("Selection covers no reference bases.")
+    return _merge_intervals(intervals)
+
+
+def _merge_intervals(intervals: Intervals) -> Intervals:
     merged: Intervals = {}
     for chrom, ranges in intervals.items():
         union: list[tuple[int, int]] = []
@@ -118,6 +219,4 @@ def selected_intervals(
             else:
                 union.append((start, end))
         merged[chrom] = union
-    if not merged:
-        raise ValueError("Selection covers no reference bases.")
     return merged

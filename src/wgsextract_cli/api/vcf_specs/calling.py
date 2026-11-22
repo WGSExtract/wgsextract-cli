@@ -147,6 +147,9 @@ class VcfCnvParams(_CallerParams):
 
     COMMAND = "vcf cnv"
 
+    region: str | None = _region_param(
+        "One region, a comma-separated list, or a BED file.", may_name_file=True
+    )
     map: str | None = param(
         None,
         help="Deprecated and ignored: Delly 2 no longer uses mappability maps.",
@@ -168,6 +171,11 @@ class VcfSvParams(_CallerParams):
 
     COMMAND = "vcf sv"
 
+    region: str | None = _region_param(
+        "Delly/Sniffles: one region, a comma-separated list, or a BED file. "
+        "pbsv: one region only.",
+        may_name_file=True,
+    )
     caller: str | None = param(
         None,
         help="SV caller to use (default: sniffles for ONT or --long-read, "
@@ -248,6 +256,11 @@ class VcfCallParams(_CallerParams):
 
     COMMAND = "vcf call"
 
+    region: str | None = _region_param(
+        "One region or a comma-separated list (pbsv: one region only). "
+        "BED files require Delly or Sniffles and no SNP/indel stage.",
+        may_name_file=True,
+    )
     types: str = param(
         "snp,indel",
         help="Comma-separated variant types to call: snp and indel (bcftools), "
