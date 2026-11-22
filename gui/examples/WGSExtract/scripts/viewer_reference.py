@@ -6,7 +6,20 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_reference(input_path: str, config_path: str) -> dict[str, Any]:
+def mitochondrial_origin(fasta: str, lengths: dict[str, int]) -> str:
+    """ "rCRS" when the FASTA's mitochondrion is numbered as the rCRS, else what
+    it is instead, or "" when it has none. Length can't tell: CHM13v2.0's chrM
+    is as long as the rCRS but starts elsewhere round the circle."""
+    from wgsextract_cli.core.ref_library.mitochondrial import fasta_mito, mito_origin
+
+    name = next((n for n in lengths if n.upper() in {"CHRM", "CHRMT", "MT", "M"}), "")
+    sequence = fasta_mito(fasta, name) if name else None
+    return (mito_origin(sequence) or "unrecognised") if sequence else ""
+
+
+def resolve_reference(
+    input_path: str, config_path: str, mito: bool = False
+) -> dict[str, Any]:
     from wgsextract_cli.core.alignment.metadata import get_bam_header
     from wgsextract_cli.core.config import reload_settings, set_config_path
     from wgsextract_cli.core.dependencies import get_tool_path
@@ -91,9 +104,17 @@ def resolve_reference(input_path: str, config_path: str) -> dict[str, Any]:
         return {
             "fasta": fasta,
             "locus": f"{first}:1-{min(1000, lengths[first])}",
+            # Only asked for rCRS-numbered positions, such as haplogroup variants.
+            **({"mitoOrigin": mitochondrial_origin(fasta, lengths)} if mito else {}),
         }
     return {"problem": "referenceUnverified" if unverified else "referenceMissing"}
 
 
 if __name__ == "__main__":
-    print(json.dumps(resolve_reference(sys.argv[1], sys.argv[2])))
+    print(
+        json.dumps(
+            resolve_reference(
+                sys.argv[1], sys.argv[2], mito="--mito-origin" in sys.argv[3:]
+            )
+        )
+    )

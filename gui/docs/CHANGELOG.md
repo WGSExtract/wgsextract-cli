@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- A result's findings (Personal Report) and mtDNA haplogroup variants are listed under it, each with **Show in viewer** at its own position on the sample's BAM, CRAM or VCF. The viewer opens a row's contig in the matched reference's spelling (`chr1` or `1`, `chrM` or `MT`) and opens Haplogrep's rCRS positions only on a mitochondrion whose sequence is the rCRS (not hg19's Yoruba or T2T's CHM13 chrM). A row without a single position, or whose sample file is missing, unindexed or outside My Genomes, shows a disabled link with the reason; `POST /api/viewer/check` checks the file without granting any bytes ([#1161, viewer links from result tables](https://github.com/WGSExtract/wgsextract-cli/issues/1161)).
+
 ### Fixed
 - The genome viewer's file endpoints answer a `HEAD` without a `Range` with `200` and the file's full size for files over 32 MiB too, instead of `416`; whole-file `GET`s keep their 32 MiB limit ([#1227](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
 - Moving the users workspace or a library folder keeps the symbolic links in it working, on the same disk or to another one. A link to a file inside the moved folder now points at that file's new place (a relative link stays relative), instead of at the old folder; a link to something outside the folder still points there, and is moved as a link, never copied in. Windows folder links fall back to junctions when symbolic links aren't allowed ([#1239, links broken by a move](https://github.com/WGSExtract/wgsextract-cli/issues/1239)).

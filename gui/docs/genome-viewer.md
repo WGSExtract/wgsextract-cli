@@ -112,6 +112,28 @@ end, matching samtools. Use `chr1:1000-1000` for one base. BED selections and mu
 open at the reference's first chromosome; enter the interval you want to inspect.
 The output must still lie inside the configured My Genomes library.
 
+## Open a finding or haplogroup variant
+
+A **Personal Report** result lists its findings, and an mtDNA haplogroup result
+the variants Haplogrep found, below the metrics. **Show in viewer** on a row
+opens the BAM, CRAM or VCF the run read at that variant's position: one base
+for a substitution, every replaced base for a deletion. The table shows the
+first 200 rows; the run's output files list the rest.
+
+- The row's chromosome opens in the matched reference's spelling: `chr1` and `1`,
+  or `chrM` and `MT`, are the same chromosome. A position past the end of the
+  chromosome, or a chromosome the reference lacks, shows "Position not found"
+  instead of a view.
+- Haplogroup positions are numbered on the rCRS mitochondrion. They open only
+  when the matched reference's chrM is the rCRS, checked by its sequence (as on
+  hg38, GRCh37 and the rCRS hg19 builds). hg19's Yoruba chrM and T2T's CHM13
+  chrM number their bases differently (CHM13's is as long as the rCRS but starts
+  576 bp further round), so those rows explain why instead of opening.
+- A row without a single position (a haplogroup or a pharmacogenomic
+  diplotype), or whose sample file is missing, has no index beside it, or lies
+  outside My Genomes, shows a disabled **Show in viewer** with the reason. The
+  app checks the file locally when the result appears; nothing is sent anywhere.
+
 To check an unexpected variant, open its VCF or the aligned BAM/CRAM and enter
 `chromosome:position-position`. Zoom out to inspect nearby reads and coverage.
 Check both strands, mapping quality and clipping before interpreting a call.
@@ -260,7 +282,11 @@ the matching installed reference and indexes. The embedded viewer receives
 only that read-only grant, never the main app's API token.
 The response also contains bounded, validated installed gene and cytoband
 features and notices; these tables receive no file grants and need no extra
-lookup endpoint.
+lookup endpoint. It maps the locus's contig to the reference's spelling and
+returns `locusNotFound` or `mitoNotRcrs` instead of a session it cannot show.
+An authenticated, loopback-only `POST /api/viewer/check` takes up to 16
+`paths` and answers each with `ok` or the problem (outside the library,
+missing, unindexed) a result row shows; it grants no bytes.
 `GET /viewer-data/<session>/<file>` requires the grant's
 `x-gfc-viewer-token` header; query-string credentials are not accepted.
 Responses use `Cache-Control: no-store`; there is no directory listing or CORS
@@ -303,7 +329,10 @@ The check copies `tests/fixtures/vep_rs/genome.fa`, a synthetic 3 kb reference,
 into the output directory and uses real samtools/bcftools to build matching BAM,
 CRAM and VCF fixtures. Chromium opens each track, moves between loci and checks
 the missing-CRAM-reference state. It also runs a region extraction through the
-app and follows **Show in viewer** to that locus. The request interceptor blocks
+app and follows **Show in viewer** to that locus. It opens a locus spelled
+`chr1` on the fixture's `1`, then follows a report finding's row link and an
+rCRS haplogroup row; only that report run is replaced, by a result document
+naming the real BAM. The request interceptor blocks
 requests outside the app's loopback origin; any attempted external request,
 console error or CSP violation fails the check.
 
