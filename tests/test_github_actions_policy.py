@@ -690,7 +690,7 @@ def test_1373_codeql_pr_scoping_never_drops_a_category() -> None:
     categories = re.findall(r'category: "(/language:[^"]+)"', job)
     assert categories == ["/language:${{ matrix.language }}"] * 2
     assert "github/codeql-action/upload-sarif@" in job
-    fallback = "steps.reused.outputs.ok != 'true'"
+    fallback = "steps.reuse.outcome == 'failure'"
     for step in ("Initialize CodeQL", "Perform CodeQL analysis"):
         body = job[job.index(f"name: {step}") :].split("\n      - ", 1)[0]
         assert fallback in body and "steps.base.outcome == 'skipped'" in body

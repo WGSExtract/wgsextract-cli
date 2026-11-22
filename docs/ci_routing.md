@@ -616,9 +616,11 @@ GitHub's CodeQL check turns `neutral` ("N configurations not found") and
 compares no alerts when a PR lacks a category the base branch has, so new
 alerts would pass unseen. An unchanged language therefore does not skip its
 matrix leg: it re-uploads the base branch's latest analysis for the same
-category and job, then confirms the PR has that configuration. If the base
-analysis cannot be listed, downloaded, uploaded or confirmed, the leg analyzes
-afresh. CodeQL is not part of `required`; the landing validator still rejects
+category and job, then confirms (by SARIF ID and commit) that the PR has
+that configuration. If the base analysis cannot be found, downloaded or
+uploaded, the leg analyzes afresh; an accepted upload that cannot be confirmed
+fails the leg, because GitHub rejects a second upload for the same category in
+one run. CodeQL is not part of `required`; the landing validator still rejects
 a failing CodeQL app check.
 
 ### CLI test time and tiers

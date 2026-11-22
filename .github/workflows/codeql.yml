@@ -94,19 +94,17 @@ jobs:
           BASE_REF: refs/heads/${{ github.base_ref }}
         run: |
           set -euo pipefail
-          if ! id=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$BASE_REF&tool_name=CodeQL&per_page=100" \
-              --jq '[.[] | select(.category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze")][0].id // empty'); then
-            echo "Cannot list base analyses; analyzing instead."
-            echo "mode=analyze" >> "$GITHUB_OUTPUT"
-          elif [ -z "$id" ]; then
-            echo "The base branch has no $CATEGORY analysis to compare against."
-            echo "mode=none" >> "$GITHUB_OUTPUT"
-          elif gh api -H "Accept: application/sarif+json" "repos/$GITHUB_REPOSITORY/code-scanning/analyses/$id" \
+          # Every base push analyzes all languages, so the newest 100 analyses
+          # hold each category; anything unexpected analyzes afresh instead.
+          if id=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$BASE_REF&tool_name=CodeQL&per_page=100" \
+              --jq '[.[] | select(.category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze")][0].id // empty') \
+            && [ -n "$id" ] \
+            && gh api -H "Accept: application/sarif+json" "repos/$GITHUB_REPOSITORY/code-scanning/analyses/$id" \
               | jq 'del(.runs[].versionControlProvenance)' > "$RUNNER_TEMP/base.sarif"; then
             echo "Reusing base analysis $id for $CATEGORY."
             echo "mode=reuse" >> "$GITHUB_OUTPUT"
           else
-            echo "Cannot download base analysis $id; analyzing instead."
+            echo "No usable $CATEGORY analysis on $BASE_REF; analyzing instead."
             echo "mode=analyze" >> "$GITHUB_OUTPUT"
           fi
       - name: Upload the base analysis for this pull request
@@ -117,31 +115,36 @@ jobs:
         with:
           sarif_file: ${{ runner.temp }}/base.sarif
           category: "/language:${{ matrix.language }}"
-      # Analyze afresh unless the PR now has this exact configuration.
-      - name: Check the reused configuration
-        id: reused
+      # An accepted upload blocks a second one for this category in this run,
+      # so an unconfirmed reuse fails the leg rather than re-analyzing.
+      - name: Confirm the reused configuration
         if: ${{ steps.reuse.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.reuse.outputs.sarif-id }}
           CATEGORY: /language:${{ matrix.language }}
           ENVIRONMENT: ${{ toJSON(matrix) }}
         run: |
           set -euo pipefail
-          if gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$GITHUB_REF&sha=$GITHUB_SHA&tool_name=CodeQL&per_page=100" \
-              --jq '[.[] | select(.category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze" and (.environment | fromjson) == (env.ENVIRONMENT | fromjson))] | length > 0' \
-              | grep -qx true; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "The reused $CATEGORY upload is not the workflow's configuration; analyzing instead."
-          fi
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?sarif_id=$SARIF_ID&tool_name=CodeQL&per_page=100" \
+                --jq '[.[] | select(.commit_sha == env.GITHUB_SHA and .ref == env.GITHUB_REF and .category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze" and (.environment | fromjson) == (env.ENVIRONMENT | fromjson))] | length > 0' \
+                | grep -qx true; then
+              echo "The pull request has the $CATEGORY configuration."
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "::error::Upload $SARIF_ID is not this workflow's $CATEGORY configuration for $GITHUB_SHA; rerun the job."
+          exit 1
       - name: Initialize CodeQL
-        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || (steps.base.outputs.mode == 'reuse' && steps.reused.outputs.ok != 'true') }}
+        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || steps.reuse.outcome == 'failure' }}
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: ${{ matrix.language }}
           build-mode: none
       - name: Perform CodeQL analysis
-        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || (steps.base.outputs.mode == 'reuse' && steps.reused.outputs.ok != 'true') }}
+        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || steps.reuse.outcome == 'failure' }}
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: "/language:${{ matrix.language }}"
