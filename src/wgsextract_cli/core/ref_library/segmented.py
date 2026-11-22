@@ -20,7 +20,7 @@ import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_EXCEPTION, Future, wait
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.message import Message
 from email.utils import parsedate_to_datetime
 from http.client import HTTPException, IncompleteRead
@@ -118,6 +118,18 @@ def _http_date(value: str) -> str:
     return value
 
 
+def _strong_date(last_modified: str, date: str) -> str:
+    """Last-Modified as a validator, else "": only when the reply's Date is a
+    second or more later (RFC 9110 8.8.2.2), as a file rewritten within the
+    second it was served in keeps its Last-Modified."""
+    modified, sent = _http_date(last_modified), _http_date(date)
+    try:
+        age = parsedate_to_datetime(sent) - parsedate_to_datetime(modified)
+    except (TypeError, ValueError, OverflowError, IndexError):
+        return ""
+    return modified if age.total_seconds() >= 1 else ""
+
+
 def range_start(content_range: str | None) -> int | None:
     """The first byte a 206's ``Content-Range`` says it carries."""
     match = _CONTENT_RANGE.fullmatch((content_range or "").strip())
@@ -129,15 +141,19 @@ class Revision:
     """One version of a remote file, as its response headers name it.
 
     Bytes appended to a partial download must come from the version that wrote
-    it (#1225): ``validator`` (a strong ETag, else Last-Modified) goes in
-    If-Range, so a server whose file changed sends the whole new file, and a
-    reply naming another version is refused. Without a validator a partial
-    can't be tied to a version, and resuming it is not safe.
+    it (#1225): ``validator`` (a strong ETag, else a Last-Modified at least a
+    second before the reply's Date) goes in If-Range, so a server whose file
+    changed sends the whole new file, and a reply naming another version is
+    refused. Without a validator a partial can't be tied to a version, and
+    resuming it is not safe. A reply's weak ETag and any Last-Modified it sent
+    still show a change (``shown_*``), though they can't vouch for a match.
     """
 
     size: int | None = None
     etag: str = ""
     last_modified: str = ""
+    shown_etag: str = field(default="", compare=False, repr=False)
+    shown_last_modified: str = field(default="", compare=False, repr=False)
 
     @classmethod
     def from_headers(cls, headers: Message) -> Revision:
@@ -147,10 +163,14 @@ class Revision:
             size = int(match.group(3)) if match.group(3) != "*" else None
         else:
             size = int(length) if _DIGITS.fullmatch(length) else None
+        etag = (headers.get("ETag") or "").strip()
+        last_modified = (headers.get("Last-Modified") or "").strip()
         return cls(
             size,
-            _strong_etag(headers.get("ETag") or ""),
-            _http_date(headers.get("Last-Modified") or ""),
+            _strong_etag(etag),
+            _strong_date(last_modified, headers.get("Date") or ""),
+            etag,
+            last_modified,
         )
 
     @classmethod
@@ -194,10 +214,12 @@ class Revision:
         A 206 that leaves a validator out was matched by If-Range."""
         if None not in (self.size, other.size) and self.size != other.size:
             return True
-        if self.etag and other.etag:
-            return self.etag != other.etag
-        if self.last_modified and other.last_modified:
-            return self.last_modified != other.last_modified
+        etag = other.shown_etag or other.etag
+        if self.etag and etag:
+            return self.etag != etag
+        last_modified = other.shown_last_modified or other.last_modified
+        if self.last_modified and last_modified:
+            return self.last_modified != last_modified
         return False
 
 

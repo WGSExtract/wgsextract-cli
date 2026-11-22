@@ -64,6 +64,51 @@ def test_1225_a_resume_after_the_file_changed_installs_only_the_new_version(
     assert dest.read_bytes() == NEW
 
 
+def test_1225_a_weak_etag_on_a_resumed_reply_shows_the_file_changed(server, tmp_path):
+    """A server ignoring If-Range answers with the new version's weak ETag:
+    it can't vouch for a match, but it does show a change."""
+    _validators(server, "etag, If-Range ignored")
+    dest = tmp_path / "hs38.fa.gz"
+    server.leave_partial(server.url, dest, DATA[: len(DATA) // 2])
+    server.data, server.weak_etags = NEW, True
+
+    assert downloads.download_file(server.url, str(dest))
+
+    assert dest.read_bytes() == NEW
+
+
+def test_1225_a_last_modified_as_recent_as_the_reply_is_no_validator(server, tmp_path):
+    """Two versions written within one second share a Last-Modified, so only
+    one at least a second older than the reply's Date names a version (RFC 9110
+    8.8.2.2)."""
+    _validators(server, "date")
+    server.fixed_date = "Sun, 22 Nov 2026 03:00:00 GMT"
+    dest = tmp_path / "hs38.fa.gz"
+    server.leave_partial(server.url, dest, DATA[: len(DATA) // 2])
+    server.data = NEW
+
+    assert downloads.download_file(server.url, str(dest))
+
+    assert dest.read_bytes() == NEW
+
+
+@pytest.mark.parametrize("bare_416", [False, True])
+def test_1225_a_partial_as_long_as_a_shorter_new_version_is_not_taken_as_done(
+    server, tmp_path, bare_416
+):
+    """The old version stopped where the new, shorter one ends: the server,
+    ignoring If-Range, says the range starts past the end (416)."""
+    _validators(server, "etag, If-Range ignored")
+    server.bare_416 = bare_416
+    dest = tmp_path / "hs38.fa.gz"
+    server.leave_partial(server.url, dest, DATA[: len(DATA) // 2])
+    server.data = new = NEW[: len(DATA) // 2]
+
+    assert downloads.download_file(server.url, str(dest))
+
+    assert dest.read_bytes() == new
+
+
 @pytest.mark.parametrize("kind", ["etag", "date"])
 def test_1225_an_unchanged_file_still_resumes_where_it_stopped(server, tmp_path, kind):
     _validators(server, kind)

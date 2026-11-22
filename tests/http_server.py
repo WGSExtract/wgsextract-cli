@@ -41,6 +41,9 @@ class RangeServer:
     get_errors[path]: sequence of error statuses to return before serving GETs.
     etags: send each file's ETag (a hash of its content), as S3 does.
     dates: send a Last-Modified date that changes with the content.
+    weak_etags: send ETags marked weak (W/"...").
+    fixed_date: send it as every reply's Date and, with dates, as the
+    Last-Modified of any content: a file rewritten within the second.
     An If-Range naming another version than the served one gets the whole
     file (200), as from real servers, unless ignore_if_range.
     delays[path]: seconds to wait before answering a GET for path.
@@ -62,6 +65,8 @@ class RangeServer:
         self.etags = False
         self.dates = False
         self.ignore_if_range = False
+        self.weak_etags = False
+        self.fixed_date: str | None = None
         self.delays: dict[str, float] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
@@ -94,11 +99,15 @@ class RangeServer:
                     return None
                 return server.files.get(path, server.data)
 
+            def date_time_string(self, timestamp=None):
+                return server.fixed_date or super().date_time_string(timestamp)
+
             def _etag(self, data: bytes, path: str) -> None:
                 if server.etags:
-                    self.send_header("ETag", _etag(data))
+                    weak = "W/" if server.weak_etags else ""
+                    self.send_header("ETag", weak + _etag(data))
                 if server.dates:
-                    self.send_header("Last-Modified", _date(data))
+                    self.send_header("Last-Modified", server._date(data))
                 for name, value in server.headers.get(path, {}).items():
                     self.send_header(name, value)
 
@@ -145,7 +154,7 @@ class RangeServer:
                     and not server.ignore_if_range
                     and not (
                         (server.etags and if_range == _etag(data))
-                        or (server.dates and if_range == _date(data))
+                        or (server.dates and if_range == server._date(data))
                     )
                 ):
                     spec = None
@@ -193,6 +202,9 @@ class RangeServer:
         threading.Thread(
             target=self.httpd.serve_forever, args=(0.01,), daemon=True
         ).start()
+
+    def _date(self, data: bytes) -> str:
+        return self.fixed_date or _date(data)
 
     def url_for(self, path: str) -> str:
         return f"{self.base}/{path}"

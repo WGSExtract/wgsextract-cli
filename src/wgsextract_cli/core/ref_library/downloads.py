@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import email.parser
 import hashlib
 import json
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable
+from email.message import Message
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
 from typing import Protocol
@@ -487,9 +489,7 @@ def _urllib_download(
             if e.code != 416 or initial_size == 0:
                 raise
             e.close()
-            if not _partial_is_complete(
-                url, e.headers.get("Content-Range"), initial_size
-            ):
+            if not _partial_is_complete(url, e.headers, initial_size, known):
                 # The partial file does not fit the remote file; start over.
                 partial_path.unlink()
                 return _urllib_download(
@@ -573,25 +573,31 @@ def _urllib_download(
 
 
 def _partial_is_complete(
-    url: str, content_range: str | None, partial_size: int
+    url: str, reply: Message, partial_size: int, known: segmented.Revision
 ) -> bool:
-    """A 416 reply to `Range: bytes=N-` means done when the remote size is N.
+    """A 416 reply to `Range: bytes=N-` means done when N is the size of both
+    the version that wrote the partial and the file served now (#1225).
 
     The size is in the reply's Content-Range; servers that leave it out (such
     as Ensembl's) are asked with a HEAD request.
     """
-    match = re.fullmatch(r"bytes \*/(\d+)", (content_range or "").strip())
-    if match:
-        return int(match.group(1)) == partial_size
-    try:
-        request = Request(
-            url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
-        )
-        with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
-            length = response.headers.get("Content-Length")
-    except (OSError, HTTPException):
+    if known.size != partial_size:
         return False
-    return length is not None and length.isdigit() and int(length) == partial_size
+    match = re.fullmatch(r"bytes \*/(\d+)", (reply.get("Content-Range") or "").strip())
+    if match:
+        served = dataclasses.replace(
+            segmented.Revision.from_headers(reply), size=int(match.group(1))
+        )
+    else:
+        try:
+            request = Request(
+                url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
+            )
+            with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+                served = segmented.Revision.from_headers(response.headers)
+        except (OSError, HTTPException):
+            return False
+    return served.size == partial_size and not known.conflicts(served)
 
 
 def _finish_download(

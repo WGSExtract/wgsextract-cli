@@ -301,11 +301,11 @@ def _http_416(content_range: str) -> HTTPError:
     )
 
 
-def _record_partial_version(dest: Path) -> None:
-    """The record of https://example.org/f at _ETAG that a download leaves
-    beside its partial."""
+def _record_partial_version(dest: Path, size: int) -> None:
+    """The record of https://example.org/f at _ETAG, size bytes long, that a
+    download leaves beside its partial."""
     record = {"url_sha256": hashlib.sha256(b"https://example.org/f").hexdigest()}
-    record |= {"size": None, "etag": _ETAG, "last_modified": ""}
+    record |= {"size": size, "etag": _ETAG, "last_modified": ""}
     Path(f"{dest}.partial.source").write_text(json.dumps(record))
 
 
@@ -322,7 +322,7 @@ def test_download_treats_416_for_complete_partial_as_done(tmp_path, monkeypatch)
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"complete")
-    _record_partial_version(dest)
+    _record_partial_version(dest, 8)
     requests = []
 
     def fake_urlopen(request, timeout):
@@ -341,7 +341,7 @@ def test_download_restarts_when_partial_does_not_fit_remote(tmp_path, monkeypatc
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"0123456789")
-    _record_partial_version(dest)
+    _record_partial_version(dest, 10)
     calls = []
 
     def fake_urlopen(request, timeout):
@@ -372,7 +372,7 @@ def test_download_416_without_size_asks_the_server_for_it(tmp_path, monkeypatch)
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"complete")
-    _record_partial_version(dest)
+    _record_partial_version(dest, 8)
     methods = []
 
     def fake_urlopen(request, timeout):
