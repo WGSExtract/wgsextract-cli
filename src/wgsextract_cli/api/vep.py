@@ -94,7 +94,8 @@ class VepRunParams(Params):
         None,
         help="Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)",
         doc="Assembly VEP annotates against (default: the reference's build); "
-        "a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs "
+        "a resolved FASTA of another build is not used, and a BAM or CRAM "
+        "whose header shows another build is refused. T2T-CHM13v2.0 needs "
         "vep-rs.",
         flags=("--assembly",),
         hidden_flags=("--vep-assembly",),

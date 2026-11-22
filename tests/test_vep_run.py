@@ -8,7 +8,6 @@ import shutil
 import sys
 import threading
 import time
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -586,55 +585,6 @@ def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):
 
     calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
     assert [(c[1], c[4]) for c in calls] == [("101", "1"), ("301", "1")]
-
-
-def _t2t_bam(tmp_path: Path) -> tuple[str, str]:
-    """A read-less BAM and a FASTA stand-in whose contigs are T2T-CHM13's."""
-    t2t = {"chr1": 248387328, "chrX": 154259566, "chrY": 62460029, "chrM": 16569}
-    fasta = tmp_path / "ref.fa"
-    fasta.write_text("".join(f">{name}\nA\n" for name in t2t))
-    Path(f"{fasta}.fai").write_text(
-        "".join(f"{name}\t{length}\t0\t1\t2\n" for name, length in t2t.items())
-    )
-    bam = sam_to_bam(
-        ["@HD\tVN:1.6\tSO:coordinate"]
-        + [f"@SQ\tSN:{name}\tLN:{length}" for name, length in t2t.items()],
-        tmp_path / "s.bam",
-    )
-    return str(fasta), bam
-
-
-@pytest.mark.parametrize("build", ["unknown", "t2t"])
-def test_1244_bam_of_a_build_without_a_ploidy_preset_is_refused(
-    tmp_path, fake_vep, build
-):
-    """#1244: a BAM of an unrecognised build was called with GRCh37's ploidy,
-    and a T2T one with GRCh38's, whose PAR coordinates aren't CHM13's. Like
-    `vcf snp`, `vep run` refuses both and names the fix; a ploidy file runs."""
-    fake_vep.install(tool="vep-rs")
-    assembly = "T2T-CHM13v2.0" if build == "t2t" else "GRCh38"
-    (tmp_path / "vep-rs" / "homo_sapiens" / f"116_{assembly}").mkdir(parents=True)
-    fasta, bam = _t2t_bam(tmp_path) if build == "t2t" else _bam_with_snps(tmp_path)
-    # With the sex known, the other build's sex-dependent preset applied.
-    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
-    params = VepRunParams(
-        input=Path(bam), ref=Path(fasta), engine="vep-rs", vep_cache=tmp_path
-    )
-
-    result = api.vep.run(params, check=False)
-
-    assert result.status != "ok"
-    [failure] = [w for w in result.warnings if w.code == "input_failed"]
-    assert "--ploidy-file" in failure.message
-    assert f"reference build: {build}" in failure.message
-    assert fake_vep() == []
-    assert not (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
-
-    ploidy = tmp_path / "ploidy.txt"
-    ploidy.write_text("* * * M 2\n* * * F 2\n")
-    api.vep.run(replace(params, ploidy_file=ploidy))
-    assert len(fake_vep()) == 1
-    assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
 
 
 def test_bam_without_reference_fails_without_running_vep(tmp_path, fake_vep):

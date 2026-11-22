@@ -144,6 +144,9 @@ class ReferenceLibrary:
         self.ploidy_file: str | None = None
         self.vep_cache: str | None = None
         self.build: str | None = None
+        # What the input itself shows (header, signature or a recorded fact),
+        # unlike `build`, which may come from the FASTA or a path name.
+        self.input_build: str | None = None
 
         if not self.root:
             return
@@ -167,7 +170,7 @@ class ReferenceLibrary:
             self._reresolve_fasta_for_build(explicit_fasta)
 
         # Ploidy files and the VEP cache depend on the build, not on a FASTA.
-        self._resolve_build_support_files()
+        self.resolve_build_support_files()
         self._resolve_vep_cache(settings.get("vep_cache_directory"))
 
         if not self.fasta:
@@ -267,6 +270,21 @@ class ReferenceLibrary:
     def _detect_build(
         self, header_target: str | None, root_path: str | None
     ) -> str | None:
+        build = self._build_from_input(header_target)
+        from_input = header_target is not None and header_target == self.input_path
+        if build and (from_input or self._build_from_signature()):
+            self.input_build = canonical_build(build)
+        if not build and self.fasta:
+            build = fasta_build(self.fasta)
+        assert self.root is not None
+        return (
+            build
+            or build_hint(self.resource_roots[0], self.input_path, root_path)
+            or None
+        )
+
+    def _build_from_input(self, header_target: str | None) -> str | None:
+        """The build the input's own header, signature or recorded fact names."""
         build = self._build_from_signature()
         method = "header contig MD5 signature"
         sample = header_target if header_target == self.input_path else None
@@ -293,14 +311,7 @@ class ReferenceLibrary:
                 method=method,
                 confidence="high",
             )
-        if not build and self.fasta:
-            build = fasta_build(self.fasta)
-        assert self.root is not None
-        return (
-            build
-            or build_hint(self.resource_roots[0], self.input_path, root_path)
-            or None
-        )
+        return build
 
     def _build_from_signature(self) -> str | None:
         if not self.md5:
@@ -341,12 +352,13 @@ class ReferenceLibrary:
 
     # --- Companion resources ----------------------------------------------
 
-    def _resolve_build_support_files(self) -> None:
-        if not self.build:
-            return
+    def resolve_build_support_files(self) -> None:
+        """Find the ploidy file for ``build``, or the build-agnostic
+        ``ploidy.txt``; call again after changing ``build``."""
+        names = [f"ploidy_{self.build}.txt"] if self.build else []
         self.ploidy_file = self._first_existing_file(
             self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
-            [f"ploidy_{self.build}.txt", "ploidy.txt"],
+            [*names, "ploidy.txt"],
         )
 
     def _resolve_vep_cache(self, configured_vep_cache: object) -> None:

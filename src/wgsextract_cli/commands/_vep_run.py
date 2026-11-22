@@ -159,6 +159,21 @@ def _apply_forced_assembly(lib: ReferenceLibrary, vep_assembly: str | None) -> N
         lib.fasta = None
 
 
+def _refuse_conflicting_assembly(
+    lib: ReferenceLibrary, vep_assembly: str | None
+) -> None:
+    """Refuse an --assembly that contradicts the alignment's own header: its
+    variants would be called with the wrong build's ploidy and annotated
+    against the wrong assembly."""
+    if not vep_assembly or not lib.input_build:
+        return
+    if _ASSEMBLY_BUILDS[vep_assembly] != lib.input_build:
+        raise WGSExtractError(
+            f"The alignment is {lib.input_build}, but --assembly is "
+            f"{vep_assembly}; drop --assembly to annotate it as its own build."
+        )
+
+
 def _call_variants_for_vep(
     params: VepRunParams,
     bam_path: str,
@@ -395,7 +410,11 @@ def _run_vep_on_input(
         md5_sig = calculate_bam_md5(current_input, None) if is_bam else None
         ref = str(params.ref) if params.ref else None
         lib = ReferenceLibrary(ref, md5_sig, input_path=current_input)
+        if is_bam:
+            _refuse_conflicting_assembly(lib, params.vep_assembly)
         _apply_forced_assembly(lib, params.vep_assembly)
+        if params.vep_assembly:
+            lib.resolve_build_support_files()
         logging.debug(f"Resolved reference: {lib.fasta}")
         if is_bam and not lib.fasta:
             raise WGSExtractError(
