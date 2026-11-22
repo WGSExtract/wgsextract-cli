@@ -244,9 +244,10 @@ def check_view(
     base: Path,
     host_mounts: set[Mount],
     candidates: dict[Path, tuple[int, int]],
-) -> tuple[set[Mount], set[int]]:
+) -> tuple[set[Mount], set[int], set[Path]]:
     records = mounts(fd)
     devices: set[int] = set()
+    covered_aliases: set[Path] = set()
     if base != Path("/"):
         with directory(-1, "/") as observer:
             root_identity = identity(root)
@@ -284,15 +285,13 @@ def check_view(
                 canonical = path / row.backing.relative_to(backing)
             else:
                 continue
-            if (
-                base / projected.relative_to("/") != canonical
-                and visible_mount(root, projected)[0] == row.number
-            ):
-                raise Unverifiable
             if base / projected.relative_to("/") != canonical:
-                # A covered alias may still have surviving users. Its
-                # underlying mount ID is checked against live references.
+                if visible_mount(root, projected)[0] == row.number:
+                    raise Unverifiable
+                # Its mount may still be used through a retained handle or
+                # an interpreter's path after the source descriptor closed.
                 devices.add(expected[0])
+                covered_aliases.add(projected)
         if visible_identity != expected:
             if (
                 visible is not None
@@ -301,16 +300,22 @@ def check_view(
             ):
                 raise Unverifiable
             devices.add(expected[0])
-    return records, devices
+    return records, devices, covered_aliases
 
 
-def resolve_argument(root: int, argument: Path, mounts: set[Mount]) -> Path | None:
+def resolve_argument(
+    root: int, argument: Path, mounts: set[Mount], covered_aliases: set[Path]
+) -> Path | None:
     """Follow argv path metadata within the target process's pinned root."""
     remaining = deque(argument.parts[1:])
     links = 0
     with ExitStack() as stack:
         resolved: list[tuple[str, int]] = [("", root)]
         while remaining:
+            if covered_aliases:
+                lookup = Path("/", *(name for name, _ in resolved[1:]), *remaining)
+                if any(lookup.is_relative_to(alias) for alias in covered_aliases):
+                    raise Unverifiable
             part = remaining.popleft()
             if part == "..":
                 if len(resolved) > 1:
@@ -414,6 +419,7 @@ def process_targets(
     candidates: dict[Path, tuple[int, int]],
     devices: set[int],
     records: set[Mount],
+    covered_aliases: set[Path],
 ) -> Iterator[Path]:
     yield base
     observed = fs_targets(fd, root, base, devices, candidates)
@@ -443,7 +449,7 @@ def process_targets(
                             or identity(thread_root) != root_id
                             or thread_base != base
                         ):
-                            _, thread_devices = check_view(
+                            _, thread_devices, _ = check_view(
                                 thread,
                                 thread_root,
                                 thread_base,
@@ -504,11 +510,14 @@ def process_targets(
             arg = Path("/") / cwd.relative_to(base) / arg
         else:
             arg = Path("/") / str(arg).lstrip("/")
-        yield base / Path(os.path.normpath(arg)).relative_to("/")
+        lexical = Path(os.path.normpath(arg))
+        if any(lexical.is_relative_to(alias) for alias in covered_aliases):
+            raise Unverifiable
+        yield base / lexical.relative_to("/")
         if len(raw) <= 4096 and not separate_root:
             # An argument need not name a file. Never open its contents.
             try:
-                resolved = resolve_argument(root, arg, records)
+                resolved = resolve_argument(root, arg, records, covered_aliases)
             except (FileNotFoundError, NotADirectoryError):
                 continue
             except OSError as error:
@@ -568,7 +577,7 @@ def inspect(
                     namespace = os.readlink("ns/mnt", dir_fd=fd)
                     seen: set[str] = set()
                     with process_root(fd) as (view, base):
-                        records, devices = check_view(
+                        records, devices, covered_aliases = check_view(
                             fd, view, base, host_mounts, candidates
                         )
                         for path in process_targets(
@@ -580,6 +589,7 @@ def inspect(
                             candidates,
                             devices,
                             records,
+                            covered_aliases,
                         ):
                             seen.update(
                                 p.name for p in candidates if path.is_relative_to(p)

@@ -20,6 +20,8 @@ candidate, alias, mode = json.loads(sys.stdin.readline())
 candidate, alias = Path(candidate), Path(alias)
 if mode.endswith('-fd'):
     fd = (candidate / 'source.txt').open()
+if mode == 'masked-cwd':
+    os.chdir(candidate)
 if mode == 'masked-map':
     map_file = ctypes.CDLL(None).mmap
     map_file.restype = ctypes.c_void_p
@@ -27,8 +29,14 @@ if mode == 'masked-map':
         address = map_file(None, ctypes.c_size_t(1), mmap.PROT_READ, mmap.MAP_PRIVATE,
                            source.fileno(), ctypes.c_long(0))
         assert address != ctypes.c_void_p(-1).value
-if mode == 'alias':
+if mode == 'alias' or mode.startswith('covered-'):
     subprocess.run(['mount', '--bind', str(candidate), str(alias)], check=True)
+    if mode in {'covered-script', 'covered-symlink'}:
+        script = alias / 'task.py' if mode == 'covered-script' else alias.with_suffix('.py')
+        os.execv(sys.executable, [sys.executable, str(script)])
+    if mode == 'covered-idle':
+        subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', str(alias)], check=True)
+        subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', str(candidate.parent)], check=True)
 elif mode.startswith('chroot'):
     subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', str(alias)], check=True)
     os.chroot(alias)
@@ -70,10 +78,10 @@ with subprocess.Popen(
             with client.makefile('rb') as stream:
                 reply = json.loads(stream.readline())
             thread.join()
-        if mode == 'alias':
+        if mode in {'alias', 'covered-script', 'covered-symlink'}:
             assert reply.get('error') == 'unverifiable' and reply.get('pid') == holder.pid, reply
         else:
-            expected = [holder.pid] if mode.endswith(('-fd', '-map')) else []
+            expected = [holder.pid] if mode.endswith(('-fd', '-map', '-cwd')) else []
             assert reply == {'sha256': 'test', 'busy': {candidate.name: expected}}, reply
     finally:
         holder.terminate()
@@ -81,7 +89,19 @@ with subprocess.Popen(
 
 
 @pytest.mark.parametrize(
-    "mode", ["masked", "masked-fd", "masked-map", "alias", "chroot", "chroot-fd"]
+    "mode",
+    [
+        "masked",
+        "masked-fd",
+        "masked-map",
+        "masked-cwd",
+        "alias",
+        "covered-script",
+        "covered-symlink",
+        "covered-idle",
+        "chroot",
+        "chroot-fd",
+    ],
 )
 def test_1393_mount_namespaces_do_not_hide_surviving_references(
     repo: Path, mode: str
@@ -107,6 +127,16 @@ def test_1393_mount_namespaces_do_not_hide_surviving_references(
     path = topic(repo)
     alias = repo.parent / "foreign-alias"
     alias.mkdir()
+    if mode in {"covered-script", "covered-symlink"}:
+        (path / "task.py").write_text(
+            "import subprocess, sys\n"
+            f"for target in [{str(alias)!r}, {str(path.parent)!r}]:\n"
+            "    subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', target], check=True)\n"
+            "print('ready', flush=True)\n"
+            "sys.stdin.read()\n"
+        )
+        if mode == "covered-symlink":
+            alias.with_suffix(".py").symlink_to(alias / "task.py")
     run = subprocess.run(
         [
             *outer,

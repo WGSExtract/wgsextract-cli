@@ -42,7 +42,7 @@ LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
 INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
 INSPECTOR_UID = 0
-INSPECTOR_SHA256 = "e0f0bf172c4e18298033c9c79ceee2b2b09aecaa37ecab79ba98c0b11befc934"
+INSPECTOR_SHA256 = "8cf03a1ce3dba0f4d4c2e14252cc4ac3893bee659c6ba711916a345f570c9523"
 MIN_MERGE_AGE = timedelta(days=1)
 PR_QUERY = """
 query($owner: String!, $name: String!, $endCursor: String) {
