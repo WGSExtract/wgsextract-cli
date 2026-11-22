@@ -94,7 +94,28 @@ class RemoteChanged(Exception):
     """The file changed on the server while its pieces were being fetched."""
 
 
-_CONTENT_RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
+_CONTENT_RANGE = re.compile(r"bytes ([0-9]+)-([0-9]+)/([0-9]+|\*)")
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _strong_etag(value: str) -> str:
+    """A strong ETag, else "": a weak one (W/"...") promises no byte-for-byte
+    match."""
+    value = value.strip()
+    if not value.isascii() or not value.isprintable():
+        return ""
+    return value if re.fullmatch(r'"[^"]*"', value) else ""
+
+
+def _http_date(value: str) -> str:
+    value = value.strip()
+    if not value.isascii() or not value.isprintable():
+        return ""
+    try:
+        parsedate_to_datetime(value)
+    except (TypeError, ValueError, OverflowError, IndexError):
+        return ""
+    return value
 
 
 def range_start(content_range: str | None) -> int | None:
@@ -120,21 +141,17 @@ class Revision:
 
     @classmethod
     def from_headers(cls, headers: Message) -> Revision:
-        etag = (headers.get("ETag") or "").strip()
-        if len(etag) < 2 or not (etag.startswith('"') and etag.endswith('"')):
-            etag = ""  # weak (W/"...") or malformed: no byte-for-byte promise
-        last_modified = (headers.get("Last-Modified") or "").strip()
-        try:
-            parsedate_to_datetime(last_modified)
-        except (TypeError, ValueError, OverflowError, IndexError):
-            last_modified = ""
         match = _CONTENT_RANGE.fullmatch((headers.get("Content-Range") or "").strip())
         length = (headers.get("Content-Length") or "").strip()
         if match:
             size = int(match.group(3)) if match.group(3) != "*" else None
         else:
-            size = int(length) if length.isdigit() else None
-        return cls(size, etag, last_modified)
+            size = int(length) if _DIGITS.fullmatch(length) else None
+        return cls(
+            size,
+            _strong_etag(headers.get("ETag") or ""),
+            _http_date(headers.get("Last-Modified") or ""),
+        )
 
     @classmethod
     def from_json(cls, record: object) -> Revision | None:
@@ -144,10 +161,13 @@ class Revision:
         last_modified = record.get("last_modified", "")
         if not (size is None or (type(size) is int and size >= 0)):
             return None
-        if not isinstance(etag, str) or not isinstance(last_modified, str):
+        # Only what from_headers keeps: these are sent back in If-Range.
+        if not isinstance(etag, str) or _strong_etag(etag) != etag:
             return None
-        if not (etag + last_modified).isprintable():
-            return None  # never a header value
+        if not isinstance(last_modified, str) or _http_date(last_modified) != (
+            last_modified
+        ):
+            return None
         return cls(size, etag, last_modified)
 
     def to_json(self) -> dict[str, int | str | None]:

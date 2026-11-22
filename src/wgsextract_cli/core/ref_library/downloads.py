@@ -513,16 +513,18 @@ def _urllib_download(
                 or known.conflicts(served)
             )
             if not changed:
-                if code != 206:
-                    # The whole file: it changed, or the server ignores ranges.
-                    if initial_size > 0:
-                        logging.info(
-                            "Server sent the whole file instead of the rest; "
-                            "starting from scratch."
-                        )
+                # The whole file (200): it changed, or the server ignores ranges.
+                whole = code != 206 or initial_size == 0
+                if whole and initial_size > 0:
+                    logging.info(
+                        "Server sent the whole file instead of the rest; "
+                        "starting from scratch."
+                    )
                     initial_size = 0
-                    _write_source(url, partial_path, served)
-                with open(partial_dest, "ab" if initial_size else "wb") as f:
+                with open(partial_dest, "wb" if whole else "ab") as f:
+                    # Only once the old version's bytes are gone (#1225).
+                    if whole:
+                        _write_source(url, partial_path, served)
                     copy_response_to_file(
                         response,
                         f,
