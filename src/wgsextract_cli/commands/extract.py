@@ -72,6 +72,7 @@ def _setup(params: _ExtractParams, tools: list[str]) -> BaseArgs:
         threads=params.threads,
         memory=params.memory,
         region=getattr(params, "region", None),
+        budget_memory=isinstance(params, UnmappedParams) and params.fastq,
     )
     current_result().set_reference(base.ref)
     return base
@@ -424,6 +425,7 @@ def run_unmapped(params: UnmappedParams) -> None:
         # dropped its unmapped reads.
         logging.info(f"{input_path} has no unmapped reads.")
     if params.fastq:
+        assert base.memory is not None
         fastqs = {
             role: derive_output_path(input_path, base.outdir, f"_unmapped_{tag}")
             for role, tag in (

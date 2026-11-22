@@ -42,8 +42,30 @@ remain build evidence. Tool command-history lines in VCF headers are not.
 sequence-dictionary signature, failing on mismatch.
 `ref library --install` also verifies the signature after indexing.
 The catalog's `md5` is a sequence-name/length dictionary signature,
-**not a FASTA content checksum**. `ref count-ns` writes `_ncnt.csv` and
-`_nbin.csv` beside the FASTA, or in `--outdir`.
+**not a FASTA content checksum**.
+
+### N counts
+
+Depth and breadth leave out each reference's N (unsequenceable) bases,
+counted from that reference's own FASTA, upper- and lowercase alike. The
+release ships the counts of every catalog genome in
+`assets/reference/reference_ncounts.tsv`, read at run time, keyed by FASTA
+file name and sequence-dictionary signature (two FASTAs can share a
+signature, so one could mask regions the other doesn't). Installing a genome
+the release didn't measure counts its Ns once, into the library's own
+`genomes/reference_ncounts.tsv`.
+
+`info` and genotype QC take the counts for a `--ref` FASTA from its entry
+under the header's signature, else from that FASTA's own `_ncnt.csv` (`ref
+count-ns` writes it and `_nbin.csv` beside the FASTA, or in `--outdir`; only
+rows with a length apply), else from its entry under its name alone; never
+from another genome. Without `--ref`, they use the entry for the header's
+signature. A contig gets a count only at the length it was measured at, and
+none when two of the header's contigs share a name (chr1 and 1). Otherwise
+they warn `n_counts_unavailable` (`n_counts_ambiguous` when genomes sharing
+the signature differ) and leave the N gaps in; run `ref count-ns` on the
+reference's FASTA and pass it with `--ref`. Maintainers regenerate the
+shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.

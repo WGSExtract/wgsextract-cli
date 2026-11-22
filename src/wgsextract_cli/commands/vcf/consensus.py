@@ -21,7 +21,7 @@ from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     popen,
     run_command,
     run_pipeline,
@@ -350,7 +350,7 @@ def run_to_fasta(params: VcfToFastaParams) -> None:
     mask = os.fspath(params.mask) if params.mask else None
     if mask:
         verify_paths_exist({"--mask": mask})
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = os.fspath(params.outdir or absolute_path(input_vcf).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
