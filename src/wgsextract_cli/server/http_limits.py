@@ -72,21 +72,32 @@ class LimitedHandler(BaseHTTPRequestHandler):
 
     def handle_one_request(self) -> None:
         self.response_started = False
+        self._start_input(self.server.header_timeout_seconds)
+        try:
+            super().handle_one_request()
+        finally:
+            self._finish_input()
+
+    def read_body(self, length: int, *, timeout: float) -> bytes:
+        self._start_input(timeout)
+        try:
+            raw = self.rfile.read(length)
+        finally:
+            expired = self._finish_input()
+        if expired:
+            raise ConnectionAbortedError("Request body deadline expired.")
+        return raw
+
+    def _start_input(self, timeout: float) -> None:
         with self._input_lock:
             self._input_generation += 1
             generation = self._input_generation
             self._input_active = True
             self._input_expired = False
-            timer = Timer(
-                self.server.header_timeout_seconds, self._expire_input, (generation,)
-            )
+            timer = Timer(timeout, self._expire_input, (generation,))
             timer.daemon = True
             self._input_timer = timer
         timer.start()
-        try:
-            super().handle_one_request()
-        finally:
-            self._finish_input()
 
     def parse_request(self) -> bool:
         try:

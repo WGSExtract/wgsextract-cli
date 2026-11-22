@@ -17,7 +17,7 @@ import gzip
 import math
 import re
 import statistics
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, TextIO, cast
@@ -183,3 +183,17 @@ def _write_sequence(
     totals.n_count += n_count
     totals.large_runs += len(large)
     totals.small_runs += small_runs
+
+
+def count_sequence_ns(
+    fasta: str, cancelled: Callable[[], bool] = lambda: False
+) -> dict[str, tuple[int, int]] | None:
+    """Each sequence's (length, N bases) in a (optionally compressed) FASTA,
+    or None once ``cancelled()`` (checked between sequences) is true."""
+    counts: dict[str, tuple[int, int]] = {}
+    with _open_fasta(fasta) as fasta_file:
+        for s in _iter_sequences(fasta_file):
+            if cancelled():
+                return None
+            counts[s.name] = (s.length, sum(end - start for start, end in s.runs))
+    return counts
