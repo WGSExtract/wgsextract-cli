@@ -9,6 +9,7 @@ core.utils, popen and run_command, do it themselves).
 
 import ast
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -42,9 +43,11 @@ def test_1213_wait_with_cancel_terminates_and_reaps_process_tree() -> None:
             assert not wait_with_cancel(parent, cancel)
             with pytest.raises(ChildProcessError):
                 os.waitpid(parent.pid, os.WNOHANG)
-            for pid in (parent.pid, child_pid):
-                with pytest.raises(ProcessLookupError):
-                    os.kill(pid, 0)
+            # The sleeping descendant inherits stdout. EOF proves that it
+            # exited without depending on when the OS reaps its PID (#1368).
+            ready, _, _ = select.select([parent.stdout], [], [], 2)
+            assert ready, "descendant still holds stdout after cancellation"
+            assert parent.stdout.read(1) == b""
         finally:
             with suppress(ProcessLookupError):
                 os.kill(child_pid, signal.SIGKILL)
