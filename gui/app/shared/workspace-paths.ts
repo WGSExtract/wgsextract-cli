@@ -31,8 +31,9 @@ function pathRelativeToRoot(value: string, root: string): string | null {
     if (!normalizedRoot) {
         return null;
     }
-    // Drive-letter paths are Windows paths, which compare without case.
-    const comparable = (candidate: string) => /^[A-Za-z]:/.test(normalizedRoot) ? candidate.toLowerCase() : candidate;
+    // Drive-letter and UNC (\\server\share) paths are Windows paths, which compare without case.
+    const windows = /^(?:[A-Za-z]:|\\\\)/.test(root);
+    const comparable = (candidate: string) => windows ? candidate.toLowerCase() : candidate;
     if (comparable(normalizedValue) === comparable(normalizedRoot)) {
         return "";
     }
