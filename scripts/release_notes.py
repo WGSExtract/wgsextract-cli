@@ -74,10 +74,15 @@ def parse(path: Path) -> tuple[Fragment | None, list[str]]:
         elif line.strip():
             errors.append(f"{name}:{number}: start with a ## section heading")
     bodies = {section: "\n".join(lines).strip() for section, lines in sections.items()}
+    # Entries wrap onto indented lines; anything else would leak into the notes.
     errors += [
         f"{name}: section {section!r} must be a list of `- ` entries"
         for section, body in bodies.items()
         if not body.startswith("- ")
+        or any(
+            line.strip() and not line.startswith(("- ", " ", "\t"))
+            for line in body.splitlines()
+        )
     ]
     if not sections and not errors:
         errors.append(f"{name}: no ## section heading")

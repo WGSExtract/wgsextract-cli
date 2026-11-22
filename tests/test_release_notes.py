@@ -76,6 +76,8 @@ def test_1281_check_accepts_fragments_without_changing_them(tmp_path: Path) -> N
         ("1155-missing.md", "## Fixes\n\n## New\n\n- Feature.\n", "list of `- `"),
         ("1155-missing.md", "## Fixes\n\n- A.\n\n## Fixes\n\n- B.\n", "duplicate"),
         ("1155-missing.md", "# WGS Extract\n\n## Fixes\n\n- Fix.\n", "title"),
+        ("1155-missing.md", "## Fixes\n\n- Fix.\n\nStray text.\n", "list of `- `"),
+        ("1155-missing.md", "## Fixes\n\n- Fix.\n### Detail\n", "list of `- `"),
     ],
 )
 def test_1281_check_rejects_bad_fragments(
