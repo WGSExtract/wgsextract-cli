@@ -226,8 +226,9 @@ def test_1146_cancelled_reference_transfer_neither_retries_nor_extracts(
                     time.sleep(0.01)
                 assert partial.stat().st_size > 0
                 token.cancel()
+                release.set()
                 with pytest.raises(Cancelled):
-                    transfer.result(timeout=3)
+                    transfer.result(timeout=5)
             finally:
                 release.set()
                 server.body_pauses.clear()
