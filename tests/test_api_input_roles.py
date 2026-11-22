@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools
-from tests.smoke_utils import run_cli
+from tests.smoke_utils import run_cli, state_directory_setting
 from tests.test_trio_vcfs import _vcf
 from wgsextract_cli import api
 
@@ -74,3 +74,26 @@ def test_1367_api_records_the_vcf_input_as_the_cli_does(
     assert api_inputs == cli_inputs
     assert api_params == cli_params
     assert api_params[role] == str(child)
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+def test_1367_api_vcf_input_keeps_a_configured_resource_named_by_its_setting(
+    tmp_path,
+):
+    # PR #1370 review: choosing vcf_input over input dropped which fields
+    # config.toml filled, so a missing configured ClinVar file was blamed on
+    # --clinvar-file instead of naming its config setting.
+    child = Path(_vcf(tmp_path / "child.vcf.gz", ["500 . T A 1/1:50"]))
+    missing = tmp_path / "missing.vcf.gz"
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"clinvar_vcf_path = {json.dumps(str(missing))}\n"
+    )
+    with api.scoped_config(config):
+        result = api.vcf.clinvar(
+            api.VcfClinvarParams(vcf_input=child, outdir=tmp_path / "out"),
+            check=False,
+        )
+    assert result.error is not None
+    assert "clinvar_vcf_path in config.toml" in result.error.message

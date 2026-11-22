@@ -444,7 +444,14 @@ def _one_vcf_input(params: P) -> P:
         unread["vcf_input"] = None
     elif getattr(params, "vcf_input", None) is None:
         return params
-    return replace(params, **unread)
+    narrowed = replace(params, **unread)
+    # replace() drops which fields config.toml filled; keep them.
+    object.__setattr__(
+        narrowed,
+        "_config_default_fields",
+        params._config_default_fields - unread.keys(),
+    )
+    return narrowed
 
 
 def _prepare(params: Params, result: CommandResult) -> Path | None:
