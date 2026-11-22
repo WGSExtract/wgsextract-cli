@@ -7,6 +7,7 @@ only boundary mocked. PharmCAT and Cyrius results are their manifests and
 outputs, as the earlier PGx safety fixes (#842, #843, #844) left them; the
 end-to-end case runs ``vcf pharmcat`` with real bcftools on a gVCF."""
 
+import gzip
 import hashlib
 import json
 from dataclasses import dataclass, field
@@ -331,6 +332,30 @@ def test_1176_paroxetine_phenoconversion_keeps_baseline_beside_adjusted_cyp2d6(
         assert gene["possible"] == [] and gene["rule"] is None
         assert gene["adjusted"].startswith("Normal Metabolizer (unchanged")
         assert codeine["status"] == "advisory" and codeine["alternatives"] == []
+
+
+def test_1176_rules_match_cpic_drugs_whatever_the_case_of_their_names(
+    tmp_path, served_cpic, monkeypatch
+):
+    # PR review: a CPIC release naming the drug "Paroxetine" must still
+    # trigger the paroxetine rule, and not adjust paroxetine's own guidance.
+    text = gzip.decompress(served_cpic.body).decode()
+    served_cpic.body = gzip.compress(
+        text.replace("\tparoxetine\t", "\tParoxetine\t").encode()
+    )
+    monkeypatch.setitem(
+        cpic_data.PIN, "sha256", hashlib.sha256(served_cpic.body).hexdigest()
+    )
+    folder = _sample(tmp_path)
+    _cyrius(folder, **RESOLVED_CYRIUS)
+    _pharmcat(folder, {"CYP2D6": [("*1/*2", "Normal Metabolizer", "2.0")]}, {},
+              outside=("CYP2D6",))  # fmt: skip
+    section = _review(folder, "codeine", "PAROXETINE")
+    (gene,) = section["genes"]
+    assert gene["trigger"] == "Paroxetine" and gene["possible"]
+    advisories = _advisories(section)
+    assert advisories["codeine"]["advisory"]["status"] == "context_review"
+    assert advisories["paroxetine"]["advisory"]["status"] == "advisory"
 
 
 @pytest.mark.parametrize(

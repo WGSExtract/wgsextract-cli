@@ -126,6 +126,7 @@ class GeneContext:
     unclear: bool = False
     rule: Rule | None = None
     trigger: str | None = None
+    trigger_id: str | None = None
     quote: str | None = None
     recommendation: Recommendation | None = None
     note: str = ""
@@ -158,7 +159,7 @@ def medication_review(
         ctx.rel(pharmcat.manifest) if pharmcat else None,
     )
     resolved = {m.name: cpic.drug(m.name) for m in context.medications}
-    listed = {drug.name for drug in resolved.values() if drug}
+    listed = {drug.id for drug in resolved.values() if drug}
     adjustments = _adjustments(ctx.pgx_genes, listed, cpic, rules)
 
     section = ReportMedicationReviewDocument(
@@ -240,26 +241,28 @@ def _adjustments(
     out: dict[str, GeneContext] = {}
     for rule in rules.rules:
         state = genes.get(rule.gene)
-        if rule.drug not in listed or state is None:
+        # Drugs are matched by CPIC id, whatever the names' case.
+        trigger = cpic.drug(rule.drug)
+        if trigger is None or trigger.id not in listed or state is None:
             continue
         adjusted = out.setdefault(rule.gene, GeneContext(state))
-        adjusted.rule, adjusted.trigger = rule, rule.drug
+        adjusted.rule, adjusted.trigger = rule, trigger.name
+        adjusted.trigger_id = trigger.id
         phenotype = state.phenotype
         effect = rule.effects.get(phenotype or "")
         if phenotype is None:
             adjusted.note = (
-                f"{rule.drug} may change {rule.gene} activity (CPIC), but the "
+                f"{trigger.name} may change {rule.gene} activity (CPIC), but the "
                 "genetic phenotype isn't established confidently enough to adjust."
             )
             continue
         if effect is None:
-            adjusted.note = f"CPIC states no {rule.drug} effect for a {phenotype}."
+            adjusted.note = f"CPIC states no {trigger.name} effect for a {phenotype}."
             continue
-        drug = cpic.drug(rule.drug)
         source = next(
             (
                 r
-                for r in (cpic.recommendations_of(drug.id) if drug else ())
+                for r in cpic.recommendations_of(trigger.id)
                 if r.phenotypes.get(rule.gene) == phenotype
                 and effect.quote in r.implications.get(rule.gene, "")
             ),
@@ -420,7 +423,7 @@ def _evaluate(
     possible = {
         gene: adjustments[gene].possible
         for gene in genes_needed
-        if gene in adjustments and adjustments[gene].trigger != drug.name
+        if gene in adjustments and adjustments[gene].trigger_id != drug.id
     }
     advisory.alternatives = [
         r
@@ -429,7 +432,7 @@ def _evaluate(
     ]
     for gene in genes_needed:
         adjusted = adjustments.get(gene)
-        if adjusted is None or not adjusted.applied or adjusted.trigger == drug.name:
+        if adjusted is None or not adjusted.applied or adjusted.trigger_id == drug.id:
             continue
         if advisory.alternatives or adjusted.unclear:
             advisory.status = "context_review"
@@ -508,7 +511,7 @@ def _recommendation(
         text=r.text,
         classification=r.classification,
         phenotypes=dict(r.phenotypes),
-        implication="; ".join(r.implications.values()),
+        implication="; ".join(r.implications[g] for g in sorted(r.implications)),
         population=r.population,
         guideline=guideline.name if guideline else r.guideline_id,
         pmid=pmid,

@@ -15,7 +15,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
 from importlib import resources
 from pathlib import Path
@@ -87,14 +87,17 @@ class CpicData:
     pairs: tuple[Pair, ...]
     guidelines: Mapping[str, Guideline]
     recommendations: tuple[Recommendation, ...]
+    _by_key: Mapping[str, Drug] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        index = {d.name.lower(): d for d in self.drugs.values()}
+        index.update({d.id.lower(): d for d in self.drugs.values()})
+        object.__setattr__(self, "_by_key", index)
 
     def drug(self, name: str) -> Drug | None:
-        """A drug by CPIC's (generic) name or its CPIC id (``RxNorm:2670``)."""
-        key = name.strip().lower()
-        for drug in self.drugs.values():
-            if key in (drug.name.lower(), drug.id.lower()):
-                return drug
-        return None
+        """A drug by CPIC's (generic) name or its CPIC id (``RxNorm:2670``),
+        in any case."""
+        return self._by_key.get(name.strip().lower())
 
     def pairs_of(self, drug_id: str) -> list[Pair]:
         return [p for p in self.pairs if p.drug_id == drug_id]
