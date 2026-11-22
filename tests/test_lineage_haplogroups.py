@@ -27,6 +27,7 @@ from tests.yleaf_helpers import native_tables as native_tables
 from wgsextract_cli.api import CommandFailed
 from wgsextract_cli.commands._lineage_ydna import _yleaf_build
 from wgsextract_cli.core.ref_library.mitochondrial import (
+    CHM13_CHRM,
     CHM13_CHRM_MD5,
     RCRS_MD5,
     pinned_sequences,
@@ -1296,6 +1297,9 @@ def test_contamination_check_maps_chm13_heteroplasmies_onto_rcrs_832(
         (tmp_path / "o" / "haplocheck_contamination.raw.txt").open(), delimiter="\t"
     )
     assert row["Overall Homoplasmies"] == "2"  # 750G and 10208C
+    # #1175: the kept mutserve evidence stays in CHM13 positions, and says so.
+    kept = result.details["heteroplasmy"]["mt_reference"]
+    assert (kept["origin"], kept["coordinates"]) == (CHM13_CHRM, "CHM13v2.0 chrM")
 
 
 @needs_haplogrep3
