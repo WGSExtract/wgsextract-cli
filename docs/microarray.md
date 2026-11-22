@@ -83,6 +83,11 @@ Unsafe legacy absence-as-reference behaviour requires
 `--assume-hom-ref --min-dp 0 --min-gq 0`; `--no-exclude-filtered` additionally
 accepts failing FILTER records. These can invent calls at unassessed sites or
 retain weak evidence: use only with independently established callability.
+Indel-only or MNP records do not support a SNP call (`unsupported_allele`),
+even when the genotype is `0/0`. They do not make a chromosome count as
+called. A mixed SNP/indel record can still support a SNP call if the genotype
+uses only single-base alleles; a partially missing SNP genotype is a no-call
+(`missing_gt`).
 Imputed VCFs without DP/GQ also require explicit threshold overrides; their
 imputation-confidence mask still applies.
 

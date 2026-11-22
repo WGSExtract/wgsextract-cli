@@ -25,13 +25,20 @@ def has_sample_input_index(vcf: PathInput) -> bool:
     return result.returncode == 0 and "index file is older" not in (result.stderr or "")
 
 
-def indexed_sample_vcf(vcf: str, sample: str, outdir: str, cleanup: ExitStack) -> str:
+def indexed_sample_vcf(
+    vcf: str,
+    sample: str,
+    outdir: str,
+    cleanup: ExitStack,
+    *,
+    trim_alt_alleles: bool = True,
+) -> str:
     """One selected sample, in an indexed scratch VCF that cleanup removes."""
     Path(outdir).mkdir(parents=True, exist_ok=True)
     workdir = Path(cleanup.enter_context(scratch_directory(outdir, "Sample_")))
     subset = workdir / "sample.vcf.gz"
     try:
-        subset_vcf_sample(vcf, sample, subset)
+        subset_vcf_sample(vcf, sample, subset, trim_alt_alleles=trim_alt_alleles)
         ensure_sample_vcf_indexed(subset)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as exc:
         raise WGSExtractError(f"Could not select sample '{sample}': {exc}") from exc
@@ -112,12 +119,15 @@ def subset_vcf_sample(
     *,
     selection: Callable[[list[str] | None], Sequence[str]] | None = None,
     output_type: str = "-Oz",
+    trim_alt_alleles: bool = True,
 ) -> None:
     """Select a sample, repairing the header only if bcftools reports a missing contig.
 
     A target selection can be rebuilt with the repaired contig names before retrying.
     """
-    view = ["bcftools", "view", "--samples", sample, "--trim-alt-alleles"]
+    view = ["bcftools", "view", "--samples", sample]
+    if trim_alt_alleles:
+        view.append("--trim-alt-alleles")
     output = [output_type, "-o", out]
     selection_args = list(selection(None)) if selection else []
     result = run_command(
