@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
@@ -303,7 +304,8 @@ def test_1393_cannot_remove_without_process_visibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = topic(repo)
-    (proc / "123").mkdir()
+    pid = os.getpid()
+    (proc / str(pid)).symlink_to(Path("/proc") / str(pid))
     github([pull(path)])
 
     def unreadable(process: Path) -> Iterator[Path]:
@@ -353,6 +355,86 @@ def handle_requests(
         conn, _ = listener.accept()
         with conn:
             worktree_activity_inspector.handle(conn, repo, os.geteuid(), digest)
+
+
+def wait_for_zombie(pid: int) -> None:
+    status = Path(f"/proc/{pid}/status")
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if any(
+            line.startswith("State:\tZ") for line in status.read_text().splitlines()
+        ):
+            return
+        time.sleep(0.01)
+    pytest.fail(f"PID {pid} did not become a zombie")
+
+
+@pytest.mark.parametrize(
+    "worker_alive", [True, False], ids=["live-worker", "fully-exited"]
+)
+@pytest.mark.parametrize("use_inspector", [True, False], ids=["inspector", "local"])
+def test_1393_zombie_leader_cannot_hide_a_live_worktree_thread(
+    repo: Path,
+    proc: Path,
+    inspector: socket.socket,
+    monkeypatch: pytest.MonkeyPatch,
+    worker_alive: bool,
+    use_inspector: bool,
+) -> None:
+    path = topic(repo)
+    code = ""
+    if worker_alive:
+        code = """
+import ctypes, os, sys, threading
+def worker():
+    os.chdir(sys.argv[1])
+    print(threading.get_native_id(), flush=True)
+    sys.stdin.read()
+threading.Thread(target=worker).start()
+ctypes.CDLL(None).pthread_exit(None)
+"""
+    with subprocess.Popen(
+        [sys.executable, "-c", code, str(path)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout is not None
+            if worker_alive:
+                worker = int(process.stdout.readline())
+                assert worker != process.pid
+                assert Path(f"/proc/{process.pid}/task/{worker}/cwd").readlink() == path
+            wait_for_zombie(process.pid)
+            monkeypatch.setattr(
+                worktree_activity_inspector,
+                "process_ids",
+                lambda fd: iter([str(process.pid)]),
+            )
+            if use_inspector:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    handled = pool.submit(
+                        handle_requests,
+                        inspector,
+                        repo,
+                        1,
+                        cleanup_worktrees.INSPECTOR_SHA256,
+                    )
+                    run = cleanup(repo, "--inspector")
+                    handled.result()
+            else:
+                (proc / str(process.pid)).symlink_to(Path("/proc") / str(process.pid))
+                run = cleanup(repo)
+            if worker_alive:
+                assert run.returncode == 1, run.stdout
+                assert result(repo, path)["reason"] == "activity-unverified"
+                assert f"PID {process.pid}" in str(manifest(repo)["error"])
+            else:
+                assert run.returncode == 0, run.stderr
+                assert result(repo, path)["reason"] == "github-not-checked"
+            assert path.is_dir()
+        finally:
+            process.terminate()
 
 
 @pytest.mark.parametrize("alias", [False, True], ids=["relative", "external-symlink"])

@@ -26,6 +26,7 @@ NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 PROC = Path("/proc")
 LIMIT = 16_384
 MAX_NAMES = 64
+TERMINAL = {"Z", "X"}
 
 
 class Unverifiable(Exception):
@@ -118,6 +119,21 @@ def start_time(fd: int) -> str:
     # The comm field may contain spaces and parentheses.
     with proc_text(fd, "stat") as data:
         return data.read().rsplit(")", 1)[1].split()[19]
+
+
+def require_group_exited(fd: int, leader: str) -> None:
+    # pthread_exit can leave a zombie leader while worker threads still run.
+    # The leader's cwd/FDs are not an activity view of those workers.
+    try:
+        with directory(fd, "task") as tasks:
+            if os.listdir(tasks) != [leader] or process_state(fd)[0] not in TERMINAL:
+                raise Unverifiable
+    except (FileNotFoundError, ProcessLookupError):
+        try:
+            process_state(fd)
+        except (FileNotFoundError, ProcessLookupError):
+            return
+        raise Unverifiable from None
 
 
 class Mount(NamedTuple):
@@ -273,7 +289,7 @@ def process_targets(
             except (FileNotFoundError, ProcessLookupError):
                 try:
                     with directory(tasks, tid) as thread:
-                        if process_state(thread)[0] not in {"Z", "X"}:
+                        if process_state(thread)[0] not in TERMINAL:
                             raise Unverifiable from None
                 except (FileNotFoundError, ProcessLookupError):
                     continue
@@ -328,7 +344,10 @@ def inspect(
             try:
                 with directory(proc, name) as fd:
                     state, uids = process_state(fd)
-                    if uid not in uids or state in {"Z", "X"}:
+                    if uid not in uids:
+                        continue
+                    if state in TERMINAL:
+                        require_group_exited(fd, name)
                         continue
                     start = start_time(fd)
                     namespace = os.readlink("ns/mnt", dir_fd=fd)
@@ -342,7 +361,8 @@ def inspect(
                                 p.name for p in candidates if path.is_relative_to(p)
                             )
                         state, live_uids = process_state(fd)
-                        if state in {"Z", "X"}:
+                        if state in TERMINAL:
+                            require_group_exited(fd, name)
                             continue
                         with process_root(fd) as latest_view:
                             if identity(latest_view) != identity(view):
@@ -359,11 +379,12 @@ def inspect(
             except (FileNotFoundError, ProcessLookupError):
                 # A live PID missing inspection state is not an exiting process.
                 try:
-                    with directory(proc, name) as fd:
-                        if process_state(fd)[0] not in {"Z", "X"}:
-                            raise Unverifiable(int(name)) from None
+                    with directory(proc, name) as current:
+                        require_group_exited(current, name)
                 except (FileNotFoundError, ProcessLookupError):
                     continue
+                except (OSError, ValueError, KeyError, IndexError, Unverifiable):
+                    raise Unverifiable(int(name)) from None
             except (OSError, ValueError, KeyError, IndexError, Unverifiable):
                 raise Unverifiable(int(name)) from None
         with registered(root, uid, names) as after:

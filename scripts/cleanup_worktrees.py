@@ -25,7 +25,7 @@ LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
 INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
 INSPECTOR_UID = 0
-INSPECTOR_SHA256 = "111541fe0829e11ab4355804e764731a40c41da2ac2f9e18de4b4f1a30662d2b"
+INSPECTOR_SHA256 = "e219763c8a47df4860691408e18eca60b900cf4436dfa8782c6ddb25ca1c5709"
 CACHE_DIRS = {
     ".pixi/envs",
     ".pixi/task-cache-v0",
@@ -254,6 +254,32 @@ def process_paths(process: Path) -> Iterator[Path]:
         yield Path(os.path.normpath(path))
 
 
+def terminal_group(process: Path, pid: str) -> bool:
+    status = (process / "status").read_text(errors="surrogateescape")
+    state = next(
+        (
+            line.partition(":")[2].strip()
+            for line in status.splitlines()
+            if line.startswith("State:")
+        ),
+        "",
+    )
+    if not state:
+        raise OSError(f"Activity unverifiable for PID {pid}: missing process state")
+    if state[0] not in {"Z", "X"}:
+        return False
+    try:
+        if [thread.name for thread in (process / "task").iterdir()] != [pid]:
+            raise OSError(f"Activity unverifiable for PID {pid}: surviving threads")
+    except (FileNotFoundError, ProcessLookupError):
+        # Missing task metadata is only proof of exit if this pinned PID is gone.
+        (process / "status").read_bytes()
+        raise OSError(
+            f"Activity unverifiable for PID {pid}: missing task state"
+        ) from None
+    return True
+
+
 def active_paths(paths: set[Path]) -> set[Path]:
     blocked: set[Path] = set()
     if not paths:
@@ -264,8 +290,23 @@ def active_paths(paths: set[Path]) -> set[Path]:
         try:
             # Unprivileged cleanup can only inspect other processes of its own UID.
             if process.stat().st_uid == os.geteuid():
-                for item in process_paths(process):
-                    blocked.update(path for path in paths if item.is_relative_to(path))
+                fd = os.open(process, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    pinned = Path("/proc/self/fd") / str(fd)
+                    if not terminal_group(pinned, process.name):
+                        try:
+                            for item in process_paths(pinned):
+                                blocked.update(
+                                    path for path in paths if item.is_relative_to(path)
+                                )
+                        except (FileNotFoundError, ProcessLookupError):
+                            if not terminal_group(pinned, process.name):
+                                raise OSError(
+                                    f"Activity unverifiable for PID {process.name}"
+                                ) from None
+                        terminal_group(pinned, process.name)
+                finally:
+                    os.close(fd)
         except (FileNotFoundError, ProcessLookupError):
             continue
     return blocked
