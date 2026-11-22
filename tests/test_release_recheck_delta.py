@@ -14,10 +14,13 @@ import pytest
 
 from tests.htslib_helpers import needs_htslib, write_fasta
 from tests.http_server import serving
+from tests.smoke_utils import run_cli
 from tests.test_1052_offline_defaults import blocked_network as blocked_network
 from tests.test_clinvar_matching import SEQ, vcf
+from tests.test_vcf_annotations import SAMPLE_ROWS, _sample, _tsv
 from wgsextract_cli import api
 from wgsextract_cli.core import release_recheck
+from wgsextract_cli.core.run_delta import human_lines
 
 pytestmark = needs_htslib
 
@@ -244,10 +247,15 @@ def test_1179_one_failed_run_in_a_shared_section_removes_none_of_its_findings(
         section["findings"].append(finding)
         paths.append(tmp_path / f"{name}.manifest.json")
         paths[-1].write_text(json.dumps(document))
-    section = _clinvar_section(_delta(*paths))
+    delta = _delta(*paths)
+    section = _clinvar_section(delta)
     assert section["compared"] and section["not_compared"] == ["vcf clinvar"]
     assert section["findings"] == [] and section["unchanged"] == 1
     assert "vcf clinvar" in section["note"]
+    # Copilot review of #1363: the run's failure was neither listed nor shown.
+    assert {"area": "status", "key": "clinvar vcf clinvar", "before": "ok",
+            "after": "failed"} in delta["changes"]  # fmt: skip
+    assert section["note"] in "\n".join(human_lines(delta))  # type: ignore[arg-type]
 
 
 def test_1179_annotator_runs_with_changed_results_are_not_resource_only(runs):
@@ -486,3 +494,174 @@ def test_1179_an_unordered_release_is_not_warned_about_as_newer(runs, tmp_path):
     assert clinvar["status"] == "different_release"
     codes = [w.code for w in result.warnings]
     assert "release_differs" in codes and "newer_release_available" not in codes
+
+
+def _edited(source: Path, path: Path, edit: Any) -> Path:
+    """A copy of the report manifest ``source`` with ``edit`` applied to its
+    sections."""
+    document = json.loads(source.read_text())
+    edit(document["details"]["sections"])
+    path.write_text(json.dumps(document))
+    return path
+
+
+def _variant_finding(sections: dict[str, Any], pos: int) -> dict[str, Any]:
+    return next(
+        f for f in sections["clinvar"]["findings"] if f["variant"]["pos"] == pos
+    )
+
+
+def _phased(sets: tuple[str, str], status: str, phase: str) -> Any:
+    def edit(sections: dict[str, Any]) -> None:
+        for pos, genotype, phase_set in zip(
+            (11, 14), ("0|1", "1|0"), sets, strict=True
+        ):
+            _variant_finding(sections, pos)["variant"].update(
+                genotype=genotype, phase_set=phase_set
+            )
+        (gene,) = sections["clinvar"]["genes"]
+        gene.update(status=status, phase=phase)
+
+    return edit
+
+
+def test_1363_a_change_of_phase_or_gene_status_is_not_unchanged(runs, tmp_path):
+    # Copilot review of #1363: two MUTYH calls left one phase set (proven
+    # trans, biallelic) with unchanged genotypes and counted as unchanged.
+    before = _edited(runs["november"], tmp_path / "a.manifest.json",
+                     _phased(("7", "7"), "biallelic", "trans"))  # fmt: skip
+    after = _edited(runs["november"], tmp_path / "b.manifest.json",
+                    _phased(("7", "9"), "possible_biallelic", "unknown"))  # fmt: skip
+    delta = _delta(before, after)
+    by_key = {f["key"]: f for f in _clinvar_section(delta)["findings"]}
+    assert by_key["1:11:C:A"]["changes"] == ["genotype_changed"]
+    assert by_key["1:11:C:A"]["before"]["phased_with"] == ["1:14:T:C trans"]
+    assert by_key["1:11:C:A"]["after"]["phased_with"] == []
+    assert {"area": "gene", "key": "clinvar MUTYH",
+            "before": "status biallelic, phase trans",
+            "after": "status possible_biallelic, phase unknown"} in delta["changes"]  # fmt: skip
+    # A renumbered phase set is the same relationship.
+    renumbered = _edited(runs["november"], tmp_path / "c.manifest.json",
+                         _phased(("8", "8"), "biallelic", "trans"))  # fmt: skip
+    same = _delta(before, renumbered)
+    assert not _clinvar_section(same)["findings"] and not same["changes"]
+
+
+def test_1363_conflict_and_evidence_changes_are_reported(runs, tmp_path):
+    # Copilot review of #1363: new conflicting submitters, or changed variant
+    # evidence, with the same class and stars were counted as unchanged.
+    def edit(sections: dict[str, Any]) -> None:
+        _variant_finding(sections, 14)["variant"]["clinical_evidence"].update(
+            conflict=True, conflict_evidence="Pathogenic(1)|Benign(1)"
+        )
+        finding = _variant_finding(sections, 15)
+        finding["detail"] = finding["detail"].replace("MAP", "MUTYH polyposis")
+
+    delta = _delta(
+        runs["november"], _edited(runs["november"], tmp_path / "b.json", edit)
+    )
+    changes = {f["key"]: f["changes"] for f in _clinvar_section(delta)["findings"]}
+    assert changes == {"1:14:T:C": ["review_changed"], "1:15:A:G": ["result_changed"]}
+
+
+def _section(findings: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"title": "t", "status": "ok", "summary": "", "findings": findings,
+            "missing": [], "warnings": [], "sources": []}  # fmt: skip
+
+
+def _finding(section: str, label: str, value: str, **extra: Any) -> dict[str, Any]:
+    return {"section": section, "label": label, "value": value, "detail": None,
+            "gene": None, "note": None, "confidence": "not_assessed",
+            "confidence_reasons": [], "confidence_basis": "x",
+            "evidence": {"file": None, "region": None, "manifest": None},
+            "variant": None, "links": [], "disclaimer": "Technical result, not diagnosis.",
+            **extra}  # fmt: skip
+
+
+def test_1363_structural_variants_with_another_end_are_different_events(runs, tmp_path):
+    # Copilot review of #1363: deletions sharing a start matched by position.
+    def sv(label: str) -> Any:
+        variant = {"chrom": "1", "pos": 20, "ref": None, "alt": "<DEL>",
+                   "genotype": "0/1", "zygosity": None, "depth": None,
+                   "genotype_quality": None, "alt_fraction": None}  # fmt: skip
+        finding = _finding("structural_variants", label, "rare", variant=variant)
+        return lambda s: s.update(structural_variants=_section([finding]))
+
+    delta = _delta(
+        _edited(runs["november"], tmp_path / "a.json", sv("DEL 1:20-30, 10 bp")),
+        _edited(runs["november"], tmp_path / "b.json", sv("DEL 1:20-40, 20 bp")),
+    )
+    (section,) = [s for s in delta["sections"] if s["section"] == "structural_variants"]
+    assert sorted((f["key"], f["changes"]) for f in section["findings"]) == [
+        ("DEL 1:20-30, 10 bp", ["removed"]),
+        ("DEL 1:20-40, 20 bp", ["added"]),
+    ]
+
+
+def test_1363_reordered_pharmcat_alternatives_are_unchanged(runs, tmp_path):
+    # Copilot review of #1363: the same candidates in another order were a
+    # changed result.
+    def pgx(alternatives: list[tuple[str, str]]) -> Any:
+        finding = _finding(
+            "pharmacogenomics", "CYP2C19 diplotype (PharmCAT)",
+            " or ".join(d for d, _ in alternatives),
+            detail=" or ".join(p for _, p in alternatives),
+            pgx={"status": "ambiguous", "phenotype_consistent": False,
+                 "source": "PharmCAT",
+                 "alternatives": [{"diplotype": d, "phenotype": p}
+                                  for d, p in alternatives]},
+        )  # fmt: skip
+        return lambda s: s.update(pharmacogenomics=_section([finding]))
+
+    one, two = ("*1/*2", "Intermediate"), ("*1/*17", "Rapid")
+    before = _edited(runs["november"], tmp_path / "a.json", pgx([one, two]))
+    reordered = _edited(runs["november"], tmp_path / "b.json", pgx([two, one]))
+    changed = _edited(runs["november"], tmp_path / "c.json",
+                      pgx([one, ("*1/*17", "Normal")]))  # fmt: skip
+
+    def pharmacogenomics(after: Path) -> dict[str, Any]:
+        (section,) = [s for s in _delta(before, after)["sections"]
+                      if s["section"] == "pharmacogenomics"]  # fmt: skip
+        return section
+
+    assert pharmacogenomics(reordered)["findings"] == []
+    assert [f["changes"] for f in pharmacogenomics(changed)["findings"]] == [
+        ["result_changed"]
+    ]
+
+
+def test_1363_runs_selecting_other_samples_of_one_vcf_are_refused(runs, tmp_path):
+    # Copilot review of #1363: the input's file name alone was the identity.
+    paths = []
+    for name in ("S1", "S2"):
+        document = json.loads(
+            (
+                runs["november"].parent / "clinvar_pathogenic.vcf.manifest.json"
+            ).read_text()
+        )
+        document["metrics"]["sample"] = name
+        paths.append(tmp_path / f"{name}.manifest.json")
+        paths[-1].write_text(json.dumps(document))
+    result = api.report.delta(
+        api.ReportDeltaParams(before=paths[0], after=paths[1]), check=False
+    )
+    assert result.error and result.error.code == "delta_sample_mismatch"
+
+
+def test_1363_cadd_records_its_indel_table_beside_the_snv_table(tmp_path):
+    # Copilot review of #1363: only the SNV table's identity was recorded.
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    header = "#Chrom\tPos\tRef\tAlt\tRawScore\tPHRED"
+    snvs = _tsv(tmp_path / "cadd.tsv.gz", header, ["1 100 C T 2.5 24.1"])
+    indels = _tsv(tmp_path / "cadd_indel.tsv.gz", header, ["1 400 CA C 4.2 31"])
+    outdir = tmp_path / "out"
+    rc, _, stderr = run_cli(
+        ["vcf", "cadd", "--vcf-input", sample, "--cadd-file", snvs,
+         "--cadd-indel-file", indels, "--outdir", str(outdir)]
+    )  # fmt: skip
+    assert rc == 0, stderr
+    manifest = json.loads((outdir / "cadd_annotated.vcf.manifest.json").read_text())
+    assert {(r["id"], Path(r["path"]).name) for r in manifest["resources"]} == {
+        ("cadd", "cadd.tsv.gz"),
+        ("cadd-indel", "cadd_indel.tsv.gz"),
+    }

@@ -13,12 +13,24 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Annotated, Any, Literal, TypedDict
+from typing import Any, Literal
 
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.delta_documents import (
+    ChangeArea,
+    DeltaChangeDocument,
+    DeltaDocument,
+    DeltaFindingDocument,
+    DeltaFindingStateDocument,
+    DeltaReleaseDocument,
+    DeltaRunDocument,
+    DeltaSectionDocument,
+    DeltaSummaryDocument,
+    FindingChange,
+    ReleaseChange,
+)
 from wgsextract_cli.core.errors import CodedError
-from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import ResourceRecord
 from wgsextract_cli.core.release_recheck import load_manifest
 
@@ -40,140 +52,6 @@ _LIMITATIONS = (
     "reported; see docs/personal-report.md for what they mean.",
 )
 
-ReleaseChange = Literal[
-    "same", "changed", "content_changed", "added", "removed", "unknown"
-]
-FindingChange = Literal[
-    "added",
-    "removed",
-    "reclassified",
-    "review_changed",
-    "genotype_changed",
-    "result_changed",
-    "confidence_changed",
-    "ambiguity_changed",
-]
-ChangeArea = Literal[
-    "status", "warning", "metric", "output", "version", "tool", "reference"
-]
-
-
-class DeltaRunDocument(TypedDict):
-    manifest: str
-    command: str
-    status: str
-    finished: str | None
-    version: str | None
-    sample: Annotated[
-        str | None, Constraints(description="Report sample, or the input's file name.")
-    ]
-    build: str | None
-    resources_recorded: Annotated[
-        bool,
-        Constraints(
-            description="False for a manifest written before releases were recorded."
-        ),
-    ]
-
-
-class DeltaReleaseDocument(TypedDict):
-    id: str
-    name: str
-    build: str | None
-    before: str | None
-    after: str | None
-    change: ReleaseChange
-
-
-class DeltaFindingStateDocument(TypedDict):
-    value: str
-    detail: str | None
-    genotype: str | None
-    zygosity: str | None
-    confidence: str
-    confidence_reasons: list[str]
-    review_status: str | None
-    stars: int | None
-    pgx_status: str | None
-
-
-class DeltaFindingDocument(TypedDict):
-    section: str
-    key: Annotated[
-        str, Constraints(description="chrom:pos:ref:alt for a variant, else the label.")
-    ]
-    label: str
-    gene: str | None
-    changes: list[FindingChange]
-    before: DeltaFindingStateDocument | None
-    after: DeltaFindingStateDocument | None
-    confidence: Annotated[
-        str,
-        Constraints(
-            description="The finding's confidence label as reported (after, else before)."
-        ),
-    ]
-    disclaimer: str
-    release_changes: Annotated[
-        list[str],
-        Constraints(
-            description="Resources this section rests on whose release changed "
-            "between the runs (an association, not a cause)."
-        ),
-    ]
-
-
-class DeltaSectionDocument(TypedDict):
-    section: str
-    title: str
-    before_status: str | None
-    after_status: str | None
-    compared: bool
-    not_compared: Annotated[
-        list[str],
-        Constraints(
-            description="Source runs (commands) that failed or didn't run in "
-            "either report; their findings are not compared."
-        ),
-    ]
-    note: str | None
-    unchanged: int
-    findings: list[DeltaFindingDocument]
-
-
-class DeltaChangeDocument(TypedDict):
-    area: ChangeArea
-    key: str
-    before: object
-    after: object
-
-
-class DeltaSummaryDocument(TypedDict):
-    findings_added: int
-    findings_removed: int
-    findings_changed: int
-    findings_unchanged: int
-    sections_not_compared: int
-    releases_changed: int
-    resource_only: Annotated[
-        bool,
-        Constraints(
-            description="Resources changed but no finding, section or run status did."
-        ),
-    ]
-
-
-class DeltaDocument(TypedDict):
-    schema: Literal["wgsextract.delta/1"]
-    before: DeltaRunDocument
-    after: DeltaRunDocument
-    summary: DeltaSummaryDocument
-    releases: list[DeltaReleaseDocument]
-    sections: list[DeltaSectionDocument]
-    changes: list[DeltaChangeDocument]
-    disclaimer: str | None
-    limitations: list[str]
-
 
 def _report(document: Mapping[str, Any]) -> Mapping[str, Any] | None:
     details = document.get("details")
@@ -193,6 +71,9 @@ def _sample(
 ) -> str | None:
     if report is not None:
         return (report.get("sample") or {}).get("name")
+    selected = (document.get("metrics") or {}).get("sample")
+    if isinstance(selected, str) and selected:
+        return selected
     for record in document.get("inputs") or []:
         if isinstance(record, Mapping) and record.get("role") in ("input", "vcf_input"):
             return Path(str(record.get("path") or "")).name or None
@@ -323,7 +204,12 @@ def _releases(
 
 def _finding_key(finding: Mapping[str, Any]) -> str:
     variant = finding.get("variant")
-    if isinstance(variant, Mapping) and variant.get("pos") is not None:
+    # A structural variant's end is only in its label (symbolic ALT, no REF).
+    if (
+        isinstance(variant, Mapping)
+        and variant.get("pos") is not None
+        and not str(variant.get("alt") or "").startswith("<")
+    ):
         chrom = str(variant.get("chrom") or "")
         chrom = chrom[3:] if chrom.lower().startswith("chr") else chrom
         return f"{chrom}:{variant['pos']}:{variant.get('ref') or ''}:{variant.get('alt') or ''}"
@@ -334,7 +220,18 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _state(finding: Mapping[str, Any]) -> DeltaFindingStateDocument:
+def _phase_set(finding: Mapping[str, Any]) -> tuple[str, str] | None:
+    """(chrom, PS) of a call phased on a known copy; None if unphased."""
+    variant = _mapping(finding.get("variant"))
+    phase_set = str(variant.get("phase_set") or "")
+    if "|" not in str(variant.get("genotype") or "") or phase_set in ("", "."):
+        return None
+    return str(variant.get("chrom") or ""), phase_set
+
+
+def _state(
+    finding: Mapping[str, Any], phased_with: list[str]
+) -> DeltaFindingStateDocument:
     variant = _mapping(finding.get("variant"))
     evidence = _mapping(variant.get("clinical_evidence"))
     pgx = _mapping(finding.get("pgx"))
@@ -349,19 +246,57 @@ def _state(finding: Mapping[str, Any]) -> DeltaFindingStateDocument:
         ),
         review_status=evidence.get("review_status"),
         stars=evidence.get("stars"),
+        conflict=evidence.get("conflict"),
+        conflict_evidence=evidence.get("conflict_evidence"),
+        phased_with=phased_with,
         pgx_status=pgx.get("status"),
     )
 
 
+def _result(finding: Mapping[str, Any]) -> object:
+    """What a non-variant finding found: a PharmCAT call's candidate
+    diplotypes and phenotypes as a set, so reordering them changes nothing."""
+    pgx = _mapping(finding.get("pgx"))
+    alternatives = pgx.get("alternatives")
+    if alternatives:
+        return sorted(
+            (str(a.get("diplotype")), str(a.get("phenotype")))
+            for a in map(_mapping, alternatives)
+        ), pgx.get("phenotype_consistent")
+    return finding.get("value"), finding.get("detail")
+
+
 def _kinds(
-    variant: bool, a: DeltaFindingStateDocument, b: DeltaFindingStateDocument
+    fa: Mapping[str, Any],
+    fb: Mapping[str, Any],
+    a: DeltaFindingStateDocument,
+    b: DeltaFindingStateDocument,
 ) -> list[FindingChange]:
     kinds: list[FindingChange] = []
-    if variant and (a["genotype"], a["zygosity"]) != (b["genotype"], b["zygosity"]):
+    variant = isinstance(fb.get("variant"), Mapping)
+    if variant and (a["genotype"], a["zygosity"], a["phased_with"]) != (
+        b["genotype"],
+        b["zygosity"],
+        b["phased_with"],
+    ):
         kinds.append("genotype_changed")
-    if a["value"] != b["value"] or (not variant and a["detail"] != b["detail"]):
-        kinds.append("reclassified" if variant else "result_changed")
-    if (a["review_status"], a["stars"]) != (b["review_status"], b["stars"]):
+    review_changed = (
+        a["review_status"],
+        a["stars"],
+        a["conflict"],
+        a["conflict_evidence"],
+    ) != (b["review_status"], b["stars"], b["conflict"], b["conflict_evidence"])
+    if variant and a["value"] != b["value"]:
+        kinds.append("reclassified")
+    # A variant's detail is its evidence (condition, criteria, transcript,
+    # consequence, population frequency) beside the review it restates.
+    elif (
+        (a["detail"] != b["detail"] and not review_changed)
+        if variant
+        else _result(fa) != _result(fb)
+    ):
+        kinds.append("result_changed")
+    if review_changed:
         kinds.append("review_changed")
     if (a["confidence"], a["confidence_reasons"]) != (
         b["confidence"],
@@ -387,6 +322,49 @@ def _keyed(findings: Sequence[Any]) -> dict[str, Mapping[str, Any]]:
     return keyed
 
 
+def _copies(finding: Mapping[str, Any]) -> set[int]:
+    """Which phased copies (haplotypes) carry an ALT allele."""
+    genotype = str(_mapping(finding.get("variant")).get("genotype") or "")
+    return {i for i, allele in enumerate(genotype.split("|")) if allele not in "0."}
+
+
+def _phase_partners(keyed: Mapping[str, Mapping[str, Any]]) -> dict[str, list[str]]:
+    """Each phased call's partners in its phase set, as 'key cis' or 'key
+    trans': the relationship, not the phase-set id, which may be renumbered."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for key, finding in keyed.items():
+        if (phase_set := _phase_set(finding)) is not None:
+            groups.setdefault(phase_set, []).append(key)
+    return {
+        key: sorted(
+            f"{other} "
+            + ("cis" if _copies(keyed[key]) & _copies(keyed[other]) else "trans")
+            for other in members
+            if other != key
+        )
+        for members in groups.values()
+        for key in members
+    }
+
+
+def _gene_text(gene: Mapping[str, Any] | None) -> str | None:
+    if gene is None:
+        return None
+    return (
+        ", ".join(f"{k} {gene[k]}" for k in ("status", "phase") if gene.get(k))
+        or "no status"
+    )
+
+
+def _genes(section: Mapping[str, Any]) -> dict[str, str | None]:
+    """A gene section's interpretation of each gene: status and phase."""
+    return {
+        str(g.get("gene")): _gene_text(g)
+        for g in section.get("genes") or []
+        if isinstance(g, Mapping) and g.get("gene")
+    }
+
+
 def _sources(section: Mapping[str, Any]) -> dict[str, tuple[str, str]]:
     """{command: (manifest, status)} of a report section's source runs."""
     return {
@@ -408,10 +386,13 @@ def _sections(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
     releases: Sequence[DeltaReleaseDocument],
-) -> list[DeltaSectionDocument]:
+) -> tuple[list[DeltaSectionDocument], list[DeltaChangeDocument]]:
+    """The compared sections, and the changes of their source runs' status
+    and of their genes' interpretation."""
     changed = {r["id"] for r in releases if r["change"] not in ("same",)}
     old, new = before.get("sections") or {}, after.get("sections") or {}
     sections: list[DeltaSectionDocument] = []
+    changes: list[DeltaChangeDocument] = []
     for name in [*old, *(n for n in new if n not in old)]:
         a, b = old.get(name) or {}, new.get(name) or {}
         if not (a.get("findings") or b.get("findings")) and a.get("status") == b.get(
@@ -444,6 +425,29 @@ def _sections(
         # A section is ok when any of its runs is: a run that failed (or
         # didn't run) in either report leaves its own findings uncompared.
         sources_a, sources_b = _sources(a), _sources(b)
+        for command in sorted(sources_a.keys() | sources_b.keys()):
+            status_a = sources_a.get(command, ("", None))[1]
+            status_b = sources_b.get(command, ("", None))[1]
+            if status_a != status_b:
+                changes.append(
+                    DeltaChangeDocument(
+                        area="status",
+                        key=f"{name} {command}",
+                        before=status_a,
+                        after=status_b,
+                    )
+                )
+        genes_a, genes_b = _genes(a), _genes(b)
+        for gene in sorted(genes_a.keys() | genes_b.keys()):
+            if genes_a.get(gene) != genes_b.get(gene):
+                changes.append(
+                    DeltaChangeDocument(
+                        area="gene",
+                        key=f"{name} {gene}",
+                        before=genes_a.get(gene),
+                        after=genes_b.get(gene),
+                    )
+                )
         skipped = sorted(
             command
             for command in sources_a.keys() | sources_b.keys()
@@ -461,6 +465,8 @@ def _sections(
             _keyed(a.get("findings") or []),
             _keyed(b.get("findings") or []),
         )
+        partners_a = _phase_partners(before_findings)
+        partners_b = _phase_partners(after_findings)
         for key in [
             *before_findings,
             *(k for k in after_findings if k not in before_findings),
@@ -472,14 +478,14 @@ def _sections(
                 shown, sources_b if fb else sources_a
             ) in skipped:
                 continue
-            sa = _state(fa) if fa else None
-            sb = _state(fb) if fb else None
-            if sa is None:
+            sa = _state(fa, partners_a.get(key, [])) if fa else None
+            sb = _state(fb, partners_b.get(key, [])) if fb else None
+            if fa is None or sa is None:
                 kinds: list[FindingChange] = ["added"]
-            elif sb is None:
+            elif fb is None or sb is None:
                 kinds = ["removed"]
             else:
-                kinds = _kinds(isinstance(shown.get("variant"), Mapping), sa, sb)
+                kinds = _kinds(fa, fb, sa, sb)
             if not kinds:
                 section["unchanged"] += 1
                 continue
@@ -497,7 +503,7 @@ def _sections(
                     release_changes=related,
                 )
             )
-    return sections
+    return sections, changes
 
 
 def _counts(items: Sequence[Any], field: str) -> Counter[str]:
@@ -566,8 +572,13 @@ def compare(before_path: Path, after_path: Path) -> DeltaDocument:
     _check_compatible(run_a, run_b)
     releases = _releases(res_a, res_b)
     report_a, report_b = reports
-    sections = _sections(report_a, report_b, releases) if report_a and report_b else []
-    changes = _changes(documents[0], documents[1], report_a is not None)
+    sections, section_changes = (
+        _sections(report_a, report_b, releases) if report_a and report_b else ([], [])
+    )
+    changes = [
+        *_changes(documents[0], documents[1], report_a is not None),
+        *section_changes,
+    ]
     findings = [f for s in sections for f in s["findings"]]
     added = sum("added" in f["changes"] for f in findings)
     removed = sum("removed" in f["changes"] for f in findings)
@@ -594,7 +605,7 @@ def compare(before_path: Path, after_path: Path) -> DeltaDocument:
             resource_only=bool(releases_changed)
             and not findings
             and not status_changed
-            and not any(c["area"] in ("metric", "output") for c in changes)
+            and not any(c["area"] in ("metric", "output", "gene") for c in changes)
             and all(s["before_status"] == s["after_status"] for s in sections),
         ),
         releases=releases,
@@ -637,6 +648,8 @@ def human_lines(delta: DeltaDocument) -> list[str]:
         lines.append(
             f"  {s['title']}: {len(s['findings'])} changed, {s['unchanged']} unchanged"
         )
+        if s["note"]:
+            lines.append(f"    {s['note']}")
         for f in s["findings"]:
             related = (
                 f"; release changed: {', '.join(f['release_changes'])}"

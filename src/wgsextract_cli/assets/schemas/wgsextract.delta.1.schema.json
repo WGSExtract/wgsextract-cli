@@ -106,7 +106,7 @@
               "type": "null"
             }
           ],
-          "description": "Report sample, or the input's file name."
+          "description": "Report sample, else the sample the run recorded selecting (metrics.sample), else the input's file name."
         },
         "build": {
           "anyOf": [
@@ -312,7 +312,7 @@
         },
         "key": {
           "type": "string",
-          "description": "chrom:pos:ref:alt for a variant, else the label."
+          "description": "chrom:pos:ref:alt for a variant; the label (type, span and size) for a structural variant or any other finding."
         },
         "label": {
           "type": "string"
@@ -456,6 +456,34 @@
             }
           ]
         },
+        "conflict": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "ClinVar's submitters conflict on the variant."
+        },
+        "conflict_evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phased_with": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Keys of the section's other findings phased in the same phase set (on known copies); compared instead of phase-set ids."
+        },
         "pgx_status": {
           "anyOf": [
             {
@@ -476,6 +504,9 @@
         "confidence_reasons",
         "review_status",
         "stars",
+        "conflict",
+        "conflict_evidence",
+        "phased_with",
         "pgx_status"
       ],
       "additionalProperties": false
@@ -491,7 +522,8 @@
             "output",
             "version",
             "tool",
-            "reference"
+            "reference",
+            "gene"
           ]
         },
         "key": {

@@ -33,9 +33,12 @@ NAMES = {
     "phylop": "UCSC phyloP 100-way",
     "gnomad": "gnomAD",
     "cadd": "CADD",
+    "cadd-indel": "CADD indels",
     "gerp": "GERP++",
     "gene-list": "Report gene list",
 }
+# A component table recorded beside its resource, under that resource's terms.
+_TERMS_OF = {"cadd-indel": "cadd"}
 # Resources a report section's findings rest on.
 SECTION_RESOURCES = {
     "clinvar": ("clinvar", "gene-list"),
@@ -80,6 +83,7 @@ def _catalog(resource_id: str, build: str | None) -> dict[str, Any] | None:
     any of the resource's entries when the build is unknown."""
     from wgsextract_cli.core.resource_mirrors import resources
 
+    resource_id = _TERMS_OF.get(resource_id, resource_id)
     return _entry(f"{resource_id}-{build}") or next(
         (e for e in resources().values() if str(e["id"]).startswith(f"{resource_id}-")),
         None,

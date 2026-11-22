@@ -12,7 +12,7 @@ resources the run used, each with:
 
 | Field | Meaning |
 | --- | --- |
-| `id`, `name`, `role` | `clinvar`, `revel`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `phylop`, `cadd`, `gerp` (annotation) or `gene-list` (the report's gene list). |
+| `id`, `name`, `role` | `clinvar`, `revel`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `phylop`, `cadd` (and `cadd-indel`, its indel table), `gerp` (annotation) or `gene-list` (the report's gene list). |
 | `build` | `hg19` or `hg38` when the resource states it (ClinVar's `##reference`). |
 | `release`, `release_basis` | The exact release used. `file_header`: ClinVar's own `##fileDate` (with `##source=ClinVar`), e.g. `2026-11-15`. `pinned_sha256`: a built-in gene list, named by its SHA-256-pinned id, e.g. `acmg-sf-3.3`. `unrecorded`: the file doesn't say, so `release` is `null`. A release is never guessed from a file name, date or size. |
 | `path`, `fingerprint` | The file and its [fingerprint](result-manifest.md#fingerprints). |
@@ -96,23 +96,25 @@ wgsextract report-delta --before old/HG002/HG002_personal_report.manifest.json \
                         --after HG002/HG002_personal_report.manifest.json
 ```
 
-It compares two result manifests of the same command and sample, by meaning
+It compares two result manifests of the same command and sample (a report's
+sample, else the sample the run recorded selecting, else the input's file
+name), by meaning
 rather than bytes. Timestamps, ordering, file paths and regenerated documents
 are ignored, and no network request is made. Two report manifests are
 compared section by section; any other pair of manifests (two `vcf clinvar`
 runs, say) is compared by status, warnings, metrics, outputs and provenance.
 
 Report findings are matched by section and variant (`chrom:pos:ref:alt`), or
-by section and label for non-variant findings. Each changed finding lists its
-`changes`:
+by section and label for structural variants (their type, span and size) and
+non-variant findings. Each changed finding lists its `changes`:
 
 | Change | Meaning |
 | --- | --- |
 | `added`, `removed` | The finding is in only one report. |
 | `reclassified` | Same variant and genotype, another classification (e.g. Pathogenic to Likely pathogenic). |
-| `review_changed` | ClinVar's review status or stars changed. |
-| `genotype_changed` | The sample's genotype or zygosity at the variant changed. |
-| `result_changed` | A non-variant result changed (a diplotype, a haplogroup). |
+| `review_changed` | ClinVar's review status, stars or conflicting-submitter evidence changed. |
+| `genotype_changed` | The sample's genotype or zygosity at the variant changed, or which calls it is phased with, on the same or the other copy (`phased_with`; phase-set ids themselves may be renumbered). |
+| `result_changed` | A non-variant result changed (a diplotype, a haplogroup; PharmCAT's candidate diplotypes compare as a set), or a variant's evidence did (its ClinVar condition, ACMG criteria, transcript or consequence, an SV's population frequency). |
 | `confidence_changed` | The call's confidence label or reasons changed: its callability. |
 | `ambiguity_changed` | A PharmCAT gene became resolved, ambiguous or no-call. |
 
@@ -120,13 +122,17 @@ Unchanged findings are counted per section. A section that failed or did not
 run in either report is not compared (`compared: false`, with a note): its
 findings are not reported as removed. Within a section that has several runs
 (pharmacogenomics, lineage), a run that failed or did not run in either report
-is listed in `not_compared` and its own findings are not reported as added or
-removed. `releases` lists each recorded resource
+is listed in `not_compared`, with a note, and its own findings are not
+reported as added or removed. `changes` lists the status change of each such
+run (area `status`, key `section command`) and each change in a gene's
+interpretation (area `gene`: a ClinVar gene's status and phase, such as
+`biallelic` to `possible_biallelic`). `releases` lists each recorded resource
 as `same`, `changed`, `content_changed` (same release name, different file),
 `added`, `removed` or `unknown` (release unrecorded and the file differs). A
 changed finding names the releases its section rests on that changed
 (`release_changes`), and `summary.resource_only` is true when releases changed
-but no finding, section, run status, metric or output did.
+but no finding, section, run status, gene interpretation, metric or output
+did.
 
 Each changed finding keeps its confidence label and disclaimer as the report
 gave them, and the document carries the report's disclaimer and its
