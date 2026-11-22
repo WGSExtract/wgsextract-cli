@@ -20,6 +20,18 @@ Source LICENSE SHA256:
 Changes: retain only chrY intervals; omit the original mitochondrial intervals.
 Coordinates are copied unchanged: BED zero-based, half-open.
 hg19.bed is the original hg37 BED (GRCh37 chrY, also UCSC hg19 chrY).
+t2t.bed (T2T-CHM13v2.0, UCSC hs1 chrY) is derived from hg38.bed (SHA256
+b887a2b25917a4f11e5534f7e469c6143177cb5cdb53dac27ade6c7307e26128) by
+scripts/build_poz_t2t.py with the UCSC hg38ToHs1 liftOver chain
+https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/hg38ToHs1.over.chain.gz
+SHA256 926d4583eda8f90c88434293859b06906573f2469630e898b8b475ac8751327a.
+Each region is cut to the chain's aligned chrY-to-chrY blocks (T2T sequence
+absent from GRCh38 is not added; 880 bp landing on chrX are dropped), then
+pieces less than 100 bp apart are joined: 11,595,737 of 11,654,787 bp lift.
+t2t.bed SHA256:
+c372f3050487404276fcb5e1b8f5f8719185ed9d32762ff555ba28b7f17f1efb
+The chain is a build-time input only; it is not redistributed or fetched at
+runtime (UCSC terms: https://hgdownload.soe.ucsc.edu/goldenPath/hg38/liftOver/README.txt).
 Contig naming is adapted at runtime to the input's chrY/Y name.
 
 Original reference/00README.txt credits David Vance's HG38 spreadsheet.
