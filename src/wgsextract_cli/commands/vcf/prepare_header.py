@@ -64,29 +64,31 @@ def scan_records(vcf: str, work: Path) -> Scan:
         try:
             assert proc.stdout is not None
             current, last = "", 0
-            for line in proc.stdout:
-                chrom, pos_text, _, _, alt, _ = line.split("\t", 5)
-                pos = int(pos_text)
-                scan.records += 1
-                if not scan.records % _CHECK_EVERY:
-                    checkpoint()
-                if chrom != current:
-                    if chrom in scan.max_pos:
+            with proc.stdout as stream:
+                for line in stream:
+                    chrom, pos_text, _, _, alt, _ = line.split("\t", 5)
+                    pos = int(pos_text)
+                    scan.records += 1
+                    if not scan.records % _CHECK_EVERY:
+                        checkpoint()
+                    if chrom != current:
+                        if chrom in scan.max_pos:
+                            scan.out_of_order += 1
+                        current, last = chrom, 0
+                    elif pos < last:
                         scan.out_of_order += 1
-                    current, last = chrom, 0
-                elif pos < last:
-                    scan.out_of_order += 1
-                last = pos
-                if pos > scan.max_pos.get(chrom, 0):
-                    scan.max_pos[chrom] = pos
-                alleles = alt.count(",") + 1
-                if alleles > 1:
-                    scan.multiallelic += 1
-                    scan.extra_alleles += alleles - 1
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            code = proc.wait()
+                    last = pos
+                    if pos > scan.max_pos.get(chrom, 0):
+                        scan.max_pos[chrom] = pos
+                    alleles = alt.count(",") + 1
+                    if alleles > 1:
+                        scan.multiallelic += 1
+                        scan.extra_alleles += alleles - 1
+        except BaseException:
+            proc.kill()
+            proc.wait()
+            raise
+        code = proc.wait()
     stderr = err_path.read_text(encoding="utf-8", errors="replace")
     for kind, name in _UNDECLARED.findall(stderr):
         scan.undeclared[kind][name] = None

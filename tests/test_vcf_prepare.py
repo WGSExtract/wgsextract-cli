@@ -322,3 +322,16 @@ def test_vcf_whose_refs_mostly_differ_from_ref_is_refused(tmp_path, reference):
 
     assert result.error is not None and "another build" in result.error.message
     assert not list((tmp_path / "o").glob("*.vcf.gz"))
+
+
+def test_rerun_retires_an_old_short_name_index(tmp_path):
+    """#1408 review: htslib could pick a stale sample.vcf.csi over the new index."""
+    vcf = _valid_vcf(tmp_path)
+    stale = tmp_path / "o" / "valid_prepared.vcf.csi"
+    stale.parent.mkdir()
+    stale.write_bytes(b"stale")
+
+    api.vcf.prepare(api.VcfPrepareParams(input=vcf, outdir=tmp_path / "o"))
+
+    assert not stale.exists()
+    assert Path(tmp_path / "o" / "valid_prepared.vcf.gz.tbi").is_file()

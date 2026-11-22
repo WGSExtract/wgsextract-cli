@@ -18,9 +18,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from wgsextract_cli.api._runtime import cancel_event, checkpoint
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfPrepareParams
-from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_location import single_output_path
@@ -42,7 +41,7 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_files import (
     check_header_build,
-    ensure_vcf_indexed,
+    publish_indexed_vcf,
     verify_paths_exist,
 )
 
@@ -358,25 +357,21 @@ def run_prepare(params: VcfPrepareParams) -> None:
         if report is not None:
             _refuse_wrong_build(report)
 
-        ensure_vcf_indexed(staged)
-        records_out = _record_count(staged)
-        split = scan.extra_alleles if normalize else 0
-        if records_out != scan.records + split:
-            raise WGSExtractError(
-                f"The prepared VCF has {records_out:,} records where "
-                f"{scan.records + split:,} were expected ({scan.records:,} read"
-                + (f", {split:,} added by splitting" if split else "")
-                + "); nothing was written."
-            )
-        tbi = Path(f"{staged}.tbi")
-        index_ext = ".tbi" if tbi.is_file() else ".csi"
-        final_index = Path(f"{final}{index_ext}")
-        stale = Path(f"{final}{'.csi' if index_ext == '.tbi' else '.tbi'}")
-        publish_output_set(
-            {Path(f"{staged}{index_ext}"): final_index, staged: final},
-            retire=[stale],
-            checkpoint=checkpoint,
-        )
+        expected = scan.records + (scan.extra_alleles if normalize else 0)
+        counted: list[int] = []
+
+        def verify(vcf: Path) -> None:
+            counted.append(_record_count(vcf))
+            if counted[0] != expected:
+                raise WGSExtractError(
+                    f"The prepared VCF has {counted[0]:,} records where "
+                    f"{expected:,} were expected ({scan.records:,} read, "
+                    f"{expected - scan.records:,} added by splitting); nothing "
+                    "was written."
+                )
+
+        final_index = publish_indexed_vcf(staged, final, verify)
+        records_out = counted[0]
 
     repairs = _report(
         compression=compression,
@@ -526,8 +521,8 @@ def _report(
         warn(
             "vcf_prepare_contigs_not_in_reference",
             f"{len(plan.off_reference)} contig(s) are not in --ref "
-            f"({_examples(plan.off_reference)}); their records are kept but not "
-            "checked or normalized.",
+            f"({_examples(plan.off_reference)}); their records are kept, but their "
+            "REFs are not checked and their indels are not left-aligned.",
             contigs=len(plan.off_reference),
         )
     if plan.unknown_length:

@@ -573,7 +573,8 @@ def wait_with_cancel(
 
 
 def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
-    stream.seek(0)
+    # The last 64 KiB: a kept report can hold a line per record.
+    stream.seek(max(0, stream.seek(0, os.SEEK_END) - 65536))
     lines = stream.read().decode(errors="replace").strip().splitlines()
     return "\n".join(lines[-max_lines:])
 

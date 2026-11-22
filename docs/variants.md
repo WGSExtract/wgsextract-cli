@@ -184,7 +184,8 @@ publishing, so no record is lost.
 - `--normalize` (needs `--ref`) splits multiallelic records
   (`bcftools norm -m -any`, the original in INFO/`OLD_MULTIALLELIC`) and
   left-aligns indels (the original in INFO/`OLD_VARIANT`). Records on
-  contigs the reference lacks are kept as they are.
+  contigs the reference lacks are split too, but neither REF-checked nor
+  left-aligned.
 - Undeclared IDs are declared as `Type=String` so their values stay exactly
   as written. Legacy FTDNA FILTER expressions such as `DP=1` are refused with
   a pointer to [`repair ftdna-vcf`](ftdna-vcf-repair.md).
