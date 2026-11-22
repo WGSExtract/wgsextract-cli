@@ -19,3 +19,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
+- `report-issue` now reads sample names from a BAM/CRAM or VCF header when
+  samtools or bcftools is installed only in the WGS Extract Pixi environment
+  rather than on `PATH`, so it redacts them from the report. It previously
+  could not start the tools and left those names in
+  ([#1314, report sample redaction](https://github.com/WGSExtract/wgsextract-cli/issues/1314)).

@@ -181,7 +181,9 @@ def header_samples(path: str) -> set[str]:
     """Sample names in a local BAM/CRAM's read groups (SM) or a VCF's columns,
     which messages may quote even when the file name is neutral."""
     from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.process_registry import terminate_trees
     from wgsextract_cli.core.ultima import read_groups
+    from wgsextract_cli.core.utils import WGSExtractError, popen
 
     lower = path.lower()
     if lower.endswith((".bam", ".cram", ".sam")):
@@ -190,19 +192,22 @@ def header_samples(path: str) -> set[str]:
         tool, args = "bcftools", ["query", "-l"]
     else:
         return set()
-    executable = get_tool_path(tool) if Path(path).is_file() else None
-    if executable is None:
+    if not Path(path).is_file() or get_tool_path(tool) is None:
+        return set()
+    # The shared launcher runs a tool found only in its Pixi environment.
+    try:
+        process = popen(
+            [tool, *args, path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (OSError, WGSExtractError):
         return set()
     try:
-        output = subprocess.run(
-            [executable, *args, path],
-            capture_output=True,
-            text=True,
-            errors="replace",
-            timeout=30,
-            check=False,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
+        output, _ = process.communicate(timeout=30)
+    except subprocess.TimeoutExpired:
+        terminate_trees([process])
         return set()
     if tool == "bcftools":
         return set(output.split())
