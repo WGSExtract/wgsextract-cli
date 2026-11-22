@@ -27,6 +27,15 @@ from .utils import (
     run_command,
 )
 
+VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
+
+
+def is_vcf_path(path: PathInput, *, bcf: bool = True) -> bool:
+    """Whether ``path`` is named as a plain or bgzipped VCF, or (unless
+    ``bcf`` is False) a BCF, ignoring case."""
+    suffixes = (*VCF_SUFFIXES, ".bcf") if bcf else VCF_SUFFIXES
+    return fspath(path).lower().endswith(suffixes)
+
 
 def resolve_reference(
     ref_path: PathInput | None,
@@ -66,7 +75,7 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
     """Create an index when missing, or refresh all sidecars if any look stale."""
     vcf = Path(vcf_path)
-    if vcf.suffix not in {".gz", ".bgz"}:
+    if vcf.suffix.lower() not in {".gz", ".bgz"}:
         # We can't index plain VCF easily with tabix
         return
 

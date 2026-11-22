@@ -13,10 +13,9 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.utils import WGSExtractError, run_command
-from wgsextract_cli.core.variant_files import ensure_vcf_prepared
+from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
 
 from .annotation_helpers import (
-    VCF_SUFFIXES,
     annotate_vcf,
     annotation_context,
     prepare_tabix_annotation,
@@ -223,7 +222,7 @@ def run_revel(params: VcfRevelParams) -> None:
 
     revel_vcf = prepare_tabix_annotation(revel_file, "REVEL")
     ann_out = str(Path(outdir, REVEL_ANNOTATED))
-    if revel_vcf.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(revel_vcf, bcf=False):
         annotate_vcf(
             ensure_vcf_prepared(input_file),
             revel_vcf,

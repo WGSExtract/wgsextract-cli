@@ -55,6 +55,7 @@ from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     get_bam_header,
     get_chr_name,
+    is_vcf_path,
     verify_paths_exist,
 )
 
@@ -65,7 +66,6 @@ from ._lineage_chm13 import (
     site_depths,
 )
 from ._lineage_ydna import (
-    VCF_SUFFIXES,
     extract_vcf_chromosome,
     resolve_lineage_tool,
     tool_command,
@@ -170,7 +170,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
     verify_paths_exist({"--input": input_file})
     input_lower = input_file.lower()
     is_alignment = input_lower.endswith((".bam", ".cram"))
-    if not is_alignment and not input_lower.endswith(VCF_SUFFIXES):
+    if not is_alignment and not is_vcf_path(input_file, bcf=False):
         raise WGSExtractError("--input must be a BAM, CRAM or VCF file.")
 
     logging.info("Running mtDNA haplogroup analysis...")
@@ -494,7 +494,7 @@ def _mito_check(
     reference or a VCF's REF alleles decide, ahead of an rCRS MD5.
     """
     rows: list[list[str]] = []
-    if path.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(path, bcf=False):
         query = ["bcftools", "query", "-f", "%CHROM\\t%POS\\t%REF\\n", path]
         out = run_command(query, capture_output=True).stdout
         rows = [line.split("\t") for line in out.splitlines() if line]

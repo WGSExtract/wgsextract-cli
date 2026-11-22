@@ -34,14 +34,13 @@ from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
+    is_vcf_path,
     normalize_vcf_chromosomes,
     vcf_chromosomes,
     vcf_index_chromosomes,
 )
 
 from .basic import record_variants, require_vcf_input
-
-VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
 
 
 def annotation_context(
@@ -122,7 +121,7 @@ def prepare_tabix_annotation(
     begin_col: str = "2",
     end_col: str = "2",
 ) -> str:
-    if annotation_path.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(annotation_path, bcf=False):
         from wgsextract_cli.core.variant_files import ensure_vcf_prepared
 
         return str(ensure_vcf_prepared(annotation_path))
@@ -173,7 +172,7 @@ def prepare_tabix_annotation(
 
 def annotation_chromosomes(annotation_path: str) -> list[str]:
     """Contigs in an indexed annotation resource (VCF or tabix-indexed TSV)."""
-    if annotation_path.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(annotation_path, bcf=False):
         return vcf_index_chromosomes(annotation_path)
     try:
         res = run_command(["tabix", "-l", annotation_path], capture_output=True)

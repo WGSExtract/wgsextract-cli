@@ -18,6 +18,7 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
+    is_vcf_path,
     match_chromosome_name,
     normalize_vcf_chromosomes,
     vcf_chromosomes,
@@ -643,7 +644,7 @@ def normalized_inputs(
     )
     from .resource_cache import normalized_resource
 
-    is_vcf = resource.lower().endswith((".vcf", ".vcf.gz", ".vcf.bgz"))
+    is_vcf = is_vcf_path(resource, bcf=False)
     if not is_vcf and (
         "REF" not in columns.split(",") or "ALT" not in columns.split(",")
     ):

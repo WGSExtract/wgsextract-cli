@@ -20,10 +20,11 @@ def get_bam_header(
 ) -> str:
     """Retrieve header using samtools view -H."""
     from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.variant_files import is_vcf_path
 
     bam_path = fspath(bam_path)
     is_cram = bam_path.lower().endswith(".cram")
-    is_vcf = bam_path.lower().endswith((".vcf", ".vcf.gz", ".bgz", ".bcf"))
+    is_vcf = is_vcf_path(bam_path)
 
     if is_vcf:
         try:
