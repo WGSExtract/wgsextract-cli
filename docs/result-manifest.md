@@ -164,6 +164,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
+| `sex_check_skipped` | Y extraction | The sample's sex-chromosome depth couldn't be measured (for example a CRAM whose reference wasn't found), so a female sample's empty Y output goes unflagged; set the sex with `sample set --sex` or pass `--ref`. |
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |

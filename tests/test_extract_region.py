@@ -179,6 +179,52 @@ def test_y_of_a_female_sample_warns_it_holds_no_y_dna(genome, tmp_path, caplog):
     assert "a female sample has none" in caplog.text
 
 
+@pytest.fixture
+def moved_reference_cram(tmp_path):
+    """A CRAM whose header has GRCh38's chrX/chrY lengths, so the sex check
+    measures depth, and whose reference was moved after writing: htslib can't
+    find it from the header, only --ref can."""
+    seq = "".join(random.Random(5).choice("ACGT") for _ in range(1000))
+    written = write_fasta(tmp_path / "written" / "ref.fa", {"chr7": seq})
+    header = [
+        "@SQ\tSN:chr7\tLN:1000",
+        # M5s stand in for the absent sequences, so htslib needn't embed them.
+        "@SQ\tSN:chrX\tLN:156040895\tM5:" + "1" * 32,
+        "@SQ\tSN:chrY\tLN:57227415\tM5:" + "2" * 32,
+    ]
+    reads = [
+        f"r{s}\t0\tchr7\t{s}\t60\t100M\t*\t0\t0\t{seq[s - 1 : s + 99]}\t{'I' * 100}"
+        for s in range(1, 900, 10)
+    ]
+    bam = sam_to_bam(header + reads, tmp_path / "sample.bam")
+    cram = tmp_path / "sample.cram"
+    run_command(
+        ["samtools", "view", "-C", "--output-fmt-option", "embed_ref=0"]
+        + ["-T", str(written), "-o", str(cram), bam]
+    )
+    run_command(["samtools", "index", str(cram)])
+    written.parent.rename(tmp_path / "moved")
+    return cram, tmp_path / "moved" / "ref.fa"
+
+
+def test_issue_1249_y_sex_check_uses_the_reference_or_says_it_was_skipped(
+    moved_reference_cram, tmp_path
+):
+    cram, ref = moved_reference_cram
+    with_ref = api.extract.region(
+        api.ExtractRegionParams(
+            input=cram, ref=ref, outdir=tmp_path / "ref", target="y", formats="bam"
+        )
+    )
+    assert "sex_check_skipped" not in {w.code for w in with_ref.warnings}
+    # No reference anywhere: the empty chrY still extracts, but the female
+    # check can't read chr7 and must say so rather than pass silently.
+    without = api.extract.ydna_bam(
+        api.YdnaBamParams(input=cram, outdir=tmp_path / "no_ref")
+    )
+    assert "sex_check_skipped" in {w.code for w in without.warnings}
+
+
 @pytest.mark.parametrize("formats", ["vcf", "fasta", "bam,vcf"])
 def test_calling_requires_a_reference_and_writes_nothing_without_one(
     genome, tmp_path, formats
