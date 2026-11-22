@@ -10,7 +10,7 @@ from coverage import Coverage
 
 from scripts.ci_impact_diff import git_blob, impact_diff
 from scripts.ci_impact_observations import read_observations
-from scripts.ci_impact_scopes import changed_scopes, module_scopes
+from scripts.ci_impact_scopes import changed_scopes, module_scopes, shadow_candidates
 
 
 def test_nested_edit_does_not_select_the_enclosing_function() -> None:
@@ -68,6 +68,56 @@ def test_plain_new_function_selects_callers_not_all_module_users() -> None:
 
     assert not changed.initialization
     assert changed.functions == {"new"}
+
+
+def test_body_only_tight_selection_includes_primary_and_declared_contracts() -> None:
+    path = "src/wgsextract_cli/core/atomic_output.py"
+    candidates = {
+        "tests/test_atomic_output.py",
+        "tests/test_indexed_publication.py",
+        "tests/test_observed.py",
+        "tests/test_static_caller.py",
+        "tests/test_unrelated_command.py",
+    }
+    before = b"def commit():\n    return 1\n"
+    after = before.replace(b"return 1", b"return 2")
+
+    result = shadow_candidates(
+        {"tests/test_observed.py", "tests/test_static_caller.py"},
+        {path: {"tests/test_unrelated_command.py"}},
+        {path: changed_scopes(module_scopes(before), module_scopes(after))},
+        candidates,
+        {path: {"tests/test_indexed_publication.py"}},
+    )
+
+    assert "tests/test_unrelated_command.py" in result["decisive"]
+    assert set(result["tight"]) == {
+        "tests/test_atomic_output.py",
+        "tests/test_indexed_publication.py",
+        "tests/test_observed.py",
+        "tests/test_static_caller.py",
+    }
+
+
+def test_tight_keeps_class_layout_and_import_time_consumers() -> None:
+    old = b"from dataclasses import dataclass\n@dataclass\nclass Item:\n    name: str\n"
+    new = old + b"    ready: bool = True\n"
+    path = "src/wgsextract_cli/item.py"
+    owner = "tests/test_cli_consumer.py"
+    result = shadow_candidates(
+        [],
+        {path: [owner]},
+        {path: changed_scopes(module_scopes(old), module_scopes(new))},
+        [owner],
+        {},
+    )
+    assert result == {"decisive": [owner], "tight": [owner]}
+
+
+def test_new_postponed_annotations_do_not_trigger_module_initialization() -> None:
+    old = b"from __future__ import annotations\n"
+    new = old + b"\ndef layered() -> MissingType:\n    return None\n"
+    assert not changed_scopes(module_scopes(old), module_scopes(new)).initialization
 
 
 def test_repeated_function_execution_records_both_contexts(tmp_path: Path) -> None:

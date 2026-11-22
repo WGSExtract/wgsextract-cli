@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import ast
 from collections import defaultdict
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 _Function = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -61,14 +63,18 @@ class _Index(ast.NodeTransformer):
     visit_AsyncFunctionDef = _function
 
 
-def _plain_declaration(node: ast.stmt) -> str | None:
+def _plain_declaration(node: ast.stmt, *, postponed_annotations: bool) -> str | None:
     if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return None
-    if node.decorator_list or node.returns or getattr(node, "type_params", None):
+    if node.decorator_list or getattr(node, "type_params", None):
         return None
     if node.args.defaults or any(
         default is not None for default in node.args.kw_defaults
     ):
+        return None
+    if postponed_annotations:
+        return node.name
+    if node.returns:
         return None
     arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
     arguments.extend(arg for arg in (node.args.vararg, node.args.kwarg) if arg)
@@ -79,9 +85,21 @@ def module_scopes(source: bytes) -> ModuleScopes:
     """Separate module/class initialization and definition headers from bodies."""
     index = _Index()
     tree = ast.parse(source)
+    postponed_annotations = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "__future__"
+        and any(alias.name == "annotations" for alias in node.names)
+        for node in tree.body
+    )
     index.visit(tree)
     return ModuleScopes(
-        tuple((_plain_declaration(node), ast.dump(node)) for node in tree.body),
+        tuple(
+            (
+                _plain_declaration(node, postponed_annotations=postponed_annotations),
+                ast.dump(node),
+            )
+            for node in tree.body
+        ),
         {name: tuple(bodies) for name, bodies in index.functions.items()},
     )
 
@@ -106,3 +124,44 @@ def changed_scopes(before: ModuleScopes, after: ModuleScopes) -> ChangedScopes:
             else:
                 changed.add(name)
     return ChangedScopes(initialization, frozenset(changed))
+
+
+def module_contract_tests(
+    path: str, tests: Iterable[str], declarations: Mapping[str, Iterable[str]]
+) -> set[str]:
+    """Select primary contract owners, without following every module user."""
+    module = PurePosixPath(path).stem
+    conventional = f"test_{module.removeprefix('_')}.py"
+    declared = set(declarations.get(path, ()))
+    return {
+        test
+        for test in tests
+        if test in declared
+        or (module != "__init__" and PurePosixPath(test).name == conventional)
+    }
+
+
+def shadow_candidates(
+    shared: Iterable[str],
+    module_users: Mapping[str, Iterable[str]],
+    scopes: Mapping[str, ChangedScopes],
+    tests: Iterable[str],
+    declarations: Mapping[str, Iterable[str]],
+) -> dict[str, list[str]]:
+    """Compare both variants without changing the authoritative selection.
+
+    ``shared`` includes the function, caller, fixture, resource and universal
+    rules. Missing AST evidence retains that path's original module rule.
+    """
+    decisive = set(shared)
+    tight = set(decisive)
+    universe = set(tests)
+    for path, users in module_users.items():
+        candidates = set(users)
+        decisive.update(candidates)
+        if path not in scopes or scopes[path].initialization:
+            tight.update(candidates)
+    for path, changed in scopes.items():
+        if path.startswith("src/") and changed.functions and not changed.initialization:
+            tight.update(module_contract_tests(path, universe, declarations))
+    return {"decisive": sorted(decisive & universe), "tight": sorted(tight & universe)}
