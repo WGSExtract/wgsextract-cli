@@ -245,6 +245,12 @@ backward compatible and keeps `wgsextract.result/1`. Removing or renaming a fiel
 or changing its meaning or type, requires `wgsextract.result/2` and a new schema
 file. Check `schema` before reading a document.
 
+The envelope fields are **stable**; `details`, `metrics` values and
+`provenance.params` are **experimental**, because they follow each command and
+its unvalidated scientific calls. [Output contracts](output-contracts.md)
+lists every tier and how each change is checked against the previous
+release's pinned baseline.
+
 ## Compatibility
 
 `info chip --json` and `ref status --json` existed before the manifest. Their

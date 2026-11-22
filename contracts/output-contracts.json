@@ -1,0 +1,82 @@
+{
+  "format": 1,
+  "about": "Output-contract tiers. See docs/output-contracts.md. A field takes the tier of its nearest listed ancestor, else its document's. Pinned previous-release baselines live in contracts/baselines/.",
+  "documents": {
+    "wgsextract.result/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
+      "tier": "stable",
+      "docs": "docs/result-manifest.md",
+      "fields": {
+        "schema": {"meaning": "Names the contract and its major version; readers check it before reading anything else."},
+        "command": {"meaning": "The subcommand path that ran, e.g. 'vcf snp'."},
+        "status": {"meaning": "Run outcome: ok, failed or cancelled."},
+        "exit_code": {"meaning": "The process exit code of the run (docs/result-manifest.md#exit-codes)."},
+        "error.kind": {"meaning": "Why a run did not succeed: failure, usage, missing_dependency or cancelled."},
+        "error.code": {"meaning": "A stable machine-readable code for the error message, when one exists."},
+        "inputs[].path": {"meaning": "Absolute path of a file the run read."},
+        "inputs[].role": {"meaning": "What the file is to this command; roles are classified under 'roles'."},
+        "inputs[].fingerprint": {"meaning": "wgse-fp1 sampled SHA-256 identity of the file (size plus head, middle and tail blocks); not an integrity check."},
+        "outputs[].path": {"meaning": "Absolute path of a file the run wrote."},
+        "outputs[].role": {"meaning": "What the file is to this command; roles are classified under 'roles'."},
+        "outputs[].fingerprint": {"meaning": "wgse-fp1 sampled SHA-256 identity of the file (size plus head, middle and tail blocks); not an integrity check."},
+        "warnings[].code": {"meaning": "Machine-readable warning code (docs/result-manifest.md#warning-codes)."},
+        "manifest": {"meaning": "Absolute path of the manifest this run wrote, or null."},
+        "provenance.version": {"meaning": "The wgsextract package version that wrote the document."},
+        "details": {"tier": "experimental", "scientific": true, "note": "Command-specific results, including unvalidated scientific calls."},
+        "metrics.*": {"tier": "experimental", "scientific": true, "note": "Per-command headline numbers and labels, such as haplogroup or sex; their scientific meaning is not yet validated."},
+        "inputs[].metrics.*": {"tier": "experimental", "scientific": true},
+        "outputs[].metrics.*": {"tier": "experimental", "scientific": true},
+        "warnings[].details.*": {"tier": "experimental"},
+        "provenance.params.*": {"tier": "experimental", "note": "Mirrors the command's options, which change with the command line."},
+        "provenance.tools.*": {"tier": "experimental", "note": "Keyed by external tool name."}
+      }
+    },
+    "wgsextract.report/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
+      "tier": "experimental",
+      "docs": "docs/personal-report.md",
+      "fields": {
+        "schema": {"tier": "stable", "meaning": "Names the contract and its major version."},
+        "generated": {"tier": "stable", "meaning": "When the report was built (UTC)."},
+        "wgsextract_version": {"tier": "stable", "meaning": "The wgsextract package version that wrote the report."},
+        "disclaimer": {"tier": "stable", "meaning": "States that findings are technical results, not a diagnosis."},
+        "sections": {"scientific": true, "note": "Findings, confidence labels and evidence: shape and meaning may change until validated."}
+      }
+    },
+    "wgsextract.sample/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
+      "tier": "experimental",
+      "docs": "docs/sample-workspace.md",
+      "fields": {
+        "schema": {"tier": "stable", "meaning": "Names the contract and its major version."},
+        "override": {"tier": "stable", "note": "Facts the user set by hand; commands honour them instead of detection."},
+        "detected": {"scientific": true, "note": "Facts detected from reads (sex, build, ancestry, depth), not yet validated."}
+      }
+    },
+    "wgsextract.steps/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
+      "tier": "internal",
+      "docs": "docs/step-resume.md",
+      "consumers": [
+        "src/wgsextract_cli/core/steps.py",
+        "src/wgsextract_cli/core/step_identity.py"
+      ]
+    },
+    "wgsextract.server.responses/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
+      "tier": "experimental",
+      "docs": "docs/server.md"
+    }
+  },
+  "roles": {
+    "input": {"tier": "stable", "meaning": "The sample file the command read (BAM, CRAM, FASTQ, VCF or a microarray file).", "commands": ["extract mt-bam"]},
+    "vcf_input": {"tier": "stable", "meaning": "The sample VCF the command read when it was named with --vcf-input."},
+    "proband": {"tier": "stable", "meaning": "The proband VCF of a trio analysis."},
+    "mt_bam": {"tier": "stable", "meaning": "A BAM holding only the sample's mitochondrial reads.", "commands": ["extract mt-bam"]},
+    "result_card": {"tier": "stable", "meaning": "The shareable HTML card written beside the manifest with --card."},
+    "combined_kit": {"tier": "experimental", "meaning": "A combined consumer microarray kit file."},
+    "vendor_kit": {"tier": "experimental", "meaning": "A vendor-format consumer microarray kit file."},
+    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}
+  },
+  "approved_breaks": []
+}

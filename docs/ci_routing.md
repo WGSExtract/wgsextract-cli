@@ -27,6 +27,12 @@ and on every mirror download, not by downloading ~1 TB each night.
 See [download mirrors and source rights](resource-mirrors.md) for the audit,
 restricted-resource policy and manual publication/activation procedure.
 
+The `changes` job also runs `scripts/output_contracts.py check --base <base>`
+with the full history it already fetched: about a second, no extra runner.
+It compares the merged tree's output schemas with the previous release's
+pinned contract baseline as it is on the base, so a PR cannot edit a baseline
+to hide a removed stable field ([output contracts](output-contracts.md)).
+
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
 it can request a draft review on `opened`, but never checks out or executes PR

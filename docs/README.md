@@ -63,6 +63,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Python API](api.md) | Call typed operations from Python |
 | [Local server](server.md) | Use HTTP/JSON or MCP with allowed-path restrictions |
 | [Result manifest](result-manifest.md) | Consume structured results, warnings and provenance |
+| [Output contracts](output-contracts.md) | Know which output fields are stable, experimental or internal |
 | [Variant table](variant-table.md) | Query TSV/SQLite output |
 | [Parquet](parquet.md) | Use typed tables with DuckDB, Polars or other tools |
 
