@@ -4,13 +4,15 @@ use std::{
     env, fs,
     io::{Read, Write},
     net::TcpStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
@@ -31,12 +33,90 @@ pub(crate) struct BackendLaunch<'a> {
 }
 
 struct BackendState {
-    child: Child,
+    process: BackendChild,
     port: u16,
     api_token: String,
+}
+
+struct BackendChild {
+    child: Child,
     /// Every process the backend starts inherits this job; closing it (even if this app crashes) kills them all.
     #[cfg(windows)]
-    job: job::KillOnCloseJob,
+    job: Option<job::KillOnCloseJob>,
+}
+
+impl BackendChild {
+    fn spawn(mut command: Command) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        command.process_group(0);
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let process = Self {
+            child: command.spawn()?,
+            #[cfg(windows)]
+            job: None,
+        };
+        #[cfg(windows)]
+        let process = {
+            let mut process = process;
+            process.job = Some(job::KillOnCloseJob::containing(&process.child).map_err(
+                |error| {
+                    std::io::Error::new(
+                        error.kind(),
+                        format!("Could not place the backend in a job object: {error}"),
+                    )
+                },
+            )?);
+            process
+        };
+        Ok(process)
+    }
+
+    #[cfg(unix)]
+    fn has_exited(&mut self) -> std::io::Result<bool> {
+        // Keep the leader's PID reserved until Drop signals its group.
+        // SAFETY: waitid writes to local storage and only checks our child.
+        unsafe {
+            let mut info: libc::siginfo_t = std::mem::zeroed();
+            if libc::waitid(
+                libc::P_PID,
+                self.child.id() as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            ) == -1
+            {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(info.si_pid() != 0)
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn has_exited(&mut self) -> std::io::Result<bool> {
+        self.child.try_wait().map(|status| status.is_some())
+    }
+}
+
+impl Drop for BackendChild {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        // SAFETY: spawn made this unreaped child's PID its process-group ID.
+        unsafe {
+            libc::kill(-(self.child.id() as libc::pid_t), libc::SIGKILL);
+        }
+        #[cfg(windows)]
+        drop(self.job.take());
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct StartupPortFile(PathBuf);
+
+impl Drop for StartupPortFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
 }
 
 pub(crate) struct BackendProcess(Arc<Mutex<Option<BackendState>>>);
@@ -51,12 +131,18 @@ impl BackendProcess {
         &self,
         launch: BackendLaunch<'_>,
     ) -> Result<(u32, u16), Box<dyn std::error::Error>> {
-        let port_file = env::temp_dir().join(format!(
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| "Backend process lock was poisoned")?;
+        if state.is_some() {
+            return Err("WebUI backend is already running".into());
+        }
+        let port_file = StartupPortFile(env::temp_dir().join(format!(
             "gfc-backend-{}-{}.port",
             std::process::id(),
             crate::random_token(8)?
-        ));
-        let _ = fs::remove_file(&port_file);
+        )));
         let mut command = Command::new(&launch.paths.node_path);
         command
             .current_dir(child_process_path(&launch.paths.repo_root))
@@ -65,12 +151,9 @@ impl BackendProcess {
             .arg(child_process_path(&launch.paths.bundle_root))
             // Secrets and ports go through the environment, never argv (which other users can list).
             .env("GFC_API_TOKEN", launch.api_token)
-            .env("GFC_PORT_FILE", &port_file)
+            .env("GFC_PORT_FILE", &port_file.0)
             .env("GFC_PARENT_PID", std::process::id().to_string())
-            .env(
-                "WGSEXTRACT_GUI_APP_DATA_NAME",
-                &launch.paths.app_data_name,
-            )
+            .env("WGSEXTRACT_GUI_APP_DATA_NAME", &launch.paths.app_data_name)
             .env("WGSEXTRACT_GUI_APPLICATION_NAME", launch.application_name)
             .env(
                 "WGSEXTRACT_GUI_APPLICATION_VERSION",
@@ -82,35 +165,12 @@ impl BackendProcess {
             Some((stdout, stderr)) => command.stdout(stdout).stderr(stderr),
             None => command.stdout(Stdio::null()).stderr(Stdio::null()),
         };
-        #[cfg(windows)]
-        command.creation_flags(CREATE_NO_WINDOW);
-        let mut child = command.spawn()?;
-        #[cfg(windows)]
-        let job = match job::KillOnCloseJob::containing(&child) {
-            Ok(job) => job,
-            Err(error) => {
-                let _ = child.kill();
-                return Err(format!("Could not place the backend in a job object: {error}").into());
-            }
-        };
-        let port = match wait_for_port_file(&port_file, &mut child) {
-            Ok(port) => port,
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(error);
-            }
-        };
-        let pid = child.id();
-        *self
-            .0
-            .lock()
-            .map_err(|_| "Backend process lock was poisoned")? = Some(BackendState {
-            child,
+        let (process, port) = start_backend(command, port_file)?;
+        let pid = process.child.id();
+        *state = Some(BackendState {
+            process,
             port,
             api_token: launch.api_token.to_string(),
-            #[cfg(windows)]
-            job,
         });
         Ok((pid, port))
     }
@@ -125,18 +185,11 @@ impl BackendProcess {
         let _ = request_backend_shutdown(state.port, &state.api_token);
         let deadline = Instant::now() + SHUTDOWN_TIMEOUT;
         while Instant::now() < deadline {
-            match state.child.try_wait() {
-                Ok(Some(_)) => break,
-                Ok(None) => thread::sleep(Duration::from_millis(50)),
-                Err(_) => break,
+            match state.process.has_exited() {
+                Ok(false) => thread::sleep(Duration::from_millis(50)),
+                _ => break,
             }
         }
-        #[cfg(windows)]
-        state.job.terminate();
-        if matches!(state.child.try_wait(), Ok(None)) {
-            let _ = state.child.kill();
-        }
-        let _ = state.child.wait();
     }
 }
 
@@ -155,18 +208,26 @@ fn backend_log(path: Option<&std::path::Path>) -> Option<(Stdio, Stdio)> {
     Some((Stdio::from(file), Stdio::from(stderr)))
 }
 
+fn start_backend(
+    command: Command,
+    port_file: StartupPortFile,
+) -> Result<(BackendChild, u16), Box<dyn std::error::Error>> {
+    let mut process = BackendChild::spawn(command)?;
+    let port = wait_for_port_file(&port_file.0, &mut process)?;
+    Ok((process, port))
+}
+
 fn wait_for_port_file(
-    port_file: &PathBuf,
-    child: &mut Child,
+    port_file: &Path,
+    process: &mut BackendChild,
 ) -> Result<u16, Box<dyn std::error::Error>> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
-        if let Some(status) = child.try_wait()? {
-            return Err(format!("WebUI backend exited during startup ({status})").into());
+        if process.has_exited()? {
+            return Err("WebUI backend exited during startup".into());
         }
         if let Ok(contents) = fs::read_to_string(port_file) {
             if let Ok(port) = contents.trim().parse::<u16>() {
-                let _ = fs::remove_file(port_file);
                 return Ok(port);
             }
         }
@@ -195,6 +256,41 @@ fn request_backend_shutdown(port: u16, api_token: &str) -> bool {
     response[..count].starts_with(b"HTTP/1.1 200")
 }
 
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::{io::BufRead, sync::mpsc};
+
+    #[test]
+    fn backend_cleanup_terminates_descendants_after_the_leader_exits() {
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "sleep 10 & printf 'ready\\n'"])
+            .stdout(Stdio::piped());
+        let mut backend = BackendChild::spawn(command).unwrap();
+        let mut output = std::io::BufReader::new(backend.child.stdout.take().unwrap());
+        let mut ready = String::new();
+        output.read_line(&mut ready).unwrap();
+        assert_eq!(ready.trim(), "ready");
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while !backend.has_exited().unwrap() {
+            assert!(Instant::now() < deadline, "backend leader did not exit");
+            thread::sleep(Duration::from_millis(10));
+        }
+        let (send, receive) = mpsc::channel();
+        let reader = thread::spawn(move || send.send(output.read(&mut [0; 1])));
+        drop(backend);
+        assert_eq!(
+            receive
+                .recv_timeout(Duration::from_secs(3))
+                .unwrap()
+                .unwrap(),
+            0
+        );
+        reader.join().unwrap().unwrap();
+    }
+}
+
 #[cfg(windows)]
 mod job {
     use std::{io, mem, os::windows::io::AsRawHandle, process::Child, ptr};
@@ -203,7 +299,7 @@ mod job {
         Foundation::{CloseHandle, HANDLE},
         System::JobObjects::{
             AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-            SetInformationJobObject, TerminateJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+            SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
         },
     };
@@ -237,13 +333,6 @@ mod job {
                     return Err(io::Error::last_os_error());
                 }
                 Ok(job)
-            }
-        }
-
-        pub(crate) fn terminate(&self) {
-            // SAFETY: `self.0` is a valid job handle until drop.
-            unsafe {
-                TerminateJobObject(self.0, 1);
             }
         }
     }

@@ -196,8 +196,9 @@ wgsextract report-issue --run out/sample.vcf.gz.manifest.json --print
 
 It includes command, exit code, error, warnings, last 40 log lines, CLI
 version/install type, OS, CPU, RAM, free disk, tool versions and changed settings.
-Local redaction removes home/user/computer names, sample/file/read names,
-genotypes, VCF records, sequences, emails, tokens and secrets; paths become
+Local redaction removes home/user/computer names, sample/file/read names
+(including Parquet and SQLite variant-table filenames), genotypes, VCF records,
+sequences, emails, tokens and secrets; paths become
 placeholders such as `<path>/<file>.cram`. Sex and haplogroups are never included.
 
 Nothing is uploaded. The report and link are printed, and the complete report

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import test from "node:test";
+import { HttpError } from "../dist/web/src/server/errors.js";
 import { applySecurityHeaders, guardRequest } from "../dist/web/src/server/request-guard.js";
 import { guardedViewerPath, requireViewerLoopback, ViewerFiles } from "../dist/web/src/server/viewer-files.js";
 
@@ -137,6 +138,21 @@ test("#1148: a high-depth region larger than 32 MiB streams completely and can b
     assert.equal(await next.text(), "end");
     f.files.revoke(grant.id);
     assert.equal((await fetch(url, { headers })).status, 401);
+});
+
+test("#1212: a deleted viewer file returns 404 and a missing library returns 403", async (t) => {
+    const f = await fixture(t);
+    const missingRoot = path.join(f.library, "optional");
+    const missingFile = path.join(missingRoot, "reads.bam");
+    await assert.rejects(guardedViewerPath(missingFile, [missingRoot]), { status: 403 });
+    await assert.rejects(guardedViewerPath(missingFile, [missingRoot, f.library]), { status: 404 });
+    await rm(f.file);
+    await assert.rejects(guardedViewerPath(f.file, [f.library]), (error) => error instanceof HttpError && error.status === 404);
+    assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 404);
+    await rm(f.library, { recursive: true });
+    assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 403);
+    await writeFile(f.library, "not a directory");
+    assert.equal((await fetch(f.url, { headers: f.grant.headers })).status, 403);
 });
 
 test("#1090: traversal, directories, symlink escapes and changed file targets cannot be served", async (t) => {

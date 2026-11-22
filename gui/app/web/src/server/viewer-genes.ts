@@ -1,8 +1,7 @@
 import { open } from "node:fs/promises";
 import path from "node:path";
 import { isViewerGeneSymbol, type ViewerGene, type ViewerGenes } from "../../../shared/viewer-genes.js";
-import { errnoCode } from "./errors.js";
-import { guardedViewerPath } from "./viewer-files.js";
+import { guardedViewerPath, isMissingViewerPath } from "./viewer-files.js";
 import { viewerContigAliases, viewerReferenceMetadata } from "./viewer-reference-metadata.js";
 
 const maxTableBytes = 8 * 1024 * 1024;
@@ -39,7 +38,7 @@ export async function installedViewerGenes(fasta: string, referenceRoot: string)
             }
             break;
         } catch (error) {
-            if (["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) continue;
+            if (isMissingViewerPath(error)) continue;
             return notice("geneMapInvalid");
         }
     }
