@@ -68,7 +68,9 @@ Defaults require sample **DP ≥10**, **GQ ≥20**, and FILTER `PASS` or `.`.
 Missing required fields produce no-calls. For internally called single-sample
 BAM/CRAM reference calls only, bcftools' reference-call QUAL substitutes when
 it omits GQ. Supplied VCFs never use that fallback. Multi-sample VCFs require
-`--sample`.
+`--sample`. If sample selection encounters undeclared VCF contigs, it reads
+the contig names from the records and repairs the header in the working stream.
+The original VCF is not rewritten.
 
 Absent VCF markers are **no-calls**, not reference genotypes: variant-only
 VCFs do not establish coverage. Explicit `0/0` records and gVCF reference-block
