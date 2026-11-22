@@ -84,6 +84,10 @@ files = "src/wgsextract_cli"
 [tool.coverage.run]
 data_file = "out/.coverage"
 relative_files = true
+# sys.monitoring (Python 3.12+) measures lines at a fraction of the C tracer's
+# overhead; older Pythons fall back to the C tracer without a warning.
+core = "sysmon"
+disable_warnings = ["no-sysmon"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgsextract_cli"]
