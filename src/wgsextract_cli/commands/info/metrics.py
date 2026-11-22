@@ -364,6 +364,7 @@ def load_n_counts(
 # recomputed rather than trusted; bump it in sample_workspace.FACTS.
 SEX_INFERENCE_VERSION = sample_workspace.FACTS["sex"].version
 SEX_MEASUREMENT_UNAVAILABLE = "non-PAR measurement unavailable"
+SEX_SAMPLING_INCOMPLETE = "non-PAR sampling or autosomal baseline unavailable"
 
 
 class SexCall(NamedTuple):
@@ -403,7 +404,7 @@ def infer_sex_call(
         return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     autosomes = [depths[c] for c in ("7", "19") if c in depths]
     if not autosomes or "X" not in depths or "Y" not in depths:
-        return unknown
+        return SexCall("Unknown", SEX_SAMPLING_INCOMPLETE, "low")
     auto = sum(d for d, _ in autosomes) / len(autosomes)
     x, x_breadth = depths["X"]
     y, _ = depths["Y"]

@@ -6,6 +6,7 @@ import io
 import logging
 import os
 import platform
+import subprocess
 import sys
 from pathlib import Path
 
@@ -22,7 +23,13 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.tool_catalog import required_dependency_tools
-from wgsextract_cli.core.utils import MissingDependencyError, WGSExtractError
+from wgsextract_cli.core.utils import (
+    MissingDependencyError,
+    ToolLaunchError,
+    WGSExtractError,
+    run_command,
+    run_pipeline,
+)
 
 posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
 windows_only = pytest.mark.skipif(sys.platform != "win32", reason="NTSTATUS codes")
@@ -479,6 +486,64 @@ def test_deps_check_tool_with_debug_logs_its_path_instead(host, capsys):
         args.func(args)
         out = capsys.readouterr().out.removesuffix("\n")
         assert _same_path(out, samtools) if printed else out == ""
+
+
+def test_1356_deps_check_and_launch_explain_smart_app_control(host, monkeypatch):
+    _mandatory_tools(host, without=("bwa",))
+    executable = _tool(host, "bwa", "")
+    real_popen = subprocess.Popen
+
+    def launch(argv, *args, **kwargs):
+        if _same_path(str(argv[0]), executable):
+            error = OSError("localized OS error")
+            error.winerror = 4551
+            raise error
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    result = api.deps.check(api.DepsCheckParams(), check=False)
+    assert result.exit_code == 3
+    assert "bwa" in result.error.message and "Smart App Control" in result.error.message
+    assert "[blocked]" in next(
+        line for line in result.text.splitlines() if "bwa " in line
+    )
+    row = next(row for row in result.details["mandatory"] if row["name"] == "bwa")
+    assert row["path"] is None
+    assert executable.lower() in row["version"].lower()
+    assert "Smart App Control" in row["version"]
+    assert "approved build" in row["version"]
+
+    for run in (
+        lambda: run_command([executable]),
+        lambda: run_pipeline([[executable]]),
+    ):
+        with pytest.raises(ToolLaunchError) as failure:
+            run()
+        assert "Smart App Control" in str(failure.value)
+        assert executable.lower() in str(failure.value).lower()
+
+
+@pytest.mark.parametrize(
+    ("tool", "child_name", "diagnostic"),
+    [
+        ("bwa-mem2", "bwa-mem2.avx512bw.exe", "bwa-mem2: can't start {} (error 4551)"),
+        (
+            "vep-rs",
+            "vep-rs.exe",
+            "Error launching '{}': application blocked (os error 4551)",
+        ),
+    ],
+)
+def test_1356_version_probe_names_blocked_children_with_apostrophes(
+    host, tool, child_name, diagnostic
+):
+    child = rf"C:\O'Brien Tools\{child_name}"
+    _tool(host, tool, f"err({diagnostic.format(child)!r}); sys.exit(1)")
+
+    version = get_tool_version(tool)
+    assert version is not None and version.startswith("Error:")
+    assert f"blocked {child} (" in version
+    assert "WDAC" in version
 
 
 # The report lists these, but a user can run most commands without them.
