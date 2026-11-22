@@ -7,28 +7,48 @@ import { fixture, manifest, move, settingsControl } from "./workspace-fixture.mj
 
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
+const { isSameOrInsidePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
 
 /**
  * Makes renames fail as the OS would: of `folder` with EXDEV, as for a move to another volume, so the folder is
- * copied instead; onto a file named `failing` with an I/O error, to fail the move after its files moved.
+ * copied instead; the first onto a file named `failing` with an I/O error, to fail the move after its files moved.
+ * `then` runs after each rename that succeeds.
  */
-function failRenames(t, { folder, failing }) {
+function failRenames(t, { folder, failing, then }) {
   const fsPromises = createRequire(import.meta.url)("node:fs/promises");
   const originalRename = fsPromises.rename;
+  let failed = false;
   fsPromises.rename = async (from, to) => {
     if (folder && path.resolve(String(from)) === folder) {
       throw Object.assign(new Error(`EXDEV: cross-device link not permitted, rename '${from}'`), { code: "EXDEV" });
     }
-    if (failing && path.basename(String(to)) === failing) {
+    if (failing && !failed && path.basename(String(to)) === failing) {
+      failed = true;
       throw Object.assign(new Error(`EIO: i/o error, rename '${from}'`), { code: "EIO" });
     }
-    return originalRename(from, to);
+    await originalRename(from, to);
+    then?.(from, to);
   };
   syncBuiltinESMExports();
   t.after(() => {
     fsPromises.rename = originalRename;
     syncBuiltinESMExports();
   });
+}
+
+/** Makes the symlink, or skips the test where Windows doesn't let this account make one; returns whether it was made. */
+async function trySymlink(t, target, link, type) {
+  try {
+    await symlink(target, link, type);
+    return true;
+  }
+  catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") {
+      t.skip("Windows does not let this account create symbolic links");
+      return false;
+    }
+    throw error;
+  }
 }
 
 /** A reference library with links into it (absolute, by its real path, relative, a folder) and out of it. */
@@ -47,17 +67,10 @@ async function referenceWithLinks(t, root, reference) {
     "external.fa": path.join(shared, "external.fa"),
     "external-relative.fa": path.relative(reference, path.join(shared, "external.fa")),
   };
-  try {
-    for (const [name, target] of Object.entries(links)) {
-      await symlink(target, path.join(reference, name));
-    }
-  }
-  catch (error) {
-    if (process.platform === "win32" && error.code === "EPERM") {
-      t.skip("Windows does not let this account create symbolic links");
+  for (const [name, target] of Object.entries(links)) {
+    if (!await trySymlink(t, target, path.join(reference, name))) {
       return null;
     }
-    throw error;
   }
   // Junctions need no privilege on Windows; elsewhere they are folder symlinks.
   await symlink(path.join(reference, "genomes"), path.join(reference, "genomes-link"), "junction");
@@ -120,7 +133,30 @@ for (const volume of ["the same volume", "another volume"]) {
   });
 }
 
-test("1239 a move that fails after renaming the folder puts its symlinks back as they were", async (t) => {
+for (const [step, failing] of [["saving the app's state", "state.json"], ["relinking", "current.fa"]]) {
+  test(`1239 a move that fails ${step} after renaming the folder puts its symlinks back as they were`, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const reference = path.join(users, "reference");
+    const expected = await referenceWithLinks(t, root, reference);
+    if (!expected) {
+      return;
+    }
+    await writeFile(path.join(bundle, "state.json"), JSON.stringify({ fieldValues: { reference } }));
+    failRenames(t, { failing });
+
+    const chosen = path.join(root, "big drive", "wgs");
+    await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: chosen }), /EIO/);
+
+    await assert.rejects(stat(chosen), { code: "ENOENT" });
+    for (const name of ["current.fa", "current-real.fa", "external.fa"]) {
+      assert.equal(await readlink(path.join(reference, name)), expected.links[name]);
+    }
+    await assertLinksFollowed(reference, expected);
+  });
+}
+
+test("1239 a move cancelled after its folder was renamed is rolled back, not saved", async (t) => {
   const { root, source, bundle, users } = await fixture(t);
   await prepareBundleWorkspace(manifest, source);
   const reference = path.join(users, "reference");
@@ -128,17 +164,47 @@ test("1239 a move that fails after renaming the folder puts its symlinks back as
   if (!expected) {
     return;
   }
-  await writeFile(path.join(bundle, "state.json"), JSON.stringify({ fieldValues: { reference } }));
-  failRenames(t, { failing: "state.json" });
-
   const chosen = path.join(root, "big drive", "wgs");
-  await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: chosen }), /EIO/);
+  const client = new AbortController();
+  // The client goes away once the folder is at its new place.
+  failRenames(t, { then: (_from, to) => path.resolve(String(to)) === chosen && client.abort() });
+
+  await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: chosen, signal: client.signal }), { name: "AbortError" });
 
   await assert.rejects(stat(chosen), { code: "ENOENT" });
-  for (const name of ["current.fa", "current-real.fa", "external.fa"]) {
-    assert.equal(await readlink(path.join(reference, name)), expected.links[name]);
-  }
   await assertLinksFollowed(reference, expected);
+});
+
+for (const volume of ["the same volume", "another volume"]) {
+  test(`1239 moving a library reached through a folder link to ${volume} keeps a link that climbs out of it on the same file`, { skip: process.platform === "win32" && "Windows follows .. in a link target by name" }, async (t) => {
+    const { root, source, bundle } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const real = path.join(root, "a", "b", "real");
+    await mkdir(path.join(real, "reference"), { recursive: true });
+    await writeFile(path.join(root, "a", "b", "hg38.fa"), ">chr1\nACGT\n");
+    await writeFile(path.join(root, "hg38.fa"), ">decoy\nNNNN\n");
+    await symlink(real, path.join(root, "via"));
+    // Set by way of the link: ../.. from the real folder is a/b, but spelled from via/reference it reads as the root.
+    const reference = path.join(root, "via", "reference");
+    await symlink(path.join("..", "..", "hg38.fa"), path.join(reference, "up.fa"));
+    assert.equal(await readFile(path.join(reference, "up.fa"), "utf8"), ">chr1\nACGT\n");
+    await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
+    if (volume === "another volume") {
+      failRenames(t, { folder: reference });
+    }
+
+    const fast = path.join(root, "fast", "reference");
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
+
+    assert.equal(await readFile(path.join(fast, "up.fa"), "utf8"), ">chr1\nACGT\n");
+  });
+}
+
+test("1239 a path on a Windows share spelled in other letter case is inside the folder moving from it", () => {
+  const share = "\\\\NAS\\share\\workspace";
+  const target = "\\\\nas\\share\\WORKSPACE\\genomes\\hg38.fa";
+  assert.ok(isSameOrInsidePath(share, target));
+  assert.equal(relocatePath(target, share, "D:\\wgs"), "D:\\wgs\\genomes\\hg38.fa");
 });
 
 /** Windows for an account that may not make symbolic links: folder links must be junctions, and file links fail. */
@@ -190,7 +256,9 @@ test("1239 on Windows without link rights, a renamed folder whose file link can'
   await writeFile(path.join(reference, "genomes", "v2", "hg38.fa"), ">chr1\nACGT\n");
   const links = { "a-all": path.join(reference, "genomes"), "b-current.fa": path.join(reference, "genomes", "v2", "hg38.fa"), "c-latest": path.join(reference, "genomes", "v2") };
   for (const [name, target] of Object.entries(links)) {
-    await symlink(target, path.join(reference, name), name.endsWith(".fa") ? "file" : "junction");
+    if (!await trySymlink(t, target, path.join(reference, name), name.endsWith(".fa") ? "file" : "junction")) {
+      return;
+    }
   }
   asWindowsWithoutLinkRights(t);
 
@@ -201,4 +269,49 @@ test("1239 on Windows without link rights, a renamed folder whose file link can'
     assert.equal(path.resolve(await readlink(path.join(reference, name))), target, `${name} is as it was`);
   }
   assert.equal(await readFile(path.join(reference, "b-current.fa"), "utf8"), ">chr1\nACGT\n");
+});
+
+test("1239 on Windows without link rights, a renamed folder's chains of folder links all become junctions", async (t) => {
+  const { reference, request } = await referenceMovingTo(t, ["moved", "reference"]);
+  // In either listing order, one chain's first link is remade while the link it names still holds the old place.
+  const genomes = path.join(reference, "genomes");
+  const links = { a: path.join(reference, "z"), z: genomes, y: path.join(reference, "b"), b: genomes };
+  for (const [name, target] of Object.entries(links)) {
+    await symlink(target, path.join(reference, name), "junction");
+  }
+  asWindowsWithoutLinkRights(t);
+
+  await move(request);
+
+  const inside = await realpath(request.folder);
+  for (const name of Object.keys(links)) {
+    assert.equal(await realpath(path.join(request.folder, name)), path.join(inside, "genomes"), name);
+  }
+});
+
+test("1239 on Windows, a renamed folder holding a deduplicated file, listed as a link but not one, still moves", async (t) => {
+  const { reference, request } = await referenceMovingTo(t, ["moved", "reference"]);
+  await writeFile(path.join(reference, "genomes", "v2", "hg38.fa"), ">chr1\nACGT\n");
+  if (!await trySymlink(t, path.join("genomes", "v2", "hg38.fa"), path.join(reference, "dedup.fa"))) {
+    return;
+  }
+  // Windows lists every reparse point as a link, but reading one that is not a symlink or junction fails.
+  const fsPromises = createRequire(import.meta.url)("node:fs/promises");
+  const originalReadlink = fsPromises.readlink;
+  fsPromises.readlink = async (link, options) => {
+    if (path.basename(String(link)) === "dedup.fa") {
+      throw Object.assign(new Error(`EINVAL: invalid argument, readlink '${link}'`), { code: "EINVAL" });
+    }
+    return originalReadlink(link, options);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fsPromises.readlink = originalReadlink;
+    syncBuiltinESMExports();
+  });
+  asWindowsWithoutLinkRights(t);
+
+  await move(request);
+
+  assert.equal(await readFile(path.join(request.folder, "dedup.fa"), "utf8"), ">chr1\nACGT\n");
 });
