@@ -8,6 +8,8 @@ local_bin/
 runtime/
 reference_bootstrap/
 reference/
+# ...but not the package's own reference assets (catalog, N counts, BEDs).
+!src/wgsextract_cli/assets/reference/
 genomes/
 mygenomes/
 datasets/

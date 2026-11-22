@@ -20,11 +20,13 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 
 ## What it writes
 
-- `acmg_annotated.vcf.gz` (+ `.tbi`): the input VCF, vep-rs consequences
+- `acmg_annotated.vcf.gz` (+ `.tbi` or `.csi`): the input VCF, vep-rs consequences
   unchanged, with three INFO fields per ALT allele: `ACMG_CLASS`,
   `ACMG_CRITERIA` (the criteria met, joined by `&`) and `ACMG_TRANSCRIPT`.
   The header carries the disclaimer in `##WGSE_ACMG`. Classifying an
-  `acmg_annotated.vcf.gz` again replaces its earlier classes.
+  `acmg_annotated.vcf.gz` again replaces its earlier classes. The new VCF and
+  index are published only after indexing succeeds; a failed index build
+  leaves any previous VCF and its index unchanged.
 - `acmg_summary.json`: the disclaimer, the fastVEP version, the databases
   (files, sources, assemblies, sizes, dates), the optional sources not loaded,
   the criteria never evaluated, and the counts of

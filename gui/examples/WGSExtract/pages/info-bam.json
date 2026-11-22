@@ -121,6 +121,10 @@
             ],
             "optionalArguments": [
               [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
                 "--region",
                 "{{coverage_region}}"
               ],
@@ -149,6 +153,10 @@
             ],
             "optionalArguments": [
               [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
                 "--format",
                 "{{info_table_format}}"
               ]
@@ -158,7 +166,8 @@
             "operation": "info/calculate-coverage",
             "parameters": {
               "input": "{{bam_path}}",
-              "with_bins": true
+              "with_bins": true,
+              "ref": "{{ref_path}}"
             }
           },
           "visibleWhen": [
@@ -184,6 +193,10 @@
             ],
             "optionalArguments": [
               [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
                 "--format",
                 "{{info_table_format}}"
               ]
@@ -193,7 +206,8 @@
             "operation": "info/calculate-coverage",
             "parameters": {
               "input": "{{bam_path}}",
-              "with_bins": true
+              "with_bins": true,
+              "ref": "{{ref_path}}"
             }
           },
           "visibleWhen": [
