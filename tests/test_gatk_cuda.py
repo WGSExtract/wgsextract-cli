@@ -37,7 +37,7 @@ def sidecar(path: Path, *, complete: bool = True) -> Path:
     return path
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def linux_x86(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("wgsextract_cli.core.native_pairhmm.sys.platform", "linux")
     monkeypatch.setattr(
@@ -45,29 +45,46 @@ def linux_x86(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture
+def cuda_jar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linux_x86: None) -> Path:
+    # Simulate a launcher-safe Linux resolution, but read the real test archive.
+    # A resolved Windows path includes a drive colon and fails the earlier guard.
+    monkeypatch.chdir(tmp_path)
+    path = Path("cuda.jar")
+    original_resolve = Path.resolve
+
+    def resolve(candidate: Path, strict: bool = False) -> Path:
+        if candidate == path:
+            return path
+        return original_resolve(candidate, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    return path
+
+
 @pytest.mark.parametrize("kind", ["missing", "corrupt", "incomplete"])
 def test_1131_missing_or_invalid_sidecar_errors_without_fetching(
-    tmp_path: Path, kind: str
+    tmp_path: Path, cuda_jar: Path, kind: str
 ) -> None:
-    path = tmp_path / "cuda.jar"
     if kind == "corrupt":
-        path.write_bytes(b"not a jar")
+        cuda_jar.write_bytes(b"not a jar")
     elif kind == "incomplete":
-        sidecar(path, complete=False)
+        sidecar(cuda_jar, complete=False)
     with pytest.raises(UsageError, match="nothing is installed or downloaded"):
-        cuda_pairhmm_java_options(path, "4.6.2.0")
+        cuda_pairhmm_java_options(cuda_jar, "4.6.2.0")
     assert sorted(p.name for p in tmp_path.iterdir()) == (
         [] if kind == "missing" else ["cuda.jar"]
     )
 
 
 def test_1131_incompatible_gatk_is_rejected_before_native_execution(
-    tmp_path: Path,
+    cuda_jar: Path,
 ) -> None:
     with pytest.raises(UsageError, match="requires GATK 4.6.2.0"):
-        cuda_pairhmm_java_options(sidecar(tmp_path / "cuda.jar"), "4.7.0.0")
+        cuda_pairhmm_java_options(sidecar(cuda_jar), "4.7.0.0")
 
 
+@pytest.mark.usefixtures("linux_x86")
 def test_1131_launcher_cannot_silently_drop_space_in_native_path(
     tmp_path: Path,
 ) -> None:
@@ -97,6 +114,7 @@ def test_1131_native_cuda_and_neon_cannot_be_selected_together() -> None:
         )
 
 
+@pytest.mark.usefixtures("linux_x86")
 def test_1131_flow_aware_ultima_rejects_cuda_without_running_caller(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
