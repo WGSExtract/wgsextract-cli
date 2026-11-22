@@ -244,6 +244,8 @@ def test_1138_pinned_release_without_pixi_minimum_installs_but_bad_constraint_fa
             },
             "HOME": str(tmp_path),
             "PIXI": str(binary),
+            # #1337: a successful macOS install would open Finder on tmp_path.
+            "WGSEXTRACT_NO_OPEN": "1",
             "WGSEXTRACT_INSTALL_DIR": str(installation),
             "WGSEXTRACT_RELEASE_TAG": "v0.6.5",
             "WGSEXTRACT_ARCHIVE_URL": str(archive),
