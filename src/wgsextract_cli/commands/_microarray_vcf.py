@@ -364,6 +364,7 @@ def _view_vcf_targets(
     sample: str | None,
     original_ref_vcf_tab: str | None,
     gvcf: bool = False,
+    trim_alt_alleles: bool = False,
 ) -> str:
     output_type = "-Ov" if gvcf else "-Oz"
     overlap = ["--targets-overlap", "1"] if gvcf else []
@@ -378,12 +379,17 @@ def _view_vcf_targets(
 
     if sample:
         subset_vcf_sample(
-            vcf, sample, output, selection=targets, output_type=output_type
+            vcf,
+            sample,
+            output,
+            selection=targets,
+            output_type=output_type,
+            trim_alt_alleles=trim_alt_alleles,
         )
     else:
         run_command(
             ["bcftools", "view", *targets()]
-            + (["--trim-alt-alleles"] if gvcf else [])
+            + (["--trim-alt-alleles"] if trim_alt_alleles else [])
             + [output_type, "-o", output, vcf]
         )
     return ref_vcf_tab
@@ -397,15 +403,16 @@ def _expand_gvcf_targets(
     ref_fasta: str,
     selection: list[str],
     outdir: str,
+    trim_alt_alleles: bool = True,
     sample: str | None = None,
     original_ref_vcf_tab: str | None = None,
 ) -> str:
     """Write the gVCF's call at every target it covers. A reference block
     covering targets becomes one record per target (a 0/0 or ./. call with the
-    FASTA's base as REF); other records overlapping a target are kept, with
-    unobserved alleles such as <NON_REF> trimmed. Targets no record covers stay
-    absent, i.e. uncalled. Only target positions are expanded: a whole-genome
-    gVCF's blocks span billions of bases."""
+    FASTA's base as REF). When the SNP exporter disables trimming, variant
+    records retain their ALTs to distinguish indels from reference records.
+    Targets no record covers stay uncalled. Only target positions are
+    expanded: a whole-genome gVCF's blocks span billions of bases."""
     from wgsextract_cli.core.reference_evidence import reference_depth
 
     fasta_chroms = _fasta_chromosomes(ref_fasta)
@@ -426,6 +433,7 @@ def _expand_gvcf_targets(
             sample=sample,
             original_ref_vcf_tab=original_ref_vcf_tab,
             gvcf=True,
+            trim_alt_alleles=trim_alt_alleles,
         )
         targets = _target_positions(ref_vcf_tab)
         # A variant record overlapping a block (DRAGEN writes some) outranks it.
@@ -609,6 +617,8 @@ def _prepare_microarray_vcf(
         try:
             # Step 1: Get actual variants from the input VCF that match our targets
             hit_vcf = str(Path(outdir, f"{base_name}_hits.vcf.gz"))
+            # Keep uncalled ALTs: trimming can turn an indel site's 0/0 into
+            # an apparently explicit reference call (#1249).
             if gvcf:
                 ref_vcf_tab = _expand_gvcf_targets(
                     str(params.input),
@@ -617,6 +627,7 @@ def _prepare_microarray_vcf(
                     ref_fasta=ref_fasta,
                     selection=region_args,
                     outdir=outdir,
+                    trim_alt_alleles=False,
                     sample=sample,
                     original_ref_vcf_tab=original_ref_vcf_tab,
                 )

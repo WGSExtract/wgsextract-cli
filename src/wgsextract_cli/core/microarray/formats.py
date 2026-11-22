@@ -1,4 +1,9 @@
-"""The chip template formats and the --formats IDs that name them."""
+"""The chip template formats and the --formats IDs that name them.
+
+The original format table is ported from WGS Extract v4 ``program/aconv.py``
+(Copyright (C) 2018-2020 City Farmer, (C) 2020-2022 Randy Harr, GNU GPL v3 or
+later), extended by WGS Extract CLI contributors from 2026-03-02; see NOTICE.
+"""
 
 from typing import TypedDict
 
@@ -16,7 +21,7 @@ class TemplateFormat(_TemplateFormatOptions):
     parts: int
 
 
-# Ported from legacy program/aconv.py logic
+# Ported from WGS Extract v4 program/aconv.py, then extended
 _TEMPLATE_FORMATS: dict[str, TemplateFormat] = {
     # v1 and v2 chips share one marker list (see assets/microarray).
     "23andMe_V2": {"suffix": ".txt", "parts": 1},

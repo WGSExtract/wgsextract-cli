@@ -15,6 +15,14 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `sample_mismatch`). This is a pilot; see
   [docs/result-manifest.md](../result-manifest.md#run-lineage-and-artifacts-pilot)
   ([#1182, run lineage and BAM/VCF artifacts](https://github.com/WGSExtract/wgsextract-cli/issues/1182)).
+- [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
+  button to its current desktop page and command, with changed defaults,
+  features not yet equivalent and settings/reference precautions. NOTICE now
+  credits WGS Extract's authors and marks the CLI's microarray export and
+  liftover as modified GPL ports of v4 code. A differential corpus records
+  parity and intentional differences against v44.2 on synthetic and public
+  HG00096 data; its public inputs download only with `--download`
+  ([#1187, v4 migration guide and corpus](https://github.com/WGSExtract/wgsextract-cli/issues/1187)).
 - `extract ydna-bam --poz` and `extract region --target y --poz` now work on
   T2T-CHM13v2.0 inputs, using the Poz chrY regions lifted from GRCh38 with
   the UCSC `hg38ToHs1` chain (~11.6 Mb, bundled; no download)
@@ -62,3 +70,9 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   environment rather than on `PATH`. It previously failed with "No such file
   or directory: 'bcftools'"
   ([#1233, PGS bcftools probes](https://github.com/WGSExtract/wgsextract-cli/issues/1233)).
+- The Python API records a command's input files under the same result
+  manifest roles and params as the CLI. A VCF given as `vcf_input` (for
+  `vcf` operations on a VCF and `qc vcf`) is role `vcf_input` with
+  `provenance.params.vcf_input` set, not role `input`; a `vcf trio` proband
+  is role `proband`; and `r1`/`r2` reads are `fastq_r1`/`fastq_r2`
+  ([#1367, API input roles](https://github.com/WGSExtract/wgsextract-cli/issues/1367)).
