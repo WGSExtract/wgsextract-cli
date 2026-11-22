@@ -88,8 +88,8 @@ from wgsextract_cli.core.variant_files import (
     verify_paths_exist,
 )
 from wgsextract_cli.core.variant_sample import (
+    has_sample_input_index,
     indexed_sample_vcf,
-    needs_sample_working_copy,
 )
 from wgsextract_cli.core.warnings import print_warning
 
@@ -671,7 +671,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     if not is_vcf:
         warn_about_alignment(input_path, ref_fasta)
     calling_params = params
-    if vcf_sample and (indel_bindings or needs_sample_working_copy(input_path)):
+    if vcf_sample and (
+        indel_bindings or (region_args and not has_sample_input_index(input_path))
+    ):
         calling_params = replace(
             params,
             input=Path(indexed_sample_vcf(input_path, vcf_sample, outdir, cleanup)),
