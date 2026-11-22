@@ -349,6 +349,14 @@ class VcfGatkParams(_CallerParams):
         "docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
+    pair_hmm_cuda: Path | None = param(
+        None,
+        local_only=True,
+        help="Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK "
+        "4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. "
+        "See native/pairhmm/README.md. Not with --gpu or --scatter.",
+        path="file",
+    )
     pair_hmm_neon: Path | None = param(
         None,
         local_only=True,
@@ -366,6 +374,12 @@ class VcfGatkParams(_CallerParams):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        if self.pair_hmm_cuda is not None and self.pair_hmm_neon is not None:
+            raise UsageError("--pair-hmm-cuda cannot be combined with --pair-hmm-neon.")
+        if self.pair_hmm_cuda is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-cuda cannot be combined with --gpu or --scatter."
+            )
         if self.pair_hmm_neon is not None and (self.gpu or self.scatter):
             raise UsageError(
                 "--pair-hmm-neon cannot be combined with --gpu or --scatter."

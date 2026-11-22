@@ -148,19 +148,25 @@ def test_issue_1249_uncalled_indel_alt_keeps_the_snp_call(tmp_path, library, gat
         assert kit["rsRef"][-1] == "AA"
 
 
-@pytest.mark.parametrize("gvcf", [False, True], ids=["joint-vcf", "gvcf"])
+@pytest.mark.parametrize(
+    "layout", ["joint-vcf", "gvcf", "repair-vcf", "repair-region", "repair-gvcf"]
+)
 def test_issue_1249_sample_exports_keep_indel_sites_distinct_from_reference(
-    tmp_path, library, gvcf
+    tmp_path, library, layout
 ):
     fasta, _ = library
     source = tmp_path / "sample.vcf"
+    gvcf = layout.endswith("gvcf")
+    repair = layout.startswith("repair")
+    joint = layout != "gvcf"
     extra_alt = ",<NON_REF>" if gvcf else ""
-    other_column = "" if gvcf else "\tOther"
-    other_gt = "" if gvcf else "\t0/1"
-    block = "1\t2000\t.\tA\t<NON_REF>\t50\tPASS\tEND=2100\tGT\t0/0\n"
+    other_column = "\tOther" if joint else ""
+    other_gt = "\t0/1" if joint else ""
+    block = "1\t2000\t.\tA\t<NON_REF>\t50\tPASS\tEND=2100\tGT\t0/0"
     source.write_text(
-        "##fileformat=VCFv4.2\n##contig=<ID=1,length=5000>\n"
-        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "##fileformat=VCFv4.2\n"
+        + ("##contig=<ID=1,length=5000>\n" if not repair else "")
+        + '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
         + (
             '##ALT=<ID=NON_REF,Description="Any other allele">\n'
             '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
@@ -169,18 +175,22 @@ def test_issue_1249_sample_exports_keep_indel_sites_distinct_from_reference(
         )
         + f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS{other_column}\n"
         + f"1\t1000\t.\tA\tT,AT{extra_alt}\t50\tPASS\t.\tGT\t0/1{other_gt}\n"
-        + (block if gvcf else "")
+        + (block + ("\t0/0" if joint else "") + "\n" if gvcf else "")
         + f"1\t3000\t.\tA\tAT{extra_alt}\t50\tPASS\t.\tGT\t0/0{other_gt}\n"
     )
     out = tmp_path / "out"
+    input_vcf = str(source) if repair else bgzip_index(source)
+    options = ("--sample", "S") if joint else ()
+    if layout == "repair-region":
+        options += ("--region", "chr1:900-3100")
 
     _microarray(
-        bgzip_index(source), fasta, out, "--assume-hom-ref", "--min-dp", "0",
-        "--min-gq", "0", "--no-exclude-filtered", "--call-reasons",
-        "--strand-ambiguous", "no-call", *(() if gvcf else ("--sample", "S")),
+        input_vcf, fasta, out, "--assume-hom-ref", "--min-dp", "0", "--min-gq", "0",
+        "--no-exclude-filtered", "--call-reasons", "--strand-ambiguous", "no-call",
+        *options,
     )  # fmt: skip
 
-    stem = "sample" if gvcf else "sample_S"
+    stem = "sample_S" if joint else "sample"
     report = _rows(out / f"{stem}_CombinedKit_reasons.tsv")
     assert report["rsRef"][-2:] == ["--", "unsupported_allele"]
     assert report["rsHet"][-2:] == ["--", "strand_ambiguous"]
