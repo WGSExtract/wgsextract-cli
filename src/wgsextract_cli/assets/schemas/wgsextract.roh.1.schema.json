@@ -1,0 +1,599 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:roh:1",
+  "title": "wgsextract.roh/1",
+  "description": "qc roh: runs of homozygosity, their marker evidence, the assessed scope and F_ROH, isodisomy review flags over imprinted regions, and the provenance of the population frequencies (docs/roh.md).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "wgsextract.roh/1"
+    },
+    "input": {
+      "type": "string"
+    },
+    "sample": {
+      "type": "string"
+    },
+    "build": {
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "population_frequencies": {
+      "$ref": "#/$defs/populationFrequencies"
+    },
+    "imprinted_regions": {
+      "$ref": "#/$defs/imprintedRegions"
+    },
+    "markers": {
+      "$ref": "#/$defs/markers"
+    },
+    "parameters": {
+      "$ref": "#/$defs/parameters"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flag"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "input",
+    "sample",
+    "build",
+    "scope",
+    "population_frequencies",
+    "imprinted_regions",
+    "markers",
+    "parameters",
+    "summary",
+    "segments",
+    "flags",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "scope": {
+      "type": "object",
+      "properties": {
+        "regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The assessed autosomes or ranges."
+        },
+        "contigs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contigs_without_markers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "declared_bp": {
+          "type": "integer",
+          "description": "Length of the declared regions.",
+          "minimum": 0
+        },
+        "denominator_bp": {
+          "type": "integer",
+          "description": "F_ROH denominator: on each assessed contig, the span from its first to its last marker, less gaps between markers over max_marker_gap_bp.",
+          "minimum": 0
+        },
+        "whole_genome": {
+          "type": "boolean",
+          "description": "True only when all 22 autosomes are in scope whole and have markers."
+        }
+      },
+      "required": [
+        "regions",
+        "contigs",
+        "contigs_without_markers",
+        "declared_bp",
+        "denominator_bp",
+        "whole_genome"
+      ],
+      "additionalProperties": false
+    },
+    "populationFrequencies": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "vcf",
+            "table"
+          ]
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "INFO field of a VCF source."
+        },
+        "release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "As declared with --af-release."
+        },
+        "build": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "sha256:<hex> of the whole file up to 64 MiB, else a wgse-fp1 sampled fingerprint."
+        },
+        "digest_strength": {
+          "enum": [
+            "full",
+            "sampled",
+            "metadata"
+          ]
+        },
+        "prepared": {
+          "enum": [
+            "built",
+            "reused",
+            "uncached"
+          ],
+          "description": "Whether the bcftools AF table was built now, reused from the reference library's cache, or built for this run only."
+        },
+        "prepared_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prepared_sites": {
+          "type": "integer",
+          "description": "Biallelic SNVs with 0 < AF < 1.",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "tag",
+        "release",
+        "build",
+        "size",
+        "digest",
+        "digest_strength",
+        "prepared",
+        "prepared_reason",
+        "prepared_sites"
+      ],
+      "additionalProperties": false
+    },
+    "imprintedRegions": {
+      "type": "object",
+      "properties": {
+        "build": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/imprintedRegion"
+          }
+        }
+      },
+      "required": [
+        "build",
+        "source",
+        "path",
+        "citations",
+        "regions"
+      ],
+      "additionalProperties": false
+    },
+    "imprintedRegion": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "band": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "chrom": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer",
+          "description": "1-based, inclusive."
+        },
+        "end": {
+          "type": "integer"
+        },
+        "genes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "band",
+        "chrom",
+        "start",
+        "end",
+        "genes",
+        "conditions"
+      ],
+      "additionalProperties": false
+    },
+    "condition": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "upd": {
+          "type": "string",
+          "description": "The UPD form that causes it, e.g. maternal UPD(15)."
+        }
+      },
+      "required": [
+        "name",
+        "upd"
+      ],
+      "additionalProperties": false
+    },
+    "markers": {
+      "type": "object",
+      "properties": {
+        "records": {
+          "type": "integer",
+          "description": "The sample's biallelic SNV records in scope with PASS or no FILTER.",
+          "minimum": 0
+        },
+        "missing_genotype": {
+          "type": "integer"
+        },
+        "weak_genotype": {
+          "type": "integer",
+          "description": "GQ below min_gq."
+        },
+        "hom_ref": {
+          "type": "integer"
+        },
+        "het": {
+          "type": "integer"
+        },
+        "hom_alt": {
+          "type": "integer"
+        },
+        "not_modelled": {
+          "type": "integer",
+          "description": "Calls bcftools roh skipped: not in the AF table, or a second record at a position."
+        },
+        "used": {
+          "type": "integer",
+          "description": "Sites bcftools roh modelled."
+        },
+        "min_gq": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reference_calls": {
+          "type": "boolean",
+          "description": "Whether the VCF has hom-ref calls; a variants-only VCF gives bcftools roh only heterozygous and hom-alt sites."
+        }
+      },
+      "required": [
+        "records",
+        "missing_genotype",
+        "weak_genotype",
+        "hom_ref",
+        "het",
+        "hom_alt",
+        "not_modelled",
+        "used",
+        "min_gq",
+        "reference_calls"
+      ],
+      "additionalProperties": false
+    },
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "bcftools": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gt_error_phred": {
+          "type": "integer",
+          "description": "bcftools roh --GTs-only: genotypes are used, not PLs."
+        },
+        "hw_to_az": {
+          "type": "number"
+        },
+        "az_to_hw": {
+          "type": "number"
+        },
+        "flag_terminal_bp": {
+          "type": "integer"
+        },
+        "flag_interstitial_bp": {
+          "type": "integer"
+        },
+        "flag_min_markers": {
+          "type": "integer"
+        },
+        "flag_min_quality": {
+          "type": "number"
+        },
+        "froh_min_bp": {
+          "type": "integer"
+        },
+        "max_marker_gap_bp": {
+          "type": "integer",
+          "description": "Runs are split, and the denominator leaves out, gaps between consecutive markers longer than this."
+        }
+      },
+      "required": [
+        "bcftools",
+        "gt_error_phred",
+        "hw_to_az",
+        "az_to_hw",
+        "flag_terminal_bp",
+        "flag_interstitial_bp",
+        "flag_min_markers",
+        "flag_min_quality",
+        "froh_min_bp",
+        "max_marker_gap_bp"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "segments": {
+          "type": "integer"
+        },
+        "total_bp": {
+          "type": "integer"
+        },
+        "longest_bp": {
+          "type": "integer"
+        },
+        "segments_over_1mb": {
+          "type": "integer"
+        },
+        "segments_over_5mb": {
+          "type": "integer"
+        },
+        "froh": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Runs of at least froh_min_bp over denominator_bp, within the assessed scope only; null without markers."
+        },
+        "chromosomes_with_long_roh": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Chromosomes with a run of 5 Mb or more."
+        }
+      },
+      "required": [
+        "segments",
+        "total_bp",
+        "longest_bp",
+        "segments_over_1mb",
+        "segments_over_5mb",
+        "froh",
+        "chromosomes_with_long_roh"
+      ],
+      "additionalProperties": false
+    },
+    "segment": {
+      "type": "object",
+      "properties": {
+        "chrom": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer",
+          "description": "First marker in the run, 1-based."
+        },
+        "end": {
+          "type": "integer",
+          "description": "Last marker in the run."
+        },
+        "length_bp": {
+          "type": "integer"
+        },
+        "markers": {
+          "type": "integer"
+        },
+        "quality": {
+          "type": "number",
+          "description": "bcftools roh's average forward-backward phred score."
+        },
+        "position": {
+          "enum": [
+            "terminal",
+            "interstitial",
+            "undetermined"
+          ],
+          "description": "terminal: reaches the last (or, except on acrocentric chromosomes, the first) marker of a whole assessed chromosome; undetermined: the scope was part of a chromosome."
+        },
+        "imprinted_regions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "flagged": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "chrom",
+        "start",
+        "end",
+        "length_bp",
+        "markers",
+        "quality",
+        "position",
+        "imprinted_regions",
+        "flagged"
+      ],
+      "additionalProperties": false
+    },
+    "flag": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "investigate_possible_isodisomy"
+        },
+        "chrom": {
+          "type": "string"
+        },
+        "start": {
+          "type": "integer"
+        },
+        "end": {
+          "type": "integer"
+        },
+        "length_bp": {
+          "type": "integer"
+        },
+        "position": {
+          "enum": [
+            "terminal",
+            "interstitial",
+            "undetermined"
+          ]
+        },
+        "criterion": {
+          "type": "string"
+        },
+        "regions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/imprintedRegion"
+          }
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "chrom",
+        "start",
+        "end",
+        "length_bp",
+        "position",
+        "criterion",
+        "regions",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

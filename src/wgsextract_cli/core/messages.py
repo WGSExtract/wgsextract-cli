@@ -154,9 +154,10 @@ Available formats:
     "cmd_deps-list": "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it.",
     "cmd_deps-install": "Download and install the Pixi environment that provides an optional tool (e.g. gatk).",
     "cmd_deps-uninstall": "Remove the Pixi environment that provides an optional tool, and the other tools in it.",
-    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, VCF stats) and test data generation.",
+    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, runs of homozygosity, VCF stats) and test data generation.",
     "cmd_qc-ancestry": "Admixture-style ancestry proportions (HGDP+1KG reference components) from a BAM/CRAM, VCF or microarray file.",
     "cmd_qc-contamination": "Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install -e verifybamid2`.",
+    "cmd_qc-roh": "Find runs of homozygosity in a VCF with bcftools roh and your local population allele frequencies; flags long runs over imprinted regions for review (not a diagnosis).",
     "cmd_vcf": "Variant calling (bcftools, freebayes, GATK, DeepVariant, Clair3, Delly, pbsv, Sniffles), annotation, filtering, and trio analysis.",
 }
 

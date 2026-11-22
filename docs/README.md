@@ -52,6 +52,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |
 | [Ancestry](ancestry.md) | Estimate HGDP+1KG component proportions |
+| [Runs of homozygosity](roh.md) | Find ROH with population frequencies; review isodisomy flags |
 | [Imputation](imputation.md) | Review phasing/imputation workflows and limits |
 | [Polygenic scores](pgs.md) | Calculate research scores and inspect their limitations |
 

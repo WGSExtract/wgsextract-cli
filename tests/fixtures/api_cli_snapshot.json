@@ -17371,7 +17371,7 @@
    }
   },
   "qc": {
-   "help": "usage: wgsextract qc [-h] <command> ...\n\npositional arguments:\n  <command>\n    fastp            An ultra-fast all-in-one pre-processor. Automatically trims adapters and\n                     filters low-quality reads while generating a QC report.\n    fastqc           The industry-standard quality check for raw reads. Produces a visual report\n                     of base quality, GC content, and adapter contamination.\n    multiqc          Combine existing FastQC reports, bcftools stats and WGS Extract result\n                     manifests into one local HTML report.\n    multiqc-metrics  Write MultiQC custom-content files (wgsextract_*_mqc.json) from result\n                     manifests; MultiQC isn't needed.\n    vcf              Generate statistical reports for your VCF file to check the quality and\n                     distribution of your variant calls.\n    relate           Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with\n                     somalier; flags sample swaps. Optional: Linux and macOS, install with `pixi\n                     install -e somalier`.\n    ancestry         Admixture-style ancestry proportions (HGDP+1KG reference components) from a\n                     BAM/CRAM, VCF or microarray file.\n    contamination    Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person\n                     (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install\n                     -e verifybamid2`.\n    fake-data        Generate fake BAM, CRAM, VCF, and FASTQ files for testing. BAM generation\n                     defaults to the fast streaming reference-backed SNP simulator.\n\noptions:\n  -h, --help         show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract qc [-h] <command> ...\n\npositional arguments:\n  <command>\n    fastp            An ultra-fast all-in-one pre-processor. Automatically trims adapters and\n                     filters low-quality reads while generating a QC report.\n    fastqc           The industry-standard quality check for raw reads. Produces a visual report\n                     of base quality, GC content, and adapter contamination.\n    multiqc          Combine existing FastQC reports, bcftools stats and WGS Extract result\n                     manifests into one local HTML report.\n    multiqc-metrics  Write MultiQC custom-content files (wgsextract_*_mqc.json) from result\n                     manifests; MultiQC isn't needed.\n    vcf              Generate statistical reports for your VCF file to check the quality and\n                     distribution of your variant calls.\n    relate           Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with\n                     somalier; flags sample swaps. Optional: Linux and macOS, install with `pixi\n                     install -e somalier`.\n    ancestry         Admixture-style ancestry proportions (HGDP+1KG reference components) from a\n                     BAM/CRAM, VCF or microarray file.\n    contamination    Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person\n                     (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install\n                     -e verifybamid2`.\n    roh              Find runs of homozygosity in a VCF with bcftools roh and your local\n                     population allele frequencies; flags long runs over imprinted regions for\n                     review (not a diagnosis).\n    fake-data        Generate fake BAM, CRAM, VCF, and FASTQ files for testing. BAM generation\n                     defaults to the fast streaming reference-backed SNP simulator.\n\noptions:\n  -h, --help         show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -17401,6 +17401,7 @@
        "relate",
        "ancestry",
        "contamination",
+       "roh",
        "fake-data"
       ],
       "help": [
@@ -17435,6 +17436,10 @@
        [
         "contamination",
         "Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install -e verifybamid2`."
+       ],
+       [
+        "roh",
+        "Find runs of homozygosity in a VCF with bcftools roh and your local population allele frequencies; flags long runs over imprinted regions for review (not a diagnosis)."
        ],
        [
         "fake-data",
@@ -20743,6 +20748,516 @@
     "description": null,
     "formatter_class": "HelpFormatter",
     "prog": "wgsextract qc relate"
+   }
+  },
+  "qc roh": {
+   "help": "usage: wgsextract qc roh [-h] --af-file FILE [--af-tag TAG] [--af-build {hg19,hg38,t2t}]\n                         [--af-release TEXT] [--sample NAME] [--build {hg19,hg38,t2t}]\n                         [--regions REGIONS] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --af-file FILE        Local population allele frequencies on the sample's build: a gnomAD/1000\n                        Genomes sites VCF/BCF or a bcftools roh table\n  --af-tag TAG          INFO field of --af-file holding the frequency, e.g. AF_nfe (default: AF)\n  --af-build {hg19,hg38,t2t}\n                        Build of --af-file, when its header doesn't give contig lengths\n  --af-release TEXT     Release of --af-file to record, e.g. 'gnomAD v4.1 genomes'\n  --sample NAME         The sample of a multi-sample VCF\n  --build {hg19,hg38,t2t}\n                        The input's build, when its header doesn't tell\n  --regions REGIONS     Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or\n                        chr15:20000000-30000000 (default: every autosome in the header)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n4 advanced options not shown; 'wgsextract qc roh --help-all' lists them.\n\nexamples:\n  wgsextract qc roh --input sample.vcf.gz --af-file gnomad.genomes.v4.1.sites.chr15.vcf.bgz --regions chr15\n  wgsextract qc roh --input sample.vcf.gz --af-file 1kgp_af.vcf.gz --af-tag EUR_AF\n\noutputs (in the output directory unless noted):\n  <stem>.roh.tsv (runs), <stem>.roh.json (wgsextract.roh/1: evidence, scope,\n  F_ROH, isodisomy review flags, provenance) and <stem>.roh.markers.tsv.gz.\n\nneeds:\n  bcftools, bgzip, tabix; minutes on a 30x genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "af_file",
+      "exclusive_group": null,
+      "help": "Local population allele frequencies on the sample's build: a gnomAD/1000 Genomes sites VCF/BCF or a bcftools roh table",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--af-file"
+      ],
+      "required": true,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": "AF",
+      "dest": "af_tag",
+      "exclusive_group": null,
+      "help": "INFO field of --af-file holding the frequency, e.g. AF_nfe (default: AF)",
+      "metavar": "TAG",
+      "nargs": null,
+      "option_strings": [
+       "--af-tag"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "hg19",
+       "hg38",
+       "t2t"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "af_build",
+      "exclusive_group": null,
+      "help": "Build of --af-file, when its header doesn't give contig lengths",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--af-build"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "af_release",
+      "exclusive_group": null,
+      "help": "Release of --af-file to record, e.g. 'gnomAD v4.1 genomes'",
+      "metavar": "TEXT",
+      "nargs": null,
+      "option_strings": [
+       "--af-release"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "sample",
+      "exclusive_group": null,
+      "help": "The sample of a multi-sample VCF",
+      "metavar": "NAME",
+      "nargs": null,
+      "option_strings": [
+       "--sample"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "hg19",
+       "hg38",
+       "t2t"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "build",
+      "exclusive_group": null,
+      "help": "The input's build, when its header doesn't tell",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--build"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "regions",
+      "exclusive_group": null,
+      "help": "Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or chr15:20000000-30000000 (default: every autosome in the header)",
+      "metavar": "REGIONS",
+      "nargs": null,
+      "option_strings": [
+       "--regions"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "imprinted_regions",
+      "exclusive_group": null,
+      "help": "Your own BED of imprinted regions, with a 'track db=hg38' line (default: the bundled list for the sample's build)",
+      "metavar": "BED",
+      "nargs": null,
+      "option_strings": [
+       "--imprinted-regions"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 20,
+      "dest": "min_gq",
+      "exclusive_group": null,
+      "help": "Leave out genotypes with GQ below this (default: 20)",
+      "metavar": "GQ",
+      "nargs": null,
+      "option_strings": [
+       "--min-gq"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 5.0,
+      "dest": "flag_terminal_mb",
+      "exclusive_group": null,
+      "help": "Flag a run reaching a chromosome end from this length (default: 5)",
+      "metavar": "MB",
+      "nargs": null,
+      "option_strings": [
+       "--flag-terminal-mb"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 10.0,
+      "dest": "flag_interstitial_mb",
+      "exclusive_group": null,
+      "help": "Flag any other run from this length (default: 10)",
+      "metavar": "MB",
+      "nargs": null,
+      "option_strings": [
+       "--flag-interstitial-mb"
+      ],
+      "required": false,
+      "type": "float"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "qc roh",
+     "func": "cmd_roh"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract qc roh"
    }
   },
   "qc vcf": {
