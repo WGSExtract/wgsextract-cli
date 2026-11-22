@@ -522,9 +522,15 @@ class Genotypes:
                 "VCF must contain one sample, or select one with --sample."
             )
         self.sample = sample or samples[0]
-        header = run_command(
-            ["bcftools", "view", "-h", str(vcf)], capture_output=True
-        ).stdout
+        read = run_command(
+            ["bcftools", "view", "-h", str(vcf)], capture_output=True, check=False
+        )
+        if read.returncode:
+            raise WGSExtractError(
+                f"Cannot read the VCF header (bcftools view exit {read.returncode}): "
+                f"{read.stderr[-500:]}"
+            )
+        header = read.stdout
         expected = "248956422" if build == "GRCh38" else "249250621"
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
         if chr1 and chr1[1] in {"248956422", "249250621"} and chr1[1] != expected:

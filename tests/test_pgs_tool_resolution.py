@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.fake_tools import FakePixi
+from tests.fake_tools import FakePixi, python_tool
 from wgsextract_cli import api
 
 FIXTURES = Path(__file__).parent / "fixtures" / "pgs"
@@ -27,7 +27,7 @@ def _params(vcf: Path, outdir: Path, sample: str | None = None) -> api.ScorePgsP
 
 
 @pytest.fixture
-def managed_bcftools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def managed_bcftools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Issue #1233: bcftools only in the CLI's Pixi environment, not on PATH.
     Dependency checks found it there, but the sample and header probes ran a
     bare `bcftools` and failed with "No such file or directory"."""
@@ -41,6 +41,7 @@ def managed_bcftools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PIXI_EXE", str(pixi.exe))
     monkeypatch.setenv("PATH", str(pixi.host_bin))
     monkeypatch.delenv("PIXI_ENVIRONMENT_NAME", raising=False)
+    return prefix / "bin"
 
 
 def _two_samples(path: Path, chr1_length: int = 100) -> Path:
@@ -87,3 +88,27 @@ def test_1233_unreadable_vcf_reports_what_bcftools_said(tmp_path: Path) -> None:
     assert result.error is not None
     assert "Cannot read VCF" in result.error.message
     assert "broken.vcf" in result.error.message
+
+
+def test_1233_failed_header_read_names_bcftools_not_pixi(
+    managed_bcftools: Path, tmp_path: Path
+) -> None:
+    """PR #1312 review: a header read failing through the Pixi wrapper was
+    reported as "pixi failed"."""
+    real = (managed_bcftools / "bcftools").resolve()
+    (managed_bcftools / "bcftools").unlink()
+    python_tool(
+        managed_bcftools,
+        "bcftools",
+        "import os, sys\n"
+        "if sys.argv[1:3] == ['view', '-h']:\n"
+        "    print('header is truncated', file=sys.stderr)\n"
+        "    sys.exit(7)\n"
+        f"os.execv({str(real)!r}, [{str(real)!r}, *sys.argv[1:]])\n",
+    )
+    result = api.score.pgs(_params(FIXTURES / "sample.vcf", tmp_path), check=False)
+    assert result.error is not None
+    message = result.error.message
+    assert "VCF header" in message and "bcftools" in message
+    assert "exit 7" in message and "header is truncated" in message
+    assert "pixi" not in message
