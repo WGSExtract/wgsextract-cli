@@ -287,11 +287,14 @@ def indexed_vcf_copy(
         return str(copy)
     logging.info(f"{vcf_path} is not sorted; sorting a working copy...")
     declared = _declare_contigs(copy, Path(workdir, "declared.vcf.gz"))
+    if declared != copy:
+        copy.unlink()
     prepared = Path(workdir, "sorted.vcf.gz")
     run_command(
         ["bcftools", "sort", "-m", "128M", "-T", Path(workdir, "sort")]
         + ["-Oz", "-o", prepared, declared]
     )
+    declared.unlink()  # one compressed copy at a time, for whole genomes
     run_command([*index, prepared])
     return str(prepared)
 
