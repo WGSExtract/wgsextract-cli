@@ -106,13 +106,15 @@ wgsextract lineage y-private --input sample.vcf.gz --build t2t
   most ampliconic, palindromic and other low-mappability sequence; per-site
   structural classes are not labelled.
 - **Filters**, in order: FILTER PASS or missing, QUAL ≥ `--min-qual` (30),
-  ALT reads ≥ `--min-alt-reads` (10), ALT fraction of FORMAT/AD ≥
-  `--min-af` (0.9). SNVs only. A BAM/CRAM is called haploid with bcftools,
-  counting reads with MAPQ ≥ `--min-mapq` (20) and bases with quality ≥
+  ALT reads ≥ `--min-alt-reads` (10), ALT fraction ≥ `--min-af` (0.9) of
+  the reads of every allele in FORMAT/AD (a call missing any AD value
+  fails). SNVs only. A BAM/CRAM is called haploid with bcftools, counting
+  reads with MAPQ ≥ `--min-mapq` (20) and bases with quality ≥
   `--base-quality` (20); a VCF's mapping filters are its caller's.
+  `--ref` may name the reference library holding the marker sets.
 - **QC:** more than 50 candidates raises `y_private_excess`: suspect
   contamination, a mismatched reference, poor data or a marker set that misses
-  the lineage. A female sample is refused.
+  the lineage. A female sample, or reads of several samples, are refused.
 
 `<outdir>/y_private/` holds `<sample>.y_private.tsv` (candidates; its `#`
 header states the marker sets, mask and filters) and `<sample>.y_private.vcf.gz`.

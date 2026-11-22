@@ -29,7 +29,7 @@ from wgsextract_cli.core.ref_library.assets import (
     resolve_reference_library,
 )
 from wgsextract_cli.core.ref_library.models import sequence_lengths
-from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary, library_roots
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
@@ -63,26 +63,24 @@ OTHER_ALLELE = "known site, other allele"
 
 @dataclass(frozen=True)
 class _Call:
+    """One called ALT allele; ``depth`` counts the reads of every allele at the
+    site, so competing ALT alleles lower the allele fraction."""
+
     chrom: str
     pos: int
     ref: str
     alt: str
     qual: float | None
     filter: str
-    ref_reads: int | None
     alt_reads: int | None
+    depth: int | None
     line: str
 
     @property
-    def depth(self) -> int | None:
-        if self.alt_reads is None:
-            return None
-        return (self.ref_reads or 0) + self.alt_reads
-
-    @property
     def af(self) -> float:
-        depth = self.depth
-        return (self.alt_reads or 0) / depth if depth else 0.0
+        if not self.depth or self.alt_reads is None:
+            return 0.0
+        return self.alt_reads / self.depth
 
 
 def _y_contig(contigs: dict[str, int], names: list[str]) -> str:
@@ -171,7 +169,8 @@ def _yfull_set(build: str, library: Path) -> tuple[Path, dict[str, Any]]:
 def _call_alignment(
     params: YPrivateParams, alignment: str, ref: str, bed: Path, out: Path, work: Path
 ) -> None:
-    """Haploid SNV calls inside the mask; MAPQ and base quality gate the reads."""
+    """Haploid SNV calls inside the mask; MAPQ and base quality gate the reads.
+    ``-A`` keeps ungenotyped ALT alleles, so their reads stay in FORMAT/AD."""
     run_pipeline(
         [
             [
@@ -190,32 +189,32 @@ def _call_alignment(
                 "FORMAT/AD,FORMAT/DP",
                 alignment,
             ],
-            ["bcftools", "call", "-m", "-v", "-V", "indels", "--ploidy", "1", "-Ou"],
-            ["bcftools", "norm", "-m", "-any", "-f", ref, "-Ov", "-o", str(out)],
+            [
+                "bcftools",
+                "call",
+                "-m",
+                "-A",
+                "-v",
+                "-V",
+                "indels",
+                "--ploidy",
+                "1",
+                "-Ov",
+                "-o",
+                str(out),
+            ],
         ],  # fmt: skip
         description="Haploid chrY SNV calling in the callable mask",
         stderr_dir=work,
     )
 
 
-def _select_vcf(vcf: str, bed: Path, out: Path, work: Path) -> None:
+def _select_vcf(vcf: str, bed: Path, out: Path) -> None:
+    """The VCF's SNV records in the mask, unsplit: AD keeps every allele."""
     indexed = any(Path(vcf + ext).exists() for ext in (".tbi", ".csi"))
-    run_pipeline(
-        [
-            [
-                "bcftools",
-                "view",
-                "-R" if indexed else "-T",
-                str(bed),
-                "-v",
-                "snps",
-                "-Ou",
-                vcf,
-            ],
-            ["bcftools", "norm", "-m", "-any", "-Ov", "-o", str(out)],
-        ],  # fmt: skip
-        description="Select chrY SNVs in the callable mask",
-        stderr_dir=work,
+    region = "-R" if indexed else "-T"
+    run_command(
+        ["bcftools", "view", region, str(bed), "-v", "snps", "-Ov", "-o", str(out), vcf]
     )
 
 
@@ -224,36 +223,48 @@ def _number(text: str) -> int | None:
 
 
 def _read_calls(path: Path) -> tuple[list[str], list[_Call]]:
-    """Header lines and the sample's ALT SNV calls (GT carrying the ALT)."""
+    """Header lines and each SNV ALT allele the sample's GT carries."""
     header: list[str] = []
     calls: list[_Call] = []
     with path.open(encoding="utf-8") as stream:
         for line in stream:
             if line.startswith("#"):
+                if line.startswith("#CHROM") and len(line.split("\t")) != 10:
+                    raise WGSExtractError(
+                        "lineage y-private needs one sample's calls; the calls "
+                        f"have {len(line.split(chr(9))) - 9} samples."
+                    )
                 header.append(line)
                 continue
             cols = line.rstrip("\n").split("\t")
-            ref, alt = cols[3].upper(), cols[4].upper()
-            if ref not in _BASES or alt not in _BASES or len(cols) < 10:
-                continue
+            ref, alts = cols[3].upper(), cols[4].upper().split(",")
             fields = dict(zip(cols[8].split(":"), cols[9].split(":"), strict=False))
-            if "1" not in re.split(r"[/|]", fields.get("GT", ".")):
-                continue
-            depths = fields.get("AD", ".").split(",")
+            depths = [_number(d) for d in fields.get("AD", ".").split(",")]
+            complete = len(depths) == len(alts) + 1 and None not in depths
+            total = sum(d for d in depths if d is not None) if complete else None
             qual = None if cols[5] == "." else float(cols[5])
-            calls.append(
-                _Call(
-                    chrom=cols[0],
-                    pos=int(cols[1]),
-                    ref=ref,
-                    alt=alt,
-                    qual=qual,
-                    filter=cols[6],
-                    ref_reads=_number(depths[0]),
-                    alt_reads=_number(depths[1]) if len(depths) > 1 else None,
-                    line=line,
+            called = {
+                a for a in re.split(r"[/|]", fields.get("GT", ".")) if a.isdigit()
+            }
+            for index in sorted(int(a) for a in called if a != "0"):
+                if index > len(alts) or ref not in _BASES:
+                    continue
+                alt = alts[index - 1]
+                if alt not in _BASES:
+                    continue
+                calls.append(
+                    _Call(
+                        chrom=cols[0],
+                        pos=int(cols[1]),
+                        ref=ref,
+                        alt=alt,
+                        qual=qual,
+                        filter=cols[6],
+                        alt_reads=depths[index] if index < len(depths) else None,
+                        depth=total,
+                        line=line,
+                    )
                 )
-            )
     return header, calls
 
 
@@ -370,11 +381,24 @@ def run_y_private(params: YPrivateParams) -> None:
         names = [] if {"chrY", "Y"} & set(contigs) else _vcf_y_name(input_file)
         chr_y = _y_contig(contigs, names)
     else:
-        contigs = sequence_lengths(get_bam_header(input_file))
+        bam_header = get_bam_header(input_file)
+        read_groups = set(
+            re.findall(r"^@RG\t(?:.*\t)?SM:([^\t\n]+)", bam_header, re.MULTILINE)
+        )
+        if len(read_groups) > 1:
+            raise WGSExtractError(
+                "lineage y-private needs one sample's reads; this alignment's "
+                f"read groups name {len(read_groups)} ({', '.join(sorted(read_groups))})."
+            )
+        contigs = sequence_lengths(bam_header)
         chr_y = _y_contig(contigs, [])
     build = _resolve_build(contigs, chr_y, params.build)
 
-    library = Path(resolve_reference_library())
+    library = Path(
+        resolve_reference_library(
+            library_roots(params.ref).resource_root("ybrowse", "yleaf")
+        )
+    )
     marker_sets: list[dict[str, Any]] = []
     ybrowse_sites: Path | None = None
     if build == "hg38":
@@ -391,9 +415,16 @@ def run_y_private(params: YPrivateParams) -> None:
             build=build,
         )
 
+    from wgsextract_cli.commands.info.metrics import sample_sex
+
+    if is_vcf and sample_sex(input_file, outdir_arg, allow_scan=False) == "Female":
+        # Only a recorded or declared sex: a VCF's lack of Y calls proves nothing.
+        raise WGSExtractError(
+            f"{input_file}'s sample is recorded as female, so there are no Y "
+            "SNPs to report."
+        )
     if not is_vcf:
         from wgsextract_cli.commands.extract import require_reference
-        from wgsextract_cli.commands.info.metrics import sample_sex
 
         lib = ReferenceLibrary(
             str(params.ref) if params.ref else None,
@@ -406,9 +437,7 @@ def run_y_private(params: YPrivateParams) -> None:
                 f"The reference FASTA's {chr_y} doesn't match the input's "
                 f"({contigs[chr_y]:,} bp); pass the FASTA it was aligned to."
             )
-        if sample_sex(input_file, outdir_arg, reference=ref, allow_scan=False) == (
-            "Female"
-        ):
+        if sample_sex(input_file, outdir_arg, reference=ref) == "Female":
             raise WGSExtractError(
                 f"{input_file} has almost no chrY reads (the sample appears "
                 "female), so there are no Y SNPs to report."
@@ -431,6 +460,8 @@ def run_y_private(params: YPrivateParams) -> None:
         "min_qual": params.min_qual,
         "min_alt_reads": params.min_alt_reads,
         "min_af": params.min_af,
+        "af": "ALT reads over the reads of every allele in FORMAT/AD; a call "
+        "missing any AD value fails",
         "min_mapq": None if is_vcf else params.min_mapq,
         "base_quality": None if is_vcf else params.base_quality,
         "mapping": "as applied by the VCF's caller (not re-checked)"
@@ -455,7 +486,7 @@ def run_y_private(params: YPrivateParams) -> None:
         )
         calls_path = work / "calls.vcf"
         if is_vcf:
-            _select_vcf(input_file, bed, calls_path, work)
+            _select_vcf(input_file, bed, calls_path)
         else:
             assert ref is not None
             _call_alignment(params, input_file, ref, bed, calls_path, work)
@@ -496,7 +527,8 @@ def run_y_private(params: YPrivateParams) -> None:
                     "note": OTHER_ALLELE if alleles else "",
                 }
             )
-            lines.append(call.line)
+            if call.line not in lines:
+                lines.append(call.line)
         counts["candidates"] = len(candidates)
 
         sets_text = "; ".join(

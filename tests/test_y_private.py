@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam
+from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, sam_to_bam
 from tests.test_ybrowse import mini_snapshot
 from wgsextract_cli import api
 from wgsextract_cli.api import CommandFailed
@@ -22,8 +22,8 @@ pytestmark = needs_htslib
 
 T2T_Y = 62_460_029
 # Inside a Poz interval of both the GRCh38 and the T2T mask.
-NOVEL, OTHER_ALLELE, YBROWSE_KNOWN, YFULL_KNOWN, LOW_AF, FEW_READS = (
-    7_000_011 + 100 * i for i in range(6)
+NOVEL, OTHER_ALLELE, YBROWSE_KNOWN, YFULL_KNOWN, LOW_AF, FEW_READS, COMPETING = (
+    7_000_011 + 100 * i for i in range(7)
 )
 OUTSIDE_MASK = 100_011  # PAR1 on GRCh38
 
@@ -61,13 +61,13 @@ def library(tmp_path, monkeypatch) -> Path:
     return library
 
 
-def _reads(pos: int, alt: str, alt_reads: int, ref_reads: int = 0) -> list[str]:
-    """20 bp reads with ``alt`` (or the reference A) at chrY:``pos``."""
+def _reads(pos: int, alt: str, alt_reads: int, other: str = "A", others: int = 0):
+    """20 bp reads with ``alt``, then ``others`` with ``other``, at chrY:``pos``."""
     seq = "A" * 10 + "{}" + "A" * 9
     return [
         f"r{pos}_{i}\t{16 if i % 2 else 0}\tchrY\t{pos - 10}\t60\t20M\t*\t0\t0"
-        f"\t{seq.format(alt if i < alt_reads else 'A')}\t{'I' * 20}"
-        for i in range(alt_reads + ref_reads)
+        f"\t{seq.format(alt if i < alt_reads else other)}\t{'I' * 20}"
+        for i in range(alt_reads + others)
     ]
 
 
@@ -79,16 +79,18 @@ def _hg38_sample(tmp_path) -> tuple[str, str]:
             stream.write("A" * min(100_000, ybrowse.Y_LENGTH - start) + "\n")
     run_command(["samtools", "faidx", str(reference)])
     lines = [f"@SQ\tSN:chrY\tLN:{ybrowse.Y_LENGTH}"]
-    for pos, alt, alt_reads, ref_reads in (
-        (NOVEL, "T", 30, 0),
-        (OTHER_ALLELE, "G", 30, 0),
-        (YBROWSE_KNOWN, "C", 30, 0),
-        (YFULL_KNOWN, "G", 30, 0),
-        (LOW_AF, "G", 24, 6),
-        (FEW_READS, "C", 6, 0),
-        (OUTSIDE_MASK, "C", 30, 0),
+    for pos, alt, alt_reads, other, others in (
+        (NOVEL, "T", 30, "A", 0),
+        (OTHER_ALLELE, "G", 30, "A", 0),
+        (YBROWSE_KNOWN, "C", 30, "A", 0),
+        (YFULL_KNOWN, "G", 30, "A", 0),
+        (LOW_AF, "G", 24, "A", 6),
+        (FEW_READS, "C", 6, "A", 0),
+        # Review of #1402: a second ALT's reads count against the first's AF.
+        (COMPETING, "C", 20, "G", 10),
+        (OUTSIDE_MASK, "C", 30, "A", 0),
     ):
-        lines += _reads(pos, alt, alt_reads, ref_reads)
+        lines += _reads(pos, alt, alt_reads, other, others)
     return str(reference), sam_to_bam(lines, tmp_path / "sample.bam")
 
 
@@ -131,10 +133,10 @@ def test_bam_candidates_exclude_known_markers_and_failed_filters(tmp_path, libra
 
     # The PAR1 call is outside the mask, so it is never made.
     assert result.details["counts"] == {
-        "called": 6,
+        "called": 7,
         "known": 2,
         "failed_filter": 0,
-        "failed_qual": 0,
+        "failed_qual": 1,
         "failed_alt_reads": 1,
         "failed_af": 1,
         "candidates": 2,
@@ -166,6 +168,14 @@ def test_bam_candidates_exclude_known_markers_and_failed_filters(tmp_path, libra
     ).stdout.split()
     assert positions == [str(NOVEL), str(OTHER_ALLELE)]
     assert not list((tmp_path / "out").glob(".y_private_*"))
+
+    # Review of #1402: without the QUAL gate, the 20 C / 10 G site still fails
+    # on AF (0.67): the G reads stay in the denominator.
+    relaxed = _private(
+        input=Path(bam), ref=Path(reference), outdir=tmp_path / "relaxed", min_qual=0
+    )
+    assert relaxed.details["counts"]["failed_af"] == 2
+    assert COMPETING not in {c["pos"] for c in relaxed.details["candidates"]}
 
 
 def test_grch38_needs_the_installed_ybrowse_snapshot(tmp_path, monkeypatch):
@@ -253,3 +263,48 @@ def test_missing_yfull_markers_need_download_consent(tmp_path, monkeypatch):
     with pytest.raises(CommandFailed, match="--download") as refused:
         _private(input=Path(vcf), outdir=tmp_path / "out")
     assert refused.value.exit_code == 2
+
+
+def test_incomplete_or_shared_allele_depths_fail_the_af_filter(tmp_path, library):
+    """Review of #1402: a missing REF depth, or reads split between two ALT
+    alleles, must not pass as AF 1.0."""
+    vcf = _vcf(
+        tmp_path / "kit.vcf",
+        T2T_Y,
+        [
+            f"chrY\t{NOVEL}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t1:.,12",
+            f"chrY\t{LOW_AF}\t.\tA\tG,T\t60\tPASS\t.\tGT:AD\t1/2:0,15,15",
+        ],
+    )
+    result = _private(input=Path(vcf), outdir=tmp_path / "out")
+    assert result.details["candidates"] == []
+    assert result.details["counts"]["failed_af"] == 3
+
+
+def test_marker_sets_come_from_the_ref_library(tmp_path, library, monkeypatch):
+    """Review of #1402: --ref naming a library selects its marker sets."""
+    monkeypatch.setitem(settings, "reference_library", str(tmp_path / "other"))
+    row = f"chrY\t{YBROWSE_KNOWN}\t.\tA\tC\t60\tPASS\t.\tGT:AD\t1:0,20"
+    vcf = _vcf(tmp_path / "kit.vcf", ybrowse.Y_LENGTH, [row])
+    result = _private(input=Path(vcf), outdir=tmp_path / "out", ref=library)
+    assert result.details["counts"]["known"] == 1
+
+
+def test_a_sample_recorded_as_female_is_refused(tmp_path, library):
+    vcf = _vcf(tmp_path / "kit.vcf", T2T_Y, [])
+    run_wgsextract("sample", "set", "--input", vcf, "--sex", "Female")
+    with pytest.raises(CommandFailed, match="female"):
+        _private(input=Path(vcf), outdir=tmp_path / "out")
+
+
+def test_reads_of_several_samples_are_refused(tmp_path, library):
+    """Review of #1402: mpileup would call each read group's sample apart."""
+    lines = [
+        f"@SQ\tSN:chrY\tLN:{ybrowse.Y_LENGTH}",
+        "@RG\tID:a\tSM:father",
+        "@RG\tID:b\tSM:son",
+        *_reads(NOVEL, "T", 2),
+    ]
+    bam = sam_to_bam(lines, tmp_path / "pair.bam")
+    with pytest.raises(CommandFailed, match="read groups name 2"):
+        _private(input=Path(bam), outdir=tmp_path / "out")
