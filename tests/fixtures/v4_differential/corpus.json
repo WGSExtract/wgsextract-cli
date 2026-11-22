@@ -1,0 +1,432 @@
+{
+  "schema_version": 1,
+  "description": "Released WGS Extract v44.2 versus the current CLI: each case's v44.2 behaviour (release source citation), current behaviour, relation (parity, correction, policy or known-gap) and evidence. tests/test_v4_differential.py checks every case that has expected outputs; scripts/v4_differential_corpus.py runs the evidence and the public HG00096 comparison. See docs/migrating-from-v4.md.",
+  "pins": {
+    "development_repository": {
+      "url": "https://github.com/WGSExtract/WGSExtract-Dev",
+      "commit": "f0f50d867c1e395f33abf09d6291d708e7fd1aba",
+      "note": "Stale v33-era tree; not the released program."
+    },
+    "program_zip": {
+      "url": "https://get.wgse.io/WGSExtract-v44.2_28Feb2023_program.zip",
+      "sha256": "ee7b57e042fb05626a6f3c6dc791bb86857a9802d48ecdbc8d1a1c4604b52a23",
+      "version": "44.2 (28Feb2023)"
+    },
+    "reference_zip": {
+      "url": "https://get.wgse.io/WGSExtract-v8_30Jan2023_reflib.zip",
+      "sha256": "5cd199c7dfa68ec594e8b23cf1f19ef34aadd6973f22be14a6c1659ffb131365",
+      "version": "v8 (30Jan2023)"
+    },
+    "cli_source_analysis": "1cc62f3cbca69937df5499774bdbebd1453bb886",
+    "cli_empirical": "6b676c17481d866a96229e8a2db654ecf88d1a3a",
+    "tools_note": "Both sides ran the same modern samtools/bcftools/htslib 1.24, not the historic bundled installers; differences isolate program logic, not binary versions."
+  },
+  "cases": [
+    {
+      "id": "liftover-interior",
+      "category": "liftover",
+      "relation": "parity",
+      "v44_2": "Interior marker of a forward chain block: one-based position passed to pyliftover; the origin errors cancel.",
+      "v44_2_source": "program/hg38tohg19.py:63-72",
+      "current": "Same hg19 coordinate and genotype.",
+      "evidence": "tests/test_v4_differential.py::test_liftover_block_edges_strand_and_ambiguous_hits",
+      "expected": {
+        "v44_2": [
+          "1",
+          "901",
+          "AC"
+        ],
+        "current": [
+          "1",
+          "901",
+          "AC"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "liftover-block-end",
+      "category": "liftover-boundary",
+      "relation": "correction",
+      "v44_2": "Last base of a chain block: the one-based position falls outside the block in pyliftover's zero-based API, so the marker is dropped.",
+      "v44_2_source": "program/hg38tohg19.py:63-81",
+      "current": "Converted to zero-based and back: lifted to the block's last hg19 base.",
+      "evidence": "tests/test_v4_differential.py::test_liftover_block_edges_strand_and_ambiguous_hits",
+      "expected": {
+        "v44_2": null,
+        "current": [
+          "1",
+          "1500",
+          "AC"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "liftover-gap-edge",
+      "category": "liftover-boundary",
+      "relation": "correction",
+      "v44_2": "Last base of a chain gap: read as the next block's first base and written at that block's first hg19 coordinate.",
+      "v44_2_source": "program/hg38tohg19.py:63-72",
+      "current": "Not lifted: the base has no hg19 placement, so the marker is a no-call.",
+      "evidence": "tests/test_v4_differential.py::test_liftover_block_edges_strand_and_ambiguous_hits",
+      "expected": {
+        "v44_2": [
+          "1",
+          "1600",
+          "AC"
+        ],
+        "current": null
+      },
+      "tracking": null
+    },
+    {
+      "id": "liftover-inverted-block",
+      "category": "strand",
+      "relation": "correction",
+      "v44_2": "Inverted block: hit strand ignored (genotype not complemented) and the origin error no longer cancels (two bases off).",
+      "v44_2_source": "program/hg38tohg19.py:66-72",
+      "current": "Correct hg19 coordinate; genotype complemented and written in allele order.",
+      "evidence": "tests/test_v4_differential.py::test_liftover_block_edges_strand_and_ambiguous_hits",
+      "expected": {
+        "v44_2": [
+          "1",
+          "3298",
+          "AC"
+        ],
+        "current": [
+          "1",
+          "3300",
+          "GT"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "liftover-ambiguous-hit",
+      "category": "ambiguous-hit",
+      "relation": "correction",
+      "v44_2": "Two chain placements: the first hit is written.",
+      "v44_2_source": "program/hg38tohg19.py:65-72",
+      "current": "Ambiguous placement rejected: no hg19 row, so the marker is a no-call.",
+      "evidence": "tests/test_v4_differential.py::test_liftover_block_edges_strand_and_ambiguous_hits",
+      "expected": {
+        "v44_2": [
+          "1",
+          "2801",
+          "AC"
+        ],
+        "current": null
+      },
+      "tracking": null
+    },
+    {
+      "id": "call-high-depth-het",
+      "category": "quality",
+      "relation": "parity",
+      "v44_2": "30x heterozygous autosomal marker called.",
+      "v44_2_source": "program/microarray.py:643-644,683-692",
+      "current": "Same genotype; reason 'called'.",
+      "evidence": "tests/test_v4_differential.py::test_calling_policy_depth_mapq_and_male_x",
+      "expected": {
+        "v44_2": "AC",
+        "current": [
+          "AC",
+          "called"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "call-low-depth",
+      "category": "quality",
+      "relation": "policy",
+      "v44_2": "3-read marker called: no depth or GQ gate.",
+      "v44_2_source": "program/microarray.py:643-644,683-692",
+      "current": "No-call with reason low_dp (default minimum depth 10, GQ 20). More no-calls on low-coverage input are intended, not an accuracy ranking.",
+      "evidence": "tests/test_v4_differential.py::test_calling_policy_depth_mapq_and_male_x",
+      "expected": {
+        "v44_2": "CC",
+        "current": [
+          "--",
+          "low_dp"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "call-low-mapq",
+      "category": "quality",
+      "relation": "policy",
+      "v44_2": "Marker supported only by MAPQ 5 reads called: no mapping-quality floor.",
+      "v44_2_source": "program/microarray.py:643-644",
+      "current": "No-call with reason low_mapq (reads below MAPQ 10 are ignored).",
+      "evidence": "tests/test_v4_differential.py::test_calling_policy_depth_mapq_and_male_x",
+      "expected": {
+        "v44_2": "GG",
+        "current": [
+          "--",
+          "low_mapq"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "call-male-x-nonpar",
+      "category": "sex",
+      "relation": "policy",
+      "v44_2": "The released v8 ploidy.txt makes every contig diploid, so a male's non-PAR X marker with mixed reads is called heterozygous.",
+      "v44_2_source": "program/microarray.py:599-600,643-644,657-659; v8 reflib microarray/ploidy.txt",
+      "current": "Male non-PAR X is called haploid from the sample's sex and build.",
+      "evidence": "tests/test_v4_differential.py::test_calling_policy_depth_mapq_and_male_x",
+      "expected": {
+        "v44_2": "AG",
+        "current": [
+          "AA",
+          "called"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "call-female-y",
+      "category": "sex",
+      "relation": "policy",
+      "v44_2": "All-diploid calling has no sex gate: reads on chrY in a female sample are called.",
+      "v44_2_source": "program/microarray.py:643-644; v8 reflib microarray/ploidy.txt",
+      "current": "Female chrY markers are no-calls; female X is diploid.",
+      "evidence": "tests/test_microarray_simulation.py::test_female_x_is_diploid_and_y_is_a_no_call",
+      "tracking": null
+    },
+    {
+      "id": "absent-marker-no-call",
+      "category": "quality",
+      "relation": "parity",
+      "v44_2": "Template markers absent from the CombinedKit are written as no-calls (--, Ancestry 00), not as reference.",
+      "v44_2_source": "program/aconv.py:230-239",
+      "current": "Same default; reference filling is an explicit VCF-input opt-in.",
+      "evidence": "tests/test_microarray_simulation.py::test_absent_sites_and_weak_exports_are_no_calls_by_default",
+      "tracking": null
+    },
+    {
+      "id": "mt-rcrs-export",
+      "category": "mt-reference",
+      "relation": "correction",
+      "v44_2": "MT markers are lifted through the hg38->hg19 chain like nuclear ones, projecting rCRS positions onto hg19's Yoruba chrM.",
+      "v44_2_source": "program/hg38tohg19.py:60-72; program/referencelibrary.py:153",
+      "current": "rCRS MT positions are kept unchanged on export (#1042, rCRS mtDNA export).",
+      "evidence": "tests/test_microarray_vendor_formats.py::test_issue_1042_hg38_mt_keeps_rcrs_coordinates_and_gap_sites",
+      "tracking": null
+    },
+    {
+      "id": "mt-vcf-homoplasmic",
+      "category": "genealogy",
+      "relation": "parity",
+      "v44_2": "Haploid mtDNA VCF (bcftools call --ploidy 1 -mv -P 0) calls a 30x homoplasmic variant.",
+      "v44_2_source": "program/mainwindow.py:1779-1783",
+      "current": "extract mito-vcf calls the same variant and genotype.",
+      "evidence": "tests/test_v4_differential.py::test_mt_vcf_homoplasmic_and_low_depth_variants",
+      "expected": {
+        "v44_2": [
+          "A",
+          "G",
+          "1"
+        ],
+        "current": [
+          "A",
+          "G",
+          "1"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "mt-vcf-low-depth",
+      "category": "genealogy",
+      "relation": "parity",
+      "v44_2": "A 2-read mtDNA variant is emitted: no depth gate.",
+      "v44_2_source": "program/mainwindow.py:1779-1783",
+      "current": "extract mito-vcf also emits it; filter low-depth calls downstream.",
+      "evidence": "tests/test_v4_differential.py::test_mt_vcf_homoplasmic_and_low_depth_variants",
+      "expected": {
+        "v44_2": [
+          "A",
+          "G",
+          "1"
+        ],
+        "current": [
+          "A",
+          "G",
+          "1"
+        ]
+      },
+      "tracking": null
+    },
+    {
+      "id": "mt-haplogroup-yoruba",
+      "category": "genealogy",
+      "relation": "parity",
+      "v44_2": "mt haplogroup classification refuses Yoruba-mtDNA (hg19 chrM) alignments.",
+      "v44_2_source": "program/mainwindow.py:1835-1857",
+      "current": "lineage mt-haplogroup refuses or warns on Yoruba mtDNA.",
+      "evidence": "tests/test_lineage_haplogroups.py::test_mt_haplogroup_refuses_or_warns_on_yoruba_mtdna",
+      "tracking": null
+    },
+    {
+      "id": "y-random-contig",
+      "category": "genealogy",
+      "relation": "known-gap",
+      "v44_2": "Y and Y+MT BAMs on chr-named GRCh38 keep chrY_KI270740v1_random reads.",
+      "v44_2_source": "program/mainwindow.py:1890-1896,1927-1933",
+      "current": "extract ydna-bam / y-mt-extract keep the main chrY (and chrM) contigs only.",
+      "evidence": null,
+      "tracking": "#1184"
+    },
+    {
+      "id": "targeted-y-vcf-grch37",
+      "category": "genealogy",
+      "relation": "known-gap",
+      "v44_2": "Targeted Y VCF on builds 19/37/38, annotated with yBrowse ID, HG and ISOGG.",
+      "v44_2_source": "program/mainwindow.py:1985-2001; program/referencelibrary.py:237-244",
+      "current": "extract ydna-vcf --ybrowse is GRCh38-only and rejects GRCh37/T2T.",
+      "evidence": null,
+      "tracking": "#1186"
+    },
+    {
+      "id": "stats-placed-unmapped",
+      "category": "stats",
+      "relation": "correction",
+      "v44_2": "idxstats mapped and unmapped columns are summed per contig, so unmapped reads placed beside their mates count as mapped.",
+      "v44_2_source": "program/bamfiles.py:447-492,539-550",
+      "current": "info --detailed keeps placed-unmapped reads out of the mapped count.",
+      "evidence": "tests/test_info_metrics.py::test_unmapped_mates_are_not_counted_as_mapped",
+      "tracking": null
+    },
+    {
+      "id": "indel-export",
+      "category": "indel",
+      "relation": "correction",
+      "v44_2": "The InDel VCF action passes mpileup -I (skip indels) and call -V snps, so it writes no indels.",
+      "v44_2_source": "program/mainwindow.py:2440-2444; Betav4_Release_Notes.txt:112-114",
+      "current": "vcf indel calls and normalises the indel.",
+      "evidence": "tests/test_v4_differential.py::test_indel_export_keeps_the_indels_v44_2_skipped",
+      "expected": {
+        "v44_2": [],
+        "current": [
+          [
+            "chr1",
+            "1000",
+            "TTC",
+            "T",
+            "1/1"
+          ]
+        ]
+      },
+      "tracking": null
+    }
+  ],
+  "completed_fixes": [
+    {
+      "issue": "#1042",
+      "title": "rCRS mtDNA markers kept off the hg38->hg19 (Yoruba chrM) chain on export",
+      "evidence": "tests/test_microarray_vendor_formats.py::test_issue_1042_hg38_mt_keeps_rcrs_coordinates_and_gap_sites"
+    },
+    {
+      "issue": "#1043",
+      "title": "Microarray reuse identity includes effective sex/ploidy, template/chain identity and quality settings",
+      "evidence": "tests/test_microarray_reuse.py::test_issue_1043_changed_declared_sex_invalidates_reuse"
+    },
+    {
+      "issue": "#1044",
+      "title": "gVCF reference-block DP no longer certifies interior chip markers",
+      "evidence": "tests/test_microarray_simulation.py::test_issue_1044_block_dp_does_not_certify_interior_chip_markers"
+    }
+  ],
+  "public": {
+    "description": "Public-data comparison retained from #994 (v4 before/after): released v44.2 functions and the CLI on the same reads, targets, ploidy, chain and 23andMe V3 template. Fetch with scripts/v4_differential_corpus.py fetch --download; run offline with its public subcommand.",
+    "sample": "HG00096 (1000 Genomes, open access, NYGC high-coverage GRCh38)",
+    "cram": "https://ftp.sra.ebi.ac.uk/vol1/run/ERR324/ERR3240114/HG00096.final.cram",
+    "region": "chr20:10000000-10100000",
+    "records": 24766,
+    "records_sha256": "848bfa5301bc8b92e0a23f5b8afb1f868e29f0f526ae8e8f110cffc1da602574",
+    "records_digest": "SHA-256 of `samtools view` output (records only, no header)",
+    "reference": {
+      "contig": "chr20",
+      "length": 64444167,
+      "md5": "b18e6c531b0bd70e949a7fc20859cb01",
+      "download": "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr20.fa.gz"
+    },
+    "reference_zip_members": {
+      "WGSExtractv4/reference/hg38ToHg19.over.chain.gz": "3a055f690fbddadea2c4cc624f09dc3519f9001ebab2223a25bf377b1a4564b9",
+      "WGSExtractv4/reference/microarray/All_SNPs_hg38_ref.tab.gz": "9d2b71090f83bc106bd6d09666fcc1872221f3259873d96380b9b7995fb4050d",
+      "WGSExtractv4/reference/microarray/All_SNPs_hg38_ref.tab.gz.tbi": "c3caa200cca6186e697aa95195f3cb7f7522926d303522396ca93afeb3b2295b",
+      "WGSExtractv4/reference/microarray/ploidy.txt": "d209259dfc966a708120668768f27800aa17c5f57ade4e5e50a248b455c3c3ab",
+      "WGSExtractv4/reference/microarray/raw_file_templates/head/23andMe_V3.txt": "d3d62880f60c00d9a62d0963977724ec8fc1a6b87df5501800abeca26f72a51e",
+      "WGSExtractv4/reference/microarray/raw_file_templates/body/23andMe_V3.txt": "cbc56b27dc1ba751c99ccb327b90c1507c1af523b3b51743c1d91b0610f212c8"
+    },
+    "targets": 131,
+    "targets_sha256": "98b02aeeec9a77dc10cf88107f165dceee86d281c6f4906df0ad542054872919",
+    "downsample": {
+      "qnames": "tests/fixtures/v4_differential/hg00096_low_depth_qnames.txt",
+      "records": 2474,
+      "records_sha256": "f3a71bb0ecad6b5c96f17ed86ea712c3ffe0caae13d81aad3747135293059e59",
+      "origin": "samtools 1.24 view --subsample 0.1 --subsample-seed 994 on linux-x86_64 (#994 run). The same command keeps different reads on macOS arm64, so the corpus selects the recorded read names instead."
+    },
+    "v44_2_outputs": "tests/fixtures/v4_differential/hg00096_v44.2.tsv",
+    "expected": {
+      "combined_kit_hg19": {
+        "relation": "parity",
+        "v44_2_rows": 131,
+        "current_rows": 131,
+        "disagreements": 0
+      },
+      "23andme_v3": {
+        "relation": "parity",
+        "v44_2_rows": 959286,
+        "current_rows": 959286,
+        "called": 57,
+        "disagreements": 0,
+        "note": "57 observed chip calls, not 959,286 independent concordant genotypes; other rows are no-calls outside the slice."
+      },
+      "low_depth": {
+        "relation": "policy",
+        "v44_2_rows": 124,
+        "v44_2_called": 124,
+        "current_rows": 124,
+        "current_called": 1,
+        "current_reasons": {
+          "called": 1,
+          "low_dp": 123,
+          "no_reads": 7
+        },
+        "note": "A quality-policy difference, not an accuracy ranking: neither side was truth-checked.",
+        "disagreements_where_both_called": 0
+      },
+      "stats": {
+        "relation": "correction",
+        "v44_2_mapped": 24766,
+        "current_mapped": 24746,
+        "current_raw": 24766,
+        "note": "20 unmapped reads placed beside their mates."
+      },
+      "indels": {
+        "relation": "correction",
+        "v44_2_records": 0,
+        "current_records": 39,
+        "note": "39 emitted indels were not truth-classified."
+      }
+    },
+    "recorded_run": {
+      "host": "lin-omarchy",
+      "cli": "6b676c17481d866a96229e8a2db654ecf88d1a3a",
+      "tools": "samtools/bcftools/htslib 1.24",
+      "date": "2026-11-16",
+      "timing_s": {
+        "v44_2_combined_kit_and_liftover": 2.927,
+        "v44_2_v3_converter": 3.715,
+        "current_microarray_with_v3": 5.976
+      },
+      "timing_note": "Single warm runs on one leased core; descriptive only, not a speed claim."
+    }
+  }
+}
