@@ -18,13 +18,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
-- `score pgs --trait bmi` now uses PGS005198, the GIANT consortium's
-  multi-ancestry BMI score (Smit et al. 2025, CC BY 4.0), instead of
-  PGS000027, which only academic research may use. Its ancestry-adjusted
-  percentiles need the new reference release `pgs-ref-2`, so the first run
-  after upgrading needs `--download` again. CC BY 4.0 scores no longer warn
-  `pgs_license_restricted`
-  ([#1165, BMI score](https://github.com/WGSExtract/wgsextract-cli/issues/1165)).
 - An interrupted reference download no longer resumes onto a different
   version of the file. Resumes were tied to the URL alone, so a file replaced
   at the same URL by one of the same size was installed as the old file's start
