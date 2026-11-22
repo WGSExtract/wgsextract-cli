@@ -205,7 +205,7 @@ def _sort_and_mark_ultima(
             stages[-1],
             out_path,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             fmt=fmt,
             ref=setup.ref,
             duplicates="markdup",
@@ -218,7 +218,7 @@ def _sort_and_mark_ultima(
     sorted_bam = str(Path(tmp, "sorted.bam"))
     metrics = str(Path(setup.outdir, f"{setup.stem}_duplicate_metrics.txt"))
     sort = get_sam_sort_cmd(
-        sorted_bam, setup.threads, setup.memory, sam_input=True, temp_dir=tmp
+        sorted_bam, setup.threads, setup.sort_budget, sam_input=True, temp_dir=tmp
     )
     partial = [out_path, out_path + ".bai", out_path + ".crai"]
     with cleanup_files(on_failure=partial, preserve_outputs=atomic_outputs_enabled()):
@@ -355,7 +355,7 @@ def align_minimap2(job: AlignJob) -> None:
         setup.ref,
         preset,
         threads=setup.threads,
-        memory=setup.memory,
+        memory=setup.sort_budget,
         samblaster=duplicates == "samblaster",
         reads=read_count,
         read_length=read_length,
@@ -376,7 +376,7 @@ def align_minimap2(job: AlignJob) -> None:
                 reference=setup.ref,
                 threads=setup.threads,
                 alignment_threads=setup.alignment_threads,
-                memory=setup.memory,
+                memory=setup.sort_budget,
                 aligner="minimap2",
                 preset=preset,
                 samblaster=duplicates == "samblaster",
@@ -392,7 +392,7 @@ def align_minimap2(job: AlignJob) -> None:
         "minimap2",
         threads=setup.threads,
         alignment_threads=setup.alignment_threads,
-        memory=setup.memory,
+        memory=setup.sort_budget,
         samblaster=duplicates == "samblaster",
         reads=read_count,
         platform=job.platform,
@@ -441,7 +441,7 @@ def align_minimap2(job: AlignJob) -> None:
                 format=job.format,
                 output_profile=job.output_profile or "default",
                 threads=setup.threads,
-                memory=setup.memory,
+                memory=setup.sort_budget,
                 mapper=align_cmd,
                 compression_threads=setup.compression_threads,
                 # Building the index uses no GPU.
@@ -469,7 +469,7 @@ def align_minimap2(job: AlignJob) -> None:
             align_cmd + ([job.r2] if job.r2 else []),
             out_bam,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             fmt=job.format,
             output_profile=job.output_profile or "default",
             ref=setup.ref,

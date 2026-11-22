@@ -321,17 +321,15 @@ class TestResourceDefaults(unittest.TestCase):
 
         self.assertEqual(threads, "10")
 
-    def test_resource_defaults_clamp_non_positive_thread_count(self):
-        from wgsextract_cli.core import resource_policy
 
-        class FakeMemory:
-            total = 16 * (1024**3)
+def test_resource_defaults_clamp_non_positive_thread_count(ram):
+    from wgsextract_cli.core import resource_policy
 
-        with patch("psutil.virtual_memory", return_value=FakeMemory()):
-            threads, memory = resource_policy.get_resource_defaults(0, None)
+    ram(16 * (1024**3))
+    threads, memory = resource_policy.get_resource_defaults(0, None)
 
-        self.assertEqual(threads, "1")
-        self.assertEqual(memory, "4G")
+    assert threads == "1"
+    assert memory == "4G"
 
 
 class TestSamtoolsCommands(unittest.TestCase):
