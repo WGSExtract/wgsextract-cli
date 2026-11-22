@@ -196,6 +196,9 @@ def test_1173_review_directory_and_fdopen_failures_do_not_leak_descriptors(
 ) -> None:
     file = tmp_path / "regular"
     file.write_bytes(b"reads")
+    # A subdirectory, not the root: the walk opens its ancestors before refusing.
+    directory = tmp_path / "directory"
+    directory.mkdir()
     process = psutil.Process()
     open_handles = process.num_handles if sys.platform == "win32" else process.num_fds
     with remote_server(tmp_path) as server:
@@ -204,7 +207,7 @@ def test_1173_review_directory_and_fdopen_failures_do_not_leak_descriptors(
         for _ in range(8):
             assert (
                 request(
-                    server, "/v1/viewer-file?" + urlencode({"path": str(tmp_path)})
+                    server, "/v1/viewer-file?" + urlencode({"path": str(directory)})
                 )[0]
                 == 403
             )

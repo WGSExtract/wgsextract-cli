@@ -382,7 +382,7 @@ def test_issue_1160_cli_listen_override_binds_chosen_interface_and_warns(
         + '[server]\nlisten="127.0.0.1"\nallowed_hosts=["genomes.example"]\n'
         + ('public_url="https://genomes.example"\n' if listen == "0.0.0.0" else "")
     )
-    with (tmp_path / "server.log").open("w+") as log:
+    with (tmp_path / "server.log").open("w+", encoding="utf-8") as log:
         process = subprocess.Popen(
             [
                 *get_cli_command(),
