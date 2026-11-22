@@ -55,22 +55,26 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
 
 ## Review Comment Policy
 
-Before marking ready, obtain an independent local review, fix its findings,
-run `pixi run lint` and relevant tests/type checks, and self-review against
-AGENTS.md. For a draft this skill created, run `gh pr ready` after that gate
-passes, unless the user explicitly requires it to remain draft. For an existing
-draft, obtain authorization before marking ready. Readiness starts Copilot
-review and area-selected full CI; do not land using the old draft-run checks.
-Finish review rounds while draft and certify macOS (and Windows where a host
-exists) on the exact head first. Immediately before `gh pr ready`, run
-`python scripts/ci_capacity.py --wait` in a background watcher; proceed only on
-exit 0. Exit 3 means hold: merge-queue jobs are waiting for runners or too
-many ready matrices are in flight.
+Before opening the draft, obtain an independent local review, fix its
+findings, run `pixi run lint` and relevant tests/type checks, and self-review
+against AGENTS.md. Copilot reviews the draft, not the ready PR: ruleset
+`15885247` reviews PRs, drafts included, when opened, but not later pushes
+(checked 2026-11-21). After pushing to a draft, request a fresh review with
+`gh pr edit <number> --add-reviewer @copilot`, wait for it, and handle all its
+threads in one batch before marking ready; don't change settings. For a draft
+this skill created, run `gh pr ready` once that gate passes and the review
+threads are handled, unless the user explicitly requires it to remain draft.
+For an existing draft, obtain authorization before marking ready. Readiness
+starts area-selected full CI; do not land using the old draft-run checks.
+Certify macOS (and Windows where a host exists) on the exact head before
+ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
+--wait` in a background watcher and proceed only on exit 0 (3 = hold:
+merge-queue jobs wait for runners or too many ready matrices are in flight).
 Admit one PR at a time per supervisor: start the next check only after the
-previously admitted PR's ready area run is visible, so parallel watchers
-cannot all pass on the same free capacity.
-Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
-request another review explicitly when needed, without changing settings.
+previously admitted PR's ready area run is visible.
+
+A DIRTY PR is never enqueued by auto-merge; the `auto-merge-blocked` label
+marks one. Merge the base branch, resolve the conflicts and push.
 
 Collect all open threads before editing and push one locally verified batch
 per review round. Notify the responsible agent on new threads; handle them
