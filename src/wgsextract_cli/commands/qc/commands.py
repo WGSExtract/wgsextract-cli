@@ -375,7 +375,7 @@ def _multiqc_report(params: MultiqcParams) -> int:
                     f"{source}."
                 )
             if params.force:
-                move_file(staged, report)
+                move_file(staged, report, locked=True)
             else:
                 try:
                     link_new_file(staged, report)

@@ -481,12 +481,16 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
     with pytest.raises(FileExistsError):
         temp_directory.link_new_file(work / "report.html", output / "report.html")
     assert (output / "report.html").read_bytes() == b"new"
-    assert [p.name for p in output.iterdir()] == ["report.html"]
+    assert _visible(output) == ["report.html"]
 
 
 def _visible(folder: Path) -> list[str]:
-    # macOS keeps ._ metadata files on exFAT; publication locks are hidden too.
-    return sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+    # macOS keeps ._ metadata files on exFAT; publication locks stay, hidden.
+    return sorted(
+        p.name
+        for p in folder.iterdir()
+        if not p.name.startswith(("._", ".wgse_publish-"))
+    )
 
 
 @pytest.mark.parametrize(
@@ -546,3 +550,88 @@ def test_1241_link_new_file_publishes_once_on_a_real_exfat_volume(
         temp_directory.link_new_file(work / "report.html", output / "report.html")
     assert (output / "report.html").read_bytes() == b"new"
     assert _visible(output) == ["report.html"]
+
+
+def _while_renaming(
+    monkeypatch, other_run: Callable[[], None]
+) -> tuple[list[BaseException], list[threading.Thread]]:
+    """Start ``other_run`` in another thread just before the next rename()
+    into place and give it time to finish before renaming; returns the
+    errors it raised once that rename is done."""
+    from wgsextract_cli.core import temp_directory
+
+    real = os.rename
+    errors: list[BaseException] = []
+    threads: list[threading.Thread] = []
+
+    def run():
+        try:
+            other_run()
+        except BaseException as error:
+            errors.append(error)
+
+    def rename(source, destination):
+        monkeypatch.setattr(temp_directory.os, "rename", real)
+        other = threading.Thread(target=run)
+        other.start()
+        other.join(timeout=1)  # a run waiting on the publication lock stays alive
+        real(source, destination)
+        threads.append(other)
+
+    monkeypatch.setattr(temp_directory.os, "rename", rename)
+    return errors, threads
+
+
+def test_1241_link_new_file_fallback_does_not_overwrite_a_concurrent_link(
+    tmp_path, monkeypatch
+):
+    """PR #1320 review: one run's source can't be hard-linked (EMLINK), so
+    it publishes by check-then-rename; another run's link landing between
+    the check and the rename was silently replaced while both succeeded."""
+    from wgsextract_cli.core import temp_directory
+
+    ours, theirs, report = tmp_path / "ours", tmp_path / "theirs", tmp_path / "r"
+    ours.write_text("ours")
+    theirs.write_text("theirs")
+    real = os.link
+
+    def too_many_links(source, destination):
+        # OS boundary: only our source has reached the volume's link limit.
+        if Path(source) == ours:
+            raise OSError(errno.EMLINK, os.strerror(errno.EMLINK), str(source))
+        real(source, destination)
+
+    monkeypatch.setattr(temp_directory.os, "link", too_many_links)
+    errors, threads = _while_renaming(
+        monkeypatch, lambda: temp_directory.link_new_file(theirs, report)
+    )
+    temp_directory.link_new_file(ours, report)
+    threads[0].join()
+    assert report.read_text() == "ours"
+    assert [type(e) for e in errors] == [FileExistsError]
+
+
+def test_1241_force_replacement_is_not_lost_to_a_concurrent_fallback(
+    tmp_path, monkeypatch
+):
+    """PR #1320 review: `qc multiqc --force` replacing the report between
+    another run's check and rename on exFAT had its report silently
+    replaced, though it reported success."""
+    from wgsextract_cli.core import temp_directory
+
+    ours, theirs, report = tmp_path / "ours", tmp_path / "theirs", tmp_path / "r"
+    ours.write_text("ours")
+    theirs.write_text("forced")
+
+    def no_hard_links(source, destination):
+        raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP), str(source))
+
+    monkeypatch.setattr(temp_directory.os, "link", no_hard_links)
+    errors, threads = _while_renaming(
+        monkeypatch,
+        lambda: temp_directory.move_file(theirs, report, locked=True),
+    )
+    temp_directory.link_new_file(ours, report)
+    threads[0].join()
+    assert errors == []
+    assert report.read_text() == "forced"
