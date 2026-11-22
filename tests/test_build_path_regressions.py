@@ -169,3 +169,28 @@ def test_issue_1004_vcf_assembly_metadata_survives_path_fix(
     )
 
     assert get_vcf_build(bgzip_index(vcf)) == "hg38"
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("reference", "build"),
+    [
+        ("file:///data/chm13-project/ref.fa", None),
+        ("/data/hg19 work/GRCh38.fa.gz", "hg38"),
+        ("C:\\chm13\\hs37d5.fa.gz", "hg19"),
+        ("GRCh38", "hg38"),
+    ],
+)
+def test_vcf_reference_path_counts_only_its_file_name(
+    tmp_path: Path, reference: str, build: str | None
+) -> None:
+    """bcftools writes the reference's full path; a folder named chm13 made
+    VEP and PharmCAT treat a GRCh38 VCF as T2T (found certifying a worktree
+    named chm13-tests-deep-tmp)."""
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        f"##fileformat=VCFv4.2\n##reference={reference}\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    assert get_vcf_build(bgzip_index(vcf)) == build

@@ -3,7 +3,11 @@ import subprocess
 from collections.abc import Sequence
 from os import PathLike, fspath
 
-from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
+from wgsextract_cli.core.builds import (
+    build_from_chr1_length,
+    build_from_path,
+    build_from_reference_header,
+)
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.ref_library.assets import (
@@ -107,11 +111,17 @@ def get_vcf_build(vcf_path: str) -> str | None:
         build = build_from_chr1_length(sequence_lengths(res.stdout))
         if build:
             return build
-        # Tool provenance lines contain command paths, not assembly evidence.
+        # Tool provenance lines contain command paths, not assembly evidence,
+        # and a ##reference path is evidence only by its file name.
+        lines = res.stdout.splitlines()
+        for line in lines:
+            if line.lower().startswith("##reference="):
+                if build := build_from_reference_header(line.partition("=")[2]):
+                    return build
         metadata = "\n".join(
             line
-            for line in res.stdout.splitlines()
-            if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
+            for line in lines
+            if line.lower().startswith(("##assembly=", "##contig="))
         )
         return build_from_path(metadata)
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
