@@ -4,6 +4,7 @@ import json
 import logging
 import platform as host_platform
 import random
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -23,6 +24,7 @@ from wgsextract_cli.commands.realignment import preparation as realign_preparati
 from wgsextract_cli.commands.realignment import resources as realign_resources
 from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.commands.vcf import basic, callers, contig_calling
+from wgsextract_cli.core import _resource_pipeline as pipeline
 from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.alignment.metadata import get_bam_header
@@ -190,7 +192,7 @@ def test_realign_staged_fastqs_are_budgeted_on_the_temporary_volume(
 ):
     out = str(tmp_path / "out")
     spill = str(tmp_path / "spill")
-    monkeypatch.setattr(resources, "_disk_space", lambda path: (path, 100 * GIB))
+    monkeypatch.setattr(pipeline, "_disk_space", lambda path: (path, 100 * GIB))
     estimate = resources.estimate_resources(
         "realign",
         input_paths=[str(source)],
@@ -212,8 +214,8 @@ def test_realign_staged_fastqs_are_budgeted_on_the_temporary_volume(
 def test_regional_gatk_and_scatter_artifacts_are_budgeted_on_the_selected_volume(
     monkeypatch,
 ):
-    monkeypatch.setattr(resources, "_input_size", lambda _: 100 * 1024**2)
-    monkeypatch.setattr(resources, "_disk_space", lambda path: (path, 100 * GIB))
+    monkeypatch.setattr(pipeline, "_input_size", lambda _: 100 * 1024**2)
+    monkeypatch.setattr(pipeline, "_disk_space", lambda path: (path, 100 * GIB))
     estimate = resources.estimate_resources(
         "gatk",
         input_paths=["input.cram"],
@@ -285,7 +287,7 @@ def test_streamed_collation_spill_drains_within_the_temporary_sort_estimate(
     tmp_path, source, monkeypatch
 ):
     output, scratch = str(tmp_path / "output"), str(tmp_path / "scratch")
-    monkeypatch.setattr(resources, "_disk_space", lambda path: (path, 100 * GIB))
+    monkeypatch.setattr(pipeline, "_disk_space", lambda path: (path, 100 * GIB))
     estimate = resources.estimate_resources(
         "realign",
         input_paths=[str(source)],
@@ -311,7 +313,7 @@ def test_h2_envelope_reuses_memory_model_and_scales_disk_by_input_reads(
     reference.write_text(">chr1\nA\n")
     Path(str(reference) + ".fai").write_text("chr1\t3217346917\t0\t1\t2\n")
     monkeypatch.setattr(alignment_memory, "available_memory", lambda: 64 * GIB)
-    monkeypatch.setattr(resources, "_disk_space", lambda _: ("same", 500 * GIB))
+    monkeypatch.setattr(pipeline, "_disk_space", lambda _: ("same", 500 * GIB))
     options = {
         "input_paths": [str(source)],
         "output_dir": str(tmp_path),
@@ -344,7 +346,7 @@ def test_h2_envelope_reuses_memory_model_and_scales_disk_by_input_reads(
 def test_shared_volume_is_compared_to_combined_temp_output_and_index_need(
     tmp_path, source, monkeypatch, caplog
 ):
-    monkeypatch.setattr(resources, "_disk_space", lambda _: ("C:", 90 * GIB))
+    monkeypatch.setattr(pipeline, "_disk_space", lambda _: ("C:", 90 * GIB))
     estimate = resources.estimate_resources(
         "align",
         input_paths=[str(source)],
@@ -369,7 +371,7 @@ def test_separate_volumes_are_budgeted_independently(tmp_path, source, monkeypat
     out = str(tmp_path / "output")
     spill = str(tmp_path / "spill")
     monkeypatch.setattr(
-        resources,
+        pipeline,
         "_disk_space",
         lambda path: ("C:", 20 * GIB) if path == out else ("E:", 80 * GIB),
     )
@@ -394,7 +396,7 @@ def test_gui_api_is_json_serializable_and_does_not_create_output_directories(
 ):
     asked = []
     monkeypatch.setattr(
-        resources.shutil,
+        shutil,
         "disk_usage",
         lambda path: asked.append(path) or SimpleNamespace(free=100 * GIB),
     )
@@ -417,7 +419,7 @@ def test_unavailable_measurements_are_unknown_not_false_ok(tmp_path, monkeypatch
     def unreadable(_path):
         raise OSError("unavailable")
 
-    monkeypatch.setattr(resources.shutil, "disk_usage", unreadable)
+    monkeypatch.setattr(shutil, "disk_usage", unreadable)
     estimate = resources.estimate_resources(
         "sort", input_paths=[str(tmp_path / "missing.cram")], output_dir=str(tmp_path)
     )
@@ -444,7 +446,7 @@ def test_gatk_duplicate_marking_budgets_two_retained_bams(
     tmp_path, source, monkeypatch, operation
 ):
     reads = 1_000_000
-    monkeypatch.setattr(resources, "_disk_space", lambda _: ("same", 180_000_000))
+    monkeypatch.setattr(pipeline, "_disk_space", lambda _: ("same", 180_000_000))
     estimate = resources.estimate_resources(
         operation,
         input_paths=[str(source)],
@@ -581,9 +583,7 @@ def test_722_bcftools_preflight_does_not_falsely_report_small_slice_disk_low(
 ):
     source, reference = hg002_slice_metadata
     monkeypatch.setattr(
-        resources.shutil,
-        "disk_usage",
-        lambda _path: SimpleNamespace(free=64 * 1024**2),
+        shutil, "disk_usage", lambda _: SimpleNamespace(free=64 * 1024**2)
     )
     estimate = resources.estimate_resources(
         operation,
@@ -614,9 +614,7 @@ def test_729_serial_calling_does_not_charge_nonexistent_parts(
 ):
     source, reference = hg002_slice_metadata
     monkeypatch.setattr(
-        resources.shutil,
-        "disk_usage",
-        lambda _path: SimpleNamespace(free=16 * 1024**2),
+        shutil, "disk_usage", lambda _: SimpleNamespace(free=16 * 1024**2)
     )
     estimate = resources.estimate_resources(
         operation,
@@ -730,9 +728,7 @@ def test_729_batched_headers_cover_real_deep_replay_without_overcharging_indels(
     assert observed["raw_parts"] == (operation == "snp")
     if operation == "indel":
         monkeypatch.setattr(
-            resources.shutil,
-            "disk_usage",
-            lambda _path: SimpleNamespace(free=8 * 1024**2),
+            shutil, "disk_usage", lambda _: SimpleNamespace(free=8 * 1024**2)
         )
         checked = resources.estimate_resources(operation, **options)
         assert (
