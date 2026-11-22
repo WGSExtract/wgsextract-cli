@@ -471,6 +471,18 @@ def test_ref_library_list_option_lists_the_library(tmp_path, capsys):
     assert {g["status"] for g in result["details"]["genomes"]} == {"missing"}
 
 
+def test_1247_ref_library_list_reports_downloaded_gnomad_table(tmp_path, capsys):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    (downloads / "gnomad_hg38.tsv.gz").touch()
+
+    main(["--json", "ref", "library", "--list", "--ref", str(tmp_path)])
+
+    resources = json.loads(capsys.readouterr().out)["details"]["resources"]
+    assert resources["hg38"]["gnomad"] is True
+    assert resources["hg19"]["gnomad"] is False
+
+
 def _parse(words: list[str]):
     return parser.parse_args(*parser.build_parser(), words)[0]
 

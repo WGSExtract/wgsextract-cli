@@ -5,22 +5,28 @@ from __future__ import annotations
 import os
 import re
 import stat
+import sys
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from typing import BinaryIO
 
 from .operations import PathGuard, RequestError
+
+if sys.platform == "win32":
+    from ._viewer_windows import open_windows_viewer
+    from .operations import is_network_path
 
 MAX_FALLBACK_BYTES = 32 * 1024 * 1024
 CHUNK_BYTES = 64 * 1024
 
 
 def safe_viewer_reads() -> bool:
-    return (
+    return sys.platform == "win32" or (
         os.open in os.supports_dir_fd
         and hasattr(os, "O_DIRECTORY")
         and hasattr(os, "O_NOFOLLOW")
+        and hasattr(os, "O_NONBLOCK")
     )
 
 
@@ -34,6 +40,62 @@ def open_viewer_file(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
         )
     if "\0" in value or ".." in re.split(r"[\\/]", value):
         raise RequestError(403, "path_not_allowed", "Viewer traversal is refused.")
+    if sys.platform == "win32":
+        opener = _open_windows_viewer(value, guard)
+    else:
+        opener = _open_posix_viewer(value, guard)
+    with opener as file:
+        yield file
+
+
+if sys.platform == "win32":
+
+    @contextmanager
+    def _open_windows_viewer(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
+        expanded = os.path.expanduser(value)
+        if is_network_path(value) or is_network_path(expanded):
+            raise RequestError(
+                403, "path_not_allowed", "Viewer network paths are refused."
+            )
+        path = Path(expanded)
+        if not path.is_absolute():
+            raise RequestError(400, "usage", "Viewer paths must be absolute.")
+        matches = [
+            r
+            for r in guard.roots
+            if not is_network_path(str(r)) and path.is_relative_to(r)
+        ]
+        # Case-sensitive NTFS folders can hold roots that differ only by case.
+        exact = [r for r in matches if path.parts[: len(r.parts)] == r.parts]
+        folded = {str(r).casefold() for r in matches}
+        if exact:
+            root = exact[0]
+        elif matches and len(folded) == len(matches):
+            root = matches[0]
+        else:
+            raise RequestError(
+                403, "path_not_allowed", "Viewer path is outside allowed roots."
+            )
+        with ExitStack() as stack:
+            try:
+                file = stack.enter_context(
+                    open_windows_viewer(root, path.relative_to(root).parts)
+                )
+            except FileNotFoundError:
+                raise RequestError(
+                    404, "not_found", "Viewer file does not exist."
+                ) from None
+            except (OSError, ValueError):
+                raise RequestError(
+                    403, "path_not_allowed", "Viewer file cannot be opened safely."
+                ) from None
+            yield file
+
+
+@contextmanager
+def _open_posix_viewer(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
+    if sys.platform == "win32":
+        raise NotImplementedError("POSIX directory-relative opens are unavailable.")
     guard.check_path("path", value)
     path = Path(value).expanduser()
     try:

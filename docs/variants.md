@@ -161,6 +161,13 @@ FASTQs whose names SRA replaces.
 - Low-pass Ultima (MyHeritage ~2x) cannot give reliable genotypes without
   imputation; these callers do not impute. See the separate [imputation guide](imputation.md).
 
+## FreeBayes regions
+
+Pass one or more comma-separated regions to `vcf freebayes --region`, or pass a
+BED file. Text ranges use 1-based inclusive coordinates and accept thousands
+separators, as in `chr1:1,000-2,000`. If a comma could separate a whole contig
+name rather than group digits, use a BED file to make the selection explicit.
+
 ## Structural variants
 
 `vcf sv` defaults to Delly 2 (`delly sr`); `vcf cnv` uses `delly cnv`,
