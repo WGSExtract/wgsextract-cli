@@ -203,6 +203,22 @@ test("#1230 overlapping saves, through the file and an alias of it, keep every c
   assert.deepEqual((await readdir(bundleRoot)).sort(), ["alias", "config.toml"]);
 });
 
+test("#1230 a settings file symlinked to a file not yet created is saved where the link points, as the CLI saves it", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  if (process.platform === "win32") {
+    t.skip("file symlinks need Developer Mode on Windows");
+    return;
+  }
+  await mkdir(path.join(bundleRoot, "real"));
+  const link = path.join(bundleRoot, "config.toml");
+  await symlink(path.join(bundleRoot, "real", "config.toml"), link);
+
+  await saveConfig(textSettingsControl(["first"]), undefined, { first: "1" }, bundleRoot);
+
+  assert.ok((await lstat(link)).isSymbolicLink());
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "config.toml"), "utf8")) }, { first: "1" });
+});
+
 test("#1230 saves from separate app processes keep every change", async (t) => {
   const bundleRoot = await tempDirectory(t);
   const moduleURL = new URL("../dist/web/src/server/config-store.js", import.meta.url).href;

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, readlink, realpath, stat, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { errnoCode } from "./errors.js";
@@ -19,7 +19,8 @@ export async function withSettingsFileLock<T>(filePath: string, action: (target:
     const lock = path.join(path.dirname(target), `.${path.basename(target)}.lock`);
     const record = JSON.stringify({ pid: process.pid, host: hostname(), token: randomUUID() });
     const deadline = Date.now() + timeoutMs;
-    while (!await tryCreate(lock, record)) {
+    const busy = { since: undefined as number | undefined };
+    while (!await tryCreate(lock, record, busy)) {
         if (Date.now() >= deadline) {
             throw new Error(`Timed out waiting for ${lock}: another WGS Extract window or command is saving this file. If none is, delete the lock and try again.`);
         }
@@ -33,7 +34,8 @@ export async function withSettingsFileLock<T>(filePath: string, action: (target:
     }
 }
 
-async function realPathAllowingMissing(filePath: string): Promise<string> {
+/** Like Python's non-strict Path.resolve(): follows links, a dangling one too, as far as the path exists. */
+async function realPathAllowingMissing(filePath: string, links = 0): Promise<string> {
     try {
         return await realpath(filePath);
     }
@@ -42,7 +44,15 @@ async function realPathAllowingMissing(filePath: string): Promise<string> {
         if (errnoCode(error) !== "ENOENT" || parent === filePath) {
             throw error;
         }
-        return path.join(await realPathAllowingMissing(parent), path.basename(filePath));
+        const resolved = path.join(await realPathAllowingMissing(parent, links), path.basename(filePath));
+        const link = await readlink(resolved).catch(() => null);
+        if (link == null) {
+            return resolved;
+        }
+        if (links >= 40) {
+            throw error;
+        }
+        return realPathAllowingMissing(path.resolve(path.dirname(resolved), link), links + 1);
     }
 }
 
@@ -51,17 +61,20 @@ function windowsBusy(error: unknown) {
     return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(errnoCode(error) ?? "");
 }
 
-async function tryCreate(lock: string, record: string): Promise<boolean> {
+async function tryCreate(lock: string, record: string, busy: { since: number | undefined }): Promise<boolean> {
     let handle;
     try {
         handle = await open(lock, "wx");
     }
     catch (error) {
         if (errnoCode(error) === "EEXIST") {
+            busy.since = undefined;
             await reclaimIfAbandoned(lock);
             return false;
         }
-        if (windowsBusy(error)) {
+        // A lock being deleted is busy for moments; a denial that lasts is the folder refusing writes.
+        busy.since ??= Date.now();
+        if (windowsBusy(error) && Date.now() - busy.since <= 2_000) {
             return false;
         }
         throw error;

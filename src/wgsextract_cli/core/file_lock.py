@@ -236,13 +236,18 @@ def shared_file_lock(path: Path, timeout: float = 60) -> Iterator[Path]:
         {"pid": os.getpid(), "host": socket.gethostname(), "token": uuid.uuid4().hex}
     ).encode()
     deadline = time.monotonic() + timeout
+    busy_since: float | None = None
     while True:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
         except FileExistsError:
+            busy_since = None
             _reclaim_abandoned_shared_lock(lock)
         except OSError as error:
-            if not _windows_busy(error):
+            # A lock being deleted is busy for moments; a denial that lasts is
+            # the folder refusing writes.
+            busy_since = busy_since or time.monotonic()
+            if not _windows_busy(error) or time.monotonic() - busy_since > 2:
                 raise
         else:
             try:
