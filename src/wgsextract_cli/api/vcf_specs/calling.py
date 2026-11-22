@@ -172,7 +172,7 @@ class VcfSvParams(_CallerParams):
     COMMAND = "vcf sv"
 
     region: str | None = _region_param(
-        "Delly/Sniffles: one region, a comma-separated list, or a BED file. "
+        "Delly/Sniffles: one region, a comma-separated list, or BED; "
         "pbsv: one region only.",
         may_name_file=True,
     )
@@ -257,8 +257,8 @@ class VcfCallParams(_CallerParams):
     COMMAND = "vcf call"
 
     region: str | None = _region_param(
-        "One region or a comma-separated list (pbsv: one region only). "
-        "BED files require Delly or Sniffles and no SNP/indel stage.",
+        "One region, a comma-separated list, or BED (Delly/Sniffles without "
+        "SNP/indel calling); pbsv: one region only.",
         may_name_file=True,
     )
     types: str = param(
