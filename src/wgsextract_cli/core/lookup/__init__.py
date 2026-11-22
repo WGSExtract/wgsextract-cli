@@ -34,6 +34,7 @@ from .identifiers import (
     build_name,
     gene_resource,
     genes_at,
+    local_contig,
     parse_locus,
     placements_path,
     resolve_gene,
@@ -64,9 +65,8 @@ class Request:
     cursor: str | None = None
 
 
-def input_build(source: genotypes.VcfSource, given: str | None) -> str:
-    """The input's build from its header (chr1's length, else ##reference),
-    checked against ``given``; ``given`` when the header can't tell."""
+def header_build(source: genotypes.VcfSource) -> str | None:
+    """The build a VCF's header shows: chr1's length, else ##reference."""
     detected = build_name(build_from_chr1_length(source.lengths))
     if detected is None:
         detected = next(
@@ -77,6 +77,13 @@ def input_build(source: genotypes.VcfSource, given: str | None) -> str:
             ),
             None,
         )
+    return detected
+
+
+def input_build(source: genotypes.VcfSource, given: str | None) -> str:
+    """The input's build from its header, checked against ``given``;
+    ``given`` when the header can't tell."""
+    detected = header_build(source)
     stated = build_name(given) if given else None
     if given and stated is None:
         raise UsageError(f"--build {given!r} isn't GRCh37, GRCh38 or CHM13v2.0.")
@@ -114,8 +121,12 @@ def _ambiguous(
 
 
 def _selected(chosen: Locus, given: Locus | None) -> Locus:
+    """``chosen`` narrowed to a ``given`` range; an allele-qualified
+    ``given`` keeps its own coordinates, so every base of its REF counts."""
     if given is None:
         return chosen
+    if given.ref is not None:
+        return given
     return Locus(
         chosen.build,
         chosen.chrom,
@@ -228,7 +239,11 @@ def _resolve(request: Request, build: str) -> _Target:
 
 
 def _evidence(
-    request: Request, source: genotypes.VcfSource, locus: Locus, work: Path
+    request: Request,
+    source: genotypes.VcfSource,
+    build: str,
+    locus: Locus,
+    work: Path,
 ) -> tuple[genotypes.Evidence | None, genotypes.VcfSource | None, str | None]:
     """The reference evidence for the sample, its records' source, and why
     none was used when one was found but can't serve."""
@@ -250,13 +265,18 @@ def _evidence(
             if origin == "explicit":
                 raise
             return None, None, f"{path}: {e}"
-    if (a := build_from_chr1_length(gvcf.lengths)) and (
-        b := build_from_chr1_length(source.lengths)
-    ):
-        if a != b:
-            raise UsageError(
-                f"The reference evidence {path} is on another build than {source.path}."
-            )
+    other = header_build(gvcf)
+    shared = [
+        name
+        for name, length in gvcf.lengths.items()
+        if (local := local_contig(name, source.lengths)) is not None
+        and source.lengths[local] != length
+    ]
+    if (other is not None and other != build) or shared:
+        raise UsageError(
+            f"The reference evidence {path} is on another build than "
+            f"{source.path} ({build}); lookup never mixes builds."
+        )
     usable = genotypes.evidence_file(gvcf, locus, work)
     return (
         genotypes.Evidence(ReferenceEvidence(usable), path, origin),
@@ -314,7 +334,9 @@ def lookup(request: Request) -> dict[str, object]:
     note = None
     if target.locus is not None:
         with tempfile.TemporaryDirectory(prefix="wgse_lookup_") as work:
-            evidence, gvcf, note = _evidence(request, source, target.locus, Path(work))
+            evidence, gvcf, note = _evidence(
+                request, source, build, target.locus, Path(work)
+            )
             document["reference_evidence"] = (
                 {"path": evidence.path, "origin": evidence.origin} if evidence else None
             )

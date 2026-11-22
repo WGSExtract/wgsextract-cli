@@ -17,11 +17,13 @@ from pathlib import Path
 
 from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.reference_evidence import (
+    Provenance,
     ReferenceEvidence,
     Span,
     State,
     count_bases,
     header_declares_gvcf,
+    parse_provenance,
     site_states,
 )
 from wgsextract_cli.core.reference_evidence_records import bcftools_gvcf_header
@@ -54,6 +56,10 @@ REASONS = {
     "reference_call": "The call set records a reference genotype here.",
     "filtered": "The caller's FILTER (or FORMAT/FT) failed here.",
     "no_call": "The caller recorded a missing genotype (./.) here.",
+    "partial_call": (
+        "The genotype is partly missing (such as 1/.): an allele was seen, but "
+        "not a complete genotype."
+    ),
     State.CALLABLE_REFERENCE.value: (
         "The gVCF reads every base here as reference with enough depth "
         "(and genotype quality)."
@@ -74,6 +80,7 @@ REASONS = {
     ),
 }
 _SYMBOLIC_REFERENCE = vc.SYMBOLIC_REFERENCE_ALTS | {"."}
+_CONTIG_ID = re.compile(r"^##contig=<(?:.*?,)?ID=([^,>]+)", re.MULTILINE)
 _CONFIDENT = (vc.HIGH, vc.MODERATE)
 
 
@@ -89,10 +96,17 @@ class VcfSource:
     header: str
     indexed: bool
     is_gvcf: bool
+    # Every contig the header declares, with or without a length.
+    contigs: list[str]
+    provenance: Provenance | None
 
-    @property
-    def contigs(self) -> list[str]:
-        return list(self.lengths)
+    def ploidy(self, chrom: str, start: int, end: int) -> int | None:
+        """The ploidy the caller's recorded policy gives a record, if any."""
+        return (
+            self.provenance.record_ploidy(chrom, start, end)
+            if self.provenance
+            else None
+        )
 
 
 def _declares_gvcf(header: str) -> bool:
@@ -123,6 +137,7 @@ def open_vcf(path: str, sample: str | None, *, option: str = "--input") -> VcfSo
             f"{option} {path} has no sample {sample!r}; it has {', '.join(names[:10])}."
         )
     indexed = any(Path(path + suffix).is_file() for suffix in (".tbi", ".csi"))
+    lines = header.splitlines()
     return VcfSource(
         path,
         sample,
@@ -132,12 +147,14 @@ def open_vcf(path: str, sample: str | None, *, option: str = "--input") -> VcfSo
         header,
         indexed,
         _declares_gvcf(header),
+        list(dict.fromkeys(_CONTIG_ID.findall(header))),
+        next((p for line in lines if (p := parse_provenance(line))), None),
     )
 
 
 def records(source: VcfSource, chrom: str, start: int, end: int) -> list[list[str]]:
     """The selected sample's records overlapping chrom:start-end."""
-    if chrom not in source.lengths and source.lengths:
+    if source.contigs and chrom not in source.contigs:
         return []
     where = (
         ["--regions-overlap", "1", "-r"]
@@ -178,7 +195,11 @@ def evidence_file(source: VcfSource, locus: Locus, work: Path) -> str:
         span = (
             f"{chrom}:{max(1, locus.start - EVIDENCE_PAD)}-{locus.end + EVIDENCE_PAD}"
         )
-        command += ["-r" if source.indexed else "-t", span]
+        command += (
+            ["--regions-overlap", "1", "-r", span]
+            if source.indexed
+            else ["--targets-overlap", "1", "-t", span]
+        )
     try:
         run_command([*command, "-o", str(out), source.path])
         run_command(["bcftools", "index", "-t", str(out)])
@@ -242,6 +263,7 @@ class Call:
     """One record of the selected sample."""
 
     fields: list[str]
+    vcf: VcfSource
     source: str  # input or reference_evidence
 
     @property
@@ -309,6 +331,8 @@ class Call:
     def state(self) -> str:
         if all(i == "." for i in self.indices):
             return "no_call"
+        if "." in self.indices:
+            return "partial_call"
         if self.filter_failed:
             return "filtered"
         if any(i not in ("0", ".") for i in self.indices):
@@ -347,7 +371,9 @@ class Call:
                 thresholds=thresholds,
                 mq_kind=mq_kind,
                 caller=caller,
+                samples=self.vcf.samples,
                 reference=reference,
+                ploidy=self.vcf.ploidy(self.chrom, self.pos, self.end),
             )
 
         carried = [n for n in self.carried() if n <= len(alts)]
@@ -432,9 +458,9 @@ class Call:
         return out
 
 
-def calls(rows: Iterable[list[str]], source: str) -> list[Call]:
+def calls(rows: Iterable[list[str]], vcf: VcfSource, source: str) -> list[Call]:
     """The rows that are calls (not reference blocks)."""
-    found = [Call(row, source) for row in rows]
+    found = [Call(row, vcf, source) for row in rows]
     return [c for c in found if not c.block]
 
 
@@ -467,6 +493,21 @@ def _evidence_state(
     return next(iter(site_states(evidence.reader, [site], thresholds)))[1]
 
 
+def _block_genotype(gvcf: VcfSource | None, locus: Locus) -> str | None:
+    """The reference genotype, as the gVCF writes it (0/0, or 0 where the
+    caller called a haploid), of the records covering ``locus``; None when
+    they disagree or there are none."""
+    if gvcf is None:
+        return None
+    chrom = local_contig(locus.chrom, gvcf.contigs) or locus.chrom
+    found = set()
+    for row in records(gvcf, chrom, locus.start, locus.end):
+        call = Call(row, gvcf, "reference_evidence")
+        if all(i == "0" for i in call.indices):
+            found.add(call.gt)
+    return found.pop() if len(found) == 1 else None
+
+
 def site_result(
     source: VcfSource,
     evidence: Evidence | None,
@@ -478,13 +519,15 @@ def site_result(
     caller = vc.detect_caller(source.header.splitlines())
     mq_kind = vc.mapping_quality_kind(source.header.splitlines())
     chrom = local_contig(locus.chrom, source.contigs) or locus.chrom
-    found = calls(records(source, chrom, locus.start, locus.end), "input")
+    found = calls(records(source, chrom, locus.start, locus.end), source, "input")
     state = None if found else _evidence_state(evidence, locus, thresholds)
     if state in (State.VARIANT, State.FILTERED, State.NO_CALL) and gvcf_source:
         # A call the gVCF records but the call set doesn't list.
         local = local_contig(locus.chrom, gvcf_source.contigs) or locus.chrom
         found = calls(
-            records(gvcf_source, local, locus.start, locus.end), "reference_evidence"
+            records(gvcf_source, local, locus.start, locus.end),
+            gvcf_source,
+            "reference_evidence",
         )
     documents = [c.document(thresholds, caller, mq_kind) for c in found]
     result: dict[str, object] = {"locus": locus.document(), "calls": documents}
@@ -493,7 +536,7 @@ def site_result(
         document = documents[found.index(primary)]
         kind = primary.state
         label = document["confidence"]
-        if kind == "no_call":
+        if kind in ("no_call", "partial_call"):
             status = NO_CALL
         elif kind == "reference_call":
             status = CONFIDENT_REFERENCE if label in _CONFIDENT else WEAK_EVIDENCE
@@ -526,12 +569,14 @@ def site_result(
             alleles=None,
             confidence=None,
         )
-        if status == CONFIDENT_REFERENCE or status == WEAK_EVIDENCE:
-            result["genotype"] = "0/0"
-            result["alleles"] = [locus.ref, locus.ref] if locus.ref else None
+        reference = state in (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
+        genotype = _block_genotype(gvcf_source, locus) if reference else None
+        if genotype is not None:
+            copies = len(re.split(r"[/|]", genotype))
+            result["genotype"] = genotype
+            result["alleles"] = [locus.ref] * copies if locus.ref else None
         if locus.ref and locus.alt:
-            reference = status in (CONFIDENT_REFERENCE, WEAK_EVIDENCE)
-            result["query_allele_copies"] = 0 if reference else None
+            result["query_allele_copies"] = 0 if status == CONFIDENT_REFERENCE else None
     result["reference_evidence_state"] = state.value if state else None
     return result
 
@@ -593,7 +638,7 @@ def region_result(
     caller = vc.detect_caller(source.header.splitlines())
     mq_kind = vc.mapping_quality_kind(source.header.splitlines())
     chrom = local_contig(locus.chrom, source.contigs) or locus.chrom
-    found = calls(records(source, chrom, locus.start, locus.end), "input")
+    found = calls(records(source, chrom, locus.start, locus.end), source, "input")
     documents = [c.document(thresholds, caller, mq_kind) for c in found]
     page = documents[offset : offset + limit]
     more = offset + limit < len(documents)

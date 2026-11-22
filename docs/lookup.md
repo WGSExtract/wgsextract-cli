@@ -74,7 +74,7 @@ A site's `status`:
 | `confident_call` | A non-reference genotype, FILTER passing, labelled high or moderate confidence. |
 | `confident_reference` | Reference: every base `callable_reference` in the gVCF, or an explicit `0/0` call labelled high or moderate. |
 | `weak_evidence` | A call or reference below the thresholds: a low-confidence or filtered call, or `low_quality_reference`. |
-| `no_call` | The caller recorded a missing genotype (`./.`). |
+| `no_call` | The caller recorded a missing genotype (`./.`), or only part of one (`1/.`, evidence state `partial_call`). |
 | `not_assessed` | No evidence: no reads (`uncovered`), outside the region the caller assessed, ploidy 0 for this sample, or a variants-only VCF without a gVCF. |
 
 `evidence_state` gives the finer reason: `variant`, `reference_call`,
@@ -88,9 +88,14 @@ genotype quality, allele depths, FILTER and IDs, its phase (`phased`,
 `phase_set` and, when phased, `haplotypes`: the allele on each copy) and
 `variants`: each carried allele in its minimal representation (shared bases
 trimmed, one anchor base kept for an indel) with its type. A multiallelic
-record keeps every allele. A `--locus` with `REF>ALT` adds
-`query_allele_copies`: the copies of that allele (0 at reference, none when
-not assessed or a no-call).
+record keeps every allele. Labels use the caller's recorded ploidy policy
+(a haploid chrX call's halved depth thresholds) and, in a multi-sample VCF,
+only the chosen sample's own counts. A reference site's genotype is the
+gVCF block's own (`0/0`, or `0` where the caller called one copy); filtered
+or no-call evidence gives none. A `--locus` with `REF>ALT` adds
+`query_allele_copies`: the copies of that allele, 0 at confident reference,
+and none when the evidence can't say. With `--rsid` or `--gene`, an
+allele-qualified `--locus` keeps all of its REF's bases.
 
 A region (`--gene`, or a `--locus` range) has its calls and `call_states`,
 its bases per evidence state (`evidence.bases`, with the first non-callable
@@ -103,7 +108,8 @@ on each copy in order.
 `generated`, version and disclaimer). It copies, unchanged, the findings of
 the variant and gene sections (`clinvar`, `acmg_research`,
 `pharmacogenomics`, `carrier_screening`, `structural_variants`) at the site
-(`match: "site"`) or about the gene (`match: "gene"`), each with its own
+(`match: "site"`; a structural variant matches across its recorded
+interval) or about the gene (`match: "gene"`), each with its own
 confidence label, reasons, evidence file and disclaimer. Lookup adds no
 classification of its own. A site lookup also matches findings without a
 position (a diplotype, a copy number) about the genes at the site, but not
@@ -115,6 +121,9 @@ for "not looked at"; `limitations` says what an empty section doesn't mean.
 Without a report the answer says how to make one (`wgsextract report
 --input ...`). A report older than the input warns
 `lookup_report_older_than_input`.
+
+A server job reads only inside its allowed folders: a report or a
+manifest's gVCF found beside the input but outside them is skipped.
 
 ## Provenance
 

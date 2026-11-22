@@ -650,6 +650,7 @@ def _recorded_file(
     manifest when its folder has moved), if its recorded fingerprint shows
     it unchanged since; without one the file can't be trusted to be the
     run's."""
+    from wgsextract_cli.core import read_scope
     from wgsextract_cli.core.results import fingerprint
 
     recorded = Path(str(record.get("path") or ""))
@@ -661,7 +662,9 @@ def _recorded_file(
         except ValueError:
             return None
     expected = record.get("fingerprint")
-    if not expected or not place.is_file() or fingerprint(place) != expected:
+    if not expected or not read_scope.may_follow(place):
+        return None
+    if not place.is_file() or fingerprint(place) != expected:
         return None
     return place
 
@@ -672,8 +675,9 @@ def companion(vcf: PathInput) -> str | None:
     lists ``vcf`` among its outputs. The manifests read are those in the
     VCF's folder and those its sample workspace recorded; both files must
     still be the ones the manifest describes (same fingerprint), and the gVCF
-    indexed. Of several such runs the newest wins."""
-    from wgsextract_cli.core import sample_workspace
+    indexed. Of several such runs the newest wins. A server job follows only
+    manifests and files inside its allowed folders (``read_scope``)."""
+    from wgsextract_cli.core import read_scope, sample_workspace
     from wgsextract_cli.core.results import MANIFEST_SUFFIX
 
     given = Path(vcf).expanduser().absolute()
@@ -690,6 +694,8 @@ def companion(vcf: PathInput) -> str | None:
         candidates.update(workspace.recorded_manifests())
     found: list[tuple[str, str]] = []
     for manifest in candidates:
+        if not read_scope.may_follow(manifest):
+            continue
         try:
             document = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, ValueError):

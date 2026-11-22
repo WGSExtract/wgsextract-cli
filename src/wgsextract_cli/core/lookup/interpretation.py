@@ -10,11 +10,13 @@ with the command that would run it, so "no finding" is never confused with
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.builds import canonical_build
 
 from .identifiers import Locus, contig_key
@@ -28,6 +30,7 @@ SECTIONS = (
     "carrier_screening",
     "structural_variants",
 )
+_SPAN = re.compile(r"(?P<chrom>[^:\s]+):(?P<start>\d+)-(?P<end>\d+)")
 LIMITATION = (
     "A report section lists only what its analysis reports (its title says "
     "what it covers); no finding here is not evidence that a variant is "
@@ -36,9 +39,11 @@ LIMITATION = (
 
 
 def discover(folder: Path) -> list[Path]:
-    """Personal reports in ``folder``, newest first."""
+    """Personal reports in ``folder`` a server job may read, newest first."""
     found = []
     for candidate in folder.glob(f"*{REPORT_SUFFIX}"):
+        if not read_scope.may_follow(candidate.resolve()):
+            continue
         try:
             found.append((candidate.stat().st_mtime, candidate))
         except OSError:
@@ -65,6 +70,8 @@ def _load(path: Path) -> Mapping[str, Any]:
     from wgsextract_cli.core import personal_report
     from wgsextract_cli.core.utils import UsageError
 
+    if not read_scope.may_follow(path.resolve()):
+        raise UsageError(f"The report {path} is outside the folders this run may read.")
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError) as e:
@@ -76,11 +83,16 @@ def _load(path: Path) -> Mapping[str, Any]:
     return document
 
 
-def _overlaps(variant: Mapping[str, Any], loci: Sequence[Locus]) -> bool:
+def _overlaps(variant: Mapping[str, Any], region: str, loci: Sequence[Locus]) -> bool:
+    """Whether a finding's variant (its REF, or a structural variant's
+    recorded chrom:start-end) overlaps ``loci``."""
     chrom, pos = variant.get("chrom"), variant.get("pos")
     if not isinstance(chrom, str) or not isinstance(pos, int):
         return False
     end = pos + max(len(str(variant.get("ref") or "N")), 1) - 1
+    span = _SPAN.fullmatch(region)
+    if variant.get("ref") is None and span and int(span["start"]) == pos:
+        end = max(end, int(span["end"]))
     return any(
         contig_key(chrom) == contig_key(locus.chrom)
         and pos <= locus.end
@@ -99,15 +111,15 @@ def _match(
     """ "site" when the finding's variant is in ``loci``; "gene" when it is
     about one of ``genes`` and, unless ``whole_genes``, about no other site."""
     variant = finding.get("variant")
+    region = str((finding.get("evidence") or {}).get("region") or "")
     placed = isinstance(variant, Mapping) and isinstance(variant.get("pos"), int)
-    if placed and _overlaps(variant, loci):  # type: ignore[arg-type]
+    if placed and _overlaps(variant, region, loci):  # type: ignore[arg-type]
         return "site"
     if placed and not whole_genes:
         return None
     wanted = {g.upper() for g in genes}
     gene = str(finding.get("gene") or "").upper()
-    region = str((finding.get("evidence") or {}).get("region") or "").upper()
-    if (gene and gene in wanted) or region.removeprefix("GENE ") in wanted:
+    if (gene and gene in wanted) or region.upper().removeprefix("GENE ") in wanted:
         return "gene"
     return None
 
