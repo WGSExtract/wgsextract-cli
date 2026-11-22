@@ -959,6 +959,15 @@ observations, not whole-genome bounds or grounds for reducing the conservative
 1-GiB-per-worker allowance. Neither caller reached the 5% median speedup
 gate; Linux retains the system allocator.
 
+The [native CUDA PairHMM measurement](hardware.md#experimental-native-cuda-pairhmm-for-gatk)
+does not change GATK's budgets. On public HG00096 across all mapped
+reference intervals, the one-thread CUDA caller with a 4 GiB heap sampled
+about 2.01 GiB peak RSS and 338 MiB peak GPU process memory. An 8 GiB
+RAM lease and 64 GiB disk reservation covered the run, with about 1.55 GiB
+of compressed calls and indexes. These are observations for one sample and
+host, not minimum requirements, hard limits, or a reason to reduce the
+estimator's allowance.
+
 ### Native DeepVariant
 
 `wgse-deepvariant` on Apple Silicon and Linux x86-64 has a separate
