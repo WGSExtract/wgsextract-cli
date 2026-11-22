@@ -335,3 +335,18 @@ def test_rerun_retires_an_old_short_name_index(tmp_path):
 
     assert not stale.exists()
     assert Path(tmp_path / "o" / "valid_prepared.vcf.gz.tbi").is_file()
+
+
+def test_bgz_output_beside_input_keeps_the_inputs_short_name_index(tmp_path):
+    """#1408 review: a .vcf.bgz output must not retire valid.vcf.gz's valid.vcf.tbi."""
+    vcf = _valid_vcf(tmp_path)
+    shared = tmp_path / "valid.vcf.tbi"
+    Path(f"{vcf}.tbi").replace(shared)
+
+    result = api.vcf.prepare(
+        api.VcfPrepareParams(input=vcf, output=tmp_path / "valid.vcf.bgz"),
+        check=False,
+    )
+
+    assert result.error is not None and "shares" in result.error.message
+    assert shared.is_file()

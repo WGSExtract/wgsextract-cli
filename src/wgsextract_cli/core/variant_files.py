@@ -221,6 +221,7 @@ def publish_indexed_vcf(
         verify(staged)
     outputs = {}
     obsolete = []
+    sibling = final.with_suffix(".gz" if final.suffix == ".bgz" else ".bgz")
     for ext in (".tbi", ".csi"):
         index = Path(f"{staged}{ext}")
         destination = Path(f"{final}{ext}")
@@ -229,11 +230,11 @@ def publish_indexed_vcf(
         else:
             obsolete.append(destination)
         alternate = final.with_suffix(ext)
-        if not final.with_suffix(".bgz").is_file():
+        if not sibling.is_file():
             obsolete.append(alternate)
         elif alternate.exists() or alternate.is_symlink():
             raise WGSExtractError(
-                f"Cannot replace {final}: its .bgz sibling shares {alternate}."
+                f"Cannot replace {final}: {sibling.name} shares {alternate}."
             )
     if not outputs:
         raise WGSExtractError(f"Indexing did not produce an index for {final}.")
