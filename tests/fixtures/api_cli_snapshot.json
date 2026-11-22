@@ -21193,7 +21193,7 @@
       "default": 20,
       "dest": "min_gq",
       "exclusive_group": null,
-      "help": "Leave out genotypes with GQ below this (default: 20)",
+      "help": "Leave out genotypes with GQ below this; a VCF without GQ needs 0 (default: 20)",
       "metavar": "GQ",
       "nargs": null,
       "option_strings": [

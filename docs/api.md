@@ -774,7 +774,7 @@ chromosome came from, and it isn't a diagnosis. See docs/roh.md.
 | `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
 | `regions` | `str \| None` | `None` | `--regions` | Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or chr15:20000000-30000000 (default: every autosome in the header) |
 | `imprinted_regions` | `Path \| None` | `None` | `--imprinted-regions` | Your own BED of imprinted regions, with a 'track db=hg38' line (default: the bundled list for the sample's build) |
-| `min_gq` | `int` | `20` | `--min-gq` | Leave out genotypes with GQ below this (default: 20) |
+| `min_gq` | `int` | `20` | `--min-gq` | Leave out genotypes with GQ below this; a VCF without GQ needs 0 (default: 20) |
 | `flag_terminal_mb` | `float` | `5.0` | `--flag-terminal-mb` | Flag a run reaching a chromosome end from this length (default: 5) |
 | `flag_interstitial_mb` | `float` | `10.0` | `--flag-interstitial-mb` | Flag any other run from this length (default: 10) |
 

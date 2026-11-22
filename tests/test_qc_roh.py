@@ -41,7 +41,11 @@ TO_THE_END = (58_000_000, LAST)
 
 
 def _header(
-    build: str, chr_prefix: bool, fmt: bool, lengthless: Collection[str] = ()
+    build: str,
+    chr_prefix: bool,
+    fmt: bool,
+    lengthless: Collection[str] = (),
+    gq: bool = True,
 ) -> str:
     """A header of the build's autosomes; those in ``lengthless`` (or all,
     with "*") are declared without a length."""
@@ -56,7 +60,8 @@ def _header(
     lines.append('##INFO=<ID=AF,Number=A,Type=Float,Description="Population AF">')
     if fmt:
         lines.append('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
-        lines.append('##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">')
+        if gq:
+            lines.append('##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="GQ">')
     columns = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO"
     return "\n".join(lines) + "\n" + columns + ("\tFORMAT\tS1" if fmt else "") + "\n"
 
@@ -79,12 +84,13 @@ def _sample(
     others: bool = False,
     last: int = LAST,
     lengthless: Collection[str] = (),
+    with_gq: bool = True,
 ) -> str:
     """chr20 calls: hom inside ``runs``, Hardy-Weinberg draws elsewhere. An
     ``interruption`` puts 30 heterozygous calls at 56.0-56.3 Mb: real (het),
     GQ 5 (weak) or without a genotype (missing), or leaves 55-58 Mb without
     calls (gap). ``others`` adds ten heterozygous calls on every other
-    autosome; ``last`` is the last marker."""
+    autosome; ``last`` is the last marker; without ``with_gq``, calls are GT only."""
     rng = random.Random(1174)
     other = "chr{}\t{}\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:60"
     rows = _elsewhere(range(1, 20), other) if others else []
@@ -103,7 +109,9 @@ def _sample(
         rows.append(f"chr20\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t{gt}:{gq}")
     rows += _elsewhere(range(21, 23), other) if others else []
     plain = tmp / "sample.vcf"
-    header = _header("hg38", True, True, lengthless)
+    if not with_gq:
+        rows = [row.replace("\tGT:GQ\t", "\tGT\t").rsplit(":", 1)[0] for row in rows]
+    header = _header("hg38", True, True, lengthless, with_gq)
     plain.write_text(header + "\n".join(rows) + "\n")
     return bgzip_index(plain)
 
@@ -257,6 +265,21 @@ def test_pr_1349_review_contigs_declared_without_a_length_are_used(tmp_path, sid
 
     assert "chr20" in document["scope"]["contigs"]
     assert document["markers"]["used"] > 6000
+    assert len(document["flags"]) == 1
+
+
+def test_pr_1349_review_a_vcf_without_gq_needs_an_explicit_min_gq_0(tmp_path):
+    """PR #1349 review: without FORMAT/GQ, --min-gq was silently ignored and
+    unfiltered calls could still be flagged."""
+    vcf = _sample(tmp_path, [INSIDE_GNAS], with_gq=False)
+    frequencies = _frequencies(tmp_path)
+
+    refused = _roh(tmp_path, vcf, frequencies)
+    assert refused.error.code == "roh_no_gq"
+    assert "--min-gq 0" in refused.error.message
+
+    document = _document(_roh(tmp_path, vcf, frequencies, min_gq=0))
+    assert document["markers"]["min_gq"] is None
     assert len(document["flags"]) == 1
 
 

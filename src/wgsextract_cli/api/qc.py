@@ -385,7 +385,8 @@ class QcRohParams(Params):
     )
     min_gq: int = param(
         20,
-        help="Leave out genotypes with GQ below this (default: 20)",
+        help="Leave out genotypes with GQ below this; a VCF without GQ needs 0 "
+        "(default: 20)",
         minimum=0,
         metavar="GQ",
     )

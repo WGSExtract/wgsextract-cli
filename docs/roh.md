@@ -80,7 +80,9 @@ OwnGenome.
 The markers are the sample's biallelic SNV calls with `PASS` (or no)
 `FILTER` at sites of the AF table. A call without a genotype, or with GQ
 below `--min-gq` (20), is left out and counted (`missing_genotype`,
-`weak_genotype`), so a weak heterozygous call doesn't split a run. Genotypes
+`weak_genotype`), so a weak heterozygous call doesn't split a run. A VCF
+without GQ (a genotype export, say) is refused (`roh_no_gq`) unless you pass
+`--min-gq 0` to accept its genotypes without a quality floor. Genotypes
 are used, not likelihoods (`bcftools roh --GTs-only 30`), so callers'
 differently calibrated PLs don't change the result. The HMM's transition
 probabilities are bcftools' defaults, passed explicitly.
@@ -187,7 +189,7 @@ Errors have codes: `roh_af_missing`, `roh_af_build_mismatch`,
 `roh_af_build_unknown`, `roh_af_tag_missing`, `roh_af_unreadable`,
 `roh_af_unsorted`, `roh_regions_build_mismatch`, `roh_regions_build_unknown`,
 `roh_regions_unreadable`,
-`roh_gvcf` and `roh_no_markers`.
+`roh_no_gq`, `roh_gvcf` and `roh_no_markers`.
 
 ## Validation
 
@@ -206,8 +208,9 @@ lists and parameters.
 
 Real frequencies gave 78% fewer runs (30% with variants only) and 65% less
 ROH (12%) than a constant 0.4; the OwnGenome comparison reported 42% and
-31% on the NYGC callset. No run reached 5 Mb either way. `qc roh` gives the first row; its
-F_ROH (0) is chromosome 20's alone.
+31% on the NYGC callset. No run reached 5 Mb either way.
+`qc roh --min-gq 0` (the export has no GQ) gives the first row; its F_ROH (0)
+is chromosome 20's alone.
 
 **HG002, whole genome.** The GIAB v4.2.1 benchmark VCF (variants only,
 GRCh38) with the same 1000 Genomes frequencies: 3,991 runs from 3,334,699

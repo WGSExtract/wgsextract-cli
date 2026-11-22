@@ -445,7 +445,15 @@ def run_roh(params: QcRohParams) -> None:
         if params.imprinted_regions
         else roh_regions.bundled(build)
     )
-    min_gq = params.min_gq if "##FORMAT=<ID=GQ," in header else None
+    has_gq = "##FORMAT=<ID=GQ," in header
+    if not has_gq and params.min_gq > 0:
+        raise CodedError(
+            "roh_no_gq",
+            f"{Path(vcf).name} has no genotype qualities (FORMAT/GQ), so "
+            f"--min-gq {params.min_gq} can't be applied. Pass --min-gq 0 to use "
+            "its genotypes without a quality floor.",
+        )
+    min_gq = params.min_gq if has_gq else None
 
     outdir = Path(expand_path(params.outdir or absolute_path(vcf).parent))
     outdir.mkdir(parents=True, exist_ok=True)
