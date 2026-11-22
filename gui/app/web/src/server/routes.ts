@@ -26,6 +26,7 @@ import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
 import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
 import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
@@ -289,7 +290,11 @@ export function createRequestHandler(context: RequestHandlerContext) {
                     }
                     await emit({ type: "complete" });
                 },
-                (error) => ({ type: "error", error }),
+                (error, cause) => ({
+                    type: "error",
+                    error,
+                    ...(cause instanceof LinkedMoveFolderError ? { linkedFolder: { link: cause.link, target: cause.target } } : {}),
+                }),
             );
         },
         "/api/config/load": jsonRoute(context, async (body) => {

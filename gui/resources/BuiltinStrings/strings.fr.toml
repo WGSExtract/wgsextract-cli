@@ -45,6 +45,8 @@
 "app.workspaceLocation.cancel.title" = "Annuler"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.folderMove.confirm" = "Déplacer le contenu de %{from} vers %{path} ? Les actions en cours sont arrêtées. « Modifier le paramètre seulement » le laisse où il est."  # i18n-source-hash:34532e27
 "app.workspaceLocation.settingOnly.title" = "Modifier le paramètre seulement"  # i18n-source-hash:95a44482
+"app.workspaceLocation.linkedFolder.format" = "Les paramètres ne permettent pas de déplacer un dossier depuis ou vers le lien « %{link} » (cible : « %{target} »). Déplacez vous-même le dossier cible et actualisez le paramètre, ou choisissez une destination qui n’est pas un lien."  # i18n-source-hash:39d79be4
+"app.workspaceLocation.linkTargetUnavailable" = "indisponible"  # i18n-source-hash:1d5ee313
 "app.colorTheme.label" = "Thème"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Système"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Clair"  # i18n-source-hash:a36ef8ab

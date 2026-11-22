@@ -113,6 +113,8 @@
 "app.workspaceLocation.cancel.title" = "Cancel"
 "app.workspaceLocation.folderMove.confirm" = "Move what is in %{from} to %{path}? Running actions are stopped. Change Setting Only leaves it where it is."
 "app.workspaceLocation.settingOnly.title" = "Change Setting Only"
+"app.workspaceLocation.linkedFolder.format" = "Cannot move a folder from or to the link “%{link}” (target: “%{target}”). Move the target yourself and update the setting, or choose a destination that is not a link."
+"app.workspaceLocation.linkTargetUnavailable" = "unavailable"
 "app.colorTheme.label" = "Theme"
 "app.colorTheme.system" = "System"
 "app.colorTheme.light" = "Light"

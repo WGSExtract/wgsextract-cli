@@ -59,6 +59,8 @@ export type LabelTextKey =
     | "workspaceLocationCancelTitle"
     | "workspaceLocationFolderMoveConfirm"
     | "workspaceLocationSettingOnlyTitle"
+    | "workspaceLocationLinkedFolderFormat"
+    | "workspaceLocationLinkTargetUnavailable"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"

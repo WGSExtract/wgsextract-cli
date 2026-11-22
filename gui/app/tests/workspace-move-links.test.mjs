@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, readFile, readlink, realpath, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { lstat, mkdir, readFile, readdir, readlink, realpath, rename, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { fixture, manifest, move, settingsControl } from "./workspace-fixture.mjs";
 
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
@@ -50,6 +54,116 @@ async function trySymlink(t, target, link, type) {
     throw error;
   }
 }
+
+async function startMoveServer(t, source) {
+  const server = fileURLToPath(new URL("../dist/web/src/server/main.js", import.meta.url));
+  const apiToken = randomUUID();
+  const child = spawn(process.execPath, [server, "--bundle", source, "--port", "0"], {
+    env: { ...process.env, GFC_API_TOKEN: apiToken },
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  const exited = once(child, "close");
+  t.after(async () => {
+    child.kill();
+    await exited;
+  });
+  child.stdout.setEncoding("utf8");
+  let output = "";
+  for await (const chunk of child.stdout.iterator({ destroyOnReturn: false })) {
+    output += chunk;
+    const url = /WGS Extract GUI Web UI: (http:\/\/127\.0\.0\.1:\d+)\//.exec(output)?.[1];
+    if (url) {
+      return async (body) => {
+        const response = await fetch(`${url}/api/workspace-location/move`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-gfc-token": apiToken },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(5000),
+        });
+        assert.equal(response.status, 200);
+        return (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+      };
+    }
+  }
+  assert.fail(`GUI did not start: ${output}`);
+}
+
+async function snapshotTree(root) {
+  const entries = [];
+  for (const name of (await readdir(root)).sort()) {
+    const entry = path.join(root, name);
+    const info = await lstat(entry);
+    const content = info.isSymbolicLink() ? await readlink(entry)
+      : info.isDirectory() ? await snapshotTree(entry) : await readFile(entry);
+    entries.push({ name, ino: info.ino, modified: info.mtimeMs, content });
+  }
+  return entries;
+}
+
+for (const kind of ["symlink", "junction"]) {
+  for (const scenario of ["users workspace", "library folder", "destination"]) {
+    const skip = kind === "junction" && process.platform !== "win32" && "Junctions require Windows";
+    test(`#1340 refuses a ${kind} at the ${scenario} without changing the filesystem`, { skip, timeout: 15000 }, async (t) => {
+      const { root, source, users } = await fixture(t);
+      await prepareBundleWorkspace(manifest, source);
+      const library = path.join(users, "reference-data");
+      const destination = path.join(root, "new-parent", "moved");
+      const target = path.join(root, "actual-folder");
+      const link = scenario === "users workspace" ? users : scenario === "library folder" ? library : destination;
+      if (scenario === "users workspace") {
+        await rename(users, target);
+      }
+      else {
+        await mkdir(target);
+        if (scenario === "destination") await mkdir(path.dirname(destination));
+      }
+      let rawTarget = kind === "junction" ? target : path.relative(path.dirname(link), target);
+      if (scenario === "library folder" && process.platform !== "win32") {
+        const child = path.join(target, "child");
+        await mkdir(child);
+        await symlink(child, path.join(users, "hop"), "dir");
+        rawTarget = "hop/..";
+      }
+      if (!await trySymlink(t, rawTarget, link, kind === "junction" ? "junction" : "dir")) return;
+      if (scenario === "library folder") {
+        await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library + path.sep)}\n`);
+      }
+      const requestMove = await startMoveServer(t, source);
+      // Leave a timestamp a runtime reload would change even if it rewrote the same bytes.
+      await utimes(path.join(users, ".users-workspace"), 1, 1);
+      const before = await snapshotTree(root);
+      const events = await requestMove({
+        folder: destination,
+        ...(scenario === "users workspace" ? {} : { controlID: "paths", key: "reference_library" }),
+      });
+      assert.deepEqual(events.map(({ type }) => type), ["error"]);
+      const [failure] = events;
+      const reportedTarget = kind === "junction" ? target : await realpath(target);
+      assert.deepEqual(failure.linkedFolder, { link, target: reportedTarget });
+      assert.ok(failure.error.includes(link));
+      assert.ok(failure.error.includes(reportedTarget));
+      assert.match(failure.error, /move the target yourself and update the setting/i);
+      assert.deepEqual(await snapshotTree(root), before);
+    });
+  }
+}
+
+test("#1340 refuses a source replaced with a link while running actions stop", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const target = path.join(root, "actual-workspace");
+  const folder = path.join(root, "new-parent", "workspace");
+  let before;
+  await assert.rejects(move({
+    sourceRoot: source, bundleRoot: bundle, folder,
+    beforeMove: async () => {
+      await rename(users, target);
+      await symlink(target, users, "junction");
+      before = await snapshotTree(root);
+    },
+  }), { link: users, target });
+  assert.deepEqual(await snapshotTree(root), before);
+});
 
 /** A reference library with links into it (absolute, by its real path, relative, a folder) and out of it. */
 async function referenceWithLinks(t, root, reference) {
