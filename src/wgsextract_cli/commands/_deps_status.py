@@ -17,6 +17,7 @@ from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.tool_catalog import platform_unavailable_tools
 from wgsextract_cli.core.utils import MissingDependencyError
+from wgsextract_cli.core.windows_app_control import is_blocked_probe
 
 
 def _stdout_can_encode(*values: str) -> bool:
@@ -47,6 +48,8 @@ def _status_text(path: object, *, optional: bool = False, alt_env: bool = False)
 
 
 def _tool_source(tool: dict[str, Any]) -> str:
+    if is_blocked_probe(tool["version"]):
+        return " [blocked]"
     alt_env = tool.get("alt_env")
     if alt_env:
         return f" [pixi alt env: {alt_env}]"
@@ -81,13 +84,20 @@ def run(params: DepsCheckParams, *, debug: bool = False) -> None:
             raise MissingDependencyError(f"Tool not found: {params.tool}{hint}")
 
     results = _report()
-    missing = [tool["name"] for tool in results["mandatory"] if not tool["path"]]
+    missing, blocked = [], []
+    for tool in results["mandatory"]:
+        if is_blocked_probe(tool["version"]):
+            blocked.append(tool["version"].removeprefix("Error: "))
+        elif not tool["path"]:
+            missing.append(tool["name"])
+    messages = []
     if missing:
-        raise MissingDependencyError(
-            "Missing mandatory tool(s): "
-            + ", ".join(missing)
-            + ". Install them to ensure full functionality."
+        messages.append(
+            f"Missing mandatory tool(s): {', '.join(missing)}. "
+            "Install them to ensure full functionality."
         )
+    if messages or blocked:
+        raise MissingDependencyError(" ".join(messages + blocked))
     logging.info("All mandatory tools verified successfully.")
 
 

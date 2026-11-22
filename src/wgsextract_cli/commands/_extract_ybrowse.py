@@ -46,7 +46,7 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
             f"length {Y_LENGTH}. GRCh37 and T2T are unsupported."
         )
     directory, manifest = installed_snapshot(Path(resolve_reference_library()))
-    _warn_if_female(input_path, base.outdir)
+    _warn_if_female(input_path, base.outdir, ref)
     output = derive_output_path(input_path, base.outdir, "_Y_ybrowse.vcf.gz")
     with tempfile.TemporaryDirectory(
         prefix=".ybrowse_", dir=scratch_parent(base.outdir)

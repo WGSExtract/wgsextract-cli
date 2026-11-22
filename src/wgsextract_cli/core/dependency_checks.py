@@ -14,6 +14,7 @@ from wgsextract_cli.core.native_support import (
 )
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.utils import MissingDependencyError, WGSExtractError
+from wgsextract_cli.core.windows_app_control import blocked_child, blocked_launch
 from wgsextract_cli.core.windows_arm64 import (
     assert_native_windows_command,
     unsupported_windows_arm64_tool,
@@ -263,6 +264,8 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
         # 1. Try --version first (standard)
         version_arg = VERSION_ARGS.get(tool, "--version")
         res = _run_probe(tool, full_cmd + [version_arg], cwd)
+        if res.returncode and (block := blocked_child(res.stderr)):
+            return f"Error: {block}"
         if crashed := crash_description(res.returncode):
             return f"Error: {tool} {crashed}"
         output = _version_output(res.stdout, res.stderr)
@@ -276,6 +279,8 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
 
         # 2. Fallback for tools that use bare command or --help
         res = _run_probe(tool, full_cmd, cwd)
+        if res.returncode and (block := blocked_child(res.stderr)):
+            return f"Error: {block}"
         if crashed := crash_description(res.returncode):
             return f"Error: {tool} {crashed}"
         output = _version_output(res.stdout, res.stderr)
@@ -319,7 +324,9 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
         return "Available"
     except _SlowToStart as e:
         return f"Error: {e}"
-    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError) as e:
+    except OSError as e:
+        return f"Error: {blocked_launch(full_cmd[0], e) or e}"
+    except (subprocess.SubprocessError, RuntimeError, ValueError) as e:
         return f"Error: {str(e)}"
 
 
