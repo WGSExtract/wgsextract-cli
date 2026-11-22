@@ -10,8 +10,8 @@ import pytest
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import find
 
-# A fake worker: it reads its request and saves nothing; a job whose outdir
-# ends in "hold" waits for a cancel line. While the file it is given exists,
+# A fake worker: it reads its request and marks its outdir as run; a job
+# whose outdir ends in "hold" waits for a cancel line. While the file it is given exists,
 # it closes its control pipe unread instead and lingers.
 _STARTUP_WORKER = (
     "import json, os, sys, time\n"
@@ -19,6 +19,7 @@ _STARTUP_WORKER = (
     "    os.close(0)\n"
     "    time.sleep(60)\n"
     "request = json.loads(sys.stdin.readline())\n"
+    "open(os.path.join(request['params']['outdir'], 'ran'), 'w').close()\n"
     "if request['params']['outdir'].endswith('hold'):\n"
     "    sys.stdin.readline()\n"
     "print(json.dumps({'event': 'result', 'result': {'status': 'ok'}}))\n"
@@ -62,6 +63,11 @@ def test_1226_failing_to_record_a_started_job_frees_its_slot(tmp_path, worker_pi
         assert failed is not None and failed.status == "failed"
         assert failed.error is not None
         assert "Could not start the job" in failed.error["message"]
+        # Its worker never got the job, so nothing ran in its folder.
+        assert not (tmp_path / "queued" / "ran").exists()
+        assert (job_id, "failed") in {
+            (job["id"], job["status"]) for job in manager.summaries()
+        }
 
         (jobs / f"{job_id}.json.tmp").rmdir()
         later = manager.submit(op, _outdir(tmp_path, "later"))
@@ -71,6 +77,15 @@ def test_1226_failing_to_record_a_started_job_frees_its_slot(tmp_path, worker_pi
         assert not [pid for pid in worker_pids if psutil.pid_exists(pid)]
     finally:
         manager.shutdown()
+    # Once the disk recovered, the failure was saved too.
+    restarted = JobManager(jobs, config_path=None)
+    try:
+        saved = restarted.get(job_id)
+        assert saved is not None and saved.status == "failed"
+        assert saved.error is not None
+        assert "Could not start the job" in saved.error["message"]
+    finally:
+        restarted.shutdown()
 
 
 def test_1226_a_worker_that_closes_its_control_pipe_is_stopped(tmp_path, worker_pids):
@@ -86,8 +101,10 @@ def test_1226_a_worker_that_closes_its_control_pipe_is_stopped(tmp_path, worker_
     )
     op = find("qc/fake-data")
     try:
-        failed = manager.submit(op, _outdir(tmp_path, "first"))
-        assert failed.status == "failed" and failed.error is not None
+        job = manager.submit(op, _outdir(tmp_path, "first"))
+        failed = manager.wait(job.id, 10)
+        assert failed is not None and failed.status == "failed"
+        assert failed.error is not None
         assert "Could not start the job" in failed.error["message"]
         assert not psutil.pid_exists(worker_pids[0])
 
