@@ -11,9 +11,11 @@ import pytest
 from tests.http_server import DownloadHTTPServer, serving
 from wgsextract_cli.core.download_progress import DownloadCancelled
 from wgsextract_cli.core.ref_library import downloads, segmented
-from wgsextract_cli.core.ref_library.segmented import ranged_size
+from wgsextract_cli.core.ref_library.segmented import ranged_revision
 
 DATA = os.urandom(10_000)
+ETAG = f'"{hashlib.md5(DATA).hexdigest()}"'  # as tests.http_server sends it
+REVISION = segmented.Revision(len(DATA), ETAG)
 
 
 class _Server:
@@ -47,6 +49,7 @@ class _Server:
                 self.send_response(200)
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Content-Length", str(len(DATA)))
+                self.send_header("ETag", ETAG)
                 self.end_headers()
 
             def do_GET(self):
@@ -67,17 +70,22 @@ class _Server:
                         server.busy[piece] -= 1
                         self.send_error(503 if piece else 404)
                         return
-                    if server.drop.get(piece):
-                        server.drop[piece] -= 1
-                        self.send_response(206)
-                        self.send_header("Content-Length", str(len(body)))
-                        self.end_headers()
-                        self.wfile.write(body[: len(body) // 2])
-                        self.close_connection = True
-                        return
+                cut = code == 206 and server.drop.get(piece)
+                if cut:
+                    server.drop[piece] -= 1
                 self.send_response(code)
+                self.send_header("ETag", ETAG)
+                if code == 206:
+                    last = start + len(body) - 1
+                    self.send_header(
+                        "Content-Range", f"bytes {start}-{last}/{len(DATA)}"
+                    )
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
+                if cut:
+                    self.wfile.write(body[: len(body) // 2])
+                    self.close_connection = True
+                    return
                 self.wfile.write(body)
 
         self.httpd = DownloadHTTPServer(("127.0.0.1", 0), Handler)
@@ -88,7 +96,7 @@ class _Server:
 @pytest.fixture
 def server(monkeypatch):
     srv = _Server()
-    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+    monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
     monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     monkeypatch.setattr(segmented, "_backoff", lambda attempt: 0)
@@ -182,6 +190,7 @@ def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
     tmp_path, monkeypatch, caplog
 ):
     with serving(DATA) as srv:
+        srv.etags = True
         srv.get_errors["hs38.fa.gz"] = [503, 503]
         monkeypatch.setattr(segmented, "ATTEMPTS", 2)
         dest = tmp_path / "hs38.fa.gz"
@@ -194,7 +203,7 @@ def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
             caplog.at_level(logging.DEBUG),
             pytest.raises(OSError, match="503") as failure,
         ):
-            segmented.download_segmented(signed_url, str(dest), len(DATA))
+            segmented.download_segmented(signed_url, str(dest), REVISION)
 
     state = (tmp_path / "hs38.fa.gz.partial.segments").read_text()
     assert srv.url in caplog.text and "Retrying" in caplog.text
@@ -216,18 +225,20 @@ def test_1210_segment_state_and_retry_log_do_not_keep_signed_url(
     ],
 )
 def test_1210_unusable_segment_state_restarts_download(tmp_path, damage, monkeypatch):
-    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+    monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     dest = tmp_path / "hs38.fa.gz"
     partial = tmp_path / "hs38.fa.gz.partial"
     state_path = tmp_path / "hs38.fa.gz.partial.segments"
     partial.write_bytes(b"x" * len(DATA))
     with serving(DATA) as srv:
+        srv.etags = True
         url = f"{srv.url}?sig=old-signature"
         counts = {str(start): 1000 for start in range(0, len(DATA), 1000)}
         state = {
             "url_sha256": hashlib.sha256(url.encode()).hexdigest(),
             "size": len(DATA),
+            "etag": ETAG,
             "received": counts,
         }
         if damage == "legacy":
@@ -261,6 +272,7 @@ def test_1210_state_write_failure_preserves_segmented_error(
     (tmp_path / "hs38.fa.gz.partial.segments.tmp").mkdir()
     cancel = threading.Event()
     with serving(DATA) as srv:
+        srv.etags = True
         if cancelled:
             cancel.set()
         else:
@@ -271,7 +283,7 @@ def test_1210_state_write_failure_preserves_segmented_error(
             segmented.download_segmented(
                 f"{srv.url}?sig=fixture-signature",
                 str(dest),
-                len(DATA),
+                REVISION,
                 cancel_event=cancel,
             )
 
@@ -282,13 +294,14 @@ def test_1210_state_write_failure_preserves_segmented_error(
 def test_1210_failed_segment_checkpoint_cannot_resume_sparse_file_as_single(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+    monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
     monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     dest = tmp_path / "hs38.fa.gz"
     blocked = tmp_path / "hs38.fa.gz.partial.segments.tmp"
     blocked.mkdir()
     with serving(DATA) as srv:
+        srv.etags = True
         # A single-connection failure can leave a source marker without data.
         srv.head_status = 405
         srv.get_status = 404

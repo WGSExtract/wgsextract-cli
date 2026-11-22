@@ -163,10 +163,10 @@ remote server's default-off viewer endpoint and allowed roots as described in
 operator-provided certificate or a trusted encrypted tunnel. The app validates
 HTTPS certificates and refuses redirects; it never installs or configures TLS.
 
-The remote host must support the server's race-safe directory-handle file
-access (Linux and macOS). The Windows CLI rejects viewer reads with
-`viewer_unavailable` rather than using an unsafe path fallback. The Windows
-desktop can still view files served by a supported remote host.
+The remote CLI server can serve viewer files on Linux, macOS and Windows. On
+Windows, use direct paths on local drives. The server does not accept UNC
+paths or mapped network drives, and it will not follow symlinks, junctions or
+other reparse points.
 
 1. In a private editor, create a `config.toml` containing the server's URL and
    current bearer token:
