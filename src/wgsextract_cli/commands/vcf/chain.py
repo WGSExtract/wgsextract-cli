@@ -45,6 +45,7 @@ from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
     match_chromosome_name,
+    vcf_header_chromosomes,
 )
 
 from .._analyze_workflows import run_step
@@ -112,6 +113,14 @@ def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
     return getattr(lib, _VCF_STEPS[ann][0], None) or None
 
 
+def _step_data(ann: str, lib: ReferenceLibrary) -> dict[str, str | None]:
+    """The annotation data a step reads, by role, for the step journal."""
+    data = {"dataset": dataset(ann, lib)}
+    if ann == "cadd":
+        data["cadd_indel"] = getattr(lib, "cadd_indel_file", None) or None
+    return data
+
+
 def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
     if ann == "vep":
         return ["--vep-cache", lib.vep_cache] if lib.vep_cache else []
@@ -147,18 +156,33 @@ def skip_reason(ann: str, lib: ReferenceLibrary) -> str | None:
     return None
 
 
+# bcftools' largest position: a contig of unknown length isn't clipped.
+_UNKNOWN_LENGTH = 2**31 - 1
+
+
 def _contig_lengths(vcf: str, fasta: str | None) -> dict[str, int]:
-    """The VCF's ##contig lengths, else the reference's: what --region and
-    --bed are matched and clipped against."""
-    lengths = header_contig_lengths(get_bam_header(vcf))
-    if not lengths and fasta:
-        lengths = read_fai_lengths(fasta)
-    if not lengths:
-        raise WGSExtractError(
-            f"{vcf} names no contigs (##contig header lines), so --region and "
-            "--bed can't be matched to it; pass --ref with an indexed FASTA."
-        )
-    return lengths
+    """The VCF's contigs, as it names them, with their lengths: what --region
+    and --bed are matched and clipped against. A ##contig line without a
+    length takes the reference's (under either chr naming), else isn't
+    clipped; a header naming no contigs falls back to the reference's."""
+    header = get_bam_header(vcf)
+    declared = vcf_header_chromosomes(header)
+    known = header_contig_lengths(header)
+    fai = read_fai_lengths(fasta) if fasta else {}
+    if not declared:
+        if not fai:
+            raise WGSExtractError(
+                f"{vcf} names no contigs (##contig header lines), so --region "
+                "and --bed can't be matched to it; pass --ref with an indexed "
+                "FASTA."
+            )
+        return fai
+    return {
+        contig: known.get(contig)
+        or fai.get(match_chromosome_name(contig, fai) or "")
+        or _UNKNOWN_LENGTH
+        for contig in declared
+    }
 
 
 def _missing_contig(contig: str, vcf: str, lengths: dict[str, int]) -> str:
@@ -396,11 +420,7 @@ def run_chain_annotate(
 
         step = Step(
             ann,
-            inputs={
-                "vcf": current_input,
-                "dataset": dataset(ann, lib),
-                "reference": fasta,
-            },
+            inputs={"vcf": current_input, "reference": fasta, **_step_data(ann, lib)},
             outputs=[step_out],
             params={"command": command, "ref": reference},
             tools=["bcftools", *(vep_tool if ann == "vep" else [])],
@@ -440,7 +460,10 @@ def run_chain_annotate(
         "bed": params.bed,
         "reference": fasta,
     }
-    publish_inputs |= {f"dataset:{a}": dataset(a, lib) for a in applied}
+    for ann in applied:
+        publish_inputs |= {
+            f"{role}:{ann}": path for role, path in _step_data(ann, lib).items()
+        }
     publish_step = Step(
         "publish",
         inputs=publish_inputs,

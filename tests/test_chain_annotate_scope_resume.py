@@ -11,6 +11,7 @@ from tests.htslib_helpers import needs_tools, reference_for_vcf
 from tests.test_vcf_annotations import (
     REVEL_HEADER,
     SAMPLE_ROWS,
+    _bgzip,
     _query,
     _sample,
     _tsv,
@@ -153,3 +154,57 @@ def test_1291_finished_chain_is_skipped_until_its_settings_or_input_change(
     changed = _chain(sample, library, outdir, annotations="clinvar")
     assert _plan(changed) == {"clinvar": "run", "publish": "run"}
     assert _query(outdir / "chain_annotated.vcf.gz", "%POS\n") == ["100", "200"]
+
+
+def test_1291_region_keeps_vcf_naming_for_a_lengthless_contig(tmp_path):
+    """A ##contig line without a length and a FASTA naming it '1' (review of
+    #1422): the region still selects the VCF's own chr1 calls."""
+    library = tmp_path / "lib"
+    downloads = library / "downloads"
+    downloads.mkdir(parents=True)
+    _revel(downloads)
+    fasta = reference_for_vcf(
+        library / "genomes" / "hg38.fa.gz",
+        _vcf(tmp_path / "named1.vcf.gz", SAMPLE_ROWS, contig="1"),
+    )
+    header = (
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="g">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    )
+    (tmp_path / "in").mkdir()
+    sample = _bgzip(
+        tmp_path / "in" / "sample.vcf.gz",
+        header + "".join("chr1\t" + "\t".join(r.split()) + "\n" for r in SAMPLE_ROWS),
+    )
+    subprocess.run([get_tool_path("tabix"), "-p", "vcf", sample], check=True)
+
+    _chain(sample, fasta, tmp_path / "out", annotations="revel", region="chr1:90-110")
+
+    assert _query(
+        tmp_path / "out" / "chain_annotated.vcf.gz", "%CHROM:%POS:%REVEL\n"
+    ) == ["chr1:100:0.9"]
+
+
+def test_1291_replaced_cadd_indel_scores_rerun_a_finished_chain(tmp_path):
+    """The CADD indel table is step input too (review of #1422)."""
+    library = tmp_path / "lib"
+    downloads = library / "downloads"
+    downloads.mkdir(parents=True)
+    sample = _sample(tmp_path, SAMPLE_ROWS)
+    header = "#Chrom\tPos\tRef\tAlt\tRawScore\tPHRED"
+    _tsv(downloads / "cadd_hg38.tsv.gz", header, ["1 100 C T 2.5 24.1"])
+    indels = downloads / "cadd_indel_hg38.tsv.gz"
+    _tsv(indels, header, ["1 400 CA C 4.2 31"])
+    reference_for_vcf(library / "genomes" / "hg38.fa.gz", sample)
+    outdir = tmp_path / "out"
+    _chain(sample, library, outdir, annotations="cadd")
+
+    for index in downloads.glob("cadd_indel_hg38.tsv.gz.*"):
+        index.unlink()
+    _tsv(indels, header, ["1 400 CA C 4.2 12"])
+    result = _chain(sample, library, outdir, annotations="cadd")
+
+    assert _plan(result) == {"cadd": "run", "publish": "run"}
+    scores = _query(outdir / "chain_annotated.vcf.gz", "%ID:%CADD_PHRED\n")
+    assert "del:12" in scores
