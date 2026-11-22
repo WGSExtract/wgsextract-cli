@@ -46,7 +46,7 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     _is_sigpipe,
-    get_resource_defaults,
+    get_resource_threads,
     popen,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -593,7 +593,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         )
     contigs = vcf_index_chromosomes(vcf)
     _require_library_sources(databases, params.site_data)
-    threads = int(get_resource_defaults(params.threads)[0])
+    threads = int(get_resource_threads(params.threads))
     wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
     result = current_result()
     with (

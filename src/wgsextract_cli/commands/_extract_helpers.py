@@ -27,6 +27,7 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     get_resource_defaults,
+    get_resource_threads,
     run_command,
     run_pipeline,
 )
@@ -39,7 +40,7 @@ from wgsextract_cli.core.variant_files import (
 
 class BaseArgs(NamedTuple):
     threads: str
-    memory: str
+    memory: str | None
     outdir: str
     cram_opt: list[str]
     ref: str | None
@@ -54,6 +55,7 @@ def base_args(
     memory: str | None,
     region: str | None = None,
     stage: Literal["sort", "compression"] = "compression",
+    budget_memory: bool = True,
 ) -> BaseArgs:
     """Validate the input, create the output directory and resolve the reference."""
     if not input_path:
@@ -62,7 +64,10 @@ def base_args(
     verify_paths_exist({"--input": input_path})
     logging.debug(f"Input file: {str(absolute_path(input_path))}")
 
-    threads, memory = get_resource_defaults(threads, memory, stage=stage)
+    if budget_memory:
+        threads, memory = get_resource_defaults(threads, memory, stage=stage)
+    else:
+        threads, memory = get_resource_threads(threads, stage=stage), None
     outdir = fspath(outdir) if outdir else str(absolute_path(input_path).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
