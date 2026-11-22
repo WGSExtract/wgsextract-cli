@@ -3,6 +3,7 @@ consumers refusing incompatible artifacts before they run."""
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import json
 import os
@@ -507,3 +508,85 @@ def test_1182_vcf_call_outputs_share_one_manifest_but_keep_their_producer(
     ])  # fmt: skip
     assert code == 1
     assert _error_code(stdout) == "sample_mismatch"
+
+
+@needs_htslib
+def test_1182_a_filtered_vcf_naming_another_sample_only_warns(tmp_path: Path) -> None:
+    # Review of #1372: a VCF filtered from calls keeps their sample name but
+    # wasn't called from reads here, so a name mismatch only warns.
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    filtered = tmp_path / "filtered"
+    code, _, stderr = run_cli([
+        "vcf", "filter", "--vcf-input", str(calls / "snps.vcf.gz"),
+        "--expr", "QUAL>0", "--outdir", str(filtered),
+    ])  # fmt: skip
+    assert code == 0, stderr
+    other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--dry-run", "--input", other,
+        "--vcf-inputs", str(filtered / "filtered.vcf.gz"),
+        "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 0, stdout
+    document = json.loads(stdout)
+    assert "sample_mismatch" in {w["code"] for w in document["warnings"]}
+
+
+@needs_htslib
+def test_1182_bcf_contigs_declared_without_length_keep_their_index(
+    tmp_path: Path,
+) -> None:
+    # Review of #1372: a BCF's CSI counts the lengthless ##contig=<ID=chrM> too.
+    plain = tmp_path / "calls.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n##contig=<ID=chrM>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t5\t.\tA\tG\t.\t.\t.\nchrM\t5\t.\tA\tG\t.\t.\t.\n"
+    )
+    bcf = tmp_path / "calls.bcf"
+    run_command(["bcftools", "view", "-Ob", "-o", str(bcf), str(plain)])
+    run_command(["bcftools", "index", str(bcf)])
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--dry-run", "--vcf-inputs", str(bcf),
+        "--outdir", str(tmp_path / "out"),
+    ])  # fmt: skip
+    assert code == 0, stdout
+    assert json.loads(stdout)["inputs"][0]["artifact"]["index"]["state"] == "ready"
+
+
+@needs_htslib
+def test_1182_a_server_job_never_reads_a_manifest_outside_its_folders(
+    tmp_path: Path,
+) -> None:
+    # Review of #1372: the manifest beside an input may link elsewhere.
+    from wgsextract_cli.core import read_scope
+    from wgsextract_cli.core.results import CommandResult
+
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    vcf = allowed / "snps.vcf.gz"
+    shutil.copyfile(calls / "snps.vcf.gz", vcf)
+    shutil.copyfile(calls / "snps.vcf.gz.tbi", f"{vcf}.tbi")
+    manifest = json.loads((calls / "snps.vcf.manifest.json").read_text())
+    for record in manifest["outputs"]:
+        record["path"] = record["path"].replace(str(calls), str(allowed))
+    outside = tmp_path / "outside.manifest.json"
+    outside.write_text(json.dumps(manifest))
+    (allowed / "snps.vcf.manifest.json").symlink_to(outside)
+
+    def origin(scope: Any) -> str:
+        result = CommandResult(command="vcf filter")
+        with scope:
+            result.add_input(vcf, "vcf_input")
+            result.finalize(probe_tools=False)
+        return str(json.loads(result.to_json())["inputs"][0]["artifact"]["origin"])
+
+    resolved = allowed.resolve()
+    inside = read_scope.limited_to(lambda p: Path(p).resolve().is_relative_to(resolved))
+    assert origin(contextlib.nullcontext()) == "recorded"
+    assert origin(inside) == "external"

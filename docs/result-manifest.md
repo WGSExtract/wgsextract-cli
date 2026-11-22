@@ -185,7 +185,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `reference_mismatch` | the same | Same build, but the contig names, lengths or MD5s differ from the reference. |
   | `index_stale`, `index_mismatch` | the same | The BAM/CRAM index is `stale` or `mismatched`. A `mismatched` VCF index is refused too. A missing or older VCF index is rebuilt, as before. |
   | `index_missing` | BAM/CRAM variant callers with `--region` | The region is read through the index. Calling the whole file still streams an unindexed BAM. |
-  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called (`recorded`) names none of the reads' samples. For an `external` VCF, whose sample may only be named differently, this is a warning with the same code, and the run continues. |
+  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM (`recorded`, with the reads among its `sources`) names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
 
   Nothing in this pilot reaches the network or installs anything. Other
   commands record artifacts but don't check them yet.
@@ -248,7 +248,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `step_failed` | `benchmark` | A benchmark step failed (`step`, `log`). |
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
-| `sample_mismatch` | `analyze comprehensive` | An external VCF names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
+| `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
 
 New codes may be added in any release. Consumers should treat unknown codes

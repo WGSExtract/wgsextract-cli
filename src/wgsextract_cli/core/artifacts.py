@@ -218,6 +218,7 @@ class _Recorded:
     producer: Producer
     lifecycle: Lifecycle | None
     reference: str | None
+    from_reads: bool  # made directly from a BAM/CRAM: its samples are the reads'
 
 
 _MANIFEST_SCAN_LIMIT = 256
@@ -242,14 +243,19 @@ def recorded_producer(record: FileRecord) -> _Recorded | None:
         )[:_MANIFEST_SCAN_LIMIT]
     except OSError:
         others = []
+    from wgsextract_cli.core import read_scope
+
     for manifest in (own, *others):
+        # A server job reads only the folders it allows, manifests included.
+        if not read_scope.may_follow(manifest):
+            continue
         if found := _producer_in(manifest, record):
             return found
     return None
 
 
 def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
-    from wgsextract_cli.core.results import SCHEMA_ID
+    from wgsextract_cli.core.results import SCHEMA_ID, file_kind
 
     try:
         document = json.loads(manifest.read_text(encoding="utf-8"))
@@ -285,6 +291,11 @@ def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
             ),
             artifact.get("lifecycle"),
             artifact.get("reference"),
+            any(
+                isinstance(edge, dict)
+                and file_kind(str(edge.get("path") or "")) in ("bam", "cram")
+                for edge in artifact.get("sources") or []
+            ),
         )
     return None
 

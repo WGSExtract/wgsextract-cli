@@ -243,12 +243,13 @@ def _index_file_state(
     except (OSError, EOFError, ValueError, struct.error, zlib.error):
         return "mismatched"
     if header is not None:
-        contigs = header_lengths(header)
+        # Every contig the header declares, with or without a length (bcftools
+        # writes ##contig=<ID=chrM> for one it met without a header line).
+        declared = set(header_lengths(header)) | set(_CONTIG_ID.findall(header))
         # A BAI/CSI of a BAM, or a BCF's CSI, counts every header contig.
-        if kind in ("bam", "cram", "bcf") and contents.count != len(contigs):
+        if kind in ("bam", "cram", "bcf") and contents.count != len(declared):
             return "mismatched"
         names = set(contents.names or ())
-        declared = set(contigs) | set(_CONTIG_ID.findall(header))
         if declared and not names <= declared:
             return "mismatched"
     if not blocks:
