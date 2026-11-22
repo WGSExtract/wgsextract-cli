@@ -97,6 +97,7 @@
 {"path":"config","tier":"setup","summary":"Show the settings in use and the config.toml path.","key_flags":[]},
 {"path":"report-issue","tier":"setup","summary":"Report a problem: a redacted, pre-filled GitHub bug report.","key_flags":["--run","--last-failed","--title","--description","--dry-run","--open"]},
 {"path":"help","tier":"setup","summary":"List every command, or explain one: 'help vcf snp'.","key_flags":["--all","--full"]},
+{"path":"lineage y-private","tier":"advanced","summary":"List candidate private (novel) Y SNPs: calls absent from the installed YBrowse/YFull marker sets, in callable regions, passing strict filters.","key_flags":["--no-download"]},
 {"path":"extract bam-subset","tier":"advanced","summary":"Create a smaller version of your BAM file using a random fraction of reads (e.g. 0.1 for 10%).","key_flags":["--fraction","--region","--gene"]},
 {"path":"vcf to-fasta","tier":"advanced","summary":"Build your personal consensus genome: the reference FASTA with your variants applied (heterozygous SNVs as IUPAC codes by default), and N where a gVCF has no call.","key_flags":["--vcf-input","--region","--sample","--haplotype","--uncalled","--include-filtered","--mask","--chain"]},
 {"path":"vcf trio","tier":"advanced","summary":"Analyze inheritance patterns.","key_flags":["--vcf-input","--mother","--father","--proband","--mode","--min-depth","--proband-sex","--region"]},

@@ -191,6 +191,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
+| `known_markers_partial` | `lineage y-private` on T2T | Only the YFull YTree positions are known markers there (the YBrowse snapshot is GRCh38-only), so SNPs YBrowse names but YFull's tree doesn't place can be candidates (`build`). |
+| `y_private_excess` | `lineage y-private` | More candidate private Y SNVs (`count`) than expected (`threshold`): suspect contamination, a mismatched reference, poor data or a marker set that misses the lineage. |
 
 New codes may be added in any release. Consumers should treat unknown codes
 as generic warnings.
@@ -260,6 +262,7 @@ These commands record full manifests: `info` (including `--detailed`),
 `info chip`, `info calculate-coverage`, `info coverage-sample`, `ref status`,
 `align`, `realign`, every `vcf` subcommand, every `extract` subcommand,
 `lineage mt-haplogroup`, `lineage y-haplogroup`, `lineage y-str`,
+`lineage y-private`,
 `microarray`, every `bam`, `qc`, `ref`, `vep` and `typing` subcommand,
 `analyze`, `pet`, `methylation`, `repair`, `benchmark`, `example-genome
 download`, `sign` and `report`.

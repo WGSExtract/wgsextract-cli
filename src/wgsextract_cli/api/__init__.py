@@ -134,7 +134,12 @@ from .genotyping import (
     TypingStrParams,
 )
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .lineage import (
+    MtHaplogroupParams,
+    YHaplogroupParams,
+    YPrivateParams,
+    YStrParams,
+)
 from .methylation import MethylationPileupParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams
@@ -361,6 +366,7 @@ __all__ = [
     "WGSExtractError",
     "YHaplogroupParams",
     "YMtExtractParams",
+    "YPrivateParams",
     "YStrParams",
     "YdnaBamParams",
     "YdnaVcfParams",

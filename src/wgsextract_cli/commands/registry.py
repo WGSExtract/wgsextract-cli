@@ -190,6 +190,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
 ADVANCED_SUBCOMMANDS = frozenset(
     {
         "extract bam-subset",
+        "lineage y-private",
         "vcf freebayes",
         "vcf gatk",
         "vcf deepvariant",
