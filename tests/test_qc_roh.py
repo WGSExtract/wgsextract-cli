@@ -46,10 +46,11 @@ def _header(
     fmt: bool,
     lengthless: Collection[str] = (),
     gq: bool = True,
+    extra: Collection[str] = (),
 ) -> str:
-    """A header of the build's autosomes; those in ``lengthless`` (or all,
-    with "*") are declared without a length."""
-    lines = ["##fileformat=VCFv4.2"]
+    """A header of the build's autosomes, after the ``extra`` contigs; those
+    in ``lengthless`` (or all, with "*") are declared without a length."""
+    lines = ["##fileformat=VCFv4.2", *(f"##contig=<ID={c}>" for c in extra)]
     for name, length in load_annotations(build).contigs.items():
         if name.removeprefix("chr").isdigit():
             contig = name if chr_prefix else name.removeprefix("chr")
@@ -85,12 +86,16 @@ def _sample(
     last: int = LAST,
     lengthless: Collection[str] = (),
     with_gq: bool = True,
+    chr_prefix: bool = True,
+    extra: Collection[str] = (),
 ) -> str:
     """chr20 calls: hom inside ``runs``, Hardy-Weinberg draws elsewhere. An
     ``interruption`` puts 30 heterozygous calls at 56.0-56.3 Mb: real (het),
-    GQ 5 (weak) or without a genotype (missing), or leaves 55-58 Mb without
-    calls (gap). ``others`` adds ten heterozygous calls on every other
-    autosome; ``last`` is the last marker; without ``with_gq``, calls are GT only."""
+    GQ 5 (weak), without a GQ (no_gq) or without a genotype (missing), or
+    leaves 55-58 Mb without calls (gap). ``others`` adds ten heterozygous
+    calls on every other autosome; ``last`` is the last marker; without
+    ``with_gq``, calls are GT only. Autosomes are named 20 without
+    ``chr_prefix``; ``extra`` contigs are declared first."""
     rng = random.Random(1174)
     other = "chr{}\t{}\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:60"
     rows = _elsewhere(range(1, 20), other) if others else []
@@ -99,8 +104,8 @@ def _sample(
         if interruption == "gap" and 55_000_000 <= pos < 58_000_000:
             continue
         if 56_000_000 <= pos < 56_300_000 and interruption:
-            gt, gq = {"het": ("0/1", 60), "weak": ("0/1", 5),
-                      "missing": ("./.", 0)}[interruption]  # fmt: skip
+            gt, gq = {"het": ("0/1", 60), "weak": ("0/1", 5), "missing": ("./.", 0),
+                      "no_gq": ("0/1", ".")}[interruption]  # fmt: skip
         elif any(start <= pos <= end for start, end in runs):
             gt, gq = ("1/1" if rng.random() < p else "0/0"), 60
         else:
@@ -111,7 +116,9 @@ def _sample(
     plain = tmp / "sample.vcf"
     if not with_gq:
         rows = [row.replace("\tGT:GQ\t", "\tGT\t").rsplit(":", 1)[0] for row in rows]
-    header = _header("hg38", True, True, lengthless, with_gq)
+    if not chr_prefix:
+        rows = [row.removeprefix("chr") for row in rows]
+    header = _header("hg38", chr_prefix, True, lengthless, with_gq, extra)
     plain.write_text(header + "\n".join(rows) + "\n")
     return bgzip_index(plain)
 
@@ -193,6 +200,8 @@ def test_issue_1174_flag_only_for_runs_over_an_imprinted_region(tmp_path):
         ("het", True, None),
         ("weak", False, "weak_genotype"),
         ("missing", False, "missing_genotype"),
+        # PR #1349 review: a call without its own GQ passed the GQ floor.
+        ("no_gq", False, "weak_genotype"),
     ],  # fmt: skip
 )
 def test_issue_1174_heterozygous_calls_split_runs_but_weak_evidence_does_not(
@@ -281,6 +290,16 @@ def test_pr_1349_review_a_vcf_without_gq_needs_an_explicit_min_gq_0(tmp_path):
     document = _document(_roh(tmp_path, vcf, frequencies, min_gq=0))
     assert document["markers"]["min_gq"] is None
     assert len(document["flags"]) == 1
+
+
+def test_pr_1349_review_naming_follows_the_autosomes_not_chrM(tmp_path):
+    """PR #1349 review: a header with autosomes 1-22 and chrM made qc roh look
+    for chr20, so no calls were found."""
+    vcf = _sample(tmp_path, [INSIDE_GNAS], chr_prefix=False, extra=["chrM"])
+    document = _document(_roh(tmp_path, vcf, _frequencies(tmp_path)))
+
+    assert "20" in document["scope"]["contigs"]
+    assert [f["chrom"] for f in document["flags"]] == ["20"]
 
 
 def test_pr_1349_review_af_cache_is_a_path_the_server_checks(tmp_path, monkeypatch):

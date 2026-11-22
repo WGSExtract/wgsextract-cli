@@ -336,7 +336,7 @@
         },
         "weak_genotype": {
           "type": "integer",
-          "description": "GQ below min_gq."
+          "description": "Calls left out with GQ below a positive min_gq, or without a GQ of their own."
         },
         "hom_ref": {
           "type": "integer"

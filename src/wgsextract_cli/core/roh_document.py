@@ -116,7 +116,13 @@ class Markers:
         ),
     ]
     missing_genotype: int
-    weak_genotype: Annotated[int, Constraints(description="GQ below min_gq.")]
+    weak_genotype: Annotated[
+        int,
+        Constraints(
+            description="Calls left out with GQ below a positive min_gq, or "
+            "without a GQ of their own."
+        ),
+    ]
     hom_ref: int
     het: int
     hom_alt: int

@@ -117,12 +117,26 @@ def _sample(vcf: str, wanted: str | None) -> str:
 
 
 def _chr_prefix(vcf: str, header_contigs: list[str]) -> bool:
-    if header_contigs:
-        return any(c.lower().startswith("chr") for c in header_contigs)
-    first = run_command(
-        ["bcftools", "query", "-f", "%CHROM\n", vcf], capture_output=True, check=False
-    ).stdout.split("\n", 1)[0]
-    return first.lower().startswith("chr")
+    """Whether the sample names its autosomes chr1 (else 1), from the header's
+    autosomes, else its first autosomal record; other contigs (chrM, alts)
+    don't decide it."""
+    for contig in header_contigs:
+        if bare(contig) in roh_af.AUTOSOMES:
+            return contig.lower().startswith("chr")
+    with popen(
+        ["bcftools", "query", "-f", "%CHROM\n", vcf],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    ) as proc:
+        assert proc.stdout is not None
+        try:
+            for line in proc.stdout:
+                if bare(line.strip()) in roh_af.AUTOSOMES:
+                    return line.lower().startswith("chr")
+        finally:
+            proc.kill()
+    return False
 
 
 def _build(params: QcRohParams, lengths: dict[str, int], vcf: str) -> str:
@@ -238,7 +252,8 @@ def _select_markers(
             alleles = gt.replace("|", "/").split("/")
             if "." in alleles:
                 counts["missing_genotype"] += 1
-            elif min_gq is not None and gq not in (".", "") and float(gq) < min_gq:
+            elif min_gq and (gq in (".", "") or float(gq) < min_gq):
+                # A call without its own GQ hasn't shown the floor either.
                 counts["weak_genotype"] += 1
             elif len(set(alleles)) > 1:
                 counts["het"] += 1
@@ -247,7 +262,7 @@ def _select_markers(
     if proc.returncode:
         raise CodedError("roh_input_unreadable", f"bcftools couldn't read {vcf}.")
     markers = work / "markers.bcf"
-    exclude = 'GT="mis"' + (f" || FMT/GQ<{min_gq}" if min_gq is not None else "")
+    exclude = 'GT="mis"' + (f' || FMT/GQ<{min_gq} || FMT/GQ="."' if min_gq else "")
     run_command(
         ["bcftools", "view", "-e", exclude, "-Ob", "-o", str(markers), str(candidates)]
     )

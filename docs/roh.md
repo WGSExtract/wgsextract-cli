@@ -79,8 +79,9 @@ OwnGenome.
 
 The markers are the sample's biallelic SNV calls with `PASS` (or no)
 `FILTER` at sites of the AF table. A call without a genotype, or with GQ
-below `--min-gq` (20), is left out and counted (`missing_genotype`,
-`weak_genotype`), so a weak heterozygous call doesn't split a run. A VCF
+below `--min-gq` (20) or no GQ of its own, is left out and counted
+(`missing_genotype`, `weak_genotype`), so a weak heterozygous call doesn't
+split a run. A VCF
 without GQ (a genotype export, say) is refused (`roh_no_gq`) unless you pass
 `--min-gq 0` to accept its genotypes without a quality floor. Genotypes
 are used, not likelihoods (`bcftools roh --GTs-only 30`), so callers'
@@ -213,7 +214,8 @@ ROH (12%) than a constant 0.4; the OwnGenome comparison reported 42% and
 is chromosome 20's alone.
 
 **HG002, whole genome.** The GIAB v4.2.1 benchmark VCF (variants only,
-GRCh38) with the same 1000 Genomes frequencies: 3,991 runs from 3,334,699
-markers, the longest 3.3 Mb, F_ROH 0.45%, no flags. The first run took 98 s
+GRCh38) with the same 1000 Genomes frequencies: 3,979 runs from 3,314,317
+markers (22,089 calls without their own GQ left out), the longest 3.3 Mb,
+F_ROH 0.45%, no flags. The first run took 98 s
 (50 s preparing the 66.5 million-site table) and 160 MB of memory; with the
 table reused, 40 s.
