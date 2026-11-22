@@ -177,11 +177,7 @@ def test_low_coverage_check_catches_shallow_long_read_chrY(
     assert depths is not None
     assert depths[CHR_Y] == pytest.approx(2, abs=0.5)
     assert depths[AUTOSOMES] == pytest.approx(20, rel=0.05)
-    warnings = [
-        r
-        for r in caplog.records
-        if r.levelno == logging.WARNING and "N counts" not in r.getMessage()
-    ]  # the fake genome's N counts are unmeasured
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert [r.getMessage().split(" depth")[0].split()[-1] for r in warnings] == [CHR_Y]
 
 

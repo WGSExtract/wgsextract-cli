@@ -299,8 +299,10 @@ def target_depths(
         if not override:
             return None
     n_basis = n_lengths_digest(n_lengths) if n_lengths is not None else None
-    # A detected depth stands only for the N counts it left out.
+    # A detected depth stands only for the N counts it left out; without the
+    # reference's N counts, its source says the depth includes the N gaps.
     tag = f" [N {n_basis[:12]}]" if n_basis else " [N unknown]"
+    gaps = "; N gaps included, the reference's N counts unknown" if problem else ""
     if (
         fact is not None
         and isinstance(value, dict)
@@ -308,10 +310,8 @@ def target_depths(
         and (override or (fact.method or "").endswith(tag))
     ):
         origin = "your override" if override else (fact.method or "").removesuffix(tag)
-        if problem and not override:
-            warn(*problem)
         return {k: float(v) for k, v in value.items()}, (
-            f"{sample_workspace.WORKSPACE_FILE} ({origin})"
+            f"{sample_workspace.WORKSPACE_FILE} ({origin}{'' if override else gaps})"
         )
     try:
         found = _cached_depths(alignment, outdir, n_basis or "")
@@ -333,9 +333,7 @@ def target_depths(
             method=source + tag,
             confidence="high",
         )
-    if problem:
-        warn(*problem)
-    return depths, source
+    return depths, source + gaps
 
 
 def _format_depth(depth: float) -> str:
