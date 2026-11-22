@@ -1,14 +1,19 @@
 """Local, offline dependency errors for #1131's opt-in CUDA PairHMM."""
 
 import json
+import os
 import zipfile
 from pathlib import Path
 
 import pytest
 
+from tests.fake_tools import python_tool, require_bare_name_fakes
+from tests.htslib_helpers import require_runnable, sam_to_bam, write_fasta
 from wgsextract_cli.api.vcf import VcfGatkParams
+from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.native_pairhmm import cuda_pairhmm_java_options
 from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.main import main
 
 
 def sidecar(path: Path, *, complete: bool = True) -> Path:
@@ -90,3 +95,59 @@ def test_1131_native_cuda_and_neon_cannot_be_selected_together() -> None:
             pair_hmm_cuda=Path("cuda.jar"),
             pair_hmm_neon=Path("neon.jar"),
         )
+
+
+def test_1131_flow_aware_ultima_rejects_cuda_without_running_caller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    require_bare_name_fakes()
+    require_runnable("samtools")
+    bindir = tmp_path / "bin"
+    started = tmp_path / "caller-started"
+    python_tool(
+        bindir,
+        "gatk",
+        "import sys\n"
+        "from pathlib import Path\n"
+        "if '--version' in sys.argv:\n"
+        "    print('The Genome Analysis Toolkit v4.6.2.0')\n"
+        "else:\n"
+        f"    Path({str(started)!r}).touch()\n"
+        "    sys.exit(1)\n",
+    )
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 200})
+    bam = tmp_path / "ultima.bam"
+    sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:200",
+            "@RG\tID:rg\tSM:S\tPL:ULTIMA\tFO:TGCA",
+            f"read\t0\tchr1\t1\t60\t100M\t*\t0\t0\t{'A' * 100}"
+            f"\t{'I' * 100}\tRG:Z:rg\ttp:B:c{',0' * 100}\tt0:Z:{'I' * 100}",
+        ],
+        bam,
+    )
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit) as done:
+        main(
+            [
+                "vcf",
+                "gatk",
+                "--input",
+                str(bam),
+                "--ref",
+                str(ref),
+                "--outdir",
+                str(out),
+                "--pair-hmm-cuda",
+                str(sidecar(tmp_path / "cuda.jar")),
+                "--json",
+            ]
+        )
+    assert done.value.code != 0
+    captured = capsys.readouterr()
+    assert "flow likelihood model" in captured.err
+    assert not started.exists()
+    assert not (out / "gatk.vcf.gz").exists()
