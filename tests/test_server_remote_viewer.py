@@ -205,7 +205,9 @@ def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
     root = tmp_path / secrets.token_hex(12)
     root.mkdir()
     outside = tmp_path / "outside"
-    outside.write_bytes(b"private")
+    # #1360: a random secret, since "private" also appears in macOS temp paths.
+    secret = secrets.token_hex(16).encode()
+    outside.write_bytes(secret)
     link = root / "escape"
     try:
         link.symlink_to(outside)
@@ -216,7 +218,7 @@ def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
             server, "/v1/viewer-file?" + urlencode({"path": str(link)})
         )
         assert status == (403 if safe_viewer_reads() else 503)
-        assert b"private" not in body
+        assert secret not in body
 
 
 @requires_safe_reads
