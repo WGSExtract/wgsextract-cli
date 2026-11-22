@@ -237,7 +237,10 @@ def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
     assert result.metrics["native_aligner_memory_budget_bytes"] == budget
     assert result.metrics["native_aligner_sort_memory_requested"] == "1G"
     assert result.metrics["native_aligner_sort_memory_actual"] == "256M"
-    assert "2.5x slower" in caplog.text
+    assert any(
+        "on the CPU" in message and "memory budget" in message
+        for message in caplog.messages
+    )
     assert "--prefer-native-gpu" in caplog.text
 
 
