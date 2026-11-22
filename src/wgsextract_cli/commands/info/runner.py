@@ -3,7 +3,6 @@ import csv
 import io
 import json
 import logging
-import os
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -73,6 +72,7 @@ from .metrics import (
     generate_chrom_table,
     get_file_stats,
     infer_sex_call,
+    input_signature,
     is_long_read_library,
     is_missing_cram_reference,
     load_n_counts,
@@ -94,16 +94,13 @@ from .render import (
 COVERAGE_COMMANDS = ("calculate-coverage", "coverage-sample")
 
 
-def _input_signature(path: str) -> dict[str, int]:
-    st = os.stat(path)
-    return {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
-
-
-def _load_cache(path: str, signature: dict[str, int]) -> dict[str, Any]:
+def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, Any]:
     """Load the metrics cache, discarding it unless it was built from this exact input.
 
     Caches written before input signatures were recorded are treated as stale.
     """
+    if signature is None:
+        return {}
     try:
         with open(path) as f:
             data = json.load(f)
@@ -936,7 +933,8 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
 
     json_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
-    signature = _input_signature(input_file)
+    signature = input_signature(input_file)
+    cache = cache and signature is not None
     data = _load_cache(json_cache, signature)
     call = data.get("sex_call")
     sex_unavailable = (
