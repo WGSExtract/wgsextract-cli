@@ -221,6 +221,8 @@ def run_ybrowse(params: RefYbrowseParams) -> None:
             [library / "ybrowse"],
         )
         return
+    if (params.chain or params.download) and not params.grch37:
+        raise UsageError("--chain and --download apply only with --grch37.")
     if not params.grch37:
         verify_dependencies(["bgzip", "tabix"])
         installed = install_snapshot(library, params.snapshot)

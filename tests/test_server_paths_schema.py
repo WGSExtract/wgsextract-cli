@@ -109,8 +109,6 @@ def test_path_guard_covers_every_ref_path(op, field, value):
         allowed["install"] = "hg38"
     if op == "ref/library-delete":
         allowed["genome"] = "hg38"
-    if op == "ref/ybrowse":
-        allowed["grch37"] = True  # --chain applies only with --grch37
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))

@@ -1967,18 +1967,15 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-library, or delete the installed snapshots. `grch37` also lifts the
-installed GRCh38 sites to GRCh37 with Ensembl's GRCh38->GRCh37 chain and
-checks them against a GRCh37 FASTA; YBrowse publishes no usable GRCh37
-file.
+library, or delete the installed snapshots; `grch37` lifts it to GRCh37.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
-| `grch37` | `bool` | `False` | `--grch37` | Derive GRCh37 sites from the installed GRCh38 snapshot (installing --snapshot first when given): lift them with Ensembl's GRCh38->GRCh37 chain and check each allele against the GRCh37 FASTA --ref names, else the library's. |
-| `chain` | `Path \| None` | `None` | `--chain` | With --grch37, lift with this GRCh38->GRCh37 chain instead of Ensembl's pinned chain. |
-| `download` | `bool` | `False` | `--download` | With --grch37, download Ensembl's pinned GRCh38->GRCh37 chain (730 KB, ftp.ensembl.org) when the library lacks it; no sample data is sent. |
+| `grch37` | `bool` | `False` | `--grch37` | Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, checked against the GRCh37 FASTA --ref names or the library's. |
+| `chain` | `Path \| None` | `None` | `--chain` | With --grch37, lift with this chain. |
+| `download` | `bool` | `False` | `--download` | With --grch37, download Ensembl's pinned chain (730 KB) if missing. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`

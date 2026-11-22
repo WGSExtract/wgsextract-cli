@@ -30024,7 +30024,7 @@
    }
   },
   "ref ybrowse": {
-   "help": "usage: wgsextract ref ybrowse [-h] [--install] [--delete] [--snapshot SNAPSHOT] [--grch37]\n                              [--chain CHAIN] [--download]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --delete             Delete the installed yBrowse snapshots\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream\n                       pin.\n  --grch37             Derive GRCh37 sites from the installed GRCh38 snapshot (installing\n                       --snapshot first when given): lift them with Ensembl's GRCh38->GRCh37 chain\n                       and check each allele against the GRCh37 FASTA --ref names, else the\n                       library's.\n  --chain CHAIN        With --grch37, lift with this GRCh38->GRCh37 chain instead of Ensembl's\n                       pinned chain.\n  --download           With --grch37, download Ensembl's pinned GRCh38->GRCh37 chain (730 KB,\n                       ftp.ensembl.org) when the library lacks it; no sample data is sent.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n  wgsextract ref ybrowse --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites (--delete\n  removes them).\n\nneeds:\n  bgzip, tabix; depending on options and inputs, also: bcftools, samtools;\n  depends on download speed.\n",
+   "help": "usage: wgsextract ref ybrowse [-h] [--install] [--delete] [--snapshot SNAPSHOT] [--grch37]\n                              [--chain CHAIN] [--download]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --delete             Delete the installed yBrowse snapshots\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream\n                       pin.\n  --grch37             Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, checked\n                       against the GRCh37 FASTA --ref names or the library's.\n  --chain CHAIN        With --grch37, lift with this chain.\n  --download           With --grch37, download Ensembl's pinned chain (730 KB) if missing.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n  wgsextract ref ybrowse --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites (--delete\n  removes them).\n\nneeds:\n  bgzip, tabix; depending on options and inputs, also: bcftools, samtools;\n  depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -30378,7 +30378,7 @@
       "default": false,
       "dest": "grch37",
       "exclusive_group": null,
-      "help": "Derive GRCh37 sites from the installed GRCh38 snapshot (installing --snapshot first when given): lift them with Ensembl's GRCh38->GRCh37 chain and check each allele against the GRCh37 FASTA --ref names, else the library's.",
+      "help": "Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, checked against the GRCh37 FASTA --ref names or the library's.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -30394,7 +30394,7 @@
       "default": null,
       "dest": "chain",
       "exclusive_group": null,
-      "help": "With --grch37, lift with this GRCh38->GRCh37 chain instead of Ensembl's pinned chain.",
+      "help": "With --grch37, lift with this chain.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -30410,7 +30410,7 @@
       "default": false,
       "dest": "download",
       "exclusive_group": null,
-      "help": "With --grch37, download Ensembl's pinned GRCh38->GRCh37 chain (730 KB, ftp.ensembl.org) when the library lacks it; no sample data is sent.",
+      "help": "With --grch37, download Ensembl's pinned chain (730 KB) if missing.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [

@@ -161,15 +161,11 @@ class RefGnomadSvParams(_InLibrary, Params):
 @dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
     """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-    library, or delete the installed snapshots. ``grch37`` also lifts the
-    installed GRCh38 sites to GRCh37 with Ensembl's GRCh38->GRCh37 chain and
-    checks them against a GRCh37 FASTA; YBrowse publishes no usable GRCh37
-    file."""
+    library, or delete the installed snapshots; ``grch37`` lifts it to GRCh37."""
 
     COMMAND = "ref ybrowse"
 
     delete: bool = _delete_param("yBrowse snapshots")
-
     snapshot: Path | None = param(
         None,
         help="Use a local GRCh38 VCF(.gz), verifying its header instead of the "
@@ -179,35 +175,20 @@ class RefYbrowseParams(_InLibrary, Params):
     )
     grch37: bool = param(
         False,
-        help="Derive GRCh37 sites from the installed GRCh38 snapshot (installing "
-        "--snapshot first when given): lift them with Ensembl's GRCh38->GRCh37 "
-        "chain and check each allele against the GRCh37 FASTA --ref names, else "
-        "the library's.",
+        help="Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, "
+        "checked against the GRCh37 FASTA --ref names or the library's.",
         action="store_true",
     )
     chain: Path | None = param(
-        None,
-        help="With --grch37, lift with this GRCh38->GRCh37 chain instead of "
-        "Ensembl's pinned chain.",
-        path="file",
-        cli_type=Path,
+        None, help="With --grch37, lift with this chain.", path="file", cli_type=Path
     )
     download: bool = param(
         False,
-        help="With --grch37, download Ensembl's pinned GRCh38->GRCh37 chain "
-        "(730 KB, ftp.ensembl.org) when the library lacks it; no sample data is "
-        "sent.",
+        help="With --grch37, download Ensembl's pinned chain (730 KB) if missing.",
         action="store_true",
         writes=True,
     )
     ref: Path | None = ref_param()
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        if (self.chain or self.download) and not self.grch37:
-            raise UsageError("--chain and --download apply only with --grch37.")
-        if self.delete and (self.grch37 or self.snapshot):
-            raise UsageError("--delete takes no --grch37 or --snapshot.")
 
 
 @dataclass(frozen=True, kw_only=True)
