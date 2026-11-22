@@ -7,10 +7,11 @@ import logging
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from pathlib import Path
 
@@ -134,12 +135,18 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
     permissions; a new one gets ``new_mode`` (private by default; 0o666 gives
     the umask's ordinary permissions)."""
     final = Path(path)
-    mode = stat.S_IMODE(final.stat().st_mode) if final.exists() else new_mode
+    try:
+        existing_mode = stat.S_IMODE(final.stat().st_mode)
+    except FileNotFoundError:
+        existing_mode = None
+    mode = new_mode if existing_mode is None else existing_mode
     with atomic_output(final, retire_indexes=False) as staged:
         fd = os.open(staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
+            if os.name == "posix" and existing_mode is not None:
+                os.fchmod(stream.fileno(), existing_mode)
             os.fsync(stream.fileno())
 
 
@@ -158,12 +165,14 @@ def publication_lock(
 def publish_output_set(
     staged_to_final: Mapping[Path, Path],
     *,
+    retire: Sequence[Path] = (),
     checkpoint: Callable[[], None] | None = None,
 ) -> None:
     """Publish validated files staged on the destination volume.
 
-    All destinations must share a parent. List the primary file last so it
-    is absent while its companions are being replaced.
+    All destinations and obsolete companions in ``retire`` must share a
+    parent. List the primary file last so it is absent while its companions
+    are being replaced or removed.
     """
     files = list(staged_to_final.items())
     if files:
@@ -172,7 +181,7 @@ def publish_output_set(
         with contextlib.ExitStack() as local:
             scope = _publication_locks.get()
             (local if scope is None else scope).enter_context(lock)
-            _publish_output_set(files, primary.parent, checkpoint)
+            _publish_output_set(files, retire, primary.parent, checkpoint)
 
 
 def _preserve_output_permissions(
@@ -185,7 +194,7 @@ def _preserve_output_permissions(
     ):
         os.chown(staged, info.st_uid, info.st_gid)
     staged.chmod(info.st_mode & 0o777)
-    if hasattr(os, "getxattr"):
+    if sys.platform == "linux":  # POSIX ACLs; Python has xattr calls only here
         acl_name = "system.posix_acl_access"
         try:
             acl = os.getxattr(final, acl_name)
@@ -202,13 +211,21 @@ def _preserve_output_permissions(
 
 
 def _publish_output_set(
-    files: list[tuple[Path, Path]], parent: Path, checkpoint: Callable[[], None] | None
+    files: list[tuple[Path, Path]],
+    retire: Sequence[Path],
+    parent: Path,
+    checkpoint: Callable[[], None] | None,
 ) -> None:
     from wgsextract_cli.core.utils import WGSExtractError
 
+    sources = {final: staged for staged, final in files}
     existing: list[Path] = []
-    for staged, final in files:
-        if not staged.is_file() or not staged.stat().st_size:
+    for final in [
+        *dict.fromkeys(path for path in retire if path not in sources),
+        *sources,
+    ]:
+        staged = sources.get(final)
+        if staged is not None and (not staged.is_file() or not staged.stat().st_size):
             raise WGSExtractError(f"Output writer did not produce a nonempty {final}")
         try:
             info = final.lstat()
@@ -223,7 +240,7 @@ def _publish_output_set(
                 info = final.stat()
             except FileNotFoundError:
                 pass
-        if stat.S_ISREG(info.st_mode):
+        if staged is not None and stat.S_ISREG(info.st_mode):
             _preserve_output_permissions(final, staged, info)
         existing.append(final)
 
