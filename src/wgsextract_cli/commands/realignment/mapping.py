@@ -11,7 +11,11 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.native_aligners import native_gpu_preference, on_windows_x64
+from wgsextract_cli.core.native_aligners import (
+    find_native_aligner,
+    native_gpu_preference,
+    on_windows_x64,
+)
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import (
@@ -80,7 +84,7 @@ def _align_step(
             **(
                 {"prefer_native_gpu": True}
                 if aligner in align_cmd.BWA_ALIGNERS
-                and _native_gpu_preference_changes_plan(job, target, reads)
+                and _native_gpu_plan_key(job, target, reads)
                 else {}
             ),
         },
@@ -90,16 +94,27 @@ def _align_step(
     )
 
 
-def _native_gpu_preference_changes_plan(
+def _native_gpu_plan_key(
     job: RealignJob, target: str | None, reads: dict[str, str | None]
 ) -> bool:
-    """Key the preference when it enables CUDA or overrides a GPU RAM limit."""
+    """Key Windows CUDA policy or an explicit override of a GPU RAM limit."""
+    preference = native_gpu_preference(job.prefer_native_gpu)
+    tool = align_cmd.short_read_tool(job)
+    if on_windows_x64():
+        # Fingerprint policy, not transient preflight results. Streaming may
+        # reserve extra RAM; only the actual alignment should plan for it.
+        if preference is False or job.gpu or tool != "bwa":
+            return False
+        native = find_native_aligner("bwa", job.native_aligners, probe=True)
+        return native is not None and (
+            native.cuda_hardware_supported or native.cuda_available
+        )
     if (
-        not native_gpu_preference(job.prefer_native_gpu)
+        preference is not True
         or job.gpu
         or not target
         or not Path(target).is_file()
-        or align_cmd.short_read_tool(job) not in align_cmd.BWA_ALIGNERS
+        or tool not in align_cmd.BWA_ALIGNERS
     ):
         return False
     threads, memory = get_resource_defaults(job.threads, job.memory)
@@ -118,7 +133,7 @@ def _native_gpu_preference_changes_plan(
         reads=count,
         read_length=statistics.read_length if statistics else None,
     )
-    return (on_windows_x64() and plan.backend == "cuda") or (
+    return (
         plan.memory_decision is not None and plan.memory_decision.reason == "prefer_gpu"
     )
 

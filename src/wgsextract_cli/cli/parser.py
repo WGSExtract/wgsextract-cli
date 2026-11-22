@@ -69,7 +69,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # native_aligners = "auto"
 # Windows x86-64: optional path to a local wgse-bwa build
 # wgse_bwa_path = 'C:\\tools\\wgse-bwa.exe'
-# prefer_native_gpu = false  # Windows CUDA is opt-in
+# prefer_native_gpu = false  # Force CPU for wgse-bwa on Windows
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
 # Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"

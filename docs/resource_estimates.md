@@ -254,10 +254,11 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
-`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
+Outside Windows, `--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
 normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
 swap. Explicit `--memory` is retained; default/config memory is capped at
-256M, subject to general sort limits. The manifest's
+256M, subject to general sort limits. On Windows, CUDA BWA never bypasses the
+RAM or commit check; `--no-prefer-native-gpu` forces CPU. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
 and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive

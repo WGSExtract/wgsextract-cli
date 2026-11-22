@@ -47,18 +47,9 @@ REALIGN_STEPS = ("extract", "align", "index")
 def _native_aligners_param() -> Any:
     return param(
         None,
-        help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
-        "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with "
-        "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
-        "bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with "
-        "wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple "
-        "Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on "
-        "the NVIDIA GPU); on Windows x86-64, with wgse-bwa in place of bwa "
-        "(on PATH or set wgse_bwa_path in config.toml). Used when installed (auto; same alignments, "
-        "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
-        "On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi "
-        "install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else "
-        "auto. Install the builds as native/README.md describes.",
+        help="Use optional native aligners when installed (auto), or never (off). "
+        "On Windows x86-64, find wgse-bwa on PATH or at wgse_bwa_path. "
+        "See native/README.md for other platforms.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; "
         "wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH "
@@ -93,11 +84,11 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="Enable CUDA BWA on Windows (CPU by default). On other hosts, "
-        "if no GPU plan fits the RAM budget even after the sort-memory "
-        "step-down, use the GPU anyway instead of the slower CPU path; may swap "
-        "heavily. Default: config prefer_native_gpu, else off.",
-        doc="Opt in to CUDA BWA on Windows (CPU by default). On other hosts, "
+        help="On Windows, CUDA BWA is automatic when it fits; "
+        "--no-prefer-native-gpu forces CPU. Elsewhere, prefer the native GPU "
+        "even if it exceeds the RAM budget; may swap heavily.",
+        doc="On Windows, CUDA BWA is automatic when it fits both RAM and commit; "
+        "false forces CPU and true still respects both limits. On other hosts, "
         "prefer the native GPU over the RAM-budget CPU fallback. Sort "
         "memory is stepped down first; explicit --memory is kept, otherwise "
         "at most 256M per thread. May swap heavily.",
