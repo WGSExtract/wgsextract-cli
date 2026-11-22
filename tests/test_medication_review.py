@@ -81,9 +81,11 @@ def _pharmcat(
     genes: dict[str, list[Alternative]],
     labels: dict[str, tuple[str, str]],
     outside: tuple[str, ...] = (),
+    truncated: bool = False,
 ) -> None:
     """A `vcf pharmcat` run: each gene's alternatives and the confidence label
-    (and reasons) of its calls."""
+    (and reasons) of its calls; ``truncated``: only a manifest listing part of
+    them, without the confidence table."""
     reports = {
         gene: {
             "callSource": "OUTSIDE" if gene in outside else "MATCHER",
@@ -112,13 +114,24 @@ def _pharmcat(
             for i, (gene, (label, reasons)) in enumerate(labels.items(), start=1)
         )
     )
-    _manifest(
+    manifest = _manifest(
         folder,
         "HG002.phenotype.json",
         "vcf pharmcat",
         inputs=((folder / "HG002.vcf.gz", "input"),),
-        outputs=((phenotypes, "pharmcat_phenotypes"), (table, "confidence_table")),
+        outputs=((phenotypes, "pharmcat_phenotypes"),)
+        + (() if truncated else ((table, "confidence_table"),)),
     )
+    if truncated:
+        document = json.loads(manifest.read_text())
+        listed = [
+            {"gene": gene, "confidence": label, "reasons": reasons.split("|") if reasons else []}
+            for gene, (label, reasons) in labels.items()
+        ]  # fmt: skip
+        document["details"] = {"confidence": [
+            {"role": "pgx_calls", "findings": listed, "findings_truncated": True}
+        ]}  # fmt: skip
+        manifest.write_text(json.dumps(document))
 
 
 def _cyrius(folder: Path, **metrics: Any) -> None:
@@ -153,7 +166,7 @@ def _context(folder: Path, *medications: str | dict[str, str]) -> Path:
     return path
 
 
-def _review(folder: Path, *medications: str | dict[str, str]) -> dict[str, Any]:
+def _report(folder: Path, *medications: str | dict[str, str]) -> Any:
     result = api.report.build(
         api.ReportParams(
             workspace=folder, pgx_context=_context(folder, *medications), download=True
@@ -162,7 +175,11 @@ def _review(folder: Path, *medications: str | dict[str, str]) -> dict[str, Any]:
     report = result.details
     assert report is not None
     jsonschema.validate(report, pr.load_schema())
-    return report["sections"]["medication_review"]
+    return report
+
+
+def _review(folder: Path, *medications: str | dict[str, str]) -> dict[str, Any]:
+    return _report(folder, *medications)["sections"]["medication_review"]
 
 
 def _advisories(section: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -282,7 +299,8 @@ def test_1176_paroxetine_phenoconversion_keeps_baseline_beside_adjusted_cyp2d6(
     _cyrius(folder, **RESOLVED_CYRIUS)
     _pharmcat(folder, {"CYP2D6": [("*1/*2", "Normal Metabolizer", "2.0")]}, {},
               outside=("CYP2D6",))  # fmt: skip
-    section = _review(folder, "codeine", *(["paroxetine"] if paroxetine else []))
+    report = _report(folder, "codeine", *(["paroxetine"] if paroxetine else []))
+    section = report["sections"]["medication_review"]
     (gene,) = section["genes"]
     assert gene["baseline"] == "Normal Metabolizer"
     codeine = _advisories(section)["codeine"]["advisory"]
@@ -301,6 +319,12 @@ def test_1176_paroxetine_phenoconversion_keeps_baseline_beside_adjusted_cyp2d6(
         assert {"Poor Metabolizer"} <= {
             a["phenotypes"]["CYP2D6"] for a in codeine["alternatives"]
         }
+        # PR review: both renderers show the status and what the change could
+        # lead to, labelled as not guidance for this person.
+        for text in (pr.render_markdown(report), pr.render_html(report)):
+            assert "Review with your listed medications" in text
+            assert "Not guidance for this person" in text
+            assert "Avoid codeine use" in text
         # Paroxetine's own CPIC guidance already accounts for its effect.
         assert _advisories(section)["paroxetine"]["advisory"]["status"] == "advisory"
     else:
@@ -341,6 +365,49 @@ def test_1176_ambiguous_call_gives_guidance_only_when_its_alternatives_agree(
         assert "Withheld" in finding["value"]
     else:
         assert "standard dose" in finding["value"]
+
+
+def test_1176_truncated_call_list_never_narrows_cpic_guidance(tmp_path, served_cpic):
+    # PR review: without the confidence table, the manifest's partial call
+    # list can't show a gene's weakest call, so a listed high call isn't enough.
+    folder = _sample(tmp_path)
+    _pharmcat(
+        folder,
+        {"CYP2C19": [("*1/*1", "Normal Metabolizer", "Normal Metabolizer")]},
+        {"CYP2C19": ("high", "")},
+        truncated=True,
+    )
+    report = _report(folder, {"name": "clopidogrel", "population": "NVI"})
+    finding = _advisories(report["sections"]["medication_review"])["clopidogrel"]
+    assert finding["advisory"]["status"] == "withheld"
+    assert finding["advisory"]["recommendation"] is None
+    pgx = report["sections"]["pharmacogenomics"]
+    (gene,) = [f for f in pgx["findings"] if f["gene"] == "CYP2C19"]
+    assert (gene["confidence"], gene["confidence_reasons"]) == (
+        "not_assessed",
+        ["calls_truncated"],
+    )
+    assert "calls_truncated" in {w["code"] for w in pgx["warnings"]}
+
+
+def test_1176_guidance_needs_a_cpic_recommendation_for_every_possible_result(
+    tmp_path, served_cpic
+):
+    # PR review: an alternative CPIC has no clopidogrel (NVI) recommendation
+    # for must not drop out, leaving the other alternative's guidance unique.
+    folder = _sample(tmp_path)
+    _pharmcat(
+        folder,
+        {"CYP2C19": [("*1/*1", "Normal Metabolizer", "Normal Metabolizer"),
+                     ("*1/*99", "Uncertain Function", "Uncertain Function")]},
+        {"CYP2C19": ("high", "")},
+    )  # fmt: skip
+    finding = _advisories(
+        _review(folder, {"name": "clopidogrel", "population": "NVI"})
+    )["clopidogrel"]
+    assert finding["advisory"]["status"] == "withheld"
+    assert finding["advisory"]["recommendation"] is None
+    assert any("CYP2C19 *1/*99" in n for n in finding["advisory"]["notes"])
 
 
 @pytest.mark.parametrize(

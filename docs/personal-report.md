@@ -123,7 +123,7 @@ Its `advisory.status` says how far the evidence goes:
 | Status | Meaning |
 | --- | --- |
 | `advisory` | One CPIC recommendation fits the confident call; it is quoted verbatim with CPIC's strength, the guideline, its PMID and the release. `contraindication` is true when it advises against the drug (avoid, not recommended, contraindicated, do not use). |
-| `context_review` | It fits the genotype, but another listed medication may change the phenotype (below), or the recommendation says to avoid inhibitors of the gene and another listed medication inhibits it. `alternatives` holds the recommendations the change could lead to. |
+| `context_review` | It fits the genotype, but another listed medication may change the phenotype (below), or the recommendation says to avoid inhibitors of the gene and another listed medication inhibits it. `alternatives` holds the recommendations the change could lead to; the HTML and Markdown show them too, marked as not guidance for this person. |
 | `withheld` | The call is weak (`low` or `not_assessed` evidence, a no-call) or ambiguous, and its possible results lead to different recommendations. Nothing is recommended. |
 | `context_needed` | CPIC's guidance differs by patient group or indication (clopidogrel, carbamazepine, phenytoin, ...); add `population`. |
 | `insufficient_evidence` | No CPIC recommendation applies: the drug isn't in CPIC, its gene pairs carry no prescribing guidance (CPIC level C/D), its guidance is an algorithm outside the recommendation table (warfarin), CPIC has none for this result, or none for the given population. |
@@ -132,8 +132,9 @@ Its `advisory.status` says how far the evidence goes:
 The gate uses the evidence of the calls the guidance rests on, from the
 pharmacogenomics section before ambiguity lowers its label: a call needs
 `high` or `moderate` evidence to narrow CPIC's recommendations. A weak call
-counts as any of its possible results, so guidance is given only when CPIC's
-recommendation is the same whatever the result; an ambiguous confident call
+counts as any of its possible results, so guidance is given only when CPIC
+has a recommendation for every possible result and it is the same for all of
+them; an ambiguous confident call
 counts as its alternatives, so phenotype-consistent alternatives give guidance
 and conflicting ones do not. Missing or partial reference evidence, unresolved
 Cyrius calls, the combined CYP2D6+CYP2D7 copy number and ambiguous PharmCAT
@@ -317,7 +318,9 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   allele balance, mapping quality and strand bias.
 - **PharmCAT**: the weakest label among the gene's labelled calls in the
   run's confidence table. A gene with no labelled calls (a reference `*1/*1`
-  rests on coverage alone) is `not_assessed`.
+  rests on coverage alone) is `not_assessed`, and so is a gene judged only
+  from a manifest that lists some of the calls (`calls_truncated`, when the
+  confidence table is missing).
 - **HLA-A and HLA-B (T1K)**: `low` when `typing hla` made no confident call;
   `high` when T1K's quality is above 0 for each allele (its own threshold) and
   the names it tied agree; `moderate` when the T1K genotypes file is missing;

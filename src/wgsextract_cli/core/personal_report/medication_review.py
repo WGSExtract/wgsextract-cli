@@ -14,6 +14,7 @@ beside it. Nothing here is a prescription.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
@@ -382,6 +383,17 @@ def _evaluate(
         )
 
     base = _distinct(r for r in group if fits(r, {}))
+    uncovered = _uncovered(group, genes_needed, genes)
+    if base and uncovered:
+        advisory.status = "withheld"
+        advisory.alternatives = base
+        advisory.reasons = ["alternatives_differ"]
+        advisory.notes.append(
+            f"CPIC has no {drug.name} recommendation for some possible results "
+            f"({'; '.join(uncovered)}), so none can be established; confirm the "
+            "genotype with a clinical test."
+        )
+        return advisory
     if not base:
         advisory.status = "insufficient_evidence"
         advisory.notes.append(
@@ -435,6 +447,38 @@ def _evaluate(
     return advisory
 
 
+def _uncovered(
+    group: Sequence[Recommendation],
+    genes_needed: Sequence[str],
+    genes: Mapping[str, PgxGene],
+) -> list[str]:
+    """The possible results no recommendation in ``group`` covers: each
+    combination of a confident gene's alternatives and a weak gene's values."""
+    options: list[list[tuple[str, frozenset[str]]]] = []
+    for gene in genes_needed:
+        state = genes[gene]
+        if state.adequate:
+            options.append(
+                [(a.diplotype, frozenset(a.lookup_keys)) for a in state.alternatives]
+            )
+        else:
+            values = sorted({r.lookup[gene] for r in group if gene in r.lookup})
+            options.append([(v, frozenset({v})) for v in values])
+    return [
+        ", ".join(
+            f"{g} {name}" for g, (name, _) in zip(genes_needed, combo, strict=True)
+        )
+        for combo in itertools.product(*options)
+        if not any(
+            all(
+                r.lookup.get(g) in keys
+                for g, (_, keys) in zip(genes_needed, combo, strict=True)
+            )
+            for r in group
+        )
+    ]
+
+
 def _key(r: Recommendation) -> tuple[str, str]:
     return r.text, r.classification
 
@@ -484,13 +528,15 @@ def _advisory_finding(
     states = [genes[g] for g in advisory.genes if g in genes]
     if advisory.status in ("advisory", "context_review") and chosen is not None:
         value = f"CPIC ({chosen.classification}): {chosen.text}"
+        if advisory.status == "context_review":
+            value = f"Review with your listed medications. {value}"
         # Genes the recommendation doesn't depend on (it's the same for every
         # result of a weak call) don't set its label.
         used = [s for s in states if s.adequate]
         label = _worst(s.evidence for s in used) if used else NOT_ASSESSED
         reasons = sorted({r for s in used if s.evidence == label for r in s.reasons})
     elif advisory.status == "withheld":
-        value = "Withheld: CPIC's recommendations differ for the possible results"
+        value = "Withheld: no single CPIC recommendation fits every possible result"
         label = variant_confidence.LOW
         reasons = sorted({*advisory.reasons, *(r for s in states for r in s.reasons)})
     else:
@@ -500,11 +546,24 @@ def _advisory_finding(
         ", ".join(f"{g}: {p}" for g, p in chosen.phenotypes.items()) if chosen else ""
     )
     guideline = cpic.guidelines.get(chosen.guideline_id) if chosen else None
+    others = "; ".join(
+        f"for {', '.join(r.phenotypes.values()) or 'another result'}: "
+        f"{r.text} ({r.classification})"
+        for r in advisory.alternatives
+    )
+    if others:
+        others = (
+            "Not guidance for this person; CPIC's recommendations if the "
+            f"phenotype changes: {others}."
+            if advisory.status == "context_review"
+            else f"Possible CPIC recommendations, none established: {others}."
+        )
     detail = " ".join(
         part
         for part in (
             f"For {phenotypes}." if phenotypes else "",
             *advisory.notes,
+            others,
             f"Source: CPIC {guideline.name} guideline"
             + (f" (PMID {guideline.publication[1]})" if guideline.publication else "")
             + f", CPIC database {cpic.release}."

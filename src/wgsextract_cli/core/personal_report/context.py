@@ -71,7 +71,9 @@ REASONS = {
     "outside_call_mismatch": "PharmCAT's outside call differs from the newest "
     "call of the caller that makes it; rerun vcf pharmcat with its current call",
     "alternatives_differ": "the call's alternatives (or a weak call's possible "
-    "results) lead to different CPIC recommendations",
+    "results) lead to different CPIC recommendations, or CPIC has none for some",
+    "calls_truncated": "only some of the run's labelled calls are listed (its "
+    "confidence table is missing), so unlisted calls may be weaker",
 }
 SECTIONS = {
     "overview": "Sample overview",

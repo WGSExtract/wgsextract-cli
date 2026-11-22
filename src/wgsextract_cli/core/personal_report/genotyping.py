@@ -101,7 +101,17 @@ def _pharmcat_findings(
         )
         rows = []
     calls: dict[str, list[dict[str, Any]]] = {}
-    for call in _labelled_calls(source, "pgx_calls", "confidence_table")[0]:
+    labelled, complete = _labelled_calls(source, "pgx_calls", "confidence_table")
+    if not complete:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="calls_truncated",
+                message="The PharmCAT run's confidence table is missing and its "
+                "manifest lists only some calls, so gene labels can't be "
+                "confirmed. Restore the confidence table or rerun vcf pharmcat.",
+            )
+        )
+    for call in labelled:
         for gene in str(call.get("gene") or "").split(","):
             if gene:
                 calls.setdefault(gene, []).append(call)
@@ -123,6 +133,13 @@ def _pharmcat_findings(
         else:
             label, reasons = NOT_ASSESSED, ["no_labelled_calls"]
             basis = "no labelled calls in the gene"
+        if not complete and label in (
+            variant_confidence.HIGH,
+            variant_confidence.MODERATE,
+        ):
+            # Unlisted calls may be weaker than every listed one.
+            label, reasons = NOT_ASSESSED, ["calls_truncated"]
+            basis = "only some of the run's labelled calls are listed"
         ctx.pgx_genes[gene] = PgxGene(
             gene=gene,
             status=row.status,
