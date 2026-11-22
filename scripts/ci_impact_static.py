@@ -38,6 +38,34 @@ def _reads(node: ast.AST) -> set[str]:
     }
 
 
+def changed_import_bindings(before: bytes, after: bytes) -> set[str]:
+    def bindings(source: bytes) -> dict[str, list[tuple[str, str]]]:
+        result: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        for node in ast.parse(source).body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                prefix = (
+                    "." * node.level + (node.module or "")
+                    if isinstance(node, ast.ImportFrom)
+                    else ""
+                )
+                for alias in node.names:
+                    bound = alias.asname or alias.name.split(".", 1)[0]
+                    result[bound].append((prefix, alias.name))
+        return result
+
+    old, new = bindings(before), bindings(after)
+    return {name for name in old.keys() | new.keys() if old.get(name) != new.get(name)}
+
+
+def binding_readers(source: bytes, bindings: set[str]) -> set[str]:
+    return {
+        node.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and _reads(node) & bindings
+    }
+
+
 @cache
 def _parse(root: Path, blob: str) -> ast.Module:
     return ast.parse(

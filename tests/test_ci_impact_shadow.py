@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 from scripts.ci_impact_observations import SCHEMA
+from scripts.ci_impact_results import file_results
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -169,3 +170,65 @@ def test_foreign_observation_map_is_not_comparable(tmp_path: Path) -> None:
     observations, gap = observation_map(tmp_path, evidence, "b" * 40)
     assert not observations
     assert gap and "outside" in gap
+
+
+def test_symbol_keeps_caller_when_import_binding_removed(tmp_path: Path) -> None:
+    from scripts.ci_impact_diff import impact_diff
+    from scripts.ci_impact_shadow import compute
+
+    _git(tmp_path, "init", "-b", "main")
+    _git(tmp_path, "config", "user.email", "test@example.test")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "commit.gpgsign", "false")
+    src = "src/wgsextract_cli/info.py"
+    target = tmp_path / src
+    target.parent.mkdir(parents=True)
+    target.write_text("import sys\n\ndef report():\n    return sys.platform\n")
+    tested = {"tests/test_report.py", "tests/test_other_api.py"}
+    for test in tested:
+        path = tmp_path / test
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("def test_contract():\n    pass\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "Existing observed report")
+    target.write_text("def report():\n    return sys.platform\n")
+    _git(tmp_path, "commit", "-am", "Remove used import")
+
+    candidates, _, _ = compute(
+        tmp_path,
+        impact_diff(tmp_path, "HEAD^1", "HEAD"),
+        tested,
+        {
+            "functions": {src: {"report": ["tests/test_report.py"]}},
+            "modules": {src: sorted(tested)},
+        },
+    )
+    assert set(candidates["decisive"]) == tested
+    assert candidates["symbol"] == ["tests/test_report.py"]
+    assert candidates["widely_called"] == ["tests/test_report.py"]
+
+
+def test_xunit_collection_failure_is_attributed_to_its_module(tmp_path: Path) -> None:
+    (tmp_path / "pytest.ini").touch()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_broken.py").write_text("def invalid syntax\n")
+    output = tmp_path / "out"
+    output.mkdir()
+    report = output / "pytest.xml"
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--basetemp=out/pytest",
+            f"--junitxml={report}",
+            "tests",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+    )
+    assert run.returncode == 2
+    results, unmapped = file_results(report, {"tests/test_broken.py"})
+    assert unmapped == 0
+    assert results["tests/test_broken.py"]["failed"] == 1

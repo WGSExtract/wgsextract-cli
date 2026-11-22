@@ -23,6 +23,13 @@ def file_results(junit: Path, tests: set[str]) -> tuple[dict[str, Result], int]:
     unmapped = 0
     for case in ET.parse(junit).iter("testcase"):
         name = case.get("classname", "")
+        error = case.find("error")
+        if (
+            not name
+            and error is not None
+            and error.get("message") == "collection failure"
+        ):
+            name = case.get("name", "")
         file = case.get("file")
         if file not in tests:
             file = None

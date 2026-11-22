@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.ci_impact_diff import ImpactDiff, git_blob, impact_diff
+from scripts.ci_impact_import_smoke import smoke_package
 from scripts.ci_impact_observations import SCHEMA
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import (
@@ -26,7 +27,12 @@ from scripts.ci_impact_scopes import (
     module_scopes,
     shadow_candidates,
 )
-from scripts.ci_impact_static import StaticUsers, tracked_python
+from scripts.ci_impact_static import (
+    StaticUsers,
+    binding_readers,
+    changed_import_bindings,
+    tracked_python,
+)
 from scripts.ci_impact_symbols import SYMBOL_CONTRACTS, symbol_delta
 from scripts.ci_impact_wide import command_groups, sample_callers
 from scripts.ci_run_tests import test_targets
@@ -37,7 +43,6 @@ from scripts.ci_test_tiers import SINGLE_OS_MODULES
 SOURCE = "src/wgsextract_cli/"
 VARIANTS = ("decisive", "tight", "symbol", "widely_called")
 LOCKS = {"pixi.toml", "pixi.lock", "pyproject.toml"}
-IMPORT_SMOKE = "tests/test_ci_package_import_smoke.py"
 
 
 def observation_map(
@@ -248,8 +253,29 @@ def compute(
             if not delta.broad and (delta.imports or delta.symbols):
                 scoped = set(contracts)
                 if delta.imports:
-                    scoped.add(IMPORT_SMOKE)
                     reasons[source].add("eager-import-smoke")
+                    bindings = changed_import_bindings(before, after)
+                    if "*" in bindings:
+                        scoped.update(module_users[source])
+                    else:
+                        affected = binding_readers(before, bindings) | binding_readers(
+                            after, bindings
+                        )
+                        for fn, users in functions.get(source, {}).items():
+                            if fn.rsplit(".", 1)[-1] in affected:
+                                scoped.update(users)
+                        for name in bindings:
+                            scoped.update(
+                                readers_by_symbol.get(source, {}).get(name, ())
+                            )
+                        for p, _, index in trees:
+                            scoped.update(
+                                index.symbol_users(p, affected, tests, functions)
+                            )
+                        if affected:
+                            reasons[source].add("changed-import-binding-callers")
+                            if not scoped - contracts:
+                                scoped.update(module_users[source])
                 if delta.symbols:
                     reasons[source].add("structural-symbol-users")
                     for fn, users in functions.get(source, {}).items():
@@ -314,6 +340,11 @@ def main() -> None:
     )
     evidence, gap = observation_map(root, args.observations, diff.base)
     candidates, reasons, unmatched = compute(root, diff, tests, evidence)
+    import_probe = (
+        smoke_package(root)
+        if any("eager-import-smoke" in rule for rule in reasons.values())
+        else "not selected"
+    )
     actual_selection = test_targets(args.selection)
     requested = tests if actual_selection is None else tests & set(actual_selection)
     actual: dict[str, Any] = {}
@@ -352,6 +383,7 @@ def main() -> None:
         "unmapped_cases": unmapped,
         "run_outcome": args.outcome,
         "receipt": receipt,
+        "advisory_package_import_smoke": import_probe,
         "rule_reasons": {p: sorted(r) for p, r in reasons.items()},
         "variants": {},
     }
@@ -360,6 +392,7 @@ def main() -> None:
         f"Actual selector: {len(requested)} files before cache; {len(completed)} files with pass/fail observations.",
         receipt,
         gap or f"Observation map: `{evidence['manifest']['source_sha']}`.",
+        f"Advisory symbol/helper package-import smoke: {import_probe}.",
         "",
         "| Candidate | Files | Est. test-min | Timing files | Observed omitted failures | Unobserved selected |",
         "|---|---:|---:|---:|---:|---:|",

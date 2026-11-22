@@ -880,8 +880,11 @@ merge tree and parents, and the regular pytest receipt. Separate generic,
 smoke, and installer jobs are outside this comparison. A certified or
 path-skipped Linux job produces no hosted comparison; missing evidence does
 not count as a pass.
+For eager import changes, the symbol and helper arms also record a separate
+non-gating package import probe and keep observed callers of changed bindings.
 
-Scheduled Ubuntu runs that execute the full suite write a versioned Python
+Scheduled Ubuntu runs execute the full regular suite even when the same
+main commit passed earlier that day. They write a versioned Python
 coverage-context map and per-file test timings. PRs can restore that read-only
 map. An absent map, incompatible lock or unreachable source SHA is reported
 explicitly. Test-minute estimates sum recorded pytest durations; they omit
