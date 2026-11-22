@@ -4,6 +4,10 @@ import gzip
 import hashlib
 import json
 import logging
+import os
+import signal
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from urllib.request import urlopen
@@ -293,20 +297,29 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
 
 
 @needs_tools("bcftools", "bgzip")
-def test_1213_cancelled_gnomad_does_not_wait_for_stalled_body(
-    source, tmp_path, monkeypatch
+@pytest.mark.parametrize("stall", ["body", "headers", "mirror", "segmented-mirror"])
+def test_1213_cancelled_gnomad_disconnects_stalled_download(
+    source, mirror_catalog, tmp_path, monkeypatch, stall
 ):
-    path = "upstream"
-    source.files[path] = b"a" * (2 << 20)
+    from wgsextract_cli.core.ref_library import segmented
+
+    data = b"a" * (2 << 20)
+    entry = mirror_catalog(source, data, allowed=stall.endswith("mirror"))
+    path = "mirror-0" if stall.endswith("mirror") else "upstream"
+    if stall == "segmented-mirror":
+        from wgsextract_cli.core.ref_library.segmented import ranged_size
+
+        monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+        monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", len(data))
     started, release, disconnected = (
         threading.Event(),
         threading.Event(),
         threading.Event(),
     )
     cancel = api.CancelToken()
-    source.body_pauses[path] = (1, started, release)
+    source.body_pauses[path] = (None if stall == "headers" else 1, started, release)
     source.body_disconnects[path] = disconnected
-    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", source.url_for(path))
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
     result = []
 
@@ -329,10 +342,61 @@ def test_1213_cancelled_gnomad_does_not_wait_for_stalled_body(
         assert result[0].exit_code == 130
         assert disconnected.wait(1), "client did not shut down the stalled response"
         assert source.get_paths == [path]
-        assert not list(tmp_path.rglob("*.gz*"))
+        assert not [file for file in tmp_path.rglob("*.gz*") if file.is_file()]
+        if stall.endswith("mirror"):
+            assert list(tmp_path.rglob("part0000.partial*"))
     finally:
         release.set()
         worker.join(5)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX SIGTERM")
+@needs_tools("bcftools", "bgzip", "tabix")
+def test_1213_cli_sigterm_disconnects_gnomad(source, tmp_path):
+    source.files["upstream"] = b"a" * (2 << 20)
+    started, release, disconnected = (
+        threading.Event(),
+        threading.Event(),
+        threading.Event(),
+    )
+    source.body_pauses["upstream"] = (None, started, release)
+    source.body_disconnects["upstream"] = disconnected
+    script = (
+        "import sys; from wgsextract_cli.core import gnomad_af; "
+        "from wgsextract_cli.main import main; "
+        "gnomad_af.GNOMAD_V4_URL = sys.argv[1]; "
+        "gnomad_af.GNOMAD_V4_CONTIGS = ['chr1']; main(sys.argv[2:])"
+    )
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            script,
+            source.url_for("upstream"),
+            "ref",
+            "gnomad",
+            "--release",
+            "4.1",
+            "--threads",
+            "1",
+            "--ref",
+            str(tmp_path),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ) as cli:
+        try:
+            assert started.wait(10), (
+                f"gnomAD did not request the VCF (exit {cli.poll()})"
+            )
+            cli.send_signal(signal.SIGTERM)
+            assert cli.wait(timeout=4) == 128 + signal.SIGTERM
+            assert disconnected.wait(1), "CLI left the stalled response open"
+            assert source.get_paths == ["upstream"]
+        finally:
+            release.set()
+            if cli.poll() is None:
+                cli.kill()
 
 
 def test_1046_pr_code_only_edits_probe_no_unrelated_hosts():

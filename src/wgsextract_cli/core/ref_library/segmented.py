@@ -23,6 +23,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core.cancellable_http import cancellable_http
 from wgsextract_cli.core.download_progress import (
     CancelEvent,
     DownloadCancelled,
@@ -81,13 +82,18 @@ class RangesUnsupported(Exception):
     """The server answered a byte-range request with the whole file."""
 
 
-def ranged_size(url: str) -> int | None:
+def ranged_size(url: str, cancel_event: CancelEvent | None = None) -> int | None:
     """The file's size, if its server says it takes byte ranges."""
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
-        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        response_cm = (
+            cancellable_http(request, TIMEOUT_SECONDS, cancel_event)
+            if cancel_event is not None
+            else urlopen(request, timeout=TIMEOUT_SECONDS)
+        )
+        with response_cm as response:
             headers = response.headers
-    except (OSError, HTTPException):
+    except (DownloadCancelled, OSError, HTTPException):
         return None
     length = headers.get("Content-Length") or ""
     if headers.get("Accept-Ranges", "").lower() != "bytes" or not length.isdigit():
@@ -155,6 +161,8 @@ def download_segmented(
     def fetch(start: int) -> None:
         end = min(start + SEGMENT_SIZE, size)
         for attempt in range(1, ATTEMPTS + 1):
+            if stop.is_set() or (cancel_event and cancel_event.is_set()):
+                return
             pos = start + received[str(start)]
             if pos >= end:
                 return
@@ -166,7 +174,12 @@ def download_segmented(
                         "Range": f"bytes={pos}-{end - 1}",
                     },
                 )
-                with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                response_cm = (
+                    cancellable_http(request, TIMEOUT_SECONDS, cancel_event)
+                    if cancel_event is not None
+                    else urlopen(request, timeout=TIMEOUT_SECONDS)
+                )
+                with response_cm as response:
                     if response.getcode() != 206:
                         raise RangesUnsupported(url)
                     with open(partial, "r+b") as f:
@@ -188,6 +201,8 @@ def download_segmented(
                                 received[str(start)] = pos - start
                 return
             except (*_RESUMABLE, URLError) as e:
+                if cancel_event and cancel_event.is_set():
+                    return
                 if attempt == ATTEMPTS or not _transient(e):
                     raise
                 logging.debug(f"Retrying {url} bytes {pos}-{end - 1}: {e}")

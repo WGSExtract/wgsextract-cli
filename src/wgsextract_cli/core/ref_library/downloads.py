@@ -9,13 +9,15 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable
+from contextlib import ExitStack
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
-from typing import BinaryIO, Literal, Protocol
+from typing import Literal, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core.cancellable_http import cancellable_http
 from wgsextract_cli.core.dev_download_cache import (
     restore_cached_download,
     store_download_in_dev_cache,
@@ -269,7 +271,13 @@ def _download_file(
     # an earlier single-connection attempt left a partial to resume.
     single_partial = partial_path.exists() and not segments_path.exists()
     if not single_partial:
-        size = segmented.ranged_size(url)
+        size = (
+            segmented.ranged_size(url, cancel_event)
+            if cancel_event is not None
+            else segmented.ranged_size(url)
+        )
+        if cancel_event and cancel_event.is_set():
+            return False
         if size is None and segments_path.exists():
             # A started segmented download is finished as one: its partial is
             # full-size with holes, which one connection would take as done.
@@ -417,54 +425,50 @@ def _urllib_download(
             mode = "wb"
 
     try:
-        req = Request(url, headers=headers)
-        try:
-            response_cm = urlopen(req, timeout=DOWNLOAD_TIMEOUT_SECONDS)
-        except HTTPError as e:
-            if e.code != 416 or initial_size == 0:
-                raise
-            e.close()
-            if not _partial_is_complete(
-                url, e.headers.get("Content-Range"), initial_size
-            ):
-                # The partial file does not fit the remote file; start over.
-                Path(partial_dest).unlink()
-                return _urllib_download(
-                    url,
-                    dest,
-                    progress_callback,
-                    cancel_event,
-                    expected_sha256,
-                    checksum_hint,
-                    use_cache,
+        with ExitStack() as stack:
+            req = Request(url, headers=headers)
+            try:
+                response_cm = (
+                    cancellable_http(req, DOWNLOAD_TIMEOUT_SECONDS, cancel_event)
+                    if cancel_event is not None
+                    else urlopen(req, timeout=DOWNLOAD_TIMEOUT_SECONDS)
                 )
-            logging.info("%s is already fully downloaded.", Path(dest).name)
-            return _finish_download(
-                url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
-            )
-        with response_cm as response:
-            code = response.getcode()
-            # If we requested a range but got 200, the server doesn't support range or sent full file
-            if initial_size > 0 and code == 200:
-                logging.info(
-                    "Server does not support Range requests, starting from scratch."
-                )
-                initial_size = 0
-                mode = "wb"
-
-            def write_partial(f: BinaryIO) -> None:
-                copy_response_to_file(
-                    response,
-                    f,
-                    initial_size=initial_size,
-                    progress_callback=progress_callback,
-                    progress_label=Path(dest).name,
-                    cancel_event=cancel_event,
-                )
-
-            with open(partial_dest, mode) as f:
-                write_partial(f)
-
+                response = stack.enter_context(response_cm)
+            except HTTPError as e:
+                if e.code != 416 or initial_size == 0:
+                    raise
+                e.close()
+                if not _partial_is_complete(
+                    url, e.headers.get("Content-Range"), initial_size, cancel_event
+                ):
+                    # The partial file does not fit the remote file; start over.
+                    Path(partial_dest).unlink()
+                    return _urllib_download(
+                        url,
+                        dest,
+                        progress_callback,
+                        cancel_event,
+                        expected_sha256,
+                        checksum_hint,
+                        use_cache,
+                    )
+                logging.info("%s is already fully downloaded.", Path(dest).name)
+            else:
+                if initial_size > 0 and response.getcode() == 200:
+                    logging.info(
+                        "Server does not support Range requests, starting from scratch."
+                    )
+                    initial_size = 0
+                    mode = "wb"
+                with open(partial_dest, mode) as f:
+                    copy_response_to_file(
+                        response,
+                        f,
+                        initial_size=initial_size,
+                        progress_callback=progress_callback,
+                        progress_label=Path(dest).name,
+                        cancel_event=cancel_event,
+                    )
         return _finish_download(
             url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
         )
@@ -489,7 +493,10 @@ def _urllib_download(
 
 
 def _partial_is_complete(
-    url: str, content_range: str | None, partial_size: int
+    url: str,
+    content_range: str | None,
+    partial_size: int,
+    cancel_event: CancelEvent | None,
 ) -> bool:
     """A 416 reply to `Range: bytes=N-` means done when the remote size is N.
 
@@ -503,7 +510,12 @@ def _partial_is_complete(
         request = Request(
             url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
         )
-        with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
+        response_cm = (
+            cancellable_http(request, DOWNLOAD_TIMEOUT_SECONDS, cancel_event)
+            if cancel_event is not None
+            else urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+        )
+        with response_cm as response:
             length = response.headers.get("Content-Length")
     except (OSError, HTTPException):
         return False

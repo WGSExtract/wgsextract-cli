@@ -5,20 +5,20 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
-import socket
 import subprocess
 import tempfile
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, wait
-from contextlib import suppress
 from http.client import HTTPException
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core.cancellable_http import cancellable_http
 from wgsextract_cli.core.download_progress import (
     CancelEvent,
+    DownloadCancelled,
     ProgressCallback,
     format_bytes,
 )
@@ -58,10 +58,16 @@ _GNOMAD_V4_HEADER = (
 )
 
 
-def _remote_size(url: str) -> int:
+def _remote_size(url: str, cancel_event: CancelEvent | None) -> int:
     if entry := mirror_for(url):
         return int(entry["size"])
-    with urlopen(Request(url, method="HEAD"), timeout=60) as response:
+    request = Request(url, method="HEAD")
+    response_cm = (
+        cancellable_http(request, 60, cancel_event)
+        if cancel_event is not None
+        else urlopen(request, timeout=60)
+    )
+    with response_cm as response:
         return int(response.headers.get("Content-Length") or 0)
 
 
@@ -82,8 +88,6 @@ def _stream_gnomad_contig(
     mirror = mirror_for(url) if use_mirrors else None
     reported = 0
     download_error: list[str] = []
-    response_lock = threading.Lock()
-    response_socket: socket.socket | None = None
 
     def cancelled() -> bool:
         return cancel_event is not None and cancel_event.is_set()
@@ -101,7 +105,7 @@ def _stream_gnomad_contig(
         sink = query.stdin
 
         def feed() -> None:
-            nonlocal reported, response_socket
+            nonlocal reported
             try:
                 if cancelled():
                     return
@@ -118,25 +122,20 @@ def _stream_gnomad_contig(
                     pinned = mirror_for(url)
                     digest = hashlib.sha256()
                     received = 0
-                    with urlopen(url, timeout=120) as response:
-                        with response_lock:
-                            # Closing the buffered reader from another thread
-                            # can block on the same lock as the stalled read.
-                            response_socket = getattr(
-                                getattr(response.fp, "raw", None), "_sock", None
-                            )
-                        try:
-                            while not cancelled() and (chunk := response.read(1 << 20)):
-                                if cancelled():
-                                    return
-                                sink.write(chunk)
-                                on_bytes(len(chunk))
-                                if pinned:
-                                    digest.update(chunk)
-                                received += len(chunk)
-                        finally:
-                            with response_lock:
-                                response_socket = None
+                    response_cm = (
+                        cancellable_http(url, 120, cancel_event)
+                        if cancel_event is not None
+                        else urlopen(url, timeout=120)
+                    )
+                    with response_cm as response:
+                        while not cancelled() and (chunk := response.read(1 << 20)):
+                            if cancelled():
+                                return
+                            sink.write(chunk)
+                            on_bytes(len(chunk))
+                            if pinned:
+                                digest.update(chunk)
+                            received += len(chunk)
                     if cancelled():
                         return
                     if pinned:
@@ -149,6 +148,8 @@ def _stream_gnomad_contig(
                             )
             except BrokenPipeError:
                 pass  # bcftools exited; its status says why
+            except DownloadCancelled:
+                pass
             except (OSError, HTTPException) as e:
                 if not cancelled():
                     download_error.append(f"download failed: {e}")
@@ -162,17 +163,11 @@ def _stream_gnomad_contig(
         feeder = context_thread(target=feed, daemon=True)
         feeder.start()
         queried = wait_with_cancel(query, cancel_event)
-        while feeder.is_alive():
-            if cancelled() and not mirror:
-                with response_lock:
-                    if response_socket is not None:
-                        with suppress(OSError):
-                            response_socket.shutdown(socket.SHUT_RDWR)
-                # DNS or response headers may still be pending. The daemon
-                # will close the response without feeding it once it unblocks.
-                feeder.join(timeout=1)
-                break
+        while feeder.is_alive() and not cancelled():
             feeder.join(timeout=0.1)
+        if cancelled():
+            # DNS or connection setup may not yet have a socket to shut down.
+            feeder.join(timeout=1)
         compressed = wait_with_cancel(compress, cancel_event)
         ok = queried and compressed and not download_error and not cancelled()
         err.seek(0)
@@ -227,7 +222,9 @@ def build_gnomad_af(
 
     urls = {c: GNOMAD_V4_URL.format(contig=c) for c in GNOMAD_V4_CONTIGS}
     try:
-        sizes = {c: _remote_size(url) for c, url in urls.items()}
+        sizes = {c: _remote_size(url, cancel_event) for c, url in urls.items()}
+    except DownloadCancelled:
+        return False
     except OSError as e:
         logging.error(f"Could not reach the gnomAD v4.1 bucket: {e}")
         return False

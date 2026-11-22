@@ -739,10 +739,19 @@ def segmented_server(server, monkeypatch):
 def test_a_cancelled_segmented_download_keeps_its_pieces(segmented_server, tmp_path):
     srv = segmented_server
     dest = tmp_path / "hs38.fa.gz"
-    cancel = threading.Event()
-    cancel.set()
-
-    assert not downloads.download_file(srv.url, str(dest), cancel_event=cancel)
+    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    srv.body_pauses["hs38.fa.gz"] = (None, started, release)
+    worker = threading.Thread(
+        target=lambda: (started.wait(5), cancel.set()), daemon=True
+    )
+    worker.start()
+    try:
+        assert not downloads.download_file(srv.url, str(dest), cancel_event=cancel)
+        assert started.is_set()
+    finally:
+        release.set()
+        worker.join(5)
+        srv.body_pauses.clear()
 
     assert not dest.exists()
     state = json.loads((tmp_path / "hs38.fa.gz.partial.segments").read_text())

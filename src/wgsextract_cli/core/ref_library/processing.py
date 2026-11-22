@@ -263,6 +263,8 @@ def download_bootstrap(
         BOOTSTRAP_URL, dest_path, BOOTSTRAP_SHA256, progress_callback, cancel_event
     ):
         return False
+    if cancel_event and cancel_event.is_set():
+        return False
 
     logging.info(f"Extracting bootstrap to {reflib_dir}...")
     try:
@@ -300,7 +302,7 @@ def _download_bootstrap_archive(
             expected_sha256=sha256,
             resolve_release_digest=False,
         ):
-            return True
+            return cancel_event is None or not cancel_event.is_set()
         if cancel_event and cancel_event.is_set():
             return False
         if attempt < 3:

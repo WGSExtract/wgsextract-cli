@@ -38,7 +38,6 @@ def test_1213_cancelled_bootstrap_does_not_retry(tmp_path, monkeypatch):
         try:
             assert started.wait(5), "the bootstrap request never reached the server"
             cancel.cancel()
-            release.set()
             worker.join(2)
             assert not worker.is_alive(), "cancelled bootstrap did not return promptly"
             assert result[0].exit_code == 130

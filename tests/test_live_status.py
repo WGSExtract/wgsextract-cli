@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -178,6 +179,22 @@ def test_a_timed_wait_counts_relaying_against_its_timeout(monkeypatch):
                 process.wait(timeout=1.0)
             assert process.poll() is None
             assert process.wait(timeout=5) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="requires POSIX process groups")
+def test_1213_cancellation_stops_relay_after_launcher_exits():
+    cancel = threading.Event()
+    with _pty_terminal() as (terminal, _side, received):
+        with live_status.LiveStatus("vcf snp", terminal, delay=0, interval=0.01):
+            process = popen(["sh", "-c", 'sleep 30 & echo "$!"; exit'])
+            try:
+                _wait_for(lambda: process.returncode is not None and b"\n" in received)
+                cancel.set()
+                assert not wait_with_cancel(process, cancel)
+                assert process.wait(timeout=1) == 0
+            finally:
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
 
 
 def _read(fd: int) -> bytes:
