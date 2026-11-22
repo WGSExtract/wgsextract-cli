@@ -73,7 +73,6 @@ VARIANTS_ONLY = (
 )
 ACROCENTRIC = frozenset({"13", "14", "15", "21", "22"})
 _RANGE = re.compile(r"^(?:chr)?([0-9]+)(?::([0-9_]+)-([0-9_]+))?$", re.IGNORECASE)
-_PROCESSED = re.compile(r"overlapping with --AF-file/processed:\s*(\d+)/(\d+)")
 
 
 @dataclass(frozen=True)
@@ -269,8 +268,8 @@ def _select_markers(
     return markers, counts
 
 
-def _run_roh(markers: Path, af_table: Path, work: Path) -> tuple[Path, int]:
-    """Run bcftools roh; returns its output and the number of sites used."""
+def _run_roh(markers: Path, af_table: Path, work: Path) -> Path:
+    """Run bcftools roh; returns its per-site output."""
     output = work / "roh.txt"
     # contract: --GTs-only and the AF table are the model the issue specifies
     # (#1174): genotypes with real population frequencies, never --AF-dflt.
@@ -278,9 +277,8 @@ def _run_roh(markers: Path, af_table: Path, work: Path) -> tuple[Path, int]:
                "--AF-file", str(af_table), "--hw-to-az", str(HW_TO_AZ),
                "--az-to-hw", str(AZ_TO_HW), "-O", "s", "-o", str(output),
                str(markers)]  # fmt: skip
-    done = run_command(command, capture_output=True)
-    processed = _PROCESSED.search(done.stderr or "")
-    return output, int(processed[2]) if processed else 0
+    run_command(command, capture_output=True)
+    return output
 
 
 @dataclass
@@ -301,18 +299,19 @@ class _Run:
 
 def _parse_roh(
     output: Path, markers_out: Path, scope: list[Region]
-) -> tuple[list[RohSegment], dict[str, tuple[int, int]], int]:
+) -> tuple[list[RohSegment], dict[str, tuple[int, int]], int, int]:
     """Runs of AZ sites, ended at each scope range's edge and where
     consecutive markers are more than ``MAX_GAP_BP`` apart; each contig's
     first and last marker; and the bases the markers cover (the F_ROH
-    denominator: from first to last marker of each range, less those gaps).
-    Writes the per-site states (ST lines) to ``markers_out``."""
+    denominator: from first to last marker of each range, less those gaps);
+    and how many sites were modelled. Writes the per-site states (ST lines)
+    to ``markers_out``."""
     segments: list[RohSegment] = []
     spans: dict[str, tuple[int, int]] = {}
     starts: dict[str, list[int]] = {}
     for region in scope:
         starts.setdefault(region.contig, []).append(region.start)
-    covered = 0
+    covered = used = 0
     run: _Run | None = None
     block_start = previous = 0
     block: tuple[str, int] | None = None
@@ -333,6 +332,7 @@ def _parse_roh(
             if not line.startswith("ST\t"):
                 continue
             _, _, chrom, pos, state, quality = line.rstrip("\n").split("\t")
+            used += 1
             position = int(pos)
             here = (chrom, bisect.bisect_right(starts.get(bare(chrom), []), position))
             if here != block or position - previous > MAX_GAP_BP:
@@ -356,7 +356,7 @@ def _parse_roh(
         close()
         if block is not None:
             covered += previous - block_start + 1
-    return segments, spans, covered
+    return segments, spans, covered, used
 
 
 def _position(
@@ -495,8 +495,8 @@ def run_roh(params: QcRohParams) -> None:
             logging.info(f"Selecting {sample}'s markers in {scope_text}...")
             markers, counts = _select_markers(vcf, sample, scope_text, min_gq, work)
             logging.info("Finding runs of homozygosity with bcftools roh...")
-            output, used = _run_roh(markers, table.path, work)
-        segments, spans, covered = _parse_roh(output, markers_out, scope)
+            output = _run_roh(markers, table.path, work)
+        segments, spans, covered, used = _parse_roh(output, markers_out, scope)
     if used == 0:
         raise CodedError(
             "roh_no_markers",

@@ -5,6 +5,7 @@ The fixtures are a synthetic GRCh38 chr20 (markers every 10 kb, hom-ref calls
 included) with runs of homozygosity placed inside and outside GNAS
 (20q13.32, 58.84-58.91 Mb), and a sites VCF of population frequencies."""
 
+import gzip
 import json
 import random
 from collections.abc import Collection
@@ -420,8 +421,15 @@ def test_issue_1174_cli_writes_segments_markers_and_manifest(tmp_path):
     }  # fmt: skip
     assert manifest["metrics"]["roh_flags"] == 1
     assert manifest["details"]["population_frequencies"]["release"] == "test panel"
-    markers = (out / "sample.roh.markers.tsv.gz").read_bytes()
-    assert markers[:2] == b"\x1f\x8b"
+    # PR #1349 review: the modelled-site count comes from the sites bcftools
+    # roh wrote, not from its log, and matches the marker list.
+    with gzip.open(out / "sample.roh.markers.tsv.gz", "rt") as sites:
+        rows = sum(1 for _ in sites) - 1
+    assert (
+        rows
+        == manifest["details"]["markers"]["used"]
+        == manifest["metrics"]["roh_markers"]
+    )
 
 
 @pytest.mark.parametrize("build", ["hg19", "hg38", "t2t"])

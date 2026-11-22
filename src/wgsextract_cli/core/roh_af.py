@@ -83,7 +83,7 @@ def _missing(path: Path) -> CodedError:
         f"Population allele-frequency file {path} not found. qc roh needs local "
         "population frequencies on the sample's build: a gnomAD or 1000 Genomes "
         "sites VCF/BCF (--af-tag names its frequency field) or a bcftools roh "
-        f"table (CHROM, POS, REF,ALT, AF). Nothing is downloaded for you; see "
+        f"table (4 tab-separated columns: CHROM, POS, REF,ALT, AF). Nothing is downloaded for you; see "
         f"{GUIDE} for where to get one.",
     )
 
@@ -147,7 +147,7 @@ def _check_table(path: Path) -> None:
             raise CodedError(
                 "roh_af_unreadable",
                 f"{path.name} is neither a VCF/BCF nor a bcftools roh frequency "
-                "table (tab-separated CHROM, POS, REF,ALT, AF).",
+                "table (4 tab-separated columns: CHROM, POS, REF,ALT, AF).",
             )
         return
 
