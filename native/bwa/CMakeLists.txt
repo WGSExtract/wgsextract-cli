@@ -142,13 +142,21 @@ target_compile_options(wgse-bwa PRIVATE ${wgse_strict_warnings})
 target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
 if(BUILD_TESTING)
+    if(WIN32)
+        # Native CTest cannot execute a shell script directly. Prefer Git Bash
+        # to Windows' own bash.exe (a WSL launcher).
+        find_package(Git REQUIRED)
+        get_filename_component(git_bin "${GIT_EXECUTABLE}" DIRECTORY)
+        find_program(WGSE_TEST_SHELL NAMES bash HINTS "${git_bin}/../bin" "${git_bin}"
+            REQUIRED NO_DEFAULT_PATH)
+    endif()
     # Exercise the shipped parser too: benchmark flags must not hide public options.
     add_executable(wgse-bwa-release-cli main.cpp)
     target_compile_definitions(wgse-bwa-release-cli PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
-    target_compile_options(wgse-bwa-release-cli PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(wgse-bwa-release-cli PRIVATE ${wgse_strict_warnings})
     target_link_libraries(wgse-bwa-release-cli PRIVATE wgse_bwa_core)
     add_test(NAME bwa_release_dense_sa
-        COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
+        COMMAND ${WGSE_TEST_SHELL} "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-bwa-release-cli> "${CMAKE_CURRENT_BINARY_DIR}/release-dense-sa" dense-sa)
     # Hidden routing and failure-injection flags for tests and benchmarks only.
     target_compile_definitions(wgse-bwa PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
@@ -159,7 +167,7 @@ if(BUILD_TESTING)
     add_test(NAME bwa_capabilities COMMAND wgse-bwa capabilities --json)
     set_tests_properties(bwa_capabilities PROPERTIES
         PASS_REGULAR_EXPRESSION "\"engine\":\"bwa\".*\"metal_hardware_supported\":.*\"cuda_available\":.*\"cuda_hardware_supported\":")
-    add_test(NAME bwa_smoke COMMAND "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
+    add_test(NAME bwa_smoke COMMAND ${WGSE_TEST_SHELL} "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/smoke" force-gpu)
     if(APPLE)
         add_executable(seeding_benchmark tests/seeding_benchmark.mm)
@@ -173,35 +181,35 @@ if(BUILD_TESTING)
     else()
         # Without the Metal benchmark ("-"), the aligner's output is checked.
         add_test(NAME bwa_gpu_seeding_parity
-            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
+            COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/seeding_parity.sh"
             $<TARGET_FILE:wgse-bwa> - "${CMAKE_CURRENT_BINARY_DIR}/seeding-parity")
         set_tests_properties(bwa_gpu_seeding_parity PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     add_executable(ksw_batch_check tests/ksw_batch_check.c)
-    target_compile_options(ksw_batch_check PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(ksw_batch_check PRIVATE ${wgse_strict_warnings})
     target_link_libraries(ksw_batch_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_ksw_batch COMMAND ksw_batch_check)
     add_executable(occ_check tests/occ_check.cpp)
-    target_compile_options(occ_check PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(occ_check PRIVATE ${wgse_strict_warnings})
     target_link_libraries(occ_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_occ COMMAND occ_check)
     add_test(NAME bwa_occ_upstream COMMAND occ_check --cpu-upstream)
     add_executable(extend_neon_check tests/extend_neon_check.c)
-    target_compile_options(extend_neon_check PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(extend_neon_check PRIVATE ${wgse_strict_warnings})
     target_link_libraries(extend_neon_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_extend_neon COMMAND extend_neon_check 200000)
     add_executable(pac_check tests/pac_check.c)
-    target_compile_options(pac_check PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(pac_check PRIVATE ${wgse_strict_warnings})
     target_link_libraries(pac_check PRIVATE wgse_bwa_core)
     add_test(NAME bwa_pac COMMAND pac_check)
     add_test(NAME bwa_gpu_rescue_parity
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
+        COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/rescue-parity")
     add_test(NAME bwa_metal_watchdog
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
+        COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/rescue_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/watchdog" watchdog)
     add_test(NAME bwa_gpu_extend_parity
-        COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
+        COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/extend_parity.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/extend-parity")
     # Exit 77 means the machine has no unified-memory Metal device.
     set_tests_properties(bwa_smoke bwa_gpu_rescue_parity bwa_metal_watchdog

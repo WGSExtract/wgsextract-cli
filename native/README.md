@@ -5,8 +5,8 @@ with an experimental NVIDIA GPU backend (see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Native Windows uses [separate tool recipes](../packaging/windows/README.md).
-Its `bwa` recipe reuses the exact CPU extension kernel here, not the
-`wgse-*` GPU executables or their command-line options.
+The stock `bwa` recipe reuses the exact CPU extension kernel here;
+the optional Windows x86-64 `wgse-bwa` recipe builds both CPU and CUDA backends.
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -1349,8 +1349,7 @@ whichever GPU backend the build and machine have. CI's runners have no NVIDIA GP
 `.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
 but can't run their tests.
 
-On Windows x86-64, `wgse-bwa` alone builds (experimental, no package yet;
-[#1119](https://github.com/WGSExtract/wgsextract-cli/issues/1119)) with
+On Windows x86-64, `wgse-bwa` alone builds with
 `clang-cl` from a Visual Studio x64 developer prompt, the static C runtime and
 `-DWGSE_CUDA=ON` for the CUDA backend (nvcc with `cl.exe` as its host
 compiler). [windows/](windows/) supplies the POSIX functions MSVC lacks, with
@@ -1367,6 +1366,11 @@ cmake --build out/native-win
 ```
 
 The executable needs only Windows' own DLLs and, for `--cuda`, the NVIDIA driver.
+Windows builds add native SM 120 code to the Linux targets, retaining
+compute 90 PTX for other newer GPUs. Use CUDA 13.5 as in the recipe, or set
+`CMAKE_CUDA_ARCHITECTURES` explicitly for a different toolkit.
+With `-DBUILD_TESTING=ON`, `ctest --test-dir out/native-win --output-on-failure`
+uses Git for Windows' Bash to run the shell-based tests; no WSL is used.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains

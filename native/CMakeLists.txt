@@ -15,7 +15,8 @@ if(APPLE)
 elseif(WIN32)
     # Windows x86-64 builds wgse-bwa alone, MSVC-ABI (clang-cl, with nvcc's
     # cl.exe for -DWGSE_CUDA=ON) and the POSIX shims in windows/.
-    if(NOT CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
+    if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang"
+        OR NOT CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
         OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
         message(FATAL_ERROR "wgse-bwa builds on Windows x86-64 with clang-cl")
     endif()
@@ -33,11 +34,17 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_
 endif()
 if(WGSE_CUDA)
     if(APPLE)
-        message(FATAL_ERROR "WGSE_CUDA is for Linux builds")
+        message(FATAL_ERROR "WGSE_CUDA is for Linux and Windows builds")
     endif()
     # Turing to Hopper as machine code, plus PTX that newer GPUs compile at load.
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-        set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90)
+        if(WIN32)
+            # Windows packages use CUDA 13.5; include native Blackwell code.
+            # Keep PTX for newer GPUs, as on Linux.
+            set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90 120-real)
+        else()
+            set(CMAKE_CUDA_ARCHITECTURES 75-real 80-real 86-real 89-real 90)
+        endif()
     endif()
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 17)
