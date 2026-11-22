@@ -785,6 +785,17 @@ be rejected for omitting the PR-only gate or advisory jobs.
 The autopilot skill
 documents this rule too. This validator does not itself merge anything.
 
+### Ready admission
+
+The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
+jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
+reads queued and in-progress runs and their jobs through `gh api` (read-only)
+and exits 0 when admission is fine. It exits 3 (hold) while any
+`merge_group` job is queued for a runner, or while more than `--max-ready`
+(default 4) ready-PR area matrices are in flight. `--wait` polls with
+exponential backoff up to `--timeout` seconds; `--json` prints the counts.
+
 ## Cache plan
 
 An API sample on 2026-11-13 reported **9.67 GB / 18 entries**; the immediately

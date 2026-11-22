@@ -61,6 +61,11 @@ AGENTS.md. For a draft this skill created, run `gh pr ready` after that gate
 passes, unless the user explicitly requires it to remain draft. For an existing
 draft, obtain authorization before marking ready. Readiness starts Copilot
 review and area-selected full CI; do not land using the old draft-run checks.
+Finish review rounds while draft and certify macOS (and Windows where a host
+exists) on the exact head first. Immediately before `gh pr ready`, run
+`python scripts/ci_capacity.py --wait` in a background watcher; proceed only on
+exit 0. Exit 3 means hold: merge-queue jobs are waiting for runners or too
+many ready matrices are in flight.
 Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
 request another review explicitly when needed, without changing settings.
 
