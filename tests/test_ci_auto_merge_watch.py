@@ -22,7 +22,7 @@ class FakeGitHub(GitHub):
         self.repository_labels: set[str] = set()
         self.pulls: dict[int, dict[str, Any]] = {}
         self.comments: dict[int, list[str]] = {}
-        self.posted: dict[int, list[dict[str, Any]]] = {}
+        self.timeline: dict[int, list[dict[str, Any]]] = {}
         self.listings = 0
         self.label_failures = 0
         self.create_failures = 0
@@ -56,7 +56,7 @@ class FakeGitHub(GitHub):
         if path == "graphql":
             assert data is not None
             if "number" in data["variables"]:
-                return self.pull_comments(data["variables"]["number"])
+                return self.pull_timeline(data["variables"]["number"])
             return self.graphql(data["variables"])
         prefix = f"repos/{REPO}/"
         assert path.startswith(prefix), path
@@ -85,19 +85,28 @@ class FakeGitHub(GitHub):
             if parts[3] not in self.pulls[number]["labels"]:
                 raise subprocess.CalledProcessError(1, "gh", stderr="Label not found")
             self.pulls[number]["labels"].remove(parts[3])
+            self.timeline.setdefault(number, []).append(
+                {"__typename": "UnlabeledEvent", "label": {"name": parts[3]}}
+            )
             return []
         if method == "POST" and parts[2] == "comments":
             assert data is not None
             self.comments.setdefault(number, []).append(data["body"])
-            self.posted.setdefault(number, []).append(
-                {"body": data["body"], "author": {"login": "github-actions"}}
+            self.timeline.setdefault(number, []).append(
+                {
+                    "__typename": "IssueComment",
+                    "body": data["body"],
+                    "author": {"login": "github-actions"},
+                }
             )
             return {}
         raise AssertionError(f"Unexpected GitHub call: {method} {path}")
 
-    def pull_comments(self, number: int) -> dict[str, Any]:
-        nodes = self.posted.get(number, [])[-100:]
-        return {"data": {"repository": {"pullRequest": {"comments": {"nodes": nodes}}}}}
+    def pull_timeline(self, number: int) -> dict[str, Any]:
+        nodes = self.timeline.get(number, [])[-100:]
+        return {
+            "data": {"repository": {"pullRequest": {"timelineItems": {"nodes": nodes}}}}
+        }
 
     def graphql(self, variables: dict[str, Any]) -> dict[str, Any]:
         assert (variables["owner"], variables["name"]) == tuple(REPO.split("/"))
@@ -303,8 +312,9 @@ def test_1281_failed_label_creation_is_retried_for_the_next_pr() -> None:
 def test_1281_a_pasted_marker_does_not_count_as_the_notification() -> None:
     github = FakeGitHub()
     github.add(1205, "CONFLICTING")
-    github.posted[1205] = [
+    github.timeline[1205] = [
         {
+            "__typename": "IssueComment",
             "body": "Quoting: <!-- auto-merge-blocked head=1205a -->",
             "author": {"login": "someone"},
         }
@@ -312,3 +322,27 @@ def test_1281_a_pasted_marker_does_not_count_as_the_notification() -> None:
 
     assert watch(github, sleep=no_sleep) == {1205: "flagged"}
     assert len(github.comments[1205]) == 1
+
+
+def test_1281_a_labelled_pr_that_conflicts_again_on_a_new_head_is_told() -> None:
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING")
+
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    # The author merged main, but main moved again before the next run.
+    github.pulls[1205]["head"] = "1205b"
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert watch(github, sleep=no_sleep) == {}
+    assert len(github.comments[1205]) == 2
+    assert github.labels(1205) == {LABEL}
+
+
+def test_1281_a_conflict_recurring_on_the_same_head_is_told_again() -> None:
+    # A main revert clears the conflict; a later main push brings it back.
+    github = FakeGitHub()
+    github.add(1205, "CONFLICTING", "MERGEABLE", "CONFLICTING")
+
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert watch(github, sleep=no_sleep) == {1205: "cleared"}
+    assert watch(github, sleep=no_sleep) == {1205: "flagged"}
+    assert len(github.comments[1205]) == 2

@@ -791,10 +791,12 @@ push, every three hours and on manual dispatch, *Auto-merge conflict watch*
 (`auto_merge_watch.yml`, one five-minute API-only job running
 `scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
 auto-merge is enabled and whose mergeability is `CONFLICTING`
-`auto-merge-blocked`, creating the label if needed, and comments once per PR
-head asking the author to merge the base branch. It comments before labelling,
-and skips the comment if the workflow already posted one for that head (a
-hidden marker), so a failed run retries without repeating it. One PR's API
+`auto-merge-blocked`, creating the label if needed, and comments asking the
+author to merge the base branch. It comments before labelling, once per PR
+head per blockage: a hidden marker in its comment names the head, and only a
+marker newer than the label's last removal counts. So a failed run retries
+without repeating the comment, while a new head that still conflicts, or a
+conflict that returns after clearing, is announced again. One PR's API
 failure doesn't stop the others; the run fails at the end. The label is removed
 when the conflict is gone, auto-merge is turned off, or the PR closes or merges.
 It waits for GitHub to compute an auto-merging PR's mergeability after a push

@@ -2,8 +2,8 @@
 
 GitHub never adds a conflicting pull request to the merge queue, even with
 auto-merge enabled, and says nothing about it. This labels each such pull
-request, asks its author once per PR head to merge the base branch, and clears
-the label when the conflict is gone or the PR closes. It only calls the GitHub
+request, asks its author once per blockage to merge the base branch, and
+clears the label when the conflict is gone or the PR closes. It only calls the GitHub
 API (stdlib + gh).
 """
 
@@ -20,7 +20,7 @@ from typing import Any
 from scripts.ci_github import GitHub
 
 LABEL = "auto-merge-blocked"
-# Resolving a conflict means pushing a new head, so one comment per head.
+# One comment per head per blockage: a new head or a cleared label re-arms it.
 MARKER = "<!-- auto-merge-blocked head={head} -->"
 # Only the workflow's own comments count; anyone can paste the marker.
 WATCHER = {"github-actions", "github-actions[bot]"}
@@ -51,11 +51,18 @@ query($owner: String!, $name: String!, $label: String!, $cursor: String) {
   }
 }
 """
-COMMENTS = """
+# Comments and label removals, newest last: was this blockage announced yet?
+TIMELINE = """
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      comments(last: 100) { nodes { body author { login } } }
+      timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, UNLABELED_EVENT]) {
+        nodes {
+          __typename
+          ... on IssueComment { body author { login } }
+          ... on UnlabeledEvent { label { name } }
+        }
+      }
     }
   }
 }
@@ -123,13 +130,19 @@ def pull(node: dict[str, Any]) -> Pull:
 
 
 def announced(github: GitHub, pr: Pull) -> bool:
-    """Whether the watcher already told the author about this head."""
+    """The watcher told the author about this head since the label last cleared."""
     marker = MARKER.format(head=pr.head)
-    comments = graphql(github, COMMENTS, number=pr.number)["pullRequest"]
-    return any(
-        (comment["author"] or {}).get("login") in WATCHER and marker in comment["body"]
-        for comment in comments["comments"]["nodes"]
-    )
+    items = graphql(github, TIMELINE, number=pr.number)["pullRequest"]
+    for item in reversed(items["timelineItems"]["nodes"]):
+        if item["__typename"] == "UnlabeledEvent" and item["label"]["name"] == LABEL:
+            return False
+        if (
+            item["__typename"] == "IssueComment"
+            and (item["author"] or {}).get("login") in WATCHER
+            and marker in item["body"]
+        ):
+            return True
+    return False
 
 
 def watch(
@@ -151,20 +164,20 @@ def watch(
     for pr in pulls:
         if pr.pending:
             actions[pr.number] = "unknown"
-        elif pr.blocked and not pr.labelled:
-            actions[pr.number] = "flagged"
-        elif pr.labelled and not pr.blocked:
-            actions[pr.number] = "cleared"
-        else:
             continue
-        if dry_run or actions[pr.number] == "unknown":
+        if not pr.blocked and not pr.labelled:
+            continue
+        if dry_run:
+            if pr.blocked != pr.labelled:
+                actions[pr.number] = "flagged" if pr.blocked else "cleared"
             continue
         # One PR's API failure must not stop the others; main reports it.
         try:
-            if actions[pr.number] == "cleared":
+            if not pr.blocked:
                 github.api("DELETE", f"issues/{pr.number}/labels/{LABEL}")
+                actions[pr.number] = "cleared"
                 continue
-            if not label_exists:
+            if not pr.labelled and not label_exists:
                 github.api(
                     "POST",
                     "labels",
@@ -176,7 +189,8 @@ def watch(
                     },
                 )
                 label_exists = True
-            flag(github, pr)
+            if flag(github, pr):
+                actions[pr.number] = "flagged"
         except (subprocess.CalledProcessError, RuntimeError) as error:
             print(
                 f"#{pr.number}: {getattr(error, 'stderr', '') or error}",
@@ -186,17 +200,23 @@ def watch(
     return actions
 
 
-def flag(github: GitHub, pr: Pull) -> None:
-    """Tell the author, then label."""
-    # Comment before labelling so a failed run is retried; the per-head marker
-    # stops a retry after a failed label from repeating the comment.
+def flag(github: GitHub, pr: Pull) -> bool:
+    """Tell the author about this head, then label; whether anything changed."""
+    # Comment before labelling so a failed run is retried; the marker stops a
+    # retry after a failed label from repeating the comment. A labelled PR's
+    # new head (the author merged main, but it conflicts again) is announced.
+    changed = False
     if not announced(github, pr):
         github.api(
             "POST",
             f"issues/{pr.number}/comments",
             {"body": COMMENT.format(base=pr.base, head=pr.head)},
         )
-    github.api("POST", f"issues/{pr.number}/labels", {"labels": [LABEL]})
+        changed = True
+    if not pr.labelled:
+        github.api("POST", f"issues/{pr.number}/labels", {"labels": [LABEL]})
+        changed = True
+    return changed
 
 
 def main(argv: list[str] | None = None) -> int:
