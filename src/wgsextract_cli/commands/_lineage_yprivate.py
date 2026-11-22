@@ -132,6 +132,22 @@ def _resolve_build(contigs: dict[str, int], chr_y: str, override: str | None) ->
     return build
 
 
+def _marker_library(ref: Path | None) -> Path:
+    """The library holding the marker sets: the one ``--ref`` names (or holds
+    its FASTA), else the configured one, else where downloads go."""
+    roots = library_roots(ref)
+    folders = [roots.beside_fasta, roots.root, resolve_reference_library()]
+    found = next(
+        (
+            f
+            for f in folders
+            if f and any(Path(f, d).is_dir() for d in ("ybrowse", "yleaf"))
+        ),
+        None,
+    )
+    return Path(resolve_reference_library(found or roots.root))
+
+
 def _ybrowse_set(library: Path) -> tuple[Path, dict[str, Any]]:
     from wgsextract_cli.core.ybrowse import installed_snapshot
 
@@ -356,7 +372,8 @@ def _write_vcf(
             "-o",
             str(split),
             str(plain),
-        ]
+        ],
+        capture_output=True,  # its split/joined summary is noise here
     )
     kept = work / "candidates.kept.vcf"
     with (
@@ -427,11 +444,7 @@ def run_y_private(params: YPrivateParams) -> None:
         chr_y = _y_contig(contigs, [])
     build = _resolve_build(contigs, chr_y, params.build)
 
-    library = Path(
-        resolve_reference_library(
-            library_roots(params.ref).resource_root("ybrowse", "yleaf")
-        )
-    )
+    library = _marker_library(params.ref)
     marker_sets: list[dict[str, Any]] = []
     ybrowse_sites: Path | None = None
     if build == "hg38":
