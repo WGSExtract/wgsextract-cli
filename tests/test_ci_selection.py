@@ -153,6 +153,16 @@ def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
     assert "tests/test_table_writer.py" not in select_tests(paths)
 
 
+def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
+    paths = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "tests").glob("test_ci_impact_*.py")
+    )
+    routed = routes(paths)
+    assert paths and routed["ci"] and not routed["cli"]
+    assert set(paths) <= set(ci_test_targets(paths))
+
+
 def test_914_lazy_registry_command_selects_its_tests(tmp_path: Path) -> None:
     root = repository(
         tmp_path,

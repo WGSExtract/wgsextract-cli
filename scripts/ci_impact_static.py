@@ -66,6 +66,22 @@ def binding_readers(source: bytes, bindings: set[str]) -> set[str]:
     }
 
 
+def initialization_reads(source: bytes, bindings: set[str]) -> bool:
+    pending: list[ast.AST] = [ast.parse(source)]
+    while pending:
+        node = pending.pop()
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            if node.id in bindings:
+                return True
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            pending.extend(
+                child for child in ast.iter_child_nodes(node) if child not in node.body
+            )
+        else:
+            pending.extend(ast.iter_child_nodes(node))
+    return False
+
+
 @cache
 def _parse(root: Path, blob: str) -> ast.Module:
     return ast.parse(

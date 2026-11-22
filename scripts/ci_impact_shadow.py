@@ -31,6 +31,7 @@ from scripts.ci_impact_static import (
     StaticUsers,
     binding_readers,
     changed_import_bindings,
+    initialization_reads,
     tracked_python,
 )
 from scripts.ci_impact_symbols import SYMBOL_CONTRACTS, symbol_delta
@@ -255,8 +256,11 @@ def compute(
                 if delta.imports:
                     reasons[source].add("eager-import-smoke")
                     bindings = changed_import_bindings(before, after)
-                    if "*" in bindings:
+                    if "*" in bindings or any(
+                        initialization_reads(blob, bindings) for blob in (before, after)
+                    ):
                         scoped.update(module_users[source])
+                        reasons[source].add("import-binding-initialization-users")
                     else:
                         affected = binding_readers(before, bindings) | binding_readers(
                             after, bindings

@@ -79,7 +79,7 @@ class _Index(ast.NodeTransformer):
         body = ast.Module(body=node.body, type_ignores=[])
         self.functions[name].append(
             FunctionBody(
-                max(node.lineno + 1, node.body[0].lineno),
+                node.body[0].lineno,
                 node.end_lineno or node.lineno,
                 ast.dump(body),
             )

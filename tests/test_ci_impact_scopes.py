@@ -134,12 +134,14 @@ def test_repeated_function_execution_records_both_contexts(tmp_path: Path) -> No
     traced = Coverage(config_file=False, data_file=None, include=[str(source)])
     traced.set_option("run:core", "ctrace")
     with traced.collect():
+        module = run_path(str(source))
         traced.switch_context("tests/test_first.py::test_first[one|two]|setup")
-        outer = cast("Callable[[], Callable[[], int]]", run_path(str(source))["run"])
+        outer = cast("Callable[[], Callable[[], int]]", module["run"])
         inner = outer()
         assert inner() == 1
         traced.switch_context("tests/test_second.py::test_second|run")
         assert inner() == 1
+        assert module["inline"]() == 3
     observed = read_observations(
         traced.get_data(),
         tmp_path,
@@ -147,6 +149,7 @@ def test_repeated_function_execution_records_both_contexts(tmp_path: Path) -> No
     )
 
     assert observed["functions"]["module.py"] == {
+        "inline": ["tests/test_second.py"],
         "run": ["tests/test_first.py"],
         "run.<locals>.nested": ["tests/test_first.py", "tests/test_second.py"],
     }

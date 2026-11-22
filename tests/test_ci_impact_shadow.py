@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.ci_impact_observations import SCHEMA
 from scripts.ci_impact_results import file_results
 
@@ -172,7 +174,11 @@ def test_foreign_observation_map_is_not_comparable(tmp_path: Path) -> None:
     assert gap and "outside" in gap
 
 
-def test_symbol_keeps_caller_when_import_binding_removed(tmp_path: Path) -> None:
+@pytest.mark.parametrize("initialization", [False, True])
+def test_symbol_keeps_users_of_changed_import_bindings(
+    tmp_path: Path,
+    initialization: bool,
+) -> None:
     from scripts.ci_impact_diff import impact_diff
     from scripts.ci_impact_shadow import compute
 
@@ -183,7 +189,12 @@ def test_symbol_keeps_caller_when_import_binding_removed(tmp_path: Path) -> None
     src = "src/wgsextract_cli/info.py"
     target = tmp_path / src
     target.parent.mkdir(parents=True)
-    target.write_text("import sys\n\ndef report():\n    return sys.platform\n")
+    body = (
+        "LABEL = sys.platform\n\ndef report():\n    return LABEL\n"
+        if initialization
+        else "def report():\n    return sys.platform\n"
+    )
+    target.write_text("import sys\n\n" + body)
     tested = {"tests/test_report.py", "tests/test_other_api.py"}
     for test in tested:
         path = tmp_path / test
@@ -191,7 +202,7 @@ def test_symbol_keeps_caller_when_import_binding_removed(tmp_path: Path) -> None
         path.write_text("def test_contract():\n    pass\n")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "Existing observed report")
-    target.write_text("def report():\n    return sys.platform\n")
+    target.write_text("import os as sys\n\n" + body)
     _git(tmp_path, "commit", "-am", "Remove used import")
 
     candidates, _, _ = compute(
@@ -204,8 +215,9 @@ def test_symbol_keeps_caller_when_import_binding_removed(tmp_path: Path) -> None
         },
     )
     assert set(candidates["decisive"]) == tested
-    assert candidates["symbol"] == ["tests/test_report.py"]
-    assert candidates["widely_called"] == ["tests/test_report.py"]
+    expected = tested if initialization else {"tests/test_report.py"}
+    assert set(candidates["symbol"]) == expected
+    assert set(candidates["widely_called"]) == expected
 
 
 def test_xunit_collection_failure_is_attributed_to_its_module(tmp_path: Path) -> None:

@@ -28,6 +28,10 @@ CI_TESTS = (
     "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
     "tests/test_ci_moves.py",
+    "tests/test_ci_impact_scopes.py",
+    "tests/test_ci_impact_shadow.py",
+    "tests/test_ci_impact_symbols.py",
+    "tests/test_ci_impact_wide.py",
     "tests/test_ci_nightly.py",
     "tests/test_ci_release_latest.py",
 )
