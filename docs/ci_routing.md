@@ -885,6 +885,21 @@ base (a PR merge commit's first parent, or the queue group's base), it also
 fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
 fragments remain, so none is left out of that release or announced twice.
 
+### Ready admission
+
+The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
+jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
+reads queued and in-progress runs and their jobs through `gh api` (read-only)
+and exits 0 when admission is fine. It exits 3 (hold) while any
+`merge_group` job is queued for a runner, or while more than `--max-ready`
+(default 4) ready-PR area matrices are in flight. `--wait` polls with
+exponential backoff, polling a last time at `--timeout` seconds; `--json`
+prints the counts. The check reserves nothing, so each supervisor admits one
+PR at a time and starts the next check only once the previous PR's ready run
+is visible; concurrent supervisors can overshoot `--max-ready` by at most one
+run each.
+
 ## Cache plan
 
 An API sample on 2026-11-13 reported **9.67 GB / 18 entries**; the immediately
