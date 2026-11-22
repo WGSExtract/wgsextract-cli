@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
+import sys
 import urllib.parse
 from pathlib import Path
 
 import pytest
 
+from tests.fake_tools import FakePixi
 from wgsextract_cli import api
 from wgsextract_cli.core import issue_report
 from wgsextract_cli.core.issue_report import Redactor
@@ -269,6 +273,90 @@ def test_sample_names_from_the_input_header_are_redacted(tmp_path: Path) -> None
     report = issue_report.build_report(run=run, probe_tools=lambda used: {})
     assert "Ann_Lee" not in report.url and "Ann_Lee" not in report.diagnostics
     assert "Unexpected read group for <sample>" in report.diagnostics
+
+
+@pytest.fixture
+def pixi_only_tools(request: pytest.FixtureRequest) -> None:
+    """samtools and bcftools only in the CLI's Pixi environment, not on PATH."""
+    if sys.platform == "win32":
+        pytest.skip("a batch file (the fake pixi) can't take a multi-line argument")
+    real = {tool: shutil.which(tool) for tool in ("samtools", "bcftools")}
+    if not all(real.values()):
+        pytest.skip("needs real samtools and bcftools")
+    pixi: FakePixi = request.getfixturevalue("fake_pixi")
+    prefix = pixi.env("default", locked=tuple(real))
+    for tool, path in real.items():
+        assert path
+        (prefix / "bin" / tool).symlink_to(path)
+
+
+@pytest.mark.usefixtures("pixi_only_tools")
+@pytest.mark.parametrize(
+    ("name", "header"),
+    [
+        ("cohort.sam", "@HD\tVN:1.6\n@RG\tID:1\tSM:Ann_Lee\n"),
+        (
+            "cohort.vcf",
+            "##fileformat=VCFv4.2\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tAnn_Lee\n",
+        ),
+    ],
+    ids=["samtools", "bcftools"],
+)
+def test_1314_header_samples_are_redacted_with_pixi_only_tools(
+    tmp_path: Path, name: str, header: str
+) -> None:
+    """Issue #1314: with the tools reachable only through Pixi, the header
+    probe could not start them and the sample name reached the report."""
+    data = tmp_path / name
+    data.write_text(header)
+    run = issue_report.RunRecord(
+        "last run",
+        {
+            "command": "vcf clair3",
+            "exit_code": 1,
+            "status": "failed",
+            "error": {"message": "No reads or calls for Ann_Lee"},
+            "provenance": {"params": {"input": str(data)}},
+        },
+    )
+    report = issue_report.build_report(run=run, probe_tools=lambda used: {})
+    assert "Ann_Lee" not in _report_text(report)
+    assert "No reads or calls for <sample>" in report.diagnostics
+
+
+def test_1314_interrupt_does_not_leave_header_probe_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from wgsextract_cli.core import utils
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.results import CommandResult
+
+    if get_tool_path("samtools") is None:
+        pytest.skip("samtools not installed")
+    sam = tmp_path / "cohort.sam"
+    sam.write_text("@HD\tVN:1.6\n")
+    result = CommandResult(command="info")
+    result.provenance.params = {"input": str(sam)}
+
+    def interrupt(**_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    # Stand in for a slow external tool and Ctrl-C during its OS pipe wait.
+    with utils.popen(
+        [Path(sys.executable), "-c", "import time; time.sleep(60)"],
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as probe:
+        monkeypatch.setattr(utils, "popen", lambda *args, **kwargs: probe)
+        monkeypatch.setattr(probe, "communicate", interrupt)
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                api.support.build_issue_report(api.ReportIssueParams(), result=result)
+            assert probe.poll() is not None
+        finally:
+            if probe.poll() is None:
+                probe.kill()
 
 
 def _report_text(report: issue_report.IssueReport) -> str:

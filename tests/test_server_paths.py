@@ -72,6 +72,13 @@ from wgsextract_cli.server.operations import params_from_json as params_from_jso
             400,
             "usage",
         ),
+        # #1131: native CUDA also loads executable code from its local JAR.
+        (
+            "vcf/gatk",
+            {"input": "{work}/a.bam", "pair_hmm_cuda": "{work}/cuda.jar"},
+            400,
+            "usage",
+        ),
         (
             "lineage/mt-haplogroup",
             {"input": "{work}/a.bam", "haplogrep_path": "/bin/sh"},

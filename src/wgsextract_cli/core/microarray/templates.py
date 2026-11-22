@@ -1,3 +1,16 @@
+"""Chip-template (vendor) export and the hg38 to hg19 CombinedKit liftover.
+
+Provenance: the vendor-format export, chromosome ordering and liftover are
+modified ports of WGS Extract v4 ``program/aconv.py`` and
+``program/hg38tohg19.py`` (release v44.2, 28 Feb 2023), Copyright (C)
+2018-2020 City Farmer and Copyright (C) 2020-2022 Randy Harr, licensed under
+the GNU GPL version 3 or later. WGS Extract CLI contributors modified them from
+2026-03-02 (see the git history): zero-based liftover coordinates, strand
+complementing, rejection of ambiguous placements, rCRS mtDNA kept unlifted,
+template corrections and quality-gated no-calls. The modified work stays under
+GPL-3.0-or-later; see NOTICE and docs/migrating-from-v4.md.
+"""
+
 import functools
 import gzip
 import itertools
@@ -44,7 +57,7 @@ def chr_to_int(chrom: str | int) -> int:
     """
     Converts chromosome name to an integer for sorting.
     M/MT -> 23, X -> 24, Y -> 25.
-    Ported from program/aconv.py chrconv().
+    Ported from WGS Extract v4 program/aconv.py chrconv().
     """
     c = str(chrom).upper().replace("CHR", "")
     if c == "M" or c == "MT":
@@ -351,7 +364,7 @@ def liftover_hg38_to_hg19(
     outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
     left out, so vendor files report them as no-calls.
     MT stays in rCRS coordinates, matching hg38 and GRCh37 chip templates.
-    Ported from legacy program/hg38tohg19.py.
+    Ported from WGS Extract v4 program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
         raise FileNotFoundError(f"Liftover chain file not found: {chain_file}")
@@ -463,7 +476,8 @@ def write_formatted_line(
     result: str,
     eol: str = "\n",
 ) -> None:
-    """Writes a line in the specific vendor format. Ported from aconv.py."""
+    """Writes a line in the specific vendor format. Ported from WGS Extract v4
+    program/aconv.py."""
 
     profile = vendor_output_profile(format_name)
     if profile.layout == "split_alleles":
@@ -571,7 +585,7 @@ def convert_to_vendor_format(
 ) -> GenotypeTally:
     """
     Converts a CombinedKit.txt (GRCh37) to a vendor-specific format using
-    templates. Ported from legacy program/aconv.py. Returns the tally of the
+    templates. Ported from WGS Extract v4 program/aconv.py. Returns the tally of the
     autosomal genotypes written.
 
     A template on another build (FTDNA's NCBI36 Affymetrix export, its GRCh38

@@ -11,6 +11,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Installation](installation.md) | Install, pin versions, update or uninstall |
+| [Migrating from v4](migrating-from-v4.md) | Map WGS Extract v4 buttons to current pages/commands and read what changed |
 | [Running commands](usage.md) | Discover help, understand outputs/progress, log runs or report a problem |
 | [Privacy](privacy.md) | Review network permissions and destinations |
 | [Windows](windows.md) | Use native Windows tools and GATK |

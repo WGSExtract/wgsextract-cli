@@ -83,7 +83,7 @@ def run_region(params: ExtractRegionParams) -> None:
     ref = require_reference(base.ref, "region calling", input_path) if calls else None
     contigs = _contigs(params.target, input_path, base.cram_opt)
     if target.has_y and not params.ybrowse:  # call_ybrowse warns itself
-        _warn_if_female(input_path, base.outdir)
+        _warn_if_female(input_path, base.outdir, base.ref)
 
     def out(suffix: str) -> str:
         return derive_output_path(input_path, base.outdir, suffix)
