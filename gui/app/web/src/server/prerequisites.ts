@@ -105,6 +105,9 @@ function checkedCommandLine(executables: Record<string, string[]>, action: Actio
     if (action.prerequisiteArguments) {
         return renderedCommand({ executable: "", arguments: action.prerequisiteArguments }, context).arguments ?? [];
     }
+    if (!action.command) {
+        return null;
+    }
     const rendered = renderedCommand(action.command, context);
     const prefix = Object.entries(executables).find(([executable]) => interpolate(executable, context) === rendered.executable)?.[1];
     return prefix ? [...prefix, ...(rendered.arguments ?? [])] : null;

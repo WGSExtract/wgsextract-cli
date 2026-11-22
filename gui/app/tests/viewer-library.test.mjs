@@ -15,15 +15,23 @@ test("#1112/#1149: current selection and originating controls survive asynchrono
     }
     const button = new Element();
     button.dataset.viewReads = "bam_path";
+    const viewerAction = new Element();
+    viewerAction.dataset.viewerAction = "info-bam/info-commands/viewer";
+    viewerAction.dataset.viewerInput = "{{bam_path}}";
     const app = new Element();
     const result = new Element();
     result.dataset.resultViewer = "/genomes/region.bam";
     result.dataset.viewerLocus = "chr1:200-400";
-    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button] : selector === "[data-result-viewer]" ? [result] : [];
+    app.querySelectorAll = (selector) => selector === "[data-view-reads]" ? [button]
+        : selector === "[data-viewer-action]" ? [viewerAction]
+        : selector === "[data-result-viewer]" ? [result] : [];
     let currentInput = button;
+    let currentViewerAction = viewerAction;
     let currentResult = result;
     const sidebar = new Element();
-    app.querySelector = (selector) => selector.startsWith("[data-result-viewer=") ? currentResult : selector.startsWith("[data-view-reads=") ? currentInput : sidebar;
+    app.querySelector = (selector) => selector.startsWith("[data-result-viewer=") ? currentResult
+        : selector.startsWith("[data-view-reads=") ? currentInput
+        : selector.startsWith("[data-viewer-action=") ? currentViewerAction : sidebar;
     const frameWindow = { postMessage: (message) => messages.push(message) };
     globalThis.localStorage = { getItem: () => null };
     globalThis.window = new EventTarget();
@@ -68,6 +76,18 @@ test("#1112/#1149: current selection and originating controls survive asynchrono
     result.isConnected = false;
     created.findLast((item) => item.tag === "button").element.dispatchEvent(new Event("click"));
     assert.equal(document.activeElement, currentResult, "#1149: body focus and a replaced result opener restore the originating result action.");
+    state.fieldValues.bam_path = "{{usersWorkspace}}/mygenomes/sample.cram";
+    document.activeElement = viewerAction;
+    viewerAction.dispatchEvent(new Event("click"));
+    window.dispatchEvent(Object.assign(new Event("message"), {
+        origin: location.origin, source: frameWindow, data: { type: "genomeViewerReady" },
+    }));
+    assert.equal(messages[2].inputPath, "{{usersWorkspace}}/mygenomes/sample.cram");
+    assert.equal(messages[2].locus, "");
+    currentViewerAction = new Element();
+    viewerAction.isConnected = false;
+    created.findLast((item) => item.tag === "button").element.dispatchEvent(new Event("click"));
+    assert.equal(document.activeElement, currentViewerAction, "Returning restores focus to the re-rendered Viewer action button.");
 });
 
 test("#1112: standalone grants are revoked on replacement, manual selection and page exit with authentication", async (t) => {

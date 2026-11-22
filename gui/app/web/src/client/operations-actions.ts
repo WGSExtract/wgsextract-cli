@@ -51,6 +51,9 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
  * Resolves to its exit code, or null when it couldn't run or was cancelled.
  */
 export async function streamCommand(action: ActionSpec, context: CommandContext, endpoint: string, body: unknown, noticeRun: NoticeRun | null = null): Promise<number | null> {
+    if (!action.command) {
+        throw new Error("Missing action command.");
+    }
     const command = displayCommand(action.command, context);
     const runningID = appendTerminal(
         "command",
@@ -196,7 +199,7 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
 function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
     const candidates = action.primaryInput
         ? [action.primaryInput]
-        : actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl);
+        : action.command ? actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl) : [];
     for (const key of candidates) {
         const value = String(contextValue(context, key) ?? "").trim();
         if (value) {

@@ -499,7 +499,9 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                         )
                 actions += control.get("rowActions", [])
             for action in actions:
-                command = action["command"]
+                command = action.get("command")
+                if not command:
+                    continue
                 groups = command.get("optionalArguments", [])
                 flags = {group[0] for group in groups if group}
                 pairs = [pair for pair in EXCLUSIVE_FLAGS if set(pair) <= flags]

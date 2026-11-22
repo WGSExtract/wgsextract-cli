@@ -145,5 +145,8 @@ function openerSelector(opener: HTMLElement): string {
     if (opener.dataset.viewReads != null) {
         return `[data-view-reads="${CSS.escape(opener.dataset.viewReads)}"]`;
     }
+    if (opener.dataset.viewerAction != null) {
+        return `[data-viewer-action="${CSS.escape(opener.dataset.viewerAction)}"]`;
+    }
     return "[data-genome-viewer-open]";
 }

@@ -129,7 +129,8 @@ test("every WGS Extract action shown in Basic can get its required inputs in Bas
     const shownOnPage = new Set(visibleSections(page, "basic").flatMap((section) => visibleControls(section, "basic").map((control) => control.id)));
     for (const section of visibleSections(page, "basic")) {
       for (const action of (section.actions ?? []).filter((candidate) => candidate.advancedOnly !== true)) {
-        for (const placeholder of placeholdersIn(action.command?.arguments ?? [])) {
+        const sources = action.viewer ? [action.viewer.input] : (action.command?.arguments ?? []);
+        for (const placeholder of placeholdersIn(sources)) {
           const control = controls.get(placeholder);
           // Paths (the Reference Library) keep their value when hidden; anything else must be on the page to be set.
           if (control && control.kind !== "path" && !shownOnPage.has(placeholder) && !control.value) {

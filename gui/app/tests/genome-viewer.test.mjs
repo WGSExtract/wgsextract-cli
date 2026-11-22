@@ -95,3 +95,57 @@ test("#1090: a selected My Genomes alignment has a localized View reads entry wi
   state.fieldValues.bam_path = "/genomes/HG002.bam.bai";
   assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path" }), /data-view-reads/);
 });
+
+test("BAM Info Commands Viewer button enables for BAM/CRAM inputs without running a job", async (t) => {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { exampleBundleCopy } = await import("./example-bundle.mjs");
+  const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
+  const { state, createInitialState } = await import("../dist/web/src/client/state.js");
+  const { renderActions } = await import("../dist/web/src/client/view/actions.js");
+  const bundleRoot = await exampleBundleCopy(t, "WGSExtract");
+  const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+  const loaded = await loadLocalizedBundle("en", repoRoot, bundleRoot, bundleRoot);
+  const infoBam = loaded.manifest.pages.find((page) => page.id === "info-bam");
+  const infoCommands = infoBam.sections.find((section) => section.id === "info-commands");
+  const viewerAction = infoCommands.actions.find((action) => action.id === "viewer");
+  assert.ok(viewerAction, "BAM Info Commands must include the Viewer action.");
+  assert.equal(viewerAction.title, "Viewer");
+  assert.deepEqual(viewerAction.viewer, { input: "{{bam_path}}" });
+
+  const schema = JSON.parse(readFileSync(new URL("../../docs/schema/page.schema.json", import.meta.url), "utf8"));
+  const allowedKeys = Object.keys(schema.$defs.action.properties);
+  assert.deepEqual(Object.keys(viewerAction).filter((key) => !allowedKeys.includes(key)), []);
+
+  const renderFor = (bamPath, manifestID = "wgs-extract") => {
+    const context = { fieldValues: { bam_path: bamPath }, configValues: {}, checkedOptions: {} };
+    Object.assign(state, createInitialState(), {
+      manifest: { ...loaded.manifest, id: manifestID },
+      labels: loaded.labels,
+      fieldValues: { bam_path: bamPath },
+      fileStateValues: new Map([[JSON.stringify({ fieldValues: context.fieldValues, configValues: {}, rowValues: undefined, bundleRootPath: undefined }), {}]]),
+    });
+    return renderActions([viewerAction], context, { pageID: "info-bam", sectionID: "info-commands" });
+  };
+
+  const emptyHtml = renderFor("");
+  assert.match(emptyHtml, /data-viewer-action="info-bam\/info-commands\/viewer"/);
+  assert.match(emptyHtml, /Missing: BAM\/CRAM/);
+  assert.match(emptyHtml, /disabled/);
+  assert.doesNotMatch(emptyHtml, /data-action-id/);
+
+  const baiHtml = renderFor("/genomes/HG002.bam.bai");
+  assert.match(baiHtml, /Select a BAM or CRAM file/);
+  assert.match(baiHtml, /disabled/);
+
+  for (const file of ["/genomes/HG002.bam", "/genomes/HG002.cram"]) {
+    const html = renderFor(file);
+    assert.match(html, /data-viewer-action="info-bam\/info-commands\/viewer"/);
+    assert.match(html, /data-viewer-input="\{\{bam_path\}\}"/);
+    assert.match(html, />Viewer</);
+    assert.doesNotMatch(html, /disabled/);
+    assert.doesNotMatch(html, /data-action-id/);
+  }
+
+  assert.equal(renderFor("/genomes/HG002.bam", "git-helper"), "");
+});

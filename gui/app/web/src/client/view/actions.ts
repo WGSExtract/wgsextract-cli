@@ -1,4 +1,4 @@
-import { allControls, disabledReason, displayCommand, isActionVisible, isPrecheckReady, missingPlaceholders } from "../../../../shared/rendering.js";
+import { allControls, disabledReason, displayCommand, isActionVisible, isPrecheckReady, missingActionPlaceholders } from "../../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "../dom.js";
 import { formatLabel, renderIcon, renderInlineError, renderLoadingInline } from "../model.js";
 import { actionPrecheckKey, contextWithFileState, ensureActionPrecheck } from "../operations.js";
@@ -9,10 +9,10 @@ import type { ActionReference, ActionSpec, CommandContext, ManifestLocation, Pre
 export function renderActions(actions: ActionSpec[], context: CommandContext, owner: ManifestLocation, compact = false) {
   const resolvedContext = contextWithFileState(context);
   return actions
-    .filter((action) => isActionVisible(action, resolvedContext))
+    .filter((action) => (!action.viewer || state.manifest?.id === "wgs-extract") && isActionVisible(action, resolvedContext))
     .map((action) => {
       const reference: ActionReference = { ...owner, actionID: String(action.id ?? "") };
-      const missing = missingPlaceholders(action.command, resolvedContext);
+      const missing = missingActionPlaceholders(action, resolvedContext);
       const disabled = disabledReason(action, resolvedContext, state.labels.actionUnavailableTitle);
       const shouldRunPrecheck = isPrecheckReady(action.precheck, resolvedContext);
       const precheckKey = shouldRunPrecheck ? actionPrecheckKey(action, resolvedContext) : "";
@@ -22,30 +22,43 @@ export function renderActions(actions: ActionSpec[], context: CommandContext, ow
       const disabledText = missing.length
         ? formatLabel(state.labels.actionMissingInputsFormat, { inputs: missing.map(actionPlaceholderLabel).join(", ") })
         : disabled ?? precheckWarning;
-      const command = displayCommand(action.command, resolvedContext);
+      const command = action.command ? displayCommand(action.command, resolvedContext) : "";
       const tooltipText = actionTooltipText(action.tooltip ?? command, disabledText ?? (isLoadingPrecheck ? state.labels.refreshingTitle : ""));
       const roleClass = action.role === "destructive" ? "danger" : action.role === "secondary" ? "secondary" : "primary";
       const showsPrecheck = Boolean(precheck?.message);
+      const buttonAttributes = action.viewer
+        ? viewerActionAttributes(action, owner, resolvedContext)
+        : `data-action-id="${escapeAttribute(action.id)}"
+            data-action="${escapeAttribute(JSON.stringify(action))}"
+            data-action-ref="${escapeAttribute(JSON.stringify(reference))}"
+            data-action-context="${escapeAttribute(JSON.stringify(resolvedContext))}"`;
       return `
         <span class="action-stack${compact ? " compact" : ""}${showsPrecheck ? " has-precheck" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
           ${showsPrecheck && precheck ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
           ${state.actionPrecheckErrors.has(precheckKey)
             ? renderInlineError(state.actionPrecheckErrors.get(precheckKey), `<button type="button" data-retry-precheck="${escapeAttribute(precheckKey)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
             : ""}
-          <button type="button" class="action-button ${roleClass} ${compact ? "compact" : ""} ${action.iconOnly ? "icon-only" : ""}" data-action-id="${escapeAttribute(action.id)}"
-            data-action="${escapeAttribute(JSON.stringify(action))}"
-            data-action-ref="${escapeAttribute(JSON.stringify(reference))}"
-            data-action-context="${escapeAttribute(JSON.stringify(resolvedContext))}"
+          <button type="button" class="action-button ${roleClass} ${compact ? "compact" : ""} ${action.iconOnly ? "icon-only" : ""}" ${buttonAttributes}
             ${disabledText || isLoadingPrecheck ? "disabled" : ""}>
             <span class="action-icon" aria-hidden="true">${renderIcon(action.iconName, action.textIcon, "▶")}</span>
             ${action.iconOnly ? "" : `<span>${escapeHTML(action.title)}</span>`}
           </button>
           ${actionEstimate(action)}
-          ${renderResultNotice(state.actionResultNotices.get(actionNoticeKey(reference, resolvedContext)))}
+          ${action.viewer ? "" : renderResultNotice(state.actionResultNotices.get(actionNoticeKey(reference, resolvedContext)))}
         </span>
       `;
     })
     .join("");
+}
+
+function viewerActionAttributes(action: ActionSpec, owner: ManifestLocation, context: CommandContext) {
+  const rowID = context.rowValues?.id != null ? String(context.rowValues.id) : "";
+  const key = [owner.pageID, owner.sectionID, owner.controlID, rowID, action.id].filter(Boolean).join("/");
+  const locus = action.viewer?.locus ? ` data-viewer-locus="${escapeAttribute(action.viewer.locus)}"` : "";
+  const rowValues = context.rowValues && Object.keys(context.rowValues).length
+    ? ` data-viewer-row="${escapeAttribute(JSON.stringify(context.rowValues))}"`
+    : "";
+  return `data-viewer-action="${escapeAttribute(key)}" data-viewer-input="${escapeAttribute(action.viewer?.input ?? "")}"${locus}${rowValues}`;
 }
 
 function actionEstimate(action: ActionSpec) {

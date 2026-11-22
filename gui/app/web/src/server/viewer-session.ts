@@ -72,7 +72,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
     }
     await guardedViewerPath(index, library.genomeRoots);
     const script = await resolvePlatformScriptPath(path.join(context.bundleRoot, "scripts", "viewer-reference.sh"), context.bundleRoot);
-    const result = await context.runProcess(script, [input, library.config], {
+    const result = await context.runProcess(script, [input, library.config, ...(position ? ["--no-locus"] : [])], {
         cwd: context.bundleRoot,
         env: { ...process.env, ...bundleEnvironment(context.bundleRoot) },
         timeoutMs: 30_000,

@@ -111,6 +111,24 @@ test("manifest validator counts emoji text icons as single characters", () => {
   assert.doesNotThrow(() => validateManifest(manifest));
 });
 
+test("manifest validator checks viewer actions", () => {
+  const manifest = validManifest();
+  manifest.pages[0].sections[0].actions[0] = { id: "viewer", title: "Viewer", viewer: { input: "{{sample}}", locus: "chr1:1-100" } };
+  assert.doesNotThrow(() => validateManifest(manifest));
+  rejects((candidate) => {
+    candidate.pages[0].sections[0].actions[0].viewer = { input: "{{sample}}" };
+  }, /cannot define both command and viewer/);
+  rejects((candidate) => {
+    candidate.pages[0].sections[0].actions[0] = { id: "viewer", title: "Viewer", viewer: { input: "  " } };
+  }, /Required field is empty: .*viewer\.input/);
+  rejects((candidate) => {
+    candidate.pages[0].sections[0].actions[0] = { id: "viewer", title: "Viewer", viewer: { input: "{{sample}}", locus: 42 } };
+  }, /viewer\.locus/);
+  rejects((candidate) => {
+    candidate.pages[0].sections[0].actions[0] = { id: "viewer", title: "Viewer", resultCard: true, viewer: { input: "{{sample}}" } };
+  }, /Viewer action 'viewer' cannot define resultCard/);
+});
+
 test("manifest validator checks setup step platforms and admin flags", () => {
   rejects((manifest) => { manifest.setup.steps[0].platforms = ["beos"]; }, /Unsupported setup platform at setup\.steps\.0\.platforms\.0: beos/);
   rejects((manifest) => { manifest.setup.steps[0].requiresAdmin = "yes"; }, /Invalid setup\.steps\.0\.requiresAdmin/);

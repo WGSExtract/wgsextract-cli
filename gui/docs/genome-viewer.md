@@ -8,7 +8,8 @@ Remote viewing requires the explicit connection and transfer consent below.
 ## Open a file from My Genomes
 
 After choosing an indexed BAM/CRAM or bgzip VCF/gVCF on a tool page, choose
-**View reads** beside its path. You can also open **Genome viewer**, enter the
+**View reads** beside its path, or **Viewer** in the BAM **Info Commands**
+section. You can also open **Genome viewer**, enter the
 full path under **File in My Genomes**, and choose **Open library file**.
 The file must be inside the **My Genomes** folder configured in Settings;
 changing a tool's input path does not grant access to another folder.
@@ -24,9 +25,11 @@ If the exact reference or indexes are missing, install them in
 No CRAM reference URL is followed and nothing is downloaded automatically.
 
 Enter an optional **1-based, inclusive** position such as
-`chr20:1000-2000`; leaving it empty opens the first chromosome. The loaded
-reference's filename appears beside the status. The existing browser-file
-workflow below is available for files outside the configured libraries.
+`chr20:1000-2000`; leaving it empty opens a random 100 bp window in the middle
+of the first sequence so individual bases, the reference and read mismatches
+are visible right away. The loaded reference's filename appears beside the
+status. The existing browser-file workflow below is available for files outside
+the configured libraries.
 
 ### Add panels, regions or coverage
 

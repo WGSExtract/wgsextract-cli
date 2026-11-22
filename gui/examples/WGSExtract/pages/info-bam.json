@@ -226,6 +226,24 @@
               ]
             ]
           }
+        },
+        {
+          "id": "viewer",
+          "title": "actions.info-bam.info-commands.viewer.title",
+          "tooltip": "actions.info-bam.info-commands.viewer.tooltip",
+          "disabledWhen": [
+            {
+              "placeholder": "bam_path.pathExtension",
+              "notIn": [
+                "bam",
+                "cram"
+              ]
+            }
+          ],
+          "disabledTooltip": "actions.info-bam.info-commands.viewer.disabledTooltip",
+          "viewer": {
+            "input": "{{bam_path}}"
+          }
         }
       ],
       "iconName": "command-line",

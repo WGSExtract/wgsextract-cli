@@ -280,12 +280,19 @@ export interface ConfirmationSpec {
     [key: string]: unknown;
 }
 
+/** Opens the built-in genome viewer for an indexed library file instead of running a shell command. */
+export interface ViewerActionSpec {
+    input: string;
+    locus?: string;
+}
+
 export interface ActionSpec {
     id?: string;
     title?: string;
     /** The title Advanced mode shows instead of `title`, when the action does more there. */
     advancedTitle?: string;
-    command: CommandSpec;
+    command?: CommandSpec;
+    viewer?: ViewerActionSpec;
     precheck?: LooseRecord;
     confirm?: ConfirmationSpec;
     role?: string;

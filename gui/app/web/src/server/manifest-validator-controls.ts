@@ -18,7 +18,12 @@ export function validateAction(action: ActionSpec, basePath: string): void {
         requireNonEmpty(action.advancedTitle, `${basePath}.advancedTitle`);
     }
     validateTextIcon(action.textIcon, `${basePath}.textIcon`);
-    if (typeof action.command?.executable !== "string" || !action.command.executable.trim()) {
+    if (action.viewer != null) {
+        if (action.command != null) {
+            throw new BundleValidationError(`Action '${action.id}' cannot define both command and viewer.`);
+        }
+        validateViewerAction(action, basePath);
+    } else if (typeof action.command?.executable !== "string" || !action.command.executable.trim()) {
         throw new BundleValidationError(`Action '${action.id}' must define a command executable.`);
     }
     validateConditions(action.visibleWhen, `${basePath}.visibleWhen`);
@@ -40,6 +45,22 @@ export function validateAction(action: ActionSpec, basePath: string): void {
     const openOutput: unknown = action.openOutput;
     if (openOutput != null && !(Array.isArray(openOutput) && openOutput.length > 0 && openOutput.every((role) => typeof role === "string" && role.trim()))) {
         throw new BundleValidationError(`Invalid ${basePath}.openOutput: expected a non-empty array of output roles.`);
+    }
+}
+
+function validateViewerAction(action: ActionSpec, basePath: string): void {
+    const viewer: unknown = action.viewer;
+    if (viewer == null || typeof viewer !== "object" || Array.isArray(viewer)) {
+        throw new BundleValidationError(`Invalid ${basePath}.viewer: expected an object.`);
+    }
+    requireNonEmpty(action.viewer?.input, `${basePath}.viewer.input`);
+    if (action.viewer?.locus != null && typeof action.viewer.locus !== "string") {
+        throw new BundleValidationError(`Invalid ${basePath}.viewer.locus: expected a string.`);
+    }
+    for (const field of ["precheck", "confirm", "serverOperation", "prerequisiteArguments", "primaryInput", "resultCard", "openOutput"] as const) {
+        if (action[field] != null) {
+            throw new BundleValidationError(`Viewer action '${action.id}' cannot define ${field}.`);
+        }
     }
 }
 

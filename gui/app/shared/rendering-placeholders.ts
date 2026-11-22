@@ -1,5 +1,5 @@
 import { contextValue } from "./rendering-context.js";
-import type { CommandContext, CommandSpec, LooseRecord } from "./types.js";
+import type { ActionSpec, CommandContext, CommandSpec, LooseRecord } from "./types.js";
 
 const PLACEHOLDER_PATTERN = /\{\{([^}]+)\}\}/g;
 
@@ -26,6 +26,12 @@ export function missingPlaceholders(command: CommandSpec, context: CommandContex
         const value = String(contextValue(context, placeholder) ?? "").trim();
         return value.length === 0;
     });
+}
+export function missingActionPlaceholders(action: ActionSpec, context: CommandContext): string[] {
+    if (action.viewer) {
+        return missingRequiredPlaceholders([action.viewer.input], context);
+    }
+    return action.command ? missingPlaceholders(action.command, context) : [];
 }
 
 export function renderedCommand(command: CommandSpec, context: CommandContext): CommandSpec {

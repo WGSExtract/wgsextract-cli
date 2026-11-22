@@ -334,7 +334,24 @@
     },
     "action": {
       "type": "object",
-      "required": ["id", "title", "command"],
+      "required": ["id", "title"],
+      "oneOf": [
+        { "required": ["command"] },
+        {
+          "required": ["viewer"],
+          "not": {
+            "anyOf": [
+              { "required": ["precheck"] },
+              { "required": ["confirm"] },
+              { "required": ["serverOperation"] },
+              { "required": ["prerequisiteArguments"] },
+              { "required": ["primaryInput"] },
+              { "required": ["resultCard"] },
+              { "required": ["openOutput"] }
+            ]
+          }
+        }
+      ],
       "additionalProperties": false,
       "properties": {
         "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
@@ -365,6 +382,7 @@
         "precheck": { "$ref": "#/$defs/actionPrecheck" },
         "confirm": { "$ref": "#/$defs/actionConfirmation" },
         "command": { "$ref": "#/$defs/command" },
+        "viewer": { "$ref": "#/$defs/viewerAction" },
         "serverOperation": { "$ref": "#/$defs/serverOperation" },
         "prerequisiteArguments": {
           "description": "The command line the manifest's prerequisite check is given for this action, interpolated like command arguments, when its executable is a wrapper the check can't read. See docs/prerequisites.md.",
@@ -386,6 +404,23 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "viewerAction": {
+      "description": "Opens the built-in genome viewer for an indexed library file instead of running a shell command.",
+      "type": "object",
+      "required": ["input"],
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "type": "string",
+          "minLength": 1,
+          "description": "File path or placeholder (for example {{bam_path}}) to open in the built-in genome viewer."
+        },
+        "locus": {
+          "type": "string",
+          "description": "Optional 1-based inclusive locus or placeholder to open at."
         }
       }
     },
