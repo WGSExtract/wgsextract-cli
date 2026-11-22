@@ -129,6 +129,13 @@ class DeltaSectionDocument(TypedDict):
     before_status: str | None
     after_status: str | None
     compared: bool
+    not_compared: Annotated[
+        list[str],
+        Constraints(
+            description="Source runs (commands) that failed or didn't run in "
+            "either report; their findings are not compared."
+        ),
+    ]
     note: str | None
     unchanged: int
     findings: list[DeltaFindingDocument]
@@ -367,6 +374,23 @@ def _keyed(findings: Sequence[Any]) -> dict[str, Mapping[str, Any]]:
     return keyed
 
 
+def _sources(section: Mapping[str, Any]) -> dict[str, tuple[str, str]]:
+    """{command: (manifest, status)} of a report section's source runs."""
+    return {
+        str(s.get("command")): (str(s.get("manifest") or ""), str(s.get("status")))
+        for s in section.get("sources") or []
+        if isinstance(s, Mapping) and s.get("command")
+    }
+
+
+def _command_of(
+    finding: Mapping[str, Any], sources: Mapping[str, tuple[str, str]]
+) -> str | None:
+    """The command of the run a finding's evidence came from."""
+    manifest = _mapping(finding.get("evidence")).get("manifest")
+    return next((c for c, (m, _) in sources.items() if m and m == manifest), None)
+
+
 def _sections(
     before: Mapping[str, Any],
     after: Mapping[str, Any],
@@ -388,6 +412,7 @@ def _sections(
             before_status=status_a,
             after_status=status_b,
             compared=status_a == status_b == "ok",
+            not_compared=[],
             note=None,
             unchanged=0,
             findings=[],
@@ -403,6 +428,22 @@ def _sections(
         related = sorted(
             changed & set(resource_releases.SECTION_RESOURCES.get(name, ()))
         )
+        # A section is ok when any of its runs is: a run that failed (or
+        # didn't run) in either report leaves its own findings uncompared.
+        sources_a, sources_b = _sources(a), _sources(b)
+        skipped = sorted(
+            command
+            for command in sources_a.keys() | sources_b.keys()
+            if not sources_a.get(command, (None, None))[1] == "ok"
+            or not sources_b.get(command, (None, None))[1] == "ok"
+        )
+        section["not_compared"] = skipped
+        if skipped:
+            section["note"] = (
+                f"Not compared: {', '.join(skipped)}, which failed or did not run "
+                "in one of the reports; its findings are not reported as added "
+                "or removed."
+            )
         before_findings, after_findings = (
             _keyed(a.get("findings") or []),
             _keyed(b.get("findings") or []),
@@ -414,6 +455,10 @@ def _sections(
             fa, fb = before_findings.get(key), after_findings.get(key)
             shown = fb or fa
             assert shown is not None
+            if (fa is None or fb is None) and _command_of(
+                shown, sources_b if fb else sources_a
+            ) in skipped:
+                continue
             sa = _state(fa) if fa else None
             sb = _state(fb) if fb else None
             if sa is None:
@@ -536,6 +581,7 @@ def compare(before_path: Path, after_path: Path) -> DeltaDocument:
             resource_only=bool(releases_changed)
             and not findings
             and not status_changed
+            and not any(c["area"] in ("metric", "output") for c in changes)
             and all(s["before_status"] == s["after_status"] for s in sections),
         ),
         releases=releases,

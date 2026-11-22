@@ -264,6 +264,13 @@
         "compared": {
           "type": "boolean"
         },
+        "not_compared": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Source runs (commands) that failed or didn't run in either report; their findings are not compared."
+        },
         "note": {
           "anyOf": [
             {
@@ -290,6 +297,7 @@
         "before_status",
         "after_status",
         "compared",
+        "not_compared",
         "note",
         "unchanged",
         "findings"

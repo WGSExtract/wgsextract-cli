@@ -52,14 +52,18 @@ downloads data or reruns an analysis. Each resource gets a `status`:
 | `up_to_date` | The runs used the newest release. |
 | `newer_available` | The answers name a later release. |
 | `different_release` | The answers name another release that can't be ordered by date. |
-| `unknown` | The run didn't record its release, or the answers don't cover the resource. |
+| `unknown` | The run didn't record its release, the answers don't cover the resource, or they name an older release than the run used (out-of-date answers). |
 | `lookup_error` | The online lookup failed. A failed lookup is never reported as up to date. |
 
 `installed` says whether the file at the recorded path is still the one the
 runs used (`same`, `changed` with its release as `installed_release`,
-`missing` or `unknown`). `used_by` lists the runs, and `next_step` says what to
-do: update with the resource's own `wgsextract ref <resource>` command (an
-explicit download), then rerun those commands. The result has the warnings
+`missing` or `unknown`; a server job checks only files in its allowed
+folders). `used_by` lists the runs, and `next_step` says what to do: download
+the newer release yourself (for ClinVar from NCBI, then pass it with
+`vcf clinvar --clinvar-file`), then rerun those commands, the analyses before
+the report. `wgsextract ref <resource>` installs the release this WGS Extract
+pins, often an audited mirror snapshot, which may be older than the newest. A
+truncated or failed listing is a `lookup_error`. The result has the warnings
 `newer_release_available`, `release_lookup_failed` and
 `resources_not_recorded`; its `details` follow `wgsextract.recheck/1`
 ([schema](../src/wgsextract_cli/assets/schemas/wgsextract.recheck.1.schema.json)),
@@ -113,12 +117,15 @@ by section and label for non-variant findings. Each changed finding lists its
 
 Unchanged findings are counted per section. A section that failed or did not
 run in either report is not compared (`compared: false`, with a note): its
-findings are not reported as removed. `releases` lists each recorded resource
+findings are not reported as removed. Within a section that has several runs
+(pharmacogenomics, lineage), a run that failed or did not run in either report
+is listed in `not_compared` and its own findings are not reported as added or
+removed. `releases` lists each recorded resource
 as `same`, `changed`, `content_changed` (same release name, different file),
 `added`, `removed` or `unknown` (release unrecorded and the file differs). A
 changed finding names the releases its section rests on that changed
 (`release_changes`), and `summary.resource_only` is true when releases changed
-but no finding, section or run status did.
+but no finding, section, run status, metric or output did.
 
 Each changed finding keeps its confidence label and disclaimer as the report
 gave them, and the document carries the report's disclaimer and its

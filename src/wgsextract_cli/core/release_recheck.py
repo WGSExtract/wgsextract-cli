@@ -17,6 +17,7 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from http.client import HTTPException
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypedDict
 from urllib.error import URLError
@@ -46,9 +47,11 @@ _INSTALLERS = {
     "phylop", "cadd", "gerp",
 }  # fmt: skip
 NOTHING_RUN = (
-    "Nothing was downloaded and no analysis was rerun; update a resource with "
-    "its explicit 'wgsextract ref' command, then rerun the commands listed."
+    "Nothing was downloaded and no analysis was rerun; install a newer release "
+    "yourself, then rerun the commands listed."
 )
+# How to give an analysis a resource file of your choosing.
+_FILE_OPTIONS = {"clinvar": "vcf clinvar --clinvar-file"}
 
 Status = Literal[
     "up_to_date", "newer_available", "different_release", "unknown", "lookup_error"
@@ -286,6 +289,18 @@ def online_targets(used: Iterable[_Used]) -> list[tuple[tuple[str, str], str]]:
     ]
 
 
+def _read_listing(response: Any) -> bytes:
+    """The whole listing; a truncated or oversized one is an error, never a
+    partial list of releases."""
+    length = response.headers.get("Content-Length")
+    if length is not None and int(length) > _MAX_LISTING:
+        raise ValueError("the listing is unexpectedly large")
+    body: bytes = response.read() if length else response.read(_MAX_LISTING + 1)
+    if len(body) > _MAX_LISTING or (length and len(body) != int(length)):
+        raise ValueError("the listing was truncated or too large")
+    return body
+
+
 def lookup_online(used: Sequence[_Used]) -> AnswersDocument:
     """Ask each resource's public release listing for its newest release.
 
@@ -298,7 +313,7 @@ def lookup_online(used: Sequence[_Used]) -> AnswersDocument:
         try:
             request = Request(url, headers={"User-Agent": "wgsextract-cli"})
             with urlopen(request, timeout=_TIMEOUT) as response:
-                text = response.read(_MAX_LISTING).decode("utf-8", "replace")
+                text = _read_listing(response).decode("utf-8", "replace")
             releases = sorted(
                 {
                     date
@@ -311,7 +326,7 @@ def lookup_online(used: Sequence[_Used]) -> AnswersDocument:
             answers.append(
                 AnswerDocument(id=resource_id, build=build, latest=releases[-1])
             )
-        except (OSError, URLError, ValueError) as error:
+        except (OSError, URLError, ValueError, HTTPException) as error:
             answers.append(
                 AnswerDocument(
                     id=resource_id, build=build, latest=None, error=str(error)
@@ -363,6 +378,12 @@ def _status(
     )
     if used and newest and newest > used:
         return "newer_available", f"Release {latest} is newer than {record.release}."
+    if used and newest and newest < used:
+        return (
+            "unknown",
+            f"The answers name {latest}, older than the release used: they are "
+            "out of date.",
+        )
     return "different_release", f"The answers name release {latest}."
 
 
@@ -385,18 +406,28 @@ def _next_step(
     status: Status,
     installed: Installed,
     commands: Sequence[str],
+    latest: str | None,
 ) -> str | None:
     rerun = f"rerun {', '.join(commands)}" if commands else "rerun the runs above"
     if installed == "changed":
         return f"The installed file has changed since these runs; {rerun} to use it."
     if status not in ("newer_available", "different_release"):
         return None
-    if record.id in _INSTALLERS:
-        return (
-            f"Update with 'wgsextract ref {record.id}' (an explicit download), "
-            f"then {rerun}."
-        )
-    return f"Install the newer release, then {rerun}."
+    wanted = f"release {latest}" if latest else "the newer release"
+    # `ref <id>` installs the release this WGS Extract pins (often an audited
+    # mirror snapshot), which may be older than the newest one.
+    pinned = (
+        f" ('wgsextract ref {record.id}' installs the release this WGS Extract "
+        "pins, which may be older)"
+        if record.id in _INSTALLERS
+        else ""
+    )
+    option = _FILE_OPTIONS.get(record.id)
+    how = f" and pass it with '{option} FILE'" if option else ""
+    source = (
+        f" from {record.source_url.rsplit('/', 1)[0]}/" if record.source_url else ""
+    )
+    return f"Download {wanted}{source}{how}{pinned}, then {rerun}."
 
 
 def recheck(
@@ -442,7 +473,9 @@ def recheck(
                 installed=installed,
                 installed_release=installed_release,
                 used_by=item.uses,
-                next_step=_next_step(record, status, installed, item.rerun),
+                next_step=_next_step(
+                    record, status, installed, item.rerun, (answer or {}).get("latest")
+                ),
                 source_url=record.source_url,
                 licence=record.licence,
                 licence_url=record.licence_url,

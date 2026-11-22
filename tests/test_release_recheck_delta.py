@@ -222,6 +222,45 @@ def test_1179_failed_analysis_is_not_compared_as_removed_findings(runs):
     assert delta["summary"]["sections_not_compared"] >= 1
 
 
+def test_1179_one_failed_run_in_a_shared_section_removes_none_of_its_findings(
+    runs, tmp_path
+):
+    # The section stays "ok" while another of its runs succeeds in both reports.
+    cyrius = {"command": "typing cyp2d6", "status": "ok", "finished": None,
+              "manifest": "cyp2d6.manifest.json", "latest_attempt": None}  # fmt: skip
+    finding = {"section": "clinvar", "label": "CYP2D6 diplotype (Cyrius)",
+               "value": "*1/*2", "detail": None, "gene": "CYP2D6", "note": None,
+               "confidence": "high", "confidence_reasons": [], "confidence_basis": "x",
+               "evidence": {"file": None, "region": None, "manifest": "cyp2d6.manifest.json"},
+               "variant": None, "links": [], "disclaimer": "Technical result, not diagnosis."}  # fmt: skip
+    paths = []
+    for name, clinvar_status in (("before", "ok"), ("after", "failed")):
+        document = json.loads(runs["november"].read_text())
+        section = document["details"]["sections"]["clinvar"]
+        section["sources"][0]["status"] = clinvar_status
+        if clinvar_status != "ok":
+            section["findings"] = []
+        section["sources"].append(cyrius)
+        section["findings"].append(finding)
+        paths.append(tmp_path / f"{name}.manifest.json")
+        paths[-1].write_text(json.dumps(document))
+    section = _clinvar_section(_delta(*paths))
+    assert section["compared"] and section["not_compared"] == ["vcf clinvar"]
+    assert section["findings"] == [] and section["unchanged"] == 1
+    assert "vcf clinvar" in section["note"]
+
+
+def test_1179_annotator_runs_with_changed_results_are_not_resource_only(runs):
+    before, after = (
+        runs[name].parent / "clinvar_pathogenic.vcf.manifest.json"
+        for name in ("october", "november")
+    )
+    delta = _delta(before, after)
+    assert delta["summary"]["resource_only"] is False
+    assert any(c["area"] == "output" for c in delta["changes"])
+    assert [r["change"] for r in delta["releases"]] == ["changed"]
+
+
 def test_1179_timestamps_and_ordering_are_ignored(runs, tmp_path):
     again = _delta(runs["november"], runs["november_again"])
     assert not any(s["findings"] for s in again["sections"]) and not again["changes"]
@@ -311,8 +350,11 @@ def test_1179_offline_answers_match_a_mocked_online_query(runs, tmp_path, monkey
         r for r in offline.details["resources"] if r["used_release"] == "2026-10-15"
     ]
     # A report rests on its analyses: rerun those first, then the report.
-    assert "'wgsextract ref clinvar'" in stale["next_step"]
-    assert "rerun vcf clinvar, report" in stale["next_step"]
+    assert "release 2026-11-15" in stale["next_step"]
+    assert "'vcf clinvar --clinvar-file FILE'" in stale["next_step"]
+    # ref clinvar may install an older pinned snapshot, and says so.
+    assert "'wgsextract ref clinvar' installs the release" in stale["next_step"]
+    assert stale["next_step"].endswith("rerun vcf clinvar, report.")
     provenance = offline.details["answers"]
     assert provenance["mode"] == "answers_file" and provenance["path"] == str(saved)
     assert provenance["sha256"] and provenance["retrieved"]
@@ -335,6 +377,21 @@ def test_1179_failed_lookup_is_an_error_never_up_to_date(runs, monkeypatch):
     (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
     assert clinvar["status"] == "lookup_error"
     assert "release_lookup_failed" in [w.code for w in result.warnings]
+
+
+def test_1179_truncated_listing_is_a_lookup_error(runs, monkeypatch):
+    with serving(files={"weekly/": LISTING.encode() * 50}) as server:
+        server.drops = 1  # the body stops half-way: http.client.IncompleteRead
+        monkeypatch.setitem(
+            release_recheck.RELEASE_LISTINGS,
+            ("clinvar", "hg38"),
+            server.url_for("weekly/"),
+        )
+        result = api.ref.recheck(
+            api.RefRecheckParams(manifests=(runs["november"],), online=True)
+        )
+    (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
+    assert clinvar["status"] == "lookup_error"
 
 
 def test_1179_default_and_offline_paths_make_no_request(
@@ -398,3 +455,15 @@ def test_1179_installed_change_is_reported_without_downloading(runs, tmp_path):
     )
     assert "vcf clinvar" in clinvar["next_step"]
     assert resource.exists()
+
+
+def test_1179_answers_older_than_the_release_used_never_suggest_a_downgrade(
+    runs, tmp_path
+):
+    answers = _answers(tmp_path / "answers.json", "2026-10-15")
+    result = api.ref.recheck(
+        api.RefRecheckParams(manifests=(runs["november"],), answers=answers)
+    )
+    (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
+    assert (clinvar["status"], clinvar["next_step"]) == ("unknown", None)
+    assert "newer_release_available" not in [w.code for w in result.warnings]
