@@ -3,6 +3,17 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `report --pgx-context FILE` reviews the medications a person lists in a
+  local TOML file against CPIC guidance (CPIC database v1.61.0, CC0, pinned;
+  first use needs `--download`; the list is never uploaded). Guidance is given
+  only when the pharmacogenomic calls it rests on are confident: weak, missing
+  reference, unresolved Cyrius and conflicting ambiguous calls are withheld,
+  and unsupported drugs, populations and results say so. A CPIC-quoted rule
+  shows paroxetine's possible CYP2D6 phenoconversion beside the genetic
+  phenotype. The review is labelled not a prescription, and the manifest
+  records the CPIC release and the effective medication list
+  ([#1176, CPIC medication review](https://github.com/WGSExtract/wgsextract-cli/issues/1176)).
+
 ## Fixes
 
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads

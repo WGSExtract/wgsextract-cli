@@ -25,6 +25,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
 from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
@@ -229,8 +230,12 @@ def merge_outside_calls(paths: Sequence[str | Path], merged: str) -> str:
 class GeneCall:
     gene: str
     status: str
-    alternatives: list[dict[str, str]]
+    # Each alternative's diplotype, phenotype and the CPIC lookup keys
+    # PharmCAT matched it by ("1.0", "Normal Metabolizer", "*57:01 positive").
+    alternatives: list[dict[str, Any]]
     phenotype_consistent: bool
+    # MATCHER (called from the VCF), OUTSIDE (an --outside-call) or NONE.
+    call_source: str | None = None
 
     @property
     def diplotype(self) -> str:
@@ -246,7 +251,7 @@ class GeneCall:
         if self.status == "no_call":
             return "No call; no definitive guidance."
         if self.phenotype_consistent:
-            return self.alternatives[0]["phenotype"]
+            return str(self.alternatives[0]["phenotype"])
         return (
             "Conflicting or unknown phenotypes; no definitive guidance. "
             + "; ".join(
@@ -261,7 +266,7 @@ def summarize(phenotype_json: str) -> list[GeneCall]:
         reports = json.load(f).get("geneReports", {})
     rows: list[GeneCall] = []
     for gene, report in sorted(reports.items()):
-        alternatives: list[dict[str, str]] = []
+        alternatives: list[dict[str, Any]] = []
         unknown = False
         for diplotype in report.get("recommendationDiplotypes") or []:
             alleles = [(diplotype.get("allele1") or {}).get("name") or "?"]
@@ -271,7 +276,11 @@ def summarize(phenotype_json: str) -> list[GeneCall]:
                 a.lower() in {"unknown", "?", "no call", "no-call"} for a in alleles
             )
             phenotype = ", ".join(diplotype.get("phenotypes") or []) or "-"
-            alternative = {"diplotype": "/".join(alleles), "phenotype": phenotype}
+            alternative = {
+                "diplotype": "/".join(alleles),
+                "phenotype": phenotype,
+                "lookup_keys": [str(k) for k in diplotype.get("lookupKey") or []],
+            }
             if alternative not in alternatives:
                 alternatives.append(alternative)
         status = (
@@ -290,7 +299,9 @@ def summarize(phenotype_json: str) -> list[GeneCall]:
                 not in {"-", "unknown", "no call", "n/a"}
             )
         )
-        rows.append(GeneCall(gene, status, alternatives, consistent))
+        rows.append(
+            GeneCall(gene, status, alternatives, consistent, report.get("callSource"))
+        )
     return rows
 
 

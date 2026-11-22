@@ -47,3 +47,17 @@ verified lazy data downloads, deterministic marker presentation and result
 provenance. Prediction rules and marker/QC filtering derive from upstream.
 These modifications were made by WGS Extract contributors on 2026-11-01.
 This project is independent and is not endorsed by the Yleaf authors.
+
+CPIC content
+============
+
+src/wgsextract_cli/assets/report/pgx_context_rules.json quotes recommendation
+text from the Clinical Pharmacogenetics Implementation Consortium (CPIC®)
+database, release v1.61.0, which CPIC dedicates to the public domain under
+CC0 1.0 (https://github.com/cpicpgx/cpic-data/blob/v1.61.0/LICENSE.md). The
+database itself is not distributed with WGS Extract: `report --pgx-context
+--download` fetches the SHA-256-pinned export from files.cpicpgx.org. As CPIC
+requests, the report credits CPIC (primary source www.clinpgx.org), cites each
+guideline's publication and the release, and notes that CPIC guidelines are
+updated over time. CPIC® is a registered service mark of the US Department of
+Health & Human Services; WGS Extract is not endorsed by CPIC.

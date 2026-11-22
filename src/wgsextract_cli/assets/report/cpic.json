@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "release": "v1.61.0",
+  "published": "2026-10-26",
+  "url": "https://files.cpicpgx.org/data/database/cpic_db_dump-v1.61.0.sql.gz",
+  "release_notes": "https://github.com/cpicpgx/cpic-data/releases/tag/v1.61.0",
+  "sha256": "372f547b003fdff9c3357e606efb6adfa184843b6b63fab948eeea479b21e510",
+  "size": 3862754,
+  "license": "CC0-1.0",
+  "license_url": "https://github.com/cpicpgx/cpic-data/blob/v1.61.0/LICENSE.md",
+  "attribution": "CPIC® database (Clinical Pharmacogenetics Implementation Consortium); primary source www.clinpgx.org. CPIC guidelines and content are subject to updates and modifications; refer to cpicpgx.org for the most current content."
+}

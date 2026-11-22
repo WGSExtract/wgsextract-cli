@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from wgsextract_cli.core import (
@@ -26,6 +27,7 @@ from .context import (
     _section,
     _worst,
 )
+from .pgx_state import PgxAlternative, PgxGene
 from .rendering import (
     _number,
 )
@@ -60,6 +62,7 @@ def _pharmacogenomics(ctx: _Context) -> ReportSectionDocument:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
+    _check_outside_calls(section, cyrius, ctx)
     gene_statuses: dict[str | None, str] = {}
     priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
     for finding in section["findings"]:
@@ -120,6 +123,21 @@ def _pharmcat_findings(
         else:
             label, reasons = NOT_ASSESSED, ["no_labelled_calls"]
             basis = "no labelled calls in the gene"
+        ctx.pgx_genes[gene] = PgxGene(
+            gene=gene,
+            status=row.status,
+            alternatives=tuple(
+                PgxAlternative(
+                    a["diplotype"], a["phenotype"], tuple(a.get("lookup_keys") or ())
+                )
+                for a in row.alternatives
+            ),
+            evidence=label,
+            reasons=tuple(reasons),
+            source="PharmCAT outside call"
+            if row.call_source == "OUTSIDE"
+            else "PharmCAT",
+        )
         if row.status != "resolved":
             label = variant_confidence.LOW
             reasons = sorted({*reasons, row.status})
@@ -149,6 +167,51 @@ def _pharmcat_findings(
             source="PharmCAT",
         )
         section["findings"].append(finding)
+
+
+def _check_outside_calls(
+    section: ReportSectionDocument, cyrius: Source | None, ctx: _Context
+) -> None:
+    """Rest each gene PharmCAT took from an outside call on that call's own
+    evidence: this report's Cyrius (CYP2D6) or T1K (HLA) finding for the gene.
+    Unresolved Cyrius candidates stay a note, never a call."""
+    from wgsextract_cli.commands.genotyping.cyp2d6 import pharmcat_copy_numbers
+
+    callers = {
+        f["gene"]: f for f in section["findings"] if f["gene"] and "pgx" not in f
+    }
+    metrics = cyrius.metrics if cyrius is not None and cyrius.status == "ok" else {}
+    for gene, state in list(ctx.pgx_genes.items()):
+        if state.source != "PharmCAT outside call":
+            continue
+        caller = callers.get(gene)
+        evidence: str = NOT_ASSESSED
+        reasons: tuple[str, ...] = ("outside_call_unverified",)
+        if caller is not None:
+            evidence = caller["confidence"]
+            reasons = tuple(caller["confidence_reasons"])
+        if gene == "CYP2D6" and metrics:
+            called = str(metrics.get("cyp2d6_genotype") or "")
+            ours = sorted(pharmcat_copy_numbers(called).split("/")) if called else []
+            if metrics.get("cyp2d6_call_status") != "resolved" or any(
+                sorted(a.diplotype.split("/")) != ours for a in state.alternatives
+            ):
+                evidence, reasons = variant_confidence.LOW, ("outside_call_mismatch",)
+        ctx.pgx_genes[gene] = replace(state, evidence=evidence, reasons=reasons)
+    cyp2d6 = ctx.pgx_genes.get("CYP2D6")
+    if (
+        cyp2d6 is not None
+        and cyp2d6.status == "no_call"
+        and metrics.get("cyp2d6_genotype")
+    ):
+        candidates = (
+            metrics.get("cyp2d6_raw_star_alleles") or metrics["cyp2d6_genotype"]
+        )
+        ctx.pgx_genes["CYP2D6"] = replace(
+            cyp2d6,
+            note=f"Cyrius {metrics.get('cyp2d6_call_status') or 'call'}: "
+            f"candidates {candidates}",
+        )
 
 
 def _cyrius_finding(

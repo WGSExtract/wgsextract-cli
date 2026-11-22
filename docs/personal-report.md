@@ -66,6 +66,7 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Lineage | `lineage y-haplogroup`, `lineage mt-haplogroup` | the Y and mtDNA haplogroups, with tree links (YFull, FTDNA). Y-DNA is not asked for when the recorded sex is Female. |
 | Ancestry proportions | `qc ancestry` | the K=7 and K=12 reference proportions with their 95% intervals and the reference populations that carry each component most, worded as reference proportions, not ethnicities ([ancestry.md](ancestry.md)) |
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
+| Medication review (only with `--pgx-context`) | the pharmacogenomics runs above, the CPIC database | for each listed medication, CPIC's guidance or why none is given; each gene's genetic and medication-adjusted phenotype. See [below](#medication-review-cpic-not-a-prescription) |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
@@ -93,6 +94,76 @@ inputs. All requested outside-call files and their fingerprints are recorded
 as `pharmcat_outside_call` inputs in the result manifest, together with the
 merged `pharmcat_outside_calls` output. Repeatable merging still rejects
 duplicate genes.
+
+### Medication review (CPIC; not a prescription)
+
+`--pgx-context FILE` reviews the medications a person takes or is
+considering against [CPIC](https://cpicpgx.org) guidance. The file is local
+TOML and is never uploaded:
+
+```toml
+# CPIC's generic names (or drug ids such as "RxNorm:2670"); population is
+# CPIC's patient group or indication where its guidance depends on it.
+medications = ["codeine", "paroxetine", { name = "clopidogrel", population = "NVI" }]
+```
+
+```sh
+wgsextract report --genome HG002 --pgx-context medications.toml --download
+```
+
+The guidance comes from CPIC's database export, release v1.61.0 (CC0 1.0),
+pinned by SHA-256 and fetched from `files.cpicpgx.org` into
+`<reference library>/report/cpic` the first time, only with `--download`;
+without it the report stops and names the data. It is checked against its
+pin on every use, so a changed pin is never satisfied by an older copy.
+
+Each medication gets one finding per gene combination CPIC's guidance uses.
+Its `advisory.status` says how far the evidence goes:
+
+| Status | Meaning |
+| --- | --- |
+| `advisory` | One CPIC recommendation fits the confident call; it is quoted verbatim with CPIC's strength, the guideline, its PMID and the release. `contraindication` is true when it advises against the drug (avoid, not recommended, contraindicated, do not use). |
+| `context_review` | It fits the genotype, but another listed medication may change the phenotype (below), or the recommendation says to avoid inhibitors of the gene and another listed medication inhibits it. `alternatives` holds the recommendations the change could lead to. |
+| `withheld` | The call is weak (`low` or `not_assessed` evidence, a no-call) or ambiguous, and its possible results lead to different recommendations. Nothing is recommended. |
+| `context_needed` | CPIC's guidance differs by patient group or indication (clopidogrel, carbamazepine, phenytoin, ...); add `population`. |
+| `insufficient_evidence` | No CPIC recommendation applies: the drug isn't in CPIC, its gene pairs carry no prescribing guidance (CPIC level C/D), its guidance is an algorithm outside the recommendation table (warfarin), CPIC has none for this result, or none for the given population. |
+| `not_assessed` | A gene the guidance needs has no result; run `vcf pharmcat` (with the CYP2D6 or HLA outside calls). |
+
+The gate uses the evidence of the calls the guidance rests on, from the
+pharmacogenomics section before ambiguity lowers its label: a call needs
+`high` or `moderate` evidence to narrow CPIC's recommendations. A weak call
+counts as any of its possible results, so guidance is given only when CPIC's
+recommendation is the same whatever the result; an ambiguous confident call
+counts as its alternatives, so phenotype-consistent alternatives give guidance
+and conflicting ones do not. Missing or partial reference evidence, unresolved
+Cyrius calls, the combined CYP2D6+CYP2D7 copy number and ambiguous PharmCAT
+alternatives therefore never become a single actionable result. A gene PharmCAT took from an outside call rests on that
+caller's finding in this report (Cyrius for CYP2D6, T1K for HLA): with none it
+is `not_assessed` (`outside_call_unverified`), and a CYP2D6 outside call that
+differs from the newest resolved Cyrius call is `low` (`outside_call_mismatch`).
+
+**Medication-adjusted phenotype.** A listed medication changes a phenotype
+only through a rule in `assets/report/pgx_context_rules.json` (version
+2026.11.1) that quotes CPIC; a rule applies only while the loaded CPIC release
+still carries its quote for the same drug, gene and phenotype. The one rule so
+far is paroxetine's CYP2D6 autoinhibition (CPIC SSRI guideline, PMID
+37032427): a Normal Metabolizer may convert to an Intermediate or Poor
+Metabolizer and an Intermediate to a Poor one, dose-dependently; the effect in
+a Poor Metabolizer is minimal and in an Ultrarapid Metabolizer unclear. The
+section's `genes` list, and a finding per gene, give the genetic (`baseline`)
+and `adjusted` phenotype, the rule, the medication that triggers it, CPIC's
+quote and its recommendation id. A gene no listed medication affects is
+reported unchanged. Other interactions, doses and health factors are not
+assessed.
+
+The section has the disclaimer "not a prescription": every finding says to
+review it with a clinician, and nothing should be started, stopped or changed
+without professional review. The report's manifest records the context file
+(`pgx_context` input) and CPIC export (`cpic_data` input) with their
+fingerprints, and the metrics `cpic_release`, `cpic_sha256`,
+`pgx_rules_version`, `pgx_rules_sha256` and `pgx_context_sha256` (a digest of
+the effective medication list); the JSON keeps the effective list. The review
+is rebuilt on every run, so a changed list or CPIC release always shows.
 
 ### ClinVar gene list
 

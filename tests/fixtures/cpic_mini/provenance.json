@@ -1,0 +1,12 @@
+{
+  "source": {
+    "url": "https://files.cpicpgx.org/data/database/cpic_db_dump-v1.61.0.sql.gz",
+    "sha256": "372f547b003fdff9c3357e606efb6adfa184843b6b63fab948eeea479b21e510",
+    "license": "CC0 1.0 (CPIC database; https://github.com/cpicpgx/cpic-data/blob/v1.61.0/LICENSE.md)"
+  },
+  "selection": "python tests/fixtures/cpic_mini/build_fixture.py cpic_db_dump-v1.61.0.sql.gz: the drug, pair and recommendation rows of codeine, paroxetine, tamoxifen, clopidogrel, rasburicase, abacavir, warfarin and metformin, with their guidelines and guideline publications, unmodified",
+  "use": "report --pgx-context medication review tests (tests/test_medication_review.py)",
+  "sha256": {
+    "cpic_mini.sql.gz": "a89c6680b8ff730344033506a6d323580e6bb07444ea98b36e4907ba6e58b8ba"
+  }
+}
