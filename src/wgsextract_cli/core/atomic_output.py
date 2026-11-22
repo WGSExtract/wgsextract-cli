@@ -150,6 +150,18 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
             os.fsync(stream.fileno())
 
 
+def publication_lock(
+    final: Path, *, checkpoint: Callable[[], None] | None = None
+) -> contextlib.AbstractContextManager[None]:
+    """The lock cooperating publishers hold while they put a file at ``final``."""
+    from wgsextract_cli.core.file_lock import exclusive_lock
+
+    # Normalize case and Unicode for output directories on insensitive filesystems.
+    name = unicodedata.normalize("NFC", final.name.casefold())
+    key = hashlib.sha256(os.fsencode(name)).hexdigest()[:32]
+    return exclusive_lock(final.parent / f".wgse_publish-{key}", checkpoint=checkpoint)
+
+
 def publish_output_set(
     staged_to_final: Mapping[Path, Path],
     *,
@@ -162,17 +174,10 @@ def publish_output_set(
     parent. List the primary file last so it is absent while its companions
     are being replaced or removed.
     """
-    from wgsextract_cli.core.file_lock import exclusive_lock
-
     files = list(staged_to_final.items())
     if files:
         primary = files[-1][1]
-        # Normalize case and Unicode for output directories on insensitive filesystems.
-        name = unicodedata.normalize("NFC", primary.name.casefold())
-        key = hashlib.sha256(os.fsencode(name)).hexdigest()[:32]
-        lock = exclusive_lock(
-            primary.parent / f".wgse_publish-{key}", checkpoint=checkpoint
-        )
+        lock = publication_lock(primary, checkpoint=checkpoint)
         with contextlib.ExitStack() as local:
             scope = _publication_locks.get()
             (local if scope is None else scope).enter_context(lock)

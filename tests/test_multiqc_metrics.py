@@ -198,4 +198,6 @@ def test_multiqc_report_shows_wgsextract_sections(tmp_path):
     run_wgsextract("qc", "multiqc", "--input", str(tmp_path), "--outdir", str(out))
     html = (out / "multiqc_report.html").read_text()
     assert "WGS Extract" in html and "Haplogroups" in html and "U5a1a1" in html
-    assert sorted(p.name for p in out.iterdir()) == ["multiqc_report.html"]
+    assert [p.name for p in out.iterdir() if not p.match(".wgse_publish-*.guard")] == [
+        "multiqc_report.html"
+    ]

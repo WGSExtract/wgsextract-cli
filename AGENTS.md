@@ -24,12 +24,17 @@ Only request `help --all --json --full` when the entire schema dump is needed.
 
 ## Python Formatting & Linting
 
-PR pytest selection follows the static import graph and test file inputs
-(`scripts/ci_select_tests.py`); uncertainty fails open. CI-only edits run
+PR pytest selection is moving to explicit dependency rules in
+[`docs/ci_routing.md`](docs/ci_routing.md#decisive-test-selection-rollout).
+The current selector remains authoritative during shadow mode. Once enabled
+for a lane, the decisive selector reports unmatched inputs and runs the full
+lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Main/nightly keep full coverage; merge-queue Ubuntu runs the full selection
-minus files whose dependency hash already passed on main (test cache, #915). See `docs/ci_routing.md`;
-add a selector regression for any missed test, never weaken the safety net.
+Before narrowing main pushes to the merge queue's selection and passed-test
+cache rules, establish the daily full latest-main backstop, cache refresh and
+miss attribution. Keep other platform lanes, required checks, merged-tree
+guards and certification intact. Add a selector regression for each confirmed
+miss.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
