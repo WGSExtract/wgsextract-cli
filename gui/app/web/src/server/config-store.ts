@@ -438,14 +438,14 @@ async function scriptContents(payload: LooseRecord, bundleRoot: string): Promise
     }
     return "";
 }
-async function bootstrapToml(mode: string, url: string, defaults: Record<string, unknown>) {
+async function bootstrapToml(mode: string, filePath: string, defaults: Record<string, unknown>) {
     if (mode !== "createIfMissing" && mode !== "mergeMissing") {
         throw new Error(`Unsupported config bootstrap mode: ${mode}`);
     }
-    await withSettingsFileLock(url, (target) => bootstrapTomlLocked(mode, target, defaults));
+    await withSettingsFileLock(filePath, (target) => bootstrapTomlLocked(mode, target, defaults));
 }
-async function bootstrapTomlLocked(mode: string, url: string, defaults: Record<string, unknown>) {
-    const existing = await readOptionalFlatToml(url);
+async function bootstrapTomlLocked(mode: string, filePath: string, defaults: Record<string, unknown>) {
+    const existing = await readOptionalFlatToml(filePath);
     if (mode === "createIfMissing" && existing != null) {
         return;
     }
@@ -460,7 +460,7 @@ async function bootstrapTomlLocked(mode: string, url: string, defaults: Record<s
             }
         }
     }
-    await writeFileAtomically(url, serializeToml(next));
+    await writeFileAtomically(filePath, serializeToml(next));
 }
 async function readOptionalFlatToml(filePath: string): Promise<Record<string, unknown> | null> {
     try {
