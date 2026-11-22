@@ -70,6 +70,15 @@ COUNT_KEYS = (
 )
 
 
+_PINNED: dict[str, object] = {
+    "name": CHAIN_NAME,
+    "sha256": CHAIN_SHA256,
+    "kind": "pinned-ensembl",
+    "url": CHAIN_URL,
+    "terms": CHAIN_TERMS,
+}
+
+
 def library_chain(library: Path) -> Path:
     return library / "ybrowse" / CHAIN_NAME
 
@@ -83,11 +92,9 @@ def lift_chain(
         if not chain.is_file():
             raise WGSExtractError(f"Chain not found: {chain}")
         sha = file_sha256(chain)
-        return chain, {
-            "name": chain.name,
-            "sha256": sha,
-            "kind": "pinned-ensembl" if sha == CHAIN_SHA256 else "user-supplied",
-        }
+        if sha == CHAIN_SHA256:
+            return chain, {**_PINNED, "name": chain.name}
+        return chain, {"name": chain.name, "sha256": sha, "kind": "user-supplied"}
     path = library_chain(library)
     if not path.is_file():
         if not download:
@@ -113,13 +120,7 @@ def lift_chain(
             f"{path} is not Ensembl's pinned {CHAIN_NAME} (SHA-256 {CHAIN_SHA256}). "
             "Remove it and rerun with --download, or give a chain with --chain PATH."
         )
-    return path, {
-        "name": CHAIN_NAME,
-        "sha256": CHAIN_SHA256,
-        "kind": "pinned-ensembl",
-        "url": CHAIN_URL,
-        "terms": CHAIN_TERMS,
-    }
+    return path, dict(_PINNED)
 
 
 def _y_contig(fasta: Path) -> str | None:
