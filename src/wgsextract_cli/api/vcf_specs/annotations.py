@@ -105,7 +105,10 @@ class VcfGerpParams(_AnnotatorParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfGnomadParams(_AnnotatorParams):
-    """gnomAD allele frequencies (GNOMAD_AF) as ``gnomad_annotated.vcf.gz``."""
+    """gnomAD allele frequencies (GNOMAD_AF) as ``gnomad_annotated.vcf.gz``.
+
+    A gnomAD sites VCF also gives its grpmax (popmax) frequency and homozygote
+    count, as GNOMAD_POPMAX_AF and GNOMAD_NHOMALT, when it has them."""
 
     COMMAND = "vcf gnomad"
 

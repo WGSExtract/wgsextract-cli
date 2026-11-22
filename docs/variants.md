@@ -190,7 +190,9 @@ See [rules, rationale and validation](variant-confidence.md).
 
 - `ref gnomad --release 4.1` streams native-GRCh38 exome/genome VCFs
   (~880 GB, hours) into an allele-frequency-only table. Default 2.1.1 is
-  exome-only, lifted to hg38.
+  exome-only, lifted to hg38. `vcf gnomad` with a gnomAD sites VCF instead
+  also adds its grpmax (popmax) frequency and homozygote count
+  (`GNOMAD_POPMAX_AF`, `GNOMAD_NHOMALT`), which `vcf table` exports.
 - `ref cadd` gets CADD v1.7 (~85 GB/build); `ref gerp` gets GERP++ bigWig.
   Annotation adds `CADD_RAW`/`CADD_PHRED` and `GERP`.
 - GERP/PhyloP bigWig lookups reuse bounded per-contig windows (pyBigWig's

@@ -53,6 +53,10 @@ above works.
 | `pharmcat_diplotype`, `pharmcat_phenotype` | text | PharmCAT's call for the row's gene, with `--pharmcat-json <stem>.phenotype.json` from `vcf pharmcat`. |
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 | `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
+| `transcript_id` | text | The chosen transcript's ID (VEP `Feature`, else SnpEff `Feature_ID`), which `consequence`, `impact` and the HGVS columns describe. Empty when the chosen annotation is a regulatory or intergenic feature. |
+| `phase_set` | text | The phase block (FORMAT/PS) of a phased genotype (`0\|1`). Calls with the same `phase_set` on one chromosome are phased to each other; see [Read evidence and phasing](#read-evidence-and-phasing). |
+| `alt_fraction`, `ad_ref`, `ad_alt` | real, integer, integer | The fraction of the sample's reads carrying this ALT (0-1), and the REF and ALT read counts from FORMAT/AD. |
+| `gnomad_popmax_af`, `gnomad_nhomalt` | real, integer | gnomAD's highest frequency of this ALT among non-bottlenecked genetic ancestry groups (grpmax, called popmax before v4), and the number of homozygous-ALT individuals in gnomAD. From `vcf gnomad` with a gnomAD VCF that has `AF_grpmax` (or `AF_popmax`) and `nhomalt`; `gnomad_popmax_af` else from VEP's per-group gnomAD frequencies. |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
 
 The TSV has a header row and leaves missing values empty. The SQLite database
@@ -80,6 +84,26 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
+
+## Read evidence and phasing
+
+- **`alt_fraction`** is the sample's FORMAT/AD count for this ALT over the
+  larger of the sum of AD and FORMAT/DP. That's the same fraction behind the
+  `allele_imbalance` confidence reasons and the [personal report](personal-report.md).
+  Without AD it is the caller's own per-ALT FORMAT/VAF (DeepVariant), else
+  FORMAT/AF (Clair3, Mutect2), else a single-sample biallelic record's
+  INFO/DP4 (bcftools). A record that `bcftools norm -m-` split from a
+  multi-allelic one keeps only REF and its own ALT in AD, so its fraction
+  needs FORMAT/DP. At a multi-allelic site each ALT's fraction counts every
+  allele's reads, and a haploid call is read the same way as a diploid one.
+- **Missing is empty, never 0.** A site no read covers (AD `0,0`) has
+  `ad_ref` and `ad_alt` of 0 but an empty `alt_fraction`, and a VCF without
+  read counts (a genotype-only or imputed VCF) leaves all three empty.
+- **`phase_set`** comes from FORMAT/PS only when the genotype is phased
+  (`|`), as WhatsHap (`vcf phase`), GATK HaplotypeCaller's physical phasing and
+  Clair3 write it. An unphased `0/1` has an empty `phase_set` even if the VCF
+  gives it a PS. Statistically phased genotypes without PS (SHAPEIT, Beagle,
+  GLIMPSE) leave it empty too; their `genotype` still shows the `|`.
 
 ## Example queries
 
@@ -121,6 +145,28 @@ FROM variants
 WHERE impact IN ('HIGH', 'MODERATE')
   AND (gnomad_af IS NULL OR gnomad_af < 0.001)
   AND filter = 'PASS';
+
+-- Variants rare overall but common in some ancestry group, or seen
+-- homozygous in gnomAD's (largely healthy) individuals
+SELECT gene, hgvs_p, gnomad_af, gnomad_popmax_af, gnomad_nhomalt
+FROM variants
+WHERE gnomad_af < 0.001 AND (gnomad_popmax_af >= 0.01 OR gnomad_nhomalt > 0);
+
+-- Two heterozygous hits in one gene on the same haplotype (cis) or on
+-- opposite ones (trans), within one phase block
+SELECT a.gene, a.hgvs_p, a.genotype, b.hgvs_p, b.genotype,
+       CASE WHEN a.genotype = b.genotype THEN 'cis' ELSE 'trans' END AS phase
+FROM variants a JOIN variants b
+  ON a.gene = b.gene AND a.chrom = b.chrom AND a.phase_set = b.phase_set
+     AND a.pos < b.pos
+WHERE a.zygosity = 'het' AND b.zygosity = 'het'
+  AND a.impact IN ('HIGH', 'MODERATE') AND b.impact IN ('HIGH', 'MODERATE');
+
+-- Heterozygous calls with skewed allele balance (possible mosaicism,
+-- clonal haematopoiesis or an artifact)
+SELECT chrom, pos, gene, genotype, ad_ref, ad_alt, alt_fraction
+FROM variants
+WHERE zygosity = 'het' AND alt_fraction < 0.25 AND ad_alt >= 3;
 
 -- Homozygous loss-of-function candidates
 SELECT gene, hgvs_c, hgvs_p, consequence

@@ -121,9 +121,14 @@ def _depth(
     return _number(info.get("DP"))
 
 
-def _alt_fraction(
+def alt_fraction(
     alt: int, n_alts: int, fmt: Mapping[str, str], info: Mapping[str, str], split: bool
 ) -> float | None:
+    """The fraction of the sample's reads carrying ALT number ``alt`` (1-based):
+    FORMAT/AD over the larger of its sum and FORMAT/DP, else the caller's
+    per-ALT FORMAT/VAF (DeepVariant) or FORMAT/AF (Clair3, Mutect2), else a
+    biallelic record's INFO/DP4 (pass ``info`` only for a single-sample VCF).
+    None when nothing measures it, or no reads cover the site."""
     counts = _numbers(fmt.get("AD"))
     alt_count = counts[alt] if len(counts) > alt else None
     format_depth = _number(fmt.get("DP"))
@@ -214,7 +219,7 @@ def classify(
             "unassessed",
             _depth(fmt, counts_info, split),
             _number(fmt.get("GQ")),
-            _alt_fraction(alt, n_alts, fmt, counts_info, split),
+            alt_fraction(alt, n_alts, fmt, counts_info, split),
         )
     if IMPUTED_TAG in info:
         # No reads behind it to judge: its own probability is in FORMAT/GP.
@@ -246,7 +251,7 @@ def classify(
     if reference and (depth is None or gq is None):
         low.append("reference_metrics_unknown")
 
-    fraction = _alt_fraction(alt, n_alts, fmt, counts_info, split)
+    fraction = alt_fraction(alt, n_alts, fmt, counts_info, split)
     if reference:
         fraction = None
     elif fraction is None:

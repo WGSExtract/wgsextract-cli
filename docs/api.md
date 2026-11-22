@@ -1222,6 +1222,9 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 
 `VcfGnomadParams`: gnomAD allele frequencies (GNOMAD_AF) as `gnomad_annotated.vcf.gz`.
 
+A gnomAD sites VCF also gives its grpmax (popmax) frequency and homozygote
+count, as GNOMAD_POPMAX_AF and GNOMAD_NHOMALT, when it has them.
+
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |

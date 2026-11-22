@@ -199,3 +199,37 @@ def test_1023_variant_pages_with_acmg_classes_carry_the_research_disclaimer(
             status, body = client.request("GET", f"/variants?path={table}&{query}")
             assert status == 200
             assert "disclaimer" not in body
+
+
+def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
+    tmp_path: Path,
+) -> None:
+    """Issue 1289: /v1/variants (and MCP query_variants, which shares it) can
+    select the new columns, typed, and leave out empty ones."""
+    table = tmp_path / "sample_variants.tsv"
+    table.write_text(
+        "chrom\tpos\talt_fraction\tad_alt\tphase_set\ttranscript_id\t"
+        "gnomad_popmax_af\tgnomad_nhomalt\n"
+        "chr1\t100\t0.4375\t14\t100\tENST1.4\t0.08\t12\n"
+        "chr1\t200\t\t\t\t\t\t\n",
+        encoding="utf-8",
+    )
+    columns = "pos,alt_fraction,ad_alt,phase_set,transcript_id,gnomad_popmax_af"
+    with _serve(tmp_path, [tmp_path]) as client:
+        status, body = client.request(
+            "GET", f"/variants?path={table}&columns={columns},gnomad_nhomalt"
+        )
+    assert status == 200
+    validate(body, "VariantPage")
+    assert body["rows"] == [
+        {
+            "pos": 100,
+            "alt_fraction": 0.4375,
+            "ad_alt": 14,
+            "phase_set": "100",
+            "transcript_id": "ENST1.4",
+            "gnomad_popmax_af": 0.08,
+            "gnomad_nhomalt": 12,
+        },
+        {"pos": 200},
+    ]

@@ -13,8 +13,9 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared
+from wgsextract_cli.core.variant_table import GNOMAD_NHOMALT_TAG, GNOMAD_POPMAX_TAG
 
 from .annotation_helpers import (
     VCF_SUFFIXES,
@@ -32,6 +33,23 @@ from .bigwig_scores import annotate_from_bigwig
 PHYLOP_ANNOTATED = "phylop_annotated.vcf.gz"
 GNOMAD_ANNOTATED = "gnomad_annotated.vcf.gz"
 GNOMAD_COLUMNS = ("GNOMAD_AF",)
+# gnomAD VCF fields carried along with AF when the VCF has them, by their
+# names in v4 (grpmax) and v2/v3 (popmax). `ref gnomad`'s table has AF only.
+_GNOMAD_EXTRAS = (
+    (
+        GNOMAD_POPMAX_TAG,
+        ("AF_grpmax", "AF_popmax"),
+        f"##INFO=<ID={GNOMAD_POPMAX_TAG},Number=A,Type=Float,Description="
+        '"gnomAD highest allele frequency among non-bottlenecked genetic ancestry '
+        'groups (grpmax/popmax)">',
+    ),
+    (
+        GNOMAD_NHOMALT_TAG,
+        ("nhomalt",),
+        f"##INFO=<ID={GNOMAD_NHOMALT_TAG},Number=A,Type=Integer,Description="
+        '"gnomAD count of homozygous-alternate individuals">',
+    ),
+)
 
 
 def run_phylop(params: VcfPhylopParams) -> None:
@@ -132,6 +150,14 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     if gnomad_file.lower().endswith(VCF_SUFFIXES):
         annotation = ensure_vcf_prepared(gnomad_file)
         columns = "INFO/GNOMAD_AF:=INFO/AF"
+        source_header = run_command(
+            ["bcftools", "view", "-h", annotation], capture_output=True
+        ).stdout
+        for tag, names, line in _GNOMAD_EXTRAS:
+            name = next((n for n in names if f"##INFO=<ID={n}," in source_header), None)
+            if name:
+                columns += f",INFO/{tag}:=INFO/{name}"
+                header.append(line)
     else:
         # `ref gnomad --release 4.1` table: #CHROM, POS, REF, ALT, AF
         annotation = prepare_tabix_annotation(gnomad_file, "gnomAD")
@@ -145,6 +171,8 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         "gnomAD",
         header,
         threads=params.threads,
+        # Values from an earlier gnomAD source never outlive a new GNOMAD_AF.
+        remove=tuple(f"INFO/{tag}" for tag, _, _ in _GNOMAD_EXTRAS),
         reference=lib.fasta,
         annotation_source=gnomad_file,
     )
