@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - The genome viewer's file endpoints answer a `HEAD` without a `Range` with `200` and the file's full size for files over 32 MiB too, instead of `416`; whole-file `GET`s keep their 32 MiB limit ([#1227](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
+- A run, setup or workspace move whose window disconnected before its progress stream began no longer starts, instead of running (and holding the workspace) with nobody listening; a progress write waiting on a stalled window always settles when the stream is cancelled ([#1234, backpressured progress on disconnect](https://github.com/WGSExtract/wgsextract-cli/issues/1234)).
 
 ## [0.8.9] - 2026-11-21
 

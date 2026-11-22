@@ -207,15 +207,16 @@ otherwise on the CPU, with the same records either way. The manifest records
   outside Apple Silicon; on Apple Silicon, the per-stage plan below.
   An explicit positive count applies to every parallel stage, including
   staged alignment. No CPU affinity is set: macOS still decides where workers run.
-- `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
-  2 GB) split across the threads, with at least 1 GiB per thread; for example
-  16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
+- `--memory` is the sort memory per thread. `auto` divides 25% of effective
+  RAM across the threads and rounds down. For example, 16 GiB and 12 threads
+  gives 341 MiB per thread. With bwa-mem2,
   sorting is capped at 256 MiB per thread to leave room for its index.
   Native `wgse-bwa` can also lower the requested sort budget
   when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
   per thread as described below.
-- `samtools sort` reserves all of its threads' memory when it starts, so every
-  sort gets at most half the RAM in total and no more than its input can fill
+- `samtools sort` reserves all of its threads' memory when it starts. The CLI
+  caps its buffers at half of effective RAM, including Linux cgroup v2 limits,
+  even with explicit `--memory`, and can lower them further for small inputs
   (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
   The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More

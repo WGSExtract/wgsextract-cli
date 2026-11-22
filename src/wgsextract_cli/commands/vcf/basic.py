@@ -48,7 +48,7 @@ from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 from wgsextract_cli.core.variant_files import (
@@ -159,7 +159,7 @@ def caller_setup(
         raise UsageError(LOG_MESSAGES["input_required"])
 
     logging.debug(f"Input file: {str(absolute_path(input_file))}")
-    thread_count, _ = get_resource_defaults(threads, None, stage="calling")
+    thread_count = get_resource_threads(threads, stage="calling")
     outdir = outdir or str(absolute_path(input_file).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")

@@ -17,6 +17,7 @@ from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
+from scripts.ci_select_tests import ci_test_targets as ci_test_targets
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
@@ -361,6 +362,43 @@ def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
         assert routes([path], repository=tmp_path)["cli"], path
 
 
+def test_1326_drive_like_literals_never_stat_outside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "gui").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_reader.py").write_text(
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ERROR = 'E: Failed to fetch http://mirror/pool'\n"
+        "LOG = Path(ERROR)\n"
+        "DRIVE = ROOT / 'E:' / 'pool'\n"
+        "DATA = 'gui/future.json'\n"
+    )
+    root = tmp_path.resolve()
+    drive_like = root / "E: Failed to fetch http:"
+    stat = os.stat
+
+    def repository_stat(
+        path: str | os.PathLike[str], *args: Any, **kwargs: Any
+    ) -> os.stat_result:
+        # Off Windows this prefix stays in the repository, so flag the probe
+        # itself; is_dir() can't swallow an AssertionError.
+        if Path(path) == drive_like:
+            raise AssertionError(f"statted drive-like text: {path}")
+        # An unready Windows drive raises WinError 1005 instead of "missing".
+        if not Path(path).is_relative_to(root):
+            raise OSError(1005, "unrecognized volume", path)
+        return stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "stat", repository_stat)
+        inputs = referenced_inputs(tmp_path)
+    assert "gui/future.json" in inputs
+    if sys.platform == "win32":  # elsewhere "E:" is an ordinary in-repo name
+        assert not any(path.startswith("E:") for path in inputs)
+
+
 def test_757_deleted_directory_inputs_still_run_their_readers(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "gui").mkdir()
@@ -628,3 +666,14 @@ def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
 )
 def test_1045_setup_heavy_checks_follow_their_inputs(path: str, selected: bool) -> None:
     assert setup_checks([path]) is selected
+
+
+def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
+    paths = [
+        "scripts/ci_release_latest.py",
+        "tests/test_ci_release_latest.py",
+        ".github/workflows/release.yml",
+    ]
+    for changed in [*([path] for path in paths), paths]:
+        assert not routes(changed)["cli"], changed
+        assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed

@@ -18,7 +18,7 @@ from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 
@@ -137,7 +137,7 @@ def _build(ref: str, interval: int, threads: int | None) -> None:
         f"Writing {target}: {_size(planned)} on disk, which wgse-bwa holds "
         "in RAM while aligning when asked to (--dense-suffix-array)."
     )
-    count, _ = get_resource_defaults(threads, None)
+    count = get_resource_threads(threads)
     with build_lock(f"{ref}.dense-sa.lock"):
         run_command([native.path, "densify-sa", "-i", str(interval), "-t", count, ref])
     if not target.is_file():
