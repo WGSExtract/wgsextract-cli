@@ -26,9 +26,7 @@ docs/sample-workspace.md describes the format.
 from __future__ import annotations
 
 import contextlib
-import functools
 import logging
-import os
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextvars import ContextVar
@@ -66,6 +64,7 @@ from wgsextract_cli.core.sample_view import (
     FileView,
     WorkspaceView,
 )
+from wgsextract_cli.core.step_identity import file_fingerprint as file_fingerprint
 
 if TYPE_CHECKING:
     from wgsextract_cli.core.sample_document import (
@@ -242,22 +241,6 @@ class Fact:
 
 
 # --- fingerprints ------------------------------------------------------------
-
-
-def file_fingerprint(path: PathInput) -> str | None:
-    """``results.fingerprint`` of a regular file, computed once per revision."""
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    return _fingerprint(str(absolute_path(path)), st.st_size, st.st_mtime_ns, st.st_ino)
-
-
-@functools.lru_cache(maxsize=256)
-def _fingerprint(path: str, size: int, mtime_ns: int, inode: int) -> str | None:
-    from wgsextract_cli.core.results import fingerprint
-
-    return fingerprint(path)
 
 
 def _now() -> str:

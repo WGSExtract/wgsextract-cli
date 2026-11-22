@@ -20,6 +20,7 @@ from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 
@@ -188,6 +189,8 @@ def test_1215_acmg_index_failure_does_not_publish_vcf(
         previous = (vcf.read_bytes(), index.read_bytes())
 
     tabix = get_tool_path("tabix")
+    assert tabix is not None
+    real_tabix = _tool_command_parts(tabix)
     fake = python_tool(
         tmp_path / "bin",
         "tabix",
@@ -195,7 +198,7 @@ def test_1215_acmg_index_failure_does_not_publish_vcf(
 import sys
 if "-p" in sys.argv[1:]:
     sys.exit("simulated indexing failure")
-sys.exit(subprocess.call([{tabix!r}, *sys.argv[1:]]))
+sys.exit(subprocess.call([*{real_tabix!r}, *sys.argv[1:]]))
 """,
     )
     with monkeypatch.context() as env:

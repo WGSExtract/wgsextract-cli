@@ -439,7 +439,10 @@ def input_signature(path: str) -> dict[str, int | str] | None:
     records creation, not edits, so a change outside the samples that also
     preserves size and mtime can go undetected.
     """
-    st = os.stat(path)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
     content = fingerprint(path)
     if content is None:
         return None
@@ -459,10 +462,10 @@ def cached_info(
     """`info`'s cached metrics for this very file, if a cache with `key` exists
     in the output folder, beside the input or in the configured output folder."""
     name = f"{Path(input_path).name}.wgse_info.json"
-    signature = calculate_bam_md5(input_path, None)
     this_file = input_signature(input_path)
     if this_file is None:
         return None
+    signature = calculate_bam_md5(input_path, None)
     for folder in (
         outdir,
         str(absolute_path(input_path).parent),
