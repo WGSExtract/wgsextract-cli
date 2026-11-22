@@ -622,6 +622,9 @@ def test_1354_vep_1000_genomes_frequencies_never_pass_for_gnomad(tmp_path):
     assert (result.metrics["gnomad_af_rows"], result.metrics["kg_af_rows"]) == (0, 2)
     warning = next(w for w in result.warnings if w.code == "gnomad_af_missing")
     assert "1000 Genomes" in warning.message and "vcf gnomad" in warning.message
+    # VEP declares gnomAD fields: a cache without gnomAD and variants gnomAD
+    # lacks look alike, so the warning doesn't claim which (PR #1366 review).
+    assert "may mean not annotated" in warning.message
 
 
 def test_1354_vep_gnomad_frequency_fills_gnomad_af():

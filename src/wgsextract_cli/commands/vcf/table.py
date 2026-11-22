@@ -139,31 +139,30 @@ def _count_frequencies(rows: Iterable[Row], counts: dict[str, int]) -> Iterator[
 def _warn_missing_gnomad(
     vcf: str, header: VcfHeader, rows: int, counts: dict[str, int]
 ) -> None:
-    """Say so when no row has a gnomAD frequency because the VCF carries none,
-    not because its variants are rare (#1354): a vep-rs cache from `vep
-    download` gives VEP 1000 Genomes frequencies only."""
+    """Say so when no row has a gnomAD frequency, so an empty gnomad_af isn't
+    read as rare (#1354). The data can't always tell a cache without gnomAD
+    (a vep-rs cache from `vep download` gives VEP 1000 Genomes frequencies
+    only) from variants gnomAD lacks, so where VEP declares gnomAD fields
+    the warning says both are possible."""
     if not rows or counts["gnomad_af"] or "GNOMAD_AF" in header.info_number:
         return
-    empty = "An empty gnomad_af means not annotated, not rare"
-    if counts["kg_af"] or counts["max_af"]:
+    kg = f", though it filled kg_af (1000 Genomes) on {counts['kg_af']:,} rows"
+    if set(header.csq_fields or ()) & set(VEP_GNOMAD_AF):
         held = (
-            "its VEP annotation has 1000 Genomes frequencies only (kg_af, "
-            "max_af), as a vep-rs cache from 'vep download' gives"
+            f"VEP left every gnomAD field empty{kg if counts['kg_af'] else ''}. "
+            "Either VEP's cache has no gnomAD frequencies (a vep-rs cache from "
+            "'vep download' has none) or no variant matched gnomAD, so an empty "
+            "gnomad_af may mean not annotated rather than rare"
         )
-    elif set(header.csq_fields or ()) & set(VEP_GNOMAD_AF):
-        # Ensembl VEP with gnomAD leaves these empty for variants gnomAD lacks.
-        held = (
-            "VEP filled no population frequency, so either no variant is in "
-            "gnomAD or VEP's cache has no gnomAD frequencies (a vep-rs cache "
-            "from 'vep download' has none)"
-        )
-        empty = "An empty gnomad_af may mean not annotated rather than rare"
     else:
-        held = "it has no gnomAD annotation"
+        held = (
+            "it has no gnomAD annotation, so an empty gnomad_af means not "
+            "annotated, not rare"
+        )
     warn(
         "gnomad_af_missing",
-        f"No row of {vcf} has a gnomAD frequency: {held}. {empty}. Run "
-        "'wgsextract vcf gnomad' on the VCF before filtering on rarity.",
+        f"No row of {vcf} has a gnomAD frequency: {held}. Run 'wgsextract vcf "
+        "gnomad' on the VCF before filtering on rarity.",
         path=vcf,
     )
 

@@ -90,8 +90,10 @@ gnomAD frequencies to build the cache from, so VEP's `gnomADe_*` and
 `gnomADg_*` fields stay empty. Those 1000 Genomes values go to `kg_af` and
 `max_af`, never to `gnomad_af`. When no row has a gnomAD frequency and the VCF
 has no `vcf gnomad` annotation, `vcf table` warns `gnomad_af_missing`: an
-empty `gnomad_af` then usually means "not annotated", not "rare". The metadata
-key `population_af_sources` (`gnomad`, `1000genomes`, both or neither) and the
+empty `gnomad_af` may then mean "not annotated" rather than "rare" (VEP leaves
+its gnomAD fields empty both for a cache without gnomAD and for variants
+gnomAD lacks, so the warning names both). The metadata key
+`population_af_sources` (`gnomad`, `1000genomes`, both or neither) and the
 manifest metrics `gnomad_af_rows`, `kg_af_rows` and `max_af_rows` say which
 frequencies the table holds. Run `vcf gnomad` before filtering on rarity.
 
