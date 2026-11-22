@@ -22,7 +22,7 @@ _DATA_EXTENSIONS = tuple(
             for base in (
                 ".bam .cram .sam .ubam .bai .crai .csi .vcf .gvcf .g.vcf .bcf .fastq "
                 ".fq .fa .fasta .fna .bed .txt .csv .tsv .json .zip .log .tbi .bw "
-                ".bigwig .html .pdf .md"
+                ".bigwig .html .pdf .md .parquet .sqlite"
             ).split()
             for gz in ("", ".gz", ".bgz", ".zst", ".bz2", ".xz")
         },

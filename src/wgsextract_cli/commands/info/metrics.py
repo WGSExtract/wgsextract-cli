@@ -20,6 +20,7 @@ from wgsextract_cli.core.constants import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths
+from wgsextract_cli.core.results import fingerprint
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.sequencing import platform_from_metadata
@@ -431,6 +432,22 @@ def record_sex(input_path: str, call: SexCall) -> None:
             )
 
 
+def input_signature(path: str) -> dict[str, int | str] | None:
+    """Local identity and a bounded content check, even for whole-genome files."""
+    st = os.stat(path)
+    content = fingerprint(path)
+    if content is None:
+        return None
+    return {
+        "size": st.st_size,
+        "mtime_ns": st.st_mtime_ns,
+        "ctime_ns": st.st_ctime_ns,
+        "device": st.st_dev,
+        "inode": st.st_ino,
+        "fingerprint": content,
+    }
+
+
 def cached_info(
     input_path: str, outdir: str | None = None, key: str = "gender"
 ) -> dict[str, Any] | None:
@@ -438,6 +455,9 @@ def cached_info(
     in the output folder, beside the input or in the configured output folder."""
     name = f"{Path(input_path).name}.wgse_info.json"
     signature = calculate_bam_md5(input_path, None)
+    this_file = input_signature(input_path)
+    if this_file is None:
+        return None
     for folder in (
         outdir,
         str(absolute_path(input_path).parent),
@@ -450,9 +470,7 @@ def cached_info(
         except (OSError, ValueError):
             continue
         # The header signature is shared by every sample on that reference, so
-        # the cache must also be from this very file (size and timestamp).
-        st = os.stat(input_path)
-        this_file = {"size": st.st_size, "mtime_ns": st.st_mtime_ns}
+        # the cache must also be from this very file.
         if (
             isinstance(info, dict)
             and info.get("md5_signature") == signature

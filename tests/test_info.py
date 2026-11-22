@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.htslib_helpers import sam_to_bam
+from tests.htslib_helpers import needs_tools, sam_to_bam
 from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult, collecting
@@ -130,6 +130,44 @@ def test_info_cache_invalidated_when_input_changes(info_env):
     sample.write_bytes(b"a different, replaced input file")
     _run_info(sample, "info")
     assert calls["run_body_sample"] == 2
+
+
+@needs_tools("samtools")
+def test_1215_info_recomputes_metrics_for_same_size_and_mtime_bam(tmp_path):
+    sample = tmp_path / "sample.bam"
+    samtools = get_tool_path("samtools")
+
+    def bam_bytes(read_length, read_name):
+        bases, quality = "A" * read_length, "I" * read_length
+        sam = (
+            "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:1\tLN:248956422\n"
+            f"{read_name}\t0\t1\t10\t60\t{read_length}M\t*\t0\t0\t{bases}\t{quality}\n"
+        )
+        return subprocess.run(
+            [samtools, "view", "-u", "--no-PG", "-"],
+            input=sam.encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    # Two extra bases occupy three bytes in uncompressed BAM. Shorten the
+    # read name by three bytes so both valid BAMs have the same size.
+    sample.write_bytes(bam_bytes(20, "read000"))
+    assert "20 bp" in _run_info(sample, "info")
+    cache = tmp_path / "sample.bam.wgse_info.json"
+    assert json.loads(cache.read_text())["avg_read_len"] == 20
+    before = sample.stat()
+
+    sample.write_bytes(bam_bytes(22, "read"))
+    os.utime(sample, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = sample.stat()
+    assert (after.st_ino, after.st_size, after.st_mtime_ns) == (
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    )
+    assert "22 bp" in _run_info(sample, "info")
+    assert json.loads(cache.read_text())["avg_read_len"] == 22
 
 
 @pytest.mark.parametrize("payload", ['{"filename": "x", "avg_read_len": 99}', "{bad"])

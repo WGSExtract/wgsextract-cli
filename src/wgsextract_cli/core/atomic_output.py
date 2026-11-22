@@ -10,7 +10,7 @@ import stat
 import tempfile
 import unicodedata
 import uuid
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextvars import ContextVar
 from pathlib import Path
 
@@ -146,12 +146,14 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
 def publish_output_set(
     staged_to_final: Mapping[Path, Path],
     *,
+    retire: Sequence[Path] = (),
     checkpoint: Callable[[], None] | None = None,
 ) -> None:
     """Publish validated files staged on the destination volume.
 
-    All destinations must share a parent. List the primary file last so it
-    is absent while its companions are being replaced.
+    All destinations and obsolete companions in ``retire`` must share a
+    parent. List the primary file last so it is absent while its companions
+    are being replaced or removed.
     """
     from wgsextract_cli.core.file_lock import exclusive_lock
 
@@ -167,7 +169,7 @@ def publish_output_set(
         with contextlib.ExitStack() as local:
             scope = _publication_locks.get()
             (local if scope is None else scope).enter_context(lock)
-            _publish_output_set(files, primary.parent, checkpoint)
+            _publish_output_set(files, retire, primary.parent, checkpoint)
 
 
 def _preserve_output_permissions(
@@ -197,13 +199,21 @@ def _preserve_output_permissions(
 
 
 def _publish_output_set(
-    files: list[tuple[Path, Path]], parent: Path, checkpoint: Callable[[], None] | None
+    files: list[tuple[Path, Path]],
+    retire: Sequence[Path],
+    parent: Path,
+    checkpoint: Callable[[], None] | None,
 ) -> None:
     from wgsextract_cli.core.utils import WGSExtractError
 
+    sources = {final: staged for staged, final in files}
     existing: list[Path] = []
-    for staged, final in files:
-        if not staged.is_file() or not staged.stat().st_size:
+    for final in [
+        *dict.fromkeys(path for path in retire if path not in sources),
+        *sources,
+    ]:
+        staged = sources.get(final)
+        if staged is not None and (not staged.is_file() or not staged.stat().st_size):
             raise WGSExtractError(f"Output writer did not produce a nonempty {final}")
         try:
             info = final.lstat()
@@ -218,7 +228,7 @@ def _publish_output_set(
                 info = final.stat()
             except FileNotFoundError:
                 pass
-        if stat.S_ISREG(info.st_mode):
+        if staged is not None and stat.S_ISREG(info.st_mode):
             _preserve_output_permissions(final, staged, info)
         existing.append(final)
 

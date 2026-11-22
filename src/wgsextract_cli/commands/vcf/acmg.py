@@ -28,10 +28,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
-from wgsextract_cli.api._runtime import cancel_event
+from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
+from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -40,7 +41,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.temp_directory import move_file, scratch_parent
+from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -595,9 +596,12 @@ def run_acmg(params: VcfAcmgParams) -> None:
     threads = int(get_resource_defaults(params.threads)[0])
     wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
     result = current_result()
-    with tempfile.TemporaryDirectory(
-        dir=scratch_parent(outdir), prefix=".wgse_acmg_"
-    ) as work:
+    with (
+        tempfile.TemporaryDirectory(
+            dir=scratch_parent(outdir), prefix=".wgse_acmg_"
+        ) as work,
+        tempfile.TemporaryDirectory(dir=outdir, prefix=".wgse_acmg_") as stage,
+    ):
         run_sa, site_dbs = sa_dir, []
         if any(wanted.values()):
             site_dbs = acmg_sites.build_for_run(
@@ -642,7 +646,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         ]
         env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
         logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
-        partial = str(Path(work, ACMG_ANNOTATED))
+        partial = Path(stage, ACMG_ANNOTATED)
         run = _FastVep(command, strip, env)
         try:
             run.require_ready()
@@ -674,10 +678,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
             run.check()
         finally:
             run.close()
-        move_file(partial, out_vcf)
-    for index in (out_vcf + ".tbi", out_vcf + ".csi"):
-        Path(index).unlink(missing_ok=True)
-    ensure_vcf_indexed(out_vcf)
+        _publish_indexed_vcf(partial, Path(out_vcf))
 
     summary_path = Path(outdir, ACMG_SUMMARY)
     summary = {
@@ -782,6 +783,30 @@ def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -
             "or explicitly opt in with --site-data per-run (input-derived variant "
             "positions are sent to Google Cloud Storage and Ensembl)."
         )
+
+
+def _publish_indexed_vcf(staged: Path, final: Path) -> None:
+    ensure_vcf_indexed(staged)
+    outputs = {}
+    obsolete = []
+    for ext in (".tbi", ".csi"):
+        index = Path(f"{staged}{ext}")
+        destination = Path(f"{final}{ext}")
+        if index.is_file():
+            outputs[index] = destination
+        else:
+            obsolete.append(destination)
+        alternate = final.with_suffix(ext)
+        if not final.with_suffix(".bgz").is_file():
+            obsolete.append(alternate)
+        elif alternate.exists() or alternate.is_symlink():
+            raise WGSExtractError(
+                f"Cannot replace {final}: its .bgz sibling shares {alternate}."
+            )
+    if not outputs:
+        raise WGSExtractError(f"Indexing did not produce an index for {final}.")
+    outputs[staged] = final
+    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
 
 
 def _refuse_overwrite(source: str, out_vcf: str) -> None:
