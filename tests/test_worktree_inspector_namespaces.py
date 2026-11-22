@@ -31,8 +31,8 @@ if mode == 'masked-map':
         assert address != ctypes.c_void_p(-1).value
 if mode == 'alias' or mode.startswith('covered-'):
     subprocess.run(['mount', '--bind', str(candidate), str(alias)], check=True)
-    if mode in {'covered-script', 'covered-symlink'}:
-        script = alias / 'task.py' if mode == 'covered-script' else alias.with_suffix('.py')
+    if mode in {'covered-script', 'covered-populated', 'covered-symlink'}:
+        script = alias.with_suffix('.py') if mode == 'covered-symlink' else alias / 'task.py'
         os.execv(sys.executable, [sys.executable, str(script)])
     if mode == 'covered-idle':
         subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', str(alias)], check=True)
@@ -78,7 +78,7 @@ with subprocess.Popen(
             with client.makefile('rb') as stream:
                 reply = json.loads(stream.readline())
             thread.join()
-        if mode in {'alias', 'covered-script', 'covered-symlink'}:
+        if mode in {'alias', 'covered-script', 'covered-populated', 'covered-symlink'}:
             assert reply.get('error') == 'unverifiable' and reply.get('pid') == holder.pid, reply
         else:
             expected = [holder.pid] if mode.endswith(('-fd', '-map', '-cwd')) else []
@@ -97,6 +97,7 @@ with subprocess.Popen(
         "masked-cwd",
         "alias",
         "covered-script",
+        "covered-populated",
         "covered-symlink",
         "covered-idle",
         "chroot",
@@ -127,11 +128,20 @@ def test_1393_mount_namespaces_do_not_hide_surviving_references(
     path = topic(repo)
     alias = repo.parent / "foreign-alias"
     alias.mkdir()
-    if mode in {"covered-script", "covered-symlink"}:
+    if mode in {"covered-script", "covered-populated", "covered-symlink"}:
+        replacement = ""
+        if mode == "covered-populated":
+            replacement = (
+                f"visible = Path({str(alias / 'task.py')!r})\n"
+                "visible.write_text('# unrelated replacement\\n')\n"
+                "assert visible.read_text() == '# unrelated replacement\\n'\n"
+            )
         (path / "task.py").write_text(
             "import subprocess, sys\n"
+            "from pathlib import Path\n"
             f"for target in [{str(alias)!r}, {str(path.parent)!r}]:\n"
             "    subprocess.run(['mount', '-t', 'tmpfs', 'tmpfs', target], check=True)\n"
+            f"{replacement}"
             "print('ready', flush=True)\n"
             "sys.stdin.read()\n"
         )
