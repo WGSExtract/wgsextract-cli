@@ -375,11 +375,16 @@ def test_1326_drive_like_literals_never_stat_outside_the_repository(
         "DATA = 'gui/future.json'\n"
     )
     root = tmp_path.resolve()
+    drive_like = root / "E: Failed to fetch http:"
     stat = os.stat
 
     def repository_stat(
         path: str | os.PathLike[str], *args: Any, **kwargs: Any
     ) -> os.stat_result:
+        # Off Windows this prefix stays in the repository, so flag the probe
+        # itself; is_dir() can't swallow an AssertionError.
+        if Path(path) == drive_like:
+            raise AssertionError(f"statted drive-like text: {path}")
         # An unready Windows drive raises WinError 1005 instead of "missing".
         if not Path(path).is_relative_to(root):
             raise OSError(1005, "unrecognized volume", path)
