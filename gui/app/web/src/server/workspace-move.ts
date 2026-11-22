@@ -1,4 +1,5 @@
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
@@ -7,6 +8,7 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
+import { withSettingsFileLock } from "./settings-lock.js";
 import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
@@ -74,12 +76,14 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
         if (!latestFile) {
             throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
         }
-        const latest = await readSettings(latestFile);
-        if (setting.key === "mygenomes_library") {
-            delete latest.dataset_library;
-            delete latest.genome_library;
-        }
-        await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
+        await withSettingsFileLock(latestFile, async (file) => {
+            const latest = await readSettings(file);
+            if (setting.key === "mygenomes_library") {
+                delete latest.dataset_library;
+                delete latest.genome_library;
+            }
+            await writeFileAtomically(file, serializeToml({ ...latest, [setting.key]: target }));
+        });
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
         await save();
@@ -308,14 +312,19 @@ async function readSettings(filePath: string): Promise<Record<string, unknown>> 
 }
 
 async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
-        ignoreMissing(error);
-        return null;
-    });
-    if (text != null) {
-        rewritten.push({ filePath, text });
-        await writeFileAtomically(filePath, serializeToml(relocateStrings(parseToml(text), from, to)));
+    if (!existsSync(filePath)) {
+        return;
     }
+    await withSettingsFileLock(filePath, async (target) => {
+        const text = await readFile(target, "utf8").catch((error: unknown) => {
+            ignoreMissing(error);
+            return null;
+        });
+        if (text != null) {
+            rewritten.push({ filePath: target, text });
+            await writeFileAtomically(target, serializeToml(relocateStrings(parseToml(text), from, to)));
+        }
+    });
 }
 
 async function readBundleState(bundleRoot: string): Promise<Record<string, unknown> | null> {

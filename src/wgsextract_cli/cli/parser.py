@@ -737,9 +737,11 @@ def bootstrap_default_config(config_path: Path) -> None:
         if choice == "y":
             from wgsextract_cli.core.users_workspace import write_initial_config
 
-            write_initial_config(config_path, DEFAULT_CONFIG)
-            print(f"\n✅ Created default config at {config_path}")
-            print("You can now edit this file to persist your settings.")
+            if write_initial_config(config_path, DEFAULT_CONFIG):
+                print(f"\n✅ Created default config at {config_path}")
+                print("You can now edit this file to persist your settings.")
+            else:
+                print(f"\n{config_path} was created meanwhile; leaving it as it is.")
         else:
             print("\nSkipping bootstrap.")
     except (EOFError, KeyboardInterrupt):

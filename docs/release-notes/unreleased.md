@@ -5,6 +5,11 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- Saving settings from the desktop app and from `wgsextract` at the same
+  time no longer loses one of the changes: each save of config.toml now waits
+  for the other and merges into the file as it is, also when the file is
+  reached through a symlinked folder
+  ([#1230, lost concurrent config saves](https://github.com/WGSExtract/wgsextract-cli/issues/1230)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because

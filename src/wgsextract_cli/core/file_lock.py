@@ -8,6 +8,7 @@ import os
 import socket
 import sys
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -166,3 +167,105 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
         with _reclaim_guard(path, time.monotonic() + timeout):
             if path.exists() and path.read_text() == record:
                 path.unlink(missing_ok=True)
+
+
+# The desktop app's Node backend shares these locks but has no flock, so they
+# are files made with O_EXCL; gui/app/web/src/server/settings-lock.ts mirrors
+# this protocol. A holder keeps one for a single read-modify-write.
+_SHARED_LOCK_STALE_SECONDS = 30
+
+
+def _shared_lock_held(record: bytes, age: float) -> bool:
+    if age > _SHARED_LOCK_STALE_SECONDS:
+        return False
+    try:
+        owner = json.loads(record)
+        pid, host = int(owner["pid"]), str(owner["host"])
+    except (ValueError, KeyError, TypeError):
+        return True  # its holder is still writing it
+    if host.casefold() != socket.gethostname().casefold():
+        return True
+    import psutil
+
+    return bool(psutil.pid_exists(pid))
+
+
+def _windows_busy(error: OSError) -> bool:
+    # Windows refuses to create or delete a file another process is deleting
+    # or reading.
+    return sys.platform == "win32" and isinstance(error, PermissionError)
+
+
+def _remove_shared_lock(lock: Path, record: bytes) -> bool:
+    """Delete ``lock`` if it still holds ``record``; False if it is busy."""
+    try:
+        if lock.read_bytes() == record:
+            lock.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        if not _windows_busy(error):
+            raise
+        return False
+    return True
+
+
+def _reclaim_abandoned_shared_lock(lock: Path) -> None:
+    try:
+        record = lock.read_bytes()
+        age = time.time() - lock.stat().st_mtime
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        if _windows_busy(error):
+            return
+        raise
+    if not _shared_lock_held(record, age) and _remove_shared_lock(lock, record):
+        logging.info(f"Removed abandoned lock {lock}")
+
+
+@contextlib.contextmanager
+def shared_file_lock(path: Path, timeout: float = 60) -> Iterator[Path]:
+    """Hold ``.<name>.lock`` beside the real file behind ``path`` while one
+    read-modify-write of it runs, and yield that real path. Every alias of the
+    file takes the same lock, and the desktop app's own saves take it too."""
+    target = Path(path).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock = target.with_name(f".{target.name}.lock")
+    record = json.dumps(
+        {"pid": os.getpid(), "host": socket.gethostname(), "token": uuid.uuid4().hex}
+    ).encode()
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        except FileExistsError:
+            _reclaim_abandoned_shared_lock(lock)
+        except OSError as error:
+            if not _windows_busy(error):
+                raise
+        else:
+            try:
+                os.write(fd, record)
+            except BaseException:
+                os.close(fd)
+                lock.unlink(missing_ok=True)
+                raise
+            os.close(fd)
+            break
+        if time.monotonic() >= deadline:
+            raise WGSExtractError(
+                f"Timed out waiting for {lock}: another WGS Extract command or "
+                "the app is saving this file. If neither is, delete the lock "
+                "and try again."
+            )
+        time.sleep(0.02)
+    try:
+        yield target
+    finally:
+        for _ in range(100):
+            if _remove_shared_lock(lock, record):
+                break
+            time.sleep(0.02)
+        else:
+            logging.warning(f"Could not remove lock {lock}")

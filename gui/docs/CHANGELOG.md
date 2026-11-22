@@ -3,6 +3,11 @@
 All notable changes to this project are tracked here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- Two settings saves at once, from two windows or from the app and the CLI, no longer lose one of the changes: each save takes a lock the CLI shares and merges into the file as it is ([#1230](https://github.com/WGSExtract/wgsextract-cli/issues/1230)).
+
 ## [0.8.9] - 2026-11-21
 
 ### Added

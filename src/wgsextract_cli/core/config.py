@@ -12,6 +12,7 @@ from platformdirs import user_config_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
+from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
 from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
@@ -477,29 +478,14 @@ def _update_table(
         config.pop(table_name, None)
 
 
-def save_config(updates: dict[str, Any]) -> None:
-    """Save configuration updates to the config.toml file."""
-    import tomli_w
-
-    config_path = get_config_path()
-
-    current_config = {}
-    if config_path.exists():
-        # Refuse to overwrite a config we cannot parse; that would drop the
-        # user's other settings.
-        try:
-            current_config = read_toml(config_path)
-        except tomllib.TOMLDecodeError as e:
-            raise WGSExtractError(
-                f"Cannot update {config_path}: it is not valid TOML ({e})."
-            ) from e
-
+def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> None:
+    """Merge save_config's ``updates`` into the settings read from config.toml."""
     for legacy_key in LEGACY_SETTINGS:
-        current_config.pop(legacy_key, None)
+        config.pop(legacy_key, None)
     for key, value in updates.items():
         if key in (DEV_TABLE, "server"):
             _update_table(
-                current_config,
+                config,
                 value,
                 key,
                 DEV_PATH_SETTINGS if key == DEV_TABLE else frozenset(),
@@ -507,9 +493,9 @@ def save_config(updates: dict[str, Any]) -> None:
             continue
         if key in MOVED_TO_DEV:
             if value is None or value == "":
-                current_config.pop(key, None)
+                config.pop(key, None)
             else:
-                current_config[key] = value  # rejected below, naming its [dev] key
+                config[key] = value  # rejected below, naming its [dev] key
             continue
         if key not in SETTINGS:
             continue
@@ -517,17 +503,37 @@ def save_config(updates: dict[str, Any]) -> None:
         # would resurrect a cleared value or shadow nothing but confuse users.
         for alias, canonical in CONFIG_ALIASES.items():
             if canonical == key:
-                current_config.pop(alias, None)
+                config.pop(alias, None)
         if value is None or value == "":
-            current_config.pop(key, None)
+            config.pop(key, None)
         else:
-            current_config[key] = _normalize_path_setting(value)
+            config[key] = _normalize_path_setting(value)
 
-    _validate_config_types(current_config, config_path)
+
+def save_config(updates: dict[str, Any]) -> None:
+    """Save configuration updates to the config.toml file."""
+    import tomli_w
+
+    config_path = get_config_path()
     if config_path == users_workspace() / "config.toml":
         claim_users_workspace(config_path.parent)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(config_path, tomli_w.dumps(current_config).encode("utf-8"))
+    # The app and other commands save this file too: merge into what is there
+    # now, under the lock they all take, so no save loses another's change.
+    with shared_file_lock(config_path) as target:
+        current_config = {}
+        if target.exists():
+            # Refuse to overwrite a config we cannot parse; that would drop the
+            # user's other settings.
+            try:
+                current_config = read_toml(target)
+            except tomllib.TOMLDecodeError as e:
+                raise WGSExtractError(
+                    f"Cannot update {config_path}: it is not valid TOML ({e})."
+                ) from e
+
+        _apply_config_updates(current_config, updates)
+        _validate_config_types(current_config, config_path)
+        atomic_write(target, tomli_w.dumps(current_config).encode("utf-8"))
     reload_settings()
 
 

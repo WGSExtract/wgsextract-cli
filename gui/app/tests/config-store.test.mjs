@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { spawn, spawnSync } from "node:child_process";
@@ -174,6 +174,69 @@ test("1087 saving visible Basic settings preserves omitted advanced settings and
   assert.equal(saved.reference_library, "/new");
   assert.deepEqual(saved.server_allowed_paths, ["/shared"]);
   assert.equal(saved.dev.real_genome_tests_enabled, true);
+});
+
+function textSettingsControl(keys) {
+  return {
+    id: "settings", kind: "configEditor",
+    configFile: { path: "{{bundleWorkspace}}/config.toml", format: "toml" },
+    settings: keys.map((key) => ({ id: key, key, kind: "text" })),
+  };
+}
+
+test("#1230 overlapping saves, through the file and an alias of it, keep every change", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const alias = path.join(bundleRoot, "alias");
+  await symlink(bundleRoot, alias, "junction");
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(file, 'cli_only = "keep"\n');
+  const control = textSettingsControl(["first", "second", "third"]);
+
+  await Promise.all([
+    saveConfig(control, undefined, { first: "1" }, bundleRoot),
+    saveConfig(control, undefined, { second: "2" }, bundleRoot),
+    saveConfig(control, path.join(alias, "config.toml"), { third: "3" }, bundleRoot),
+  ]);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(file, "utf8")) }, { cli_only: "keep", first: "1", second: "2", third: "3" });
+  assert.ok((await lstat(alias)).isSymbolicLink());
+  assert.deepEqual((await readdir(bundleRoot)).sort(), ["alias", "config.toml"]);
+});
+
+test("#1230 saves from separate app processes keep every change", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const moduleURL = new URL("../dist/web/src/server/config-store.js", import.meta.url).href;
+  const saver = (prefix) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-e", `
+      const { saveConfig } = await import(${JSON.stringify(moduleURL)});
+      for (let index = 0; index < 25; index++) {
+        const key = ${JSON.stringify(prefix)} + index;
+        const control = { id: "settings", kind: "configEditor", configFile: { path: "{{bundleWorkspace}}/config.toml" }, settings: [{ id: key, key, kind: "text" }] };
+        await saveConfig(control, undefined, { [key]: "saved" }, ${JSON.stringify(bundleRoot)});
+      }
+    `], { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(stderr)));
+  });
+
+  await Promise.all([saver("a"), saver("b"), saver("c")]);
+
+  const saved = parseSavedToml(await readFile(path.join(bundleRoot, "config.toml"), "utf8"));
+  assert.equal(Object.keys(saved).length, 75);
+});
+
+test("#1230 a lock left by a save that crashed does not block saving", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const exited = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+  const lock = path.join(bundleRoot, ".config.toml.lock");
+  await writeFile(lock, JSON.stringify({ pid: Number(exited.stdout), host: hostname(), token: "crashed" }));
+
+  await saveConfig(textSettingsControl(["first"]), undefined, { first: "1" }, bundleRoot);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "config.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(lock), { code: "ENOENT" });
 });
 
 test("typed setting defaults preserve numbers and booleans when bootstrap merges missing keys", async (t) => {
