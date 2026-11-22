@@ -29,9 +29,8 @@ _FIXES = {
 
 
 def _index_tool(path: str, kind: str) -> str:
-    return (
-        f"samtools index {path}" if kind in ("bam", "cram") else f"tabix -p vcf {path}"
-    )
+    tool = {"bam": "samtools index", "cram": "samtools index", "bcf": "bcftools index"}
+    return f"{tool.get(kind, 'tabix -p vcf')} {path}"
 
 
 def require_consumable(

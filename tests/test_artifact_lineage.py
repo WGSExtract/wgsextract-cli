@@ -361,6 +361,33 @@ def test_1182_api_result_carries_the_run_and_artifacts_of_its_manifest(
 
 
 @needs_htslib
+def test_1182_bcf_index_refusal_names_the_bcftools_fix(tmp_path: Path) -> None:
+    def bcf(name: str, contig: str) -> Path:
+        plain = tmp_path / f"{name}.vcf"
+        plain.write_text(
+            f"##fileformat=VCFv4.2\n##contig=<ID={contig},length=3000>\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            f"{contig}\t5\t.\tA\tG\t.\t.\t.\n"
+        )
+        out = tmp_path / f"{name}.bcf"
+        run_command(["bcftools", "view", "-Ob", "-o", str(out), str(plain)])
+        run_command(["bcftools", "index", str(out)])
+        return out
+
+    calls, other = bcf("calls", "chr1"), bcf("other", "chrX")
+    shutil.copyfile(f"{other}.csi", f"{calls}.csi")  # another BCF's index
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--vcf-inputs", str(calls),
+        "--outdir", str(tmp_path / "out"),
+    ])  # fmt: skip
+    assert code == 1
+    error = json.loads(stdout)["error"]
+    assert error["code"] == "index_mismatch"
+    # Review of #1372: tabix can't index a BCF.
+    assert f"bcftools index {calls}" in error["message"]
+
+
+@needs_htslib
 def test_1182_vcf_contigs_declared_without_length_keep_their_index(
     tmp_path: Path,
 ) -> None:
