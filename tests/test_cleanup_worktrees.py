@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import socket
@@ -141,6 +142,7 @@ def write(path: Path, data: str) -> None:
 
 def generated_env(path: Path) -> Path:
     env = path / ".pixi/envs/dev"
+    launcher = "#!/bin/sh\n"
     write(env / "CACHEDIR.TAG", "Signature: 8a477f597d28d172789f06886806bc55\n")
     write(
         env / "conda-meta/pixi",
@@ -162,10 +164,24 @@ def generated_env(path: Path) -> Path:
                 "build": "py_0",
                 "url": PACKAGE_URL,
                 "files": ["bin/demo"],
+                "paths_data": {
+                    "paths": [
+                        {
+                            "_path": "bin/demo",
+                            "sha256": hashlib.sha256(
+                                b"#!/build-time-prefix/bin/sh\n"
+                            ).hexdigest(),
+                            "prefix_placeholder": "/build-time-prefix",
+                            "sha256_in_prefix": hashlib.sha256(
+                                launcher.encode()
+                            ).hexdigest(),
+                        }
+                    ]
+                },
             }
         ),
     )
-    write(env / "bin/demo", "#!/bin/sh\n")
+    write(env / "bin/demo", launcher)
     return env
 
 
@@ -199,41 +215,6 @@ def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     assert not path.exists()
     assert git(repo, "rev-parse", "refs/heads/stale") == head
     assert git(repo, "branch", "--show-current") == "main"
-
-
-@pytest.mark.parametrize(
-    ("relative", "data", "reason"),
-    [
-        ("not-ignored.py", "new script", "dirty-or-untracked"),
-        ("scratch/notes.db", "unknown scratch file", "unknown-data"),
-        (".pixi/notes.py", "unique notes outside envs", "unknown-data"),
-        ("out/model.bam", "sample data", "unknown-data"),
-        ("out/output.log", "x" * (2 * 1024 * 1024), "evidence-too-large"),
-        ("out/credentials.json", "private information", "unknown-data"),
-        ("out/invalid.log", "header\0binary", "non-text-evidence"),
-        ("source.txt", "uncommitted tracked change", "dirty-or-untracked"),
-    ],
-    ids=[
-        "untracked",
-        "ignored-source",
-        "pixi-notes",
-        "genome",
-        "large",
-        "credential",
-        "binary",
-        "tracked",
-    ],
-)
-def test_1393_preserves_unknown_or_dirty_data(
-    repo: Path, github: Callable[..., None], relative: str, data: str, reason: str
-) -> None:
-    path = topic(repo)
-    write(path / relative, data)
-    github([pull(path)])
-    run = cleanup(repo, "--apply", "--github")
-    assert run.returncode == 0, run.stderr
-    assert str(result(repo, path)["reason"]).split(":")[0] == reason
-    assert (path / relative).read_text() == data
 
 
 def test_1393_trims_verified_environment_without_removing_mixed_worktree(

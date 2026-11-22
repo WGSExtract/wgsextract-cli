@@ -30,7 +30,7 @@ else:
     source = Path(__file__).with_name("cleanup_worktree_inventory.py")
     code = source.read_bytes()
     if hashlib.sha256(code).hexdigest() != (
-        "b860929b5bbdf610de1005a88401b1a2d84f97300d3564d952bda31c087d4558"
+        "382a6623cb14f5a2d299ff1e58927a8e78403f5610f323468e7200334ed6cddd"
     ):
         raise SystemExit("Worktree inventory helper version mismatch")
     inventory_files = ModuleType("wgse_worktree_inventory")

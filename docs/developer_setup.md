@@ -469,8 +469,11 @@ projects depend on its files. Nothing manages your reference library. Samples
 and other unknown files block removal. With `--trim-caches --apply`, the same
 PR and activity checks allow trimming verified generated Pixi, Ruff, mypy and
 pytest caches in retained worktrees. Unrecognized cache contents, unlocked
-Conda packages and links to a cache block trimming that cache. Only the named
-cache directories are deleted; the checkout, branch and other files stay.
+Conda packages and links to a cache block trimming that cache. Pixi package
+files must match local installed Conda or wheel checksums; missing or
+mismatched checksums retain the environment without fetching metadata.
+Only the named cache directories are deleted; the checkout, branch and other
+files stay.
 The report distinguishes cache trimming from worktree retirement.
 Small UTF-8 logs under `out/` and recognised Python, shell, Lua
 and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied

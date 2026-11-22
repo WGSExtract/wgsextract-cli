@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import csv
+import hashlib
 import json
 import os
 import re
@@ -89,7 +91,89 @@ def cache_tagged(path: Path) -> bool:
     return cache_metadata(path / "CACHEDIR.TAG").partition(b"\n")[0] == CACHE_TAG
 
 
-def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
+InstalledHash = tuple[str, str | None, bool]
+
+
+def conda_hashes(package: dict[str, object]) -> dict[Path, InstalledHash]:
+    paths_data = package.get("paths_data")
+    if not isinstance(paths_data, dict) or not isinstance(
+        paths := paths_data.get("paths"), list
+    ):
+        return {}
+    result = {}
+    for record in paths:
+        if not isinstance(record, dict) or not isinstance(
+            name := record.get("_path"), str
+        ):
+            raise ValueError("Malformed installed Conda path record")
+        digest = record.get("sha256_in_prefix")
+        if digest is None and not (
+            record.get("prefix_placeholder") or record.get("file_mode")
+        ):
+            digest = record.get("sha256")
+        if isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest):
+            original = record.get("sha256")
+            original_hash = (
+                original
+                if isinstance(original, str) and re.fullmatch(r"[a-f0-9]{64}", original)
+                else None
+            )
+            result[Path(name)] = (
+                digest,
+                original_hash,
+                record.get("path_type") == "softlink",
+            )
+    return result
+
+
+def verify_installed(
+    path: Path,
+    entry: os.DirEntry[str],
+    expected: InstalledHash,
+    root: Path,
+    hashes: dict[Path, InstalledHash | None],
+    memo: dict[Stamp, str],
+) -> bool:
+    before = stamp(entry.stat(follow_symlinks=False))
+    primary, original_target, is_conda_softlink = expected
+    if entry.is_symlink():
+        if not is_conda_softlink:
+            return False
+        link_digest = hashlib.sha256(os.fsencode(path.readlink())).hexdigest()
+        matches = link_digest == primary
+        if not matches and original_target:
+            # Some Conda softlink records describe the target's bytes, not
+            # the installed link spelling. The target is also checked below.
+            target = path.resolve(strict=True)
+            if target.is_relative_to(root):
+                target_hash = hashes.get(target.relative_to(root))
+                matches = (
+                    target_hash is not None
+                    and original_target in target_hash[:2]
+                    and target.is_file()
+                )
+        return matches and stamp(path.lstat()) == before
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or stamp(info) != before:
+            return False
+        observed = memo.get(before)
+        if observed is None:
+            digest = hashlib.sha256()
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+            observed = digest.hexdigest()
+        if stamp(os.fstat(handle.fileno())) != before or stamp(path.lstat()) != before:
+            return False
+    if info.st_nlink > 1:
+        memo[before] = observed
+    return observed == primary
+
+
+def pixi_environment(
+    path: Path, tree: Path, locked: set[bytes], memo: dict[Stamp, str]
+) -> bool:
     metadata = path / "conda-meta"
     if metadata.is_symlink() or not cache_tagged(path):
         return False
@@ -106,7 +190,7 @@ def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
         or not isinstance(pixi.get("environment_lock_file_hash"), (int, str))
     ):
         return False
-    known = {
+    generated = {
         Path("CACHEDIR.TAG"),
         Path("conda-meta/pixi"),
         Path("conda-meta/history"),
@@ -116,6 +200,13 @@ def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
     records = list(metadata.glob("*.json"))
     if not records:
         return False
+    installed_hashes: dict[Path, InstalledHash | None] = {}
+
+    def remember(relative: Path, digest: InstalledHash | None) -> None:
+        if relative in installed_hashes and installed_hashes[relative] != digest:
+            raise ValueError("Conflicting installed file metadata")
+        installed_hashes[relative] = digest
+
     for record in records:
         package = json.loads(cache_metadata(record))
         if (
@@ -132,8 +223,11 @@ def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
             or not all(isinstance(name, str) for name in installed)
         ):
             return False
-        known.add(record.relative_to(path))
-        known.update(Path(name) for name in installed)
+        generated.add(record.relative_to(path))
+        hashes = conda_hashes(package)
+        for name in installed:
+            relative = Path(name)
+            remember(relative, hashes.get(relative))
     actual = {
         Path(entry.path).relative_to(path): entry for entry in entries(path, set())
     }
@@ -161,12 +255,17 @@ def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
             )
             if not installed_path.is_relative_to(path):
                 return False
-            known.add(installed_path.relative_to(path))
+            logical = installed_path.relative_to(path)
+            if logical == relative and not row[1] and not row[2]:
+                generated.add(logical)
+                continue
+            if not re.fullmatch(r"sha256=[A-Za-z0-9_-]{43}", row[1]):
+                return False
+            digest = base64.urlsafe_b64decode(row[1][7:] + "=").hex()
+            remember(logical, (digest, None, False))
     for relative, entry in actual.items():
-        if relative in known and (
-            entry.is_file(follow_symlinks=False) or entry.is_symlink()
-        ):
-            continue
+        # Installed bytecode can be regenerated at runtime. Its source
+        # still has to pass the installed-file hash check.
         if (
             entry.is_file(follow_symlinks=False)
             and relative.parent.name == "__pycache__"
@@ -175,8 +274,18 @@ def pixi_environment(path: Path, tree: Path, locked: set[bytes]) -> bool:
                 r"(.+)\.cpython-\d+(?:\.opt-\d+|-pytest-\d+\.\d+\.\d+)?\.pyc",
                 relative.name,
             ):
-                if relative.parent.parent / (match[1] + ".py") in known:
+                source = relative.parent.parent / (match[1] + ".py")
+                if installed_hashes.get(source) and source in actual:
                     continue
+        if relative in installed_hashes:
+            expected = installed_hashes[relative]
+            if expected is None or not verify_installed(
+                path / relative, entry, expected, path, installed_hashes, memo
+            ):
+                return False
+            continue
+        if relative in generated and entry.is_file(follow_symlinks=False):
+            continue
         return False
     return True
 
@@ -192,10 +301,11 @@ def verified_cache(path: Path, name: str) -> bool:
                 re.findall(rb"(?m)^[ \t]*- conda: (https?://\S+)[ \t]*$", lock)
             )
             envs = list(directory.iterdir())
+            memo: dict[Stamp, str] = {}
             return bool(envs) and all(
                 env.is_dir()
                 and not env.is_symlink()
-                and pixi_environment(env, path, locked)
+                and pixi_environment(env, path, locked, memo)
                 for env in envs
             )
         if name != ".pixi/task-cache-v0" and not cache_tagged(directory):
@@ -283,7 +393,7 @@ def inventory(path: Path, tracked: set[Path]) -> Inventory:
         if not tracked_cache and not pixi_unlocked and verified_cache(path, name):
             inventory.caches[name] = stamp(directory.lstat())
         else:
-            inventory.retained = inventory.retained or f"unknown-data: {name}"
+            inventory.retained = inventory.retained or f"unverified-cache: {name}"
     for entry in entries(path, excluded | {path / ".git"}):
         relative = Path(entry.path).relative_to(path)
         if relative in tracked:
