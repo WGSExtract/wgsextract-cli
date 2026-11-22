@@ -235,9 +235,13 @@ class Settings:
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2; "
+        "Windows x86-64: use wgse-bwa when installed",
         choices=AUTO_OFF,
         fold_case=True,
+    )
+    wgse_bwa_path: str | None = setting(
+        None, "Path to an optional native Windows x86-64 wgse-bwa executable", path=True
     )
     output_profile: str = setting(
         "default",

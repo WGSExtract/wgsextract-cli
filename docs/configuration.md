@@ -165,7 +165,8 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `result_card` | boolean | `false` | Also write `<name>.card.html`, a shareable page of each run's result, beside its manifest |
 | `haplogrep_executable` | string, path (`~` expands) | unset | Path to the Haplogrep 3 executable or JAR |
 | `dorado_executable` | string, path (`~` expands) | unset | Path to ONT's dorado executable for `basecall` |
-| `native_aligners` | `auto` or `off` | unset | Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2 |
+| `native_aligners` | `auto` or `off` | unset | Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2; Windows x86-64: use wgse-bwa when installed |
+| `wgse_bwa_path` | string, path (`~` expands) | unset | Path to an optional native Windows x86-64 wgse-bwa executable |
 | `output_profile` | `default` or `archive` or `calling` | `"default"` | `align`/`realign`: default keeps --format; archive selects lossless CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0 |
 | `prefer_native_gpu` | boolean | `false` | `align`/`realign`: prefer wgse-bwa's native GPU even above the RAM budget after normal sort step-down; retain explicit memory, otherwise cap default/config sort at 256M (may swap heavily) |
 | `dense_suffix_array` | boolean | `false` | `align`/`realign`: wgse-bwa reads the reference's dense suffix-array file from `ref dense-sa` (opt-in; used only when wgse-bwa aligns; holds it in RAM, 0.8 GB for hs38) |

@@ -53,14 +53,16 @@ def _native_aligners_param() -> Any:
         "bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with "
         "wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple "
         "Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on "
-        "the NVIDIA GPU). Used when they're on PATH (auto; same alignments, "
+        "the NVIDIA GPU); on Windows x86-64, with wgse-bwa in place of bwa "
+        "(on PATH or set wgse_bwa_path in config.toml). Used when installed (auto; same alignments, "
         "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
         "On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi "
         "install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else "
         "auto. Install the builds as native/README.md describes.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
-        "aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and "
-        "wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 "
+        "aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; "
+        "wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH "
+        "(or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 "
         "Bioconda's bwa-mem3 in place of bwa or bwa-mem2; "
         "off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,

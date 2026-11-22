@@ -249,6 +249,28 @@ needed for reads, sorting and Windows. The CLI checks the reference's memory
 estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 `--aligner bwa-mem2` selects bwa-mem2 explicitly.
 
+### Optional wgse-bwa with NVIDIA CUDA
+
+On Windows x86-64, when BWA is selected, `align` and `realign` can use a
+validated `wgse-bwa.exe` from `PATH` or an explicit path in `config.toml`:
+
+```toml
+wgse_bwa_path = 'C:\tools\wgse-bwa.exe'
+```
+
+The [Windows recipe](../packaging/windows/README.md#optional-wgse-bwa)
+builds this executable. It is not yet pinned in the default Pixi environment;
+the CLI does not install it. Without a usable executable, or with
+`--native-aligners off`, alignment continues with stock BWA.
+
+With a supported NVIDIA GPU and driver, `wgse-bwa` can use its CUDA backend
+without Docker, WSL, or a separate CUDA Toolkit installation. This is distinct
+from the Linux-only `--gpu` Parabricks option. The native build uses the CPU
+if no supported GPU is available or memory is tight. Windows can charge
+CUDA allocations to system commit even when physical RAM is available:
+the preflight checks remaining commit (RAM plus page file) separately from
+RAM. `--prefer-native-gpu` cannot override insufficient commit.
+
 ## Upgrading from a WSL or MSYS2 setup
 
 Older Windows installs used a `tool_runtime` setting (`windows`, `pacman`,

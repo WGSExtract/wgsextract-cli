@@ -1,10 +1,13 @@
 """Focused native aligners gpu memory regressions."""
 
 import json
+import shutil
+from argparse import Namespace
 
 import psutil
 import pytest
 
+from tests.fake_tools import python_tool
 from tests.htslib_helpers import needs_tools, write_fasta
 from tests.test_alignment_commands import _samtools, _short_reads
 from tests.test_native_aligners import (
@@ -38,12 +41,90 @@ from tests.test_native_aligners import (
     mem3_bin as mem3_bin,
 )
 from tests.test_realign import _old_alignment
+from wgsextract_cli.commands.alignment import common, preparation, short_reads
 from wgsextract_cli.core import native_aligners
 from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.config import settings
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("mode", "backend", "reason"),
+    [
+        ("missing", None, None),
+        ("unusable", None, None),
+        ("cpu", "cpu", None),
+        ("cuda", "cuda", None),
+        ("low-commit", "cpu", "windows_commit_budget_cpu"),
+        ("commit-stepdown", "cuda", "windows_commit_budget_low_sort"),
+    ],
+)
+def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
+    tmp_path, monkeypatch, ram, caplog, mode, backend, reason
+):
+    """Only an installed, valid wgse-bwa runs; low commit rules CUDA out despite RAM."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    ram(64 * GIB)
+    caplog.set_level("INFO")
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    real = shutil.which("bwa")
+    assert real is not None
+    candidate = tmp_path / "missing" / "wgse-bwa.exe"
+    if mode != "missing":
+        capabilities = (
+            "not JSON"
+            if mode == "unusable"
+            else _cuda_capabilities("bwa", cuda_available=mode != "cpu")
+        )
+        candidate = python_tool(
+            tmp_path / "custom aligner",
+            "custom-bwa",
+            f"""\
+import subprocess, sys
+args = sys.argv[1:]
+if args[:1] == ["capabilities"]:
+    sys.stdout.write({capabilities!r})
+    sys.exit(0)
+if args[:1] == ["--backend"]:
+    args = args[2:]
+sys.exit(subprocess.call([{real!r}, *args]))
+""",
+        )
+    monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
+    commit = {"low-commit": 4 * GIB, "commit-stepdown": 23 * GIB // 4}
+    monkeypatch.setattr(
+        short_reads, "windows_available_commit", lambda: commit.get(mode, 32 * GIB)
+    )
+    # Exercise the real samtools pipeline in a deployment without optional samblaster.
+    resolve = common.get_tool_path
+
+    def without_samblaster(tool):
+        return None if tool == "samblaster" else resolve(tool)
+
+    monkeypatch.setattr(common, "get_tool_path", without_samblaster)
+    monkeypatch.setattr(preparation, "get_tool_path", without_samblaster)
+    options = ["--prefer-native-gpu"] if mode == "low-commit" else []
+    sort_memory = "1G" if mode == "commit-stepdown" else "256M"
+    bam, result = _align(reads, tmp_path / "out", *options, memory=sort_memory)
+    upstream, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+
+    assert _samtools("view", bam) == _samtools("view", upstream)
+    assert result.metrics.get("native_aligner_backend") == backend
+    assert result.metrics.get("native_aligner_backend_reason") == reason
+    assert ("native_aligner_unusable" in {w.code for w in result.warnings}) == (
+        mode == "unusable"
+    )
+    if mode == "low-commit":
+        assert "Windows commit" in caplog.text
+    if mode == "commit-stepdown":
+        assert result.metrics["native_aligner_sort_memory_actual"] == "768M"
 
 
 @pytest.mark.usefixtures("apple_silicon")
