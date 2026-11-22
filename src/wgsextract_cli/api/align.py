@@ -47,9 +47,8 @@ REALIGN_STEPS = ("extract", "align", "index")
 def _native_aligners_param() -> Any:
     return param(
         None,
-        help="Use optional native aligners when installed (auto), or never (off). "
-        "On Windows x86-64, find wgse-bwa on PATH or at wgse_bwa_path. "
-        "See native/README.md for other platforms.",
+        help="Use installed native aligners (auto) or upstream tools (off). "
+        "See native/README.md for platform support and setup.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; "
         "wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH "
@@ -84,14 +83,10 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="On Windows, CUDA BWA is automatic when it fits; "
-        "--no-prefer-native-gpu forces CPU. Elsewhere, prefer the native GPU "
-        "even if it exceeds the RAM budget; may swap heavily.",
-        doc="On Windows, CUDA BWA is automatic when it fits both RAM and commit; "
-        "false forces CPU and true still respects both limits. On other hosts, "
-        "prefer the native GPU over the RAM-budget CPU fallback. Sort "
-        "memory is stepped down first; explicit --memory is kept, otherwise "
-        "at most 256M per thread. May swap heavily.",
+        help="Prefer native GPU alignment. Windows CUDA is automatic when it fits; "
+        "--no-prefer-native-gpu forces CPU there.",
+        doc="Windows CUDA is automatic within RAM and commit limits; false forces CPU. "
+        "Elsewhere, true can override RAM limits. See the configuration guide.",
         action="boolean_optional",
         config_key="prefer_native_gpu",
     )
