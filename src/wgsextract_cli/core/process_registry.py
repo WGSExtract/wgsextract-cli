@@ -170,9 +170,10 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
         except OSError:
             logging.debug("Process group %s could not be killed.", pgid, exc_info=True)
     for proc in processes:
-        if proc.pid not in groups and proc.returncode is None and proc.poll() is None:
+        if proc.pid not in groups and proc.poll() is None:
             try:
-                proc.kill()
+                if _owned_groups.get(proc) is None or proc.returncode is None:
+                    proc.kill()
             except OSError:
                 logging.debug(
                     "Process %s could not be killed.", proc.pid, exc_info=True

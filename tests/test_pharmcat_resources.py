@@ -208,28 +208,29 @@ def test_1146_cancelled_reference_transfer_neither_retries_nor_extracts(
     complete = reference_archive(reference_files)
     token = CancelToken()
 
-    def cancelling_urlopen(request: Request, timeout: float) -> Any:
-        response = urlopen(request, timeout=timeout)
-        read: Callable[[int], bytes] = response.read
-
-        def cancelling_read(size: int = -1) -> bytes:
-            chunk = read(size)
-            token.cancel()
-            return chunk
-
-        response.read = cancelling_read
-        return response
-
     with closing(RangeServer(complete)) as server:
         monkeypatch.setattr(resources, "REFERENCE_URL", server.url)
         monkeypatch.setattr(
             resources, "REFERENCE_SHA256", hashlib.sha256(complete).hexdigest()
         )
-        with monkeypatch.context() as network:
-            network.setattr(downloads, "urlopen", cancelling_urlopen)
+        started, release = threading.Event(), threading.Event()
+        server.body_pauses["hs38.fa.gz"] = (256 * 1024, started, release)
+        with ContextThreadPoolExecutor(max_workers=1) as pool:
             with execution_context.bound(cancel=token):
+                transfer = pool.submit(resources.ensure_reference, str(tmp_path))
+            try:
+                assert started.wait(5)
+                partial = next(tmp_path.glob("*.partial"))
+                deadline = time.monotonic() + 5
+                while partial.stat().st_size == 0 and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert partial.stat().st_size > 0
+                token.cancel()
                 with pytest.raises(Cancelled):
-                    resources.ensure_reference(str(tmp_path))
+                    transfer.result(timeout=3)
+            finally:
+                release.set()
+                server.body_pauses.clear()
         assert server.gets() == [None]
         assert not any((tmp_path / name).exists() for name in reference_files)
         partial = next(tmp_path.glob("*.partial"))

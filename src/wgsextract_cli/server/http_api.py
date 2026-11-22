@@ -32,6 +32,7 @@ from .transport import Health, Index, Jobs, OperationDescription, Operations
 from .transport import Job as JobView
 
 MAX_BODY_BYTES = 1 << 20
+BODY_TIMEOUT_SECONDS = 10.0
 MAX_WAIT_SECONDS = 600.0
 SSE_KEEPALIVE_SECONDS = 15.0
 
@@ -276,7 +277,7 @@ class Handler(LimitedHandler):
             self.server.allowed_origins if viewer or not self.server.loopback else None,
         )
 
-    def _body(self) -> object:
+    def _read_body(self) -> bytes:
         if "Transfer-Encoding" in self.headers:
             raise RequestError(400, "bad_length", "Transfer-Encoding is not supported.")
         lengths = self.headers.get_all("Content-Length", [])
@@ -295,9 +296,12 @@ class Handler(LimitedHandler):
             raise RequestError(400, "bad_length", "Invalid Content-Length.")
         if length > MAX_BODY_BYTES:
             raise RequestError(413, "too_large", "The request body is too large.")
-        raw = self.rfile.read(length) if length else b""
+        raw = self.read_body(length, timeout=BODY_TIMEOUT_SECONDS) if length else b""
         if len(raw) != length:
             raise RequestError(400, "bad_length", "Incomplete request body.")
+        return raw
+
+    def _decode_body(self, raw: bytes) -> object:
         if not raw:
             return {}
         content_type = self.headers.get("Content-Type", "")
@@ -402,13 +406,15 @@ class Handler(LimitedHandler):
         )
 
     def run_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
+        # Closing with unread POST data can reset the connection before the
+        # client receives the conflict. Read the body without validating JSON yet.
+        raw = self._read_body()
         job_id = self.headers.get("X-WGSE-Job-ID")
         if job_id is not None:
             self.server.manager.check_job_id(job_id)
         op = find(match["op"])
         wait = _wait(query)
-        body = self._body()
-        params = params_from_json(op, body)
+        params = params_from_json(op, self._decode_body(raw))
         params = self.server.guard.check(params)
         card = _flag(query, "card") if "card" in query else None
         job = self.server.manager.submit(

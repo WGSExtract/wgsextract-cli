@@ -4,12 +4,13 @@ Some servers cap each connection: Ensembl serves its 27.6 GB VEP cache at about
 0.4 MB/s per connection, 19 hours over one. A file of at least
 SEGMENTED_MIN_SIZE whose server takes byte ranges is fetched in SEGMENT_SIZE
 pieces, CONNECTIONS at a time, straight into dest.partial. dest.partial.segments
-records how much of each piece has arrived, so an interrupted download resumes
-every piece where it stopped.
+records the source URL's digest and how much of each piece has arrived, so an
+interrupted download resumes every piece where it stopped.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import sys
@@ -30,6 +31,9 @@ from wgsextract_cli.core.download_progress import (
     DownloadIncomplete,
     PercentProgressLogger,
     ProgressCallback,
+    redact_url,
+    redact_urls,
+    retryable_http_status,
 )
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 
@@ -74,7 +78,7 @@ def _transient(error: Exception) -> bool:
     """A failure worth retrying the piece for: a dropped or refused connection,
     or a server that is busy (429, 5xx), not one that refuses the file (4xx)."""
     if isinstance(error, HTTPError):
-        return error.code == 429 or error.code >= 500
+        return retryable_http_status(error.code)
     return isinstance(error, (*_RESUMABLE, URLError))
 
 
@@ -101,28 +105,39 @@ def ranged_size(url: str, cancel_event: CancelEvent | None = None) -> int | None
     return int(length)
 
 
-def saved_size(state_path: str, url: str) -> int | None:
-    """The size an unfinished segmented download of url recorded, if any."""
+def _load_state(
+    path: str, url_digest: str, expected_size: int | None = None
+) -> tuple[int, dict[str, int]] | None:
     try:
-        with open(state_path) as f:
+        with open(path, encoding="utf-8") as f:
             state = json.load(f)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         return None
-    if not isinstance(state, dict) or state.get("url") != url:
+    if not isinstance(state, dict) or state.get("url_sha256") != url_digest:
         return None
     size = state.get("size")
-    return size if isinstance(size, int) and size > 0 else None
+    if type(size) is not int or size <= 0 or expected_size not in (None, size):
+        return None
+    received = state.get("received")
+    if (
+        not isinstance(received, dict)
+        or len(received) != (size - 1) // SEGMENT_SIZE + 1
+    ):
+        return None
+    counts = {}
+    for start in range(0, size, SEGMENT_SIZE):
+        key = str(start)
+        count = received.get(key)
+        if type(count) is not int or not 0 <= count <= min(SEGMENT_SIZE, size - start):
+            return None
+        counts[key] = count
+    return size, counts
 
 
-def _load_state(path: str, url: str, size: int) -> dict[str, int] | None:
-    try:
-        with open(path) as f:
-            state = json.load(f)
-    except (OSError, ValueError):
-        return None
-    if state.get("url") != url or state.get("size") != size:
-        return None
-    return {str(k): int(v) for k, v in state.get("received", {}).items()}
+def saved_size(state_path: str, url: str) -> int | None:
+    """The size an unfinished segmented download of url recorded, if any."""
+    state = _load_state(state_path, hashlib.sha256(url.encode()).hexdigest())
+    return state[0] if state is not None else None
 
 
 def download_segmented(
@@ -141,12 +156,23 @@ def download_segmented(
     """
     partial = dest + ".partial"
     state_path = partial + ".segments"
+    url_digest = hashlib.sha256(url.encode()).hexdigest()
+    location = redact_url(url)
     starts = list(range(0, size, SEGMENT_SIZE))
-    received = _load_state(state_path, url, size) if Path(partial).exists() else None
-    if received is None:
+    try:
+        partial_size = Path(partial).stat().st_size
+    except FileNotFoundError:
+        partial_size = None
+    state = _load_state(state_path, url_digest, size) if partial_size == size else None
+    if state is None:
+        # A sparse segmented partial must never look like a single download.
+        Path(partial + ".source").unlink(missing_ok=True)
+        Path(state_path).unlink(missing_ok=True)
         with open(partial, "wb") as f:
             f.truncate(size)
         received = {str(start): 0 for start in starts}
+    else:
+        _, received = state
     lock = threading.Lock()
     stop = threading.Event()
 
@@ -155,7 +181,7 @@ def download_segmented(
             snapshot = dict(received)
         tmp = state_path + ".tmp"
         with open(tmp, "w", newline="\n") as f:
-            json.dump({"url": url, "size": size, "received": snapshot}, f)
+            json.dump({"url_sha256": url_digest, "size": size, "received": snapshot}, f)
         Path(tmp).replace(state_path)
 
     def fetch(start: int) -> None:
@@ -181,7 +207,7 @@ def download_segmented(
                 )
                 with response_cm as response:
                     if response.getcode() != 206:
-                        raise RangesUnsupported(url)
+                        raise RangesUnsupported(location)
                     with open(partial, "r+b") as f:
                         f.seek(pos)
                         while pos < end:
@@ -200,12 +226,19 @@ def download_segmented(
                             with lock:
                                 received[str(start)] = pos - start
                 return
-            except (*_RESUMABLE, URLError) as e:
+            except (HTTPException, OSError, ValueError) as e:
                 if cancel_event and cancel_event.is_set():
                     return
+                if isinstance(e, HTTPError):
+                    e.close()
+                    detail = f"HTTP {e.code}"
+                else:
+                    detail = redact_urls(str(e), sources=(url,))
                 if attempt == ATTEMPTS or not _transient(e):
-                    raise
-                logging.debug(f"Retrying {url} bytes {pos}-{end - 1}: {e}")
+                    raise OSError(f"{location}: {detail}") from None
+                logging.debug(
+                    "Retrying %s bytes %s-%s: %s", location, pos, end - 1, detail
+                )
                 # Cancelled, or another piece failed: stop backing off.
                 if stop.wait(_backoff(attempt)):
                     return
@@ -225,7 +258,6 @@ def download_segmented(
             pending = futures
             while pending:
                 done, pending = wait(pending, timeout=2, return_when=FIRST_EXCEPTION)
-                save_state()
                 for future in done:
                     future.result()  # raises the piece's error
                 if cancel_event and cancel_event.is_set():
@@ -234,12 +266,19 @@ def download_segmented(
                     total = sum(received.values())
                 elapsed = time.monotonic() - start_time
                 report(total, size, (total - already) / elapsed if elapsed else 0.0)
+                if pending:
+                    save_state()
         except BaseException:
             stop.set()
-            raise
-        finally:
             pool.shutdown(wait=True, cancel_futures=True)
-            save_state()
+            try:
+                save_state()
+            except OSError as error:
+                logging.warning(
+                    "Could not save download progress for %s: %s", label, error
+                )
+            raise
+    save_state()
 
     if sum(received.values()) != size:
         raise DownloadIncomplete(f"{label}: {sum(received.values())} of {size} bytes")
