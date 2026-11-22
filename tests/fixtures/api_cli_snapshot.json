@@ -10829,7 +10829,7 @@
    }
   },
   "extract region": {
-   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37/38 only).\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -11172,7 +11172,7 @@
       "default": false,
       "dest": "poz",
       "exclusive_group": null,
-      "help": "With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only).",
+      "help": "With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -11892,7 +11892,7 @@
    }
   },
   "extract ydna-bam": {
-   "help": "usage: wgsextract extract ydna-bam [-h] [--poz]\n\noptions:\n  -h, --help  show this help message and exit\n  --poz       Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract extract ydna-bam [-h] [--poz]\n\noptions:\n  -h, --help  show this help message and exit\n  --poz       Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or\n              T2T).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -12198,7 +12198,7 @@
       "default": false,
       "dest": "poz",
       "exclusive_group": null,
-      "help": "Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only).",
+      "help": "Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -40092,7 +40092,7 @@
    }
   },
   "vcf gatk": {
-   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--pair-hmm-neon PAIR_HMM_NEON]\n                           [--reference-evidence {none,gvcf}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see\n                        docs/hardware.md#nvidia-gpus-parabricks).\n  --pair-hmm-neon PAIR_HMM_NEON\n                        Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for\n                        GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See\n                        packaging/arm64/gkl/README.md. Not with --gpu or --scatter.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract vcf gatk [-h] [-r REGION] [--scatter] [--gpu] [--pair-hmm-cuda PAIR_HMM_CUDA]\n                           [--pair-hmm-neon PAIR_HMM_NEON] [--reference-evidence {none,gvcf}]\n                           [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM)\n  --scatter             Opt-in Ultima flow-mode interval scattering, bounded by --threads and\n                        available RAM (6 GiB per worker, 4 GiB Java heap). Can change\n                        genotypes/annotations away from interval boundaries; default: one\n                        unscattered process.\n  --gpu                 Call on an NVIDIA GPU with Parabricks (Linux, Docker; see\n                        docs/hardware.md#nvidia-gpus-parabricks).\n  --pair-hmm-cuda PAIR_HMM_CUDA\n                        Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with\n                        GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md.\n                        Not with --gpu or --scatter.\n  --pair-hmm-neon PAIR_HMM_NEON\n                        Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for\n                        GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See\n                        packaging/arm64/gkl/README.md. Not with --gpu or --scatter.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, gatk.g.vcf.gz (+ .tbi), beside the\n                        unchanged variant VCF (gvcf; costs little time; the VCF is then genotyped\n                        from it; not with --gpu or --scatter), or not (none). Default: config\n                        reference_evidence, else none.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gatk --help-all' lists them.\n\nexamples:\n  wgsextract vcf gatk --input sample.cram\n\noutputs (in the output directory unless noted):\n  gatk.vcf.gz (+ .tbi).\n\nneeds:\n  gatk, samtools, tabix; depending on options and inputs, also: bcftools;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -40436,6 +40436,22 @@
       "nargs": 0,
       "option_strings": [
        "--gpu"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "pair_hmm_cuda",
+      "exclusive_group": null,
+      "help": "Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md. Not with --gpu or --scatter.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--pair-hmm-cuda"
       ],
       "required": false,
       "type": null
@@ -53810,6 +53826,7 @@
    "memory": null,
    "no_gpu_memory_check": false,
    "outdir": null,
+   "pair_hmm_cuda": null,
    "pair_hmm_neon": null,
    "parent_pid": null,
    "qc_min_depth": 3.0,
@@ -53844,6 +53861,7 @@
    "memory": null,
    "no_gpu_memory_check": false,
    "outdir": null,
+   "pair_hmm_cuda": null,
    "pair_hmm_neon": null,
    "parent_pid": null,
    "qc_min_depth": null,

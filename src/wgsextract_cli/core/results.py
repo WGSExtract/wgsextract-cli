@@ -45,6 +45,9 @@ from wgsextract_cli.core.provenance_records import (
     ReferenceRecord,
     ResourceRecord,
 )
+from wgsextract_cli.core.result_warnings import ResultWarning as ResultWarning
+from wgsextract_cli.core.result_warnings import Scalar as Scalar
+from wgsextract_cli.core.result_warnings import add_warning
 
 SCHEMA_ID: Final = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
@@ -55,7 +58,6 @@ EXIT_FAILURE = 1
 EXIT_USAGE = 2
 EXIT_MISSING_DEPENDENCY = 3
 
-Scalar = str | int | float | bool | None
 Status = Literal["ok", "failed", "cancelled"]
 FINGERPRINT_PREFIX = "wgse-fp1:"
 _FINGERPRINT_BLOCK = 1 << 20  # 1 MiB
@@ -262,15 +264,6 @@ class FileRecord:
         self.size_bytes = info.st_size
         self.fingerprint = fingerprint(path)
         self.index = _index_of(path, self.kind)
-
-
-@dataclass
-class ResultWarning:
-    """A condition the user should know about; ``code`` is stable for machines."""
-
-    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")]
-    message: str
-    details: dict[str, Scalar] = field(default_factory=dict)
 
 
 @dataclass
@@ -535,11 +528,11 @@ class CommandResult:
             if record not in self.resources:
                 self.resources.append(record)
 
-    def warn(self, code: str, message: str, **details: Scalar) -> None:
-        """Record a structured warning (without logging it; see ``warn``)."""
+    def warn(self, code: str, message: str, **details: Scalar) -> bool:
+        """Record a structured warning without logging; return whether it was added."""
         warning = ResultWarning(code, _redact_strings(message), dict(details))
         with self._lock:
-            self.warnings.append(warning)
+            return add_warning(self.warnings, warning)
 
     @property
     def text(self) -> str:
@@ -789,8 +782,8 @@ def record_tool_command(command: Sequence[str]) -> None:
 
 def warn(code: str, message: str, **details: Scalar) -> None:
     """Log a warning and record it on the running command's result."""
-    logging.warning(message)
-    current_result().warn(code, message, **details)
+    if current_result().warn(code, message, **details):
+        logging.warning(message)
 
 
 def human_output(*values: object, sep: str = " ", end: str = "\n") -> None:
