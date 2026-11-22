@@ -54,7 +54,7 @@ from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     popen,
     run_command,
 )
@@ -601,7 +601,7 @@ def run_pileup(params: MethylationPileupParams) -> None:
             f"{input_path} needs an index (.bai/.crai): wgsextract bam index -i "
             f"{input_path}"
         )
-    threads, _memory = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = (
         expand_path(params.outdir)
         if params.outdir

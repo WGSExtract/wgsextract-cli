@@ -39,7 +39,7 @@ from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
     run_pipeline,
 )
@@ -586,7 +586,7 @@ def run_vep(params: VepRunParams) -> None:
     verify_dependencies([tool, "tabix", "bcftools"])
     log_dependency_info([tool, "tabix", "bcftools"])
     current_result().add_metrics(engine=engine.name)
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
 
     batch_stats = []
     cache_error: _VepCacheMissingError | None = None
