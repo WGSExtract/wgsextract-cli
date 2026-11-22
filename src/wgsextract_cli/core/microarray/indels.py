@@ -38,6 +38,8 @@ from wgsextract_cli.core.variant_files import (
 )
 
 if TYPE_CHECKING:
+    from pyliftover import LiftOver
+
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 IndelCalls = dict[str, dict[tuple[str, str, str], str]]
@@ -136,9 +138,8 @@ def _calling_regions(
 def _reference_windows(
     probes: dict[str, IndelProbe],
     ref_fasta: str,
-    build: str,
-    root: str | None,
     workdir: str,
+    lifter: LiftOver | None,
 ) -> dict[str, IndelSite]:
     if not Path(ref_fasta + ".fai").exists():
         run_command(["samtools", "faidx", ref_fasta])
@@ -147,11 +148,6 @@ def _reference_windows(
         for line in stream:
             parts = line.split("\t")
             contigs[parts[0]] = int(parts[1])
-    lifter = (
-        aadr_lifter(build, workdir, root)
-        if any(probe.chrom != "MT" for probe in probes.values())
-        else None
-    )
     regions: dict[str, list[str]] = defaultdict(list)
     for key, probe in probes.items():
         chrom, position = probe.chrom, probe.position
@@ -300,6 +296,7 @@ def call_manifest_indels(
     outdir: str,
     ploidy_args: list[str],
     threads: str,
+    lifter: LiftOver | None = None,
 ) -> IndelCalls:
     if not lib.fasta:
         raise WGSExtractError("Indel probes require a reference FASTA.")
@@ -341,7 +338,9 @@ def call_manifest_indels(
                     metadata[key] = format_name, marker, chrom, position
                     output[format_name][marker, chrom, position] = "--"
     counts["matched_probe_definitions"] = len(probes)
-    sites = _reference_windows(probes, lib.fasta, lib.build or "", lib.root, workdir)
+    if lifter is None and any(probe.chrom != "MT" for probe in probes.values()):
+        lifter = aadr_lifter(lib.build, workdir, lib.root)
+    sites = _reference_windows(probes, lib.fasta, workdir, lifter)
     if sites:
         sites = _normalize_sites(sites, lib.fasta, workdir)
     if not sites:

@@ -16,14 +16,17 @@ from wgsextract_cli.core.alignment.profiles import (
 from wgsextract_cli.core.chunked_alignment import Chunk
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependency_checks import get_tool_version
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.runtime import is_windows_host
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     run_command,
 )
+from wgsextract_cli.core.windows_app_control import is_blocked_probe
 
 from .reads import (
     reads_stem,
@@ -210,8 +213,13 @@ def ensure_bwa_alt_file(ref: str) -> None:
 
 def duplicate_marker(paired: bool) -> str:
     """How short reads get their duplicates marked: samblaster in the stream
-    when it's installed (it aborts on unpaired input), else samtools markdup,
-    which samtools always provides."""
-    if paired and get_tool_path("samblaster") is not None:
-        return "samblaster"
-    return "markdup"
+    when it's installed and permitted to run (it aborts on unpaired input),
+    else samtools markdup."""
+    if not paired or get_tool_path("samblaster") is None:
+        return "markdup"
+    if is_windows_host():
+        version = get_tool_version("samblaster")
+        if is_blocked_probe(version):
+            logging.debug("%s Falling back to samtools markdup.", version)
+            return "markdup"
+    return "samblaster"
