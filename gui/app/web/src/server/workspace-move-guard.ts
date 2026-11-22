@@ -1,10 +1,11 @@
 import { lstat, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
+import { formatLinkedMoveFolder } from "../../../shared/workspace-move-message.js";
 import { errnoCode, HttpError } from "./errors.js";
 
 export class LinkedMoveFolderError extends HttpError {
     constructor(readonly link: string, readonly target: string | null) {
-        super(400, `Cannot move a folder from or to the link “${link}” (target: “${target ?? "unavailable"}”). Move the target yourself and update the setting, or choose a destination that is not a link.`);
+        super(400, formatLinkedMoveFolder({ link, target }));
     }
 }
 
@@ -26,8 +27,7 @@ export async function refuseLinkedMoveFolders(...folders: string[]) {
                 if (process.platform === "win32" && errnoCode(error) === "EINVAL") return null;
                 throw error;
             });
-            const target = rawTarget && (path.isAbsolute(rawTarget) ? rawTarget
-                : await realpath(link).catch(() => rawTarget));
+            const target = rawTarget && await realpath(link).catch(() => rawTarget);
             throw new LinkedMoveFolderError(link, target);
         }
     }

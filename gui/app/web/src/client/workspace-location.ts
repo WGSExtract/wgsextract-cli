@@ -1,5 +1,6 @@
 import { apiStream, api } from "./api.js";
-import { errorMessage, formatLabel } from "./model.js";
+import { errorMessage } from "./model.js";
+import { formatLinkedMoveFolder } from "../../../shared/workspace-move-message.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
@@ -109,10 +110,9 @@ async function moveWorkspace() {
                 scheduleRender();
             }
             else if (event.type === "error") {
-                failure = event.linkedFolder ? formatLabel(state.labels.workspaceLocationLinkedFolderFormat, {
-                    link: event.linkedFolder.link,
-                    target: event.linkedFolder.target ?? state.labels.workspaceLocationLinkTargetUnavailable,
-                }) : event.error;
+                failure = event.linkedFolder ? formatLinkedMoveFolder(
+                    event.linkedFolder, state.labels.workspaceLocationLinkedFolderFormat, state.labels.workspaceLocationLinkTargetUnavailable,
+                ) : event.error;
             }
         }, { label: "Workspace move" });
         // Everything the page holds (paths, settings, setup status) came from the old location.

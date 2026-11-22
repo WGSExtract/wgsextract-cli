@@ -1,4 +1,5 @@
 import type { ActionSpec, BundleManifest, BundlePage, ConfigSetting, ControlOption, ControlSpec, PageSection, RowTagSpec, StringMap } from "./types.js";
+import { linkedMoveFolderFormat, linkedMoveTargetUnavailable } from "./workspace-move-message.js";
 
 export function parseTomlStrings(text: string): StringMap {
     const values: StringMap = {};
@@ -168,9 +169,8 @@ export function localizationLabels(table: StringMap = {}) {
         workspaceLocationFolderMoveConfirm: table["app.workspaceLocation.folderMove.confirm"] ??
             "Move what is in %{from} to %{path}? Running actions are stopped. Change Setting Only leaves it where it is.",
         workspaceLocationSettingOnlyTitle: table["app.workspaceLocation.settingOnly.title"] ?? "Change Setting Only",
-        workspaceLocationLinkedFolderFormat: table["app.workspaceLocation.linkedFolder.format"] ??
-            "Cannot move a folder from or to the link “%{link}” (target: “%{target}”). Move the target yourself and update the setting, or choose a destination that is not a link.",
-        workspaceLocationLinkTargetUnavailable: table["app.workspaceLocation.linkTargetUnavailable"] ?? "unavailable",
+        workspaceLocationLinkedFolderFormat: table["app.workspaceLocation.linkedFolder.format"] ?? linkedMoveFolderFormat,
+        workspaceLocationLinkTargetUnavailable: table["app.workspaceLocation.linkTargetUnavailable"] ?? linkedMoveTargetUnavailable,
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",

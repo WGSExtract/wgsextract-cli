@@ -6,6 +6,7 @@ import { lstat, mkdir, readFile, readdir, readlink, realpath, rename, stat, syml
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { fixture, manifest, move, settingsControl } from "./workspace-fixture.mjs";
 
@@ -55,37 +56,40 @@ async function trySymlink(t, target, link, type) {
   }
 }
 
-async function startMoveServer(t, source) {
+async function startMoveServer(t, root, source) {
   const server = fileURLToPath(new URL("../dist/web/src/server/main.js", import.meta.url));
   const apiToken = randomUUID();
+  const portFile = path.join(root, "server-port");
   const child = spawn(process.execPath, [server, "--bundle", source, "--port", "0"], {
-    env: { ...process.env, GFC_API_TOKEN: apiToken },
-    stdio: ["ignore", "pipe", "inherit"],
+    env: { ...process.env, GFC_API_TOKEN: apiToken, GFC_PORT_FILE: portFile },
+    stdio: ["ignore", "ignore", "inherit"],
   });
   const exited = once(child, "close");
   t.after(async () => {
     child.kill();
     await exited;
   });
-  child.stdout.setEncoding("utf8");
-  let output = "";
-  for await (const chunk of child.stdout.iterator({ destroyOnReturn: false })) {
-    output += chunk;
-    const url = /WGS Extract GUI Web UI: (http:\/\/127\.0\.0\.1:\d+)\//.exec(output)?.[1];
-    if (url) {
-      return async (body) => {
-        const response = await fetch(`${url}/api/workspace-location/move`, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-gfc-token": apiToken },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(5000),
-        });
-        assert.equal(response.status, 200);
-        return (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
-      };
-    }
+  let port;
+  while (!port) {
+    assert.equal(child.exitCode, null, "GUI exited before publishing its port");
+    assert.equal(child.signalCode, null, "GUI stopped before publishing its port");
+    const text = await readFile(portFile, "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    if (/^\d+\n$/.test(text)) port = Number(text);
+    else await delay(20, undefined, { signal: t.signal });
   }
-  assert.fail(`GUI did not start: ${output}`);
+  return async (body) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/workspace-location/move`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gfc-token": apiToken },
+      body: JSON.stringify(body),
+      signal: t.signal,
+    });
+    assert.equal(response.status, 200);
+    return (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+  };
 }
 
 async function snapshotTree(root) {
@@ -128,7 +132,7 @@ for (const kind of ["symlink", "junction"]) {
       if (scenario === "library folder") {
         await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library + path.sep)}\n`);
       }
-      const requestMove = await startMoveServer(t, source);
+      const requestMove = await startMoveServer(t, root, source);
       // Leave a timestamp a runtime reload would change even if it rewrote the same bytes.
       await utimes(path.join(users, ".users-workspace"), 1, 1);
       const before = await snapshotTree(root);
@@ -138,7 +142,7 @@ for (const kind of ["symlink", "junction"]) {
       });
       assert.deepEqual(events.map(({ type }) => type), ["error"]);
       const [failure] = events;
-      const reportedTarget = kind === "junction" ? target : await realpath(target);
+      const reportedTarget = await realpath(target);
       assert.deepEqual(failure.linkedFolder, { link, target: reportedTarget });
       assert.ok(failure.error.includes(link));
       assert.ok(failure.error.includes(reportedTarget));
@@ -152,6 +156,7 @@ test("#1340 refuses a source replaced with a link while running actions stop", a
   const { root, source, bundle, users } = await fixture(t);
   await prepareBundleWorkspace(manifest, source);
   const target = path.join(root, "actual-workspace");
+  const reportedTarget = path.join(await realpath(root), "actual-workspace");
   const folder = path.join(root, "new-parent", "workspace");
   let before;
   await assert.rejects(move({
@@ -161,7 +166,7 @@ test("#1340 refuses a source replaced with a link while running actions stop", a
       await symlink(target, users, "junction");
       before = await snapshotTree(root);
     },
-  }), { link: users, target });
+  }), { link: users, target: reportedTarget });
   assert.deepEqual(await snapshotTree(root), before);
 });
 
@@ -179,13 +184,13 @@ test("#1340 refuses a linked destination written with .. after another link",
     const library = path.join(users, "reference-data");
     await mkdir(library);
     await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library)}\n`);
-    const requestMove = await startMoveServer(t, source);
+    const requestMove = await startMoveServer(t, root, source);
     const folder = `${root}/via/../moved`;
     const before = await snapshotTree(root);
     for (const setting of [{}, { controlID: "paths", key: "reference_library" }]) {
       const [failure] = await requestMove({ folder, ...setting });
       assert.equal(failure.type, "error");
-      assert.deepEqual(failure.linkedFolder, { link: folder, target });
+      assert.deepEqual(failure.linkedFolder, { link: folder, target: await realpath(target) });
       assert.deepEqual(await snapshotTree(root), before);
     }
   });
