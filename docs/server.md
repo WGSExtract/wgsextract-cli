@@ -336,7 +336,8 @@ suffix and open-ended ranges too; those and whole-file reads have a 32 MiB
 fallback limit. Closed ranges can exceed that limit and stream in 64 KiB chunks.
 An invalid, multipart, unsatisfiable or oversized fallback range returns 416
 with `Content-Range: bytes */SIZE`. `HEAD` returns the same metadata without
-bytes. Read/seek failures after response headers abort the connection instead
+bytes, except that a `HEAD` with no `Range` returns 200 and the full
+`Content-Length` for a file of any size. Read/seek failures after response headers abort the connection instead
 of inserting an error response into the genomic bytes. Clients must reject an
 incomplete body. For browser requests, only an exact configured app origin receives CORS
 access, including preflight for `Authorization` and `Range`. The endpoint sends

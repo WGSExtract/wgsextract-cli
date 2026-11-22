@@ -203,10 +203,11 @@ revocable grants for only the selected files. The viewer uses opaque same-origin
 URLs and a file-only grant token; it never receives the general server token.
 Streaming uses backpressure and rejects unexpected lengths/ranges. Whole-file,
 suffix and open-ended reads have a 32 MiB fallback limit; closed ranges can
-stream larger bins, and a HEAD reports the size of any file. Byte offsets
-reveal genomic access patterns to the selected server. The backend forwards
-neither cookies nor Set-Cookie and follows no redirects. The server, not the
-app's local library settings, guards remote paths.
+stream larger bins. A `HEAD` without a `Range` reports the full size of a file
+of any size; ranged `HEAD`s follow the same limits as ranged reads. Byte
+offsets reveal genomic access patterns to the selected server. The backend
+forwards neither cookies nor Set-Cookie and follows no redirects. The server,
+not the app's local library settings, guards remote paths.
 
 Leaving the viewer revokes its file grants. **Forget server and revoke access**
 also removes the saved backend credentials and aborts active proxy transfers.

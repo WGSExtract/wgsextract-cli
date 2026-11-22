@@ -125,8 +125,8 @@ def openapi_path() -> dict[str, object]:
             "summary": "Read guarded viewer file bytes (default off)",
             "description": "Requires server.viewer_files and bearer authentication. "
             "Closed byte ranges stream without a size limit; whole files, suffix "
-            "and open-ended ranges have a 32 MiB fallback limit; an un-ranged HEAD "
-            "reports the size of any file.",
+            "and open-ended ranges have a 32 MiB fallback limit; a HEAD without "
+            "Range reports the full size of a file of any size.",
             "parameters": [
                 {
                     "name": "path",
