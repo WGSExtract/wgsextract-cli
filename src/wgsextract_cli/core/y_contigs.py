@@ -15,9 +15,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Literal
 
-from wgsextract_cli.core.ref_library.assets import header_sequences, read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import (
+    header_sequences,
+    read_fai_lengths,
+    reference_dict_path,
+)
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import match_chromosome_name
 
@@ -90,20 +95,36 @@ class ContigSelection:
         return {"y_scope": self.scope, "contigs": rows}
 
     def check_reference(self, ref: str) -> None:
-        """Fail when ``ref`` (by its .fai) lacks an included Y-associated
-        contig: samtools can't decode a CRAM's reads there, nor call them."""
-        lengths = read_fai_lengths(ref)
-        missing = [
-            c.name
-            for c in self.choices
-            if c.included and c.role == "y_associated" and c.name not in lengths
+        """Fail when ``ref`` lacks an included Y-associated contig, or its
+        .fai and .dict can't show whether it has them: samtools can't decode
+        a CRAM's reads there, and bcftools silently calls nothing there."""
+        wanted = [
+            c.name for c in self.choices if c.included and c.role == "y_associated"
         ]
-        if lengths and missing:
+        if not wanted:
+            return
+        names = set(read_fai_lengths(ref)) or _dict_names(ref)
+        if not names:
+            raise WGSExtractError(
+                f"The reference {ref} has no readable .fai or .dict to confirm "
+                f"it has {', '.join(wanted)}: index it with samtools faidx, or "
+                "extract with --y-scope primary."
+            )
+        missing = [name for name in wanted if name not in names]
+        if missing:
             raise WGSExtractError(
                 f"The reference {ref} has no {', '.join(missing)}, which the "
                 "input's header has: pass the reference it was aligned to with "
                 "--ref, or extract with --y-scope primary."
             )
+
+
+def _dict_names(ref: str) -> set[str]:
+    try:
+        text = Path(reference_dict_path(ref)).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return set()
+    return {s["SN"] for s in header_sequences(text) if s.get("SN")}
 
 
 def primary_y(names: list[str]) -> str | None:

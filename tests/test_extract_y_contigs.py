@@ -223,10 +223,11 @@ def test_1184_scope_conflicts_are_usage_errors(tmp_path, fields, error):
         api.ExtractRegionParams(input=tmp_path / "x.bam", outdir=tmp_path, **fields)
 
 
-@pytest.fixture
-def chromosome_scale_ref(tmp_path):
+@pytest.fixture(scope="module")
+def chromosome_scale_ref(tmp_path_factory):
     """A GRCh38-length reference of A's for chrY and the Y random contig
-    (written in chunks), and one without the random contig."""
+    (written in chunks, once per module), and one without the random contig."""
+    tmp_path = tmp_path_factory.mktemp("refs")
 
     def write(path, contigs):
         with open(path, "w") as fasta:
@@ -305,6 +306,28 @@ def test_1184_reference_without_the_associated_contig_is_a_local_error(
                 input=bam,
                 outdir=tmp_path / "o",
                 ref=chromosome_scale_ref["no_ki"],
+                target="y",
+                formats="vcf",
+                y_scope="associated",
+            )
+        )
+    assert not list((tmp_path / "o").glob("*.vcf.gz"))
+
+
+def test_1184_unindexed_reference_is_checked_not_silently_skipped(
+    tmp_path, chromosome_scale_ref
+):
+    # Review of #1369: with no .fai the check was skipped, and bcftools then
+    # wrote a VCF with no calls on the missing contig and exit status 0.
+    bam = _snp_bam(tmp_path)
+    unindexed = tmp_path / "unindexed.fa"
+    unindexed.symlink_to(chromosome_scale_ref["no_ki"])
+    with pytest.raises(api.CommandFailed, match="no readable .fai or .dict"):
+        api.extract.region(
+            api.ExtractRegionParams(
+                input=bam,
+                outdir=tmp_path / "o",
+                ref=unindexed,
                 target="y",
                 formats="vcf",
                 y_scope="associated",

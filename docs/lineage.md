@@ -103,7 +103,8 @@ length, its `M5` (if recorded) and a GRCh38-length chrY all match; a
 same-named contig that differs, or a Y-like name no supported assembly assigns
 to Y, is listed and left out. On GRCh37 and T2T the associated scope reads
 chrY alone. A header without @SQ lines or a chrY fails; so does calling, or a
-CRAM, whose reference lacks the included contig. Nothing is downloaded.
+CRAM, whose reference lacks the included contig or has no `.fai` or `.dict`
+to show it. Nothing is downloaded.
 
 Records are taken by position, as for chrY: secondary, supplementary and
 unmapped mates placed on a selected contig are kept, each record once, in
