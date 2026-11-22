@@ -311,9 +311,11 @@ def _advise(
     populations = sorted({r.population for r in recommendations})
     general_only_note = None
     if medication.population:
+        # CPIC's population labels, compared in any case.
         wanted = medication.population.lower()
         chosen = next((p for p in populations if p.lower() == wanted), None)
-        if chosen is None and "general" not in populations:
+        general = next((p for p in populations if p.lower() == "general"), None)
+        if chosen is None and general is None:
             return single(
                 "insufficient_evidence",
                 f"CPIC has no {drug.name} recommendation for "
@@ -325,7 +327,7 @@ def _advise(
                 f"'{medication.population}'."
             )
         recommendations = [
-            r for r in recommendations if r.population == (chosen or "general")
+            r for r in recommendations if r.population == (chosen or general)
         ]
     elif len(populations) > 1:
         return single(

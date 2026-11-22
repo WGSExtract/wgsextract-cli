@@ -358,6 +358,31 @@ def test_1176_rules_match_cpic_drugs_whatever_the_case_of_their_names(
     assert advisories["paroxetine"]["advisory"]["status"] == "advisory"
 
 
+def test_1176_population_labels_match_whatever_their_case(
+    tmp_path, served_cpic, monkeypatch
+):
+    # PR review: a CPIC release labelling general guidance "General" must
+    # still give it for a population CPIC doesn't distinguish.
+    text = gzip.decompress(served_cpic.body).decode()
+    served_cpic.body = gzip.compress(
+        text.replace("\tgeneral\t", "\tGeneral\t").encode()
+    )
+    monkeypatch.setitem(
+        cpic_data.PIN, "sha256", hashlib.sha256(served_cpic.body).hexdigest()
+    )
+    folder = _sample(tmp_path)
+    _cyrius(folder, **RESOLVED_CYRIUS)
+    _pharmcat(folder, {"CYP2D6": [("*1/*2", "Normal Metabolizer", "2.0")]}, {},
+              outside=("CYP2D6",))  # fmt: skip
+    finding = _advisories(_review(folder, {"name": "codeine", "population": "adults"}))[
+        "codeine"
+    ]
+    assert finding["advisory"]["status"] == "advisory"
+    assert any(
+        "doesn't distinguish 'adults'" in n for n in finding["advisory"]["notes"]
+    )
+
+
 @pytest.mark.parametrize(
     ("alternatives", "status"),
     [
