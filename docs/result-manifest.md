@@ -127,7 +127,8 @@ so their outputs have their own manifests.
   `ci_2_high` are integer repeat counts. `allele_1_reads`, `allele_2_reads`
   and `clipped_reads` are integer read counts. An uncalled allele or a bound
   or support count the caller could not provide is `null` (blank in TSV),
-  not zero. A hemizygous call has no second allele.
+  not zero. A hemizygous call has no second allele. No-call variants from
+  the caller are retained with any coverage it reported.
 - `coverage` is caller-reported locus coverage, rounded to one decimal.
   `clipped_reads` counts reads that meet the unsized-expansion warning rule
   for long-read callers; zero means no such signal was reported.

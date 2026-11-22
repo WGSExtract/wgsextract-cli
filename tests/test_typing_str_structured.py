@@ -111,6 +111,16 @@ pathlib.Path(prefix + ".vcf").write_text("##fileformat=VCFv4.2\\n")
     ]  # fmt: skip
     main(base)
     original_manifest = _manifest(out)
+    uncalled = next(
+        row
+        for row in original_manifest["details"]["repeat_calls"]
+        if row["locus"] == "RFC1"
+    )
+    assert (uncalled["status"], uncalled["allele_1"], uncalled["coverage"]) == (
+        "no call",
+        None,
+        3.0,
+    )
     original_tsv = _output(original_manifest, "repeat_summary")
     original_contents = original_tsv.read_text()
     opts = [*base, "--loci", "FMR1, HTT,FMR1,DMPK,RFC1"]

@@ -103,17 +103,13 @@ THRESHOLDS = {
 MOTIF_UNCHECKED = {"RFC1"}
 
 
-def parse_expansionhunter(
-    json_path: str, *, include_no_calls: bool = False
-) -> list[RepeatCall]:
+def parse_expansionhunter(json_path: str) -> list[RepeatCall]:
     with open(json_path) as f:
         loci = json.load(f).get("LocusResults", {})
     calls = []
     for locus in loci.values():
         for variant_id, variant in (locus.get("Variants") or {}).items():
             genotype = variant.get("Genotype")
-            if not genotype and not include_no_calls:
-                continue
             raw_ci = variant.get("GenotypeConfidenceInterval")
             intervals = (
                 [
@@ -549,7 +545,7 @@ def choose_caller(choice: str | None, platform: str | None) -> str:
 
 def _run_expansionhunter(
     aln: Alignment, reference: str, catalog_path: str, sex: str, prefix: str,
-    debug: bool, *, include_no_calls: bool,
+    debug: bool,
 ) -> list[RepeatCall]:  # fmt: skip
     expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
     logging.info("Sizing repeat expansions with ExpansionHunter...")
@@ -569,7 +565,7 @@ def _run_expansionhunter(
     result = current_result()
     result.add_output(f"{prefix}.vcf", "repeat_calls")
     result.add_output(f"{prefix}.json", "expansionhunter_report")
-    return parse_expansionhunter(f"{prefix}.json", include_no_calls=include_no_calls)
+    return parse_expansionhunter(f"{prefix}.json")
 
 
 def _run_long_reads(
@@ -638,7 +634,6 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
                 sex,
                 prefix,
                 debug,
-                include_no_calls=bool(requested),
             )
         if selected:
             by_id = {call.variant_id: call for call in calls}

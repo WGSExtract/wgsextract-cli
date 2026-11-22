@@ -1024,6 +1024,7 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
                  "15.7", "-"],
         "HTT": ["Huntington disease", "AD", "CAG", "19/42", "19-19/39-45", "26",
                 "36", "pathogenic", "34.2", "-"],
+        "RFC1": ["CANVAS", "AR", "AAAAG", "-", "-", "-", "400", "no call", "3.0", "-"],
     }  # fmt: skip
     assert "2 of 4 disease repeats are in the normal range." in caplog.text
     assert (
