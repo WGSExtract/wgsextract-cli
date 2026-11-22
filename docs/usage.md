@@ -160,14 +160,18 @@ fractions describe that interval. One streaming `samtools depth` pass writes
 no per-base depths. As in WGS Extract v4, base/mapping thresholds are zero;
 unmapped, secondary, QC-failed and duplicate reads and deletion bases are
 excluded, while overlapping mates count separately. A whole contig's
-reference N bases (from the reference's `_ncnt.csv`, else the standard
-assembly's counts) are left out of depth 0 and the denominators, once (v4's
-double N subtraction is not reproduced), and shown as `Model N Len`; a partial
-`--region` keeps every coordinate. `--with-bins` also runs the normal coverage
-summary but shows the bin table (v4's "Bin Coverage by Sequence Name") in its
-place; `info --detailed` then shows that run's breadth. Breadth everywhere is
-likewise a share of the non-N bases. Without `--bins`, summary and cache
-behaviour are unchanged.
+reference N bases are shown as `Model N Len` and left out of the fractions'
+denominators, once (v4's double N subtraction is not reproduced); `Depth 0
+bases` still counts them. A partial `--region` keeps every coordinate. N
+counts are each reference's own, measured from its FASTA (see [reference
+genomes](reference-genomes.md#n-counts)) and applied only to contigs of the
+measured length; without them an `n_counts_unavailable` warning says breadth
+and depth include the N gaps. The printed rows are TSV (CSV with `info --csv`).
+`--with-bins` also runs the normal coverage summary but shows the bin table
+(v4's "Bin Coverage by Sequence Name") in its place, and reuses up-to-date
+whole-file reports, applying the current N counts; `info --detailed` then
+shows that run's breadth. Breadth everywhere is likewise a share of the non-N
+bases. Without `--bins`, summary and cache behaviour are unchanged.
 
 Depth parsing uses bounded 8 MiB binary chunks and byte operations, not
 per-base Python parsing or NumPy; TSVs and filters are unchanged.
