@@ -80,6 +80,7 @@ from .common import (
     StreamingMemoryUnavailable,
     _AlignSetup,
     aligned_output_path,
+    duplicate_marker,
     ensure_bwa_alt_file,
     ensure_bwa_index,
 )
@@ -226,7 +227,7 @@ def _bwa_setup(
         mem3 = bwa_mem3_command(job)
         require_bwa_mem3_index(setup.ref)
     setup = _validated_read_setup(job, setup)
-    samblaster = bool(job.r2) and get_tool_path("samblaster") is not None
+    samblaster = duplicate_marker(paired=bool(job.r2)) == "samblaster"
     if job.input_reads is not None:
         reads, read_length = job.input_reads
     elif setup.r1.lower().endswith((".bam", ".cram")):

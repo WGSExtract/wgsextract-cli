@@ -5,6 +5,7 @@ import glob
 import gzip
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 _BASES = {"A", "C", "G", "T", "N"}
+_REFERENCE_ONLY_ALTS = {".", "<NON_REF>", "<*>", "<X>"}
 
 
 # A small region's targets can all be homozygous reference; this many can't.
@@ -42,15 +44,18 @@ MIN_TARGETS_TO_EXPECT_A_VARIANT = 1000
 
 def _normalize_microarray_genotype(value: str) -> str | None:
     """Return a two-letter SNP genotype (haploid calls doubled, heterozygous
-    alleles in alphabetical order), "--", or None."""
-    genotype = value.replace("/", "").replace("|", "").replace(".", "-").upper()
-    if genotype in {"", "-", "--"}:
+    alleles in alphabetical order), "--", or None. Alleles are split on the
+    GT separators, so a haploid "AT" is one two-base allele, not A/T."""
+    alleles = re.split(r"[/|]", value.upper())
+    if all(allele in {"", "."} for allele in alleles):
         return "--"
-    if len(genotype) == 1 and genotype in _BASES:
-        return genotype * 2
-    if len(genotype) == 2 and set(genotype) <= _BASES:
-        return sort_alleles(genotype)
-    return None
+    if len(alleles) > 2 or any(
+        allele not in _BASES and allele not in {"", "."} for allele in alleles
+    ):
+        return None
+    if "" in alleles or "." in alleles:
+        return "--"
+    return sort_alleles("".join(alleles)) if len(alleles) == 2 else alleles[0] * 2
 
 
 def _combined_kit_chrom(chrom: str) -> str:
@@ -146,6 +151,7 @@ def _write_vcf_mode_kit(
     ref_vcf_tab: str,
     reasons: dict[tuple[str, str], str] | None = None,
     restrict_reference_fill: bool = False,
+    trim_identity_alts: bool = False,
 ) -> None:
     policy = quality_policy(params)
     vcf_header = run_command(["bcftools", "view", "-h", out_vcf], capture_output=True)
@@ -157,9 +163,13 @@ def _write_vcf_mode_kit(
     variant_calls: dict[tuple[str, str], str] = {}
     variant_reasons: dict[tuple[str, str], str] = {}
     strand_masked: set[tuple[str, str]] = set()
-    query = "%CHROM\t%POS\t[%TGT]\n"
+    unsupported: set[tuple[str, str]] = set()
+    # Positions with a SNP-shaped record, which alone mark a contig as called.
+    snp_records: set[tuple[str, str]] = set()
+    query = "%CHROM\t%POS\t[%TGT]\t%REF\t%ALT\n"
     if fields:
         query = "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%FILTER\n"
+    ref_at = 5 if fields else 3
     for line in _command_lines(
         [
             "bcftools",
@@ -172,25 +182,49 @@ def _write_vcf_mode_kit(
         outdir,
     ):
         parts = line.rstrip("\n").split("\t")
-        if len(parts) < 3:
+        if len(parts) <= ref_at + 1:
             continue
-        genotype = _normalize_microarray_genotype(parts[2])
+        ref, alt = parts[ref_at].upper(), parts[ref_at + 1].upper()
+        # A reference-only record or a SNP ALT can support a SNP call.
+        # The anchor of an indel-only record cannot, even with GT=0/0 (#1249).
+        genotype = (
+            _normalize_microarray_genotype(parts[2])
+            if ref in _BASES
+            and (
+                alt in _REFERENCE_ONLY_ALTS
+                or any(allele in _BASES for allele in alt.split(","))
+            )
+            else None
+        )
+        snp_shaped = genotype is not None
         reason = "missing_gt" if genotype == "--" else "called"
         identity_rejection = None
         if fields and len(parts) >= 8:
             rejection = policy.rejection(parts[3], parts[4], parts[-1])
             if rejection:
                 genotype, reason = "--", rejection
-            rejection = identity.rejection("", parts[5], parts[6])
+            if trim_identity_alts and identity.needs_alleles:
+                # Keep the selected sample's biallelic strand check without
+                # stripping the record ALTs used to classify the site.
+                observed = set(re.split(r"[/|]", parts[2].upper()))
+                alt = ",".join(
+                    allele for allele in alt.split(",") if allele in observed
+                )
+            rejection = identity.rejection("", ref, alt)
             if rejection:
                 genotype, reason = "--", rejection
                 identity_rejection = rejection
+        keys = [(alias, parts[1]) for alias in chromosome_aliases(parts[0])]
+        if snp_shaped:
+            snp_records.update(keys)
         if genotype is None:
             if not (policy.min_dp or policy.min_gq or policy.exclude_filtered):
+                # Ungated, a SNP record at the marker keeps its call, but an
+                # indel alone is no evidence of the reference (#1249).
+                unsupported.update(keys)
                 continue
             genotype, reason = "--", "unsupported_allele"
-        for alias in chromosome_aliases(parts[0]):
-            key = (alias, parts[1])
+        for key in keys:
             if identity_rejection == "strand_ambiguous":
                 strand_masked.add(key)
             # A later duplicate must not restore a deliberately masked site.
@@ -198,16 +232,20 @@ def _write_vcf_mode_kit(
             variant_calls[key] = "--" if masked else genotype
             if reasons is not None:
                 variant_reasons[key] = "strand_ambiguous" if masked else reason
+    for key in unsupported - variant_calls.keys():
+        variant_calls[key] = "--"
+        variant_reasons[key] = "unsupported_allele"
     logging.info(f"Found {len(variant_calls)} variants in input VCF matching targets.")
     # Absent targets read as the reference only on chromosomes the VCF has
-    # calls on: a woman's VCF has no chrY, which mustn't become Y genotypes.
-    called_contigs = {alias for alias, _pos in variant_calls}
+    # SNP records on: a woman's VCF has no chrY, which mustn't become Y
+    # genotypes, nor may a mismapped chrY indel make it look covered.
+    called_contigs = {alias for alias, _pos in snp_records}
     if restrict_reference_fill:
         # Extra panel hits must not make legacy-only targets appear covered.
         called_contigs = set()
         for line in _target_lines(params, ref_vcf_tab, outdir):
             parts = line.rstrip("\n").split("\t")
-            if len(parts) >= 2 and (parts[0], parts[1]) in variant_calls:
+            if len(parts) >= 2 and (parts[0], parts[1]) in snp_records:
                 called_contigs.add(parts[0])
 
     logging.info("Pre-fetching reference alleles for target SNPs...")
@@ -505,6 +543,7 @@ def _write_microarray_combined_kit(
     ref_fasta: str,
     ref_vcf_tab: str,
     restrict_reference_fill: bool = False,
+    trim_identity_alts: bool = False,
 ) -> str:
     combined_kit_txt = str(Path(outdir, f"{base_name}_CombinedKit.txt"))
     logging.info(f"Extracting genotypes to {combined_kit_txt}...")
@@ -526,6 +565,7 @@ def _write_microarray_combined_kit(
                     ref_vcf_tab=ref_vcf_tab,
                     reasons=reasons,
                     restrict_reference_fill=restrict_reference_fill,
+                    trim_identity_alts=trim_identity_alts,
                 )
             else:
                 _write_alignment_mode_kit(
