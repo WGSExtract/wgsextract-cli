@@ -677,3 +677,69 @@ def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
     for changed in [*([path] for path in paths), paths]:
         assert not routes(changed)["cli"], changed
         assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
+
+
+CODEQL_SCOPE = Path(__file__).resolve().parents[1] / "scripts/ci_codeql_scope.py"
+
+
+def codeql_scope(repo: Path, *args: str) -> list[str]:
+    result = subprocess.run(
+        [sys.executable, str(CODEQL_SCOPE), *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    key, _, value = result.stdout.strip().partition("=")
+    assert key == "analyze"
+    return json.loads(value)
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
+        ({"docs/guide.md": "changed\n"}, []),
+        ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
+        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
+        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
+        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        (
+            {"tools/check/action.yml": "runs: {}\n"},
+            ["javascript-typescript", "actions"],
+        ),
+        (
+            {".github/codeql/config.txt": "x\n"},
+            ["python", "javascript-typescript", "rust", "actions"],
+        ),
+    ],
+)
+def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
+    tmp_path: Path, changed: dict[str, str], expected: list[str]
+) -> None:
+    def commit(files: dict[str, str]) -> str:
+        for name, text in files.items():
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text(text)
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
+            cwd=tmp_path,
+            check=True,
+        )
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+        ).strip()
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    base = commit({"src/pkg/mod.py": "x = 1\n", "crate/Cargo.toml": "[package]\n"})
+    head = commit(changed)
+    assert codeql_scope(tmp_path, "--base", base, "--head", head) == expected
+    # Pushes and the nightly schedule keep every language.
+    assert codeql_scope(tmp_path, "--all") == [
+        "python",
+        "javascript-typescript",
+        "rust",
+        "actions",
+    ]
