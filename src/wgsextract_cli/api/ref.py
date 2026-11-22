@@ -370,7 +370,7 @@ class RefLibraryListParams(_ConfiguredLibrary):
 class RefLibraryDeleteParams(_ConfiguredLibrary):
     """Delete a catalog genome from the library's genomes folder: its FASTA,
     a partial download, its indexes and sequence dictionary. Its N counts,
-    which the library bootstrap ships, stay."""
+    which never change, stay."""
 
     # As ref library-list: the CLI deletes with 'ref library --delete'.
     COMMAND = "ref library-delete"
