@@ -43,7 +43,9 @@ def main(source: str) -> None:
         for record in lines[i + 1 :]:
             if record == "\\.":
                 break
-            rows.append(dict(zip(columns, record.split("\t"), strict=True)) | {"": record})
+            rows.append(
+                dict(zip(columns, record.split("\t"), strict=True)) | {"": record}
+            )
         blocks[name] = (line, columns, rows)
     keep = {
         name: [r for r in blocks[name][2] if r[TABLES[name]] in DRUGS]
@@ -54,9 +56,13 @@ def main(source: str) -> None:
     keep["publication"] = [
         r for r in blocks["publication"][2] if r["guidelineid"] in guidelines
     ]
-    text = "-- CPIC database v1.61.0 (CC0 1.0), rows of a few drugs; see provenance.json\n"
+    text = (
+        "-- CPIC database v1.61.0 (CC0 1.0), rows of a few drugs; see provenance.json\n"
+    )
     for name in TABLES:
-        text += blocks[name][0] + "\n" + "".join(r[""] + "\n" for r in keep[name]) + "\\.\n"
+        text += (
+            blocks[name][0] + "\n" + "".join(r[""] + "\n" for r in keep[name]) + "\\.\n"
+        )
     with gzip.GzipFile(out, "wb", mtime=0) as stream:
         stream.write(text.encode("utf-8"))
 
