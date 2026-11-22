@@ -8,7 +8,6 @@ import sys
 import time
 from pathlib import Path
 
-import psutil
 import pytest
 import tomllib
 
@@ -41,9 +40,8 @@ with shared_file_lock(Path(sys.argv[1])) as target:
 """
 
 
-def _lock_record(pid: int, **fields: object) -> str:
-    owner = {"pid": pid, "host": socket.gethostname(), "boot": psutil.boot_time()}
-    return json.dumps(owner | fields)
+def _lock_record(pid: int) -> str:
+    return json.dumps({"pid": pid, "host": socket.gethostname(), "token": "test"})
 
 
 def _start_app_save(path: Path, seconds: float) -> subprocess.Popen[str]:
@@ -97,24 +95,48 @@ def test_1230_a_crashed_savers_lock_does_not_block_saves(temp_config):
 @pytest.mark.parametrize(
     "left",
     [
-        # Before the computer restarted, by a process whose ID is in use again.
-        _lock_record(os.getpid(), boot=psutil.boot_time() - 3600),
-        # By a process whose ID another process has taken since.
-        _lock_record(os.getpid(), started=psutil.Process().create_time() - 3600),
+        # By this process, when removing it failed (Windows refused).
+        _lock_record(os.getpid()),
         # Empty: its save crashed before writing who owned it.
         "",
     ],
-    ids=["previous-boot", "reused-pid", "never-written"],
+    ids=["release-failed", "never-written"],
 )
 def test_1230_an_abandoned_lock_does_not_block_saves(temp_config, left):
-    # Issue #1230: such a lock named a live process, or none, so every later
-    # save timed out until it was deleted by hand.
+    # Issue #1230: such a lock named this live process, or none, so every
+    # later save timed out until it was deleted by hand.
     lock = temp_config.with_name(".config.toml.lock")
     lock.write_text(left)
-    minute_ago = time.time() - 60
-    os.utime(lock, (minute_ago, minute_ago))
-    config.save_config({"reference_library": "/ref"})
-    assert tomllib.loads(temp_config.read_text()) == {"reference_library": "/ref"}
+    if not left:
+        minute_ago = time.time() - 60
+        os.utime(lock, (minute_ago, minute_ago))
+    with shared_file_lock(temp_config, timeout=5) as target:
+        target.write_text("saved\n")
+    assert temp_config.read_text() == "saved\n"
+    assert not lock.exists()
+
+
+def test_1230_a_lock_windows_would_not_let_its_maker_check_does_not_block(
+    temp_config, monkeypatch
+):
+    # Issue #1230: a sharing error (an antivirus scan, say) on reading back a
+    # new lock left it held by its maker, so that save and later ones timed out.
+    monkeypatch.setattr(sys, "platform", "win32")
+    lock = temp_config.with_name(".config.toml.lock")
+    read_bytes = Path.read_bytes
+    refused: list[Path] = []
+
+    def refuse_first_read(self: Path) -> bytes:
+        if self == lock and not refused:
+            refused.append(self)
+            raise PermissionError(13, "sharing violation", str(self))
+        return read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", refuse_first_read)
+    with shared_file_lock(temp_config, timeout=5) as target:
+        target.write_text("saved\n")
+    assert refused
+    assert temp_config.read_text() == "saved\n"
     assert not lock.exists()
 
 

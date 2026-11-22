@@ -306,6 +306,27 @@ test("#1230 undoing a failed move keeps a save made meanwhile, and paths that we
   assert.deepEqual({ ...parseToml(await readFile(file, "utf8")) }, { reference_library: from, output_directory: path.join(to, "out"), cpu_threads: 4 });
 });
 
+test("#1230 undoing a failed move keeps a list entry that the move made equal to another", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-relocation-"));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const file = path.join(root, "config.toml");
+  const from = path.join(root, "old", "ref");
+  const to = path.join(root, "new", "ref");
+  const extra = path.join(root, "extra");
+  await writeFile(file, stringifyToml({ server_allowed_paths: [from, to] }));
+  const rewritten = [];
+  await relocateSettingsFile(file, from, to, rewritten);
+  // The CLI allows another folder before the move fails.
+  const saved = parseToml(await readFile(file, "utf8"));
+  await writeFile(file, stringifyToml({ server_allowed_paths: [...saved.server_allowed_paths, extra] }));
+
+  for (const done of rewritten) {
+    await restoreRewrittenFile(done);
+  }
+
+  assert.deepEqual(parseToml(await readFile(file, "utf8")).server_allowed_paths, [from, to, extra]);
+});
+
 test("changing one folder setting moves what is in it, and the settings inside it follow", async (t) => {
   const { root, source, bundle, users } = await fixture(t);
   await prepareBundleWorkspace(manifest, source);

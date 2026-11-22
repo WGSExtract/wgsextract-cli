@@ -215,49 +215,34 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
 # are files made with O_EXCL; gui/app/web/src/server/settings-lock.ts mirrors
 # this protocol. A holder keeps one for a single read-modify-write.
 
-# Boot times read at different moments differ a little.
-_BOOT_TOLERANCE = 60
 # A lock is written straight after it is made; still empty after this long, its
 # maker stopped in between.
 _UNWRITTEN_SECONDS = 10
+# The records of the locks this process holds, or is making.
+_HELD: set[bytes] = set()
 
 
 def _shared_lock_record() -> bytes:
-    import psutil
-
     return json.dumps(
-        {
-            "pid": os.getpid(),
-            "host": socket.gethostname(),
-            "boot": psutil.boot_time(),
-            "started": psutil.Process().create_time(),
-            "token": uuid.uuid4().hex,
-        }
+        {"pid": os.getpid(), "host": socket.gethostname(), "token": uuid.uuid4().hex}
     ).encode()
 
 
 def _owner_exited(record: bytes) -> bool:
-    """Whether the process that wrote ``record`` has provably exited: it ran
-    before this computer last started, or its process ID is gone or now names
-    another process. An owner on another computer keeps its lock until it is
-    released, so a slow save is never overtaken. Raises ValueError, KeyError
-    or TypeError for a record that is not one."""
-    import psutil
-
+    """Whether the process that wrote ``record`` has provably exited, or is
+    this one and no longer holds the lock (its removal failed). An owner on
+    another computer, or whose process ID is in use, keeps its lock until it
+    is released, so a slow save is never overtaken. Raises ValueError,
+    KeyError or TypeError for a record that is not one."""
     owner = json.loads(record)
-    pid, host, boot = int(owner["pid"]), str(owner["host"]), float(owner["boot"])
+    pid, host = int(owner["pid"]), str(owner["host"])
     if host.casefold() != socket.gethostname().casefold():
         return False
-    if abs(boot - psutil.boot_time()) > _BOOT_TOLERANCE:
-        return True
-    try:
-        started = psutil.Process(pid).create_time()
-    except psutil.NoSuchProcess:
-        return True
-    except psutil.Error:
-        return False
-    # The app records no start time: Node cannot read one the way psutil does.
-    return "started" in owner and abs(started - float(owner["started"])) > 1
+    if pid == os.getpid():
+        return record not in _HELD
+    import psutil
+
+    return not psutil.pid_exists(pid)
 
 
 def _windows_busy(error: OSError) -> bool:
@@ -267,7 +252,19 @@ def _windows_busy(error: OSError) -> bool:
 
 
 def _create_shared_lock(lock: Path, record: bytes) -> bool:
-    """Create ``lock`` holding ``record``; False if another holds it."""
+    """Create ``lock`` holding ``record``; False if another holds it. One this
+    leaves behind on failing, this process reclaims."""
+    _HELD.add(record)
+    created = False
+    try:
+        created = _publish_shared_lock(lock, record)
+    finally:
+        if not created:
+            _HELD.discard(record)
+    return created
+
+
+def _publish_shared_lock(lock: Path, record: bytes) -> bool:
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     except FileExistsError:
@@ -305,11 +302,14 @@ def _remove_shared_lock(lock: Path, record: bytes) -> bool:
 
 
 def _release_shared_lock(lock: Path, record: bytes) -> None:
-    for _ in range(100):
-        if _remove_shared_lock(lock, record):
-            return
-        time.sleep(0.02)
-    logging.warning(f"Could not remove lock {lock}")
+    try:
+        for _ in range(100):
+            if _remove_shared_lock(lock, record):
+                return
+            time.sleep(0.02)
+        logging.warning(f"Could not remove lock {lock}; the next save removes it")
+    finally:
+        _HELD.discard(record)
 
 
 def _remove_if_abandoned(lock: Path) -> None:
@@ -357,10 +357,11 @@ def shared_file_lock(path: Path, timeout: float = 60) -> Iterator[Path]:
     target = Path(path).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     lock = target.with_name(f".{target.name}.lock")
-    record = _shared_lock_record()
     deadline = time.monotonic() + timeout
     busy_since: float | None = None
     while True:
+        # A new record each try: one left by a failed try is reclaimable.
+        record = _shared_lock_record()
         try:
             if _create_shared_lock(lock, record):
                 break

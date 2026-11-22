@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, readlink, realpath, stat, unlink } from "node:fs/promises";
-import { hostname, uptime } from "node:os";
+import { hostname } from "node:os";
 import path from "node:path";
 import { errnoCode } from "./errors.js";
 
 // The CLI saves the same settings files. Node has no flock, so both take an O_EXCL lock file beside the
 // real file; src/wgsextract_cli/core/file_lock.py (shared_file_lock) mirrors this protocol.
 const pollMs = 20;
-// Boot times read at different moments differ a little.
-const bootToleranceSeconds = 60;
 // A lock is written straight after it is made; still empty after this long, its maker stopped in between.
 const unwrittenMs = 10_000;
+/** The records of the locks this process holds, or is making. */
+const held = new Set<string>();
 
 /**
  * Runs one read-modify-write of `filePath` while holding `.<name>.lock` beside the real file behind it, and
@@ -20,10 +20,12 @@ export async function withSettingsFileLock<T>(filePath: string, action: (target:
     const target = await realPathAllowingMissing(filePath);
     await mkdir(path.dirname(target), { recursive: true });
     const lock = path.join(path.dirname(target), `.${path.basename(target)}.lock`);
-    const record = lockRecord();
     const deadline = Date.now() + timeoutMs;
     let busySince: number | undefined;
+    let record: string;
     for (;;) {
+        // A new record each try: one left by a failed try is reclaimable.
+        record = lockRecord();
         try {
             if (await create(lock, record)) {
                 break;
@@ -75,11 +77,7 @@ async function realPathAllowingMissing(filePath: string, links = 0): Promise<str
 }
 
 function lockRecord() {
-    return JSON.stringify({ pid: process.pid, host: hostname(), boot: bootTime(), token: randomUUID() });
-}
-
-function bootTime() {
-    return Date.now() / 1000 - uptime();
+    return JSON.stringify({ pid: process.pid, host: hostname(), token: randomUUID() });
 }
 
 /** Windows refuses to create or delete a file another process is deleting or reading. */
@@ -87,8 +85,22 @@ function windowsBusy(error: unknown) {
     return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(errnoCode(error) ?? "");
 }
 
-/** Creates `lock` holding `record`; false if another holds it. */
+/** Creates `lock` holding `record`; false if another holds it. One this leaves behind on failing, this process reclaims. */
 async function create(lock: string, record: string): Promise<boolean> {
+    held.add(record);
+    let created = false;
+    try {
+        created = await publish(lock, record);
+    }
+    finally {
+        if (!created) {
+            held.delete(record);
+        }
+    }
+    return created;
+}
+
+async function publish(lock: string, record: string): Promise<boolean> {
     let handle;
     try {
         handle = await open(lock, "wx");
@@ -165,27 +177,26 @@ async function removeIfAbandoned(lock: string) {
 }
 
 /**
- * Whether the process that wrote `record` has provably exited: it ran before this computer last started, or its
- * process ID is gone. An owner on another computer keeps its lock until it is released, so a slow save is never
- * overtaken. Undefined for a record that is not one. Unlike the CLI, this cannot tell a reused process ID: Node has
- * no way to read another process's start time.
+ * Whether the process that wrote `record` has provably exited, or is this one and no longer holds the lock (its
+ * removal failed). An owner on another computer, or whose process ID is in use, keeps its lock until it is released,
+ * so a slow save is never overtaken. Undefined for a record that is not one.
  */
 function ownerExited(record: string): boolean | undefined {
-    let owner: { pid?: unknown; host?: unknown; boot?: unknown };
+    let owner: { pid?: unknown; host?: unknown };
     try {
-        owner = JSON.parse(record) as { pid?: unknown; host?: unknown; boot?: unknown };
+        owner = JSON.parse(record) as { pid?: unknown; host?: unknown };
     }
     catch {
         return undefined;
     }
-    if (owner == null || typeof owner !== "object" || typeof owner.pid !== "number" || typeof owner.host !== "string" || typeof owner.boot !== "number") {
+    if (owner == null || typeof owner !== "object" || typeof owner.pid !== "number" || typeof owner.host !== "string") {
         return undefined;
     }
     if (owner.host.toLowerCase() !== hostname().toLowerCase()) {
         return false;
     }
-    if (Math.abs(owner.boot - bootTime()) > bootToleranceSeconds) {
-        return true;
+    if (owner.pid === process.pid) {
+        return !held.has(record);
     }
     try {
         process.kill(owner.pid, 0);
@@ -216,13 +227,18 @@ async function remove(lock: string, record: string): Promise<boolean> {
 }
 
 async function release(lock: string, record: string) {
-    for (let attempt = 0; attempt < 100; attempt++) {
-        if (await remove(lock, record)) {
-            return;
+    try {
+        for (let attempt = 0; attempt < 100; attempt++) {
+            if (await remove(lock, record)) {
+                return;
+            }
+            await delay(pollMs);
         }
-        await delay(pollMs);
+        console.warn(`Could not remove lock ${lock}; the next save removes it`);
     }
-    console.warn(`Could not remove lock ${lock}`);
+    finally {
+        held.delete(record);
+    }
 }
 
 function delay(ms: number) {

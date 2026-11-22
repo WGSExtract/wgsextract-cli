@@ -64,11 +64,15 @@ function undoRewrite(original: unknown, written: unknown, current: unknown): unk
     if (isDeepStrictEqual(current, written)) {
         return original;
     }
-    if (Array.isArray(original) && Array.isArray(written) && Array.isArray(current)) {
-        return current.map((item) => {
-            const index = written.findIndex((candidate) => isDeepStrictEqual(candidate, item));
-            return index < 0 ? item : original[index];
-        });
+    // Entries correspond by position. Only entries added after the rewritten ones keep that; after any other
+    // change to the list, which entry was which is unknown, so it stays as saved.
+    if (Array.isArray(original) && Array.isArray(written) && Array.isArray(current) && current.length >= written.length) {
+        if (current.length === written.length) {
+            return current.map((item, index) => undoRewrite(original[index], written[index], item));
+        }
+        if (written.every((item, index) => isDeepStrictEqual(current[index], item))) {
+            return [...original, ...current.slice(written.length)];
+        }
     }
     if (isTable(original) && isTable(written) && isTable(current)) {
         return Object.fromEntries(Object.entries(current).map(([key, item]) => [

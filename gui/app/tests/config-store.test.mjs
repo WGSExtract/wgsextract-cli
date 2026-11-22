@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
-import { hostname, tmpdir, uptime } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { spawn, spawnSync } from "node:child_process";
@@ -11,8 +11,8 @@ const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, save
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 const { withSettingsFileLock } = await import("../dist/web/src/server/settings-lock.js");
 
-function lockRecord(pid, fields = {}) {
-  return JSON.stringify({ pid, host: hostname(), boot: Date.now() / 1000 - uptime(), token: "test", ...fields });
+function lockRecord(pid) {
+  return JSON.stringify({ pid, host: hostname(), token: "test" });
 }
 
 async function tempDirectory(t) {
@@ -257,7 +257,9 @@ test("#1230 a slow save keeps its lock however long it takes", async (t) => {
   const file = path.join(bundleRoot, "config.toml");
   await writeFile(file, 'first = "1"\n');
   const lock = path.join(bundleRoot, ".config.toml.lock");
-  await writeFile(lock, lockRecord(process.pid));
+  const saver = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], { stdio: "ignore" });
+  t.after(() => saver.kill());
+  await writeFile(lock, lockRecord(saver.pid));
   const hourAgo = new Date(Date.now() - 3_600_000);
   await utimes(lock, hourAgo, hourAgo);
 
@@ -302,15 +304,17 @@ test("#1230 a lock left by a save that crashed does not block saving", async (t)
 });
 
 for (const [left, write] of [
-  ["before the computer restarted, by a process whose ID is in use again", (lock) => writeFile(lock, lockRecord(process.pid, { boot: Date.now() / 1000 - uptime() - 3600 }))],
-  ["empty, by a save that crashed before writing its owner", (lock) => writeFile(lock, "")],
+  ["by this app, when removing it failed", (lock) => writeFile(lock, lockRecord(process.pid))],
+  ["empty, by a save that crashed before writing its owner", async (lock) => {
+    await writeFile(lock, "");
+    const minuteAgo = new Date(Date.now() - 60_000);
+    await utimes(lock, minuteAgo, minuteAgo);
+  }],
 ]) {
   test(`#1230 a lock left ${left} does not block saving`, async (t) => {
     const bundleRoot = await tempDirectory(t);
     const lock = path.join(bundleRoot, ".config.toml.lock");
     await write(lock);
-    const minuteAgo = new Date(Date.now() - 60_000);
-    await utimes(lock, minuteAgo, minuteAgo);
 
     await withSettingsFileLock(path.join(bundleRoot, "config.toml"), (target) => writeFile(target, "saved\n"), 2_000);
 
