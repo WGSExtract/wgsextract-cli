@@ -433,7 +433,12 @@ def record_sex(input_path: str, call: SexCall) -> None:
 
 
 def input_signature(path: str) -> dict[str, int | str] | None:
-    """Local identity and a bounded content check, even for whole-genome files."""
+    """Local identity and a bounded content check, even for whole-genome files.
+
+    The sampled digest is not a full integrity check. On Windows, ctime
+    records creation, not edits, so a change outside the samples that also
+    preserves size and mtime can go undetected.
+    """
     st = os.stat(path)
     content = fingerprint(path)
     if content is None:

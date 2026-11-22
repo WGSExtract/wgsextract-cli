@@ -9,6 +9,7 @@ import gzip
 import json
 import os
 import shutil
+import stat
 from pathlib import Path
 
 import pytest
@@ -118,6 +119,7 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
     vcf = tmp_path / "out" / "acmg_annotated.vcf.gz"
     vcf.parent.mkdir()
     shutil.copy2(inputs["input"], vcf)
+    vcf.chmod(0o600)
     old_index = vcf.with_suffix(".csi")
     run_command(["tabix", "-C", "-p", "vcf", str(vcf)])
     Path(f"{vcf}.csi").rename(old_index)
@@ -126,6 +128,8 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
 
     # #1215: the old alternate index must not shadow the new VCF's index.
     assert not old_index.exists()
+    if os.name != "nt":
+        assert stat.S_IMODE(Path(f"{vcf}.tbi").stat().st_mode) & 0o077 == 0
     indexed_records = run_command(
         [
             "bcftools",

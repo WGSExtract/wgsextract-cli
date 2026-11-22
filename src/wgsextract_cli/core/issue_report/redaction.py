@@ -69,7 +69,7 @@ _QUOTED_PATH = re.compile(r"""(['"])((?:[A-Za-z]:[\\/]|\\\\|~[\\/]|/)[^'"\r\n]*)
 _BARE_FILE = re.compile(
     r"(?<![\w<>/\\.~-])(?:\w|<sample>)[\w.-]*?(?:"
     + "|".join(re.escape(e) for e in _DATA_EXTENSIONS)
-    + r")(?![\w.-])",
+    + r")(?![\w-]|\.+[\w-])",
     re.IGNORECASE,
 )
 # Relative paths: reduced when they have 2+ separators or end in a data file.

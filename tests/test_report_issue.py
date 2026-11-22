@@ -204,9 +204,9 @@ def test_redactor_removes_identifying_text(
 @pytest.mark.parametrize("extension", ["parquet", "sqlite"])
 def test_1215_redacts_bare_variant_table_names(extension: str) -> None:
     filename = f"Jane_Doe_variants.{extension}"
-    cleaned = Redactor().text(f"Failed to write {filename}")
+    cleaned = Redactor().text(f"Failed to write {filename}.")
     assert "Jane_Doe" not in cleaned
-    assert f"<file>.{extension}" in cleaned
+    assert f"<file>.{extension}." in cleaned
 
 
 def test_redactor_keeps_what_diagnoses_a_problem() -> None:

@@ -786,6 +786,9 @@ def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -
 
 
 def _publish_indexed_vcf(staged: Path, final: Path) -> None:
+    # Let the indexer see restrictions the publisher will preserve.
+    if final.is_file():
+        staged.chmod(staged.stat().st_mode & final.stat().st_mode & 0o777)
     ensure_vcf_indexed(staged)
     outputs = {}
     obsolete = []
