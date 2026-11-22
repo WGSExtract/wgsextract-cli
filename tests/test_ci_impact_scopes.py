@@ -1,5 +1,6 @@
 """Scope regressions for the decisive selector pilot (#1339)."""
 
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from runpy import run_path
@@ -7,6 +8,7 @@ from typing import cast
 
 from coverage import Coverage
 
+from scripts.ci_impact_diff import git_blob, impact_diff
 from scripts.ci_impact_observations import read_observations
 from scripts.ci_impact_scopes import changed_scopes, module_scopes
 
@@ -98,3 +100,44 @@ def test_repeated_function_execution_records_both_contexts(tmp_path: Path) -> No
         "run": ["tests/test_first.py"],
         "run.<locals>.nested": ["tests/test_first.py", "tests/test_second.py"],
     }
+
+
+def test_diff_preserves_deleted_and_renamed_inputs_across_diverged_branches(
+    tmp_path: Path,
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "core.hooksPath=/dev/null", *args],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "CI test")
+    moved = "old path.py"
+    removed = "removed.py"
+    original = b"def moved():\n    return 123\n"
+    (tmp_path / moved).write_bytes(original)
+    (tmp_path / removed).write_text("REMOVED = 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-qm", "merge base")
+    base = git("rev-parse", "HEAD")
+    git("switch", "--quiet", "-c", "topic")
+    git("mv", moved, "new path.py")
+    git("rm", "--quiet", removed)
+    git("commit", "-qm", "move and remove")
+    topic = git("rev-parse", "HEAD")
+    git("switch", "--quiet", "main")
+    (tmp_path / moved).write_bytes(b"OTHER_BRANCH = True\n")
+    git("commit", "-qam", "edit on main")
+
+    diff = impact_diff(tmp_path, "main", "topic")
+
+    assert diff.base == base
+    assert diff.head == topic
+    assert {(change.before, change.after) for change in diff.changes} == {
+        (moved, "new path.py"),
+        (removed, None),
+    }
+    assert git_blob(tmp_path, diff.base, moved) == original
