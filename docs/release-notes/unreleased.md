@@ -3,15 +3,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
-- `vcf callability` classifies each coding exon of a gene list (ACMG SF by
-  default; MANE Select on hg38, RefSeq Select on hg19, bundled) from the
-  sample's gVCF as callable, partial, not readable, specialist required
-  (a GIAB low-mappability or segmental-duplication region) or not run, so
-  a gene with reads over 90% of its body no longer hides an unread exon. The
-  report's new exon callability section says, per gene, whether the ClinVar
-  section's silence means not reported, not readable or not run. Callability
-  is technical: it never establishes the absence of disease. Works offline
-  ([#1177, exon callability](https://github.com/WGSExtract/wgsextract-cli/issues/1177)).
 - [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
   button to its current desktop page and command, with changed defaults,
   features not yet equivalent and settings/reference precautions. NOTICE now

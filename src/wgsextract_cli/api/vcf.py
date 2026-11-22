@@ -155,7 +155,9 @@ def callability(
     metrics."""
     from wgsextract_cli.commands.vcf.callability import run_callability
 
-    return _run_on_vcf(params, run_callability, progress, cancel, check)
+    return execute(
+        params, run_callability, progress=progress, cancel=cancel, check=check
+    )
 
 
 def table(
