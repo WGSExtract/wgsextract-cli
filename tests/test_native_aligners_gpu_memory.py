@@ -43,13 +43,25 @@ from tests.test_native_aligners import (
 )
 from tests.test_realign import _old_alignment
 from wgsextract_cli.commands.alignment import common, preparation, short_reads
-from wgsextract_cli.core import native_aligners
+from wgsextract_cli.core import config, native_aligners
 from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     estimate_mapping_memory,
 )
 from wgsextract_cli.core.bwa_mem2 import INDEX_SUFFIXES
 from wgsextract_cli.core.config import settings
+
+
+def test_issue1403_clearing_gpu_preference_restores_unset_config(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("prefer_native_gpu = false\n")
+    with config.scoped_config(path):
+        assert config.typed_settings().prefer_native_gpu is False
+
+        config.save_config({"prefer_native_gpu": None})
+
+        assert "prefer_native_gpu" not in config.load_config()
+        assert config.typed_settings().prefer_native_gpu is None
 
 
 def _windows_bwa_candidate(tmp_path, capabilities):
