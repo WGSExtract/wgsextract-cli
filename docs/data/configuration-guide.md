@@ -15,6 +15,9 @@ Saves are atomic; `wgsextract config` prompts only in an interactive terminal.
 A save from the CLI or the desktop app waits while another is in progress,
 holding a hidden `.config.toml.lock` beside the file, and keeps the other's
 changes; after 60 seconds it fails, naming the lock.
+If the selected file contains invalid TOML or is not UTF-8, the CLI stops and
+reports the file path and error location. Correct the file or select a valid
+one with `--config`.
 Boolean values must be unquoted `true`/`false`, never `"false"`.
 Threads accept a positive integer or `"auto"`; legacy numeric strings such
 as `"4"` still work. Integer thresholds/TTLs require integers, not quoted

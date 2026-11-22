@@ -251,6 +251,15 @@ def read_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_bytes().decode("utf-8-sig"))
 
 
+def _read_settings_file(path: Path) -> dict[str, Any]:
+    try:
+        return read_toml(path)
+    except tomllib.TOMLDecodeError as e:
+        raise WGSExtractError(f"Invalid TOML in {path}: {e}") from e
+    except UnicodeDecodeError as e:
+        raise WGSExtractError(f"Invalid UTF-8 in {path} at byte {e.start + 1}") from e
+
+
 def load_config() -> dict[str, Any]:
     """
     Load configuration from the standard config file.
@@ -274,8 +283,8 @@ def load_config() -> dict[str, Any]:
         )
     if config_path.exists():
         try:
-            config = read_toml(config_path)
-        except (OSError, tomllib.TOMLDecodeError) as e:
+            config = _read_settings_file(config_path)
+        except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
@@ -524,12 +533,7 @@ def save_config(updates: dict[str, Any]) -> None:
         if target.exists():
             # Refuse to overwrite a config we cannot parse; that would drop the
             # user's other settings.
-            try:
-                current_config = read_toml(target)
-            except tomllib.TOMLDecodeError as e:
-                raise WGSExtractError(
-                    f"Cannot update {config_path}: it is not valid TOML ({e})."
-                ) from e
+            current_config = _read_settings_file(target)
 
         _apply_config_updates(current_config, updates)
         _validate_config_types(current_config, config_path)

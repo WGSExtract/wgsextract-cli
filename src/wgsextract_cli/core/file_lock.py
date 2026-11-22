@@ -7,12 +7,18 @@ import logging
 import os
 import socket
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.utils import WGSExtractError
+
+_REMOTE_STALE_SECONDS = 7 * 24 * 60 * 60
+_HEARTBEAT_INTERVAL = 60
+_RELEASE_TIMEOUT = 30
 
 # Chosen at import, so tests that patch sys.platform still lock natively.
 if sys.platform == "win32":
@@ -102,7 +108,7 @@ def _abandoned(path: Path, timeout: float) -> bool:
     try:
         record = json.loads(path.read_text())
         if record["host"] != socket.gethostname():
-            return False
+            return time.time() - path.stat().st_mtime > _REMOTE_STALE_SECONDS
         try:
             process = psutil.Process(record["pid"])
             return bool(process.create_time() != record["created"])
@@ -121,9 +127,25 @@ def held(lock: str, timeout: float = 1800) -> bool:
     return path.exists() and not _abandoned(path, timeout)
 
 
+def _heartbeat(path: Path, record: str, stop: threading.Event) -> None:
+    while not stop.wait(_HEARTBEAT_INTERVAL):
+        try:
+            with _reclaim_guard(path, time.monotonic() + _RELEASE_TIMEOUT):
+                if stop.is_set() or not path.exists() or path.read_text() != record:
+                    return
+                os.utime(path, None)
+        except (OSError, WGSExtractError):
+            logging.warning("Could not refresh builder lock %s", path, exc_info=True)
+
+
 @contextlib.contextmanager
 def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
-    """Reclaim dead local owners, never evict a live hour-long index builder."""
+    """Reclaim dead local owners without expiring live local builders.
+
+    Remote owners cannot be checked by PID. Their lock expires seven days
+    after its last modification (the latest heartbeat, or creation for older
+    writers), independent of the acquisition timeout.
+    """
     import psutil
 
     path = Path(lock)
@@ -159,14 +181,34 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
             raise WGSExtractError(
                 f"Timed out waiting for index builder lock: {path}"
             ) from None
-        logging.info(f"Waiting for another run to finish building {lock[:-5]}...")
+        logging.info(
+            "Waiting for another run to finish building %s...",
+            lock.removesuffix(".lock"),
+        )
         time.sleep(min(5, max(0, deadline - time.monotonic())))
+    stop = threading.Event()
+    body_failed = False
     try:
+        context_thread(
+            _heartbeat,
+            args=(path, record, stop),
+            name="builder-lock-heartbeat",
+            daemon=True,
+        ).start()
         yield
+    except BaseException:
+        body_failed = True
+        raise
     finally:
-        with _reclaim_guard(path, time.monotonic() + timeout):
-            if path.exists() and path.read_text() == record:
-                path.unlink(missing_ok=True)
+        stop.set()
+        try:
+            with _reclaim_guard(path, time.monotonic() + _RELEASE_TIMEOUT):
+                if path.exists() and path.read_text() == record:
+                    path.unlink(missing_ok=True)
+        except Exception:
+            if not body_failed:
+                raise
+            logging.exception("Could not release builder lock %s", path)
 
 
 # The desktop app's Node backend shares these locks but has no flock, so they
