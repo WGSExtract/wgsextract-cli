@@ -261,7 +261,9 @@ def _index_file_state(
 
 @dataclass
 class FileFacts:
-    header: str | None
+    # The header's contig lengths, not its text: headers can be large, and
+    # these facts are cached.
+    lengths: dict[str, int]
     assembly: str | None
     samples: list[str]
     index: ArtifactIndex | None
@@ -285,9 +287,10 @@ def _cached_facts(path: str, kind: str, *_version: object) -> FileFacts:
 
 def _read_facts(path: str, kind: str) -> FileFacts:
     header = read_header(path, kind)
+    lengths = header_lengths(header) if header else {}
     return FileFacts(
-        header,
-        assembly_of(header_lengths(header)) if header else None,
+        lengths,
+        assembly_of(lengths) if lengths else None,
         header_samples(header, kind) if header else [],
         index_state(path, kind, header),
     )

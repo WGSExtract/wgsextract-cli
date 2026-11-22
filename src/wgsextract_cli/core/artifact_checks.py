@@ -10,7 +10,6 @@ from wgsextract_cli.core.artifact_facts import (
     GENOMIC_KINDS,
     FileFacts,
     file_facts,
-    header_lengths,
 )
 from wgsextract_cli.core.artifacts import recorded_producer
 from wgsextract_cli.core.errors import CodedError
@@ -149,11 +148,11 @@ def _require_same_assembly(
     if not lengths:
         return
     for role, path, kind, found in facts:
-        if kind not in ("vcf", "bcf") or not found.header:
+        if kind not in ("vcf", "bcf") or not found.lengths:
             continue
         differ = [
             name
-            for name, length in header_lengths(found.header).items()
+            for name, length in found.lengths.items()
             if (other := match_chromosome_name(name, list(lengths)))
             and lengths[other] != length
         ]
