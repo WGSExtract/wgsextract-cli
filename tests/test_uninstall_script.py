@@ -475,6 +475,72 @@ def test_1246_uninstall_removes_external_cache_only_if_installer_created_it(
     assert not install_dir.exists()
 
 
+def test_1246_uninstall_keeps_an_installer_created_cache_that_holds_the_env_dir(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    cache_dir = tmp_path / "pixi"
+    env_dir = cache_dir / "envs"
+    own = link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
+    other = env_dir / "other-project-456" / "envs" / "default"
+    other.mkdir(parents=True)
+    (other / "keep.txt").write_text("other project\n", encoding="utf-8")
+    write_layout(
+        install_dir,
+        pixi_cache_dir=cache_dir,
+        pixi_env_dir=env_dir,
+        created_pixi_cache_dir=cache_dir,
+    )
+
+    run_uninstall(install_dir / "uninstall.sh", "--yes")
+
+    assert not own.exists()
+    assert (other / "keep.txt").read_text(encoding="utf-8") == "other project\n"
+
+
+def test_1246_keep_flags_do_not_claim_to_keep_pixi_dirs_inside_the_install(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+
+    result = run_uninstall(
+        install_dir / "uninstall.sh",
+        "--dry-run",
+        "--keep-pixi-envs",
+        "--keep-pixi-cache",
+    )
+
+    assert "--keep-pixi-envs does not keep" in result.stdout
+    assert "--keep-pixi-cache does not keep" in result.stdout
+    assert "Keeping Pixi environments" not in result.stdout
+    assert "Keeping Pixi cache" not in result.stdout
+
+
+def test_1246_prompt_lists_config_and_pixi_home_it_will_remove(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    home = tmp_path / "home"
+    pixi_home = make_fake_pixi_home(home)
+    workspace = home / "wgs-extract"
+    workspace.mkdir()
+    (workspace / "config.toml").write_text("cpu_threads = 2\n")
+    (workspace / ".users-workspace").write_text("WGS Extract users workspace\n")
+
+    result = run_uninstall(
+        install_dir / "uninstall.sh",
+        "--remove-config",
+        "--remove-pixi",
+        env={"HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config")},
+        input_text="n\n",
+    )
+
+    prompt = result.stdout.split("Continue?")[0]
+    assert str(workspace / "config.toml") in prompt
+    assert str(pixi_home) in prompt
+    assert (workspace / "config.toml").exists()
+
+
 def test_uninstall_refuses_external_launcher_that_is_not_generated(
     tmp_path: Path,
 ) -> None:

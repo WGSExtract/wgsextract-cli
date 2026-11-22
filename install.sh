@@ -327,12 +327,26 @@ RATTLER_CACHE_DIR="$PIXI_CACHE_DIR/rattler"
 export PIXI_VERSION RATTLER_CACHE_DIR
 PIXI_ENV_DIR="$(absolute_path "${WGSEXTRACT_PIXI_ENV_DIR:-$DEFAULT_PIXI_ENV_DIR}")"
 
+trim_trailing_slashes() {
+    trimmed_path="$1"
+    while [ "$trimmed_path" != "/" ] && [ "${trimmed_path%/}" != "$trimmed_path" ]; do
+        trimmed_path="${trimmed_path%/}"
+    done
+    printf '%s\n' "$trimmed_path"
+}
 # uninstall.sh removes a Pixi folder outside the install only if this install
 # (or an earlier one, per its install-layout.txt) created it: others may share it.
 created_by_install() {
     [ ! -e "$2" ] && [ ! -L "$2" ] && return 0
-    [ -f "$INSTALL_DIR/install-layout.txt" ] &&
-        grep -Fqx -- "$(printf '%s\t%s' "$1" "$2")" "$INSTALL_DIR/install-layout.txt"
+    [ -f "$INSTALL_DIR/install-layout.txt" ] || return 1
+    created_path="$(trim_trailing_slashes "$2")"
+    while IFS="$(printf '\t')" read -r created_key created_record; do
+        if [ "$created_key" = "$1" ] &&
+            [ "$(trim_trailing_slashes "$created_record")" = "$created_path" ]; then
+            return 0
+        fi
+    done < "$INSTALL_DIR/install-layout.txt"
+    return 1
 }
 PIXI_CACHE_DIR_CREATED=0
 PIXI_ENV_DIR_CREATED=0

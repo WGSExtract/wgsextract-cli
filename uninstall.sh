@@ -242,6 +242,13 @@ refuse_symlinked_users_workspace() {
     fi
 }
 
+# The users workspace config is removed only from a workspace marked as ours.
+in_unmarked_users_workspace() {
+    [ "$1" = "$HOME/wgs-extract/config.toml" ] || return 1
+    users_marker="$HOME/wgs-extract/.users-workspace"
+    [ ! -f "$users_marker" ] || [ -L "$users_marker" ] || [ "$(cat "$users_marker")" != "WGS Extract users workspace" ]
+}
+
 config_paths() {
     printf '%s\n' "$HOME/wgs-extract/config.toml"
     case "$(uname -s)" in
@@ -504,9 +511,13 @@ validate_removal_path "$INSTALL_DIR"
 # Decide what goes before asking, so the prompt names exactly what is deleted.
 ENV_REMOVAL=""
 ENV_NOTE=""
-if [ "$KEEP_PIXI_ENVS" = "1" ]; then
-    ENV_NOTE="Keeping Pixi environments."
-elif ! is_within_or_same "$PIXI_ENV_DIR" "$INSTALL_DIR"; then
+if is_within_or_same "$PIXI_ENV_DIR" "$INSTALL_DIR"; then
+    if [ "$KEEP_PIXI_ENVS" = "1" ]; then
+        ENV_NOTE="--keep-pixi-envs does not keep Pixi environments inside the install: $PIXI_ENV_DIR"
+    fi
+elif [ "$KEEP_PIXI_ENVS" = "1" ]; then
+    ENV_NOTE="Keeping Pixi environments: $PIXI_ENV_DIR"
+else
     ENV_REMOVAL="$(project_env_dir)"
     if [ -n "$ENV_REMOVAL" ]; then
         validate_removal_path "$ENV_REMOVAL"
@@ -517,16 +528,26 @@ elif ! is_within_or_same "$PIXI_ENV_DIR" "$INSTALL_DIR"; then
 fi
 CACHE_REMOVAL=""
 CACHE_NOTE=""
-if [ "$KEEP_PIXI_CACHE" = "1" ]; then
-    CACHE_NOTE="Keeping Pixi cache."
-elif ! is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
-    if [ -n "$CREATED_PIXI_CACHE_DIR" ] &&
-        [ "$(trim_trailing_slashes "$PIXI_CACHE_DIR")" = "$(trim_trailing_slashes "$CREATED_PIXI_CACHE_DIR")" ]; then
-        validate_removal_path "$PIXI_CACHE_DIR"
-        CACHE_REMOVAL="$PIXI_CACHE_DIR"
-    else
-        CACHE_NOTE="Keeping the Pixi cache, which the installer did not create and other projects may share: $PIXI_CACHE_DIR"
+env_dir_check="$(trim_trailing_slashes "$PIXI_ENV_DIR")"
+cache_dir_check="$(trim_trailing_slashes "$PIXI_CACHE_DIR")"
+if is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
+    if [ "$KEEP_PIXI_CACHE" = "1" ]; then
+        CACHE_NOTE="--keep-pixi-cache does not keep a Pixi cache inside the install: $PIXI_CACHE_DIR"
     fi
+elif [ "$KEEP_PIXI_CACHE" = "1" ]; then
+    CACHE_NOTE="Keeping Pixi cache: $PIXI_CACHE_DIR"
+elif is_within_or_same "$env_dir_check" "$cache_dir_check" ||
+    is_within_or_same "$(physical_path "$env_dir_check")" "$(physical_path "$cache_dir_check")"; then
+    CACHE_NOTE="Keeping the Pixi cache, which holds the Pixi envs folder: $PIXI_CACHE_DIR"
+elif [ -n "$CREATED_PIXI_CACHE_DIR" ] &&
+    [ "$cache_dir_check" = "$(trim_trailing_slashes "$CREATED_PIXI_CACHE_DIR")" ]; then
+    validate_removal_path "$PIXI_CACHE_DIR"
+    CACHE_REMOVAL="$PIXI_CACHE_DIR"
+else
+    CACHE_NOTE="Keeping the Pixi cache, which the installer did not create and other projects may share: $PIXI_CACHE_DIR"
+fi
+if [ "$REMOVE_CONFIG" = "1" ]; then
+    refuse_symlinked_users_workspace
 fi
 
 log "--- WGS Extract CLI uninstaller ---"
@@ -563,6 +584,19 @@ fi
 if [ -n "$CACHE_REMOVAL" ]; then
     log "  $CACHE_REMOVAL (the Pixi cache the installer created)"
 fi
+if [ "$REMOVE_CONFIG" = "1" ]; then
+    while IFS= read -r config_path; do
+        if { [ -e "$config_path" ] || [ -L "$config_path" ]; } &&
+            ! in_unmarked_users_workspace "$config_path"; then
+            log "  $config_path (WGS Extract config)"
+        fi
+    done <<EOF
+$(config_paths)
+EOF
+fi
+if [ "$PIXI_REMOVAL" = "remove" ] && { [ -e "$USER_PIXI_HOME" ] || [ -L "$USER_PIXI_HOME" ]; }; then
+    log "  $USER_PIXI_HOME (Pixi, and its PATH lines in shell profiles)"
+fi
 for removal_note in "$ENV_NOTE" "$CACHE_NOTE"; do
     if [ -n "$removal_note" ]; then
         log "$removal_note"
@@ -576,9 +610,6 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 validate_install_marker
-if [ "$REMOVE_CONFIG" = "1" ]; then
-    refuse_symlinked_users_workspace
-fi
 
 if [ "$ASSUME_YES" = "0" ]; then
     printf 'Continue? [y/N] '
@@ -633,8 +664,7 @@ if [ "$REMOVE_CONFIG" = "1" ]; then
     while IFS= read -r config_path; do
         if [ "$config_path" = "$HOME/wgs-extract/config.toml" ]; then
             refuse_symlinked_users_workspace
-            users_marker="$HOME/wgs-extract/.users-workspace"
-            if [ ! -f "$users_marker" ] || [ -L "$users_marker" ] || [ "$(cat "$users_marker")" != "WGS Extract users workspace" ]; then
+            if in_unmarked_users_workspace "$config_path"; then
                 log "Keeping config in an unmarked users workspace: $config_path"
                 continue
             fi
