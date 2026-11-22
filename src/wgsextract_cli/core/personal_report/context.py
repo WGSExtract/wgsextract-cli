@@ -11,6 +11,7 @@ from typing import Any
 
 from wgsextract_cli.core import (
     contamination,
+    mt_heteroplasmy,
     read_scope,
     variant_confidence,
 )
@@ -65,6 +66,7 @@ REASONS = {
     "aligner_not_calibrated": "the input's aligner isn't one the caller is "
     "calibrated on (bwa-like)",
     "below_target_depth": "median depth is below the ~30x the caller is calibrated on",
+    **mt_heteroplasmy.REASONS,
 }
 SECTIONS = {
     "overview": "Sample overview",
@@ -73,6 +75,7 @@ SECTIONS = {
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
+    "mitochondrial": "Mitochondrial DNA: heteroplasmy at reviewed variants",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
     "microarray": "Microarray export",

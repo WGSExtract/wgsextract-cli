@@ -29,6 +29,7 @@ export interface ReportSectionsDocument {
     acmg_research?: ReportAcmgDocument;
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
+    mitochondrial?: ReportMitochondrialDocument;
 }
 
 export interface ReportOverviewDocument {
@@ -45,7 +46,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "clinvar" | "acmg_research" | "structural_variants";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "clinvar" | "mitochondrial" | "acmg_research" | "structural_variants";
     label: string;
     value: string;
     detail: string | null;
@@ -309,4 +310,82 @@ export interface ReportAncestryComponentDocument {
     lower: number;
     upper: number;
     reference_populations: string;
+}
+
+export interface ReportMitochondrialDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    advisory?: string;
+    technical?: ReportMitoTechnicalDocument;
+    thresholds?: ReportMitoThresholdsDocument;
+    resource?: ReportMitoResourceDocument;
+    sites?: (ReportMitoSiteDocument)[];
+    counts?: Record<string, number>;
+}
+
+export interface ReportMitoTechnicalDocument {
+    caller: string;
+    version: string | null;
+    settings: string;
+    mt_reference: string | null;
+    contig: string | null;
+    reference_md5: string | null;
+    median_depth: number | null;
+    min_depth_fraction: number | null;
+    homoplasmies: number | null;
+    heteroplasmies: number | null;
+    contamination: string | null;
+    calls: string | null;
+    site_evidence: string | null;
+}
+
+export interface ReportMitoThresholdsDocument {
+    homoplasmic: number;
+    supported_heteroplasmy: number;
+    weak_evidence: number;
+    min_depth: number;
+}
+
+export interface ReportMitoResourceDocument {
+    id: string;
+    name: string;
+    clinvar_release: string;
+    clinvar_url: string;
+    clinvar_md5: string;
+    clinvar_selection: string;
+    cpic_citation: string;
+    cpic_url: string;
+    heteroplasmy_basis: string;
+    variants: number;
+}
+
+export interface ReportMitoSiteDocument {
+    group: (string) & ("disease" | "aminoglycoside");
+    gene: string;
+    hgvs: string;
+    pos: number;
+    ref: string;
+    alt: string;
+    state: (string) & ("homoplasmic" | "heteroplasmic" | "weak_evidence" | "not_detected" | "not_assessed");
+    level: number | null;
+    depth: number | null;
+    depth_fwd: number | null;
+    depth_rev: number | null;
+    level_fwd: number | null;
+    level_rev: number | null;
+    confidence: (string) & ("high" | "moderate" | "low" | "not_assessed");
+    reasons: (string)[];
+    clinvar_id: string;
+    clinvar_classification: string;
+    clinvar_review_status: string;
+    clinvar_stars: number | null;
+    conditions: (string)[];
+    cpic_phenotype: string | null;
+    cpic_evidence: string | null;
 }

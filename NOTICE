@@ -47,3 +47,27 @@ verified lazy data downloads, deterministic marker presentation and result
 provenance. Prediction rules and marker/QC filtering derive from upstream.
 These modifications were made by WGS Extract contributors on 2026-11-01.
 This project is independent and is not endorsed by the Yleaf authors.
+
+Reviewed mtDNA variant table
+============================
+
+src/wgsextract_cli/assets/report/mt_variants.json is a factual table of
+mtDNA variants (positions, alleles, identifiers, classifications, review
+statuses and condition names) that scripts/build_report_mt_variants.py
+selects by rule from:
+
+- ClinVar, National Center for Biotechnology Information, U.S. National
+  Library of Medicine: the GRCh38 VCF release of 2026-11-15
+  (clinvar_20261115.vcf.gz, MD5 8aa64cd0c6b40a0fbed10f99bb51a9d7), and
+  NCBI's NC_012920.1 feature table for gene spans. NCBI places no
+  restrictions on the use or distribution of these data
+  (https://www.ncbi.nlm.nih.gov/home/about/policies/).
+- CPIC (Clinical Pharmacogenetics Implementation Consortium): the MT-RNR1
+  increased-risk alleles of McDermott JH et al., Clin Pharmacol Ther
+  2022;111(2):366-372, PMID 34032273. CPIC content is available under CC0 1.0
+  (https://github.com/cpicpgx/cpic-data/blob/5ee5faf059211ff4636573aedda0eafc94deb1fc/LICENSE.md);
+  CPIC asks for attribution. CPIC guidelines are subject to updates; see
+  https://cpicpgx.org. CPIC is a registered service mark of the U.S.
+  Department of Health & Human Services.
+
+No MITOMAP data are used. Neither source endorses WGS Extract.

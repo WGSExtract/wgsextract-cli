@@ -37,6 +37,30 @@ reference-only calls (all-sites VCF or gVCF); a variants-only VCF is refused
 with instructions to use the alignment or call all sites. Simply rotating
 variant positions would lose sample alleles at reference-difference sites.
 
+### mtDNA heteroplasmy evidence
+
+On a BAM or CRAM, `--contamination` calls chrM with mutserve (bundled with
+haplocheck; level 1%, mapping quality 30, base quality 20, deletions) and keeps
+its output for `wgsextract report`:
+
+- `mutserve_heteroplasmies.vcf.gz` (role `heteroplasmy_calls`): each call with
+  its heteroplasmy level (`FORMAT/AF`) and depth. A mixture is written as
+  `0/1` or `1/0`; read it as a level, not a diploid genotype.
+- `mutserve_heteroplasmies.raw.txt.gz` (role `heteroplasmy_site_evidence`):
+  mutserve's per-position table (`--write-raw`), with the depth and each
+  base's fraction on each strand, so the report can tell a covered site
+  without the variant from one with too few reads.
+
+Both are in the coordinates of the mtDNA reference the reads were called
+against (CHM13v2.0 positions for a CHM13 alignment). `details.heteroplasmy`
+records mutserve's version and settings and that reference (`origin` `rCRS`,
+`CHM13v2.0's chrM`, or null when unconfirmed, with its contig and MD5); the
+metrics add `mt_median_depth`, `mt_min_depth_fraction` (positions with 100 or
+more reads), `mt_homoplasmies` and `mt_heteroplasmies`. A VCF input keeps
+nothing: its levels come from another caller. See
+[personal-report.md](personal-report.md#mitochondrial-dna-heteroplasmy-at-reviewed-variants)
+for how the report reads them.
+
 ## Y haplogroups and STRs
 
 `lineage y-haplogroup` uses native code derived from

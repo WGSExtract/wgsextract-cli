@@ -41,7 +41,9 @@ class MtHaplogroupParams(DownloadParams):
     called first; needs the reference) or a VCF, into
     ``haplogrep_results.txt``; a missing tree needs ``download`` permission.
     With ``contamination``, haplocheck also looks for a mixture of
-    two haplogroups (``haplocheck_contamination.txt``). Haplogrep reads
+    two haplogroups (``haplocheck_contamination.txt``); on a BAM/CRAM, mutserve's
+    calls and per-position read table are kept for ``report``
+    (``details.heteroplasmy``, docs/lineage.md). Haplogrep reads
     rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
     three more differences) is called at every site and mapped onto the rCRS
     through the bundled alignment (``details.mt_reference``); a VCF on it needs
@@ -65,7 +67,8 @@ class MtHaplogroupParams(DownloadParams):
     )
     contamination: bool = param(
         False,
-        help="Also check for mtDNA contamination with haplocheck. VCF input needs "
+        help="Also check for mtDNA contamination with haplocheck; a BAM/CRAM also "
+        "keeps mutserve's heteroplasmy calls for `report`. VCF input needs "
         "heteroplasmy levels (FORMAT/AF).",
         action="store_true",
     )

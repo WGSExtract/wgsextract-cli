@@ -39,6 +39,17 @@ def report_schema() -> dict[str, object]:
         ),
         report.ReportSvDocument: Shape("reportSv"),
         report.ReportSvThresholdsDocument: Shape("reportSvThresholds"),
+        report.ReportMitochondrialDocument: Shape("reportMitochondrial"),
+        report.ReportMitoSiteDocument: Shape("reportMitoSite", additional=False),
+        report.ReportMitoTechnicalDocument: Shape(
+            "reportMitoTechnical", additional=False
+        ),
+        report.ReportMitoThresholdsDocument: Shape(
+            "reportMitoThresholds", additional=False
+        ),
+        report.ReportMitoResourceDocument: Shape(
+            "reportMitoResource", additional=False
+        ),
         report.ReportMicroarrayDocument: Shape("reportMicroarray"),
         report.ReportMicroarrayFileDocument: Shape("reportMicroarrayFile"),
         report.ReportAttemptDocument: Shape("reportAttempt", additional=False),

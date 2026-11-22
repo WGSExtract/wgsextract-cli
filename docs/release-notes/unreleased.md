@@ -3,6 +3,17 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
+- `report` has a mitochondrial DNA section: mtDNA heteroplasmy levels at
+  reviewed variants (ClinVar expert-panel pathogenic SNVs, release
+  2026-11-15) and CPIC's MT-RNR1 aminoglycoside-risk alleles, each
+  homoplasmic, heteroplasmic, weak evidence, not detected (100x or more,
+  ruling out 10% or more) or not assessed, with confidence, sources and a
+  clinician-review advisory. A supported heteroplasmic MT-RNR1 allele counts
+  as risk evidence. `lineage mt-haplogroup --contamination` on a BAM or CRAM
+  now keeps mutserve's calls and per-position read table, with the mtDNA
+  reference and mutserve version, for it
+  ([#1175, mtDNA heteroplasmy in the report](https://github.com/WGSExtract/wgsextract-cli/issues/1175)).
+
 ## Fixes
 
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
