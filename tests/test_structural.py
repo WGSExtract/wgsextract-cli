@@ -165,13 +165,16 @@ def test_delly_1250_rejects_bad_interval_among_valid_ones(tmp_path, region, mess
 
 
 @needs_delly
-@pytest.mark.parametrize("damaged", [True, False], ids=["corrupt", "truncated"])
-def test_delly_1250_rejects_unreadable_compressed_bed(tmp_path, damaged):
+@pytest.mark.parametrize("kind", ["corrupt", "truncated", "bedpe"])
+def test_delly_1250_rejects_invalid_bed_file(tmp_path, kind):
     bam, ref = _sample(tmp_path)
-    bed = tmp_path / "targets.bed.gz"
+    bed = tmp_path / ("targets.bedpe" if kind == "bedpe" else "targets.bed.gz")
     payload = gzip.compress(b"chr1\t19999\t40000\n")
-    bed.write_bytes(payload[:10] + b"\x07" + payload[11:] if damaged else payload[:-1])
-    with pytest.raises(UsageError, match="Invalid region"):
+    bed.write_bytes({"corrupt": payload[:10] + b"\x07" + payload[11:], "truncated": payload[:-1],
+                     "bedpe": b"chr1\t19999\t20000\tchr1\t39999\t40000\n"}[kind])  # fmt: skip
+    with pytest.raises(
+        UsageError, match="BEDPE" if kind == "bedpe" else "Invalid region"
+    ):
         _run("sv", bam, ref, tmp_path / "out", "--region", str(bed))
 
 

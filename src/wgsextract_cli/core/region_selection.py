@@ -78,7 +78,9 @@ def _bed_intervals(path: str, *, bedpe: bool = False) -> list[tuple[str, int, in
 
 
 def is_bed_selection(region: str) -> bool:
-    return region.lower().endswith((".bed", ".bed.gz")) or is_region_file(region)
+    return region.lower().endswith(
+        (".bed", ".bed.gz", ".bedpe", ".bedpe.gz")
+    ) or is_region_file(region)
 
 
 def alignment_intervals(
@@ -90,6 +92,8 @@ def alignment_intervals(
     that contig. BED uses 0-based half-open coordinates.
     """
     intervals: Intervals = {}
+    if region.lower().endswith((".bedpe", ".bedpe.gz")):
+        raise ValueError("BEDPE is not supported; provide a BED file.")
     if is_bed_selection(region):
         rows = _bed_intervals(region)
     else:

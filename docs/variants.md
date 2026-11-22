@@ -179,6 +179,8 @@ or pbsv with ONT is rejected. See [structural variants](ont.md#structural-varian
 Delly (`vcf sv` and `vcf cnv`) and Sniffles accept a single region, a
 comma-separated list such as `chr1:1-10000,chr1:20000-40000`, or a BED file.
 Text ranges are 1-based and inclusive; BED intervals are 0-based and half-open.
+For Delly and Sniffles, `chr1:1000` or `chr1:1000-` runs through the end of
+the contig, and `chr1:-1000` starts at base 1. BEDPE files are not supported.
 Region contigs must be present in both the alignment and the reference. pbsv
 accepts one region only, not a list or BED file. The same limits apply to
 `vcf call --types sv` or `--types cnv`. If SNPs or indels are also requested,
