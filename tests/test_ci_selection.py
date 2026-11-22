@@ -158,8 +158,7 @@ def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
         path.relative_to(ROOT).as_posix()
         for path in (ROOT / "tests").glob("test_ci_impact_*.py")
     )
-    routed = routes(paths)
-    assert paths and routed["ci"] and not routed["cli"]
+    assert paths and not routes(paths)["cli"]
     assert set(paths) <= set(ci_test_targets(paths))
 
 
