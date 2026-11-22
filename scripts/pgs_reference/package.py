@@ -224,6 +224,9 @@ def package(work: Path, ancestry: Path, ids: list[str], base: Path | None) -> No
             *(i for i in ids if i not in pgs.CURATED.values()),
         ]
         info["scores"] = {pgs_id: scores_info[pgs_id] for pgs_id in order}
+        # The same training samples' populations, up to rounding in the
+        # pseudo-inverse; the copied scores keep exactly the base's.
+        info["populations"] = base_info["populations"]
         info["rebuilt_from"] = {
             "name": base.name,
             "sha256": hashlib.sha256(base.read_bytes()).hexdigest(),

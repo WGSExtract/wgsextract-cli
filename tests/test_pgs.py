@@ -404,17 +404,8 @@ def test_617_download_retries_and_records_catalog_licence(
 @pytest.mark.parametrize(
     ("license", "restricted"),
     [
-        (
-            "Freely available to the academic community for research use. Parties "
-            "interested in using the scores for commercial purposes should contact "
-            "the Broad Office of Strategic Alliances and Partnering.",
-            True,
-        ),
-        (
-            "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 "
-            "International (CC BY-NC-ND 4.0).",
-            True,
-        ),
+        ("Freely available to the academic community for research use.", True),
+        ("Creative Commons Attribution-NonCommercial 4.0 (CC BY-NC 4.0).", True),
         ("Creative Commons Attribution 4.0 International (CC BY 4.0).", False),
         (
             "PGS obtained from the Catalog should be cited appropriately, and used "
@@ -426,10 +417,9 @@ def test_617_download_retries_and_records_catalog_licence(
 def test_864_1165_trait_warns_only_of_restrictive_author_licences(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, license: str, restricted: bool
 ) -> None:
-    """Issue #864: --trait bmi selected PGS000027, which only academic research
-    may use, without saying so outside the licence field. Issue #1165: bmi's
-    replacement is CC BY 4.0, which asks only for the citation the result
-    carries, so it must not be reported as restricted."""
+    """#864: --trait bmi's PGS000027 is academic-only, but only its licence
+    field said so. #1165: its replacement's CC BY 4.0 only asks for the
+    citation the result carries, so it isn't reported as restricted."""
     import urllib.request
 
     pgs_id = CURATED["bmi"]

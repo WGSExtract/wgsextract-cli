@@ -46,7 +46,7 @@ Steps:
   other curated scores are copied from it.
 
 Version 2 was built on macOS (osx-arm64) with ``--ids PGS000297 PGS005198``
-up to ``overlaps`` (PGS000297 checks the rebuild against version 1), then
+up to ``overlaps`` (PGS000297's sums reproduce version 1's exactly), then
 ``package --ids PGS005198 --base wgsextract-pgs-hgdp1kg-v1.npz``.
 
 Data: pgsc_calc's HGDP+1kGP reference panel (pgsc_HGDP+1kGP_v1, from gnomAD
@@ -175,42 +175,35 @@ def _project(work: Path, panel: Path, ancestry: Path) -> tuple[list[str], np.nda
 
 def training(work: Path, panel: Path, ancestry: Path, base: Path) -> None:
     """``training.tsv`` without training_ids.py (which needs Hail and gnomAD's
-    sample tables): each panel sample is matched to the training sample whose
-    in-sample PCs its projection reproduces. Only mutual nearest neighbours
-    that no other sample comes close to are accepted, and the matched rows must be exactly the training samples of
-    the published reference ``base``, which stores their rows but not IDs."""
+    sample tables): each training sample of the published reference ``base``
+    (which stores their PCA rows, not IDs) is matched to the panel sample whose
+    projection reproduces its in-sample PCs. The matches must be distinct;
+    ``package --base`` then checks them by reproducing ``base``'s sums for a
+    rebuilt score."""
     ref = np.load(ancestry)
     samples, projected = _project(work, panel, ancestry)
-    trained = ref["pca_scores"].astype(np.float64)
-    scale = float(np.sqrt((trained**2).sum(1)).mean())
-    distance = np.sqrt(np.maximum(0.0, (projected**2).sum(1)[:, None]
-                                  + (trained**2).sum(1)[None, :]
-                                  - 2 * projected @ trained.T))  # fmt: skip
-    nearest = distance.argmin(1)
-    gap = distance[np.arange(len(samples)), nearest]
-    second = np.partition(distance, 1, axis=1)[:, 1]
-    # Mutual nearest neighbours, each far closer to the other than to anyone
-    # else (relatives of training samples are near in PC space, not on them).
-    mutual = distance.argmin(0)[nearest] == np.arange(len(samples))
-    matched = mutual & (gap < 0.1 * second)
-    rows = nearest[matched]
     with np.load(base) as data:
-        expected = set(data["training_rows"].tolist())
-    print(f"{int(matched.sum())} of {len(samples)} panel samples match a training "
-          f"sample: distance median {np.median(gap[matched]):.3g}, max "
-          f"{gap[matched].max():.3g}; next best min {second[matched].min():.3g} "
-          f"(typical |PC| {scale:.3g}); expected {len(expected)}")  # fmt: skip
-    if set(rows.tolist()) != expected:
-        raise SystemExit(
-            "the matched training samples are not the base reference's training "
-            f"set: {len(expected - set(rows.tolist()))} missing, "
-            f"{len(set(rows.tolist()) - expected)} extra"
-        )
+        rows = np.unique(data["training_rows"])
+    trained = ref["pca_scores"].astype(np.float64)[rows]
+    scale = float(np.sqrt((trained**2).sum(1)).mean())
+    distance = np.sqrt(np.maximum(0.0, (trained**2).sum(1)[:, None]
+                                  + (projected**2).sum(1)[None, :]
+                                  - 2 * trained @ projected.T))  # fmt: skip
+    nearest = distance.argmin(1)
+    gap = distance[np.arange(len(rows)), nearest]
+    second = np.partition(distance, 1, axis=1)[:, 1]
+    print(f"{len(rows)} training samples: distance to the matched panel sample "
+          f"median {np.median(gap):.3g}, max {gap.max():.3g}; to the next "
+          f"closest median {np.median(second):.3g}, min {second.min():.3g} "
+          f"(typical |PC| {scale:.3g})")  # fmt: skip
+    if len(set(nearest.tolist())) != len(rows):
+        raise SystemExit("two training samples match the same panel sample")
     with (work / "training.tsv").open("w") as f:
         f.write("training_row\tIID\tpopulation\tregion\n")
-        for s, t in sorted(zip(np.array(samples)[matched], rows, strict=True),
-                           key=lambda x: x[1]):  # fmt: skip
-            f.write(f"{t}\t{s}\t{ref['pca_population'][t]}\t{ref['pca_region'][t]}\n")
+        for t, n in zip(rows, nearest, strict=True):
+            f.write(
+                f"{t}\t{samples[n]}\t{ref['pca_population'][t]}\t{ref['pca_region'][t]}\n"
+            )
 
 
 def pcs(work: Path, panel: Path, ancestry: Path, training: Path) -> None:

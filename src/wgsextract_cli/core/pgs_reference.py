@@ -46,7 +46,7 @@ from wgsextract_cli.core.utils import WGSExtractError
 FOLDER = "pgs"
 NAME = "wgsextract-pgs-hgdp1kg-v2.npz"
 URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/pgs-ref-2/{NAME}"
-SHA256 = "d73b7243825f33290484ff0aea455f21c0fc3bbd60380dc665a31003134d083d"
+SHA256 = "401be7fe9a66d925462f883a85d019210aa2e7e520a29dc8e7bf4c7381e93bf5"
 BUILD = "GRCh38"
 # The Catalog scoring files the reference was built from, by SHA-256. Only
 # these get a percentile, so other scores never download the reference.
