@@ -139,21 +139,23 @@ def wait(
     clock: Callable[[], float] = time.monotonic,
     log: Callable[[str], None] = lambda line: print(line, file=sys.stderr),
 ) -> Capacity:
-    """Poll with exponential backoff until capacity frees or the timeout passes."""
+    """Poll with exponential backoff until capacity frees; poll last at the deadline."""
     deadline = clock() + timeout
     delay = interval
     while True:
         try:
             capacity = check()
         except (subprocess.CalledProcessError, OSError, ValueError, KeyError) as exc:
-            if clock() + delay > deadline:
+            pause = min(delay, deadline - clock())
+            if pause <= 0:
                 raise
-            log(f"Capacity check failed, retrying in {delay:.0f}s: {exc}")
+            log(f"Capacity check failed, retrying in {pause:.0f}s: {exc}")
         else:
-            if capacity.ok or clock() + delay > deadline:
+            pause = min(delay, deadline - clock())
+            if capacity.ok or pause <= 0:
                 return capacity
-            log(f"{capacity.summary()} Rechecking in {delay:.0f}s.")
-        sleep(delay)
+            log(f"{capacity.summary()} Rechecking in {pause:.0f}s.")
+        sleep(pause)
         delay = min(delay * 2, max_interval)
 
 

@@ -66,6 +66,9 @@ exists) on the exact head first. Immediately before `gh pr ready`, run
 `python scripts/ci_capacity.py --wait` in a background watcher; proceed only on
 exit 0. Exit 3 means hold: merge-queue jobs are waiting for runners or too
 many ready matrices are in flight.
+Admit one PR at a time per supervisor: start the next check only after the
+previously admitted PR's ready area run is visible, so parallel watchers
+cannot all pass on the same free capacity.
 Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
 request another review explicitly when needed, without changing settings.
 

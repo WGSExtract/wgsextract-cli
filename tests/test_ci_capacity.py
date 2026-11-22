@@ -126,17 +126,21 @@ def test_1373_wait_admits_once_the_merge_queue_starts(capsys: Any) -> None:
     assert "HOLD" in err
 
 
-def test_1373_wait_gives_up_with_hold_at_timeout() -> None:
-    busy = ci_capacity.Capacity(max_ready=4, merge_group_queued=2)
+def test_1373_wait_polls_last_at_the_deadline_then_holds() -> None:
     now = [0.0]
+    polls: list[float] = []
     delays: list[float] = []
+
+    def check() -> ci_capacity.Capacity:
+        polls.append(now[0])
+        return ci_capacity.Capacity(max_ready=4, merge_group_queued=2)
 
     def sleep(delay: float) -> None:
         delays.append(delay)
         now[0] += delay
 
     result = ci_capacity.wait(
-        lambda: busy,
+        check,
         timeout=1000,
         interval=60,
         max_interval=300,
@@ -145,8 +149,8 @@ def test_1373_wait_gives_up_with_hold_at_timeout() -> None:
         log=lambda _: None,
     )
     assert not result.ok
-    assert delays == [60, 120, 240, 300]
-    assert sum(delays) <= 1000
+    assert delays == [60, 120, 240, 300, 280]
+    assert polls[-1] == 1000
 
 
 def test_1373_api_failure_is_an_error_not_an_admission(capsys: Any) -> None:

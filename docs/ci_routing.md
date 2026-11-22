@@ -794,7 +794,11 @@ reads queued and in-progress runs and their jobs through `gh api` (read-only)
 and exits 0 when admission is fine. It exits 3 (hold) while any
 `merge_group` job is queued for a runner, or while more than `--max-ready`
 (default 4) ready-PR area matrices are in flight. `--wait` polls with
-exponential backoff up to `--timeout` seconds; `--json` prints the counts.
+exponential backoff, polling a last time at `--timeout` seconds; `--json`
+prints the counts. The check reserves nothing, so each supervisor admits one
+PR at a time and starts the next check only once the previous PR's ready run
+is visible; concurrent supervisors can overshoot `--max-ready` by at most one
+run each.
 
 ## Cache plan
 
