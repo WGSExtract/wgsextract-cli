@@ -57,12 +57,14 @@ def test_parse_thread_count_rejects_invalid(value):
         resource_policy.parse_thread_count(value)
 
 
-def test_resource_defaults_accept_auto():
+@pytest.mark.parametrize(("total_gib", "expected"), [(16, "682M"), (32, "1G")])
+def test_resource_defaults_accept_auto(ram, total_gib, expected):
+    ram(total_gib * 1024**3)
     threads, memory = resource_policy.get_resource_defaults(
         "auto", "auto", lambda: Namespace(threads=6)
     )
     assert threads == "6"
-    assert memory.endswith("G")
+    assert memory == expected
 
 
 def test_config_threads_auto_becomes_none_default(temp_config):

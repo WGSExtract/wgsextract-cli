@@ -7,6 +7,7 @@ from os import fspath
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.paths import PathInput, append_suffix
 
 
@@ -77,7 +78,6 @@ def sort_memory(
     effective RAM, leaving room for other pipeline allocations. ``memory``
     itself is returned when it is no larger; ``log`` says when it is lowered."""
     from wgsextract_cli.core.alignment.memory import total_memory
-    from wgsextract_cli.core.utils import WGSExtractError
 
     count = max(1, int(threads))
     amount, unit = parse_memory(memory)
