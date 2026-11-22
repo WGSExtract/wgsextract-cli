@@ -8,6 +8,7 @@ import queue
 import secrets
 import socket
 import subprocess
+import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -217,6 +218,42 @@ def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
         )
         assert status == (403 if safe_viewer_reads() else 503)
         assert b"private" not in body
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows junctions")
+def test_issue_1318_windows_viewer_reads_nested_files_but_not_junctions(
+    tmp_path: Path,
+) -> None:
+    from _winapi import CreateJunction
+
+    root = tmp_path / "allowed"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    sample = nested / "sample.bam"
+    sample.write_bytes(b"0123456789")
+    (tmp_path / "sample.bam").write_bytes(b"private")
+    outside = root / "outside-junction"
+    inside = root / "inside-junction"
+    CreateJunction(str(tmp_path), str(outside))
+    CreateJunction(str(nested), str(inside))
+
+    with remote_server(root) as server:
+        target = "/v1/viewer-file?" + urlencode({"path": str(sample)})
+        status, headers, body = request(server, target, range_header="bytes=2-5")
+        assert (status, headers.get("Content-Range"), body) == (
+            206,
+            "bytes 2-5/10",
+            b"2345",
+        )
+        for junction in (outside, inside):
+            target = "/v1/viewer-file?" + urlencode(
+                {"path": str(junction / sample.name)}
+            )
+            status, _, body = request(server, target)
+            assert (status, json.loads(body)["error"]["code"]) == (
+                403,
+                "path_not_allowed",
+            )
 
 
 @requires_safe_reads
