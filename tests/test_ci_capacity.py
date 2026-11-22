@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from scripts import ci_capacity
@@ -10,8 +12,12 @@ from scripts import ci_capacity
 REPO = "WGSExtract/wgsextract-cli"
 
 
-def run(run_id: int, event: str, title: str = "x", path: str = "") -> dict[str, Any]:
+def run(
+    run_id: int, event: str, title: str = "x", path: str = "", age_minutes: int = 1
+) -> dict[str, Any]:
+    created = datetime.now(timezone.utc) - timedelta(minutes=age_minutes)
     return {
+        "created_at": created.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "id": run_id,
         "event": event,
         "path": path or ".github/workflows/ubuntu_ci.yml",
@@ -21,12 +27,13 @@ def run(run_id: int, event: str, title: str = "x", path: str = "") -> dict[str, 
     }
 
 
-def area(run_id: int, state: str = "ready") -> dict[str, Any]:
+def area(run_id: int, state: str = "ready", age_minutes: int = 1) -> dict[str, Any]:
     return run(
         run_id,
         "pull_request",
         f"PR area checks / synchronize / {state}",
         ".github/workflows/pr_ci.yml",
+        age_minutes,
     )
 
 
@@ -97,7 +104,7 @@ def test_1373_counts_only_active_non_draft_area_runs_against_max_ready(
         (area(20, "draft"), "in_progress", jobs("in_progress")),
         (run(21, "pull_request", "Other PR workflow"), "queued", jobs("queued")),
         # Ghost runs stuck "queued" with no jobs hold no runner.
-        (area(22), "queued", []),
+        (area(22, age_minutes=11 * 24 * 60), "queued", []),
         (run(23, "merge_group", "queue"), "in_progress", jobs("in_progress")),
     ]
     code, report, _ = invoke(FakeActions(snapshot(*entries)), capsys=capsys)
@@ -111,6 +118,15 @@ def test_1373_counts_only_active_non_draft_area_runs_against_max_ready(
     )
     assert code == ci_capacity.OK
     assert report["ok"] is True and report["reasons"] == []
+
+
+def test_1373_fresh_ready_run_counts_before_its_jobs_appear(capsys: Any) -> None:
+    # Review: a just-admitted run lists no jobs yet; it must still use a slot.
+    entries = [(area(n), "in_progress", jobs("in_progress")) for n in range(10, 14)]
+    entries.append((area(30), "queued", []))
+    code, report, _ = invoke(FakeActions(snapshot(*entries)), capsys=capsys)
+    assert code == ci_capacity.HOLD
+    assert 30 in [m["run"] for m in report["ready_matrices"]]
 
 
 def test_1373_wait_admits_once_the_merge_queue_starts(capsys: Any) -> None:
@@ -155,7 +171,7 @@ def test_1373_wait_polls_last_at_the_deadline_then_holds() -> None:
 
 def test_1373_api_failure_is_an_error_not_an_admission(capsys: Any) -> None:
     def broken(path: str) -> Any:
-        raise ci_capacity.subprocess.CalledProcessError(1, ["gh", "api", path])
+        raise subprocess.CalledProcessError(1, ["gh", "api", path])
 
     assert ci_capacity.main(["--repo", REPO], api=broken) == ci_capacity.ERROR
     assert "Cannot read Actions capacity" in capsys.readouterr().err

@@ -17,6 +17,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 OK = 0
@@ -26,6 +27,8 @@ AREA_WORKFLOW = ".github/workflows/pr_ci.yml"
 ACTIVE_RUN_STATUSES = ("queued", "in_progress")
 PAGE = 100
 MAX_PAGES = 20
+# A run without jobs this old is a ghost that never started (seen 11 days stuck).
+GHOST_AFTER = timedelta(hours=1)
 
 Api = Callable[[str], Any]
 
@@ -94,8 +97,19 @@ def is_ready_matrix(run: dict[str, Any]) -> bool:
     )
 
 
-def measure(repository: str, max_ready: int, api: Api = gh_api) -> Capacity:
+def is_ghost(run: dict[str, Any], jobs: list[dict[str, Any]], now: datetime) -> bool:
+    created = datetime.fromisoformat(str(run["created_at"]).replace("Z", "+00:00"))
+    return not jobs and now - created > GHOST_AFTER
+
+
+def measure(
+    repository: str,
+    max_ready: int,
+    api: Api = gh_api,
+    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+) -> Capacity:
     capacity = Capacity(max_ready=max_ready)
+    checked = now()
     waiting: Counter[str] = Counter()
     runs = {
         run["id"]: run
@@ -109,7 +123,7 @@ def measure(repository: str, max_ready: int, api: Api = gh_api) -> Capacity:
             api, f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest", "jobs"
         )
         # Jobs are created once their needs resolve, so "queued" means waiting
-        # for a runner. Runs with no jobs (stale ghosts) hold no capacity.
+        # for a runner. A fresh run may not have listed its jobs yet.
         queued = sum(job.get("status") == "queued" for job in jobs)
         running = sum(job.get("status") == "in_progress" for job in jobs)
         if queued:
@@ -117,7 +131,8 @@ def measure(repository: str, max_ready: int, api: Api = gh_api) -> Capacity:
         if run.get("event") == "merge_group":
             capacity.merge_group_queued += queued
             capacity.merge_group_in_progress += running
-        if is_ready_matrix(run) and (queued or running):
+        active = queued or running or not jobs
+        if is_ready_matrix(run) and active and not is_ghost(run, jobs, checked):
             capacity.ready_matrices.append(
                 {
                     "run": run_id,
