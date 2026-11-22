@@ -173,7 +173,16 @@ identical to running them one at a time. (GLIMPSE2 2.0.1's own threads, used
 before, sometimes changed a chunk's genotypes from run to run.) A failed chunk
 stops the others, and the error names it and quotes GLIMPSE2's message.
 
-CHR20_TIMING_TABLE
+On an M1 Pro (10 cores, 32 GB; a shared host, so absolute times are
+pessimistic), phasing all 26 chr20 chunks of HG002 1x took:
+
+| GLIMPSE2 2.0.1 build | One chunk at a time, 4 threads | 8 chunks at once, 1 thread each | Largest process |
+|---|---:|---:|---:|
+| native arm64 (research build; [#1398, native arm64 GLIMPSE2](https://github.com/WGSExtract/wgsextract-cli/issues/1398) will package it) | 479 s | 100 s (4.8x) | 2.9 GB |
+| Bioconda x86-64 under Rosetta | — | 175 s | 2.7 GB |
+
+The genotypes, dosages and probabilities of all 26 chunks were identical
+whichever way they ran.
 
 Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.6 hours
 for whole-autosome GLIMPSE2 one chunk at a time, and about 1 hour with eight
