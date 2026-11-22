@@ -3,18 +3,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
-- `wgsextract lookup` (also the typed API's `api.lookup` and the server's
-  read-only `lookup` operation over HTTP and MCP) answers one sample's
-  genotype at an rsID, a build-qualified locus or a gene: the normalised
-  alleles, depth, quality, FILTER and phase, whether it is a confident call,
-  confident reference, weak evidence, a no-call or not assessed (a site a
-  variants-only VCF doesn't list is never taken as reference), and what the
-  sample's personal report says there, attributed, including analyses not
-  run yet. Identifiers resolve offline (dbSNP build 157 merge history, the
-  chip rsID placements of `ref microarray-targets`, NCBI RefSeq genes); an
-  identifier with several matches lists them instead of picking one. See
-  [docs/lookup.md](../lookup.md)
-  ([#1178, genotype lookup](https://github.com/WGSExtract/wgsextract-cli/issues/1178)).
 - [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
   button to its current desktop page and command, with changed defaults,
   features not yet equivalent and settings/reference precautions. NOTICE now
