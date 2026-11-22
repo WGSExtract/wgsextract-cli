@@ -143,6 +143,13 @@ test("#1161: result-row loci open in the matched reference's contig spelling, an
     assert.deepEqual(await opened("chr1:1001-1001"), { problem: "locusNotFound" });
     assert.deepEqual(await opened("chr2:1-10"), { problem: "locusNotFound" });
     assert.equal(f.resolver.mitoAsked, 1, "Only rCRS rows ask the resolver to read the mitochondrion.");
+    // Aliases never convert coordinates: a finding on another build is refused, not shown elsewhere.
+    const onBuild = async (build) => (await fetch(`${f.base}/api/viewer/open`, {
+        method: "POST", headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
+        body: JSON.stringify({ path: f.input, locus: "chr1:200-300", build }),
+    }));
+    assert.deepEqual(await (await onBuild("hg38")).json(), { problem: "buildMismatch" }, "A reference of unknown build can't confirm hg38.");
+    assert.equal((await onBuild("T2T")).status, 400);
     // CHM13v2.0's chrM is as long as the rCRS but numbered from elsewhere round the circle.
     f.resolver.mitoOrigin = "CHM13v2.0's chrM";
     assert.deepEqual(await opened("rCRS:263-263"), { problem: "mitoNotRcrs" });
@@ -151,6 +158,9 @@ test("#1161: result-row loci open in the matched reference's contig spelling, an
     await writeFile(`${f.fasta}.fai`, "chr1\t1000\t6\t60\t61\nchrM\t16571\t1100\t60\t61\n");
     assert.deepEqual(await opened("rCRS:263-263"), { problem: "mitoNotRcrs" });
     assert.equal((await opened("MT:263-263")).locus, "chrM:263-263", "Positions from the sample's own calls keep its chrM numbering.");
+    await writeFile(`${f.fasta}.fai`, "chr1\t249250621\t6\t60\t61\n");
+    assert.deepEqual(await (await onBuild("hg38")).json(), { problem: "buildMismatch" }, "An hg38 finding never opens on hg19.");
+    assert.equal((await (await onBuild("hg19")).json()).locus, "chr1:200-300");
 });
 
 test("#1161: result-row checks report each sample file's viewer problem without granting bytes", async (t) => {

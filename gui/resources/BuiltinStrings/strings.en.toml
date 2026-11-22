@@ -93,6 +93,7 @@
 "viewer.rowTrackMissing" = "%{file} was not found. It may have been moved or deleted."
 "viewer.rowIndexMissing" = "%{file} has no index beside it. Index it (samtools index for BAM/CRAM, tabix for VCF), then run this step again."
 "viewer.mitoNotRcrs" = "These mtDNA positions are numbered on the rCRS sequence, but this sample's reference has a different chrM (such as hg19's Yoruba chrM or T2T's CHM13 chrM), so they would point to the wrong bases. Use a reference with an rCRS chrM to view them."
+"viewer.buildMismatch" = "This finding's position is on a different genome build than the reference matched to the sample file, so it would point to the wrong place. Open a sample file aligned to the build the finding names."
 "language.layoutDirection" = "ltr"
 "language.code" = "en"
 "language.names.de" = "Deutsch (German)"  # i18n-ignore

@@ -283,3 +283,4 @@
 "viewer.rowTrackMissing" = "%{file} wurde nicht gefunden. Möglicherweise wurde die Datei verschoben oder gelöscht."  # i18n-source-hash:c38382f1
 "viewer.rowIndexMissing" = "Neben %{file} fehlt ein Index. Indizieren Sie die Datei (samtools index für BAM/CRAM, tabix für VCF) und führen Sie diesen Schritt erneut aus."  # i18n-source-hash:8a7045d3
 "viewer.mitoNotRcrs" = "Diese mtDNA-Positionen sind auf der rCRS-Sequenz nummeriert, aber die Referenz dieser Probe hat eine andere chrM (etwa die Yoruba-chrM von hg19 oder die CHM13-chrM von T2T), daher würden sie auf falsche Basen zeigen. Verwenden Sie zum Anzeigen eine Referenz mit rCRS-chrM."  # i18n-source-hash:90a016bc
+"viewer.buildMismatch" = "Die Position dieses Befunds gehört zu einem anderen Genom-Build als die Referenz der Probendatei und würde daher auf die falsche Stelle zeigen. Öffnen Sie eine Probendatei, die auf den Build des Befunds ausgerichtet ist."  # i18n-source-hash:161f9d0f

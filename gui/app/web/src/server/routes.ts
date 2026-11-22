@@ -28,6 +28,7 @@ import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
 import { checkLibraryTracks, openLibraryViewer, viewerLibraries } from "./viewer-session.js";
+import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
 
@@ -120,7 +121,11 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 json(response, { problem: "trackLimit" });
                 return;
             }
-            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
+            const build = body.build;
+            if (build !== undefined && !isViewerBuild(build)) {
+                throw new HttpError(400, "Viewer build must be hg19 or hg38.");
+            }
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks, build));
         },
         "/api/viewer/check": async (request, response) => {
             requireViewerLoopback(request);

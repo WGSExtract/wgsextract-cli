@@ -117,13 +117,17 @@ The output must still lie inside the configured My Genomes library.
 A **Personal Report** result lists its findings, and an mtDNA haplogroup result
 the variants Haplogrep found, below the metrics. **Show in viewer** on a row
 opens the BAM, CRAM or VCF the run read at that variant's position: one base
-for a substitution, every replaced base for a deletion. The table shows the
-first 200 rows; the run's output files list the rest.
+for a substitution, every replaced base for a deletion, and a structural
+variant's whole interval. The table shows the first 200 rows; the run's output
+files list the rest.
 
 - The row's chromosome opens in the matched reference's spelling: `chr1` and `1`,
   or `chrM` and `MT`, are the same chromosome. A position past the end of the
   chromosome, or a chromosome the reference lacks, shows "Position not found"
   instead of a view.
+- ClinVar and ACMG findings come from an evidence VCF whose build (hg19 or hg38)
+  the report records. They open only when the sample file's matched reference is
+  that build, so a finding never opens at the same numbers on another build.
 - Haplogroup positions are numbered on the rCRS mitochondrion. They open only
   when the matched reference's chrM is the rCRS, checked by its sequence (as on
   hg38, GRCh37 and the rCRS hg19 builds). hg19's Yoruba chrM and T2T's CHM13
@@ -284,6 +288,8 @@ The response also contains bounded, validated installed gene and cytoband
 features and notices; these tables receive no file grants and need no extra
 lookup endpoint. It maps the locus's contig to the reference's spelling and
 returns `locusNotFound` or `mitoNotRcrs` instead of a session it cannot show.
+An optional `build` (`hg19` or `hg38`) must match the reference's build, else
+it returns `buildMismatch`.
 An authenticated, loopback-only `POST /api/viewer/check` takes up to 16
 `paths` and answers each with `ok` or the problem (outside the library,
 missing, unindexed) a result row shows; it grants no bytes.

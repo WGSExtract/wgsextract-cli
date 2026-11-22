@@ -45,7 +45,7 @@ function renderRow(table: ViewerRowTable, row: ViewerRow, trackReason: string): 
     const label = escapeHTML(text("showInViewer"));
     const link = reason
         ? `<button type="button" class="action-button secondary compact" disabled title="${escapeAttribute(reason)}">${label}</button>${rowProblem ? `<span class="result-viewer-row-reason">${escapeHTML(reason)}</span>` : ""}`
-        : `<button type="button" class="action-button secondary compact" data-result-viewer="${escapeAttribute(table.track)}" data-viewer-locus="${escapeAttribute(row.locus)}">${label}</button>`;
+        : `<button type="button" class="action-button secondary compact" data-result-viewer="${escapeAttribute(table.track)}" data-viewer-locus="${escapeAttribute(row.locus)}"${row.build ? ` data-viewer-build="${escapeAttribute(row.build)}"` : ""}>${label}</button>`;
     return `<tr>${row.cells.map((cell) => `<td>${escapeHTML(cell)}</td>`).join("")}<td>${link}</td></tr>`;
 }
 

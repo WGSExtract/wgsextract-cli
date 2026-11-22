@@ -99,6 +99,9 @@ async function verifyResultRows() {
             schema: "wgsextract.report/1",
             sections: {
                 lineage: { title: "Lineage", findings: [{ label: "mtDNA haplogroup", value: "H1a", variant: null }] },
+                // An evidence VCF on hg38: the fixture reference's build can't be confirmed as hg38.
+                acmg_research: { title: "ACMG", build: "hg38", findings: [{ label: "DEMO2", value: "Likely pathogenic",
+                    variant: { chrom: contig, pos: position, ref: "C", alt: "T" } }] },
                 clinvar: { title: "ClinVar", findings: [{ label: "DEMO1", value: "Pathogenic",
                     // The other spelling of the reference's contig.
                     variant: { chrom: contig.startsWith("chr") ? contig.slice(3) : `chr${contig}`, pos: position, ref: "A", alt: "G" } }] },
@@ -117,7 +120,7 @@ async function verifyResultRows() {
         const section = page.locator('[data-section-toggle="workflows/personal-report"]');
         if (await section.getAttribute("aria-expanded") === "false") await section.click();
         await page.locator('[data-action-id="report"]').click();
-        const finding = page.locator(".result-viewer-rows [data-result-viewer]").first();
+        const finding = page.locator(".result-viewer-rows [data-result-viewer]:not([data-viewer-build])").first();
         await finding.waitFor({ timeout: 30_000 });
         assert.equal(await finding.getAttribute("data-result-viewer"), bam);
         const disabled = page.locator(".result-viewer-rows button[disabled]");
@@ -131,6 +134,10 @@ async function verifyResultRows() {
         await checkDrawing(viewer, "reads.bam");
         assert.equal(await viewer.locator('[data-locus] [name="locus"]').inputValue(), `${contig}:${position}-${position}`);
         await page.screenshot({ path: path.join(out, "library-result-row-locus.png"), fullPage: true });
+        await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
+        await page.locator(".result-viewer-rows [data-viewer-build='hg38']").click();
+        await viewer.getByRole("alert").filter({ hasText: "different genome build" }).waitFor();
+        assert.equal(await viewer.locator("[data-igv]").isVisible(), false, "A finding on another build never opens at the same numbers.");
         await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
         // rCRS positions never land on a reference without an rCRS mitochondrion: an explanation, not a view.
         await page.locator(".result-viewer-rows [data-viewer-locus='rCRS:263-263']").click();

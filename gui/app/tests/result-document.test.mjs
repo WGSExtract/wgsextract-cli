@@ -276,7 +276,10 @@ test("#1161: report findings and mtDNA haplogroup variants open the viewer per r
     schema: "wgsextract.report/1",
     sections: {
       lineage: { title: "Lineage", findings: [{ label: "mtDNA haplogroup", value: "H1a", variant: null }] },
-      clinvar: { title: "ClinVar", findings: [
+      structural_variants: { title: "Structural variants", findings: [
+        { label: "DEL chr2:100-10000", value: "rare", evidence: { region: "chr2:100-10000" }, variant: { chrom: "chr2", pos: 100, ref: null, alt: "<DEL>" } },
+      ] },
+      clinvar: { title: "ClinVar", build: "hg38", findings: [
         { label: "BRCA2", value: "Pathogenic", variant: { chrom: "chr13", pos: 32357672, ref: "C", alt: "T" } },
         { label: "<b>MUTYH</b>", value: "Likely pathogenic", variant: { chrom: "chr1", pos: 45334841, ref: "GCA", alt: "G" } },
       ] },
@@ -289,7 +292,9 @@ test("#1161: report findings and mtDNA haplogroup variants open the viewer per r
   assert.doesNotMatch(renderResultSummary(findings), /data-viewer-locus="chr13/, "No row opens before its file is checked.");
   await settled();
   const summary = renderResultSummary(findings);
-  assert.match(summary, /data-result-viewer="\/genomes\/HG002\.cram" data-viewer-locus="chr13:32357672-32357672"/);
+  assert.match(summary, /data-result-viewer="\/genomes\/HG002\.cram" data-viewer-locus="chr13:32357672-32357672" data-viewer-build="hg38"/,
+    "A ClinVar row carries its evidence VCF's build, so the viewer refuses a BAM on another build.");
+  assert.match(summary, /data-viewer-locus="chr2:100-10000">/, "A structural deletion opens across its whole interval, with no build to hold it to.");
   assert.match(summary, /data-viewer-locus="chr1:45334841-45334843"/, "A deletion spans every reference base it replaces.");
   assert.match(summary, /&lt;b&gt;MUTYH&lt;\/b&gt;/);
   assert.match(summary, /<td>H1a<\/td><td><\/td><td><button[^>]*disabled title="No single position\."[^>]*>Show in viewer<\/button><span[^>]*>No single position\./);

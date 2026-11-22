@@ -283,3 +283,4 @@
 "viewer.rowTrackMissing" = "%{file} est introuvable. Il a peut-être été déplacé ou supprimé."  # i18n-source-hash:c38382f1
 "viewer.rowIndexMissing" = "%{file} n’a pas d’index à côté de lui. Indexez-le (samtools index pour BAM/CRAM, tabix pour VCF), puis relancez cette étape."  # i18n-source-hash:8a7045d3
 "viewer.mitoNotRcrs" = "Ces positions de l’ADNmt sont numérotées sur la séquence rCRS, mais la référence de cet échantillon a un autre chrM (comme le chrM Yoruba de hg19 ou le chrM CHM13 de T2T) ; elles désigneraient donc les mauvaises bases. Utilisez une référence avec un chrM rCRS pour les afficher."  # i18n-source-hash:90a016bc
+"viewer.buildMismatch" = "La position de ce résultat est sur une autre version du génome que la référence associée au fichier de l’échantillon ; elle désignerait donc le mauvais endroit. Ouvrez un fichier d’échantillon aligné sur la version indiquée par le résultat."  # i18n-source-hash:161f9d0f

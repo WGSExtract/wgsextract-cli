@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import type { LibraryViewerSession } from "../../../shared/genome-viewer.js";
 import { localViewerLocus, ViewerFileError } from "../../../shared/genome-viewer.js";
-import { rcrsContig } from "../../../shared/viewer-rows.js";
+import { rcrsContig, type ViewerBuild } from "../../../shared/viewer-rows.js";
 import { loadBundleState } from "./config-store.js";
 import { parseConfigToml } from "./config-toml.js";
 import { errnoCode, HttpError } from "./errors.js";
@@ -103,7 +103,7 @@ export async function checkLibraryTracks(inputs: string[], context: RequestHandl
     return results;
 }
 
-export async function openLibraryViewer(requested: string, locus: string, context: RequestHandlerContext, files: ViewerFiles, trackPaths: string[] = []): Promise<LibraryViewerSession | ViewerProblemResult> {
+export async function openLibraryViewer(requested: string, locus: string, context: RequestHandlerContext, files: ViewerFiles, trackPaths: string[] = [], build?: ViewerBuild): Promise<LibraryViewerSession | ViewerProblemResult> {
     let position: string | undefined;
     try {
         position = locus ? localViewerLocus(locus) : undefined;
@@ -158,6 +158,10 @@ export async function openLibraryViewer(requested: string, locus: string, contex
     // Result rows name contigs as their table did; open them in this reference's spelling.
     if (position) {
         const metadata = await viewerReferenceMetadata(fasta);
+        // Contig aliases never convert coordinates: a position on another build would point elsewhere.
+        if (build && metadata?.build !== build) {
+            return { problem: "buildMismatch" };
+        }
         if (metadata) {
             const mapped = referenceLocus(position, metadata.reference);
             if ("problem" in mapped) {

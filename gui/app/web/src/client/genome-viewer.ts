@@ -33,6 +33,8 @@ let browser: IgvBrowser | undefined;
 let remoteActive = false;
 let trackProblem: ViewerFileError | undefined;
 let geneLookup = new Map<string, string>();
+// A result row's build holds only for the file and position it opened with; editing either drops it.
+let requiredBuild = "";
 const root = document.querySelector<HTMLElement>("#genome-viewer");
 if (!root) {
     throw new Error("Missing genome viewer root.");
@@ -106,6 +108,7 @@ try {
         navigation.hidden = true;
         host.hidden = true;
     }, setBusy);
+    libraryForm.addEventListener("input", () => { requiredBuild = ""; });
     libraryForm.addEventListener("submit", (event) => {
         event.preventDefault();
         void openLibrary(libraryForm, navigation, host);
@@ -136,6 +139,7 @@ try {
     if (labels.inputPath) {
         required<HTMLInputElement>('[name="library-path"]').value = labels.inputPath;
         required<HTMLInputElement>('[data-library] [name="locus"]').value = labels.locus ?? "";
+        requiredBuild = labels.build ?? "";
         void openLibrary(libraryForm, navigation, host);
     }
 } catch (error) {
@@ -187,6 +191,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
             required<HTMLInputElement>('[name="library-path"]').value,
             form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "",
             (form.querySelector<HTMLTextAreaElement>('[name="extra-tracks"]')?.value ?? "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
+            requiredBuild,
         );
         if ("problem" in result) {
             status(result.problem, true, result.fileName ?? "");

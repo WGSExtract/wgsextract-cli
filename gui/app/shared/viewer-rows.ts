@@ -17,6 +17,14 @@ export interface ViewerRow {
     cells: string[];
     /** `chrom:start-end`, 1-based inclusive; empty when the row has no single position. */
     locus: string;
+    /** The build the position is on, when its table says: the viewer refuses a reference of another build. */
+    build?: ViewerBuild;
+}
+
+export type ViewerBuild = "hg19" | "hg38";
+
+export function isViewerBuild(value: unknown): value is ViewerBuild {
+    return value === "hg19" || value === "hg38";
 }
 
 export interface ViewerRowTable {
@@ -72,6 +80,19 @@ export function variantLocus(chrom: unknown, pos: unknown, ref?: unknown): strin
     return `${chrom}:${pos}-${Number(pos) + length - 1}`;
 }
 
+/**
+ * A finding's span. A structural variant has no REF; its evidence region (`chrom:pos-end`) holds the
+ * whole interval, so a deletion opens across all of it rather than at its first base.
+ */
+function findingLocus(variant: LooseRecord, region: unknown): string {
+    const locus = variantLocus(variant.chrom, variant.pos, variant.ref);
+    const span = typeof region === "string" ? /^([A-Za-z0-9_.-]+):(\d+)-(\d+)$/.exec(region) : null;
+    if (!locus || variant.ref != null || !span || span[1] !== variant.chrom || Number(span[2]) !== variant.pos || Number(span[3]) < Number(span[2])) {
+        return locus;
+    }
+    return `${span[1]}:${span[2]}-${span[3]}`;
+}
+
 /** Haplogrep's rCRS notation: `263G`, `315.1C` (insertion after 315), `8281-8289d` (deletion). */
 export function mtVariantLocus(variant: string): string {
     const match = /^[ACGTN]?(\d+)(?:-(\d+))?/i.exec(variant);
@@ -88,12 +109,15 @@ function reportFindingRows(details: LooseRecord): ViewerRow[] {
     return Object.values(sections).flatMap((value) => {
         const section = record(value);
         const findings = Array.isArray(section?.findings) ? section.findings.map(record) : [];
+        // ClinVar and ACMG sections name the build of their evidence VCF, which may not be the BAM's.
+        const build = isViewerBuild(section?.build) ? section.build : undefined;
         return findings.filter((finding): finding is LooseRecord => finding !== undefined).map((finding) => {
             const variant = record(finding.variant);
-            const locus = variant ? variantLocus(variant.chrom, variant.pos, variant.ref) : "";
+            const locus = variant ? findingLocus(variant, record(finding.evidence)?.region) : "";
             return {
                 cells: [text(section?.title), text(finding.label), text(finding.value), variant && locus ? variantText(variant) : ""],
                 locus,
+                ...(build && locus ? { build } : {}),
             };
         });
     });
