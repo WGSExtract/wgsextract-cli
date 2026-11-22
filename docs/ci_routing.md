@@ -409,6 +409,15 @@ when their test files are affected. Main pushes and nightly/manual runs
 retain full-suite coverage; merge-queue Ubuntu and code-selected Windows run the full suite minus files
 the test cache already saw pass on main.
 
+The selector gives tests the transitive dependencies of their `conftest.py`
+files. Keep shared home/config isolation in `tests/home_isolation.py` without
+application or CLI subprocess imports. Tests that launch the CLI still reach its
+entry point through the literal subprocess target in `tests/smoke_utils.py`.
+The selector builds its own policy names from the app package prefix: they name
+modules the selector recognizes, not modules the selector executes. Real
+dependencies shared by fixtures still count: core configuration can still
+reach the CLI through the public API.
+
 Local callers can use
 `pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
 Stdout is only the JSON file array or `all`; no GitHub credentials or output

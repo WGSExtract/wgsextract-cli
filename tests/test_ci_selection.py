@@ -14,6 +14,7 @@ from scripts.ci_select_replay import failed_test_files
 from scripts.ci_select_tests import (
     CI_TESTS,
     ci_test_targets,
+    import_graph,
     os_selection,
     select_tests,
 )
@@ -85,6 +86,38 @@ def test_914_single_module_selects_transitive_and_relative_imports(
     assert select_tests(["src/wgsextract_cli/core/changed.py"], repository=root) == [
         "tests/test_reader.py"
     ]
+
+
+def test_1330_harness_keeps_only_real_cli_dependencies(tmp_path: Path) -> None:
+    # Use the real harness but isolate it from unrelated core-to-API edges.
+    # Otherwise those real dependencies would mask either false edge returning.
+    harness = {
+        path: (ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "scripts/ci_select_tests.py",
+            "scripts/ci_test_tiers.py",
+            "tests/conftest.py",
+            "tests/home_isolation.py",
+            "tests/smoke_utils.py",
+        )
+    }
+    leaf = "src/wgsextract_cli/commands/leaf.py"
+    root = repository(
+        tmp_path,
+        {
+            **harness,
+            "src/wgsextract_cli/main.py": "from wgsextract_cli.commands import leaf",
+            leaf: "",
+            "tests/test_cli.py": "from tests.smoke_utils import run_cli",
+            "tests/test_unrelated.py": "import json",
+        },
+    )
+
+    graph = import_graph(root)
+    dependencies = graph.fixture_dependencies(root / "tests")
+    assert "scripts.ci_select_tests" in dependencies
+    assert "wgsextract_cli.main" not in dependencies
+    assert select_tests([leaf], repository=root) == ["tests/test_cli.py"]
 
 
 @pytest.mark.parametrize(

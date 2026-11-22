@@ -7,8 +7,8 @@ from urllib.request import urlopen
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools
-from tests.smoke_utils import state_directory_setting
 from tests.test_remote_benchmark import OMNI, REGION_HG19, _run, _score_all_exports
 from wgsextract_cli.commands.benchmark.chip import CONSUMER_FORMATS
 from wgsextract_cli.core.dependencies import get_tool_path
