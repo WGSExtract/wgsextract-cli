@@ -24,7 +24,8 @@ def get_bam_header(
 
     bam_path = fspath(bam_path)
     is_cram = bam_path.lower().endswith(".cram")
-    is_vcf = is_vcf_path(bam_path)
+    # Any .bgz here (sample.bgz, sample.gvcf.bgz) is a bgzipped VCF.
+    is_vcf = is_vcf_path(bam_path) or bam_path.lower().endswith(".bgz")
 
     if is_vcf:
         try:

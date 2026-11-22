@@ -147,7 +147,8 @@ FACTS: dict[str, FactSpec] = {
             PLATFORMS,
             4,
         ),
-        FactSpec("build", "Reference build the file is aligned to."),
+        # Version 2: .vcf.bgz and upper-case VCF names are read as VCFs (#1243).
+        FactSpec("build", "Reference build the file is aligned to.", None, 2),
         FactSpec(
             "somalier_sex",
             "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",

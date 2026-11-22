@@ -8,7 +8,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 - `microarray` and `lineage y-haplogroup` now read gnomAD-style `.vcf.bgz`
   files and upper-case VCF names such as `KIT.VCF.GZ` as VCFs, rather than
   treating them as alignments or refusing them; `lineage mt-haplogroup` also
-  accepts `.vcf.bgz`
+  accepts `.vcf.bgz`. Reference builds that earlier versions recorded in a
+  sample workspace are detected again once
   ([#1243, .vcf.bgz not recognised](https://github.com/WGSExtract/wgsextract-cli/issues/1243)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears

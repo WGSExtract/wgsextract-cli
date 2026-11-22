@@ -215,6 +215,18 @@ def test_vcf_without_reference_contigs_is_rejected(tmp_path):
         _to_fasta(tmp_path, _rec(12, "T", "C", "1/1", chrom="chrZ"), contigs=("chrZ",))
 
 
+def test_issue_1243_bgz_named_vcf_still_has_its_contig_lengths_checked(tmp_path):
+    # Narrowing VCF names to .vcf.bgz sent sample.bgz headers to samtools.
+    ref = tmp_path / "ref.fa"
+    ref.write_text(f">chr1\n{REF}\n")
+    vcf = _vcf(tmp_path / "v.bgz", _rec(12, "T", "C", "1/1"), length=300)
+    with pytest.raises(WGSExtractError, match="different reference"):
+        run_wgsextract(
+            "vcf", "to-fasta", "--input", vcf, "--ref", str(ref),
+            "--outdir", str(tmp_path / "out"),
+        )  # fmt: skip
+
+
 def test_region_outside_vcf_is_reference_and_unknown_contig_fails(tmp_path):
     seqs = _to_fasta(
         tmp_path, _rec(12, "T", "C", "1/1"), "--region", "chr2:1-20",
