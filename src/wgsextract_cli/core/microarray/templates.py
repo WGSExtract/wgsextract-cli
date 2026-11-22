@@ -188,15 +188,17 @@ def _body_rows(
             raise WGSExtractError(f"Template delta {path} nests too deep.")
         yield from _delta_rows(path, depth)
         return
+    api_order = format_name == "23andMe_SNPs_API"
     with _open_template(path) as f:
         for line in f:
             line = line.strip().replace('"', "")
-            if not line or line.startswith("#"):
+            if not line or line[0] == "#":
                 continue
-            parts = line.split("," if line.count(",") > line.count("\t") else "\t")
+            commas = line.count(",")
+            parts = line.split("," if commas and commas > line.count("\t") else "\t", 3)
             if len(parts) < 3:
                 continue
-            if format_name == "23andMe_SNPs_API":
+            if api_order:
                 # This template is chrom (chr1), position, rsID.
                 yield parts[2], _chrom_from_liftover(parts[0]), parts[1]
             else:
@@ -265,9 +267,17 @@ def _template_corrections() -> dict[tuple[str, str, str], str]:
 def template_rows(format_name: str, path: str) -> Iterator[tuple[str, str, str]]:
     """(ID, chromosome, position) of each marker in a template body, as the
     vendor names them, with corrections.tsv's fixes applied."""
-    corrections = _template_corrections()
-    for snp_id, chrom, pos in _body_rows(format_name, path):
-        yield snp_id, chrom, corrections.get((format_name, snp_id, pos), pos)
+    corrections = {
+        (snp_id, pos): corrected
+        for (template, snp_id, pos), corrected in _template_corrections().items()
+        if template == format_name
+    }
+    rows = _body_rows(format_name, path)
+    if not corrections:
+        yield from rows
+        return
+    for snp_id, chrom, pos in rows:
+        yield snp_id, chrom, corrections.get((snp_id, pos), pos)
 
 
 def lift_to_grch37(
