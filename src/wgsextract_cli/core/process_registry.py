@@ -164,11 +164,14 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
     time.sleep(0.5)
 
     # The launcher can exit on SIGTERM while a descendant ignores it.
-    for pgid in groups:
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except OSError:
-            logging.debug("Process group %s could not be killed.", pgid, exc_info=True)
+    if sys.platform != "win32":
+        for pgid in groups:
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                logging.debug(
+                    "Process group %s could not be killed.", pgid, exc_info=True
+                )
     for proc in processes:
         if proc.pid not in groups and proc.poll() is None:
             try:
