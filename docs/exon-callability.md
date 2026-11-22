@@ -107,7 +107,7 @@ section:
 | `reported` | the ClinVar section lists a consensus P/LP call in the gene (with its confidence) |
 | `not_reported` | no call, and every coding exon was read |
 | `not_readable` | no call, but not every coding exon was read |
-| `not_run` | `vcf clinvar` has not run, the gene is not in its gene list, or the gene was not assessed; also every gene without a call when the two runs can't be combined (warning `clinvar_not_combined`): they are on different builds, ClinVar annotated other calls than the gVCF's, or it left calls it could not place in a gene |
+| `not_run` | `vcf clinvar` has not run, the gene is not in its gene list, or the gene was not assessed; also every gene without a call when the two runs can't be combined (warning `clinvar_not_combined`): they are on different builds, ClinVar did not annotate the very calls behind the assessed gVCF (another VCF, or one rewritten since either run, by the fingerprints the runs recorded), or it left calls it could not place in a gene. Membership is by the report's own gene list symbols |
 
 ## What a callable exon does not cover
 
@@ -154,7 +154,8 @@ contig it uses, other `#` lines as its source notes, and the columns `gene`,
 `transcript`, `tag`, `strand`, `exon`, `exons`, `chrom`, `start`, `end`,
 `cds_start`, `cds_end` (1-based, inclusive; the CDS columns empty for an
 untranslated exon) and `limitations` (`kind:start-end` items separated by
-`;`, may be empty).
+`;`, may be empty). Each gene's rows must be one transcript's exons, numbered
+1 to its `exons` count, each once; a model missing an exon is refused.
 
 ## Measured on HG002
 

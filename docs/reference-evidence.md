@@ -242,8 +242,8 @@ A command given a variant VCF finds its gVCF through the
 manifest in the VCF's folder, or one its [sample workspace](sample-workspace.md)
 recorded, that lists the VCF and a `reference_evidence` output, both
 unchanged since (same recorded fingerprint; a manifest without fingerprints
-isn't trusted), the gVCF indexed. Without one, the
-command works as before.
+isn't trusted), the gVCF indexed. A server job follows only manifests and
+files inside the folders it allows. Without one, the command works as before.
 
 - `score pgs` counts a scoring site the VCF doesn't list as homozygous
   reference only where the gVCF calls it `callable_reference` (an indexed

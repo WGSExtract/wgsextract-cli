@@ -9,12 +9,12 @@ run. See docs/exon-callability.md.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core import exon_callability as ec
-from wgsextract_cli.core import gene_lists
+from wgsextract_cli.core import gene_lists, read_scope
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.report_documents import (
     ReportCallabilityDocument,
@@ -24,9 +24,11 @@ from wgsextract_cli.core.report_documents import (
     ReportGeneListDocument,
     ReportWarningDocument,
 )
+from wgsextract_cli.core.results import fingerprint
 
 from .context import (
     CONFIDENCE,
+    SAMPLE_ROLES,
     SECTIONS,
     Source,
     _command_or_role,
@@ -81,7 +83,7 @@ def _result(
     gene: Mapping[str, Any],
     clinvar: ReportClinvarDocument,
     reported: Mapping[str, str],
-    listed: set[str] | None,
+    listed: set[str],
     blocked: str | None,
 ) -> tuple[str, str]:
     symbol = str(gene["gene"]).upper()
@@ -92,7 +94,7 @@ def _result(
         return "not_run", "ClinVar annotation (vcf clinvar) has not run"
     if blocked:
         return "not_run", blocked
-    if listed is not None and symbol not in listed:
+    if symbol not in listed:
         return "not_run", "not in the ClinVar section's gene list"
     if gene["state"] == ec.NOT_RUN:
         why = (
@@ -106,19 +108,39 @@ def _result(
     return "not_readable", "no P/LP call, but not every coding exon was read"
 
 
-def _same_calls(ctx: _Context, source: Source, gvcf: Path) -> bool:
-    """Whether the ClinVar run read the calls this gVCF belongs to: its VCF
-    is the callability run's input, or that VCF's gVCF is this one."""
+def _recorded(source: Source, roles: Sequence[str]) -> dict[Path, str | None]:
+    """The run's inputs with ``roles``, where they are now, and the
+    fingerprints the run recorded for them."""
+    return {
+        source.locate(str(r["path"])).resolve(): r.get("fingerprint")
+        for r in source.records("inputs")
+        if r.get("role") in roles and r.get("path")
+    }
+
+
+def _same_calls(ctx: _Context, source: Source) -> bool:
+    """Whether the ClinVar run read the very calls (same content) behind the
+    gVCF assessed: the same VCF, or the VCF whose gVCF was assessed. False
+    when that can't be established, as when either file has been rewritten
+    since one of the runs."""
     clinvar = ctx.latest(_command_or_role("vcf clinvar", "clinvar_pathogenic"))
     if clinvar is None or clinvar.status != "ok":
         return True
-    ours = {p.resolve() for p in source.sample_files()} | {gvcf.resolve()}
-    theirs: set[Path] = set()
-    for vcf in clinvar.sample_files():
-        theirs.add(vcf.resolve())
-        if companion := evidence.companion(vcf):
-            theirs.add(Path(companion).resolve())
-    return not theirs or bool(ours & theirs)
+    ours = _recorded(source, (*SAMPLE_ROLES, evidence.ROLE))
+    for vcf, recorded in _recorded(clinvar, SAMPLE_ROLES).items():
+        if recorded is None:
+            continue
+        if ours.get(vcf) == recorded:
+            return True
+        # Its gVCF, if the VCF is still the one ClinVar read.
+        if not read_scope.may_follow(vcf) or fingerprint(vcf) != recorded:
+            continue
+        gvcf = evidence.companion(vcf)
+        if gvcf is not None:
+            assessed = ours.get(Path(gvcf).resolve())
+            if assessed is not None and assessed == fingerprint(gvcf):
+                return True
+    return False
 
 
 def _blocked(
@@ -126,7 +148,6 @@ def _blocked(
     source: Source,
     document: Mapping[str, Any],
     clinvar: ReportClinvarDocument,
-    gvcf: Path,
 ) -> str | None:
     """Why the ClinVar section's silence can't be read gene by gene, if it
     can't; each reason is also a section warning."""
@@ -135,7 +156,7 @@ def _blocked(
         return f"the exon assessment is on {build} but the ClinVar run on {theirs}"
     if clinvar["status"] != "ok":
         return None
-    if not _same_calls(ctx, source, gvcf):
+    if not _same_calls(ctx, source):
         return "the ClinVar run annotated other variant calls than the assessed gVCF's"
     codes = {w["code"] for w in clinvar["warnings"]}
     if clinvar.get("counts", {}).get("unplaced") or codes & _INCOMPLETE:
@@ -191,7 +212,7 @@ def _exon_callability(
     build = document.get("build")
     # The gVCF, recorded relative to the document.
     gvcf = path.parent / str(document["evidence"]["file"]) if path else Path()
-    blocked = _blocked(ctx, source, document, clinvar, gvcf)
+    blocked = _blocked(ctx, source, document, clinvar)
     if blocked:
         section["warnings"].append(
             ReportWarningDocument(
@@ -200,11 +221,8 @@ def _exon_callability(
             )
         )
     reported = _reported(clinvar)
-    listed = (
-        None
-        if described.get("id") == clinvar["gene_list"].get("id")
-        else _symbols(ctx.gene_list)
-    )
+    # The report's own list, by its symbols: two users' lists may share a name.
+    listed = _symbols(ctx.gene_list) or set()
     genes: list[ReportCallabilityGeneDocument] = []
     for gene in document["genes"]:
         result, text = _result(gene, clinvar, reported, listed, blocked)

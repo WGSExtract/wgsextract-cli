@@ -226,6 +226,8 @@ def _parse_model(name: str, data: bytes, build: str | None) -> ExonModel:
             genes.setdefault(exon.gene.upper(), []).append(exon)
     if not genes:
         raise UsageError(f"Exon model {name} lists no exons.")
+    for exons in genes.values():
+        _check_gene(name, exons)
     unknown = sorted({e.chrom for v in genes.values() for e in v} - set(contigs))
     if unknown:
         raise UsageError(
@@ -239,6 +241,26 @@ def _parse_model(name: str, data: bytes, build: str | None) -> ExonModel:
         contigs,
         {g: tuple(sorted(v, key=lambda e: e.number)) for g, v in genes.items()},
         build,
+    )
+
+
+def _check_gene(name: str, exons: Sequence[Exon]) -> None:
+    """A gene's rows must be one transcript's exons, each once, all of them:
+    a missing exon would otherwise read as nothing left to assess."""
+    transcripts = {e.transcript for e in exons}
+    counts = {e.count for e in exons}
+    numbers = sorted(e.number for e in exons)
+    if len(transcripts) != 1 or len(counts) != 1:
+        problem = (
+            f"rows of {len(transcripts)} transcripts with exon counts {sorted(counts)}"
+        )
+    elif numbers != list(range(1, next(iter(counts)) + 1)):
+        problem = f"exons {numbers} of the {next(iter(counts))} its transcript has"
+    else:
+        return
+    raise UsageError(
+        f"Exon model {name}: gene {exons[0].gene} has {problem}; list every exon "
+        "of one transcript, numbered 1 to its exon count, once."
     )
 
 

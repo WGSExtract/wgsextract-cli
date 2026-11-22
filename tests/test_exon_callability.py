@@ -17,7 +17,7 @@ import pytest
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.core import exon_callability as ec
-from wgsextract_cli.core import gene_lists
+from wgsextract_cli.core import gene_lists, read_scope
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 
@@ -274,6 +274,43 @@ def test_1177_a_vcf_without_reference_evidence_says_how_to_get_it(
     assert "--reference-evidence gvcf" in _error(result)
 
 
+@needs_htslib
+def test_1177_server_scope_keeps_a_gvcf_outside_it_unread(sample: Path) -> None:
+    """PR #1357 review: a VCF a server job may read led, through its
+    manifest, to a gVCF outside the allowed folders."""
+    with read_scope.limited_to(lambda p: not str(p).endswith(".g.vcf.gz")):
+        result = _callability(sample)
+    assert result.exit_code != 0
+    assert "has no reference evidence" in _error(result)
+
+
+@needs_htslib
+def test_1177_an_exon_model_missing_an_exon_is_refused(
+    sample: Path, tmp_path: Path
+) -> None:
+    """PR #1357 review: a model without GENEA's unread exon 3 would make
+    GENEA callable."""
+    model = _model(tmp_path / "exons.tsv")
+    lines = model.read_text().splitlines()
+    model.write_text(
+        "\n".join(
+            line
+            for line in lines
+            if not line.startswith("GENEA\tNM_GENEA.1\tMANE Select\t+\t3\t")
+        )
+        + "\n"
+    )
+    result = api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=sample / "snps.vcf.gz", gene_list=str(sample / "genes.tsv"),
+            exons=model, outdir=tmp_path,
+        ),
+        check=False,
+    )  # fmt: skip
+    assert result.exit_code != 0
+    assert "gene GENEA has exons [1, 2, 4]" in _error(result)
+
+
 _GQ_GVCF = """##fileformat=VCFv4.2
 ##contig=<ID=chr7,length=6000>
 ##INFO=<ID=END,Number=1,Type=Integer,Description="End">
@@ -316,8 +353,9 @@ def _genes(folder: Path) -> Path:
 def _report(folder: Path, outdir: Path, *select: str) -> tuple[int, str, dict]:
     out = io.StringIO()
     code = 0
-    argv = ["wgsextract", "report", *(select or ("--workspace", str(folder))),
-            "--outdir", str(outdir), "--gene-list", str(folder / "genes.tsv")]  # fmt: skip
+    # Later options win: ``select`` may give another --gene-list.
+    argv = ["wgsextract", "report", "--outdir", str(outdir), "--gene-list",
+            str(folder / "genes.tsv"), *(select or ("--workspace", str(folder)))]  # fmt: skip
     with redirect_stdout(out), patch.object(sys, "argv", argv):
         try:
             main()
@@ -443,6 +481,48 @@ def test_1177_clinvar_on_another_call_set_is_not_combined(
     results, warnings = _results(folder, tmp_path)
     assert results["GENEE"] == "not_run"
     assert "clinvar_not_combined" in warnings
+
+
+@needs_htslib
+def test_1177_clinvar_on_rewritten_calls_is_not_combined_with_a_stale_assessment(
+    sample: Path, tmp_path: Path
+) -> None:
+    """PR #1357 review: the caller rewrote snps.vcf.gz and only ClinVar was
+    rerun; the paths still match, but the assessment is of the old calls."""
+    folder = _copy_with_callability(sample, tmp_path)
+    api.vcf.snp(
+        api.VcfSnpParams(
+            input=folder / "S.bam", ref=folder / "ref.fa", outdir=folder,
+            threads=1, region="chr7:1-5000", ploidy="GRCh38",
+        )
+    )  # fmt: skip
+    api.vcf.clinvar(
+        api.VcfClinvarParams(
+            vcf_input=folder / "snps.vcf.gz", ref=folder / "ref.fa", threads=1,
+            clinvar_file=folder / "clinvar.vcf.gz", outdir=folder,
+        )
+    )  # fmt: skip
+    results, warnings = _results(folder, tmp_path)
+    assert results["GENEE"] == "not_run"
+    assert "clinvar_not_combined" in warnings
+
+
+@needs_htslib
+def test_1177_genes_outside_the_reports_own_list_are_not_run(
+    sample: Path, tmp_path: Path
+) -> None:
+    """PR #1357 review: another panel also named genes.tsv compared equal by
+    name, so GENEE, outside the report's list, read as not reported."""
+    folder = _copy_with_callability(sample, tmp_path)
+    other = tmp_path / "other" / "genes.tsv"
+    other.parent.mkdir()
+    other.write_text("gene\nGENEA\nGENEB\n")
+    _, _, report = _report(folder, tmp_path / "report", "--workspace", str(folder),
+                           "--gene-list", str(other))  # fmt: skip
+    section = report["sections"]["exon_callability"]
+    results = {g["gene"]: (g["result"], g["result_text"]) for g in section["genes"]}
+    assert results["GENEE"] == ("not_run", "not in the ClinVar section's gene list")
+    assert results["GENEA"][0] == "reported"
 
 
 @needs_htslib
