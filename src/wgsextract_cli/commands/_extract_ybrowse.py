@@ -1,6 +1,9 @@
+import bisect
 import contextlib
 import gzip
 import json
+import re
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -10,9 +13,14 @@ from wgsextract_cli.core.ref_library.assets import (
     resolve_reference_library,
 )
 from wgsextract_cli.core.ref_library.models import sequence_lengths
-from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
-from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
+from wgsextract_cli.core.utils import (
+    WGSExtractError,
+    popen,
+    run_command,
+    run_pipeline,
+)
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
 from wgsextract_cli.core.ybrowse import (
     COPYRIGHT,
@@ -22,6 +30,33 @@ from wgsextract_cli.core.ybrowse import (
 )
 
 from ._extract_helpers import BaseArgs, cleanup_files, derive_output_path
+
+_N_RUN = re.compile(rb"[Nn]+")
+
+
+def _n_runs(ref: str, contig: str, work: Path) -> list[tuple[int, int]]:
+    """0-based, half-open runs of N in ``contig`` (hs38's masked PARs, gaps)."""
+    errors = work / "faidx.err"
+    with errors.open("wb") as stderr:
+        query = popen(
+            ["samtools", "faidx", ref, contig], stdout=subprocess.PIPE, stderr=stderr
+        )
+        assert query.stdout is not None
+        query.stdout.readline()  # the FASTA header
+        runs: list[tuple[int, int]] = []
+        offset = 0
+        while chunk := query.stdout.read(1 << 20):
+            bases = chunk.replace(b"\n", b"").replace(b"\r", b"")
+            for match in _N_RUN.finditer(bases):
+                start, end = offset + match.start(), offset + match.end()
+                if runs and runs[-1][1] == start:
+                    start = runs.pop()[0]  # a run split across reads
+                runs.append((start, end))
+            offset += len(bases)
+    if query.wait() != 0:
+        detail = errors.read_text(errors="replace").strip()
+        raise WGSExtractError(f"samtools faidx could not read {contig}: {detail}")
+    return runs
 
 
 def call_ybrowse(input_path: str, base: BaseArgs) -> None:
@@ -55,6 +90,48 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
         normalized = work / "sites.vcf.gz"
         rename = work / "rename.tsv"
         rename.write_text(f"chrY\t{chr_y}\n", encoding="utf-8", newline="\n")
+        # A reference N (hs38/no-alt mask the PARs) makes a site unavailable,
+        # not a REF mismatch: drop it before checking and calling.
+        masked = _n_runs(ref, chr_y, work)
+        masked_starts = [start for start, _ in masked]
+        masked_bed = work / "reference_n.bed"
+        masked_bed.write_text(
+            "".join(f"{chr_y}\t{start}\t{end}\n" for start, end in masked),
+            encoding="utf-8",
+            newline="\n",
+        )
+        bed = work / "sites.bed"
+        targets = work / "targets.tsv"
+        excluded = kept = 0
+        with (
+            gzip.open(directory / "targets.tsv.gz", "rt", encoding="utf-8") as source,
+            targets.open("w", encoding="utf-8", newline="\n") as target_out,
+            bed.open("w", encoding="utf-8", newline="\n") as bed_out,
+        ):
+            for line in source:
+                _, pos, alleles = line.rstrip("\n").split("\t")
+                start = int(pos) - 1
+                run = bisect.bisect_right(masked_starts, start) - 1
+                if run >= 0 and start < masked[run][1]:
+                    excluded += 1
+                    continue
+                kept += 1
+                target_out.write(f"{chr_y}\t{pos}\t{alleles}\n")
+                bed_out.write(f"{chr_y}\t{start}\t{pos}\n")
+        current_result().add_metrics(ybrowse_excluded_reference_n_sites=excluded)
+        if excluded:
+            warn(
+                "ybrowse_reference_n_sites_excluded",
+                f"Skipped {excluded:,} yBrowse sites where the reference {chr_y} "
+                "base is N (for example its masked PARs); they are not called.",
+                sites=excluded,
+                contig=chr_y,
+            )
+        if not kept:
+            raise WGSExtractError(
+                f"The reference {chr_y} is N at every installed yBrowse site; "
+                "use a GRCh38 FASTA whose chrY is not masked."
+            )
         # Fail on REF disagreement before decoding/calling the user's alignment.
         run_pipeline(
             [
@@ -66,6 +143,11 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
                     "-Ou",
                     str(directory / "sites.vcf.gz"),
                 ],
+                *(
+                    [["bcftools", "view", "-T", f"^{masked_bed}", "-Ou"]]
+                    if masked
+                    else []
+                ),
                 [
                     "bcftools",
                     "norm",
@@ -82,17 +164,6 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
             stderr_dir=work,
         )
         ensure_vcf_indexed(str(normalized))
-        bed = work / "sites.bed"
-        targets = work / "targets.tsv"
-        with (
-            gzip.open(directory / "targets.tsv.gz", "rt", encoding="utf-8") as source,
-            targets.open("w", encoding="utf-8", newline="\n") as target_out,
-            bed.open("w", encoding="utf-8", newline="\n") as bed_out,
-        ):
-            for line in source:
-                _, pos, alleles = line.rstrip("\n").split("\t")
-                target_out.write(f"{chr_y}\t{pos}\t{alleles}\n")
-                bed_out.write(f"{chr_y}\t{int(pos) - 1}\t{pos}\n")
         compressed_targets = work / "targets.tsv.gz"
         with compressed_targets.open("wb") as stream:
             run_command(["bgzip", "-c", str(targets)], stdout=stream)
@@ -103,6 +174,7 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
             f"##ybrowse_source={json.dumps(SOURCE_URL)}\n"
             f"##ybrowse_snapshot_sha256={manifest['source_sha256']}\n"
             f"##ybrowse_attribution={json.dumps(str(manifest['attribution']))}\n"
+            f"##ybrowse_excluded_reference_N_sites={excluded}\n"
             "##ybrowse_scope=GRCh38_Y_SNPs_only;HG_is_marker_annotation_not_sample_prediction\n",
             encoding="utf-8",
             newline="\n",

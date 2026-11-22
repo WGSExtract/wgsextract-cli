@@ -111,15 +111,26 @@ def test_bad_snapshot_headers_and_coordinates_fail(tmp_path, change, error):
     assert not (tmp_path / "library/ybrowse/hg38/current.json").exists()
 
 
+def y_reference(
+    path: Path, name: str = "chrY", masked: tuple[tuple[int, int], ...] = ()
+) -> Path:
+    """An all-A GRCh38-length chrY; ``masked`` 1-based inclusive windows (all
+    within the first 100 kb) are N, as hs38 masks the chrY PARs."""
+    first = bytearray(b"A" * 100_000)
+    for start, end in masked:
+        first[start - 1 : end] = b"N" * (end - start + 1)
+    with path.open("w", newline="\n") as stream:
+        stream.write(f">{name}\n{first.decode()}\n")
+        for start in range(100_000, ybrowse.Y_LENGTH, 100_000):
+            stream.write("A" * min(100_000, ybrowse.Y_LENGTH - start) + "\n")
+    run_command(["samtools", "faidx", str(path)])
+    return path
+
+
 @pytest.fixture
 def synthetic_y(tmp_path, request):
     name = getattr(request, "param", "chrY")
-    reference = tmp_path / "ref.fa"
-    with reference.open("w", newline="\n") as stream:
-        stream.write(f">{name}\n")
-        for start in range(0, ybrowse.Y_LENGTH, 100_000):
-            stream.write("A" * min(100_000, ybrowse.Y_LENGTH - start) + "\n")
-    run_command(["samtools", "faidx", str(reference)])
+    reference = y_reference(tmp_path / "ref.fa", name)
     lines = [f"@SQ\tSN:{name}\tLN:{ybrowse.Y_LENGTH}"]
     for i in range(30):
         lines.append(
@@ -281,3 +292,69 @@ def test_a_bootstrap_ybrowse_vcf_is_not_used_issue_509(
             str(out),
         )
     assert not list(out.glob("*ybrowse*.vcf.gz"))
+
+
+PAR_MASKED = ((1, 10), (41, 60))
+PAR_SITES = [
+    "chrY\t5\tSYN_PAR1\tG\tA\t.\t.\tHG=R-PAR1;AA=G\tGT\t0",
+    "chrY\t50\tSYN_PAR2\tT\tC\t.\t.\tHG=R-PAR2;AA=T\tGT\t0",
+]
+
+
+def par_masked_run(tmp_path, monkeypatch, outside: str):
+    from wgsextract_cli.api.extract import YdnaVcfParams, ydna_vcf
+
+    reference = y_reference(tmp_path / "ref.fa", masked=PAR_MASKED)
+    lines = [f"@SQ\tSN:chrY\tLN:{ybrowse.Y_LENGTH}"] + [
+        f"r{i}\t0\tchrY\t11\t60\t20M\t*\t0\t0"
+        "\tCAAAAAAAAAAAAAAAAAAA\tIIIIIIIIIIIIIIIIIIII"
+        for i in range(30)
+    ]
+    bam = sam_to_bam(lines, tmp_path / "sample.bam")
+    library = tmp_path / "library"
+    rows = [PAR_SITES[0], outside, PAR_SITES[1]]
+    ybrowse.install_snapshot(library, mini_snapshot(tmp_path / "mini.vcf", rows))
+    monkeypatch.setitem(settings, "reference_library", str(library))
+    out = tmp_path / "output"
+    params = YdnaVcfParams(
+        input=Path(bam), ref=reference, outdir=out, threads=2, ybrowse=True
+    )
+    return ydna_vcf(params, check=False), out / "sample_Y_ybrowse.vcf.gz"
+
+
+@needs_htslib
+def test_issue_1374_par_masked_reference_n_sites_are_excluded_and_counted(
+    tmp_path, monkeypatch
+):
+    """hs38/no-alt GRCh38 mask the chrY PARs with N; yBrowse SNPs there used to
+    abort the run with "Reference allele mismatch ... REF_SEQ:'N'"."""
+    result, output = par_masked_run(
+        tmp_path, monkeypatch, "chrY\t11\tSYN_C\tA\tC\t.\t.\tHG=R-C;AA=A\tGT\t0"
+    )
+    assert result.status == "ok", result.error
+    records = run_command(
+        ["bcftools", "query", "-f", "%POS\t%ID[\t%GT]\n", str(output)],
+        capture_output=True,
+    ).stdout.splitlines()
+    assert records == ["11\tSYN_C\t1"]
+    header = run_command(
+        ["bcftools", "view", "-h", str(output)], capture_output=True
+    ).stdout
+    assert "##ybrowse_excluded_reference_N_sites=2\n" in header
+    (warning,) = [
+        w for w in result.warnings if w.code == "ybrowse_reference_n_sites_excluded"
+    ]
+    assert warning.details["sites"] == 2
+    manifest = json.loads(next(output.parent.glob("*.manifest.json")).read_text())
+    assert manifest["metrics"]["ybrowse_excluded_reference_n_sites"] == 2
+
+
+@needs_htslib
+def test_issue_1374_real_ref_mismatch_outside_par_still_aborts(tmp_path, monkeypatch):
+    """Skipping N-masked PAR sites must not hide a genuine A/C/G/T mismatch."""
+    result, output = par_masked_run(
+        tmp_path, monkeypatch, "chrY\t11\tSYN_BAD\tC\tG\t.\t.\tHG=R-BAD\tGT\t0"
+    )
+    assert result.status == "failed"
+    assert "Reference allele mismatch at chrY:11 " in str(result.error)
+    assert not output.exists()

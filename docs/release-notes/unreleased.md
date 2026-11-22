@@ -5,6 +5,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `extract ydna-vcf --ybrowse` works with GRCh38 references that mask the
+  chrY PARs with N (hs38, hs38DH, the no-alt analysis set). yBrowse sites
+  where the reference is N are skipped and counted in the VCF header and a
+  `ybrowse_reference_n_sites_excluded` warning, instead of stopping the run
+  with "Reference allele mismatch ... REF_SEQ:'N'". Other REF mismatches
+  still stop it
+  ([#1374, yBrowse calling on PAR-masked GRCh38](https://github.com/WGSExtract/wgsextract-cli/issues/1374)).
 - `ref cadd` keeps a complete CADD score table whose index download failed or
   was cancelled: the next run checks the table against its published MD5 and
   fetches only the missing index, instead of downloading the ~85 GB SNV table
