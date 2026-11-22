@@ -560,9 +560,45 @@ def test_1246_uninstall_keeps_an_installer_created_cache_holding_other_envs(
 
     result = run_uninstall(install_dir / "uninstall.sh", "--yes", *args)
 
-    assert "holds Pixi environments" in result.stdout
+    assert "Keeping the Pixi cache, which holds" in result.stdout
     assert (other / "keep.txt").is_file()
     assert not install_dir.exists()
+
+
+def test_1246_uninstall_scans_a_cache_named_like_pixis_cached_envs(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    cache_dir = tmp_path / "cached-envs-v0"
+    other = other_project_env(cache_dir / "envs", tmp_path)
+    write_layout(
+        install_dir, pixi_cache_dir=cache_dir, created_pixi_cache_dir=cache_dir
+    )
+
+    run_uninstall(install_dir / "uninstall.sh", "--yes")
+
+    assert (other / "keep.txt").is_file()
+
+
+def test_1246_keep_pixi_envs_keeps_a_cache_holding_the_recorded_env_dir(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    cache_dir = tmp_path / "pixi-cache"
+    env_dir = cache_dir / "envs"
+    env_dir.mkdir(parents=True)
+    (env_dir / "notes.txt").write_text("kept\n", encoding="utf-8")
+    write_layout(
+        install_dir,
+        pixi_cache_dir=cache_dir,
+        pixi_env_dir=env_dir,
+        created_pixi_cache_dir=cache_dir,
+    )
+
+    result = run_uninstall(install_dir / "uninstall.sh", "--yes", "--keep-pixi-envs")
+
+    assert "holds the kept Pixi envs folder" in result.stdout
+    assert (env_dir / "notes.txt").is_file()
 
 
 def test_1246_uninstall_keeps_its_envs_when_they_hold_the_kept_cache(
