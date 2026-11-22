@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 import tomllib
 
@@ -38,6 +39,11 @@ with shared_file_lock(Path(sys.argv[1])) as target:
     time.sleep(float(sys.argv[2]))
     target.write_text(text + 'app_setting = "kept"\\n')
 """
+
+
+def _lock_record(pid: int, **fields: object) -> str:
+    owner = {"pid": pid, "host": socket.gethostname(), "boot": psutil.boot_time()}
+    return json.dumps(owner | fields)
 
 
 def _start_app_save(path: Path, seconds: float) -> subprocess.Popen[str]:
@@ -82,10 +88,41 @@ def test_1230_a_crashed_savers_lock_does_not_block_saves(temp_config):
         check=True,
     )
     lock = temp_config.with_name(".config.toml.lock")
-    lock.write_text(json.dumps({"pid": int(dead.stdout), "host": socket.gethostname()}))
+    lock.write_text(_lock_record(int(dead.stdout)))
     config.save_config({"reference_library": "/ref"})
     assert tomllib.loads(temp_config.read_text()) == {"reference_library": "/ref"}
     assert not lock.exists()
+
+
+@pytest.mark.parametrize(
+    "left",
+    [
+        # Before the computer restarted, by a process whose ID is in use again.
+        _lock_record(os.getpid(), boot=psutil.boot_time() - 3600),
+        # By a process whose ID another process has taken since.
+        _lock_record(os.getpid(), started=psutil.Process().create_time() - 3600),
+        # Empty: its save crashed before writing who owned it.
+        "",
+    ],
+    ids=["previous-boot", "reused-pid", "never-written"],
+)
+def test_1230_an_abandoned_lock_does_not_block_saves(temp_config, left):
+    # Issue #1230: such a lock named a live process, or none, so every later
+    # save timed out until it was deleted by hand.
+    lock = temp_config.with_name(".config.toml.lock")
+    lock.write_text(left)
+    minute_ago = time.time() - 60
+    os.utime(lock, (minute_ago, minute_ago))
+    config.save_config({"reference_library": "/ref"})
+    assert tomllib.loads(temp_config.read_text()) == {"reference_library": "/ref"}
+    assert not lock.exists()
+
+
+def test_1230_a_lock_still_being_written_is_not_taken(temp_config):
+    temp_config.with_name(".config.toml.lock").write_text("")
+    with pytest.raises(WGSExtractError, match="Timed out waiting"):
+        with shared_file_lock(temp_config, timeout=0.2):
+            pytest.fail("took a lock its maker is still writing")
 
 
 def test_1230_a_save_that_cannot_get_the_lock_fails_loudly(temp_config):

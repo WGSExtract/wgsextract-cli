@@ -215,27 +215,49 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
 # are files made with O_EXCL; gui/app/web/src/server/settings-lock.ts mirrors
 # this protocol. A holder keeps one for a single read-modify-write.
 
+# Boot times read at different moments differ a little.
+_BOOT_TOLERANCE = 60
+# A lock is written straight after it is made; still empty after this long, its
+# maker stopped in between.
+_UNWRITTEN_SECONDS = 10
+
 
 def _shared_lock_record() -> bytes:
+    import psutil
+
     return json.dumps(
-        {"pid": os.getpid(), "host": socket.gethostname(), "token": uuid.uuid4().hex}
+        {
+            "pid": os.getpid(),
+            "host": socket.gethostname(),
+            "boot": psutil.boot_time(),
+            "started": psutil.Process().create_time(),
+            "token": uuid.uuid4().hex,
+        }
     ).encode()
 
 
 def _owner_exited(record: bytes) -> bool:
-    """Whether the process that wrote ``record`` has provably exited. An owner
-    on another computer, or a record still being written, keeps its lock until
-    it is released, so a slow save is never overtaken."""
-    try:
-        owner = json.loads(record)
-        pid, host = int(owner["pid"]), str(owner["host"])
-    except (ValueError, KeyError, TypeError):
-        return False
-    if host.casefold() != socket.gethostname().casefold():
-        return False
+    """Whether the process that wrote ``record`` has provably exited: it ran
+    before this computer last started, or its process ID is gone or now names
+    another process. An owner on another computer keeps its lock until it is
+    released, so a slow save is never overtaken. Raises ValueError, KeyError
+    or TypeError for a record that is not one."""
     import psutil
 
-    return not psutil.pid_exists(pid)
+    owner = json.loads(record)
+    pid, host, boot = int(owner["pid"]), str(owner["host"]), float(owner["boot"])
+    if host.casefold() != socket.gethostname().casefold():
+        return False
+    if abs(boot - psutil.boot_time()) > _BOOT_TOLERANCE:
+        return True
+    try:
+        started = psutil.Process(pid).create_time()
+    except psutil.NoSuchProcess:
+        return True
+    except psutil.Error:
+        return False
+    # The app records no start time: Node cannot read one the way psutil does.
+    return "started" in owner and abs(started - float(owner["started"])) > 1
 
 
 def _windows_busy(error: OSError) -> bool:
@@ -245,7 +267,7 @@ def _windows_busy(error: OSError) -> bool:
 
 
 def _create_shared_lock(lock: Path, record: bytes) -> bool:
-    """Create ``lock`` holding ``record``; False if it already exists."""
+    """Create ``lock`` holding ``record``; False if another holds it."""
     try:
         fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
     except FileExistsError:
@@ -257,7 +279,15 @@ def _create_shared_lock(lock: Path, record: bytes) -> bool:
         lock.unlink(missing_ok=True)
         raise
     os.close(fd)
-    return True
+    # A maker that stalled before writing may have lost its empty lock.
+    try:
+        return lock.read_bytes() == record
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        if not _windows_busy(error):
+            raise
+        return False
 
 
 def _remove_shared_lock(lock: Path, record: bytes) -> bool:
@@ -282,16 +312,21 @@ def _release_shared_lock(lock: Path, record: bytes) -> None:
     logging.warning(f"Could not remove lock {lock}")
 
 
-def _remove_if_owner_exited(lock: Path) -> None:
+def _remove_if_abandoned(lock: Path) -> None:
     try:
         record = lock.read_bytes()
+        age = time.time() - lock.stat().st_mtime
     except FileNotFoundError:
         return
     except OSError as error:
         if _windows_busy(error):
             return
         raise
-    if _owner_exited(record) and _remove_shared_lock(lock, record):
+    try:
+        abandoned = _owner_exited(record)
+    except (ValueError, KeyError, TypeError):
+        abandoned = age > _UNWRITTEN_SECONDS
+    if abandoned and _remove_shared_lock(lock, record):
         logging.info(f"Removed abandoned lock {lock}")
 
 
@@ -302,14 +337,14 @@ def _reclaim_abandoned_shared_lock(lock: Path) -> None:
     record = _shared_lock_record()
     try:
         if not _create_shared_lock(guard, record):
-            _remove_if_owner_exited(guard)
+            _remove_if_abandoned(guard)
             return
     except OSError as error:
         if _windows_busy(error):
             return
         raise
     try:
-        _remove_if_owner_exited(lock)
+        _remove_if_abandoned(lock)
     finally:
         _release_shared_lock(guard, record)
 

@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, readlink, realpath, unlink } from "node:fs/promises";
-import { hostname } from "node:os";
+import { mkdir, open, readFile, readlink, realpath, stat, unlink } from "node:fs/promises";
+import { hostname, uptime } from "node:os";
 import path from "node:path";
 import { errnoCode } from "./errors.js";
 
 // The CLI saves the same settings files. Node has no flock, so both take an O_EXCL lock file beside the
 // real file; src/wgsextract_cli/core/file_lock.py (shared_file_lock) mirrors this protocol.
 const pollMs = 20;
+// Boot times read at different moments differ a little.
+const bootToleranceSeconds = 60;
+// A lock is written straight after it is made; still empty after this long, its maker stopped in between.
+const unwrittenMs = 10_000;
 
 /**
  * Runs one read-modify-write of `filePath` while holding `.<name>.lock` beside the real file behind it, and
@@ -65,12 +69,17 @@ async function realPathAllowingMissing(filePath: string, links = 0): Promise<str
         if (links >= 40) {
             throw error;
         }
-        return realPathAllowingMissing(path.resolve(path.dirname(resolved), link), links + 1);
+        // Joined, not resolved: `..` after a linked folder in the link's target leaves the folder it links to.
+        return realPathAllowingMissing(path.isAbsolute(link) ? link : `${path.dirname(resolved)}${path.sep}${link}`, links + 1);
     }
 }
 
 function lockRecord() {
-    return JSON.stringify({ pid: process.pid, host: hostname(), token: randomUUID() });
+    return JSON.stringify({ pid: process.pid, host: hostname(), boot: bootTime(), token: randomUUID() });
+}
+
+function bootTime() {
+    return Date.now() / 1000 - uptime();
 }
 
 /** Windows refuses to create or delete a file another process is deleting or reading. */
@@ -78,7 +87,7 @@ function windowsBusy(error: unknown) {
     return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(errnoCode(error) ?? "");
 }
 
-/** Creates `lock` holding `record`; false if it already exists. */
+/** Creates `lock` holding `record`; false if another holds it. */
 async function create(lock: string, record: string): Promise<boolean> {
     let handle;
     try {
@@ -99,7 +108,16 @@ async function create(lock: string, record: string): Promise<boolean> {
         throw error;
     }
     await handle.close();
-    return true;
+    // A maker that stalled before writing may have lost its empty lock.
+    try {
+        return await readFile(lock, "utf8") === record;
+    }
+    catch (error) {
+        if (errnoCode(error) === "ENOENT" || windowsBusy(error)) {
+            return false;
+        }
+        throw error;
+    }
 }
 
 async function reclaimIfAbandoned(lock: string) {
@@ -109,7 +127,7 @@ async function reclaimIfAbandoned(lock: string) {
     const record = lockRecord();
     try {
         if (!await create(guard, record)) {
-            await removeIfOwnerExited(guard);
+            await removeIfAbandoned(guard);
             return;
         }
     }
@@ -120,17 +138,19 @@ async function reclaimIfAbandoned(lock: string) {
         throw error;
     }
     try {
-        await removeIfOwnerExited(lock);
+        await removeIfAbandoned(lock);
     }
     finally {
         await release(guard, record);
     }
 }
 
-async function removeIfOwnerExited(lock: string) {
+async function removeIfAbandoned(lock: string) {
     let record: string;
+    let modifiedMs: number;
     try {
         record = await readFile(lock, "utf8");
+        modifiedMs = (await stat(lock)).mtimeMs;
     }
     catch (error) {
         if (errnoCode(error) === "ENOENT" || windowsBusy(error)) {
@@ -138,25 +158,34 @@ async function removeIfOwnerExited(lock: string) {
         }
         throw error;
     }
-    if (ownerExited(record) && await remove(lock, record)) {
+    const exited = ownerExited(record) ?? Date.now() - modifiedMs > unwrittenMs;
+    if (exited && await remove(lock, record)) {
         console.warn(`Removed abandoned lock ${lock}`);
     }
 }
 
 /**
- * Whether the process that wrote `record` has provably exited. An owner on another computer, or a record still
- * being written, keeps its lock until it is released, so a slow save is never overtaken.
+ * Whether the process that wrote `record` has provably exited: it ran before this computer last started, or its
+ * process ID is gone. An owner on another computer keeps its lock until it is released, so a slow save is never
+ * overtaken. Undefined for a record that is not one. Unlike the CLI, this cannot tell a reused process ID: Node has
+ * no way to read another process's start time.
  */
-function ownerExited(record: string) {
-    let owner: { pid?: unknown; host?: unknown };
+function ownerExited(record: string): boolean | undefined {
+    let owner: { pid?: unknown; host?: unknown; boot?: unknown };
     try {
-        owner = JSON.parse(record) as { pid?: unknown; host?: unknown };
+        owner = JSON.parse(record) as { pid?: unknown; host?: unknown; boot?: unknown };
     }
     catch {
+        return undefined;
+    }
+    if (owner == null || typeof owner !== "object" || typeof owner.pid !== "number" || typeof owner.host !== "string" || typeof owner.boot !== "number") {
+        return undefined;
+    }
+    if (owner.host.toLowerCase() !== hostname().toLowerCase()) {
         return false;
     }
-    if (typeof owner.pid !== "number" || typeof owner.host !== "string" || owner.host.toLowerCase() !== hostname().toLowerCase()) {
-        return false;
+    if (Math.abs(owner.boot - bootTime()) > bootToleranceSeconds) {
+        return true;
     }
     try {
         process.kill(owner.pid, 0);

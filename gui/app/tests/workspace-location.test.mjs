@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { parse as parseToml } from "smol-toml";
+import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { fileURLToPath } from "node:url";
 
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/web/src/server/bundle-uninstall-cli.js");
@@ -14,6 +14,7 @@ const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspac
 const { appDataWorkspacesDirectory, appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
 const { moveWorkspace } = await import("../dist/web/src/server/workspace-move.js");
+const { relocateSettingsFile, restoreRewrittenFile } = await import("../dist/web/src/server/settings-relocation.js");
 const { displayWorkspacePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
 const { parseFlatToml } = await import("../dist/shared/rendering.js");
 
@@ -284,6 +285,25 @@ test("moving the users workspace takes everything in it along, and saved paths f
   await prepareBundleWorkspace(manifest, source);
   assert.equal(usersWorkspaceFor(bundle), users);
   assert.equal(await readFile(path.join(users, "reference", "hg38.fa"), "utf8"), "ACGT");
+});
+
+test("#1230 undoing a failed move keeps a save made meanwhile, and paths that were already in the new place", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-relocation-"));
+  t.after(() => rm(root, { force: true, recursive: true }));
+  const file = path.join(root, "config.toml");
+  const from = path.join(root, "old", "ref");
+  const to = path.join(root, "new", "ref");
+  await writeFile(file, stringifyToml({ reference_library: from, output_directory: path.join(to, "out") }));
+  const rewritten = [];
+  await relocateSettingsFile(file, from, to, rewritten);
+  // The CLI saves another setting before the move fails.
+  await writeFile(file, stringifyToml({ ...parseToml(await readFile(file, "utf8")), cpu_threads: 4 }));
+
+  for (const done of rewritten) {
+    await restoreRewrittenFile(done);
+  }
+
+  assert.deepEqual({ ...parseToml(await readFile(file, "utf8")) }, { reference_library: from, output_directory: path.join(to, "out"), cpu_threads: 4 });
 });
 
 test("changing one folder setting moves what is in it, and the settings inside it follow", async (t) => {

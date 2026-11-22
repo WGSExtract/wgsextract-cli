@@ -1,5 +1,4 @@
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
@@ -9,6 +8,7 @@ import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
 import { withSettingsFileLock } from "./settings-lock.js";
+import { relocateSettingsFile, relocateStrings, restoreRewrittenFile, type RewrittenFile } from "./settings-relocation.js";
 import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
@@ -117,7 +117,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     }
     catch (error) {
         for (const file of rewritten) {
-            await restoreRewrittenFile(file, from, to).catch(() => undefined);
+            await restoreRewrittenFile(file).catch(() => undefined);
         }
         if (renamed) {
             await rename(to, from);
@@ -297,54 +297,12 @@ async function copyEntry(fromRoot: string, toRoot: string, { relative, directory
     await utimes(to, info.atime, info.mtime);
 }
 
-/** A file's text from before it was rewritten, to put back if the move fails. */
-interface RewrittenFile {
-    filePath: string;
-    text: string;
-    /** For a settings file the CLI also saves: the text written, to tell whether a save followed. */
-    written?: string;
-}
-
-async function restoreRewrittenFile(file: RewrittenFile, from: string, to: string) {
-    const { written } = file;
-    if (written == null) {
-        await writeFileAtomically(file.filePath, file.text);
-        return;
-    }
-    await withSettingsFileLock(file.filePath, async (target) => {
-        const current = await readFile(target, "utf8").catch((error: unknown) => {
-            ignoreMissing(error);
-            return null;
-        });
-        // Keep a save made since the rewrite: undo only the paths this move changed.
-        const restored = current == null || current === written ? file.text : serializeToml(relocateStrings(parseToml(current), to, from));
-        await writeFileAtomically(target, restored);
-    });
-}
-
 async function readSettings(filePath: string): Promise<Record<string, unknown>> {
     const text = await readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return "";
     });
     return parseToml(text);
-}
-
-async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
-    if (!existsSync(filePath)) {
-        return;
-    }
-    await withSettingsFileLock(filePath, async (target) => {
-        const text = await readFile(target, "utf8").catch((error: unknown) => {
-            ignoreMissing(error);
-            return null;
-        });
-        if (text != null) {
-            const written = serializeToml(relocateStrings(parseToml(text), from, to));
-            rewritten.push({ filePath: target, text, written });
-            await writeFileAtomically(target, written);
-        }
-    });
 }
 
 async function readBundleState(bundleRoot: string): Promise<Record<string, unknown> | null> {
@@ -366,17 +324,4 @@ async function relocateBundleState(bundleRoot: string, from: string, to: string,
         const relocated = relocateStrings(JSON.parse(text) as unknown, from, to);
         await writeFileAtomically(statePath, `${JSON.stringify(relocated, null, 2)}\n`);
     }
-}
-
-function relocateStrings(value: unknown, from: string, to: string): unknown {
-    if (typeof value === "string") {
-        return relocatePath(value, from, to);
-    }
-    if (Array.isArray(value)) {
-        return value.map((item) => relocateStrings(item, from, to));
-    }
-    if (value != null && typeof value === "object") {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relocateStrings(item, from, to)]));
-    }
-    return value;
 }
