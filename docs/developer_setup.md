@@ -463,15 +463,96 @@ If Linux denies inspection of one of the cleanup user's processes, the run
 reports the error and does not remove unverified worktrees.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees; lock a worktree if other
-projects depend on its files. Nothing manages your reference library. Ignored
-scratch scripts, samples and other unknown files block removal. Known Pixi and
-Python caches may be regenerated. Small UTF-8 logs and evidence under `out/`
-(1 MiB per file, 32 MiB total) are copied to a private, local directory in
-`out/archive/` without following links. Do not put secrets in run logs.
+projects depend on its files. Nothing manages your reference library. Samples
+and other unknown files block removal. Known Pixi and Python caches may be
+regenerated. Small UTF-8 logs under `out/` and recognised Python, shell, Lua
+and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied
+to a private, local directory in `out/archive/` without following links. They
+are not executed. Do not put secrets in run logs or scratch sources.
 
-For daily cleanup, start the Sheprd automation service on the host, register
-the primary checkout, and inspect the plan. The scheduled command also
-requires `agent-coord` for its worktree-cleanup lock and resource limits:
+### Install the read-only activity inspector (Linux administrator)
+
+Linux can hide the cwd, mappings and file descriptors of services and login
+processes even from other processes of the same UID. The optional inspector
+reads this state without granting the cleanup command or Sheprd any elevated
+permissions. It accepts only inode-verified registered worktree names in one
+repository, checks the local Unix peer UID, and returns matching numeric PIDs
+or an unverifiable result, never process paths or arguments. The service
+cannot run Git, remove a checkout, or run caller-supplied commands. If a
+process's mount namespace or view of the root cannot be safely compared, it
+does not certify inactivity.
+
+From the separately reviewed revision, as the ordinary repository owner,
+stage the exact committed blobs and prepare local settings under `out/`.
+Verify `pwd -P` is the registered **primary** checkout and `id -u` is its
+non-root owner:
+
+```sh
+reviewed=FULL_REVIEWED_COMMIT_SHA
+mkdir -p out/worktree-inspector-install
+git show "$reviewed:scripts/worktree_activity_inspector.py" \
+  > out/worktree-inspector-install/inspector.py
+for unit in wgse-worktree-inspector.service wgse-worktree-inspector.socket; do
+  git show "$reviewed:scripts/worktree-inspector/$unit" \
+    > "out/worktree-inspector-install/$unit" || break
+done
+printf '[Socket]\nSocketUser=%s\n' "$(id -u)" \
+  > out/worktree-inspector-install/owner.conf
+```
+
+Create `out/worktree-inspector-install/config.toml` with these two entries,
+using the actual primary canonical path and numeric owner UID:
+
+```toml
+repository = "/home/OWNER/src/wgsextract-cli"
+uid = 1000
+```
+
+An administrator explicitly installs the reviewed files; no worktree script
+is executed as root. The example uses an existing authorized `sudo-session`
+grant. On updates, stop the socket and service before replacing their files.
+Use systemd and system Python 3.11 or newer. Stop on any failure; verify the
+installed service and socket against the reviewed commit and inspector
+SHA-256 against `INSPECTOR_SHA256` in the reviewed `scripts/cleanup_worktrees.py`
+**before** enabling the socket.
+
+```sh
+sudo-session run -- /usr/bin/install -d -m 0755 \
+  /usr/local/lib/wgse-worktree-inspector /etc/wgse-worktree-inspector \
+  /etc/systemd/system/wgse-worktree-inspector.socket.d
+sudo-session run -- /usr/bin/install -m 0644 \
+  out/worktree-inspector-install/inspector.py /usr/local/lib/wgse-worktree-inspector/inspector.py
+sudo-session run -- /usr/bin/install -m 0644 \
+  out/worktree-inspector-install/wgse-worktree-inspector.service \
+  out/worktree-inspector-install/wgse-worktree-inspector.socket /etc/systemd/system/
+sudo-session run -- /usr/bin/install -m 0644 out/worktree-inspector-install/config.toml \
+  /etc/wgse-worktree-inspector/config.toml
+sudo-session run -- /usr/bin/install -m 0644 out/worktree-inspector-install/owner.conf \
+  /etc/systemd/system/wgse-worktree-inspector.socket.d/owner.conf
+/usr/bin/sha256sum /usr/local/lib/wgse-worktree-inspector/inspector.py
+git show "$reviewed:scripts/worktree-inspector/wgse-worktree-inspector.service" \
+  | cmp - /etc/systemd/system/wgse-worktree-inspector.service
+git show "$reviewed:scripts/worktree-inspector/wgse-worktree-inspector.socket" \
+  | cmp - /etc/systemd/system/wgse-worktree-inspector.socket
+sudo-session run -- /usr/bin/systemd-analyze verify \
+  wgse-worktree-inspector.service wgse-worktree-inspector.socket
+sudo-session run -- /usr/bin/systemctl daemon-reload
+sudo-session run -- /usr/bin/systemctl enable --now wgse-worktree-inspector.socket
+```
+
+Before enabling any cleanup schedule, run
+`python3 scripts/cleanup_worktrees.py --github --inspector` from the primary
+checkout **without** `--apply`. Verify it identifies a live test process as
+busy and reports a clear, otherwise eligible worktree accurately. When the
+socket is unavailable, unverifiable, or serving a different inspector digest,
+`--inspector` never falls back or removes worktrees. To suspend inspection,
+disable the socket and stop the service; pause the Sheprd schedule as well.
+
+### Approve the daily cleanup schedule
+
+Start the Sheprd automation service on the host, register the primary
+checkout, and inspect the plan. The scheduled command uses the installed
+inspector and `agent-coord` for its worktree-cleanup lock and resource limits:
 
 ```sh
 /usr/bin/sheprd-automate repo add "$PWD"
@@ -483,7 +564,9 @@ The owner must approve the plan; agents must not approve it. The scheduled run
 uses GitHub explicitly, runs no agents, and reports success or failure in
 Sheprd. It runs the checked-out script without pulling `main` or installing
 anything. When changing the helper, update its SHA-256 in the automation and
-have the owner approve the new plan before resuming scheduled cleanup.
+have the owner approve the new plan before resuming scheduled cleanup. An
+inspector upgrade requires a separately reviewed administrator install as
+well as updated digests before scheduling resumes.
 
 ## Release a change
 

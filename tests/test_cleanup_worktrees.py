@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -14,10 +16,10 @@ from typing import cast
 
 import pytest
 
-from scripts import cleanup_worktrees
-
 REPO = "WGSExtract/wgsextract-cli"
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
+if sys.platform == "linux":
+    from scripts import cleanup_worktrees, worktree_activity_inspector
 
 
 def git(root: Path, *args: str) -> str:
@@ -140,6 +142,7 @@ def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     path = topic(repo)
     head = git(path, "rev-parse", "HEAD")
     write(path / "out/run/handoff.md", "completed steps\n")
+    write(path / "scratch/test.py", "print('unique scratch source')\n")
     write(path / ".pixi/envs/dev/cache.bin", "regenerable\n")
     github(status=91)
 
@@ -156,6 +159,9 @@ def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     assert retired["reason"] == "removed"
     archive = repo / str(retired["archive"])
     assert (archive / "out/run/handoff.md").read_text() == "completed steps\n"
+    assert (
+        archive / "scratch/test.py"
+    ).read_text() == "print('unique scratch source')\n"
     assert archive.stat().st_mode & 0o077 == 0
     assert not path.exists()
     assert git(repo, "rev-parse", "refs/heads/stale") == head
@@ -166,7 +172,7 @@ def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     ("relative", "data", "reason"),
     [
         ("not-ignored.py", "new script", "dirty-or-untracked"),
-        ("scratch/test.py", "unique test script", "unknown-data"),
+        ("scratch/notes.db", "unknown scratch file", "unknown-data"),
         (".pixi/notes.py", "unique notes outside envs", "unknown-data"),
         ("out/model.bam", "sample data", "unknown-data"),
         ("out/output.log", "x" * (2 * 1024 * 1024), "evidence-too-large"),
@@ -323,3 +329,171 @@ def test_1393_parallel_cleanup_cannot_remove_another_runs_candidate(
     assert run.returncode == 1
     assert "holds the repository lock" in run.stderr
     assert path.is_dir()
+
+
+@pytest.fixture
+def inspector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[socket.socket]:
+    # On Linux the privileged service runs as root; this socket uses our UID.
+    path = Path("inspector.sock")
+    monkeypatch.setattr(cleanup_worktrees, "INSPECTOR_SOCKET", path)
+    monkeypatch.setattr(cleanup_worktrees, "INSPECTOR_UID", os.geteuid())
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+        listener.bind(str(path))
+        listener.listen()
+        listener.settimeout(5)
+        yield listener
+
+
+def handle_requests(
+    listener: socket.socket, repo: Path, count: int, digest: str
+) -> None:
+    for _ in range(count):
+        conn, _ = listener.accept()
+        with conn:
+            worktree_activity_inspector.handle(conn, repo, os.geteuid(), digest)
+
+
+@pytest.mark.parametrize("alias", [False, True], ids=["relative", "external-symlink"])
+def test_1393_inspector_blocks_real_relative_script_over_socket(
+    repo: Path,
+    inspector: socket.socket,
+    github: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+    alias: bool,
+) -> None:
+    path = topic(repo)
+    (path / "task.py").write_text(
+        "import sys\nprint('ready', flush=True)\nsys.stdin.read()\n"
+    )
+    git(path, "add", "task.py")
+    git(path, "commit", "-m", "Track running task")
+    github([pull(path)])
+    argument = "./scratch/../scratch/stale/task.py"
+    if alias:
+        (repo.parent / "external-task").symlink_to(path / "task.py")
+        argument = "../external-task"
+    with subprocess.Popen(
+        [sys.executable, argument],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout is not None
+            assert process.stdout.readline() == "ready\n"
+            monkeypatch.setattr(
+                worktree_activity_inspector,
+                "process_ids",
+                lambda fd: iter([str(process.pid)]),
+            )
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                handled = pool.submit(
+                    handle_requests,
+                    inspector,
+                    repo,
+                    1,
+                    cleanup_worktrees.INSPECTOR_SHA256,
+                )
+                run = cleanup(repo, "--apply", "--github", "--inspector")
+                handled.result()
+            assert run.returncode == 0, run.stderr
+            assert result(repo, path)["reason"] == "active-process"
+            assert path.is_dir()
+        finally:
+            process.terminate()
+
+
+@pytest.mark.parametrize("matching_digest", [True, False])
+def test_1393_inspector_needs_matching_version_before_removal(
+    repo: Path,
+    inspector: socket.socket,
+    github: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+    matching_digest: bool,
+) -> None:
+    path = topic(repo)
+    github([pull(path)])
+    # Isolate the host's processes, but exercise real registered-worktree checks and IPC.
+    monkeypatch.setattr(worktree_activity_inspector, "process_ids", lambda fd: iter(()))
+    digest = cleanup_worktrees.INSPECTOR_SHA256 if matching_digest else "wrong"
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        handled = pool.submit(
+            handle_requests, inspector, repo, 3 if matching_digest else 1, digest
+        )
+        run = cleanup(repo, "--apply", "--github", "--inspector")
+        handled.result()
+    if matching_digest:
+        assert run.returncode == 0, run.stderr
+        assert not path.exists()
+    else:
+        assert run.returncode == 1
+        assert path.is_dir()
+        assert "version mismatch" in str(manifest(repo)["error"])
+
+
+@pytest.mark.parametrize(
+    "invalid", ["traversal", "symlink", "unregistered", "wrong-repo", "wrong-inode"]
+)
+def test_1393_inspector_rejects_requests_for_unapproved_targets(
+    repo: Path,
+    inspector: socket.socket,
+    invalid: str,
+) -> None:
+    path = topic(repo)
+    name = path.name
+    if invalid == "traversal":
+        name = "../stale"
+    if invalid == "symlink":
+        name = "alias"
+        (path.parent / name).symlink_to(path)
+    if invalid == "unregistered":
+        name = "unregistered"
+        (path.parent / name).mkdir()
+    root_stat, path_stat = repo.stat(), path.stat()
+    query = {
+        "repository": [root_stat.st_dev, root_stat.st_ino + (invalid == "wrong-repo")],
+        "candidates": {
+            name: [path_stat.st_dev, path_stat.st_ino + (invalid == "wrong-inode")]
+        },
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        handled = pool.submit(handle_requests, inspector, repo, 1, "test")
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(5)
+            client.connect(str(cleanup_worktrees.INSPECTOR_SOCKET))
+            client.sendall(json.dumps(query).encode() + b"\n")
+            with client.makefile("rb") as stream:
+                assert json.loads(stream.readline()) == {"error": "unverifiable"}
+        handled.result()
+    assert path.is_dir()
+
+
+def test_1393_missing_inspector_never_falls_back_to_removal(
+    repo: Path,
+    github: Callable[..., None],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = topic(repo)
+    github([pull(path)])
+    monkeypatch.setattr(cleanup_worktrees, "INSPECTOR_SOCKET", Path("missing.sock"))
+    monkeypatch.setattr(cleanup_worktrees, "INSPECTOR_UID", os.geteuid())
+    run = cleanup(repo, "--apply", "--github", "--inspector")
+    assert run.returncode == 1
+    assert result(repo, path)["reason"] == "activity-unverified"
+    assert path.is_dir()
+
+
+def test_1393_private_unrelated_mount_is_not_a_worktree_alias() -> None:
+    path = Path("/home/owner/project/scratch/topic")
+    mount = worktree_activity_inspector.Mount
+    normal = mount("8:1", Path("/"), Path("/"))
+    private_tmp = mount("8:1", Path("/isolated/tmp"), Path("/tmp"))
+    worktree_activity_inspector.check_mounts({normal, private_tmp}, {path: (1, 1)})
+    alias = mount("8:1", path, Path("/some-alias"))
+    with pytest.raises(worktree_activity_inspector.Unverifiable):
+        worktree_activity_inspector.check_mounts(
+            {normal, private_tmp, alias},
+            {path: (1, 1)},
+        )

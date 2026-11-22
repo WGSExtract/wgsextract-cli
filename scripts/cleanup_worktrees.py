@@ -8,7 +8,9 @@ import fcntl
 import json
 import os
 import re
+import socket
 import stat
+import struct
 import subprocess
 import sys
 import uuid
@@ -21,6 +23,9 @@ from pathlib import Path
 REPO = "WGSExtract/wgsextract-cli"
 LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
+INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
+INSPECTOR_UID = 0
+INSPECTOR_SHA256 = "111541fe0829e11ab4355804e764731a40c41da2ac2f9e18de4b4f1a30662d2b"
 CACHE_DIRS = {
     ".pixi/envs",
     ".pixi/task-cache-v0",
@@ -30,6 +35,7 @@ CACHE_DIRS = {
 }
 CACHE_MARKERS = {Path(".pixi/.gitignore"), Path(".pixi/.condapackageignore")}
 TEXT_SUFFIXES = {".log", ".txt", ".md", ".json", ".csv", ".tsv", ".xml"}
+SCRATCH_SOURCE_SUFFIXES = {".py", ".sh", ".lua", ".luau", ".r", ".R"}
 SENSITIVE_NAME = re.compile(
     r"(^|[^a-z0-9])(secret|credential|password|token|key|env|config)s?($|[^a-z0-9])",
     re.I,
@@ -265,6 +271,74 @@ def active_paths(paths: set[Path]) -> set[Path]:
     return blocked
 
 
+def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:
+    def identity(path: Path) -> tuple[int, int]:
+        info = path.lstat()
+        if not stat.S_ISDIR(info.st_mode):
+            raise OSError("Inspector candidate changed")
+        return info.st_dev, info.st_ino
+
+    if not paths:
+        return set()
+    parent = INSPECTOR_SOCKET.parent.lstat()
+    if (
+        not stat.S_ISDIR(parent.st_mode)
+        or parent.st_uid != INSPECTOR_UID
+        or parent.st_mode & 0o022
+    ):
+        raise OSError("Inspector socket parent is not administrator-controlled")
+    ordered = sorted(paths)
+    blocked = set()
+    repo_id = identity(root)
+    for offset in range(0, len(ordered), 64):
+        batch = {path.name: path for path in ordered[offset : offset + 64]}
+        if any(path.parent != root / "scratch" for path in batch.values()):
+            raise OSError("Invalid inspector candidate path")
+        candidates = {name: identity(path) for name, path in batch.items()}
+        request = {"repository": repo_id, "candidates": candidates}
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(45)
+            connection.connect(str(INSPECTOR_SOCKET))
+            _, uid, _ = struct.unpack(
+                "3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
+            )
+            if uid != INSPECTOR_UID:
+                raise OSError("Inspector socket is not owned by the administrator")
+            connection.sendall(json.dumps(request).encode() + b"\n")
+            with connection.makefile("rb") as stream:
+                response = stream.readline(16_385)
+        if not response.endswith(b"\n") or len(response) > 16_384:
+            raise OSError("Incomplete inspector reply")
+        try:
+            reply = json.loads(response)
+        except (ValueError, RecursionError) as exc:
+            raise OSError("Invalid inspector reply") from exc
+        if isinstance(reply, dict) and reply.get("error") == "unverifiable":
+            pid = reply.get("pid")
+            detail = f" (PID {pid})" if type(pid) is int and 0 < pid < 2**31 else ""
+            raise OSError(f"Worktree activity unverifiable{detail}")
+        if (
+            not isinstance(reply, dict)
+            or reply.keys() != {"sha256", "busy"}
+            or reply["sha256"] != INSPECTOR_SHA256
+            or not isinstance(busy := reply["busy"], dict)
+            or busy.keys() != batch.keys()
+        ):
+            raise OSError(
+                "Worktree activity unverifiable or inspector version mismatch"
+            )
+        for name, pids in busy.items():
+            if not isinstance(pids, list) or any(
+                type(pid) is not int or pid <= 0 for pid in pids
+            ):
+                raise OSError("Invalid inspector activity result")
+            if identity(batch[name]) != candidates[name]:
+                raise OSError("Inspector candidate changed")
+            if pids:
+                blocked.add(batch[name])
+    return blocked
+
+
 def stamp(info: os.stat_result) -> Stamp:
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
@@ -335,11 +409,11 @@ def contents(path: Path) -> tuple[str, dict[Path, Stamp]]:
             and info.st_size == 0
         ):
             continue
-        if (
-            relative.parts[0] != "out"
-            or relative.suffix not in TEXT_SUFFIXES
-            or any(SENSITIVE_NAME.search(part) for part in relative.parts)
-        ):
+        allowed = (relative.parts[0] == "out" and relative.suffix in TEXT_SUFFIXES) or (
+            relative.parts[0] == "scratch"
+            and relative.suffix in SCRATCH_SOURCE_SUFFIXES
+        )
+        if not allowed or any(SENSITIVE_NAME.search(part) for part in relative.parts):
             return f"unknown-data: {relative}", {}
         size += info.st_size
         if info.st_size > MAX_FILE or size > MAX_ARCHIVE:
@@ -452,7 +526,7 @@ def archive_evidence(
             handle.write(read_evidence(tree.directory, relative, expected))
 
 
-def plan(root: Path, trees: list[Worktree], github: bool) -> None:
+def plan(root: Path, trees: list[Worktree], github: bool, inspector: bool) -> None:
     paths = set()
     for tree in trees[1:]:
         tree.reason = candidate(root, tree, trees)
@@ -478,7 +552,8 @@ def plan(root: Path, trees: list[Worktree], github: bool) -> None:
         tree for tree in candidates if tree.reason in {"eligible", "github-not-checked"}
     ]
     try:
-        active = active_paths({tree.directory for tree in pending_activity_check})
+        paths = {tree.directory for tree in pending_activity_check}
+        active = inspected_paths(root, paths) if inspector else active_paths(paths)
     except OSError:
         for tree in pending_activity_check:
             tree.reason = "activity-unverified"
@@ -488,7 +563,7 @@ def plan(root: Path, trees: list[Worktree], github: bool) -> None:
             tree.reason = "active-process"
 
 
-def recheck(root: Path, tree: Worktree) -> str:
+def recheck(root: Path, tree: Worktree, inspector: bool) -> str:
     trees = worktrees(root)
     now = next((item for item in trees if item.path == tree.path), None)
     if now is None or now.head != tree.head or now.branch != tree.branch:
@@ -497,15 +572,19 @@ def recheck(root: Path, tree: Worktree) -> str:
         return reason
     if mounted(tree.directory):
         return "contains-mount"
-    if active_paths({tree.directory}):
+    paths = {tree.directory}
+    active = inspected_paths(root, paths) if inspector else active_paths(paths)
+    if active:
         return "active-process"
     return ""
 
 
-def cleanup(root: Path, report: Path, *, apply: bool, github: bool) -> None:
+def cleanup(
+    root: Path, report: Path, *, apply: bool, github: bool, inspector: bool
+) -> None:
     trees = worktrees(root)
     trees[0].reason = "primary-checkout"
-    data: dict[str, object] = {"apply": apply, "github": github}
+    data: dict[str, object] = {"apply": apply, "github": github, "inspector": inspector}
 
     def save() -> None:
         data["worktrees"] = [asdict(tree) for tree in trees]
@@ -516,12 +595,12 @@ def cleanup(root: Path, report: Path, *, apply: bool, github: bool) -> None:
         staging.replace(report)
 
     try:
-        plan(root, trees, github)
+        plan(root, trees, github, inspector)
         save()
         if apply:
             eligible = [tree for tree in trees if tree.reason == "eligible"]
             for tree in eligible:
-                tree.reason = recheck(root, tree)
+                tree.reason = recheck(root, tree, inspector)
                 if not tree.reason:
                     tree.reason, evidence = contents(tree.directory)
                     if not tree.reason:
@@ -532,7 +611,7 @@ def cleanup(root: Path, report: Path, *, apply: bool, github: bool) -> None:
                             tree.reason = "symlink-dependency"
                         elif contents(tree.directory) != ("", evidence):
                             tree.reason = "changed-during-archive"
-                        elif reason := recheck(root, tree):
+                        elif reason := recheck(root, tree, inspector):
                             tree.reason = reason
                         else:
                             git(root, "worktree", "remove", "--", tree.path)
@@ -559,6 +638,11 @@ def main(argv: list[str] | None = None) -> int:
         "--github",
         action="store_true",
         help="request this repository's PR metadata from github.com (match branches locally)",
+    )
+    parser.add_argument(
+        "--inspector",
+        action="store_true",
+        help="use the explicitly installed local read-only activity inspector; never fall back",
     )
     args = parser.parse_args(argv)
     if args.apply and not args.github:
@@ -605,7 +689,13 @@ def main(argv: list[str] | None = None) -> int:
                 + uuid.uuid4().hex[:8]
             )
             report = reports / f"{run_id}.json"
-            cleanup(root, report, apply=args.apply, github=args.github)
+            cleanup(
+                root,
+                report,
+                apply=args.apply,
+                github=args.github,
+                inspector=args.inspector,
+            )
         return 0
     except ERRORS as exc:
         print(f"Worktree cleanup failed: {exc}", file=sys.stderr)
