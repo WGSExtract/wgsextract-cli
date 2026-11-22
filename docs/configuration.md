@@ -28,6 +28,9 @@ above. Former per-user locations, still recognized for existing installs, are:
 - Windows: `%LocalAppData%\theontho\wgsextract\config.toml`.
 
 Saves are atomic; `wgsextract config` prompts only in an interactive terminal.
+If the selected file contains invalid TOML or is not UTF-8, the CLI stops and
+reports the file path and error location. Correct the file or select a valid
+one with `--config`.
 Boolean values must be unquoted `true`/`false`, never `"false"`.
 Threads accept a positive integer or `"auto"`; legacy numeric strings such
 as `"4"` still work. Integer thresholds/TTLs require integers, not quoted
@@ -86,8 +89,9 @@ folder is searched first, then configured `reference_library`, for chains,
 ploidy files, chip templates and annotations. Missing-file errors name the
 searched folders. See [dataset discovery and example genomes](sample-workspace.md#dataset-library).
 
-For resource defaults, `memory = "auto"` starts from 25% of RAM split across
-threads, subject to floors/caps; `"2G"` sets a per-thread budget. See
+For resource defaults, `memory = "auto"` uses up to 25% of effective RAM
+(including Linux cgroup v2 limits) split across threads; `"2G"` sets a
+per-thread budget, still subject to the sort caps. See
 [threads and memory](hardware.md#threads-and-memory) rather than treating it
 as a whole-pipeline RAM cap.
 

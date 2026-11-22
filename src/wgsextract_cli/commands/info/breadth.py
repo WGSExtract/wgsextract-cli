@@ -20,10 +20,10 @@ def breadth_map(
     excluded = excluded or {}
     counts: dict[str, tuple[int, int]] = {}
     for name, (cov, total) in covered.items():
-        callable_bp = total - excluded.get(contig_key(name), 0)
-        if callable_bp <= 0:
-            callable_bp = total
-        # Reads placed in N runs could push coverage past the callable bases.
+        # An all-N contig has nothing to cover and leaves the Total alone.
+        callable_bp = max(total - excluded.get(contig_key(name), 0), 0)
+        # Reads overlapping the edge of an N run could count past the callable
+        # bases (samtools reports covered positions, not covered non-N ones).
         counts[name] = (min(cov, callable_bp), callable_bp)
     result = {
         contig_key(name): f"{prefix}{cov / total * 100:.0f} %"
