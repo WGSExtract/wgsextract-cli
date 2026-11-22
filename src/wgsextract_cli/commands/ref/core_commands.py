@@ -325,7 +325,7 @@ def _annotation_resources(reflib_dir: str) -> dict[str, dict[str, bool]]:
             "clinvar": any_of(f"clinvar_{build}", ".vcf.gz"),
             "revel": any_of(f"revel_{build}", ".tsv.gz"),
             "phylop": any_of(f"phylop_{build}", ".bw", ".tsv.gz"),
-            "gnomad": any_of(f"gnomad_{build}", ".vcf.bgz", ".vcf.gz"),
+            "gnomad": any_of(f"gnomad_{build}", ".vcf.bgz", ".vcf.gz", ".tsv.gz"),
         }
         for build in ("hg19", "hg38")
     }

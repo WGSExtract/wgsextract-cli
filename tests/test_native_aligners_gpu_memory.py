@@ -134,7 +134,7 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
     assert result.metrics.get("native_aligner_backend") == backend
     assert result.metrics.get("native_aligner_backend_reason") == reason
     assert ("native_aligner_unusable" in {w.code for w in result.warnings}) == (
-        mode == "unusable"
+        mode in {"missing", "unusable"}
     )
     if mode == "low-commit":
         assert "Windows commit" in caplog.text

@@ -11,10 +11,11 @@ use std::{
     time::Instant,
 };
 
+use app_update::native_dialog::check_for_updates;
 use app_update::{
-    check_for_updates, env_duration_seconds, env_flag, gfc_update_check, gfc_update_download,
-    gfc_update_install, AUTO_ACCEPT_UPDATE_ENV, AUTO_UPDATE_ACTION_DELAY_SECONDS_ENV,
-    AUTO_UPDATE_DELAY_SECONDS_ENV, AUTO_UPDATE_ENV, E2E_STEP_DELAY_SECONDS_ENV,
+    env_duration_seconds, env_flag, gfc_update_check, gfc_update_download, gfc_update_install,
+    AUTO_ACCEPT_UPDATE_ENV, AUTO_UPDATE_ACTION_DELAY_SECONDS_ENV, AUTO_UPDATE_DELAY_SECONDS_ENV,
+    AUTO_UPDATE_ENV, E2E_STEP_DELAY_SECONDS_ENV,
 };
 use backend::{BackendLaunch, BackendProcess};
 use tauri::{ipc::CapabilityBuilder, Manager, WebviewUrl, WebviewWindowBuilder};

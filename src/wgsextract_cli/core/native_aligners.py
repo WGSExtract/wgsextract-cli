@@ -356,8 +356,8 @@ def _build_path(binary: str) -> str | None:
 
         configured = settings.get("wgse_bwa_path")
         if configured:
-            path = Path(configured).resolve()
-            return str(path) if path.is_file() else None
+            # Probe explicit paths even when missing, so the usual fallback warns.
+            return str(Path(configured).resolve())
     return shutil.which(binary)
 
 

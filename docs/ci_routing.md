@@ -29,9 +29,13 @@ restricted-resource policy and manual publication/activation procedure.
 
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
-it can request a draft review on `opened`, but never checks out or executes PR
-code. The default-branch ruleset also reviews owner drafts. Readiness remains
-the point where validation starts, not the first opportunity for review.
+it can request a draft review on `opened`, skips the readiness request when
+Copilot already reviewed the head, and never checks out or executes PR
+code. The default-branch ruleset also reviews owner drafts when they are opened,
+but not later pushes; agents request a fresh draft review after pushing
+(`gh pr edit N --add-reviewer @copilot`) and handle its threads before
+readiness (#1281). Readiness remains the point where validation starts, not the
+first opportunity for review, so review rounds no longer rerun the matrix.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -527,15 +531,16 @@ changelog exceptions. Mixed Markdown/code pushes still run normally.
 and cannot start independently on a push or PR.
 Generated references legitimately change with code inputs; the PR/merge-queue
 docs or CLI lane already checked freshness before `required` passed.
-The secret scan remains unfiltered on every main push; Pages retains its
-existing site-source filters.
+The secret scan and the auto-merge conflict watch (below) remain unfiltered
+on every main push; Pages retains its existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
 retain the area-scoped main-push filters from #904 (main-push coalescing),
 including the final `!**/*.md` exclusion. Their PR triggers use the same
 Markdown exclusion (Install Lab is invoked through PR area routing).
-A Markdown-only main push therefore starts only gitleaks, plus Pages for
-site sources; none of these six workflows or the OS suite starts.
+A Markdown-only main push therefore starts only gitleaks and the conflict
+watch, plus Pages for site sources; none of these six workflows or the OS
+suite starts.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
@@ -605,7 +610,10 @@ verdict, and closing an old red-main issue does not certify the pending SHA.
 
 ### CLI test time and tiers
 
-Each OS runs one all-tier pytest job with `-n auto --dist loadgroup`.
+Each OS runs one all-tier pytest job with `-n logical --dist loadgroup`: one
+worker per vCPU. `-n auto` counts physical cores when psutil is installed, so
+it ran two workers on the four-vCPU hosted Ubuntu and Windows runners (#1305,
+CI slowdown); macOS's three vCPUs and ARM64's four are physical either way.
 Pixi setup, installer validation and reference installation happen once per OS,
 not once per tier/shard. The tier definitions remain available for local
 diagnosis:
@@ -663,6 +671,8 @@ minutes, until cold lockfile-change runs establish a safe tighter budget.
 Per-test timing XML and the slowest 60 durations remain available on **every**
 run, separately named by OS. Non-gating line coverage is collected on
 main, nightly and manual runs, not PRs; each report covers the all-tier suite.
+It uses coverage's `sysmon` core (Python 3.12+ `sys.monitoring`): the default C
+tracer added 35–55% to a sampled subset's time locally, sysmon about 5%.
 
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands sequentially in one job on each of the three x64 OSes.
@@ -779,6 +789,30 @@ commits. Queue runs need only the `required` set; their smaller matrix must not
 be rejected for omitting the PR-only gate or advisory jobs.
 The autopilot skill
 documents this rule too. This validator does not itself merge anything.
+
+Auto-merge never enqueues a PR that conflicts with its base, and GitHub
+doesn't say so (#1281; one such PR waited about three hours). After every main
+push, every three hours and on manual dispatch, *Auto-merge conflict watch*
+(`auto_merge_watch.yml`, one five-minute API-only job running
+`scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
+auto-merge is enabled and whose mergeability is `CONFLICTING`
+`auto-merge-blocked`, creating the label if needed, and comments asking the
+author to merge the base branch. It comments before labelling, once per PR
+head per blockage: a hidden marker in its comment names the head, and only a
+marker newer than the label's last removal counts. So a failed run retries
+without repeating the comment, while a new head that still conflicts, or a
+conflict that returns after clearing, is announced again. One PR's API
+failure doesn't stop the others; the run fails at the end. The label is removed
+when the conflict is gone, auto-merge is turned off, or the PR closes or merges.
+It waits for GitHub to compute an auto-merging PR's mergeability after a push
+and leaves it alone if that stays unknown. `--dry-run` reports without changing anything.
+
+Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
+the stdlib-only release-note fragment check (#1281), so a PR adding only a
+fragment under `docs/release-notes/unreleased/` needs no other runner. With the
+base (a PR merge commit's first parent, or the queue group's base), it also
+fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
+fragments remain, so none is left out of that release or announced twice.
 
 ## Cache plan
 

@@ -575,6 +575,65 @@ NVIDIA runtime. Before call_variants, each GPU must have 7.3 GiB free;
 1024; another batch warns that the check may not fit. Download/unpacked
 sizes are ~10/17.5 GB.
 
+## Experimental native CUDA PairHMM for GATK
+
+`vcf gatk --pair-hmm-cuda JAR` opts into a locally built native PairHMM
+sidecar, **not Parabricks**. `vcf gatk --gpu` keeps its existing Parabricks
+meaning. This prototype is pinned to Linux x86-64, GATK 4.6.2.0 and
+GKL 0.8.11; see [build and validation instructions](../native/pairhmm/README.md).
+The CLI validates local dependencies but installs or downloads nothing.
+
+An AVX-capable CPU supplies the original GKL fallback. Kernels target
+Turing/SM 7.5 and newer; only the RTX 3090 has been tested. There is no
+16 GiB device minimum: native preflight checks actual buffers plus a
+256 MiB reserve, falling back to GKL when the GPU/driver is unavailable,
+incompatible or short of memory. Long reads and explicit double-precision
+requests also stay on the CPU.
+
+**Measured calling and genotyping:** Ryzen 5 5600X, RTX 3090, driver
+615.78.08, CUDA 13.4. Each HaplotypeCaller used one JVM-visible CPU, one
+native thread, a 4 GiB Java heap and GQ bands 10/20/30/60. These were
+standalone GATK runs at fixed ploidy 2, not measurements of the CLI's
+ploidy-partitioned workflow.
+
+| Input | PairHMM | HaplotypeCaller wall | GenotypeGVCFs wall | Caller peak sampled RSS |
+| :--- | :--- | ---: | ---: | ---: |
+| HG002 chr20 | Java | 10,785.5 s | 26.3 s | 728 MiB |
+| HG002 chr20 | GKL AVX OpenMP | 2,458.9 s | 32.7 s | 812 MiB |
+| HG002 chr20 | CUDA sidecar | 1,525.6 s | 39.4 s | 1,066 MiB |
+| HG00096 full mapped reference | GKL AVX OpenMP | 17.984 h | 788.18 s | 1,808 MiB |
+| HG00096 full mapped reference | CUDA sidecar | 12.605 h | 628.07 s | 2,060 MiB |
+
+On [HG002 PCR-free 35× chr20, GRCh38 no-alt](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7040349983),
+GKL and CUDA matched every decoded gVCF and final VCF record, including
+reference blocks. Java and GKL matched all 134,083 final site/allele/GT/FILTER
+tuples, but differed in annotations and PL; their raw gVCFs also differed in
+two GTs and in reference-block segmentation and fields. These are not just
+rounding differences.
+
+On [public HG00096 with hs38DH](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7071143485),
+GKL and CUDA matched all **78,187,031 gVCF records** and **5,031,943
+genotyped VCF records**, with gVCF coverage of all **3,217,346,917 bp**
+across **3,366 reference sequences**. Parity means identical decoded
+records, not identical headers or compressed files. CUDA computed
+1,515,388,466 read/haplotype pairs with 338 MiB sampled peak GPU process
+memory. Each backend produced about 1.55 GiB of compressed calls and
+indexes; decoded bodies and evidence brought the retained total to
+18.85 GiB for both runs. An 8 GiB RAM lease and 64 GiB disk reservation
+per run were sufficient for these inputs, not general requirements.
+
+The full run used mapped intervals and a separate mapped-only CRAI to work
+around HTSJDK's rejection of this input's unmapped index entries. The
+original CRAM and CRAI were untouched. Sampled mapped-read preservation
+does not prove exhaustive no-read-loss. No full Java run was performed.
+These comparisons establish neither accuracy against a truth set nor
+sex-chromosome ploidy accuracy. The timings are single sequential
+shared-host measurements, not a controlled speedup: in particular, only
+the full CUDA run had an exclusive GPU lease with guaranteed CPU admission.
+See the [reproduction settings](../native/pairhmm/README.md#reproduce-the-calling-comparison)
+and the [32 Mb sizing run](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7043274181)
+for context.
+
 ## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
 
 On Linux x86-64, WGS Extract's `wgse-bwa` 0.10.0 or later (bwa 0.7.19) can run

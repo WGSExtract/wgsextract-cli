@@ -33,6 +33,20 @@ Installers before this one set up MSYS2 (by default at `C:\msys64`) for their
 tools. Nothing uses it now; `uninstall_windows.bat --remove-msys2` removes it if
 you have no other use for it.
 
+### When Windows blocks an installed tool
+
+Smart App Control or App Control for Business (WDAC) can block an executable
+even though Pixi installed it. The full `wgsextract deps check` starts each tool
+to check that it runs; `deps check --tool NAME` only locates it. If Windows
+blocks the `wgsextract.exe` launcher itself, run the check through Python
+with `pixi run python -m wgsextract_cli deps check`.
+
+Use a signed build that your policy allows or ask your administrator for an
+approved build. Paired alignment uses `samtools markdup` when Windows blocks
+the optional `samblaster`. If Windows blocks BWA-MEM2's CPU-specific executable,
+you can explicitly select `--aligner bwa` if BWA is allowed. BWA can produce
+different alignment records from BWA-MEM2.
+
 ## Qualifying a whole genome on your own PC
 
 The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
@@ -265,7 +279,7 @@ the CLI does not install it. Without a usable executable, or with
 
 The CLI uses `wgse-bwa` on the CPU by default, even with an NVIDIA GPU. On a
 Ryzen 9 9900X3D and RTX 5080, `wgsextract align` on 5 million HG002 pairs
-took 1,126 s on CUDA and 564 s on the CPU, with identical decoded BAM records.
+took 928 s on CUDA and 483 s on the CPU, with identical decoded BAM records.
 Direct `wgse-bwa mem` was faster on CUDA with a smaller batch size, but
 the CLI keeps its fixed batch size because changing it can alter alignments.
 

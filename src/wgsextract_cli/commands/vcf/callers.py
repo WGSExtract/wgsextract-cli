@@ -22,12 +22,19 @@ from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.native_pairhmm import neon_pairhmm_command
+from wgsextract_cli.core.native_pairhmm import (
+    cuda_pairhmm_java_options,
+    neon_pairhmm_command,
+)
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths, reference_dict_path
-from wgsextract_cli.core.region_selection import is_region_file, region_items
+from wgsextract_cli.core.region_selection import (
+    is_region_file,
+    literal_region,
+    region_items,
+)
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -132,20 +139,50 @@ def _cleanup_gatk_temp_input(temp_input: str | None) -> None:
             logging.warning(f"Failed to remove temporary GATK artifact {path}: {e}")
 
 
+_REGION_NUMBER = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
+_REGION_SPAN = rf"(?:{_REGION_NUMBER}(?:-{_REGION_NUMBER}?)?|-{_REGION_NUMBER})"
+_REGION_FIELD = re.compile(rf"\s*[^,\s]+:{_REGION_SPAN}(?=\s*(?:,|$))|[^,]+")
+
+
 def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
-    """chr1:1000-1050,chr2 (1-based, inclusive) as BED (0-based, half-open)."""
+    """Write 1-based inclusive regions as 0-based half-open BED intervals."""
     if is_region_file(region):
         shutil.copyfile(region, bed)
         return
-    with open(bed, "w", newline="\n") as f:
-        for part in (r.strip() for r in region.split(",") if r.strip()):
-            contig, _, span = part.partition(":")
-            start, _, end = span.partition("-")
-            if not end and contig not in lengths:
-                raise WGSExtractError(f"{contig} isn't in the reference.")
-            first = int(start) - 1 if start else 0
-            last = int(end) if end else lengths[contig]
-            f.write(f"{contig}\t{first}\t{last}\n")
+    rows = []
+    for match in _REGION_FIELD.finditer(region):
+        part = match[0].strip()
+        if not part:
+            continue
+        # A three-digit contig after a range can also look like a digit group.
+        if any(fragment in lengths for fragment in part.split(",")[1:]):
+            raise UsageError(f"Ambiguous --region {part!r}; use a BED file.")
+        selection = part
+        contig, colon, span = part.rpartition(":")
+        if (
+            part in lengths
+            and contig in lengths
+            and re.fullmatch(r"[0-9]+(?:-[0-9]*)?|-[0-9]+", span)
+        ):
+            raise UsageError(f"Ambiguous --region {part!r}; use a BED file.")
+        if part not in lengths and colon:
+            start, dash, end = span.partition("-")
+            if not end:
+                if contig not in lengths:
+                    raise UsageError(f"Unknown contig in --region: {contig!r}.")
+                selection = f"{contig}:{start or '1'}-{lengths[contig]}"
+            elif dash and not start:
+                selection = f"{contig}:1-{end}"
+        try:
+            chrom, first, last = literal_region(selection, lengths)
+        except ValueError as exc:
+            raise UsageError(
+                f"Invalid --region {part!r}; expected a contig, contig:start-end, or a BED file."
+            ) from exc
+        rows.append(f"{chrom}\t{first}\t{last}\n")
+    if not rows:
+        raise UsageError("--region must contain at least one interval.")
+    Path(bed).write_text("".join(rows), encoding="utf-8", newline="\n")
 
 
 def _gatk_cram_hint(input_file: str, stderr: object) -> str | None:
@@ -206,9 +243,10 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
             # Decode CRAM with samtools and stream uncompressed BAM to freebayes.
             # It can't seek in a stream, so its calls are cut to the region
             # afterwards: the streamed reads overlap the region's edges.
-            view_cmd = ["samtools", "view", "-u", "-h", "-T", use_ref, "--", input_file]
-            if region:
-                view_cmd += region_items(region, commas=True)
+            view_cmd = ["samtools", "view", "-u", "-h", "-T", use_ref]
+            if bed:
+                view_cmd += ["-M", "-L", bed]
+            view_cmd += ["--", input_file]
             stages = [view_cmd, ["freebayes", "-f", use_ref, "--stdin"]]
             keep = ["-T", bed] if bed else []
         else:
@@ -281,6 +319,8 @@ def run_gatk(params: VcfGatkParams) -> None:
                 "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
             )
     require_native_tool("gatk")
+    if params.pair_hmm_cuda is not None:
+        gatk_command += cuda_pairhmm_java_options(params.pair_hmm_cuda, _gatk_version())
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
     gvcf = None
@@ -400,6 +440,10 @@ def _run_gatk(
     # Ultima's own pipeline calls with the flow-based likelihood model.
     flow_args = []
     if ultima.alignment_flow_data(input_file, ref).flow_aware:
+        if params.pair_hmm_cuda is not None:
+            raise UsageError(
+                "--pair-hmm-cuda does not accelerate Ultima's flow likelihood model."
+            )
         if params.pair_hmm_neon is not None:
             raise UsageError(
                 "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
@@ -483,12 +527,12 @@ def _run_gatk(
             + ["--sample-ploidy", str(sample_ploidy)]
             + region_args
         )
+        if params.pair_hmm_cuda is not None or params.pair_hmm_neon is not None:
+            cmd += ["--native-pair-hmm-threads", _threads]
         if params.pair_hmm_neon is not None:
             # contract: require double to avoid the known float block-DP
             # regression; difficult-region exact parity remains unqualified.
             cmd += [
-                "--native-pair-hmm-threads",
-                _threads,
                 "--native-pair-hmm-use-double-precision",
                 "true",
             ]

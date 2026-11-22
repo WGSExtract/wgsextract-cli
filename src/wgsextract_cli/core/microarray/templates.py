@@ -1,3 +1,16 @@
+"""Chip-template (vendor) export and the hg38 to hg19 CombinedKit liftover.
+
+Provenance: the vendor-format export, chromosome ordering and liftover are
+modified ports of WGS Extract v4 ``program/aconv.py`` and
+``program/hg38tohg19.py`` (release v44.2, 28 Feb 2023), Copyright (C)
+2018-2020 City Farmer and Copyright (C) 2020-2022 Randy Harr, licensed under
+the GNU GPL version 3 or later. WGS Extract CLI contributors modified them from
+2026-03-02 (see the git history): zero-based liftover coordinates, strand
+complementing, rejection of ambiguous placements, rCRS mtDNA kept unlifted,
+template corrections and quality-gated no-calls. The modified work stays under
+GPL-3.0-or-later; see NOTICE and docs/migrating-from-v4.md.
+"""
+
 import functools
 import gzip
 import itertools
@@ -44,7 +57,7 @@ def chr_to_int(chrom: str | int) -> int:
     """
     Converts chromosome name to an integer for sorting.
     M/MT -> 23, X -> 24, Y -> 25.
-    Ported from program/aconv.py chrconv().
+    Ported from WGS Extract v4 program/aconv.py chrconv().
     """
     c = str(chrom).upper().replace("CHR", "")
     if c == "M" or c == "MT":
@@ -188,15 +201,17 @@ def _body_rows(
             raise WGSExtractError(f"Template delta {path} nests too deep.")
         yield from _delta_rows(path, depth)
         return
+    api_order = format_name == "23andMe_SNPs_API"
     with _open_template(path) as f:
         for line in f:
             line = line.strip().replace('"', "")
-            if not line or line.startswith("#"):
+            if not line or line[0] == "#":
                 continue
-            parts = line.split("," if line.count(",") > line.count("\t") else "\t")
+            commas = line.count(",")
+            parts = line.split("," if commas and commas > line.count("\t") else "\t", 3)
             if len(parts) < 3:
                 continue
-            if format_name == "23andMe_SNPs_API":
+            if api_order:
                 # This template is chrom (chr1), position, rsID.
                 yield parts[2], _chrom_from_liftover(parts[0]), parts[1]
             else:
@@ -265,9 +280,17 @@ def _template_corrections() -> dict[tuple[str, str, str], str]:
 def template_rows(format_name: str, path: str) -> Iterator[tuple[str, str, str]]:
     """(ID, chromosome, position) of each marker in a template body, as the
     vendor names them, with corrections.tsv's fixes applied."""
-    corrections = _template_corrections()
-    for snp_id, chrom, pos in _body_rows(format_name, path):
-        yield snp_id, chrom, corrections.get((format_name, snp_id, pos), pos)
+    corrections = {
+        (snp_id, pos): corrected
+        for (template, snp_id, pos), corrected in _template_corrections().items()
+        if template == format_name
+    }
+    rows = _body_rows(format_name, path)
+    if not corrections:
+        yield from rows
+        return
+    for snp_id, chrom, pos in rows:
+        yield snp_id, chrom, corrections.get((snp_id, pos), pos)
 
 
 def lift_to_grch37(
@@ -341,7 +364,7 @@ def liftover_hg38_to_hg19(
     outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
     left out, so vendor files report them as no-calls.
     MT stays in rCRS coordinates, matching hg38 and GRCh37 chip templates.
-    Ported from legacy program/hg38tohg19.py.
+    Ported from WGS Extract v4 program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
         raise FileNotFoundError(f"Liftover chain file not found: {chain_file}")
@@ -453,7 +476,8 @@ def write_formatted_line(
     result: str,
     eol: str = "\n",
 ) -> None:
-    """Writes a line in the specific vendor format. Ported from aconv.py."""
+    """Writes a line in the specific vendor format. Ported from WGS Extract v4
+    program/aconv.py."""
 
     profile = vendor_output_profile(format_name)
     if profile.layout == "split_alleles":
@@ -561,7 +585,7 @@ def convert_to_vendor_format(
 ) -> GenotypeTally:
     """
     Converts a CombinedKit.txt (GRCh37) to a vendor-specific format using
-    templates. Ported from legacy program/aconv.py. Returns the tally of the
+    templates. Ported from WGS Extract v4 program/aconv.py. Returns the tally of the
     autosomal genotypes written.
 
     A template on another build (FTDNA's NCBI36 Affymetrix export, its GRCh38
