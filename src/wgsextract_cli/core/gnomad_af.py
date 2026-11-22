@@ -35,7 +35,7 @@ from wgsextract_cli.core.utils import (
 
 # gnomAD v4.1 joint (exomes + genomes) sites are GRCh38-only and ~900 GB of
 # per-chromosome VCFs with ~660 INFO fields, so `ref gnomad --release 4.1`
-# streams them into a small CHROM/POS/REF/ALT/AF table instead of storing them.
+# streams them into a compact frequency and homozygote table instead of storing them.
 GNOMAD_V4_URL = (
     "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/joint/"
     "gnomad.joint.v4.1.sites.{contig}.vcf.bgz"
@@ -47,12 +47,13 @@ GNOMAD_AF_TABLE = "gnomad_hg38.tsv.gz"
 _GNOMAD_V4_QUERY = (
     "-i",
     'FILTER="PASS" && AF_joint>0',
+    "-u",  # optional annotations may not be defined in the source VCF
     "-f",
-    "%CHROM\t%POS\t%REF\t%ALT\t%AF_joint\n",
+    "%CHROM\t%POS\t%REF\t%ALT\t%AF_joint\t%AF_grpmax_joint\t%nhomalt_joint\n",
 )
 _GNOMAD_V4_HEADER = (
     "## gnomAD v4.1 joint exomes+genomes, PASS sites with AF_joint > 0\n"
-    "#CHROM\tPOS\tREF\tALT\tAF\n"
+    "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\n"
 )
 
 
@@ -177,8 +178,8 @@ def build_gnomad_af(
     if Path(dest).is_file() and Path(dest + ".tbi").is_file():
         logging.info(f"{GNOMAD_AF_TABLE} is already installed.")
         return True
-    # An older library's interrupted build resumes where its parts are.
-    parts_dir = str(download_path(reflib_dir, ".gnomad_hg38_parts"))
+    # Don't concatenate older five-column partial downloads with new rows.
+    parts_dir = str(download_path(reflib_dir, ".gnomad_hg38_parts_v2"))
     if not Path(dest).exists():
         dest = str(Path(parts_dir).parent / GNOMAD_AF_TABLE)
     Path(parts_dir).mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,7 @@ from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import ResultWarning, current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
+from wgsextract_cli.core.variant_depths import ad_total_header, preserve_ad_total
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
     match_chromosome_name,
@@ -130,7 +131,8 @@ def _text_copy(
                 tuple(f"##INFO=<ID={tag}," for tag in (ce.IDENTITY, ce.STARS, ce.TIER))
             )
         )
-    info_numbers = parse_header(text.splitlines()).info_number
+    header = parse_header(text.splitlines())
+    info_numbers = header.info_number
     definitions = (
         {}
         if allowed is not None
@@ -149,6 +151,8 @@ def _text_copy(
     with output.open("w", newline="\n") as handle:
         for line in text.splitlines():
             if line.startswith("#CHROM"):
+                if allowed is None and header.samples:
+                    handle.write(ad_total_header(header.format_number))
                 for contig in vcf_chromosomes(source):
                     if (
                         f"##contig=<ID={contig}," not in text
@@ -231,6 +235,8 @@ def _text_copy(
                 fields[7] = (
                     ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
                 )
+                if allowed is None and "AD" in header.format_number:
+                    preserve_ad_total(fields)
                 handle.write("\t".join(fields) + "\n")
     if skipped:
         warn(

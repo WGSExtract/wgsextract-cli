@@ -2,6 +2,7 @@
 
 import argparse
 import contextlib
+import csv
 import gzip
 import json
 import os
@@ -817,76 +818,121 @@ def test_phylop_download_without_pybigwig_downloads_nothing(tmp_path):
 
 
 @needs_bcftools
-def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
-    from wgsextract_cli.commands.vcf import population
+def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_path):
     from wgsextract_cli.core import gnomad_af
 
     info = (
         '##FILTER=<ID=AC0,Description="a">\n'
         '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="f">\n'
+        '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="popmax">\n'
+        '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
     )
     src = tmp_path / "src"
     src.mkdir()
     _write_vcf(
         src / "chr1.vcf.bgz",
-        "{c}\t100\t.\tC\tT\t.\tPASS\tAF_joint=0.25\n"
-        "{c}\t100\t.\tC\tG\t.\tPASS\tAF_joint=0.5\n"
+        "{c}\t100\t.\tC\tT\t.\tPASS\tAF_joint=0.125;AF_grpmax_joint=0.375;nhomalt_joint=0\n"
+        "{c}\t100\t.\tC\tG\t.\tPASS\tAF_joint=0.5;AF_grpmax_joint=0.625;nhomalt_joint=3\n"
         "{c}\t200\t.\tG\tA\t.\tAC0\tAF_joint=0.1\n"  # filtered by gnomAD
         "{c}\t300\t.\tTA\tT\t.\tPASS\tAF_joint=0\n",  # never seen
         header=info,
     )
     _write_vcf(src / "chr2.vcf.bgz", "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
                contig="chr2", header=info)  # fmt: skip
+    (src / "chr3.vcf.bgz").write_bytes(b"not a VCF")
     reflib = tmp_path / "lib"
     url = src.as_uri() + "/{contig}.vcf.bgz"
     with (
         patch.object(gnomad_af, "GNOMAD_V4_URL", url),
         patch.object(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1", "chr2", "chr3"]),
-        patch.object(gnomad_af, "_remote_size", lambda u: 1),
     ):
-        # chr3 doesn't exist: the build fails but keeps the finished contigs.
+        # A corrupt contig fails the build without losing the finished contigs.
         assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
-        parts = reflib / "downloads" / ".gnomad_hg38_parts"
-        assert sorted(os.listdir(parts)) == ["chr1.tsv.gz", "chr2.tsv.gz"]
-
         _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
-        os.remove(src / "chr1.vcf.bgz")  # resumed, so never read again
+        (src / "chr1.vcf.bgz").write_bytes(b"must use the completed contig")
         assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
-    assert (
-        not parts.exists()
-        and (reflib / "downloads" / "gnomad_hg38.tsv.gz.tbi").exists()
-    )
     with gzip.open(table, "rt") as f:
         assert f.read().splitlines()[1:] == [
-            "#CHROM\tPOS\tREF\tALT\tAF",
-            "chr1\t100\tC\tT\t0.25",
-            "chr1\t100\tC\tG\t0.5",
-            "chr2\t50\tA\tG\t0.01",
+            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint",
+            "chr1\t100\tC\tT\t0.125\t0.375\t0",
+            "chr1\t100\tC\tG\t0.5\t0.625\t3",
+            "chr2\t50\tA\tG\t0.01\t.\t.",
         ]
 
     sample = _write_vcf(
         tmp_path / "sample.vcf.gz",
-        "{c}\t100\tm\tC\tG,T\t.\tPASS\t.\n"
-        "{c}\t200\tf\tG\tA\t.\tPASS\t.\n"
-        "{c}\t300\tn\tTA\tT\t.\tPASS\t.\n",
+        "{c}\t100\tm\tC\tG,T\t.\tPASS\t.\tGT\t1|2\n"
+        "{c}\t200\tf\tG\tA\t.\tPASS\t.\tGT\t0/1\n"
+        "{c}\t300\tn\tTA\tT\t.\tPASS\t.\tGT\t0/1\n",
         contig="1",
+        sample="S1",
     )
     outdir = tmp_path / "out"
-    args = argparse.Namespace(
-        input=sample, vcf_input=None, outdir=str(outdir), ref=None,
-        gnomad_file=str(table), max_af=0.2,
+    reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
+    run_wgsextract(
+        "vcf", "gnomad", "--vcf-input", sample, "--outdir", str(outdir),
+        "--gnomad-file", str(table), "--max-af", "0.2", "--ref", str(reference),
     )  # fmt: skip
-    with (
-        patch.object(population, "verify_dependencies"),
-        patch.object(population, "log_dependency_info"),
-    ):
-        population.cmd_gnomad(args)
     assert _query(
-        str(outdir / "gnomad_annotated.vcf.gz"), "%CHROM:%ID:%GNOMAD_AF\n"
-    ) == ["1:m:0.5", "1:m:0.25", "1:f:.", "1:n:."]
-    assert _query(str(outdir / "gnomad_af_lt_0.2.vcf.gz")) == ["f", "n"]
+        str(outdir / "gnomad_annotated.vcf.gz"),
+        "%CHROM:%ID:%GNOMAD_AF:%GNOMAD_POPMAX_AF:%GNOMAD_NHOMALT\n",
+    ) == ["1:m:0.5:0.625:3", "1:m:0.125:0.375:0", "1:f:.:.:.", "1:n:.:.:."]
+    assert _query(str(outdir / "gnomad_af_lt_0.2.vcf.gz")) == ["m", "f", "n"]
+    with (outdir / "gnomad_af_lt_0.2.confidence.tsv").open(newline="") as f:
+        rare = next(
+            row
+            for row in csv.DictReader(
+                (line for line in f if not line.startswith("#")), delimiter="\t"
+            )
+            if row["pos"] == "100"
+        )
+    assert (rare["alt"], rare["GNOMAD_POPMAX_AF"], rare["GNOMAD_NHOMALT"]) == (
+        "T", "0.375", "0",
+    )  # fmt: skip
+
+
+@needs_bcftools
+@pytest.mark.parametrize("resource_format", ["legacy_tsv", "gnomad_vcf"])
+def test_1289_gnomad_annotation_accepts_old_tables_and_vcf(tmp_path, resource_format):
+    if resource_format == "legacy_tsv":
+        resource = tmp_path / "old.tsv"
+        resource.write_text("#CHROM\tPOS\tREF\tALT\tAF\nchr1\t100\tC\tT\t0.25\n")
+    else:
+        resource = Path(
+            _write_vcf(
+                tmp_path / "gnomad.vcf.gz",
+                "{c}\t100\t.\tC\tT\t.\tPASS\tAF=0.25;AF_grpmax=0.375;nhomalt=7\n",
+                header=(
+                    '##INFO=<ID=AF,Number=A,Type=Float,Description="Frequency">\n'
+                    '##INFO=<ID=AF_grpmax,Number=A,Type=Float,Description="Group maximum">\n'
+                    '##INFO=<ID=nhomalt,Number=A,Type=Integer,Description="Homozygotes">\n'
+                ),
+            )
+        )
+    sample = _write_vcf(
+        tmp_path / "sample.vcf.gz",
+        "{c}\t100\t.\tC\tT\t.\tPASS\tGNOMAD_POPMAX_AF=0.875;GNOMAD_NHOMALT=100\n",
+        header=(
+            '##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Old AF">\n'
+            '##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Old count">\n'
+        ),
+    )
+    outdir = tmp_path / "out"
+    run_wgsextract(
+        "vcf", "gnomad", "--vcf-input", sample, "--gnomad-file", str(resource),
+        "--outdir", str(outdir),
+    )  # fmt: skip
+    run_wgsextract(
+        "vcf", "table", "--vcf-input", str(outdir / "gnomad_annotated.vcf.gz"),
+        "--outdir", str(outdir),
+    )  # fmt: skip
+    with (outdir / "gnomad_annotated_variants.tsv").open(newline="") as f:
+        row = next(csv.DictReader(f, delimiter="\t"))
+    assert row["gnomad_af"] == "0.25"
+    expected = ("", "") if resource_format == "legacy_tsv" else ("0.375", "7")
+    assert (row["gnomad_popmax_af"], row["gnomad_nhomalt"]) == expected
 
 
 @needs_bcftools
