@@ -53,10 +53,14 @@ def aadr_paths(reflib: str) -> list[Path]:
 def ybrowse_paths(reflib: str) -> list[Path]:
     """Every installed snapshot, with the pointer to the current one, the
     GRCh37 sites lifted from them and the chain they were lifted with."""
-    from wgsextract_cli.core.ybrowse_grch37 import CHAIN_NAME
+    from wgsextract_cli.core.ybrowse_grch37 import CHAIN_NAME, CHAIN_STAGE
 
     root = Path(reflib, "ybrowse")
-    return [root / "hg38", root / "hg19", root / CHAIN_NAME]
+    staged = [
+        root / f"{CHAIN_STAGE}{suffix}"
+        for suffix in ("", ".partial", ".partial.source", ".partial.segments")
+    ]
+    return [root / "hg38", root / "hg19", root / CHAIN_NAME, *staged]
 
 
 def annotation_resource_paths(reflib: str, key: str) -> list[Path]:

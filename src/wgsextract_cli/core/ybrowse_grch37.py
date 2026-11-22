@@ -10,6 +10,7 @@ dropped and counted; nothing is guessed, and nothing derived is redistributed.
 """
 
 import gzip
+import hashlib
 import json
 import logging
 import tempfile
@@ -39,10 +40,12 @@ from wgsextract_cli.core.ybrowse import (
     sites_header,
     write_group,
 )
+from wgsextract_cli.core.ybrowse import Y_LENGTH as GRCH38_Y_LENGTH
 
 Y_LENGTH = 59_373_566
 CHR1_LENGTH = 249_250_621
 CHAIN_NAME = "GRCh38_to_GRCh37.chain.gz"
+CHAIN_STAGE = f".{CHAIN_NAME}.download"  # its download's staging file
 CHAIN_URL = "https://ftp.ensembl.org/pub/assembly_mapping/homo_sapiens/GRCh38_to_GRCh37.chain.gz"
 CHAIN_SHA256 = "6bee5bfdd6defc0fb2bd388ef51819c32bbfae1d3e7a3345aa5ebbdc3dd492b1"
 CHAIN_TERMS = (
@@ -98,7 +101,7 @@ def lift_chain(
         from wgsextract_cli.core.ref_library.downloads import download_file
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        staged = path.with_name(f".{CHAIN_NAME}.download")
+        staged = path.with_name(CHAIN_STAGE)
         if not download_file(CHAIN_URL, str(staged), expected_sha256=CHAIN_SHA256):
             raise WGSExtractError(
                 f"Could not download {CHAIN_NAME} from {CHAIN_URL} with its "
@@ -197,6 +200,13 @@ def _lift(sites38: Path, lifter: YLiftOver, sequence: str, out: TextIO) -> Count
             placed = lifter.place(int(pos))
             if not isinstance(placed, YPlacement):
                 counts[placed] += 1
+                # Still claim each Y position it might land on, so a site
+                # placed there uniquely is dropped as ambiguous too.
+                for candidate in lifter.candidates(int(pos)):
+                    out.write(
+                        f"chrY\t{candidate}\t.\t{ref}\t{alt}\t.\t.\t"
+                        f"SRC38={pos};LIFT=multi_hit_candidate\n"
+                    )
                 continue
             if placed.reverse:
                 counts["reverse_strand"] += 1
@@ -246,11 +256,15 @@ def _write_sites(sorted_vcf: Path, directory: Path, counts: Counter[str]) -> Non
         def flush(pos: int, records: list[list[str]]) -> None:
             fields = [_info(r[7]) for r in records]
             if len({f["SRC38"] for f in fields}) > 1:
-                counts["many_to_one"] += len(records)
+                counts["many_to_one"] += sum(
+                    f["LIFT"] != "multi_hit_candidate" for f in fields
+                )
                 return
             kept = []
             for record, info in zip(records, fields, strict=True):
                 check = info["LIFT"]
+                if check == "multi_hit_candidate":
+                    continue  # counted as multi_hit_or_off_Y when lifted
                 if check not in ("ok", "ref_alt_inverted"):
                     counts[check] += 1
                     continue
@@ -286,12 +300,13 @@ def derive(
     contig = _y_contig(fasta)
     if contig is None:
         raise WGSExtractError(f"{fasta} is not an indexed GRCh37 FASTA.")
-    lifter = YLiftOver(chain)
+    lifter = YLiftOver(chain, (GRCH38_Y_LENGTH, Y_LENGTH))
     root = library / "ybrowse" / "hg19"
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".install_", dir=root) as temporary:
         stage = Path(temporary)
         sequence = _y_sequence(fasta, contig, stage)
+        sequence_sha256 = hashlib.sha256(sequence.encode("ascii")).hexdigest()
         lifted = stage / "lifted.vcf"
         with lifted.open("w", encoding="utf-8", newline="\n") as out:
             out.write(
@@ -332,7 +347,12 @@ def derive(
                 "No yBrowse allele placed on GRCh37: check the chain and FASTA."
             )
         compress_resource(resource)
-        version = str(source["source_sha256"])
+        # Each snapshot, chain and reference sequence derives its own folder, so
+        # re-deriving never replaces the files an extraction may be reading.
+        version = hashlib.sha256(
+            f"{source['source_sha256']}:{chain_provenance['sha256']}:"
+            f"{sequence_sha256}".encode()
+        ).hexdigest()
         manifest = {
             "schema": 1,
             "assembly": "GRCh37",
@@ -340,10 +360,14 @@ def derive(
             "copyright": COPYRIGHT,
             "attribution": str(source["attribution"]),
             "source_url": SOURCE_URL,
-            "source_sha256": version,
+            "source_sha256": source["source_sha256"],
             "scope": SCOPE,
             "liftover": chain_provenance,
-            "reference": {"fasta": fasta.name, "contig": contig},
+            "reference": {
+                "fasta": fasta.name,
+                "contig": contig,
+                "sequence_sha256": sequence_sha256,
+            },
             "counts": {key: counts[key] for key in COUNT_KEYS},
             "snp_alleles": counts["grch37_alleles"],
             "sites_only": True,
@@ -352,8 +376,35 @@ def derive(
         (resource / "manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
-        # A new chain or FASTA re-derives the same snapshot: always replace.
-        return publish(root, stage, resource, version, keep=lambda _: False)
+        return publish(root, stage, resource, version, keep=_valid)
+
+
+def _validate(directory: Path) -> dict[str, object]:
+    manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    if (
+        manifest["schema"] != 1
+        or manifest["assembly"] != "GRCh37"
+        or manifest["chrY_length"] != Y_LENGTH
+        or manifest["copyright"] != COPYRIGHT
+        or manifest["sites_only"] is not True
+        or not isinstance(manifest["source_sha256"], str)
+        or not isinstance(manifest["liftover"]["sha256"], str)
+    ):
+        raise ValueError("unsupported manifest")
+    if any(
+        file_sha256(directory / name) != manifest["files"][name]
+        for name in RESOURCE_FILES
+    ):
+        raise ValueError("resource checksum mismatch")
+    return cast(dict[str, object], manifest)
+
+
+def _valid(directory: Path) -> bool:
+    try:
+        _validate(directory)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return True
 
 
 def installed_grch37(library: Path) -> tuple[Path, dict[str, object]]:
@@ -367,31 +418,16 @@ def installed_grch37(library: Path) -> tuple[Path, dict[str, object]]:
     version = current_version(library / "ybrowse" / "hg19")
     if version is None:
         raise WGSExtractError(f"No GRCh37 yBrowse resource. {install}")
-    if current_version(library / "ybrowse" / "hg38") != version:
-        raise WGSExtractError(
-            "The GRCh37 yBrowse resource was lifted from a GRCh38 snapshot that is "
-            f"no longer installed. {install}"
-        )
     directory = library / "ybrowse" / "hg19" / version
     try:
-        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-        if (
-            manifest["schema"] != 1
-            or manifest["assembly"] != "GRCh37"
-            or manifest["chrY_length"] != Y_LENGTH
-            or manifest["copyright"] != COPYRIGHT
-            or manifest["source_sha256"] != version
-            or manifest["sites_only"] is not True
-            or not isinstance(manifest["liftover"]["sha256"], str)
-        ):
-            raise ValueError("unsupported manifest")
-        if any(
-            file_sha256(directory / name) != manifest["files"][name]
-            for name in RESOURCE_FILES
-        ):
-            raise ValueError("resource checksum mismatch")
+        manifest = _validate(directory)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         raise WGSExtractError(
             f"Invalid GRCh37 yBrowse resource in {directory}: {exc}. {install}"
         ) from exc
-    return directory, cast(dict[str, object], manifest)
+    if current_version(library / "ybrowse" / "hg38") != manifest["source_sha256"]:
+        raise WGSExtractError(
+            "The GRCh37 yBrowse resource was lifted from a GRCh38 snapshot that is "
+            f"no longer installed. {install}"
+        )
+    return directory, manifest

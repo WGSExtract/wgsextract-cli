@@ -24,7 +24,13 @@ class YPlacement(NamedTuple):
 class YLiftOver:
     """A chain's placements of 1-based chrY positions."""
 
-    def __init__(self, chain: str | Path) -> None:
+    def __init__(
+        self,
+        chain: str | Path,
+        lengths: tuple[int, int] | None = None,
+    ) -> None:
+        """``lengths``: the source and target chrY lengths every Y block must
+        declare, so a chain between other builds is refused."""
         try:
             self._lifter = LiftOver(str(chain))
         except (OSError, ValueError, EOFError) as exc:
@@ -32,14 +38,29 @@ class YLiftOver:
         # pyliftover answers chrY for a chain naming it Y, and the reverse.
         if self._lifter.convert_coordinate("chrY", 0) is None:
             raise WGSExtractError(f"The chain {chain} has no chrY/Y source blocks.")
+        if lengths is not None:
+            found = {
+                (block.source_size, block.target_size)
+                for block in self._lifter.chain_file.chains
+                if block.source_name in _Y_NAMES and block.target_name in _Y_NAMES
+            }
+            if found != {lengths}:
+                raise WGSExtractError(
+                    f"The chain {chain} maps chrY of length(s) "
+                    f"{sorted(found)} (source, target), not {lengths}: it is "
+                    "not a chain between these builds."
+                )
+
+    def _hits(self, position: int) -> set[tuple[str, int, str]]:
+        return {
+            (str(hit[0]), int(hit[1]), str(hit[2]))
+            for hit in self._lifter.convert_coordinate("chrY", position - 1) or ()
+        }
 
     def place(self, position: int) -> YPlacement | str:
         """Where ``position`` lands, else why it doesn't: ``"unlifted"`` (no
         block covers it) or ``"multi_hit_or_off_Y"``."""
-        hits = {
-            tuple(hit[:3])
-            for hit in self._lifter.convert_coordinate("chrY", position - 1) or ()
-        }
+        hits = self._hits(position)
         if not hits:
             return "unlifted"
         if len(hits) != 1:
@@ -47,7 +68,17 @@ class YLiftOver:
         contig, target, strand = hits.pop()
         if contig not in _Y_NAMES:
             return "multi_hit_or_off_Y"
-        return YPlacement(int(target) + 1, strand == "-")
+        return YPlacement(target + 1, strand == "-")
+
+    def candidates(self, position: int) -> list[int]:
+        """Every 1-based Y position the chain maps ``position`` to."""
+        return sorted(
+            {
+                target + 1
+                for contig, target, _ in self._hits(position)
+                if contig in _Y_NAMES
+            }
+        )
 
 
 def complement(alleles: str) -> str:

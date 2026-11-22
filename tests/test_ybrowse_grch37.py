@@ -17,7 +17,7 @@ Y38 = ybrowse.Y_LENGTH
 Y37 = ybrowse_grch37.Y_LENGTH
 # A synthetic GRCh38 -> GRCh37 chain (0-based, half-open blocks): +100 for
 # 0-1000; 1000-1100 reverse onto 5000-5100 (GRCh37 pos = 6101 - GRCh38 pos);
-# 2000-2010 onto two places; 3000-3010 and 3100-3110 onto the same place, and
+# 2000-2010 onto two places, one of which 2100-2110 lands on alone; 3000-3010 and 3100-3110 onto the same place, and
 # 4000-4010 and 4100-4110 too.
 CHAIN = "".join(
     f"chain {score} chrY {Y38} + {start} {end} Y {Y37} {strand} {q} {q + end - start} "
@@ -27,6 +27,7 @@ CHAIN = "".join(
         (90, 1000, 1100, "-", Y37 - 5100),
         (80, 2000, 2010, "+", 7000),
         (70, 2000, 2010, "+", 7100),
+        (65, 2100, 2110, "+", 7000),
         (60, 3000, 3010, "+", 8000),
         (50, 3100, 3110, "+", 8000),
         (40, 4000, 4010, "+", 9000),
@@ -42,6 +43,8 @@ ROWS = [
     "chrY\t55\tSYN_PAR\tA\tG\t.\t.\tHG=R-X\tGT\t0",  # 155 is N: dropped
     "chrY\t1051\tSYN_REV\tA\tG\t.\t.\tHG=R-REV;AA=A\tGT\t0",  # 5050, complemented
     "chrY\t2005\tSYN_MULTI\tA\tG\t.\t.\tHG=R-X\tGT\t0",  # placed twice: dropped
+    # Placed once, but where SYN_MULTI may land: dropped as ambiguous too.
+    "chrY\t2105\tSYN_MULTI_PARTNER\tA\tG\t.\t.\tHG=R-X\tGT\t0",
     "chrY\t3005\tSYN_COL1\tA\tG\t.\t.\tHG=R-X\tGT\t0",  # both on 8005: dropped
     "chrY\t3105\tSYN_COL2\tA\tG\t.\t.\tHG=R-X\tGT\t0",
     # A collision drops both sites even when only one passes the allele check.
@@ -90,19 +93,28 @@ def test_issue_1186_grch37_install_lifts_checks_and_counts_every_allele(tmp_path
         ["5050", "SYN_REV", "T", "C", "HG=R-REV;AA=T"],
     ]
     assert manifest["counts"] == {
-        "grch38_alleles": 11,
+        "grch38_alleles": 12,
         "unlifted": 1,
         "multi_hit_or_off_Y": 1,
         "reverse_strand": 1,
         "ref_alt_inverted": 1,
         "neither_allele_matches": 1,
         "grch37_reference_N": 1,
-        "many_to_one": 4,
+        "many_to_one": 5,
         "conflicting_ref": 0,
         "grch37_alleles": 3,
     }
     assert manifest["liftover"]["kind"] == "user-supplied"
-    assert manifest["reference"] == {"fasta": "b37.fa", "contig": "Y"}
+    assert manifest["reference"]["fasta"] == "b37.fa"
+    # A chain between other builds is refused, leaving the lifted sites as they were.
+    wrong = tmp_path / "wrong.chain"
+    wrong.write_text(CHAIN.replace(f"Y {Y37}", f"Y {Y37 + 1}"), encoding="utf-8")
+    with pytest.raises(WGSExtractError, match="not a chain between these builds"):
+        run_wgsextract(
+            "ref", "ybrowse", "--install", "--grch37", "--chain", str(wrong),
+            "--ref", str(library),
+        )  # fmt: skip
+    assert ybrowse_grch37.installed_grch37(library)[0] == directory
     # A different GRCh38 snapshot leaves the lifted sites stale until re-derived.
     ybrowse.install_snapshot(library, mini_snapshot(tmp_path / "new.vcf", ROWS[:2]))
     with pytest.raises(WGSExtractError, match="no longer installed.*--grch37"):
