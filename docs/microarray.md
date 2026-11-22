@@ -49,10 +49,12 @@ most once.
 All chips' markers are genotyped together against one genome-wide target list.
 `ref bootstrap` supplies no such list; first use builds
 `microarray/All_SNPs_<build>_ref.tab.gz` from templates and later runs reuse it.
-The hg38 list uses UCSC's hg19ToHg38 chain in the reference library. Install
-missing public assets explicitly; [network permissions](privacy.md) still
-apply. Reads below MAPQ 10 are ignored: ambiguous mapping becomes a no-call,
-not a guessed homozygote.
+The hg38 list uses UCSC's `hg19ToHg38.over.chain.gz` to place the targets.
+GRCh38 input also needs `hg38ToHg19.over.chain.gz` to export hg19 coordinates,
+even if you supply an existing target list. Use `microarray --download` to
+fetch missing chains into the reference library. The input stays local; see
+[network permissions](privacy.md). Reads below MAPQ 10 are ignored: ambiguous
+mapping becomes a no-call, not a guessed homozygote.
 
 hg38 exports cache exact hg38-to-hg19 projections in the configured library's
 `microarray/hg19-coordinates/`. Keys include chain content, ordered source
