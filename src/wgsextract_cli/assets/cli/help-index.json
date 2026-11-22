@@ -98,6 +98,7 @@
 {"path":"report-issue","tier":"setup","summary":"Report a problem: a redacted, pre-filled GitHub bug report.","key_flags":["--run","--last-failed","--title","--description","--dry-run","--open"]},
 {"path":"help","tier":"setup","summary":"List every command, or explain one: 'help vcf snp'.","key_flags":["--all","--full"]},
 {"path":"extract bam-subset","tier":"advanced","summary":"Create a smaller version of your BAM file using a random fraction of reads (e.g. 0.1 for 10%).","key_flags":["--fraction","--region","--gene"]},
+{"path":"vcf callability","tier":"advanced","summary":"Which coding exons of a gene list (ACMG SF by default) the sample's gVCF could read: callable, partial, not readable, specialist or not run.","key_flags":["--vcf-input","--gene-list","--exons","--flank"]},
 {"path":"vcf to-fasta","tier":"advanced","summary":"Build your personal consensus genome: the reference FASTA with your variants applied (heterozygous SNVs as IUPAC codes by default), and N where a gVCF has no call.","key_flags":["--vcf-input","--region","--sample","--haplotype","--uncalled","--include-filtered","--mask","--chain"]},
 {"path":"vcf trio","tier":"advanced","summary":"Analyze inheritance patterns.","key_flags":["--vcf-input","--mother","--father","--proband","--mode","--min-depth","--proband-sex","--region"]},
 {"path":"vcf cnv","tier":"advanced","summary":"Call Copy Number Variants (CNVs) using Delly.","key_flags":["--region","--map"]},

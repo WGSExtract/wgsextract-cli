@@ -268,6 +268,11 @@ command works as before.
   `reference_evidence_unassessed_sites` warning. A site's state is
   `callable_reference` only when every base of it is. See
   [variant-confidence.md](variant-confidence.md#reference-evidence-at-the-sites-checked).
+- `vcf callability` classifies every base of a gene list's coding exons and
+  calls an exon callable only when every base is `callable_reference` or a
+  call, outside known short-read limitations; the report then tells genes
+  with nothing reported from genes it could not read. See
+  [exon-callability.md](exon-callability.md).
 - The ancestry projection (`qc ancestry` on a VCF, and `score pgs`'s PCA
   projection) fills an ancestry site the VCF doesn't list as hom-ref only
   where the gVCF calls it `callable_reference`, instead of assuming every

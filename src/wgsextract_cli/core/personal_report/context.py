@@ -74,6 +74,7 @@ SECTIONS = {
     "carrier_screening": "Carrier screening by copy number",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
+    "exon_callability": "Exon callability of {gene_list} genes",
     "structural_variants": "Rare structural variants",
     "microarray": "Microarray export",
 }

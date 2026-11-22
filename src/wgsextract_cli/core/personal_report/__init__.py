@@ -103,6 +103,7 @@ from wgsextract_cli.core.table_writer import Value as Value
 from wgsextract_cli.core.utils import UsageError as UsageError
 
 from . import acmg_calls as acmg_calls
+from .callability import _exon_callability as _exon_callability
 from .clinical import (
     GENE_STATUS as GENE_STATUS,
 )
@@ -458,13 +459,15 @@ def build_report(
     # Opt-in research: shown only when `vcf acmg` ran, never asked for.
     if research is not None:
         research_section["acmg_research"] = research
+    clinvar = _clinvar(ctx)
     sections = ReportSectionsDocument(
         overview=_overview(ctx),
         lineage=_lineage(ctx),
         ancestry=_ancestry(ctx),
         pharmacogenomics=_pharmacogenomics(ctx),
         carrier_screening=_carrier_screening(ctx),
-        clinvar=_clinvar(ctx),
+        clinvar=clinvar,
+        exon_callability=_exon_callability(ctx, clinvar),
         **research_section,
         structural_variants=_structural_variants(ctx),
         microarray=_microarray(ctx),

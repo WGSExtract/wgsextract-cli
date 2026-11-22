@@ -275,6 +275,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
+    "vcf callability": _h(
+        "exon_callability.json (per gene: callable, partial, not readable or not "
+        "run, with the sources and thresholds) and exon_callability.tsv (one row "
+        "per coding exon).",
+        "wgsextract vcf callability --vcf-input snps.vcf.gz",
+        "wgsextract vcf callability --vcf-input bcftools.g.vcf.gz --flank 10",
+        "wgsextract vcf callability --vcf-input snps.vcf.gz --gene-list my_genes.tsv",
+    ),
     "vcf clinvar": _h(
         "clinvar_annotated.vcf.gz and clinvar_pathogenic.vcf.gz (+ .tbi).",
         f"wgsextract vcf clinvar {_VCF_IN}",

@@ -68,6 +68,7 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Exon callability | `vcf callability` | none: per gene of its gene list, whether every coding exon was read (callable, partial, not readable, not run) and what the ClinVar section's silence means: reported, not reported (every coding exon read; never a negative result), not readable or not run, with the exons not read. See [exon-callability.md](exon-callability.md) |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
 | Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
@@ -371,7 +372,10 @@ gives the selected run's `command`, `status`, `finished` and `manifest`, and
 `latest_attempt`: `null` when it is the newest run of its step, otherwise
 the newer failed or cancelled attempt with the same four fields. The overview
 adds `facts` and `qc`, ClinVar adds `gene_list`, `build`, `counts`, `genes`
-and `all_calls`, and the microarray section adds `files` and `metrics`.
+and `all_calls`, exon callability adds `gene_list`, `build`, `exon_model`,
+`scope`, `thresholds`, `counts`, `genes` (each with its `state`, `result` and
+`result_text`), `all_exons`, `evidence`, `unassessed_variant_classes` and
+`note`, and the microarray section adds `files` and `metrics`.
 
 The findings table has one row per finding, with the variant's columns, the
 label and its reasons, the evidence file and region, and the disclaimer. Its
@@ -394,6 +398,7 @@ existing helper paths. `context.py` collects manifests and workspace evidence
 and provides shared finding/confidence support. `overview.py` builds sample,
 lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
 carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
-`variant_sections.py` handles automated ACMG and structural-variant evidence.
+`variant_sections.py` handles automated ACMG and structural-variant evidence;
+`callability.py` reads `vcf callability` and combines it with the ClinVar section.
 `rendering.py` formats the offline HTML/Markdown documents and evidence links.
 Confidence and clinical rules remain independent of presentation.

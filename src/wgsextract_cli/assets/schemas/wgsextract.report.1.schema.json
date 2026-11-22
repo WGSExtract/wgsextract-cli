@@ -132,6 +132,10 @@
         },
         "carrier_screening": {
           "$ref": "#/$defs/section"
+        },
+        "exon_callability": {
+          "$ref": "#/$defs/reportCallability",
+          "description": "Which coding exons of the gene list the sample's gVCF could read (vcf callability), and what the ClinVar section's silence means per gene."
         }
       },
       "required": [
@@ -1720,6 +1724,223 @@
         "upper",
         "reference_populations"
       ]
+    },
+    "reportCallability": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "not_run",
+            "failed"
+          ],
+          "description": "ok: at least one source run succeeded; not_run: no run found (see missing); failed: only failed runs found (see error)."
+        },
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportMissing"
+          },
+          "description": "Parts of the section not run yet, with the command that produces each (relative to the sample folder)."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportWarning"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportSource"
+          },
+          "description": "The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer."
+        },
+        "error": {
+          "type": "string"
+        },
+        "gene_list": {
+          "$ref": "#/$defs/gene_list"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "enum": [
+            "hg19",
+            "hg38",
+            null
+          ]
+        },
+        "exon_model": {
+          "type": "string",
+          "description": "The exon model: file, transcripts and annotation source."
+        },
+        "scope": {
+          "type": "string",
+          "description": "What was assessed, e.g. 'coding exons ±2 bp'."
+        },
+        "thresholds": {
+          "type": "object",
+          "additionalProperties": {}
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "description": "Genes per technical state and per result (result_<result>)."
+        },
+        "genes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportCallabilityGene"
+          }
+        },
+        "all_exons": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Every assessed exon (exon_callability.tsv), relative to the folder."
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The gVCF read (reference evidence), relative to the folder."
+        },
+        "unassessed_variant_classes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Variant classes a callable exon still doesn't cover."
+        },
+        "note": {
+          "type": "string",
+          "description": "Callability is technical: it does not establish the absence of disease."
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "summary",
+        "findings",
+        "missing",
+        "warnings",
+        "sources"
+      ]
+    },
+    "reportCallabilityGene": {
+      "type": "object",
+      "properties": {
+        "gene": {
+          "type": "string"
+        },
+        "transcript": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The RefSeq transcript whose coding exons were assessed; null without an exon model."
+        },
+        "state": {
+          "type": "string",
+          "description": "Technical readability: callable when every coding exon was read, partial when some were not, not_readable when none was, not_run when none was assessed.",
+          "enum": [
+            "callable",
+            "partial",
+            "not_readable",
+            "not_run"
+          ]
+        },
+        "result": {
+          "type": "string",
+          "description": "What the ClinVar section's silence means for the gene: reported (it lists a P/LP call), not_reported (no call although every coding exon was read; not a negative result), not_readable (no call, but exons were not read), not_run (ClinVar annotation or the exon assessment did not cover it).",
+          "enum": [
+            "reported",
+            "not_reported",
+            "not_readable",
+            "not_run"
+          ]
+        },
+        "result_text": {
+          "type": "string"
+        },
+        "coding_exons": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exons_callable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exons_not_callable": {
+          "type": "string",
+          "description": "Exons not callable by status, e.g. 'exon 3 not readable; exons 11-15 specialist required'; empty when none."
+        },
+        "bases": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Assessed bases: coding exons and their flanks."
+        },
+        "readable_bases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "gene",
+        "transcript",
+        "state",
+        "result",
+        "result_text",
+        "coding_exons",
+        "exons_callable",
+        "exons_not_callable",
+        "bases",
+        "readable_bases",
+        "reasons"
+      ],
+      "additionalProperties": false
     }
   }
 }

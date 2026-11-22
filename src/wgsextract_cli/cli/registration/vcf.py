@@ -10,6 +10,7 @@ from wgsextract_cli.api.vcf import (
     VcfAlphamissenseParams,
     VcfAnnotateParams,
     VcfCaddParams,
+    VcfCallabilityParams,
     VcfCallParams,
     VcfChainAnnotateParams,
     VcfClair3Params,
@@ -55,6 +56,9 @@ cmd_clinvar = command_handler(
     "wgsextract_cli.commands.vcf.clinvar_revel", "cmd_clinvar"
 )
 cmd_call = command_handler("wgsextract_cli.commands.vcf.call", "cmd_call")
+cmd_callability = command_handler(
+    "wgsextract_cli.commands.vcf.callability", "cmd_callability"
+)
 cmd_cnv = command_handler("wgsextract_cli.commands.vcf.structural", "cmd_cnv")
 cmd_deepvariant = command_handler(
     "wgsextract_cli.commands.vcf.deepvariant", "cmd_deepvariant"
@@ -145,6 +149,15 @@ def register(
         "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
         VcfTableParams,
         cmd_table,
+    )
+    _add_vcf_command(
+        vcf_subs,
+        base_parser,
+        "callability",
+        "Which coding exons of a gene list (ACMG SF by default) the sample's gVCF "
+        "could read: callable, partial, not readable, specialist or not run.",
+        VcfCallabilityParams,
+        cmd_callability,
     )
     _add_vcf_command(
         vcf_subs,

@@ -408,6 +408,93 @@ class ReportSvDocument(ReportSectionDocument, ReportSvFields):
     pass
 
 
+class ReportCallabilityGeneDocument(TypedDict):
+    gene: str
+    transcript: Annotated[
+        str | None,
+        Constraints(
+            description="The RefSeq transcript whose coding exons were assessed; null without an exon model."
+        ),
+    ]
+    state: Annotated[
+        str,
+        Constraints(
+            enum=("callable", "partial", "not_readable", "not_run"),
+            description="Technical readability: callable when every coding exon was read, partial when some were not, not_readable when none was, not_run when none was assessed.",
+        ),
+    ]
+    result: Annotated[
+        str,
+        Constraints(
+            enum=("reported", "not_reported", "not_readable", "not_run"),
+            description="What the ClinVar section's silence means for the gene: reported (it lists a P/LP call), not_reported (no call although every coding exon was read; not a negative result), not_readable (no call, but exons were not read), not_run (ClinVar annotation or the exon assessment did not cover it).",
+        ),
+    ]
+    result_text: str
+    coding_exons: NonnegativeCount
+    exons_callable: NonnegativeCount
+    exons_not_callable: Annotated[
+        str,
+        Constraints(
+            description="Exons not callable by status, e.g. 'exon 3 not readable; exons 11-15 specialist required'; empty when none."
+        ),
+    ]
+    bases: Annotated[
+        NonnegativeCount,
+        Constraints(description="Assessed bases: coding exons and their flanks."),
+    ]
+    readable_bases: NonnegativeCount
+    reasons: list[str]
+
+
+class ReportCallabilityFields(TypedDict, total=False):
+    gene_list: ReportGeneListDocument
+    build: ReportBuild
+    exon_model: Annotated[
+        str,
+        Constraints(
+            description="The exon model: file, transcripts and annotation source."
+        ),
+    ]
+    scope: Annotated[
+        str, Constraints(description="What was assessed, e.g. 'coding exons ±2 bp'.")
+    ]
+    thresholds: dict[str, object]
+    counts: Annotated[
+        dict[str, NonnegativeCount],
+        Constraints(
+            description="Genes per technical state and per result (result_<result>)."
+        ),
+    ]
+    genes: list[ReportCallabilityGeneDocument]
+    all_exons: Annotated[
+        str | None,
+        Constraints(
+            description="Every assessed exon (exon_callability.tsv), relative to the folder."
+        ),
+    ]
+    evidence: Annotated[
+        str | None,
+        Constraints(
+            description="The gVCF read (reference evidence), relative to the folder."
+        ),
+    ]
+    unassessed_variant_classes: Annotated[
+        dict[str, str],
+        Constraints(description="Variant classes a callable exon still doesn't cover."),
+    ]
+    note: Annotated[
+        str,
+        Constraints(
+            description="Callability is technical: it does not establish the absence of disease."
+        ),
+    ]
+
+
+class ReportCallabilityDocument(ReportSectionDocument, ReportCallabilityFields):
+    pass
+
+
 class ReportMicroarrayFileDocument(TypedDict):
     file: str | None
     role: str
@@ -453,6 +540,12 @@ class ReportSectionsDocument(
 ):
     ancestry: ReportAncestryDocument
     carrier_screening: ReportSectionDocument
+    exon_callability: Annotated[
+        ReportCallabilityDocument,
+        Constraints(
+            description="Which coding exons of the gene list the sample's gVCF could read (vcf callability), and what the ClinVar section's silence means per gene."
+        ),
+    ]
 
 
 class ReportSampleDocument(TypedDict):

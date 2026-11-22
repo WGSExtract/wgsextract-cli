@@ -1028,6 +1028,33 @@ Filter; output role `filtered_vcf`, with the record count in its metrics.
 | `exclude_near_gaps` | `bool` | `False` | `--exclude-near-gaps` | Exclude variants in or near genomic gaps (requires Count Ns output) |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 
+### `api.vcf.callability(VcfCallabilityParams)`
+
+CLI: `wgsextract vcf callability`.
+
+Classify the gene list's coding exons from the gVCF: outputs
+`exon_callability` (the per-gene JSON document, also `details`) and
+`exon_callability_table` (one row per exon); genes per state are
+metrics.
+
+`VcfCallabilityParams`: Which coding exons of a gene list the sample's reference evidence (a
+gVCF) could read, as `exon_callability.tsv` (one row per exon) and
+`exon_callability.json` (per gene, with the sources and thresholds).
+The input is a gVCF, or a VCF whose caller also wrote one
+(`--reference-evidence gvcf`). A technical result, not a clinical test:
+see docs/exon-callability.md.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes to assess: a built-in list (acmg-sf-3.3, acmg-sf-3.2), or a TSV (column gene) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+| `exons` | `Path \| None` | `None` | `--exons` | Exon model TSV for other genes or builds (format: docs/exon-callability.md) (default: the bundled hg19/hg38 MANE or RefSeq Select coding exons of the built-in lists' genes) |
+| `flank` | `int` | `2` | `--flank` | Intronic bases assessed on each side of a coding exon, 0-50 (default 2: the splice-site dinucleotides) |
+| `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+| `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+
 ### `api.vcf.table(VcfTableParams)`
 
 CLI: `wgsextract vcf table`.

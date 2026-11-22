@@ -13,6 +13,7 @@ from wgsextract_cli.core.report_documents import (
     ReportAcmgDocument,
     ReportAncestryDocument,
     ReportAttemptDocument,
+    ReportCallabilityDocument,
     ReportClinvarDocument,
     ReportDocument,
     ReportFactDocument,
@@ -32,6 +33,7 @@ from wgsextract_cli.core.report_documents import (
 RenderedSection = (
     ReportOverviewDocument
     | ReportClinvarDocument
+    | ReportCallabilityDocument
     | ReportAcmgDocument
     | ReportAncestryDocument
     | ReportSvDocument
@@ -139,6 +141,43 @@ def _finding_links(
     links: Sequence[ReportLinkDocument], link: Callable[[str, str | None], str]
 ) -> str:
     return " ".join(link(item["label"], item["url"]) for item in links)
+
+
+_CALLABILITY_HEADER = ("Gene", "Transcript", "Result", "Callability",
+                       "Coding exons callable", "Bases read", "Exons not callable")  # fmt: skip
+
+
+def _callability(
+    section: ReportCallabilityDocument,
+) -> tuple[list[str], list[tuple[list[str], str]]]:
+    """The section's notes, and per gene its table cells and result text."""
+    notes = [section["note"]]
+    if section.get("exon_model"):
+        t = section.get("thresholds", {})
+        notes.append(
+            f"Exon model: {section['exon_model']}. Assessed: {section.get('scope')}; "
+            f"read means callable reference or a call, at depth {t.get('min_depth'):g}+ "
+            f"(and GQ {t.get('min_gq'):g}+ where the gVCF has GQ), outside known "
+            "short-read limitations."
+        )
+    if classes := section.get("unassessed_variant_classes"):
+        notes.append("Not assessed even where callable: " + " ".join(classes.values()))
+    rows = [
+        (
+            [
+                g["gene"],
+                g["transcript"] or "",
+                g["result"].replace("_", " "),
+                g["state"].replace("_", " "),
+                f"{g['exons_callable']}/{g['coding_exons']}",
+                f"{g['readable_bases']:,}/{g['bases']:,}",
+                g["exons_not_callable"],
+            ],
+            g["result_text"],
+        )  # fmt: skip
+        for g in section.get("genes", [])
+    ]
+    return notes, rows
 
 
 def render_html(report: ReportDocument, base: str = ".") -> str:
@@ -253,6 +292,24 @@ def _html_section_body(
                     )
                     + "</td></tr>"
                 )
+            out.append("</table>")
+    elif name == "exon_callability":
+        section = sections["exon_callability"]
+        notes, rows = _callability(section)
+        out.extend(f'<p class="muted">{_h(line)}</p>' for line in notes)
+        for label, key in (
+            ("Every exon", "all_exons"),
+            ("Reference evidence", "evidence"),
+        ):
+            if file := section.get(key):
+                out.append(f'<p class="muted">{label}: {_link(file, _href(str(file), base))}</p>')  # fmt: skip
+        if rows:
+            out.append("<table><tr>" + "".join(f"<th>{c}</th>" for c in _CALLABILITY_HEADER) + "</tr>")  # fmt: skip
+            for cells, text in rows:
+                cells[2] = (
+                    f'<b>{_h(cells[2])}</b><br><span class="muted">{_h(text)}</span>'
+                )
+                out.append("<tr>" + "".join(f"<td>{c if i == 2 else _h(c)}</td>" for i, c in enumerate(cells)) + "</tr>")  # fmt: skip
             out.append("</table>")
     elif name == "acmg_research":
         section = sections["acmg_research"]
@@ -547,6 +604,25 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "exon_callability":
+            section = sections["exon_callability"]
+            notes, rows = _callability(section)
+            for line in notes:
+                out += ["", f"_{_md(line)}_"]
+            out.append("")
+            for label, key in (
+                ("Every exon", "all_exons"),
+                ("Reference evidence", "evidence"),
+            ):
+                if file := section.get(key):
+                    out.append(f"{label}: {_md_link(file, _href(str(file), base))}")
+            if rows:
+                out += ["", "| " + " | ".join(_CALLABILITY_HEADER) + " |",
+                        "|" + "---|" * len(_CALLABILITY_HEADER)]  # fmt: skip
+                for cells, text in rows:
+                    cells = [_md(c) for c in cells]
+                    cells[2] = f"**{cells[2]}**: {_md(text)}"
+                    out.append("| " + " | ".join(cells) + " |")
         if name == "acmg_research":
             section = sections["acmg_research"]
             out += ["", *(_md(line) for line in _acmg_notes(section))]
