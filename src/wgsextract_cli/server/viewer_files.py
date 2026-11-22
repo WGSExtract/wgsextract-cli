@@ -97,9 +97,12 @@ def open_viewer_file(value: str, guard: PathGuard) -> Iterator[BinaryIO]:
                     os.close(descriptor)
 
 
-def byte_range(header: str | None, size: int) -> tuple[int, int, bool] | None:
+def byte_range(
+    header: str | None, size: int, *, bodyless: bool = False
+) -> tuple[int, int, bool] | None:
+    """The whole-file fallback limit bounds bodies; a HEAD can report any size."""
     if not header:
-        return (0, size - 1, False) if size <= MAX_FALLBACK_BYTES else None
+        return (0, size - 1, False) if bodyless or size <= MAX_FALLBACK_BYTES else None
     match = re.fullmatch(r"bytes=(\d{0,20})-(\d{0,20})", header)
     if not match or not any(match.groups()) or size == 0:
         return None

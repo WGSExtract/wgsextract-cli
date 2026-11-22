@@ -77,7 +77,9 @@ def _serve_file(handler: Handler, query: dict[str, list[str]]) -> None:
         raise RequestError(400, "usage", "Supply exactly one absolute file path.")
     with open_viewer_file(values[0], handler.server.guard) as file:
         size = os.fstat(file.fileno()).st_size
-        selected = byte_range(handler.headers.get("Range"), size)
+        selected = byte_range(
+            handler.headers.get("Range"), size, bodyless=handler.command == "HEAD"
+        )
         handler.send_response(
             416 if selected is None else (206 if selected[2] else 200)
         )
@@ -123,7 +125,8 @@ def openapi_path() -> dict[str, object]:
             "summary": "Read guarded viewer file bytes (default off)",
             "description": "Requires server.viewer_files and bearer authentication. "
             "Closed byte ranges stream without a size limit; whole files, suffix "
-            "and open-ended ranges have a 32 MiB fallback limit.",
+            "and open-ended ranges have a 32 MiB fallback limit; an un-ranged HEAD "
+            "reports the size of any file.",
             "parameters": [
                 {
                     "name": "path",

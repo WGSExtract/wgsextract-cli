@@ -19,3 +19,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
+- The server's `/v1/viewer-file` answers a `HEAD` without a `Range` with
+  `200` and the file's full `Content-Length` for files over 32 MiB, instead
+  of `416`; whole-file `GET`s keep their 32 MiB limit
+  ([#1227, viewer HEAD on large files](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
