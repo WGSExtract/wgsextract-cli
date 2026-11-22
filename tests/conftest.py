@@ -267,7 +267,9 @@ def _no_segmented_size_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     segmented path call it directly."""
     from wgsextract_cli.core.ref_library import segmented
 
-    monkeypatch.setattr(segmented, "ranged_revision", lambda url: None)
+    monkeypatch.setattr(
+        segmented, "ranged_revision", lambda url, cancel_event=None: None
+    )
 
 
 @pytest.fixture(autouse=True)

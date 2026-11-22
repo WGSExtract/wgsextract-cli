@@ -275,7 +275,9 @@ class ReferenceLibrary:
             if fact is not None:
                 return str(fact.value)
         if not build and header_target:
-            if header_target.lower().endswith((".vcf", ".vcf.gz", ".bcf")):
+            from wgsextract_cli.core.variant_files import is_vcf_path
+
+            if is_vcf_path(header_target):
                 build = get_vcf_build(header_target)
                 method = "VCF header contigs"
                 if build:
