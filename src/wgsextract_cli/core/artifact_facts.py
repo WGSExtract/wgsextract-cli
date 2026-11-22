@@ -234,10 +234,12 @@ def index_state(
 def _index_file_state(
     file: Path, index: Path, kind: str, header: str | None
 ) -> IndexState:
+    if index.suffix == ".crai":
+        return "ready"  # compressed or plain text, it isn't read
     try:
         contents = _index_contents(index)
         if contents is None:
-            return "ready" if index.suffix == ".crai" else "mismatched"
+            return "mismatched"
         older = index.stat().st_mtime_ns < file.stat().st_mtime_ns
         blocks = _blocks_exist(file, contents.offsets)
     except (OSError, EOFError, ValueError, struct.error, zlib.error):

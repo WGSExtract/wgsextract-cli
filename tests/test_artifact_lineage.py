@@ -199,8 +199,9 @@ def test_1182_merge_keeps_discarded_parts_as_temp_sources_not_outputs(
     }
     merged = _output(document, "merged_variants")["artifact"]
     assert merged["lifecycle"] == "final"
-    parts = {Path(s["path"]).name: s for s in merged["sources"]}
-    assert set(parts) == {"snps.vcf.gz", "indels.vcf.gz"}
+    sources = {Path(s["path"]).name: s for s in merged["sources"]}
+    assert set(sources) == {"snps.vcf.gz", "indels.vcf.gz", "s.bam"}
+    parts = {name: s for name, s in sources.items() if name.endswith(".vcf.gz")}
     assert all(
         s["lifecycle"] == "temp" and not s["retained"] and s["fingerprint"]
         for s in parts.values()
@@ -590,3 +591,35 @@ def test_1182_a_server_job_never_reads_a_manifest_outside_its_folders(
     inside = read_scope.limited_to(lambda p: Path(p).resolve().is_relative_to(resolved))
     assert origin(contextlib.nullcontext()) == "recorded"
     assert origin(inside) == "external"
+
+
+@needs_htslib
+def test_1182_merged_calls_of_another_person_are_refused(tmp_path: Path) -> None:
+    # Review of #1372: the merge is called from the reads, through its parts.
+    sample = snp_sample(tmp_path / "in")
+    out = tmp_path / "out"
+    code, _, stderr = run_cli([
+        "vcf", "call", "--types", "snp,indel", "--merge", "--input", sample.bam,
+        "--ref", sample.ref, "--outdir", str(out), "--ploidy", "2", "--threads", "1",
+    ])  # fmt: skip
+    assert code == 0, stderr
+    other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--input", other,
+        "--vcf-inputs", str(out / "variants.vcf.gz"), "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 1
+    assert _error_code(stdout) == "sample_mismatch"
+
+
+@needs_htslib
+def test_1182_a_cram_with_a_plain_text_crai_is_still_called(tmp_path: Path) -> None:
+    # Review of #1372: an uncompressed .crai is a usable CRAM index.
+    sample = snp_sample(tmp_path / "in")
+    crai = Path(f"{sample.cram}.crai")
+    crai.write_bytes(gzip.decompress(crai.read_bytes()))
+    code, _, stderr = run_cli([
+        "vcf", "snp", "--input", sample.cram, "--ref", sample.ref, "--ploidy", "2",
+        "--threads", "1", "--region", "chr1:500-2500", "--outdir", str(tmp_path / "out"),
+    ])  # fmt: skip
+    assert code == 0, stderr

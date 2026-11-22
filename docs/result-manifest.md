@@ -173,9 +173,10 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   fingerprint. A copied, edited or third-party file is `external`, and
   nothing about its history is assumed. An output's `sources` are the
   run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
-  --merge` names its per-type VCFs, which it deletes after merging. They
-  stay in `sources` with `lifecycle: temp` and `retained: false`, and they
-  are not listed in `outputs`.
+  --merge` names the reads and its per-type VCFs, which it deletes after
+  merging. They stay in `sources` with `lifecycle: temp` and `retained:
+  false`, and they are not listed in `outputs`. `analyze`'s findings name
+  only the VCF they were found in.
 - **Consumers refuse unusable inputs before they run.** The error's
   `code` names the problem, and the run exits 1:
 

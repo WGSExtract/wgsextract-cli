@@ -364,7 +364,8 @@ def annotate(
         command=result.command,
         step=result.run.step,
     )
-    for record in result.outputs:
+    # A step's own records first, so the run's other outputs can name them.
+    for record in sorted(result.outputs, key=lambda r: r.path not in carried):
         if not _annotatable(record):
             continue
         if record.path in carried:
@@ -376,6 +377,7 @@ def annotate(
             made = record.artifact.producer
             if made and made.root != result.run.root:
                 record.artifact.origin = "recorded"
+            by_path.setdefault(record.path, record)
             continue
         facts = file_facts(record.path, record.kind)
         declared = sources.get(record.path)

@@ -673,6 +673,8 @@ def run_vcf_workflow(
         discovery_vcf,
         "significant_variants",
         metrics={"source_vcf": str(absolute_path(vcf_path))},
+        # Made from these calls alone, not from the analysis' reads.
+        sources=[vcf_path],
     )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}

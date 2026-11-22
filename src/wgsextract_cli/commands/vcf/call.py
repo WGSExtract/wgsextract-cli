@@ -190,9 +190,12 @@ def run_call(params: VcfCallParams) -> None:
         merge_vcfs(parts, out_vcf)
         _remove_parts(parts)
         record_variants(out_vcf, "merged_variants", None if small and gvcf else total)
-        # The merge is made from the parts, which the manifest keeps as
-        # discarded temporary files rather than deliverables.
-        current_result().add_output(out_vcf, "merged_variants", sources=parts)
+        # The merge is made from the parts (which the manifest keeps as
+        # discarded temporary files rather than deliverables), called from
+        # the reads.
+        current_result().add_output(
+            out_vcf, "merged_variants", sources=[*parts, params.input]
+        )
 
 
 def _variant_count(role: str) -> int | None:
