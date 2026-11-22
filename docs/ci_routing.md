@@ -745,7 +745,7 @@ test coverage even for docs-only groups.
 When a queued PR is pushed to, dequeued or fails, GitHub deletes its
 `gh-readonly-queue` ref and those of later groups, then rebuilds them. Each
 queue run's `cancel-stale-queue` job (outside `required`, `actions: write` only
-there) cancels this workflow's still-active queue runs whose ref is gone,
+there, running the trusted base commit's script) cancels this workflow's still-active queue runs whose ref is gone,
 never its own run and nothing when its own ref is missing; API errors are
 warnings. The lost-runner observer likewise never retries a cancelled queue run
 whose ref is gone.

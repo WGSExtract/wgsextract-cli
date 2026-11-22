@@ -752,7 +752,7 @@ def test_1373_only_runs_of_deleted_queue_refs_are_cancelled() -> None:
     ("refs", "fail"),
     [
         ([], None),  # this run's own ref is missing: the snapshot is not trusted
-        ([f"{QUEUE}{n}" for n in range(100)], None),  # possibly truncated list
+        ([f"{QUEUE}3-c"] + [f"{QUEUE}{n}" for n in range(99)], None),  # truncated?
         ([f"{QUEUE}3-c"], "git/"),
         ([f"{QUEUE}3-c"], "actions/workflows/"),
     ],
@@ -784,6 +784,8 @@ def test_1373_queue_cleanup_has_write_access_alone_and_cannot_gate_required() ->
     cleanup = next(job for job in jobs if job.startswith("cancel-stale-queue:"))
     assert "if: github.event_name == 'merge_group'" in cleanup
     assert "continue-on-error: true" in cleanup
+    # contract: the actions: write token never runs queued (unmerged) PR code.
+    assert "ref: ${{ github.event.merge_group.base_sha }}" in cleanup
     for job in jobs:
         needs = re.search(r"^    needs: (.+)$", job, re.M)
         assert needs is None or "cancel-stale-queue" not in needs[1]

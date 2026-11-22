@@ -118,21 +118,23 @@ jobs:
       contents: read
       actions: write
     steps:
+      # The write token runs only trusted base code, never queued PR changes.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.merge_group.base_sha }}
           persist-credentials: false
           sparse-checkout: scripts
       - name: Cancel runs whose queue ref was deleted
         env:
           GH_TOKEN: ${{ github.token }}
           BASE_REF: ${{ github.event.merge_group.base_ref }}
-        run: >-
-          python3 -m scripts.ci_cancel_stale_queue
-          --repository "$GITHUB_REPOSITORY"
-          --workflow pr_ci.yml
-          --base "$BASE_REF"
-          --run-id "$GITHUB_RUN_ID"
-          --ref "$GITHUB_REF"
+        run: |
+          if [ ! -f scripts/ci_cancel_stale_queue.py ]; then
+            echo "Trusted base has no queue cleanup; skipping."
+            exit 0
+          fi
+          python3 -m scripts.ci_cancel_stale_queue --repository "$GITHUB_REPOSITORY" \
+            --workflow pr_ci.yml --base "$BASE_REF" --run-id "$GITHUB_RUN_ID" --ref "$GITHUB_REF"
 
   draft-fast:
     name: Draft lint and fast tests
