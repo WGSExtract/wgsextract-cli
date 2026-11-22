@@ -605,7 +605,10 @@ verdict, and closing an old red-main issue does not certify the pending SHA.
 
 ### CLI test time and tiers
 
-Each OS runs one all-tier pytest job with `-n auto --dist loadgroup`.
+Each OS runs one all-tier pytest job with `-n logical --dist loadgroup`: one
+worker per vCPU. `-n auto` counts physical cores when psutil is installed, so
+it ran two workers on the four-vCPU hosted Ubuntu and Windows runners (#1305,
+CI slowdown); macOS's three vCPUs and ARM64's four are physical either way.
 Pixi setup, installer validation and reference installation happen once per OS,
 not once per tier/shard. The tier definitions remain available for local
 diagnosis:
@@ -663,6 +666,8 @@ minutes, until cold lockfile-change runs establish a safe tighter budget.
 Per-test timing XML and the slowest 60 durations remain available on **every**
 run, separately named by OS. Non-gating line coverage is collected on
 main, nightly and manual runs, not PRs; each report covers the all-tier suite.
+It uses coverage's `sysmon` core (Python 3.12+ `sys.monitoring`): the default C
+tracer added 35–55% to a sampled subset's time locally, sysmon about 5%.
 
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands sequentially in one job on each of the three x64 OSes.

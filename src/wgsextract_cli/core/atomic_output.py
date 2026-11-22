@@ -145,7 +145,7 @@ def atomic_write(path: PathInput, data: bytes, *, new_mode: int = 0o600) -> None
         with os.fdopen(fd, "wb") as stream:
             stream.write(data)
             stream.flush()
-            if os.name == "posix" and existing_mode is not None:
+            if sys.platform != "win32" and existing_mode is not None:
                 os.fchmod(stream.fileno(), existing_mode)
             os.fsync(stream.fileno())
 

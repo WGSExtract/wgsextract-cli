@@ -262,9 +262,20 @@ def run_batch_comprehensive(job: AnalyzeJob, batch_file: str) -> None:
     if not Path(batch_file).exists():
         raise WGSExtractError(f"Batch file not found: {batch_file}")
 
-    with open(batch_file) as f:
-        # Detect delimiter (CSV or TSV)
-        dialect = csv.Sniffer().sniff(f.read(1024))
+    with open(batch_file, encoding="utf-8-sig", newline="") as f:
+        preview = f.read(1024)
+        sniffer = csv.Sniffer()
+        dialect: str | type[csv.Dialect]
+        try:
+            dialect = sniffer.sniff(preview, delimiters=",\t")
+        except csv.Error:
+            # The sample may end mid-row. Try the complete header before
+            # assuming there is no delimiter.
+            f.seek(0)
+            try:
+                dialect = sniffer.sniff(f.readline(), delimiters=",\t")
+            except csv.Error:
+                dialect = "excel-tab"
         f.seek(0)
         reader = csv.DictReader(f, dialect=dialect)
 
@@ -330,6 +341,8 @@ def run_batch_comprehensive(job: AnalyzeJob, batch_file: str) -> None:
         current_result().add_metrics(
             samples=samples, failed_samples=len(failed_samples)
         )
+        if not samples:
+            raise UsageError("--batch must contain at least one sample row.")
         if failed_samples:
             raise WGSExtractError(
                 "Batch analysis failed for sample(s): " + ", ".join(failed_samples)
@@ -419,7 +432,7 @@ def run_batch_gen(params: AnalyzeBatchGenParams) -> None:
     output_path = str(params.output)
     _print(f"Writing batch file to: {output_path}")
 
-    with open(output_path, "w", newline="") as out:
+    with open(output_path, "w", encoding="utf-8", newline="") as out:
         writer = csv.writer(out)
         writer.writerow(["name", "input", "vcf"])
         for name, data in sorted(samples.items()):

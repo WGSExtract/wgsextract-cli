@@ -4,7 +4,7 @@ import hashlib
 import logging
 import subprocess
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -75,8 +75,18 @@ CLINVAR_URLS = {
 
 
 REVEL_URLS = {
-    "hg38": "http://www.openbioinformatics.org/annovar/download/hg38_revel.txt.gz",
-    "hg19": "http://www.openbioinformatics.org/annovar/download/hg19_revel.txt.gz",
+    "hg38": "https://www.openbioinformatics.org/annovar/download/hg38_revel.txt.gz",
+    "hg19": "https://www.openbioinformatics.org/annovar/download/hg19_revel.txt.gz",
+}
+# ANNOVAR publishes no checksum for these files (unchanged since 2019-12-05):
+# SHA-256 of the bytes served on 2026-11-22. Keyed by URL, so a pin only ever
+# applies to the URL it was taken from.
+REVEL_SHA256 = {
+    REVEL_URLS[build]: digest
+    for build, digest in (
+        ("hg38", "ab46c0ab51311c3475f6cd71357300c33396776388150b814d5c180cef0bd397"),
+        ("hg19", "302fe044e9cc4cefec076cff3fdfd4e809c9cf9f9e488d873dca6bdd1d71a3e5"),
+    )
 }
 
 
@@ -141,6 +151,7 @@ class _AnnotationResource:
     # Downloads are BGZF with a <url>.tbi next to them: fetch that index rather
     # than recompressing and indexing tens of GB locally.
     published_index: bool = False
+    sha256: Mapping[str, str] = field(default_factory=dict)  # url -> pinned digest
 
 
 _CLINVAR = _AnnotationResource(
@@ -162,7 +173,7 @@ _ALPHAMISSENSE = _AnnotationResource(
 )
 # Annovar REVEL TSV: #Chr, Start, End, Ref, Alt, REVEL (.tsv.gz for the resolver).
 _REVEL = _AnnotationResource(
-    "REVEL", REVEL_URLS, "revel_{build}.tsv.gz", _TABIX_POS_TSV
+    "REVEL", REVEL_URLS, "revel_{build}.tsv.gz", _TABIX_POS_TSV, sha256=REVEL_SHA256
 )
 
 
@@ -224,7 +235,13 @@ def _download_resource(
             continue
         else:
             logging.info(f"Downloading {label}...")
-            if not download_file(url, dest_path, progress_callback, cancel_event):
+            if not download_file(
+                url,
+                dest_path,
+                progress_callback,
+                cancel_event,
+                expected_sha256=resource.sha256.get(url),
+            ):
                 success = False
                 continue
             if cancelled():
@@ -360,20 +377,16 @@ def download_revel(
     return _download_resource(_REVEL, reflib_dir, cancel_event, progress_callback)
 
 
-def _verify_published_md5(path: str, url: str) -> None:
-    """Check path against the <url>.md5 file published next to it."""
+def _matches_published_md5(path: str, url: str) -> bool:
+    """Whether path matches the <url>.md5 file published next to it."""
     with urlopen(url + ".md5", timeout=60) as response:
-        expected = response.read().decode().split()[0].lower()
+        expected: str = response.read().decode().split()[0].lower()
     logging.info(f"Verifying MD5 of {Path(path).name}...")
     digest = hashlib.md5(usedforsecurity=False)
     with open(path, "rb") as f:
         while chunk := f.read(8 << 20):
             digest.update(chunk)
-    if digest.hexdigest() != expected:
-        Path(path).unlink()
-        raise WGSExtractError(
-            f"{path} failed its MD5 check and was removed; rerun to download it again."
-        )
+    return digest.hexdigest() == expected
 
 
 def download_cadd(
@@ -397,15 +410,35 @@ def download_cadd(
             continue
         url = f"{CADD_BASE_URL}/{remote_dir}/{remote_name}"
         # The data before its index, so the index is never older than the data.
+        # Data already in place (its index failed or was cancelled last run) is
+        # checked and kept rather than fetched again: the SNV table is ~85 GB.
         for suffix in ("", ".tbi"):
-            logging.info(f"Downloading CADD {build} {remote_name}{suffix}...")
-            if not download_file(
-                url + suffix, dest + suffix, progress_callback, cancel_event
-            ):
-                return False
+            path, label = dest + suffix, f"CADD {build} {remote_name}{suffix}"
+            kept = not suffix and Path(dest).is_file()
+            if not kept:
+                logging.info(f"Downloading {label}...")
+                if not download_file(
+                    url + suffix, path, progress_callback, cancel_event
+                ):
+                    return False
             try:
-                _verify_published_md5(dest + suffix, url + suffix)
-            except (OSError, WGSExtractError) as e:
-                logging.error(f"CADD {build} {remote_name}{suffix}: {e}")
+                matches = _matches_published_md5(path, url + suffix)
+            except OSError as e:
+                logging.error(f"{label}: {e}")
                 return False
+            if matches:
+                continue
+            if kept:
+                # Possibly the user's own copy: reported, never removed.
+                logging.error(
+                    f"{label}: {path} does not match the published MD5; "
+                    "remove it and rerun to download it again."
+                )
+            else:
+                Path(path).unlink()
+                logging.error(
+                    f"{label}: {path} failed its MD5 check and was removed; "
+                    "rerun to download it again."
+                )
+            return False
     return True

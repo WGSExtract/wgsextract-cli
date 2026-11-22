@@ -13,8 +13,8 @@ compatibility copies for tools with older or reference-free CRAM decoders.
 ``fastq_platform`` infers low-level platform evidence from a bounded FASTQ prefix.
 ``samtools_commands`` plans sort memory and builds alignment/index commands;
 ``bwa_index`` publishes complete staged BWA index sets.
-The retained ``core.sequencing``, ``core.fastq_platform``,
-``core.samtools_commands`` and ``core.bwa_index`` interfaces re-export the same
-implementations and caches for existing callers.
+The retained ``core.sequencing``, ``core.fastq_platform`` and
+``core.samtools_commands`` interfaces re-export the same implementations and
+caches for existing callers.
 Internal metadata, sampling and health callers use the package paths directly.
 """

@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
 
 if TYPE_CHECKING:
@@ -509,11 +509,8 @@ class Genotypes:
         )
         # Build incrementally, avoiding an external index sort in OS temp.
         self.db.execute("CREATE INDEX locus ON calls(chrom,pos)")
-        names = subprocess.run(
-            ["bcftools", "query", "-l", str(vcf)],
-            capture_output=True,
-            text=True,
-            errors="replace",
+        names = run_command(
+            ["bcftools", "query", "-l", str(vcf)], capture_output=True, check=False
         )
         if names.returncode:
             raise WGSExtractError(f"Cannot read VCF: {names.stderr[-500:]}")
@@ -525,13 +522,15 @@ class Genotypes:
                 "VCF must contain one sample, or select one with --sample."
             )
         self.sample = sample or samples[0]
-        header = subprocess.run(
-            ["bcftools", "view", "-h", str(vcf)],
-            capture_output=True,
-            text=True,
-            check=True,
-            errors="replace",
-        ).stdout
+        read = run_command(
+            ["bcftools", "view", "-h", str(vcf)], capture_output=True, check=False
+        )
+        if read.returncode:
+            raise WGSExtractError(
+                f"Cannot read the VCF header (bcftools view exit {read.returncode}): "
+                f"{read.stderr[-500:]}"
+            )
+        header = read.stdout
         expected = "248956422" if build == "GRCh38" else "249250621"
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
         if chr1 and chr1[1] in {"248956422", "249250621"} and chr1[1] != expected:
