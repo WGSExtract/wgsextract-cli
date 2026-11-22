@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 import urllib.parse
 from pathlib import Path
@@ -322,6 +323,40 @@ def test_1314_header_samples_are_redacted_with_pixi_only_tools(
     report = issue_report.build_report(run=run, probe_tools=lambda used: {})
     assert "Ann_Lee" not in _report_text(report)
     assert "No reads or calls for <sample>" in report.diagnostics
+
+
+def test_1314_interrupt_does_not_leave_header_probe_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from wgsextract_cli.core import utils
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.results import CommandResult
+
+    if get_tool_path("samtools") is None:
+        pytest.skip("samtools not installed")
+    sam = tmp_path / "cohort.sam"
+    sam.write_text("@HD\tVN:1.6\n")
+    result = CommandResult(command="info")
+    result.provenance.params = {"input": str(sam)}
+
+    def interrupt(**_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    # Stand in for a slow external tool and Ctrl-C during its OS pipe wait.
+    with utils.popen(
+        [Path(sys.executable), "-c", "import time; time.sleep(60)"],
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as probe:
+        monkeypatch.setattr(utils, "popen", lambda *args, **kwargs: probe)
+        monkeypatch.setattr(probe, "communicate", interrupt)
+        try:
+            with pytest.raises(KeyboardInterrupt):
+                api.support.build_issue_report(api.ReportIssueParams(), result=result)
+            assert probe.poll() is not None
+        finally:
+            if probe.poll() is None:
+                probe.kill()
 
 
 def _report_text(report: issue_report.IssueReport) -> str:

@@ -209,6 +209,9 @@ def header_samples(path: str) -> set[str]:
     except subprocess.TimeoutExpired:
         terminate_trees([process])
         return set()
+    except KeyboardInterrupt:
+        terminate_trees([process])
+        raise
     if tool == "bcftools":
         return set(output.split())
     return {group["SM"] for group in read_groups(output) if group.get("SM")}
