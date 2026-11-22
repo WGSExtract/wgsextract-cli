@@ -108,7 +108,10 @@ try {
         navigation.hidden = true;
         host.hidden = true;
     }, setBusy);
-    libraryForm.addEventListener("input", () => { requiredBuild = ""; });
+    // Extra tracks don't move the position, so they keep the build the row requires.
+    libraryForm.addEventListener("input", (event) => {
+        if (event.target instanceof HTMLInputElement && ["library-path", "locus"].includes(event.target.name)) requiredBuild = "";
+    });
     libraryForm.addEventListener("submit", (event) => {
         event.preventDefault();
         void openLibrary(libraryForm, navigation, host);

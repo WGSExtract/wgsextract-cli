@@ -138,6 +138,11 @@ async function verifyResultRows() {
         await page.locator(".result-viewer-rows [data-viewer-build='hg38']").click();
         await viewer.getByRole("alert").filter({ hasText: "different genome build" }).waitFor();
         assert.equal(await viewer.locator("[data-igv]").isVisible(), false, "A finding on another build never opens at the same numbers.");
+        // Adding a track keeps the file and position, so it keeps the build too.
+        await viewer.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, "panels.bed"));
+        const reopened = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/viewer/open");
+        await viewer.getByRole("button", { name: "Open library file", exact: true }).click();
+        assert.deepEqual(await (await reopened).json(), { problem: "buildMismatch" });
         await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
         // rCRS positions never land on a reference without an rCRS mitochondrion: an explanation, not a view.
         await page.locator(".result-viewer-rows [data-viewer-locus='rCRS:263-263']").click();
