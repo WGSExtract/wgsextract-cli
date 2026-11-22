@@ -362,19 +362,20 @@ def test_1182_api_result_carries_the_run_and_artifacts_of_its_manifest(
 
 @needs_htslib
 def test_1182_bcf_index_refusal_names_the_bcftools_fix(tmp_path: Path) -> None:
-    def bcf(name: str, contig: str) -> Path:
+    def bcf(name: str, *contigs: str) -> Path:
         plain = tmp_path / f"{name}.vcf"
         plain.write_text(
-            f"##fileformat=VCFv4.2\n##contig=<ID={contig},length=3000>\n"
-            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-            f"{contig}\t5\t.\tA\tG\t.\t.\t.\n"
+            "##fileformat=VCFv4.2\n"
+            + "".join(f"##contig=<ID={c},length=3000>\n" for c in contigs)
+            + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            + "".join(f"{c}\t5\t.\tA\tG\t.\t.\t.\n" for c in contigs)
         )
         out = tmp_path / f"{name}.bcf"
         run_command(["bcftools", "view", "-Ob", "-o", str(out), str(plain)])
         run_command(["bcftools", "index", str(out)])
         return out
 
-    calls, other = bcf("calls", "chr1"), bcf("other", "chrX")
+    calls, other = bcf("calls", "chr1"), bcf("other", "chr1", "chrX")
     shutil.copyfile(f"{other}.csi", f"{calls}.csi")  # another BCF's index
     code, stdout, _ = run_cli([
         "--json", "analyze", "comprehensive", "--vcf-inputs", str(calls),
@@ -443,3 +444,66 @@ def test_1182_a_piped_vcf_input_is_never_opened_for_its_artifact(
     finalize.join(30)
     assert not finalize.is_alive()
     assert json.loads(result.to_json())["inputs"][0].get("artifact") is None
+
+
+def _other_vcf(tmp_path: Path) -> str:
+    plain = tmp_path / "other.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chrX,length=3000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchrX\t5\t.\tA\tG\t.\t.\t.\n"
+    )
+    vcf = bgzip_index(plain)
+    run_command(["tabix", "-C", "-p", "vcf", vcf])
+    return vcf
+
+
+@needs_htslib
+@pytest.mark.parametrize("bad", ["csi", "garbage"])
+def test_1182_every_index_a_reader_may_pick_is_checked(
+    tmp_path: Path, bad: str
+) -> None:
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    vcf = calls / "snps.vcf.gz"
+    if bad == "csi":
+        # Review of #1372: htslib picks a CSI before the valid TBI beside it.
+        shutil.copyfile(f"{_other_vcf(tmp_path)}.csi", f"{vcf}.csi")
+        index = f"{vcf}.csi"
+    else:
+        # Review of #1372: a readable gzip wrapper around no index format.
+        index = f"{vcf}.tbi"
+        Path(index).write_bytes(gzip.compress(b"not an index"))
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--vcf-inputs", str(vcf),
+        "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 1
+    error = json.loads(stdout)["error"]
+    assert error["code"] == "index_mismatch"
+    assert index in error["message"]
+
+
+@needs_htslib
+def test_1182_vcf_call_outputs_share_one_manifest_but_keep_their_producer(
+    tmp_path: Path,
+) -> None:
+    # Review of #1372: indels.vcf.gz is listed in snps.vcf.manifest.json, so
+    # another person's reads must still refuse it rather than only warn.
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    code, _, stderr = run_cli([
+        "vcf", "call", "--types", "snp,indel", "--input", sample.bam,
+        "--ref", sample.ref, "--outdir", str(calls), "--ploidy", "2",
+        "--threads", "1",
+    ])  # fmt: skip
+    assert code == 0, stderr
+    assert not (calls / "indels.vcf.manifest.json").exists()
+    other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--input", other,
+        "--vcf-inputs", str(calls / "indels.vcf.gz"),
+        "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 1
+    assert _error_code(stdout) == "sample_mismatch"

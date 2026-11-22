@@ -155,14 +155,14 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 
   | Field | Meaning |
   | --- | --- |
-  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: written by an earlier run, named in `producer`: the manifest beside an input lists it with the same fingerprint, or a reused step's earlier run wrote the output. `external`: nothing is known about its history. |
+  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: written by an earlier run, named in `producer`: a manifest in the input's folder lists it with the same fingerprint (its own `<file>.manifest.json` first; a command writes one manifest for all its outputs), or a reused step's earlier run wrote the output. `external`: nothing is known about its history. |
   | `lifecycle` | `final` (a deliverable), `intermediate`, `cache` or `temp`; `null` when unknown. |
   | `retained` | `false` when the run deleted the file on purpose. |
   | `digest_kind` | `full` when the `fingerprint` read the whole file (3 MiB or less), else `sampled`. |
   | `assembly` | `hg19`, `hg38` or `t2t`, from the chr1 length in the header; `null` when it isn't recognised. |
   | `reference` | Fingerprint of the FASTA the file was made with, for this run's outputs and for recorded inputs. |
   | `samples` | The BAM's `@RG SM` names, or the VCF's sample columns. |
-  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, or blocks that aren't the file's. |
+  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
 

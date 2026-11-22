@@ -220,16 +220,39 @@ class _Recorded:
     reference: str | None
 
 
+_MANIFEST_SCAN_LIMIT = 256
+
+
 def recorded_producer(record: FileRecord) -> _Recorded | None:
-    """The producer the manifest beside ``record`` names for this exact file."""
-    from wgsextract_cli.core.results import SCHEMA_ID, manifest_path_for
+    """The producer a manifest beside ``record`` names for this exact file
+    (same path and fingerprint): its own ``<file>.manifest.json`` first, then
+    any other in its folder, since a command writes one manifest for all its
+    outputs (``vcf call``'s indels in ``snps.vcf.manifest.json``) and a
+    workflow names its own (``analyze.manifest.json``)."""
+    from wgsextract_cli.core.results import MANIFEST_SUFFIX, manifest_path_for
 
     if record.fingerprint is None:
         return None
+    own = manifest_path_for(record.path)
     try:
-        document = json.loads(
-            manifest_path_for(record.path).read_text(encoding="utf-8")
-        )
+        others = sorted(
+            p
+            for p in own.parent.glob(f"*{MANIFEST_SUFFIX}")
+            if p != own and not p.name.endswith(f".failed{MANIFEST_SUFFIX}")
+        )[:_MANIFEST_SCAN_LIMIT]
+    except OSError:
+        others = []
+    for manifest in (own, *others):
+        if found := _producer_in(manifest, record):
+            return found
+    return None
+
+
+def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
+    from wgsextract_cli.core.results import SCHEMA_ID
+
+    try:
+        document = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(document, dict) or document.get("schema") != SCHEMA_ID:

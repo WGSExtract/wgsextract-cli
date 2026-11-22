@@ -103,19 +103,22 @@ def assembly_of(lengths: Mapping[str, int]) -> str | None:
     return build_from_chr1_length(dict(lengths))
 
 
-def index_path(path: str | os.PathLike[str], kind: str) -> str | None:
-    """The index readers would use, if one exists."""
+def index_paths(path: str | os.PathLike[str], kind: str) -> list[str]:
+    """Every index a reader may use, in htslib's order: a CSI before the
+    format's own (.bai, .crai or .tbi), each as ``<file><ext>`` or with the
+    file's extension replaced."""
     file = Path(path)
-    if kind in ("bam", "cram"):
-        from wgsextract_cli.core.alignment.samtools_commands import alignment_index
-
-        return alignment_index(file)
-    suffixes = (".csi",) if kind == "bcf" else (".tbi", ".csi")
-    for suffix in suffixes:
+    own = {"bam": ".bai", "cram": ".crai", "vcf": ".tbi"}.get(kind)
+    found: list[str] = []
+    for suffix in (".csi", *([own] if own else [])):
         for candidate in (Path(f"{file}{suffix}"), file.with_suffix(suffix)):
-            if candidate != file and candidate.is_file():
-                return str(candidate)
-    return None
+            if (
+                candidate != file
+                and candidate.is_file()
+                and str(candidate) not in found
+            ):
+                found.append(str(candidate))
+    return found
 
 
 @dataclass
@@ -205,38 +208,52 @@ def _blocks_exist(file: Path, offsets: Sequence[int], sample: int = 64) -> bool:
 def index_state(
     path: str | os.PathLike[str], kind: str, header: str | None
 ) -> ArtifactIndex | None:
-    """The state of a file's index; None for a file that can't have one
-    (an uncompressed VCF).
+    """The state of a file's indexes; None for a file that can't have one
+    (an uncompressed VCF). Each index a reader may pick is checked, and the
+    first that is unusable is reported; else the one htslib picks.
 
     ``stale``: older than the file, and pointing at blocks the file no longer
-    has (a CRAI isn't read: only its presence is checked). An older index whose blocks
-    are all there is the file's own: downloads and copies often leave the
-    index the older file. ``mismatched``: another sequence dictionary, or
-    blocks that aren't the file's though the index is newer."""
+    has. An older index whose blocks are all there is the file's own:
+    downloads and copies often leave the index the older file. ``mismatched``:
+    another sequence dictionary, blocks that aren't the file's though the
+    index is newer, or an unreadable index. A CRAI isn't read: only its
+    presence is checked."""
     file = Path(path)
     if kind == "vcf" and not file.name.lower().endswith((".gz", ".bgz")):
         return None
-    found = index_path(file, kind)
-    if found is None:
+    found = index_paths(file, kind)
+    if not found:
         return ArtifactIndex(None, "missing")
-    index = Path(found)
+    for index in found:
+        state = _index_file_state(file, Path(index), kind, header)
+        if state != "ready":
+            return ArtifactIndex(index, state)
+    return ArtifactIndex(found[0], "ready")
+
+
+def _index_file_state(
+    file: Path, index: Path, kind: str, header: str | None
+) -> IndexState:
     try:
         contents = _index_contents(index)
+        if contents is None:
+            return "ready" if index.suffix == ".crai" else "mismatched"
         older = index.stat().st_mtime_ns < file.stat().st_mtime_ns
-        blocks = contents is None or _blocks_exist(file, contents.offsets)
+        blocks = _blocks_exist(file, contents.offsets)
     except (OSError, EOFError, ValueError, struct.error, zlib.error):
-        return ArtifactIndex(found, "mismatched")
-    if contents is not None and header is not None:
+        return "mismatched"
+    if header is not None:
         contigs = header_lengths(header)
-        if kind in ("bam", "cram") and contents.count != len(contigs):
-            return ArtifactIndex(found, "mismatched")
+        # A BAI/CSI of a BAM, or a BCF's CSI, counts every header contig.
+        if kind in ("bam", "cram", "bcf") and contents.count != len(contigs):
+            return "mismatched"
         names = set(contents.names or ())
         declared = set(contigs) | set(_CONTIG_ID.findall(header))
         if declared and not names <= declared:
-            return ArtifactIndex(found, "mismatched")
+            return "mismatched"
     if not blocks:
-        return ArtifactIndex(found, "stale" if older else "mismatched")
-    return ArtifactIndex(found, "ready")
+        return "stale" if older else "mismatched"
+    return "ready"
 
 
 @dataclass
@@ -252,19 +269,18 @@ def file_facts(path: str, kind: str) -> FileFacts:
     consumer's check and the manifest both need them)."""
     try:
         info = os.stat(path)
-        index = index_path(path, kind)
-        indexed = os.stat(index).st_mtime_ns if index else None
+        indexes = tuple((i, os.stat(i).st_mtime_ns) for i in index_paths(path, kind))
     except OSError:
-        return _readfile_facts(path, kind)
-    return _cachedfile_facts(path, kind, info.st_mtime_ns, info.st_size, index, indexed)
+        return _read_facts(path, kind)
+    return _cached_facts(path, kind, info.st_mtime_ns, info.st_size, indexes)
 
 
 @functools.lru_cache(maxsize=64)
-def _cachedfile_facts(path: str, kind: str, *_version: object) -> FileFacts:
-    return _readfile_facts(path, kind)
+def _cached_facts(path: str, kind: str, *_version: object) -> FileFacts:
+    return _read_facts(path, kind)
 
 
-def _readfile_facts(path: str, kind: str) -> FileFacts:
+def _read_facts(path: str, kind: str) -> FileFacts:
     header = read_header(path, kind)
     return FileFacts(
         header,
