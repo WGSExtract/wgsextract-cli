@@ -54,6 +54,11 @@ def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation(
     ) == {"pr_ci.yml"}
 
 
+# Any main push, prose included, can make an auto-merging PR conflict (#1281);
+# the watcher is one five-minute API-only job.
+EVERY_MAIN_PUSH = {"gitleaks.yml", "auto_merge_watch.yml"}
+
+
 @pytest.mark.parametrize(
     "paths",
     [
@@ -66,12 +71,12 @@ def test_910_docs_readiness_preserves_path_filters_and_runner_free_cancellation(
 )
 def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> None:
     triggered = triggered_workflows(paths)
-    assert triggered == {"gitleaks.yml"}
+    assert triggered == EVERY_MAIN_PUSH
 
 
 def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
     triggered = triggered_workflows(["site_src/new-guide.md"])
-    assert triggered == {"gitleaks.yml", "pages.yml"}
+    assert triggered == EVERY_MAIN_PUSH | {"pages.yml"}
 
 
 @pytest.mark.parametrize(
