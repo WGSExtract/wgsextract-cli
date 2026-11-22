@@ -219,11 +219,15 @@ def mounted(path: Path) -> bool:
 
 
 def process_paths(process: Path) -> Iterator[Path]:
+    cwd = None
     for name in ("cwd", "root", "exe"):
         try:
-            yield Path(os.readlink(process / name).removesuffix(" (deleted)"))
+            path = Path(os.readlink(process / name).removesuffix(" (deleted)"))
         except FileNotFoundError:
-            pass
+            continue
+        if name == "cwd":
+            cwd = path
+        yield path
     for fd in (process / "fd").iterdir():
         try:
             yield Path(os.readlink(fd).removesuffix(" (deleted)"))
@@ -234,8 +238,14 @@ def process_paths(process: Path) -> Iterator[Path]:
         if len(fields) == 6 and fields[5].startswith("/"):
             yield Path(unescape_proc_path(fields[5]).removesuffix(" (deleted)"))
     for arg in (process / "cmdline").read_bytes().split(b"\0"):
-        if arg.startswith(b"/"):
-            yield Path(os.fsdecode(arg))
+        if not arg or arg.startswith(b"-"):
+            continue
+        path = Path(os.fsdecode(arg))
+        if not path.is_absolute():
+            if cwd is None:
+                continue
+            path = cwd / path
+        yield Path(os.path.normpath(path))
 
 
 def active_paths(paths: set[Path]) -> set[Path]:

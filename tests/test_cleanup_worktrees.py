@@ -243,18 +243,25 @@ def test_1393_blocks_links_locked_and_outside_worktrees(
     assert (outside / "input").read_text() == "committed changes for incoming\n"
 
 
-@pytest.mark.parametrize("hold", ["cwd", "file"])
+@pytest.mark.parametrize("hold", ["cwd", "file", "relative-script"])
 def test_1393_an_active_process_blocks_cleanup(
     repo: Path, proc: Path, github: Callable[..., None], hold: str
 ) -> None:
     path = topic(repo)
-    github([pull(path)])
     code = "import sys; "
     if hold == "file":
         code += "f = open('scratch/stale/source.txt'); "
     code += "print('ready', flush=True); sys.stdin.read()"
+    argv = [sys.executable, "-c", code]
+    if hold == "relative-script":
+        (path / "task.py").write_text(code)
+        git(path, "add", "task.py")
+        git(path, "commit", "-m", "Track the worktree task")
+        # Python has closed task.py by the time its top-level code runs.
+        argv = [sys.executable, "./scratch/../scratch/stale/task.py"]
+    github([pull(path)])
     with subprocess.Popen(
-        [sys.executable, "-c", code],
+        argv,
         cwd=path if hold == "cwd" else repo,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
