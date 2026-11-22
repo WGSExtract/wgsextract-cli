@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -176,6 +177,95 @@ test("a settings file an earlier release kept in the bundle workspace moves to t
   assert.equal((await settingsIn(path.join(users, "config.toml"))).reference_library, reference);
   await assert.rejects(stat(path.join(bundle, "config.toml")), { code: "ENOENT" });
   await stat(reference);
+});
+
+for (const scope of ["workspace", "setting folder", "previous config"]) {
+  test(`#1322: ${scope} move refuses a save from another process, then carries its update`, { timeout: 10_000 }, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const reference = path.join(users, "reference");
+    await mkdir(reference);
+    await writeFile(path.join(reference, "sample.fa"), ">sample\nACGT\n");
+    const file = path.join(scope === "previous config" ? bundle : users, "config.toml");
+    await writeFile(file, `reference_library = ${JSON.stringify(reference)}\ncpu_threads = 2\n`);
+    const saver = spawn(process.execPath, ["--input-type=module", "-e", `
+      import { once } from "node:events";
+      import { writeFile } from "node:fs/promises";
+      import { withWorkspaceUse } from ${JSON.stringify(new URL("../dist/web/src/server/workspace-activity.js", import.meta.url).href)};
+      await withWorkspaceUse(async () => {
+        const end = once(process.stdin, "end");
+        process.stdin.resume();
+        console.log("ready");
+        await end;
+        const [file, reference] = process.argv.slice(1);
+        await writeFile(file, "reference_library = " + JSON.stringify(reference) + "\\ncpu_threads = 9\\n");
+      });
+    `, file, reference]);
+    t.after(() => { if (saver.exitCode === null) saver.kill(); });
+    const exited = once(saver, "close");
+    await Promise.race([
+      once(saver.stdout, "data"),
+      exited.then(([code]) => { throw new Error(`Saver exited before it was ready (${code})`); }),
+    ]);
+    const folder = path.join(root, "new location");
+    const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-store.js");
+    const retry = () => scope === "previous config"
+      ? bootstrapConfigFiles(manifest, bundle, {})
+      : move({
+        sourceRoot: source, bundleRoot: bundle, folder,
+        ...(scope === "setting folder" ? { setting: { controlID: "paths", key: "reference_library" } } : {}),
+      });
+
+    await assert.rejects(retry(), { status: 409 });
+    assert.equal((await settingsIn(file)).cpu_threads, 2);
+    await assert.rejects(stat(folder), { code: "ENOENT" });
+    saver.stdin.end();
+    assert.deepEqual(await exited, [0, null]);
+    await retry();
+
+    const destination = scope === "workspace" ? folder : users;
+    assert.equal((await settingsIn(path.join(destination, "config.toml"))).cpu_threads, 9);
+    assert.ok((await readdir(destination)).every((name) => !name.endsWith(".lock")));
+    if (scope === "setting folder") {
+      assert.match(await readFile(path.join(folder, "sample.fa"), "utf8"), /ACGT/);
+    }
+  });
+}
+
+test("#1322: a settings lock is not carried by a workspace rename", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const lock = path.join(users, ".config.toml.lock");
+  await writeFile(lock, "active save");
+  const folder = path.join(root, "target");
+  const options = { sourceRoot: source, bundleRoot: bundle, folder };
+  await assert.rejects(move(options), { status: 409 });
+  assert.equal(await readFile(lock, "utf8"), "active save");
+  await assert.rejects(stat(folder), { code: "ENOENT" });
+
+  await rm(lock);
+  await move(options);
+  await assert.rejects(stat(path.join(folder, ".config.toml.lock")), { code: "ENOENT" });
+});
+
+test("#1322: a move redirects config paths through a surviving directory junction", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  const alias = path.join(root, "alias");
+  await symlink(root, alias, "junction");
+  const aliasedUsers = path.join(alias, path.basename(users));
+  await saveUsersWorkspace(manifest, aliasedUsers);
+  await prepareBundleWorkspace(manifest, source);
+  const settings = path.join(users, "config.toml");
+  await writeFile(settings, "cpu_threads = 4\n");
+  const canonical = await realpath(settings);
+  const folder = path.join(root, "new location");
+
+  await move({ sourceRoot: source, bundleRoot: bundle, folder });
+
+  const { movedConfigPaths } = JSON.parse(await readFile(appSettingsPath(), "utf8"));
+  assert.equal(movedConfigPaths[canonical], path.join(folder, "config.toml"));
+  assert.equal(movedConfigPaths[path.join(aliasedUsers, "config.toml")], path.join(folder, "config.toml"));
+  await assert.rejects(stat(canonical), { code: "ENOENT" });
 });
 
 test("moving the users workspace takes everything in it along, and saved paths follow unless set elsewhere", async (t) => {

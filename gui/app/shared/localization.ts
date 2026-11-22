@@ -168,6 +168,11 @@ export function localizationLabels(table: StringMap = {}) {
         workspaceLocationFolderMoveConfirm: table["app.workspaceLocation.folderMove.confirm"] ??
             "Move what is in %{from} to %{path}? Running actions are stopped. Change Setting Only leaves it where it is.",
         workspaceLocationSettingOnlyTitle: table["app.workspaceLocation.settingOnly.title"] ?? "Change Setting Only",
+        workspaceMoveBusy: table["app.workspaceLocation.error.busy"] ?? "The workspace is in use. Finish running commands, saves or other moves, then try again.",
+        workspaceMoveInProgress: table["app.workspaceLocation.error.inProgress"] ?? "The workspace is being moved. Try again when the move has finished.",
+        workspaceMoveSettingsLocked: table["app.workspaceLocation.error.settingsLocked"] ?? "The settings file is locked. Finish saving settings, then try the move again.",
+        workspaceMoveStale: table["app.workspaceLocation.error.stale"] ?? "Another window moved the workspace. Reopen the app before using it.",
+        workspaceMoveProtectedFolder: table["app.workspaceLocation.error.protectedFolder"] ?? "This folder contains app data and cannot be moved.",
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",

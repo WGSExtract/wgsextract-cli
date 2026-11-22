@@ -32,6 +32,7 @@ from wgsextract_cli.core.users_workspace import (
     users_workspace,
 )
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 # For Python < 3.11, use tomli
 if sys.version_info >= (3, 11):
@@ -195,7 +196,7 @@ def _state() -> ConfigState:
 
 
 def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
-    return Path(path).expanduser().resolve() if path else None
+    return relocated_config_path(Path(path).expanduser().resolve()) if path else None
 
 
 def set_config_path(path: str | os.PathLike[str] | None) -> None:
@@ -486,11 +487,12 @@ def _update_table(
         config.pop(table_name, None)
 
 
+@workspace_use()
 def save_config(updates: dict[str, Any]) -> None:
     """Save configuration updates to the config.toml file."""
     import tomli_w
 
-    config_path = get_config_path()
+    config_path = relocated_config_path(get_config_path())
 
     current_config = {}
     if config_path.exists():

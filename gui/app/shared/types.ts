@@ -59,6 +59,11 @@ export type LabelTextKey =
     | "workspaceLocationCancelTitle"
     | "workspaceLocationFolderMoveConfirm"
     | "workspaceLocationSettingOnlyTitle"
+    | "workspaceMoveBusy"
+    | "workspaceMoveInProgress"
+    | "workspaceMoveSettingsLocked"
+    | "workspaceMoveStale"
+    | "workspaceMoveProtectedFolder"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"
@@ -535,6 +540,7 @@ export interface ManifestResponse {
     bundleState?: BundleStateSnapshot | null;
     appVersion?: string;
     workspaceLocation?: WorkspaceLocationInfo;
+    workspaceMoveRevision?: string;
     bundleRootPath: string;
     usersWorkspacePath?: string;
     sourceRootPath: string;

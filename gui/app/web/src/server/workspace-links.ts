@@ -1,6 +1,7 @@
 import { lstat, mkdtemp, readdir, readlink, realpath, rename, rmdir, stat, symlink, unlink } from "node:fs/promises";
 import path from "node:path";
 import { errnoCode, HttpError } from "./errors.js";
+import { assertNotSettingsLock } from "./workspace-activity.js";
 
 /** A folder moving from `from` to `to`. Links may name it by its real path, `fromReal`, too (macOS's /var is /private/var). */
 export interface FolderMove {
@@ -150,6 +151,7 @@ export async function planLinks(move: FolderMove, signal: AbortSignal, relative 
         signal.throwIfAborted();
         const entryRelative = path.join(relative, entry.name);
         const entryPath = path.join(move.fromReal, entryRelative);
+        assertNotSettingsLock(entryPath);
         const target = entry.isSymbolicLink() ? await readLinkTarget(entryPath) : null;
         if (target != null) {
             planned.set(entryRelative, await planLink(move, entryRelative, target));

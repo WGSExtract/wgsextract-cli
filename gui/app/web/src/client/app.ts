@@ -1,5 +1,5 @@
 import { configEditorControls, initialCheckedOptions, initialConfigValues, initialFieldValues } from "../../../shared/rendering.js";
-import { api } from "./api.js";
+import { api, setWorkspaceMoveRevision } from "./api.js";
 import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { errorMessage, renderIcon } from "./model.js";
@@ -35,6 +35,7 @@ await bootstrap();
 async function bootstrap(locale?: string) {
     try {
         const bundle = await api<ManifestResponse>(`/api/manifest${locale ? `?locale=${encodeURIComponent(locale)}` : ""}`);
+        setWorkspaceMoveRevision(bundle.workspaceMoveRevision);
         state.manifest = bundle.manifest;
         state.iconMap = bundle.iconMap ?? {};
         state.labels = bundle.labels;

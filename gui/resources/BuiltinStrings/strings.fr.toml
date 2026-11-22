@@ -42,6 +42,11 @@
 "app.workspaceLocation.move.title" = "Déplacer"  # i18n-source-hash:76cdb950
 "app.workspaceLocation.move.confirm" = "Déplacer l’espace de travail utilisateur et tout son contenu vers %{path} ? Les actions en cours sont arrêtées."  # i18n-source-hash:ecca1b2c
 "app.workspaceLocation.moving.format" = "Déplacement : %{percent} %"  # i18n-source-hash:d381b373
+"app.workspaceLocation.error.busy" = "L’espace de travail est en cours d’utilisation. Attendez la fin des commandes, des enregistrements ou des autres déplacements, puis réessayez."  # i18n-source-hash:c1c9bf24
+"app.workspaceLocation.error.inProgress" = "L’espace de travail est en cours de déplacement. Réessayez une fois le déplacement terminé."  # i18n-source-hash:3ff7818a
+"app.workspaceLocation.error.settingsLocked" = "Le fichier de paramètres est verrouillé. Attendez la fin de l’enregistrement, puis réessayez de déplacer le dossier."  # i18n-source-hash:4359f6f1
+"app.workspaceLocation.error.stale" = "Une autre fenêtre a déplacé l’espace de travail. Rouvrez l’application avant de l’utiliser."  # i18n-source-hash:a6396870
+"app.workspaceLocation.error.protectedFolder" = "Ce dossier contient des données de l’application et ne peut pas être déplacé."  # i18n-source-hash:cd96c9aa
 "app.workspaceLocation.cancel.title" = "Annuler"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.folderMove.confirm" = "Déplacer le contenu de %{from} vers %{path} ? Les actions en cours sont arrêtées. « Modifier le paramètre seulement » le laisse où il est."  # i18n-source-hash:34532e27
 "app.workspaceLocation.settingOnly.title" = "Modifier le paramètre seulement"  # i18n-source-hash:95a44482

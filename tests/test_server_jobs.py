@@ -37,6 +37,7 @@ from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import desktop_data_dir
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import (
     PathGuard,
@@ -87,6 +88,21 @@ def test_1209_cancel_wins_when_worker_exits_before_cancel_thread(tmp_path, monke
         for thread in delayed:
             start(thread)
             thread.join(timeout=10)
+        manager.shutdown()
+
+
+def test_1322_failed_worker_start_does_not_keep_workspace_busy(tmp_path):
+    manager = JobManager(tmp_path / "jobs", config_path=None)
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    manager.log_path(job_id).mkdir()  # An OS error when opening the log.
+    try:
+        job = manager.submit(
+            find("example-genome/list"), {"target_root": str(tmp_path)}, job_id=job_id
+        )
+        assert job.status == "failed"
+        assert job.error and "Could not start a worker" in job.error["message"]
+        assert not list((desktop_data_dir() / "workspace-activity").iterdir())
+    finally:
         manager.shutdown()
 
 

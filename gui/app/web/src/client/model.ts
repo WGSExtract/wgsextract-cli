@@ -1,4 +1,5 @@
 import { commandContextFromState, configEditorControls, configValueKey, optionTitle } from "../../../shared/rendering.js";
+import { localizationLabels } from "../../../shared/localization.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
@@ -49,7 +50,17 @@ export function elements<T extends Element = HTMLElement>(selector: string): T[]
     return [...appRoot.querySelectorAll<T>(selector)];
 }
 export function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    switch (message) {
+        case "workspaceMoveBusy":
+        case "workspaceMoveInProgress":
+        case "workspaceMoveSettingsLocked":
+        case "workspaceMoveStale":
+        case "workspaceMoveProtectedFolder":
+            return state.labels[message] ?? localizationLabels({})[message] ?? message;
+        default:
+            return message;
+    }
 }
 export function findControl(id: string): ControlSpec {
     const control = controlWithID(id);

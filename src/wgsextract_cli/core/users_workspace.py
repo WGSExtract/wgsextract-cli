@@ -14,6 +14,7 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.workspace_activity import workspace_use
 
 FOLDER_NAME = "wgs-extract"
 # Marks the folder as one this program made, so the desktop app adopts it
@@ -74,6 +75,7 @@ def claim_users_workspace(folder: Path) -> None:
         logging.debug(f"Could not mark {folder} as the users workspace: {e}")
 
 
+@workspace_use()
 def write_initial_config(config_path: Path, contents: str) -> None:
     """Claim the default workspace before a CLI-first bootstrap populates it."""
     if config_path.parent == users_workspace():

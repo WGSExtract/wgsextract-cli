@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
@@ -7,8 +8,10 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
+import { assertSettingsFileUnlocked, withWorkspaceMove, workspaceActivityDirectory } from "./workspace-activity.js";
 import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
-import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
+import type { MovedConfigPath } from "./workspace-location.js";
+import { assertCurrentUsersWorkspace, defaultUsersWorkspaceRoot, recordWorkspaceMove, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
 export interface WorkspaceMoveTarget {
@@ -30,6 +33,11 @@ export interface WorkspaceMoveRequest extends WorkspaceMoveTarget {
  * failure or cancelled copy loses nothing. Folders the user set elsewhere stay where they are.
  */
 export async function moveWorkspace(request: WorkspaceMoveRequest): Promise<void> {
+    await withWorkspaceMove(() => moveWorkspaceNow(request));
+}
+
+async function moveWorkspaceNow(request: WorkspaceMoveRequest) {
+    await assertCurrentUsersWorkspace(request.manifest, request.bundleRoot);
     if (request.setting) {
         await moveSettingFolder(request, request.setting);
         return;
@@ -43,12 +51,12 @@ export async function moveWorkspace(request: WorkspaceMoveRequest): Promise<void
     if (!target || path.relative(from, bundleRoot) === "") {
         throw new HttpError(400, "This bundle has no users workspace to move.");
     }
-    const save = () => saveUsersWorkspace(manifest, folder == null ? null : target);
     if (path.relative(from, target) === "") {
-        await save();
+        await saveUsersWorkspace(manifest, folder == null ? null : target);
         return;
     }
-    await moveFolderAndPaths(request, from, target, save);
+    await moveFolderAndPaths(request, from, target, (movedConfigs) =>
+        recordWorkspaceMove(manifest, folder == null ? null : target, movedConfigs));
 }
 
 /** Moves what one path setting names to `folder`, then saves the setting; a missing or empty one only saves it. */
@@ -67,6 +75,7 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     if (!settingsFile) {
         throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
     }
+    await assertSettingsFileUnlocked(settingsFile);
     const values = await readSettings(settingsFile);
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
     const target = path.resolve(expandedFolder);
@@ -83,45 +92,106 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
         await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
-        await save();
+        const previous = await readFile(settingsFile, "utf8").catch((error: unknown) => {
+            ignoreMissing(error);
+            return null;
+        });
+        try {
+            await save();
+            await recordWorkspaceMove(manifest);
+        } catch (error) {
+            if (previous === null) await rm(settingsFile, { force: true });
+            else await writeFileAtomically(settingsFile, previous);
+            throw error;
+        }
         return;
     }
-    await moveFolderAndPaths(request, current, target, save);
+    await moveFolderAndPaths(request, current, target, async () => {
+        await save();
+        await recordWorkspaceMove(manifest);
+    });
 }
 
 /** Moves `from` to `to`, then rewrites saved paths into it and runs `save`; puts everything back if a step fails. */
-async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, to: string, save: () => Promise<void>) {
+async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, to: string, save: (movedConfigs: readonly MovedConfigPath[]) => Promise<void>) {
     const { manifest, sourceRoot, bundleRoot, onProgress, signal } = request;
-    const settingsFiles = [...(await configFiles(manifest, bundleRoot)).values()];
+    const settingsFiles = new Set((await configFiles(manifest, bundleRoot)).values());
+    for (const control of configEditorControls(manifest)) {
+        const declared = settingsFileOf(control, undefined, bundleRoot);
+        if (declared) settingsFiles.add(declared);
+    }
+    for (const file of settingsFiles) await assertSettingsFileUnlocked(file);
     if (request.setting) {
         await assertMovableSettingFolder(from, [usersWorkspaceFor(bundleRoot), sourceRoot, bundleRoot, ...settingsFiles]);
     }
-    await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
-    await mkdir(path.dirname(to), { recursive: true });
-    await rmdir(to).catch(ignoreMissing);
+    const coordination = await existingRealPath(workspaceActivityDirectory());
+    if (isSameOrInsidePath(await existingRealPath(from), coordination)) {
+        throw new HttpError(400, "workspaceMoveProtectedFolder");
+    }
+    await assertUsableTarget(to, from, [sourceRoot, bundleRoot, coordination]);
     const move: FolderMove = { from, fromReal: await existingRealPath(from), to };
+    const movedConfigs: MovedConfigPath[] = [];
+    const copiedConfigs = new Set<string>();
+    for (const settingsFile of settingsFiles) {
+        const relocated = relocatePath(settingsFile, from, to);
+        if (relocated !== settingsFile) {
+            const parent = await existingRealPath(path.dirname(settingsFile));
+            const canonical = path.join(parent, path.basename(settingsFile));
+            movedConfigs.push([settingsFile, relocated]);
+            // A directory link may lead out of the workspace. Its target is not
+            // copied, so keep that file and redirect only the moved link's path.
+            if (isSameOrInsidePath(move.fromReal, canonical)) {
+                if (canonical !== settingsFile) movedConfigs.push([canonical, relocated]);
+                copiedConfigs.add(canonical);
+            }
+        }
+    }
     // Planned while what the links lead to is still in place.
     const links = await lstat(from).then((info) => info.isDirectory(), () => false) ? await planLinks(move, signal) : new Map<string, PlannedLink>();
+    await mkdir(path.dirname(to), { recursive: true });
+    await rmdir(to).catch(ignoreMissing);
     const renamed = await renameIfSameVolume(from, to);
     if (!renamed) {
         await copyFolder(move, links, onProgress, signal);
     }
     const rewritten: RewrittenFile[] = [];
     const relinked: RelinkedLink[] = [];
+    const retiredConfigs: MovedConfigPath[] = [];
     try {
         // A copy made its links point at the new place already; a renamed folder's still hold what they did.
         if (renamed) {
             await relinkMovedFolder(move, links.values(), relinked, signal);
         }
+        const rewrittenSettings = new Set<string>();
         for (const settingsFile of settingsFiles) {
             // A settings file in the moved folder moved with it.
-            await relocateSettingsFile(relocatePath(settingsFile, from, to), from, to, rewritten);
+            const file = await existingRealPath(relocatePath(settingsFile, from, to));
+            if (rewrittenSettings.has(file)) continue;
+            rewrittenSettings.add(file);
+            await relocateSettingsFile(file, from, to, rewritten);
         }
         await relocateBundleState(bundleRoot, from, to, rewritten);
         signal.throwIfAborted();
-        await save();
+        if (!renamed) {
+            // An open Windows handle can prevent removing the old tree. Retire config
+            // names before committing, so it can never stay writable as a second config.
+            for (const previous of copiedConfigs) {
+                const retired = `${previous}.moved-${randomUUID()}`;
+                try {
+                    await rename(previous, retired);
+                    retiredConfigs.push([previous, retired]);
+                } catch (error) {
+                    ignoreMissing(error);
+                }
+            }
+        }
+        signal.throwIfAborted();
+        await save(movedConfigs);
     }
     catch (error) {
+        for (const [previous, retired] of retiredConfigs) {
+            await rename(retired, previous);
+        }
         for (const file of rewritten) {
             await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
         }

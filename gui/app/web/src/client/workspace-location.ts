@@ -118,7 +118,7 @@ async function moveWorkspace() {
     catch (error) {
         state.workspaceMove = null;
         saveSettingOnly = null;
-        reportFailure(failure ?? errorMessage(error));
+        reportFailure(errorMessage(failure ?? error));
     }
 }
 

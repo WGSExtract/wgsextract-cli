@@ -7,6 +7,9 @@ import { allControls, configEditorControls, persistsFieldValue, serializeFlatTom
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
 import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath, bundleEnvironment } from "./paths.js";
+import { assertSettingsFileUnlocked, withWorkspaceMove, withWorkspaceUse } from "./workspace-activity.js";
+import { saveMovedConfigPath } from "./workspace-location.js";
+import { assertCurrentUsersWorkspace } from "./users-workspace.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
@@ -257,7 +260,20 @@ export function bootstrapConfigFiles(manifest: BundleManifest, bundleRoot: strin
 }
 async function bootstrapConfigFilesNow(manifest: BundleManifest, bundleRoot: string, configFilePaths: StringMap) {
     for (const control of configEditorControls(manifest)) {
-        await movePreviousConfigFile(control, bundleRoot);
+        if (previousConfigFile(control, bundleRoot)) {
+            await withWorkspaceMove(async () => {
+                await assertCurrentUsersWorkspace(manifest, bundleRoot);
+                await movePreviousConfigFile(control, bundleRoot);
+            });
+        }
+    }
+    await withWorkspaceUse(async () => {
+        await assertCurrentUsersWorkspace(manifest, bundleRoot);
+        await bootstrapMissingConfigFiles(manifest, bundleRoot, configFilePaths);
+    });
+}
+async function bootstrapMissingConfigFiles(manifest: BundleManifest, bundleRoot: string, configFilePaths: StringMap) {
+    for (const control of configEditorControls(manifest)) {
         const configFile = control.configFile;
         const bootstrap = configFile?.bootstrap;
         if (!configFile || !bootstrap || bootstrap.mode === "none") {
@@ -279,6 +295,28 @@ async function bootstrapConfigFilesNow(manifest: BundleManifest, bundleRoot: str
  * path, unless that already exists, then removes the old folder if that leaves it empty.
  */
 async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) {
+    const move = previousConfigFile(control, bundleRoot);
+    if (!move) return;
+    const { previous, target } = move;
+    await assertSettingsFileUnlocked(previous);
+    await assertSettingsFileUnlocked(target);
+    const canonicalPrevious = await realpath(path.dirname(previous));
+    await mkdir(path.dirname(target), { recursive: true });
+    await moveFile(previous, target);
+    try {
+        await saveMovedConfigPath(path.join(canonicalPrevious, path.basename(previous)), target);
+    } catch (error) {
+        await moveFile(target, previous);
+        throw error;
+    }
+    const folder = path.dirname(previous);
+    const relative = path.relative(bundleRoot, folder);
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+        // rmdir only removes an empty folder; anything the user put beside the file stays.
+        await rmdir(folder).catch(() => undefined);
+    }
+}
+function previousConfigFile(control: ControlSpec, bundleRoot: string) {
     const declaredPath = control.configFile?.path;
     if (!declaredPath) {
         return;
@@ -292,15 +330,7 @@ async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) 
         if (!existsSync(previous)) {
             continue;
         }
-        await mkdir(path.dirname(target), { recursive: true });
-        await moveFile(previous, target);
-        const folder = path.dirname(previous);
-        const relative = path.relative(bundleRoot, folder);
-        if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-            // rmdir only removes an empty folder; anything the user put beside the file stays.
-            await rmdir(folder).catch(() => undefined);
-        }
-        return;
+        return { previous, target };
     }
 }
 function shouldSkipBootstrap(mode: string, existing: Record<string, unknown> | null, defaultKeys: string[]) {
@@ -575,6 +605,9 @@ export async function loadConfig(control: ControlSpec, requestedPath: string | u
     };
 }
 export async function saveConfig(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
+    return withWorkspaceUse(() => saveConfigNow(control, requestedPath, values, bundleRoot));
+}
+async function saveConfigNow(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
     // The CLI saves settings of its own in this file too, which the editor doesn't show: keep them.
     const existing = await readOptionalFlatToml(filePath) ?? {};

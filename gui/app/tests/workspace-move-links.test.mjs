@@ -7,6 +7,7 @@ import { fixture, manifest, move, settingsControl } from "./workspace-fixture.mj
 
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
+const { appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 const { isSameOrInsidePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
 
 /**
@@ -101,6 +102,7 @@ for (const volume of ["the same volume", "another volume"]) {
     if (!expected) {
       return;
     }
+
     if (volume === "another volume") {
       failRenames(t, { folder: users });
     }
@@ -132,6 +134,46 @@ for (const volume of ["the same volume", "another volume"]) {
     await assertLinksFollowed(fast, expected);
   });
 }
+
+test("#1322: cross-volume cleanup failure leaves no writable config at the old path", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const oldFile = path.join(users, "config.toml");
+  await writeFile(oldFile, "cpu_threads = 3\n");
+  const external = path.join(root, "external");
+  await mkdir(external);
+  const externalConfig = path.join(external, "chosen.toml");
+  await writeFile(externalConfig, "cpu_threads = 4\n");
+  await symlink(external, path.join(users, "settings"), "junction");
+  await writeFile(path.join(bundle, "state.json"), JSON.stringify({
+    configFilePaths: { paths: path.join(users, "settings", "chosen.toml") },
+  }));
+  const target = path.join(root, "new-drive");
+  failRenames(t, { folder: users });
+  const fsPromises = createRequire(import.meta.url)("node:fs/promises");
+  const originalRm = fsPromises.rm;
+  fsPromises.rm = async (candidate, options) => {
+    if (candidate === users) {
+      throw Object.assign(new Error("Windows kept a file open in the old folder"), { code: "EPERM" });
+    }
+    return originalRm(candidate, options);
+  };
+  syncBuiltinESMExports();
+  t.after(() => {
+    fsPromises.rm = originalRm;
+    syncBuiltinESMExports();
+  });
+
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: target });
+
+  await stat(users);
+  await assert.rejects(stat(oldFile), { code: "ENOENT" });
+  const newFile = path.join(target, "config.toml");
+  assert.match(await readFile(newFile, "utf8"), /cpu_threads = 3/);
+  assert.match(await readFile(externalConfig, "utf8"), /cpu_threads = 4/);
+  assert.match(await readFile(path.join(target, "settings", "chosen.toml"), "utf8"), /cpu_threads = 4/);
+  assert.equal(JSON.parse(await readFile(appSettingsPath(), "utf8")).movedConfigPaths[oldFile], newFile);
+});
 
 for (const [step, failing] of [["saving the app's state", "state.json"], ["relinking", "current.fa"]]) {
   test(`1239 a move that fails ${step} after renaming the folder puts its symlinks back as they were`, async (t) => {

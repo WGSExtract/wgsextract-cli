@@ -17,6 +17,7 @@ from contextlib import nullcontext
 from typing import Any, TextIO
 
 from wgsextract_cli import api
+from wgsextract_cli.core.workspace_activity import workspace_use
 
 
 def _watch(stdin: TextIO, token: api.CancelToken) -> None:
@@ -40,6 +41,7 @@ def _private_pipes() -> tuple[TextIO, TextIO]:
     return control_in, control_out
 
 
+@workspace_use()
 def main() -> int:
     from wgsextract_cli.cli.bootstrap import configure_logging
     from wgsextract_cli.core import execution_context, read_scope

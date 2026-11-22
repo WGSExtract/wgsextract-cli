@@ -33,6 +33,7 @@ from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import hold_workspace
 
 from .operations import (
     Operation,
@@ -180,6 +181,7 @@ class JobManager:
         self._workers: dict[str, subprocess.Popen[str]] = {}
         # Folders each queued or running job writes in, for _pump.
         self._writes: dict[str, frozenset[str]] = {}
+        self._workspace_leases: dict[str, contextlib.ExitStack] = {}
         self._cancelling: set[str] = set()
         self._stopping = False
         directory.mkdir(parents=True, exist_ok=True)
@@ -338,6 +340,24 @@ class JobManager:
         card: bool | None = None,
         job_id: str | None = None,
     ) -> Job:
+        try:
+            workspace = hold_workspace()
+        except WGSExtractError as error:
+            raise RequestError(409, "workspace_busy", str(error)) from error
+        with workspace:
+            return self._submit(
+                op, params, card=card, job_id=job_id, workspace=workspace
+            )
+
+    def _submit(
+        self,
+        op: Operation,
+        params: Mapping[str, Any],
+        *,
+        card: bool | None,
+        job_id: str | None,
+        workspace: contextlib.ExitStack,
+    ) -> Job:
         if job_id is not None:
             self.check_job_id(job_id)
         effective = op.request_values(
@@ -379,6 +399,7 @@ class JobManager:
             self._writes[job.id] = self._write_folders(op, job)
             self._event(job, "status", status="queued")
             self._save(job)
+            self._workspace_leases[job.id] = workspace.pop_all()
             if op.kind == "query":
                 self._start(job)
             else:
@@ -527,8 +548,10 @@ class JobManager:
             if self.card is False
             else (job.card if job.card is not None else self.card),
         }
-        log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
+        log = None
+        worker = None
         try:
+            log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
             worker = subprocess.Popen(
                 self.worker_command,
                 stdin=subprocess.PIPE,
@@ -539,21 +562,30 @@ class JobManager:
                 errors="replace",
                 **_detached(),
             )
-        except OSError as e:
-            log.close()
+            assert worker.stdin is not None
+            worker.stdin.write(json.dumps(request) + "\n")
+            worker.stdin.flush()
+            self._workers[job.id] = worker
+            job.status = "running"
+            job.started = _now()
+            self._event(job, "status", status="running")
+            self._save(job)
+            threading.Thread(
+                target=self._follow, args=(job, worker, log), daemon=True
+            ).start()
+        except (OSError, RuntimeError) as e:
+            if worker is not None:
+                self._workers.pop(job.id, None)
+                _kill_tree(worker.pid)
+                worker.wait()
+                for pipe in (worker.stdin, worker.stdout):
+                    if pipe is not None:
+                        with contextlib.suppress(OSError):
+                            pipe.close()
+            if log is not None:
+                log.close()
             self._finish(job, "failed", error=f"Could not start a worker: {e}")
             return False
-        assert worker.stdin is not None
-        worker.stdin.write(json.dumps(request) + "\n")
-        worker.stdin.flush()
-        self._workers[job.id] = worker
-        job.status = "running"
-        job.started = _now()
-        self._event(job, "status", status="running")
-        self._save(job)
-        threading.Thread(
-            target=self._follow, args=(job, worker, log), daemon=True
-        ).start()
         return True
 
     def _follow(self, job: Job, worker: subprocess.Popen[str], log: Any) -> None:
@@ -655,13 +687,18 @@ class JobManager:
                 "message": error,
             }
         self._writes.pop(job.id, None)
-        self._event(job, "status", status=status)
-        self._save(job)
-        with contextlib.closing(sqlite3.connect(self._history)) as db, db:
-            self._index_summary(db, job)
-        self._finished.append(job.id)
-        if len(self._finished) > MAX_FINISHED_JOBS:
-            del self._jobs[self._finished.popleft()]
+        try:
+            self._event(job, "status", status=status)
+            self._save(job)
+            with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+                self._index_summary(db, job)
+            self._finished.append(job.id)
+            if len(self._finished) > MAX_FINISHED_JOBS:
+                del self._jobs[self._finished.popleft()]
+        finally:
+            workspace = self._workspace_leases.pop(job.id, None)
+            if workspace is not None:
+                workspace.close()
 
 
 def _detached() -> dict[str, Any]:
