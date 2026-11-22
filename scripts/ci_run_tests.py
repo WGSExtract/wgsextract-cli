@@ -67,8 +67,12 @@ def apply_cache(
     job: str,
     sources: dict[str, Path],
     summary: Path | None,
-) -> tuple[list[str] | None, Fingerprint, list[str]]:
-    """Drop test files whose exact dependency hash already passed (#915)."""
+) -> tuple[list[str] | None, Fingerprint, dict[str, str]]:
+    """Drop test files whose exact dependency hash already passed (#915).
+
+    Returns the remaining targets (None for the unfiltered suite), the
+    fingerprint and each skipped file with the sources it passed in.
+    """
     current = fingerprint(job)
     hashes = current.hashes
     candidates = (
@@ -91,9 +95,9 @@ def apply_cache(
         with summary.open("a", encoding="utf-8") as stream:
             stream.write(report)
     if targets is None and not skipped:
-        return None, current, []
+        return None, current, {}
     remaining = [test for test in candidates if test not in skipped]
-    return remaining, current, sorted(skipped)
+    return remaining, current, skipped
 
 
 def record_passes(manifest_path: Path, tests: list[str], current: Fingerprint) -> None:
@@ -105,6 +109,13 @@ def record_passes(manifest_path: Path, tests: list[str], current: Fingerprint) -
         # Outside the cached directory: tells the workflow to save a new entry.
         directory = manifest_path.parent
         directory.with_name(directory.name + ".updated").touch()
+
+
+def write_scope(path: Path, ran: list[str], skipped: dict[str, str]) -> None:
+    """Record which test files run here and where the skipped ones passed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"ran": sorted(ran), "skipped": dict(sorted(skipped.items()))}
+    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -129,11 +140,24 @@ def main() -> None:
         help="After a passing run, add its test hashes to this manifest; "
         "DIR.updated marks a manifest DIR that learned new hashes.",
     )
+    parser.add_argument(
+        "--record-executed",
+        type=Path,
+        help="After a passing run, write a manifest of only the test files this "
+        "run executed (not cache skips), for a later run of the same commit.",
+    )
+    parser.add_argument(
+        "--scope",
+        type=Path,
+        help="Write JSON listing the test files run here and the skipped ones.",
+    )
     parser.add_argument("--summary", type=Path, help="Append the cache report here.")
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if (args.cache_read or args.cache_record) and not args.cache_job:
-        parser.error("--cache-read and --cache-record need --cache-job")
+    if (
+        args.cache_read or args.cache_record or args.record_executed or args.scope
+    ) and not args.cache_job:
+        parser.error("cache reads, records and --scope need --cache-job")
     targets = test_targets(args.selection)
     if args.generic_only:
         targets = test_targets(
@@ -152,7 +176,7 @@ def main() -> None:
             )
         )
     current: Fingerprint | None = None
-    skipped: list[str] = []
+    skipped: dict[str, str] = {}
     if args.cache_job and targets != []:
         sources = dict(source.split("=", 1) for source in args.cache_read)
         targets, current, skipped = apply_cache(
@@ -161,9 +185,16 @@ def main() -> None:
             {label: Path(path) for label, path in sources.items()},
             args.summary,
         )
-        if targets == []:
-            print("Every selected test file already passed with these inputs.")
-            return
+    if args.scope is not None:
+        ran = targets
+        if ran is None and current is not None:
+            ran = test_targets(json.dumps(sorted(current.hashes))) or []
+        write_scope(args.scope, ran or [], skipped)
+    if current is not None and targets == []:
+        print("Every selected test file already passed with these inputs.")
+        if args.cache_record:
+            record_passes(args.cache_record, list(skipped), current)
+        return
     if targets == []:
         print("No affected tests; skipping pytest.")
         return
@@ -177,11 +208,15 @@ def main() -> None:
     )
     # A sparse selection may contain no tests in this tier/hash shard.
     passed = result.returncode == 0 or result.returncode == 5 and targets is not None
-    if passed and args.cache_record and current is not None:
+    if passed and current is not None:
         ran = targets
         if ran is None:
             ran = test_targets(json.dumps(sorted(current.hashes))) or []
-        record_passes(args.cache_record, [*ran, *skipped], current)
+        if args.cache_record:
+            record_passes(args.cache_record, [*ran, *skipped], current)
+        if args.record_executed:
+            # Cache skips are excluded: a later run of this commit must run them.
+            record_passes(args.record_executed, ran, current)
     if result.returncode == 5 and targets is not None:
         print("No affected tests in this CI partition.")
         return

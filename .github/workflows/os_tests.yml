@@ -45,9 +45,17 @@ on:
       smoke-only:
         type: boolean
         default: false
+      queue-dedupe:
+        description: >-
+          On a main push, skip test files the passing merge group already ran
+          at this exact SHA (#1373). Only for OS suites the merge queue runs.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  # Main pushes read the merge group's run, jobs and artifact (#1373).
+  actions: read
 
 jobs:
   workflow-smoke:
@@ -203,9 +211,11 @@ jobs:
       # Test result cache (#915): PRs and merge groups skip test files whose
       # exact dependency hash already passed on main (PRs also on an earlier
       # push of the same PR). Only main (push, nightly, dispatch) writes the
-      # -main- entries they read, and main always runs the full suite, so an
-      # undeclared input that slips past the queue still fails the next main run.
-      # A PR's own entries are scoped to its ref; merge groups record nothing.
+      # -main- entries they read. A merge group shares the files it executed,
+      # not its cache skips, as an artifact; a main push at that exact SHA runs
+      # only the rest (#1373), so the queue and main together run every file
+      # uncached at each main SHA, and an undeclared input that slips past the
+      # queue's cache still fails main. A PR's own entries are scoped to its ref.
       - name: Restore test hashes that passed on main
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref == 'refs/heads/main'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -213,6 +223,17 @@ jobs:
           path: out/test-cache/main
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-
+      - name: Find the merge group that already tested this main SHA
+        id: merge-group
+        if: inputs.queue-dedupe && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT: test-pass-queue-${{ inputs.os }}-${{ matrix.label }}
+        run: >-
+          pixi run python scripts/ci_merge_group_passes.py --repository "$GITHUB_REPOSITORY"
+          --sha "$GITHUB_SHA" --artifact "$ARTIFACT" --output out/test-cache/merge-group/passed.json
+          --github-output "$GITHUB_OUTPUT"
       - name: Restore test hashes that passed earlier on this PR
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -229,6 +250,7 @@ jobs:
           TIER: ${{ matrix.tier }}
           SHARD: ${{ matrix.shard }}
           OS: ${{ inputs.os }}
+          MERGE_GROUP_RUN: ${{ steps.merge-group.outputs.run }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
           SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' || inputs.skip-generic }}
         # -n logical overrides test-ci's -n auto: with psutil installed, auto
@@ -246,12 +268,28 @@ jobs:
             cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
           elif [ "$EVENT" = merge_group ]; then
             cache+=(--cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
+            cache+=(--record-executed out/test-cache/queue/passed.json)
           elif [ "$REF" = refs/heads/main ]; then
             cache+=(--cache-record out/test-cache/main/passed.json)
+            # Never main's own manifest: only what the queue ran at this SHA.
+            if [ "$EVENT" = push ] && [ -n "$MERGE_GROUP_RUN" ]; then
+              cache+=(--cache-read "merge-group-$MERGE_GROUP_RUN=out/test-cache/merge-group/passed.json")
+              cache+=(--summary "$GITHUB_STEP_SUMMARY")
+            fi
           else
             cache=()
           fi
+          if [ "${#cache[@]}" -gt 0 ]; then cache+=(--scope out/test-scope.json); fi
           pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" "${cache[@]}" -- "${args[@]}"
+      - name: Share the test files this merge group ran with the main push
+        if: github.event_name == 'merge_group' && hashFiles('out/test-cache/queue/passed.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-pass-queue-${{ inputs.os }}-${{ matrix.label }}
+          path: out/test-cache/queue/passed.json
+          retention-days: 7
+          # A rerun attempt replaces the earlier attempt's manifest.
+          overwrite: true
       - name: Save test hashes that passed
         if: hashFiles('out/test-cache/main.updated', 'out/test-cache/pr.updated') != ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -291,3 +329,4 @@ jobs:
             out/vep-rs-e2e.xml
             out/e2e-fake.xml
             out/pure-move-collection.log
+            out/test-scope.json

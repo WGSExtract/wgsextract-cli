@@ -677,3 +677,11 @@ def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
     for changed in [*([path] for path in paths), paths]:
         assert not routes(changed)["cli"], changed
         assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
+
+
+def test_1373_main_push_dedupe_edits_run_the_cache_regressions() -> None:
+    for path in ("scripts/ci_merge_group_passes.py", "scripts/ci_run_tests.py"):
+        assert not routes([path])["cli"], path
+        assert "tests/test_ci_test_cache.py" in ci_test_targets([path]), path
+    workflow = [".github/workflows/os_tests.yml"]
+    assert "tests/test_github_actions_policy.py" in ci_test_targets(workflow)

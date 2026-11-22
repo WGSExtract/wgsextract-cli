@@ -405,9 +405,11 @@ one lightweight smoke job; changing shared `os_tests.yml` exercises all four
 OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
 freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
-when their test files are affected. Main pushes and nightly/manual runs
-retain full-suite coverage; merge-queue Ubuntu and code-selected Windows run the full suite minus files
-the test cache already saw pass on main.
+when their test files are affected. Merge-queue Ubuntu and code-selected
+Windows run the full suite minus files the test cache already saw pass on main.
+The queue plus main together run the full suite at every main SHA: a main
+push runs only the files its merge group left to it (see "Main pushes after
+the merge queue" below). Nightly and manual runs retain full-suite coverage.
 
 Local callers can use
 `pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
@@ -484,9 +486,10 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 
 | Event | Reads | Records after a passing run |
 |---|---|---|
-| Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
+| Main push (Ubuntu, Windows) | the files its merge group executed at this exact SHA, if one passed `required` | `test-pass-v1-<os>-<label>-main-<run>` |
+| Main push (macOS, ARM64), nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
-| Merge group | latest `-main-` manifest | nothing |
+| Merge group | latest `-main-` manifest | the files it executed (not its cache skips), as artifact `test-pass-queue-<os>-<label>` |
 | Other refs | nothing (runs uncached) | nothing |
 
 A lookup is exact set membership, so a stale, corrupt, evicted or missing
@@ -503,12 +506,16 @@ runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
 do anyway. Merge groups read only main's manifest (owner decision,
 2026-11-15): a skipped file's every tracked input matches a tree that passed
-on main. Main pushes always run the full suite; nightly either does too or
-reuses that workflow's successful main push at the exact same SHA, so an undeclared
-input the hash misses fails the next main run instead of going unnoticed.
+on main. The queue plus main together run every test file uncached at every
+main SHA: a main push reruns exactly the files the queue skipped as cached, so an
+undeclared input the hash misses fails the next main run instead of going
+unnoticed. Nightly either runs the full suite or reuses that workflow's
+successful main push at the exact same SHA, which carries the same guarantee.
 
 Each test job's summary lists the cache-skipped files, where they passed
-(`main` or `pr`) and their hashes. To estimate savings, run
+(`main`, `pr` or `merge-group-<run>`) and their hashes. Each job's
+`tests-<os>-<label>` artifact also holds `test-scope.json`: the files run in that
+job and, for each skipped file, where it passed. To estimate savings, run
 `pixi run python scripts/ci_cache_replay.py --limit 60 --junit <main pytest.xml...>`;
 it replays consecutive ready runs of merged PRs.
 
@@ -516,6 +523,37 @@ There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
+
+### Main pushes after the merge queue
+
+The queue lands the exact commit its merge group tested, so a main push usually
+has the same SHA as a merge-group run that already passed. On 2026-11-21, 37 of
+38 main SHAs did, and their CI Ubuntu and Windows runs took about 2,180
+runner-minutes a day (#1373, merge-queue starvation). Main therefore doesn't
+rerun what the queue just ran:
+
+- A merge group's Ubuntu and Windows test jobs record the dependency hashes of
+  the test files they **executed**, leaving out their cache skips, and upload
+  them as artifact `test-pass-queue-<os>-<label>` (seven days).
+- On a push to main, `scripts/ci_merge_group_passes.py` looks for a `pr_ci.yml`
+  `merge_group` run in this repository whose head SHA is the pushed SHA, whose
+  branch is under `gh-readonly-queue/main/` and whose latest `required` job
+  succeeded. It downloads that run's manifest for the same OS and label.
+- The main test job reads that manifest as one more cache source, never main's
+  own manifest. A file is skipped only if its exact dependency hash, which
+  includes the runner image, passed in that merge group. Main therefore runs
+  exactly the files the queue skipped as cached, plus any whose hash differs.
+  It records every file into main's manifest as before; the skipped ones carry
+  the identical hash the queue passed.
+
+If no passing merge group matches, or anything is uncertain (an API error, a
+missing, expired or unreadable artifact), the manifest is not written and main
+runs the full suite. The lookup fails open to more coverage, never less.
+macOS and ARM64 don't run in the queue, so their main pushes keep the full
+suite. Nightly, manual dispatch and other jobs in these workflows (lint,
+imputation, ONT, optional tools, the e2e and Windows end-to-end steps) are
+unchanged. Main's non-gating line coverage report covers only the files main
+ran.
 
 ### Main-push prose filters
 
@@ -624,8 +662,9 @@ diagnosis:
   ONT and Windows vep-rs checks retain their environments when affected.
 
 Both tiers run together within the affected files on CLI-routed PRs; an empty selection
-passes without testing unrelated files. Non-prose main pushes and nightly runs
-retain full coverage (or exact-SHA green-main nightly evidence);
+passes without testing unrelated files. Non-prose main pushes, together with
+their merge group, and nightly runs retain full coverage (or exact-SHA
+green-main nightly evidence);
 merge-queue Ubuntu and code-selected Windows skip only cache hits from main. ARM64 runs its selection in one
 job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
@@ -735,7 +774,8 @@ to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
 Routing/selection skips and valid self-certifications remain accepted by that
 gate. The area gate does not depend on `required`, avoiding a dependency cycle.
 Merge groups skip the area gate and retain the same smaller required set;
-main pushes run selected workflows in full and nightly runs cover all paths
+main pushes run selected workflows in full (Ubuntu and Windows tests minus the
+files their merge group ran at that SHA) and nightly runs cover all paths
 unless the identical workflow already passed that exact main SHA.
 A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
