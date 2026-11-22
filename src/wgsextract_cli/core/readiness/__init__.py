@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import platform
 import sys
+from pathlib import Path
 
 from wgsextract_cli.core.utils import UsageError
 
@@ -57,7 +58,8 @@ def inspect_command(argv: list[str]) -> Report:
             "Give the command to check after --, e.g. "
             "deps ready -- vcf snp --input sample.bam"
         )
-    with command_config(config_path_from_argv(argv)) as loaded:
+    config = config_path_from_argv(argv)
+    with command_config(config) as loaded:
         if not loaded:
             raise UsageError("The command line's --config can't be loaded.")
         args = parse_command_line(argv)
@@ -73,6 +75,12 @@ def inspect_command(argv: list[str]) -> Report:
         )
         with sample_workspace.recording_paused():
             _check(report, command, args)
+    if config:
+        # Fixes act on the library and settings of the config checked.
+        path = str(Path(config).expanduser().resolve())
+        for item in report.items:
+            if item.fix_arguments:
+                item.fix_arguments = ["--config", path, *item.fix_arguments]
     return report
 
 

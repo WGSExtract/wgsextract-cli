@@ -141,7 +141,10 @@ def test_1183_a_cram_without_its_genome_names_the_explicit_download(
 
     reference = item(details, "reference")
     assert (code, reference["status"], reference["blocking"]) == (3, "missing", True)
-    assert reference["fix_arguments"] == ["ref", "library", "--install", "hs37d5"]
+    # The install goes into the library of the config the command was checked with.
+    assert reference["fix_arguments"] == [
+        "--config", str(config.resolve()), "ref", "library", "--install", "hs37d5",
+    ]  # fmt: skip
     assert list((library / "genomes").iterdir()) == []
 
 
