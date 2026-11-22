@@ -4,8 +4,10 @@ they aren't installed (`pixi install -e vep-rs`)."""
 
 import argparse
 import gzip
+import json
 import shutil
 import sys
+from os import utime
 from pathlib import Path
 
 import pytest
@@ -386,6 +388,42 @@ def test_chain_annotate_runs_vep_with_the_configured_vep_rs(
     monkeypatch.setitem(settings, "vep_engine", "ensembl")
     if get_tool_path("vep") is None:
         assert "vep is not installed" in chain.skip_reason("vep", lib)  # type: ignore[arg-type]
+
+
+@needs_vep_rs
+def test_1291_chain_journals_and_reruns_when_its_vep_cache_changes(
+    tmp_path: Path, vep_rs_cache: Path
+) -> None:
+    from tests.smoke_utils import run_cli, state_directory_setting
+
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"vep_cache_directory = {json.dumps(str(vep_rs_cache.parents[2]))}\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    args = [
+        "--json", "--config", str(config), "--ref", str(tmp_path / "genome.fa"),
+        "vcf", "chain-annotate", "--input", _input(tmp_path), "--outdir", str(out),
+        "--annotations", "vep", "--region", "1:1014", "--keep-intermediates",
+        "--threads", "1",
+    ]  # fmt: skip
+    for expected in ("run", "skip", "run"):
+        if expected == "run" and out.is_dir():
+            info = vep_rs_cache / "info.json"
+            saved = info.stat()
+            utime(info, ns=(saved.st_atime_ns, saved.st_mtime_ns - 1_000_000_000))
+        code, stdout, stderr = run_cli(args)
+        assert code == 0, (stdout, stderr)
+        steps = json.loads(stdout)["details"]["steps"]
+        assert (
+            next(row["action"] for row in steps if row["step"] == "vep:1") == expected
+        )
+        final = str(out / "chain_annotated.vcf.gz")
+        assert {pos: row["Consequence"] for pos, row in _csq(final).items()} == {
+            1014: "missense_variant"
+        }
 
 
 @needs_vep_rs

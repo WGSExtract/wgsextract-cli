@@ -97,7 +97,10 @@ def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
 
 def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
     if ann == "vep":
-        return ["--vep-cache", lib.vep_cache] if lib.vep_cache else []
+        assert lib.vep_cache is not None
+        # Pin the same offline engine and cache the journal tracks: standalone
+        # VEP also looks in ~/.vep when it automatically selects an engine.
+        return ["--vep-cache", lib.vep_cache, "--engine", vep_step_engine(lib).name]
     resource = dataset(ann, lib)
     if not resource:
         return []
@@ -178,6 +181,7 @@ def _annotation_step(
         outputs=[output],
         params=settings,
         tools=tools,
+        version=2 if ann == "vep" else 1,
     )
 
 
