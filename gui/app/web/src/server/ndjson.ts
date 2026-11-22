@@ -14,18 +14,24 @@ export async function streamNDJSON(
     failureEvent: (message: string, error: unknown) => LooseRecord,
 ) {
     const abortController = new AbortController();
-    response.on("close", () => {
+    const { signal } = abortController;
+    const abortIfOpen = () => {
         if (!response.writableEnded) {
             abortController.abort();
         }
-    });
+    };
+    response.once("close", abortIfOpen);
+    // The client may have gone while the route was still reading the request.
+    if (response.destroyed) {
+        abortIfOpen();
+    }
     response.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" });
     let writeQueue = Promise.resolve();
     let writeError: unknown;
     // Never rejects: the first write failure is recorded and cancels the run.
     const emit: EmitEvent = (event) => {
         writeQueue = writeQueue
-            .then(() => (writeError == null ? writeNDJSON(response, event) : undefined))
+            .then(() => (writeError == null ? writeNDJSON(response, event, signal) : undefined))
             .catch((error: unknown) => {
                 writeError ??= error;
                 abortController.abort();
@@ -33,7 +39,7 @@ export async function streamNDJSON(
         return writeQueue;
     };
     try {
-        await run(emit, abortController.signal);
+        await run(emit, signal);
         await writeQueue;
         if (writeError != null) {
             throw writeError;
@@ -49,7 +55,7 @@ export async function streamNDJSON(
             if (writeError != null) {
                 throw writeError;
             }
-            await writeNDJSON(response, failureEvent(errorMessage(error), error));
+            await writeNDJSON(response, failureEvent(errorMessage(error), error), signal);
             response.end();
         }
         catch (_writeError) {
@@ -58,8 +64,9 @@ export async function streamNDJSON(
     }
 }
 
-async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
-    if (response.destroyed) throw new Error("Response closed.");
+/** Settles once the event is flushed or can no longer be: on drain, error, close or abort. */
+async function writeNDJSON(response: ServerResponse, event: LooseRecord, signal: AbortSignal) {
+    if (response.destroyed || signal.aborted) throw new Error("Response closed.");
     if (response.write(`${JSON.stringify(event)}\n`)) {
         return;
     }
@@ -68,6 +75,7 @@ async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
             response.off("drain", onDrain);
             response.off("error", onError);
             response.off("close", onClose);
+            signal.removeEventListener("abort", onClose);
         };
         const onDrain = () => {
             cleanup();
@@ -81,5 +89,8 @@ async function writeNDJSON(response: ServerResponse, event: LooseRecord) {
         response.once("drain", onDrain);
         response.once("error", onError);
         response.once("close", onClose);
+        signal.addEventListener("abort", onClose, { once: true });
+        // write() may have destroyed the response before these listeners were attached.
+        if (response.destroyed || signal.aborted) onClose();
     });
 }
