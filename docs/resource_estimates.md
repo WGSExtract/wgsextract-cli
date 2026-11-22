@@ -366,19 +366,24 @@ within 3% of the same peak RSS.
 `samtools sort -@ N -m M` mallocs all N × M bytes when it starts, and the kernel
 refuses an allocation larger than RAM plus swap however few reads arrive: the
 sort fails with `couldn't allocate memory for bam_mem` and the aligner then dies
-of a broken pipe (#781). `--memory`, including `auto`'s floor of 1 GiB per
-thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
-`bam to-ubam` give each sort the smallest of:
+of a broken pipe (#781). An explicit `--memory` can ask for more. Automatic
+memory budgets start at 25% of effective RAM (host RAM capped by the Linux
+cgroup v2 limit), divided across threads and rounded down. `align`, `realign`,
+`pet`, `bam sort` and `bam to-ubam` give each sort the smallest of:
 
 - `--memory` per thread;
 - what its read files can fill: 96 bytes of records per byte of input (the
   bound minimap2's estimate uses below), split across the threads, when every
   input is a local file;
-- half of this computer's RAM, split across the threads,
+- half of effective RAM, split across the threads, leaving room for the rest
+  of the pipeline.
 
-and logs when that lowers `--memory`. The input bound never goes below 16M per
-thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
-fits its input sorts in memory, and a sort that spills merges its spills stably.
+The CLI logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but the RAM cap can lower that further. If the budget cannot provide
+samtools' minimum of 1 MiB per thread, lower `--threads`. Records and their
+order are unchanged: a sort that fits its input sorts in memory, and a sort
+that spills merges its spills stably. FASTQ collation uses the total budget
+to size its buckets and does not have samtools sort's per-thread minimum.
 Alignment memory checks count the sort's reservation (threads × `-m`) at
 least, as well as what its reads fill. `realign`'s checks before extracting
 FASTQs use the requested `--memory`, so they never ask for less than its
@@ -953,6 +958,15 @@ and sampled temporary-plus-output disk below 8.6 MiB. These are small-input
 observations, not whole-genome bounds or grounds for reducing the conservative
 1-GiB-per-worker allowance. Neither caller reached the 5% median speedup
 gate; Linux retains the system allocator.
+
+The [native CUDA PairHMM measurement](hardware.md#experimental-native-cuda-pairhmm-for-gatk)
+does not change GATK's budgets. On public HG00096 across all mapped
+reference intervals, the one-thread CUDA caller with a 4 GiB heap sampled
+about 2.01 GiB peak RSS and 338 MiB peak GPU process memory. An 8 GiB
+RAM lease and 64 GiB disk reservation covered the run, with about 1.55 GiB
+of compressed calls and indexes. These are observations for one sample and
+host, not minimum requirements, hard limits, or a reason to reduce the
+estimator's allowance.
 
 ### Native DeepVariant
 

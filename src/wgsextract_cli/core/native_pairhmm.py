@@ -1,4 +1,4 @@
-"""Local opt-in GKL sidecars, sharing the CUDA prototype's JNI/metadata contract."""
+"""Local opt-in CUDA and NEON GKL sidecars."""
 
 import json
 import os
@@ -36,9 +36,14 @@ def validate_pairhmm_sidecar(
             if not resources.issubset(archive.namelist()):
                 raise ValueError("missing native PairHMM resources")
     except (OSError, zipfile.BadZipFile, KeyError, ValueError) as exc:
+        recipe = (
+            "native/pairhmm/README.md"
+            if backend == "cuda"
+            else "packaging/arm64/gkl/README.md"
+        )
         raise UsageError(
             f"Cannot use {backend} PairHMM sidecar {path}: {exc}. "
-            "Build the local sidecar as described in packaging/arm64/gkl/README.md; "
+            f"Build the local sidecar as described in {recipe}; "
             "nothing is installed or downloaded automatically."
         ) from exc
     if gatk_version != "4.6.2.0":
@@ -47,6 +52,30 @@ def validate_pairhmm_sidecar(
             f"{gatk_version or 'an unknown version'}."
         )
     return path, metadata
+
+
+def cuda_pairhmm_java_options(sidecar: Path, gatk_version: str) -> list[str]:
+    """Prepend the Linux CUDA native resources without replacing GKL classes."""
+    if sys.platform != "linux" or platform.machine().lower() not in (
+        "x86_64",
+        "amd64",
+    ):
+        raise UsageError("--pair-hmm-cuda requires Linux x86-64.")
+    path = sidecar.expanduser().resolve()
+    # GATK's launcher whitespace-splits --java-options; ':' separates JVM paths.
+    if any(c.isspace() for c in str(path)) or ":" in str(path):
+        raise UsageError(
+            "--pair-hmm-cuda needs a sidecar path without whitespace or ':'."
+        )
+    path, _ = validate_pairhmm_sidecar(
+        path,
+        gatk_version,
+        backend="cuda",
+        resources={
+            f"com/intel/gkl/native/libgkl_pairhmm{suffix}.so" for suffix in ("", "_omp")
+        },
+    )
+    return ["--java-options", f"-Xbootclasspath/a:{path}"]
 
 
 def neon_pairhmm_command(sidecar: Path, gatk_version: str) -> list[str]:

@@ -13,7 +13,7 @@ from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     get_sam_index_cmd,
     get_sam_view_cmd,
     run_command,
@@ -312,7 +312,7 @@ def generate_fake_genomics_data(
 
     if need_bam:
         if use_streaming_bam:
-            threads, _ = get_resource_defaults(None, None)
+            threads = get_resource_threads()
             _create_fast_fake_bam(
                 bam_path,
                 chroms,

@@ -147,13 +147,18 @@ def aligned_output_path(
 
 class _AlignSetup(NamedTuple):
     threads: str
-    memory: str
+    memory: str | None
     outdir: str
     ref: str
     stem: str
     r1: str
     alignment_threads: str | None = None
     compression_threads: str | None = None
+
+    @property
+    def sort_budget(self) -> str:
+        assert self.memory is not None
+        return self.memory
 
 
 def ensure_bwa_index(ref: str) -> None:
