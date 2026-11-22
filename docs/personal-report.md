@@ -379,7 +379,10 @@ columns are described in the Parquet footer like the other tables
 ([parquet.md](parquet.md)).
 
 The report's result manifest records the source manifests as inputs (role
-`manifest`), the four documents as outputs (`report_html`, `report_markdown`,
+`manifest`), the resource releases its sections rest on (`resources`: the
+source runs' ClinVar release and the gene list; see
+[recheck-and-delta.md](recheck-and-delta.md), which also covers `ref recheck`
+and comparing two reports with `report-delta`), the four documents as outputs (`report_html`, `report_markdown`,
 `report_json`, `findings_table`), the metrics `findings`,
 `findings_<label>` and `section_<name>` (each section's status), and a
 `section_failed` warning for each failed section and a `newer_attempt_failed`

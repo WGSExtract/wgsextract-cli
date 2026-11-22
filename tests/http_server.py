@@ -47,6 +47,8 @@ class RangeServer:
         self.delays: dict[str, float] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
+        # (method, request target with any query, headers) of each request.
+        self.raw_requests: list[tuple[str, str, dict[str, str]]] = []
         self.get_paths: list[str] = []
         # Other software on the host may probe any new listening port (one
         # sent `GET /` with `Range: bytes=0-16383`, #987); only requests under
@@ -67,6 +69,9 @@ class RangeServer:
                 if not path.startswith(server.prefix):
                     self.send_error(404)
                     return None
+                server.raw_requests.append(
+                    (self.command, self.path, dict(self.headers.items()))
+                )
                 return path.removeprefix(server.prefix)
 
             def _body(self, path: str) -> bytes | None:

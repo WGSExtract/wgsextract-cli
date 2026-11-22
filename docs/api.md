@@ -19,10 +19,12 @@ Operations raise `CommandFailed` (carrying the failed `Result`) unless
 called with `check=False`. They accept a `progress` callback and a
 `CancelToken`. Operations that write files or run long run one at a time
 per process; quick read-only ones (`info`, `info chip`, `sample show`,
-`ref status`, `ref library-list`, `example-genome list`, `deps check`)
+`ref status`, `ref recheck`, `ref library-list`, `report-delta`,
+`example-genome list`, `deps check`)
 may run on several threads at once, each call with its own result, progress,
 cancellation and settings, unless asked to save files (`info` with
-`detailed` or `table_format`, `ref library-list` with `remote_sizes`),
+`detailed` or `table_format`, `ref library-list` with `remote_sizes`,
+`ref recheck` with `online`),
 which makes them one at a time too. They write the same
 output files and manifests as the CLI but print nothing to stdout: the
 human-readable report the CLI would print is in `Result.text` instead, and
@@ -2153,6 +2155,25 @@ HG00096) in the My Genomes library. Reports whether it is installed;
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
+### `api.ref.recheck(RefRecheckParams)`
+
+CLI: `wgsextract ref recheck`.
+
+`details`: wgsextract.recheck/1. Only `online=True` uses the network.
+
+`RefRecheckParams`: Compare the resource releases that result manifests recorded (ClinVar,
+gene lists, ...) with the newest ones: from an answers file, or only with
+`online` from NCBI's public ClinVar release listing. Nothing is
+downloaded and no analysis is rerun; `details` is the
+`wgsextract.recheck/1` document.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `manifests` | `tuple[Path, ...]` | required | `MANIFEST` | Result manifests (.manifest.json) whose recorded releases to check; a report's manifest covers the runs it shows. |
+| `answers` | `Path \| None` | `None` | `--answers` | Newest releases as a wgsextract.release_answers/1 JSON file (offline; e.g. saved by an earlier --online --save-answers run). |
+| `online` | `bool` | `False` | `--online` | Ask the public release listing (ClinVar: ftp.ncbi.nlm.nih.gov) for the newest releases. Sends a plain request for the listing: no sample data, paths or positions. Off unless given. |
+| `save_answers` | `Path \| None` | `None` | `--save-answers` | With --online, also save the answers it got to FILE, to repeat the check offline with --answers. |
+
 ### `api.ref.cytobands(RefCytobandsParams)`
 
 CLI: `wgsextract ref cytobands`.
@@ -2654,6 +2675,27 @@ plus a findings table, from the result manifests in its folder.
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 | `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+
+### `api.report.delta(ReportDeltaParams)`
+
+CLI: `wgsextract report-delta`.
+
+Compare two manifests. `details` is the `wgsextract.delta/1`
+document; incompatible runs (other command, sample or build) fail with
+error codes `delta_command_mismatch`, `delta_sample_mismatch` or
+`delta_build_mismatch`, and a document that isn't a result manifest
+with `unsupported_schema`. Reads only the two files.
+
+`ReportDeltaParams`: Compare two runs' result manifests semantically: findings added,
+removed, reclassified or with changed review evidence, genotype,
+confidence or ambiguity; sections that failed or didn't run; changed
+resource releases and provenance. Timestamps and ordering are ignored.
+`details` is the `wgsextract.delta/1` document.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `before` | `Path` | required | `--before` | The earlier run's result manifest, e.g. <sample>_personal_report.manifest.json. |
+| `after` | `Path` | required | `--after` | The later run's result manifest, of the same command and sample. |
 
 ## `api.sample`
 

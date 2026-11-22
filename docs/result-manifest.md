@@ -28,8 +28,8 @@ parser still treats external/compact documents as unvalidated input.
   `<vcf>_<sample>_microarray.manifest.json`, with a `sample` metric, for a
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
-  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
-  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
+  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`,
+  `report-delta`, and `ref recheck` without `--save-answers`) and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -95,6 +95,7 @@ parser still treats external/compact documents as unvalidated input.
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |
+| `resources` | The public data resources the run used (ClinVar, a gene list, ...): `id`, `name`, `role`, `build`, the exact `release` (or `null` when the resource doesn't say) and `release_basis`, `path`, `fingerprint`, and the source's `source_url`, `licence`, `licence_url` and `attribution`. See [recheck-and-delta.md](recheck-and-delta.md). |
 | `details` | The command-specific structured result, or `null`. |
 | `manifest` | Absolute path of the manifest file this run wrote, or `null` (including when writing it failed). |
 | `provenance` | `version` (package), `argv` and `params` (the command line and the parsed options as the command used them, after `--genome` selection; values of options whose names contain token, secret, password, credential or api key are redacted, and URLs there, and in error and warning messages, lose their user name, password, query string and fragment), `tools` (versions of the external tools the command ran), `reference` (`path`, `build`, `fingerprint`), `platform`, `python`, `started`, `finished` and `elapsed_s`. |

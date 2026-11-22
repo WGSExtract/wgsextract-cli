@@ -24,6 +24,7 @@ from wgsextract_cli.core.utils import UsageError
 from ._network import DownloadParams
 from ._params import Params, param
 from ._ref_library import _InLibrary, _library_named
+from ._ref_recheck import RefRecheckParams as RefRecheckParams
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
 
@@ -1001,6 +1002,19 @@ def test_genome(
     return execute(
         params, run_test_genome, progress=progress, cancel=cancel, check=check
     )
+
+
+def recheck(
+    params: RefRecheckParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """``details``: wgsextract.recheck/1. Only ``online=True`` uses the network."""
+    from wgsextract_cli.commands.ref.recheck import run_recheck
+
+    return execute(params, run_recheck, progress=progress, cancel=cancel, check=check)
 
 
 def cytobands(

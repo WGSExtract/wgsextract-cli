@@ -1,0 +1,504 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:delta:1",
+  "title": "wgsextract.delta/1",
+  "description": "The semantic difference between two runs' result manifests (report-delta's details). See docs/recheck-and-delta.md.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "wgsextract.delta/1"
+    },
+    "before": {
+      "$ref": "#/$defs/run"
+    },
+    "after": {
+      "$ref": "#/$defs/run"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "releases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/release"
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/section"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/change"
+      }
+    },
+    "disclaimer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "before",
+    "after",
+    "summary",
+    "releases",
+    "sections",
+    "changes",
+    "disclaimer",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "run": {
+      "type": "object",
+      "properties": {
+        "manifest": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "finished": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sample": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Report sample, or the input's file name."
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resources_recorded": {
+          "type": "boolean",
+          "description": "False for a manifest written before releases were recorded."
+        }
+      },
+      "required": [
+        "manifest",
+        "command",
+        "status",
+        "finished",
+        "version",
+        "sample",
+        "build",
+        "resources_recorded"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "findings_added": {
+          "type": "integer"
+        },
+        "findings_removed": {
+          "type": "integer"
+        },
+        "findings_changed": {
+          "type": "integer"
+        },
+        "findings_unchanged": {
+          "type": "integer"
+        },
+        "sections_not_compared": {
+          "type": "integer"
+        },
+        "releases_changed": {
+          "type": "integer"
+        },
+        "resource_only": {
+          "type": "boolean",
+          "description": "Resources changed but no finding, section or run status did."
+        }
+      },
+      "required": [
+        "findings_added",
+        "findings_removed",
+        "findings_changed",
+        "findings_unchanged",
+        "sections_not_compared",
+        "releases_changed",
+        "resource_only"
+      ],
+      "additionalProperties": false
+    },
+    "release": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "change": {
+          "enum": [
+            "same",
+            "changed",
+            "content_changed",
+            "added",
+            "removed",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "build",
+        "before",
+        "after",
+        "change"
+      ],
+      "additionalProperties": false
+    },
+    "section": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "before_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "compared": {
+          "type": "boolean"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unchanged": {
+          "type": "integer"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
+      },
+      "required": [
+        "section",
+        "title",
+        "before_status",
+        "after_status",
+        "compared",
+        "note",
+        "unchanged",
+        "findings"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "section": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "description": "chrom:pos:ref:alt for a variant, else the label."
+        },
+        "label": {
+          "type": "string"
+        },
+        "gene": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "added",
+              "removed",
+              "reclassified",
+              "review_changed",
+              "genotype_changed",
+              "result_changed",
+              "confidence_changed",
+              "ambiguity_changed"
+            ]
+          }
+        },
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/findingState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/findingState"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "type": "string",
+          "description": "The finding's confidence label as reported (after, else before)."
+        },
+        "disclaimer": {
+          "type": "string"
+        },
+        "release_changes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Resources this section rests on whose release changed between the runs (an association, not a cause)."
+        }
+      },
+      "required": [
+        "section",
+        "key",
+        "label",
+        "gene",
+        "changes",
+        "before",
+        "after",
+        "confidence",
+        "disclaimer",
+        "release_changes"
+      ],
+      "additionalProperties": false
+    },
+    "findingState": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "genotype": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "zygosity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "type": "string"
+        },
+        "confidence_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "review_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "stars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pgx_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "detail",
+        "genotype",
+        "zygosity",
+        "confidence",
+        "confidence_reasons",
+        "review_status",
+        "stars",
+        "pgx_status"
+      ],
+      "additionalProperties": false
+    },
+    "change": {
+      "type": "object",
+      "properties": {
+        "area": {
+          "enum": [
+            "status",
+            "warning",
+            "metric",
+            "output",
+            "version",
+            "tool",
+            "reference"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "before": {},
+        "after": {}
+      },
+      "required": [
+        "area",
+        "key",
+        "before",
+        "after"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

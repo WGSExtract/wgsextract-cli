@@ -40,6 +40,11 @@ from wgsextract_cli import __version__
 from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
 from wgsextract_cli.core.output_schema import Constraints
+from wgsextract_cli.core.provenance_records import (
+    Fingerprint,
+    ReferenceRecord,
+    ResourceRecord,
+)
 
 SCHEMA_ID: Final = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
@@ -52,13 +57,6 @@ EXIT_MISSING_DEPENDENCY = 3
 
 Scalar = str | int | float | bool | None
 Status = Literal["ok", "failed", "cancelled"]
-Fingerprint = Annotated[
-    Annotated[str, Constraints(pattern="^wgse-fp1:[0-9a-f]{64}$")] | None,
-    Constraints(
-        description="wgse-fp1:<sha256 of the size and the first, middle and last MiB>; see docs/result-manifest.md."
-    ),
-]
-
 FINGERPRINT_PREFIX = "wgse-fp1:"
 _FINGERPRINT_BLOCK = 1 << 20  # 1 MiB
 
@@ -276,13 +274,6 @@ class ResultWarning:
 
 
 @dataclass
-class ReferenceRecord:
-    path: str
-    build: str | None = None
-    fingerprint: Fingerprint = None
-
-
-@dataclass
 class Provenance:
     version: Annotated[str, Constraints(description="wgsextract-cli version.")] = (
         __version__
@@ -462,6 +453,7 @@ class CommandResult:
     outputs: list[FileRecord] = field(default_factory=list)
     metrics: dict[str, Scalar] = field(default_factory=dict)
     warnings: list[ResultWarning] = field(default_factory=list)
+    resources: list[ResourceRecord] = field(default_factory=list)
     details: Annotated[
         dict[str, object] | None,
         Constraints(description="Command-specific structured result, or null."),
@@ -536,6 +528,12 @@ class CommandResult:
     def add_metrics(self, **metrics: Scalar) -> None:
         with self._lock:
             self.metrics.update(metrics)
+
+    def add_resource(self, record: ResourceRecord) -> None:
+        """Record a public resource the run used (listed once)."""
+        with self._lock:
+            if record not in self.resources:
+                self.resources.append(record)
 
     def warn(self, code: str, message: str, **details: Scalar) -> None:
         """Record a structured warning (without logging it; see ``warn``)."""

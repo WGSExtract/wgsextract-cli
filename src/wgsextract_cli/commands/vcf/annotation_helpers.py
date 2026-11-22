@@ -8,6 +8,7 @@ from pathlib import Path
 
 from wgsextract_cli.api._params import param_fields
 from wgsextract_cli.api.vcf import _VcfFileParams
+from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
@@ -92,6 +93,7 @@ def require_annotation_file(file_path: str | None, message_key: str, ann: str) -
         raise WGSExtractError(
             f"REQUIRED DATA MISSING: {msg}\nTo fix this, run: wgsextract ref {ann}"
         )
+    resource_releases.record(ann, file_path)
     return str(file_path)
 
 

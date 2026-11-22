@@ -49,6 +49,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
 | [Personal report](personal-report.md) | Read findings with links to evidence, not diagnoses |
+| [Recheck and delta](recheck-and-delta.md) | Check for newer ClinVar releases; see what changed between reports |
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |
 | [Ancestry](ancestry.md) | Estimate HGDP+1KG component proportions |

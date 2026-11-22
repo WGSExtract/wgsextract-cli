@@ -69,6 +69,7 @@
 {"path":"ref verify","tier":"setup","summary":"Ensure your reference genome file isn't corrupted and has all the necessary companion files (indexes, dicts).","key_flags":[]},
 {"path":"ref library","tier":"setup","summary":"Opens the interactive reference manager to help you organize and download genomic data.","key_flags":["--install","--list","--remote-sizes","--delete"]},
 {"path":"ref status","tier":"setup","summary":"Report reference library asset status.","key_flags":["--mygenomes-library","--annotation-vcf","--values"]},
+{"path":"ref recheck","tier":"setup","summary":"Compare the resource releases result manifests recorded with the newest: from --answers FILE, or ask NCBI with --online.","key_flags":["--answers","--online","--save-answers"]},
 {"path":"ref test-genome","tier":"setup","summary":"Report, install (--install) or delete (--delete) the small hg19 test genome in the dataset library.","key_flags":["--mygenomes-library","--install","--delete"]},
 {"path":"ref needs","tier":"setup","summary":"Report the reference genome, annotation data or optional tools a command line needs that aren't installed, and how to install them.","key_flags":["--report-json"]},
 {"path":"ref gene-map","tier":"setup","summary":"Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).","key_flags":["--delete"]},
@@ -150,6 +151,7 @@
 {"path":"sign create","tier":"advanced","summary":"Hash files or directories into a sha256sum-compatible SHA256SUMS manifest, signed with ssh-keygen when a key is given.","key_flags":["--output","--key"]},
 {"path":"sign verify","tier":"advanced","summary":"Check a SHA256SUMS manifest's OpenSSH signature against a trusted key, then re-hash every listed file.","key_flags":["--signature","--public-key","--allowed-signers","--identity"]},
 {"path":"score pgs","tier":"advanced","summary":"Score an additive PGS Catalog or custom file locally.","key_flags":["--no-download","--build","--pgs-id","--trait","--scoring-file","--sample","--plink2-check","--no-keep-ambiguous","--confident-bed","--min-match"]},
+{"path":"report-delta","tier":"advanced","summary":"What changed between two reports: findings, releases.","key_flags":["--before","--after"]},
 {"path":"benchmark","tier":"advanced","summary":"Time the main workflows on test data.","key_flags":["--profile","--coverage","--full-size","--build","--region","--keep-going","--suite","--dataset"]},
 {"path":"serve","tier":"advanced","summary":"Local HTTP/JSON and MCP server for apps and AI agents.","key_flags":["--listen","--public-url","--port","--allow","--max-jobs","--mcp","--mcp-transport","--allow-jobs","--allow-destructive","--ready-json","--openapi"]}
 ],

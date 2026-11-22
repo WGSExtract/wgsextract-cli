@@ -6,6 +6,7 @@ from pathlib import Path
 from wgsextract_cli.api.report import ReportParams
 from wgsextract_cli.cli.registration.report import register as register
 from wgsextract_cli.core import personal_report as pr
+from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.table_writer import (
@@ -43,6 +44,8 @@ def run_report(params: ReportParams) -> None:
     result = current_result()
     for source in sources:
         result.add_input(source.manifest, "manifest")
+    for record in resource_releases.cited_resources(folder, report, sources):
+        result.add_resource(record)
     stem = outdir / f"{report['sample']['name']}_personal_report"
     base = pr.link_base(folder, outdir)
     html_path = Path(f"{stem}.html")

@@ -377,6 +377,15 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref recheck": _h(
+        "Prints each recorded resource release, the newest and its status; "
+        "writes no files except the --save-answers file. With --json, the "
+        "result's details are the wgsextract.recheck/1 document.",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--answers answers.json",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--online --save-answers answers.json",
+    ),
     "ref test-genome": _h(
         "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
         "genome-config.toml, and the verified zip in .downloads (--delete "
@@ -541,6 +550,14 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract report --genome HG002 --gene-list acmg-sf-3.2",
         "wgsextract report --genome HG002 --gene-list my_genes.bed",
         "wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet",
+    ),
+    "report-delta": _h(
+        "Prints what changed between the runs; writes no files. With --json, "
+        "the result's details are the wgsextract.delta/1 document.",
+        "wgsextract report-delta --before old/HG002/HG002_personal_report.manifest.json "
+        "--after HG002/HG002_personal_report.manifest.json",
+        "wgsextract --json report-delta --before old/clinvar_pathogenic.vcf.manifest.json "
+        "--after clinvar_pathogenic.vcf.manifest.json",
     ),
     "report-issue": _h(
         "Prints a redacted bug report and its GitHub link and saves the "
