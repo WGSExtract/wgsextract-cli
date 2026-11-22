@@ -154,12 +154,17 @@ def main() -> None:
     parser.add_argument("--summary", type=Path, help="Append the cache report here.")
     parser.add_argument("pytest_args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
-    if (
-        args.cache_read or args.cache_record or args.record_executed or args.scope
-    ) and not args.cache_job:
+    needs_job = (
+        args.cache_read,
+        args.cache_record,
+        args.record_executed,
+        args.scope,
+        args.summary,
+    )
+    if any(needs_job) and not args.cache_job:
         parser.error(
-            "--cache-read, --cache-record, --record-executed and --scope "
-            "need --cache-job"
+            "--cache-read, --cache-record, --record-executed, --scope and "
+            "--summary need --cache-job"
         )
     targets = test_targets(args.selection)
     if args.generic_only:
