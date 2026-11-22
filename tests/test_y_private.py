@@ -74,8 +74,10 @@ def _reads(pos: int, alt: str, alt_reads: int, other: str = "A", others: int = 0
 def _hg38_sample(tmp_path) -> tuple[str, str]:
     # A FASTA in another library's genomes folder: the marker sets are still
     # found in the configured library (HG002 validation of #1402).
+    # Its unrelated Yleaf tables don't make it the marker library (review).
     reference = tmp_path / "other-library/genomes/ref.fa"
     reference.parent.mkdir(parents=True)
+    (tmp_path / "other-library/yleaf/v4.1.6/hg_prediction_tables").mkdir(parents=True)
     with reference.open("w", newline="\n") as stream:
         stream.write(">chrY\n")
         for start in range(0, ybrowse.Y_LENGTH, 100_000):

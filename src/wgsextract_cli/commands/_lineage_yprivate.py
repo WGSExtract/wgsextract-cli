@@ -132,19 +132,20 @@ def _resolve_build(contigs: dict[str, int], chr_y: str, override: str | None) ->
     return build
 
 
-def _marker_library(ref: Path | None) -> Path:
-    """The library holding the marker sets: the one ``--ref`` names (or holds
-    its FASTA), else the configured one, else where downloads go."""
+def _marker_library(ref: Path | None, build: str) -> Path:
+    """The library holding the build's marker sets: the one ``--ref`` names (or
+    holds its FASTA), else the configured one, else where downloads go. GRCh38
+    needs the YBrowse snapshot, which is never downloaded; T2T the YFull module."""
+    from wgsextract_cli.ydna.yleaf_native.trees import module_root
+
+    def holds(folder: str) -> bool:
+        if build == "hg38":
+            return Path(folder, "ybrowse", "hg38", "current.json").is_file()
+        return module_root("yfull", "positions", Path(folder)).is_dir()
+
     roots = library_roots(ref)
     folders = [roots.beside_fasta, roots.root, resolve_reference_library()]
-    found = next(
-        (
-            f
-            for f in folders
-            if f and any(Path(f, d).is_dir() for d in ("ybrowse", "yleaf"))
-        ),
-        None,
-    )
+    found = next((f for f in folders if f and holds(f)), None)
     return Path(resolve_reference_library(found or roots.root))
 
 
@@ -444,7 +445,7 @@ def run_y_private(params: YPrivateParams) -> None:
         chr_y = _y_contig(contigs, [])
     build = _resolve_build(contigs, chr_y, params.build)
 
-    library = _marker_library(params.ref)
+    library = _marker_library(params.ref, build)
     marker_sets: list[dict[str, Any]] = []
     ybrowse_sites: Path | None = None
     if build == "hg38":

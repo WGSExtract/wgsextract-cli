@@ -111,7 +111,8 @@ wgsextract lineage y-private --input sample.vcf.gz --build t2t
   fails). SNVs only. A BAM/CRAM is called haploid with bcftools, counting
   reads with MAPQ ≥ `--min-mapq` (20) and bases with quality ≥
   `--base-quality` (20); a VCF's mapping filters are its caller's.
-  `--ref` may name the reference library holding the marker sets.
+  The marker sets are read from the `--ref` library (or the library holding
+  its FASTA) when it has them, else from the configured library.
 - **QC:** more than 50 candidates raises `y_private_excess`: suspect
   contamination, a mismatched reference, poor data or a marker set that misses
   the lineage. A female sample, or reads of several samples, are refused.
