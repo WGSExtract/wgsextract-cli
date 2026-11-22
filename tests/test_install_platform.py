@@ -527,3 +527,52 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
             else None
             for path in installation.rglob("*")
         } == before
+
+
+def test_1246_upgrade_keeps_cache_creation_record_across_path_spellings(
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    binary = tmp_path / "pixi"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    cache = tmp_path / "pixi-cache"
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("WGSEXTRACT_")},
+        "HOME": str(tmp_path),
+        "PIXI": str(binary),
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        "WGSEXTRACT_NO_OPEN": "1",
+    }
+    # The first install creates the cache; the upgrade names it without the slash.
+    for spelling in (f"{cache}/", str(cache)):
+        result = subprocess.run(
+            [str(SH), str(ROOT / "install.sh")],
+            env={**env, "WGSEXTRACT_PIXI_CACHE_DIR": spelling},
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr
+
+    result = subprocess.run(
+        [str(SH), str(installation / "uninstall.sh"), "--yes", "--keep-pixi"],
+        env={k: v for k, v in env.items() if k != "PIXI"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not cache.exists()
+    assert not installation.exists()
