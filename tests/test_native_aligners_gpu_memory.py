@@ -83,6 +83,8 @@ sys.exit(subprocess.call([{real!r}, *args]))
         ("low-ram", "cpu", "memory_budget_cpu"),
         ("low-commit", "cpu", "windows_commit_budget_cpu"),
         ("commit-stepdown", "cuda", "windows_commit_budget_low_sort"),
+        ("ram-and-commit-same-step", "cuda", "memory_budget_cuda_low_sort"),
+        ("commit-steps-past-ram", "cuda", "windows_commit_budget_low_sort"),
     ],
 )
 def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
@@ -97,6 +99,9 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
     ram(11 * GIB // 2 if mode == "low-ram" else 64 * GIB)
     caplog.set_level("INFO")
     reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    ram_budget = (_needed(reads, "1G") + _needed(reads, "768M")) // 2
+    if mode in {"ram-and-commit-same-step", "commit-steps-past-ram"}:
+        ram(2 * GIB + ram_budget)
     candidate = tmp_path / "missing" / "wgse-bwa.exe"
     if mode != "missing":
         capabilities = (
@@ -106,7 +111,12 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
         )
         candidate = _windows_bwa_candidate(tmp_path, capabilities)
     monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
-    commit = {"low-commit": 4 * GIB, "commit-stepdown": 23 * GIB // 4}
+    commit = {
+        "low-commit": 4 * GIB,
+        "commit-stepdown": 23 * GIB // 4,
+        "ram-and-commit-same-step": 23 * GIB // 4,
+        "commit-steps-past-ram": 21 * GIB // 4,
+    }
     monkeypatch.setattr(
         short_reads, "windows_available_commit", lambda: commit.get(mode, 32 * GIB)
     )
@@ -121,12 +131,12 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
     monkeypatch.setitem(settings, "prefer_native_gpu", mode.startswith("cuda-config"))
     options = (
         ["--prefer-native-gpu"]
-        if mode in {"cuda", "low-ram", "low-commit", "commit-stepdown"}
+        if mode in {"cuda", "low-ram", *commit}
         else ["--no-prefer-native-gpu"]
         if mode == "cuda-config-disabled"
         else []
     )
-    sort_memory = "1G" if mode == "commit-stepdown" else "256M"
+    sort_memory = "1G" if mode in commit and mode != "low-commit" else "256M"
     bam, result = _align(reads, tmp_path / "out", *options, memory=sort_memory)
     upstream, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
 
@@ -138,8 +148,13 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
     )
     if mode == "low-commit":
         assert "Windows commit" in caplog.text
-    if mode == "commit-stepdown":
+    if mode in {"commit-stepdown", "ram-and-commit-same-step"}:
         assert result.metrics["native_aligner_sort_memory_actual"] == "768M"
+    if mode == "ram-and-commit-same-step":
+        assert result.metrics["native_aligner_memory_budget_bytes"] == ram_budget
+    if mode == "commit-steps-past-ram":
+        assert result.metrics["native_aligner_sort_memory_actual"] == "512M"
+        assert result.metrics["native_aligner_memory_budget_bytes"] == commit[mode]
 
 
 @needs_tools("bwa", "samtools")

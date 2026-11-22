@@ -274,8 +274,9 @@ wgse_bwa_path = 'C:\tools\wgse-bwa.exe'
 
 The [Windows recipe](../packaging/windows/README.md#optional-wgse-bwa)
 builds this executable. It is not yet pinned in the default Pixi environment;
-the CLI does not install it. Without a usable executable, or with
-`--native-aligners off`, alignment continues with stock BWA.
+the CLI does not install it. An explicit path takes precedence over `PATH`;
+if it is unusable, the CLI warns and continues with stock BWA. Stock BWA is
+also used when no native build is found or with `--native-aligners off`.
 
 The CLI uses `wgse-bwa` on the CPU by default, even with an NVIDIA GPU. On a
 Ryzen 9 9900X3D and RTX 5080, `wgsextract align` on 5 million HG002 pairs

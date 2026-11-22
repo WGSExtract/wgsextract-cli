@@ -364,21 +364,24 @@ def _bwa_gpu_fit(
             # WDDM charges the device index and CUDA scratch to host commit
             # (#1119: 10.9 GiB committed vs 5.8 GiB resident at 5M pairs).
             # Allow another 512 MiB for scratch and any implicit dense SA copy.
-            committed += estimate.index_resident + max(gpu - 256 * 1024**2, 0)
+            committed += estimate.index_resident + max(gpu_bytes - 256 * 1024**2, 0)
         return physical, committed
 
-    def commit_fits(sort_memory: str) -> bool:
-        return commit is None or needed(sort_memory)[1] <= commit
-
-    fitting = next(
-        (m for m in candidates if needed(m)[0] <= budget and commit_fits(m)), None
-    )
+    ram_fitting = fitting = None
+    for candidate in candidates:
+        physical, committed = needed(candidate)
+        if physical > budget:
+            continue
+        if ram_fitting is None:
+            ram_fitting = candidate
+        if commit is None or committed <= commit:
+            fitting = candidate
+            break
     preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
     if (
         fitting is None
         and not windows_cuda
         and native_gpu_preference(job.prefer_native_gpu)
-        and commit_fits(preferred_memory)
     ):
         logging.info(
             "Preferring %s's native GPU (--prefer-native-gpu): estimated %.1f GiB "
@@ -514,7 +517,7 @@ def _bwa_gpu_fit(
             ),
         )
     else:
-        commit_limited = not commit_fits(memory)
+        commit_limited = fitting != ram_fitting
         if fitting != memory:
             logging.info(
                 f"Sorting with {fitting} per thread (not {memory}) to leave "
