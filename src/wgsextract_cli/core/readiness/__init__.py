@@ -62,7 +62,7 @@ def inspect_command(argv: list[str]) -> Report:
     with command_config(config) as loaded:
         if not loaded:
             raise UsageError("The command line's --config can't be loaded.")
-        args = parse_command_line(argv)
+        args = parse_command_line(argv, persist_genome=False)
         command = str(getattr(args, "_command", "") or "")
         report = Report(
             command,

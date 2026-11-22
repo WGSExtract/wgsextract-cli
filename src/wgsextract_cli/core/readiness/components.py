@@ -18,7 +18,11 @@ from typing import Any
 
 from wgsextract_cli.core import optional_tools, runtime
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.dependency_checks import check_all_dependencies
+from wgsextract_cli.core.dependency_checks import (
+    MINIMUM_VERSIONS,
+    check_all_dependencies,
+    too_old,
+)
 from wgsextract_cli.core.pixi_tools import is_pixi_tool_command, pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import MANDATORY_TOOLS
 
@@ -74,6 +78,18 @@ def tool_item(tool: str, *, required: bool = True, override: str | None = None) 
             fix_text=None if info["can_install"] else info["note"] or _hint(version),
         )
     path = str(row["path"])
+    if old := too_old(tool, version):
+        minimum = ".".join(map(str, MINIMUM_VERSIONS[tool]))
+        return Item(
+            "tool",
+            tool,
+            INCOMPATIBLE,
+            required,
+            detail=f"{old} {minimum} or newer is needed.",
+            path=path,
+            version=version,
+            evidence=package_evidence(path, tool),
+        )
     return Item(
         "tool",
         tool,

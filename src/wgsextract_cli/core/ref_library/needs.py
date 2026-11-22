@@ -74,10 +74,13 @@ class Annotation:
     name: str  # shown to people
     per_build: bool = False  # the install takes --build
     builds: tuple[str, ...] = ("hg19", "hg38")
+    requires_fasta: bool = False  # the annotator refuses to run without one
 
 
 ANNOTATION_COMMANDS = {
-    "vcf clinvar": Annotation("clinvar_vcf", "clinvar_file", "clinvar", "ClinVar"),
+    "vcf clinvar": Annotation(
+        "clinvar_vcf", "clinvar_file", "clinvar", "ClinVar", requires_fasta=True
+    ),
     "vcf revel": Annotation("revel_file", "revel_file", "revel", "REVEL"),
     "vcf cadd": Annotation("cadd_file", "cadd_file", "cadd", "CADD", per_build=True),
     "vcf gerp": Annotation("gerp_file", "gerp_file", "gerp", "GERP", per_build=True),
@@ -144,12 +147,15 @@ class GenomeNeed:
 class AnnotationNeed:
     """The annotation data a VCF command line reads: ``path`` is the file it
     would use (named by its option, or installed), ``missing`` set when the
-    library lacks it."""
+    library lacks it; ``fasta`` the reference the annotator normalises with
+    (the VCF's ``build``'s), when the library has one."""
 
     annotation: Annotation
     vcf: str
     path: str | None
     missing: MissingReference | None = None
+    fasta: str | None = None
+    build: str | None = None
 
 
 def _library_option(library: str | None) -> list[str]:
@@ -311,8 +317,6 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     vcf = selected_vcf(args)
     if not vcf or not Path(vcf).is_file():
         return None
-    if given := _given_path(args, annotation.option):
-        return AnnotationNeed(annotation, vcf, given)
     from wgsextract_cli.core.builds import canonical_build
     from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 
@@ -320,9 +324,13 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     if ref and is_fasta_path(ref) and not Path(ref).is_file():
         return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
+    if given := _given_path(args, annotation.option):
+        return AnnotationNeed(annotation, vcf, given, fasta=lib.fasta, build=lib.build)
     installed = getattr(lib, annotation.attribute, None)
     if installed:
-        return AnnotationNeed(annotation, vcf, str(installed))
+        return AnnotationNeed(
+            annotation, vcf, str(installed), fasta=lib.fasta, build=lib.build
+        )
     build = canonical_build(lib.build) if lib.build else None
     if build not in annotation.builds:
         return None  # The command explains the build it can't annotate.
@@ -333,7 +341,9 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
         annotation,
         vcf,
         None,
-        MissingReference(
+        fasta=lib.fasta,
+        build=lib.build,
+        missing=MissingReference(
             id=annotation.resource,
             kind="annotation",
             name=annotation.name,

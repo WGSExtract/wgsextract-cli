@@ -83,9 +83,13 @@ def parse_command(argv: list[str]) -> argparse.Namespace | None:
         return None
 
 
-def parse_command_line(argv: list[str]) -> argparse.Namespace:
+def parse_command_line(
+    argv: list[str], *, persist_genome: bool = True
+) -> argparse.Namespace:
     """``argv`` parsed as the CLI would parse it; a usage error with
-    argparse's own message when it wouldn't parse or names no command."""
+    argparse's own message when it wouldn't parse or names no command.
+    Without ``persist_genome``, resolving ``--genome`` saves nothing in the
+    genome's folder."""
     from wgsextract_cli.cli.parser import build_parser, parse_args
     from wgsextract_cli.core.genome_library import apply_genome_selection
 
@@ -101,7 +105,7 @@ def parse_command_line(argv: list[str]) -> argparse.Namespace:
         ) from error
     if not hasattr(args, "func"):
         raise UsageError(f"{shlex.join(argv)} names no command to run.")
-    apply_genome_selection(args, set(explicit))
+    apply_genome_selection(args, set(explicit), persist=persist_genome)
     return args
 
 

@@ -316,6 +316,11 @@ def _impute_tools(args: argparse.Namespace) -> list[str]:
     return []
 
 
+def _gvcf_tools(args: argparse.Namespace) -> list[str]:
+    """DeepVariant writes its gVCF reference evidence with bcftools."""
+    return ["bcftools"] if getattr(args, "reference_evidence", None) == "gvcf" else []
+
+
 # Tools a command needs beyond COMMAND_NEEDS, chosen as the command chooses.
 # vep run and vep download replace the default engine's tools.
 _COMMAND_TOOLS: dict[str, Callable[[argparse.Namespace], list[str]]] = {
@@ -323,6 +328,7 @@ _COMMAND_TOOLS: dict[str, Callable[[argparse.Namespace], list[str]]] = {
     "vep download": lambda args: _vep_tools(args, download=True),
     "vcf phase": _phase_tools,
     "vcf impute": _impute_tools,
+    "vcf deepvariant": _gvcf_tools,
 }
 _VEP_TOOLS = frozenset({"vep", "vep-rs", "vep-cache-builder"})
 

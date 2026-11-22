@@ -194,3 +194,188 @@ def test_1183_clair3_names_hosts_it_cant_run_on(offline, monkeypatch, capsys, sa
     clair3_host = item(details, "platform", "Clair3 host")
     assert (code, clair3_host["status"]) == (3, "unsupported")
     assert "Apple Silicon" in clair3_host["detail"]
+
+
+# Copilot review round 1 on PR #1371 ------------------------------------------
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_a_samtools_older_than_the_minimum_is_incompatible(
+    offline, sample, tmp_path, monkeypatch, capsys
+):
+    """samtools 1.9 runs, but `vcf snp` refuses anything before 1.10."""
+    from tests.fake_tools import python_tool
+    from wgsextract_cli.core.dependencies import clear_tool_caches
+
+    bindir = tmp_path / "old"
+    python_tool(bindir, "samtools", "print('samtools 1.9\\nUsing htslib 1.9')")
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+
+    code, details = ready(capsys, "vcf", "snp", "--input", sample.bam)
+
+    samtools = item(details, "tool", "samtools")
+    assert (code, samtools["status"], samtools["blocking"]) == (3, "incompatible", True)
+    assert "1.10 or newer" in samtools["detail"]
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_deepvariant_gvcf_evidence_needs_bcftools(offline, sample, capsys):
+    command = ("vcf", "deepvariant", "--input", sample.bam, "--ref", sample.ref)
+
+    _, plain = ready(capsys, *command)
+    _, gvcf = ready(capsys, *command, "--reference-evidence", "gvcf")
+
+    def tools(details: dict) -> set[str]:
+        return {i["name"] for i in details["items"] if i["kind"] == "tool"}
+
+    assert "bcftools" not in tools(plain)
+    assert "bcftools" in tools(gvcf)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_checking_a_genome_command_line_writes_nothing_in_its_folder(
+    offline, sample, tmp_path, capsys
+):
+    import shutil
+
+    genome = tmp_path / "genomes" / "A"
+    genome.mkdir(parents=True)
+    shutil.copy(sample.bam, genome / "a.bam")
+    shutil.copy(f"{sample.bam}.bai", genome / "a.bam.bai")
+    config = tmp_path / "config.toml"
+    config.write_text(f"mygenomes_library = {json.dumps(str(genome.parent))}\n")
+
+    code, details = ready(
+        capsys, "--config", str(config), "bam", "identify", "--genome", "A"
+    )
+
+    assert code == 0
+    assert item(details, "input")["path"] == str(genome / "a.bam")
+    assert sorted(p.name for p in genome.iterdir()) == ["a.bam", "a.bam.bai"]
+
+
+@pytest.fixture
+def vcf_and_clinvar(tmp_path):
+    vcf = tmp_path / "calls.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t1000\t.\tT\tA\t50\tPASS\t.\n"
+    )
+    clinvar = tmp_path / "clinvar.vcf"
+    clinvar.write_text(vcf.read_text())
+    return vcf, clinvar
+
+
+def test_1183_clinvar_without_a_reference_fasta_is_not_ready(
+    offline, vcf_and_clinvar, capsys
+):
+    """ClinVar matching refuses to run without the VCF's reference FASTA."""
+    vcf, clinvar = vcf_and_clinvar
+
+    code, details = ready(
+        capsys,
+        "vcf",
+        "clinvar",
+        "--vcf-input",
+        str(vcf),
+        "--clinvar-file",
+        str(clinvar),
+    )
+
+    reference = item(details, "reference")
+    assert (code, reference["status"], reference["blocking"]) == (3, "missing", True)
+
+
+def test_1183_a_local_vcf_input_is_read_instead_of_a_remote_input(
+    offline, vcf_and_clinvar, capsys
+):
+    vcf, clinvar = vcf_and_clinvar
+
+    _, details = ready(
+        capsys, "vcf", "clinvar", "--input", "https://example.org/other.vcf.gz",
+        "--vcf-input", str(vcf), "--clinvar-file", str(clinvar),
+    )  # fmt: skip
+
+    inputs = [i for i in details["items"] if i["kind"] == "input"]
+    assert inputs[0]["path"] == str(vcf)
+    assert not [i for i in inputs if i["status"] == "unsupported"]
+
+
+def test_1183_a_missing_fastq_blocks_fastp(offline, tmp_path, capsys):
+    code, details = ready(
+        capsys, "qc", "fastp", "--r1", str(tmp_path / "absent_R1.fastq.gz")
+    )
+
+    fastq = item(details, "input", str(tmp_path / "absent_R1.fastq.gz"))
+    assert (code, fastq["status"], fastq["blocking"]) == (3, "missing", True)
+
+
+@needs_tools("samtools")
+def test_1183_a_stale_index_doesnt_block_the_command_that_rebuilds_it(
+    offline, sample, capsys
+):
+    hour_ago = time.time() - 3600
+    os.utime(f"{sample.bam}.bai", (hour_ago, hour_ago))
+
+    code, details = ready(capsys, "bam", "index", "--input", sample.bam)
+
+    index = item(details, "index", "s.bam.bai")
+    assert (code, index["status"], index["blocking"]) == (0, "stale", False)
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_a_reference_with_other_sequences_of_the_same_lengths_is_incompatible(
+    offline, sample, capsys
+):
+    """The callers' reference check compares the M5 checksums both
+    dictionaries record, not only names and lengths."""
+    from wgsextract_cli.core.ref_library.assets import reference_dict_path
+    from wgsextract_cli.core.utils import run_command
+
+    header = Path(sample.bam).with_suffix(".header.sam")
+    lines = run_command(
+        ["samtools", "view", "-H", sample.bam], capture_output=True
+    ).stdout.splitlines()
+    header.write_text(
+        "\n".join(f"{line}\tM5:{'b' * 32}" if line.startswith("@SQ") else line
+                  for line in lines) + "\n"
+    )  # fmt: skip
+    bam = Path(sample.bam).with_name("m5.bam")
+    with open(bam, "wb") as out:
+        run_command(["samtools", "reheader", str(header), sample.bam], stdout=out)
+    run_command(["samtools", "index", str(bam)])
+    Path(reference_dict_path(sample.ref)).write_text(
+        f"@HD\tVN:1.0\n@SQ\tSN:chr1\tLN:3000\tM5:{'a' * 32}\n"
+    )
+
+    code, details = ready(
+        capsys, "vcf", "snp", "--input", str(bam), "--ref", sample.ref
+    )
+
+    reference = item(details, "reference")
+    assert (code, reference["status"], reference["blocking"]) == (
+        3,
+        "incompatible",
+        True,
+    )
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_an_ordinary_gzip_reference_isnt_required_to_have_an_fai(
+    offline, sample, capsys
+):
+    import gzip
+
+    plain = Path(sample.ref)
+    packed = plain.with_name("plain.fa.gz")
+    packed.write_bytes(gzip.compress(plain.read_bytes()))
+
+    code, details = ready(
+        capsys, "vcf", "clair3", "--input", sample.bam, "--ref", str(packed)
+    )
+
+    index = item(details, "index", "plain.fa.gz.fai")
+    assert (index["status"], index["blocking"]) == ("unverified", False)
+    assert item(details, "reference")["status"] == "runnable"
