@@ -203,6 +203,25 @@ test("#1160: whole-file fallback is bounded but closed ranges stream larger bins
     assert.equal((await fetch(`${f.base}${track.url}`, { headers: { ...track.headers, range: "bytes=0-3" } })).status, 502);
 });
 
+test("#1227: an un-ranged remote HEAD reports the size of a file over 32 MiB without a body", async (t) => {
+    const f = await fixture(t);
+    const size = 33 * 1024 * 1024;
+    f.files.set(f.data, Buffer.alloc(size, 0x41));
+    const connection = await f.configure();
+    const session = await (await f.open(connection)).json(), track = session.files.tracks[0];
+    const before = f.requests.length;
+    const head = await fetch(`${f.base}${track.url}`, { method: "HEAD", headers: track.headers });
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get("content-length"), String(size));
+    assert.equal(head.headers.get("accept-ranges"), "bytes");
+    assert.equal(await head.text(), "");
+    assert.deepEqual(f.requests.slice(before).map(({ file, method, range }) => ({ file, method, range })),
+        [{ file: f.data, method: "HEAD", range: `bytes=0-${size - 1}` }]);
+    assert.equal((await fetch(`${f.base}${track.url}`, { headers: track.headers })).status, 416);
+    f.files.set(f.data, Buffer.alloc(size + 1, 0x41));
+    assert.equal((await fetch(`${f.base}${track.url}`, { method: "HEAD", headers: track.headers })).status, 502);
+});
+
 test("#1160 review: concurrent initial status loads share one stable connection ID", async (t) => {
     const f = await fixture(t);
     await f.configure();
