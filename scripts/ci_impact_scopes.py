@@ -147,21 +147,31 @@ def shadow_candidates(
     scopes: Mapping[str, ChangedScopes],
     tests: Iterable[str],
     declarations: Mapping[str, Iterable[str]],
+    *,
+    symbol_module_users: Mapping[str, Iterable[str]] | None = None,
 ) -> dict[str, list[str]]:
-    """Compare both variants without changing the authoritative selection.
+    """Compare variants without changing the authoritative selection.
 
     ``shared`` includes the function, caller, fixture, resource and universal
     rules. Missing AST evidence retains that path's original module rule.
     """
     decisive = set(shared)
     tight = set(decisive)
+    symbol = set(decisive)
     universe = set(tests)
     for path, users in module_users.items():
         candidates = set(users)
         decisive.update(candidates)
         if path not in scopes or scopes[path].initialization:
             tight.update(candidates)
+        if symbol_module_users is not None:
+            symbol.update(symbol_module_users.get(path, candidates))
     for path, changed in scopes.items():
         if path.startswith("src/") and changed.functions and not changed.initialization:
-            tight.update(module_contract_tests(path, universe, declarations))
-    return {"decisive": sorted(decisive & universe), "tight": sorted(tight & universe)}
+            contracts = module_contract_tests(path, universe, declarations)
+            tight.update(contracts)
+            symbol.update(contracts)
+    variants = {"decisive": decisive, "tight": tight}
+    if symbol_module_users is not None:
+        variants["symbol"] = symbol
+    return {name: sorted(targets & universe) for name, targets in variants.items()}
