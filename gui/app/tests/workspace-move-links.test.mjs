@@ -284,6 +284,28 @@ for (const volume of ["the same volume", "another volume"]) {
     assert.equal(await readFile(path.join(fast, "elsewhere.fa"), "utf8"), ">elsewhere\nTTTT\n");
   });
 
+  test(`1239 moving a library to ${volume} under a new name keeps a link whose first .. leaves it and a later one lands back by name`, posixOnly, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const reference = path.join(users, "reference");
+    await mkdir(path.join(reference, "tmp"), { recursive: true });
+    await writeFile(path.join(reference, "hg38.fa"), ">chr1\nACGT\n");
+    await symlink(".", path.join(reference, "alias"));
+    await symlink(".", path.join(reference, "reference"));
+    // alias/.. leaves for the parent, where reference is the folder itself by its old name; read by name, it never leaves.
+    await symlink("alias/../reference/tmp/../hg38.fa", path.join(reference, "current.fa"));
+    assert.equal(await readFile(path.join(reference, "current.fa"), "utf8"), ">chr1\nACGT\n");
+    await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
+    if (volume === "another volume") {
+      failRenames(t, { folder: reference });
+    }
+
+    const library = path.join(root, "fast", "library");
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: library, setting: { controlID: "paths", key: "reference_library" } });
+
+    assert.equal(await readFile(path.join(library, "current.fa"), "utf8"), ">chr1\nACGT\n");
+  });
+
   test(`1239 moving a library to ${volume} keeps links that reach a file through a .. and a version link following that link`, async (t) => {
     const { root, source, bundle, users } = await fixture(t);
     await prepareBundleWorkspace(manifest, source);

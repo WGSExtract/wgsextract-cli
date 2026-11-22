@@ -72,15 +72,24 @@ function inMovedFolder(move: FolderMove, relative: string) {
 
 /**
  * Whether each `..` in `target`, held by the link at `link`, climbs where its spelling says: from the folder named
- * before it, not from where a link it follows leads. Taken as so where the OS can't follow it, as for a dangling link.
+ * before it, not from where a link it follows leads. Each is checked, as a later walk can land back where the spelling
+ * reads after an earlier one left. Taken as so where the OS can't follow it, as for a dangling link.
  */
 async function climbsByName(link: string, target: string) {
     const parts = target.split(separators());
-    const prefix = parts.slice(0, parts.lastIndexOf("..") + 1).join(path.sep);
     const real = (folder: string) => realpath(folder).catch(() => null);
-    // Unnormalized, so the OS decides what each `..` climbs from; normalized, as the spelling reads.
-    const followed = await real(path.isAbsolute(prefix) ? prefix : `${path.dirname(link)}${path.sep}${prefix}`);
-    return followed == null || followed === await real(path.resolve(path.dirname(link), prefix));
+    for (const [index, part] of parts.entries()) {
+        if (part !== "..") {
+            continue;
+        }
+        const prefix = parts.slice(0, index + 1).join(path.sep);
+        // Unnormalized, so the OS decides what each `..` climbs from; normalized, as the spelling reads.
+        const followed = await real(path.isAbsolute(prefix) ? prefix : `${path.dirname(link)}${path.sep}${prefix}`);
+        if (followed != null && followed !== await real(path.resolve(path.dirname(link), prefix))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
