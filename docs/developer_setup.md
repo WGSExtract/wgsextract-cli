@@ -302,7 +302,8 @@ from the output-schema generator's complete dataclass projections.
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
-it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
+it under `## Deprecated` in a release-note fragment in
+`docs/release-notes/unreleased/` (see its README). A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
 
