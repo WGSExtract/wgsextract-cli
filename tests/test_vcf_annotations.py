@@ -459,7 +459,8 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(
     assert _query(final, "%CHROM:%ID:%CLNSIG:%REVEL\n") == [
         "chr1:snv:Pathogenic:0.9", "chr1:diffalt:.:.", "chr1:block:.:.", "chr1:del:.:."
     ]  # fmt: skip
-    assert sorted(os.listdir(outdir)) == [
+    assert sorted(p.name for p in outdir.iterdir() if not p.name.startswith(".")) == [
+        "chain_annotate.steps.json",
         "chain_annotated.vcf.gz",
         "chain_annotated.vcf.gz.tbi",
     ]
@@ -493,7 +494,8 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
     assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
-    assert os.listdir(tmp_path / "wgse") == ["chain_step_1_clinvar"]
+    assert (tmp_path / "wgse" / "chain_step_1_clinvar").is_dir()
+    assert (tmp_path / "wgse" / "chain_annotate.steps.json").is_file()
 
 
 @needs_bcftools

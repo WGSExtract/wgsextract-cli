@@ -216,7 +216,12 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
         "clinvar_annotated.vcf.gz",
     )
     assert (tmp_path / "out" / "chain_annotated.vcf.gz").read_text() == "revel"
-    assert sorted(os.listdir(tmp_path / "out")) == ["chain_annotated.vcf.gz"]
+    assert sorted(
+        p.name for p in (tmp_path / "out").iterdir() if not p.name.startswith(".")
+    ) == [
+        "chain_annotate.steps.json",
+        "chain_annotated.vcf.gz",
+    ]
 
 
 def test_chain_rejects_unknown_or_empty_annotations(tmp_path):

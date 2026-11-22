@@ -37147,7 +37147,7 @@
    }
   },
   "vcf chain-annotate": {
-   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCF files generated during the chain process.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: samtools, vep, vep-\n  rs; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates] [-r REGION] [--bed BED] [--force]\n                                     [--force-step STEP] [--to-table]\n                                     [--table-format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCFs after success so later runs can reuse them.\n  -r, --region REGION   Only annotate this region (e.g. chr22:1000-2000) or comma-separated\n                        regions.\n  --bed BED             Only annotate regions in this 0-based BED or BED.gz file.\n  --to-table            Also export a variant table and SQLite database.\n  --table-format {tsv,parquet}\n                        Format with --to-table (default: tsv).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume, --restart\n                        Rerun every step, ignoring the steps an earlier run completed.\n  --force-step, --force-steps STEP\n                        Rerun STEP and the steps that use its outputs (repeatable). Steps: select,\n                        clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense,\n                        pharmgkb, vep, trim.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad --region chr22:19000000-20000000 --threads 4 --to-table\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; with --to-\n  table, chain_annotated_variants.tsv (or .parquet) and .sqlite.\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: samtools, vep, vep-\n  rs; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -37485,11 +37485,127 @@
       "default": false,
       "dest": "keep_intermediates",
       "exclusive_group": null,
-      "help": "Keep intermediate VCF files generated during the chain process.",
+      "help": "Keep intermediate VCFs after success so later runs can reuse them.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--keep-intermediates"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "region",
+      "exclusive_group": null,
+      "help": "Only annotate this region (e.g. chr22:1000-2000) or comma-separated regions.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "-r",
+       "--region"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "bed",
+      "exclusive_group": null,
+      "help": "Only annotate regions in this 0-based BED or BED.gz file.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--bed"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "restart",
+      "exclusive_group": null,
+      "help": "Rerun every step, ignoring the steps an earlier run completed.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--force",
+       "--no-resume",
+       "--restart"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "select",
+       "clinvar",
+       "revel",
+       "phylop",
+       "cadd",
+       "gerp",
+       "gnomad",
+       "spliceai",
+       "alphamissense",
+       "pharmgkb",
+       "vep",
+       "trim"
+      ],
+      "class": "_AppendAction",
+      "const": null,
+      "default": null,
+      "dest": "force_steps",
+      "exclusive_group": null,
+      "help": "Rerun STEP and the steps that use its outputs (repeatable). Steps: select, clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep, trim.",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--force-step",
+       "--force-steps"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "to_table",
+      "exclusive_group": null,
+      "help": "Also export a variant table and SQLite database.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--to-table"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "tsv",
+       "parquet"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "table_format",
+      "exclusive_group": null,
+      "help": "Format with --to-table (default: tsv).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--table-format"
       ],
       "required": false,
       "type": null
@@ -53327,8 +53443,10 @@
    "_one_vcf_input": true,
    "annotations": "clinvar,revel,phylop,gnomad,vep",
    "atomic_output": false,
+   "bed": null,
    "command": "vcf",
    "debug": false,
+   "force_steps": null,
    "full_help": false,
    "func": "cmd_chain_annotate",
    "genome": null,
@@ -53343,8 +53461,12 @@
    "parent_pid": null,
    "quiet": false,
    "ref": null,
+   "region": null,
+   "restart": false,
+   "table_format": null,
    "threads": null,
    "tmp_dir": null,
+   "to_table": false,
    "vcf_cmd": "chain-annotate",
    "vcf_input": "x.vcf.gz"
   },
@@ -53357,8 +53479,10 @@
    "_one_vcf_input": true,
    "annotations": "clinvar,revel",
    "atomic_output": false,
+   "bed": null,
    "command": "vcf",
    "debug": false,
+   "force_steps": null,
    "full_help": false,
    "func": "cmd_chain_annotate",
    "genome": null,
@@ -53373,8 +53497,12 @@
    "parent_pid": null,
    "quiet": false,
    "ref": null,
+   "region": null,
+   "restart": false,
+   "table_format": null,
    "threads": null,
    "tmp_dir": null,
+   "to_table": false,
    "vcf_cmd": "chain-annotate",
    "vcf_input": null
   },

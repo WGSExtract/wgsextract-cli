@@ -26,15 +26,20 @@ def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, i
     return chrom, start - 1, end
 
 
-def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
+def bed_intervals(path: str) -> list[tuple[str, int, int]]:
+    """Read the 0-based, half-open rows of a BED, BED.gz or BEDPE file."""
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
     rows = []
     with opener(path, "rt") as source:
         for line in source:
-            if not line.strip() or line.startswith(("#", "track", "browser")):
-                continue
             fields = line.split()
+            if (
+                not fields
+                or fields[0].startswith("#")
+                or fields[0] in {"track", "browser"}
+            ):
+                continue
             try:
                 if lower.endswith(".bedpe"):
                     if fields[0] != fields[3]:
@@ -42,7 +47,7 @@ def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[5])
                 else:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-            except IndexError as error:
+            except (IndexError, ValueError) as error:
                 raise ValueError(f"Invalid interval: {line.strip()}") from error
             if start < 0 or end < start:
                 raise ValueError(f"Invalid interval: {line.strip()}")
@@ -100,7 +105,7 @@ def selected_intervals(
     intervals: Intervals = {}
     for selection in region_items(region, commas=commas):
         if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = _bed_intervals(selection)
+            rows = bed_intervals(selection)
         else:
             rows = [literal_region(selection, lengths)]
         for chrom, start, end in rows:
@@ -109,6 +114,14 @@ def selected_intervals(
             start, end = min(start, lengths[chrom]), min(end, lengths[chrom])
             if end > start:
                 intervals.setdefault(chrom, []).append((start, end))
+    merged = merge_intervals(intervals)
+    if not merged:
+        raise ValueError("Selection covers no reference bases.")
+    return merged
+
+
+def merge_intervals(intervals: Intervals) -> Intervals:
+    """Union each contig's intervals, in ascending coordinate order."""
     merged: Intervals = {}
     for chrom, ranges in intervals.items():
         union: list[tuple[int, int]] = []
@@ -118,6 +131,4 @@ def selected_intervals(
             else:
                 union.append((start, end))
         merged[chrom] = union
-    if not merged:
-        raise ValueError("Selection covers no reference bases.")
     return merged

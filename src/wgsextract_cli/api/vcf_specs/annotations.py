@@ -12,13 +12,17 @@ from wgsextract_cli.api._shared import (
     check_confidence,
     confidence_depth_param,
     confidence_gq_param,
+    force_steps_param,
     ref_param,
+    restart_param,
+    threads_param,
 )
 from wgsextract_cli.core.utils import UsageError
 
 from .shared import (
     _AnnotatorParams,
     _min_score_param,
+    _region_param,
     _resource_param,
     _VcfFileParams,
 )
@@ -375,11 +379,13 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
 @dataclass(frozen=True, kw_only=True)
 class VcfChainAnnotateParams(_VcfFileParams):
     """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
-    steps whose tool or data is missing are skipped with a warning."""
+    steps whose tool or data is missing are skipped with a warning. A step
+    journal lets interrupted chains resume from their last completed step."""
 
     COMMAND = "vcf chain-annotate"
 
     ref: Path | None = ref_param()
+    threads: int | None = threads_param()
     annotations: str = param(
         "clinvar,revel,phylop,gnomad,vep",
         help="Comma-separated list of annotations to apply in order (default: "
@@ -387,6 +393,37 @@ class VcfChainAnnotateParams(_VcfFileParams):
     )
     keep_intermediates: bool = param(
         False,
-        help="Keep intermediate VCF files generated during the chain process.",
+        help="Keep intermediate VCFs after success so later runs can reuse them.",
         action="store_true",
     )
+    region: str | None = _region_param(
+        "Only annotate this region (e.g. chr22:1000-2000) or comma-separated regions."
+    )
+    bed: Path | None = param(
+        None,
+        help="Only annotate regions in this 0-based BED or BED.gz file.",
+        path="file",
+    )
+    restart: bool = restart_param(aliases=("--restart",))
+    force_steps: tuple[str, ...] | None = force_steps_param(
+        (
+            "select", "clinvar", "revel", "phylop", "cadd", "gerp", "gnomad",
+            "spliceai", "alphamissense", "pharmgkb", "vep", "trim",
+        ),
+        aliases=("--force-steps",),
+    )  # fmt: skip
+    to_table: bool = param(
+        False,
+        help="Also export a variant table and SQLite database.",
+        action="store_true",
+    )
+    table_format: str | None = param(
+        None, help="Format with --to-table (default: tsv).", choices=("tsv", "parquet")
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.region is not None and self.bed is not None:
+            raise UsageError("--region and --bed cannot be used together.")
+        if self.table_format is not None and not self.to_table:
+            raise UsageError("--table-format requires --to-table.")
