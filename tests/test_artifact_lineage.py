@@ -157,6 +157,40 @@ def test_1182_bam_to_vcf_to_analyze_links_runs_sources_and_indexes(
 
 
 @needs_htslib
+def test_1182_resuming_a_journal_without_lineage_never_credits_the_resuming_run(
+    tmp_path: Path,
+) -> None:
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    config = _clinvar_config(tmp_path, sample)
+    analysis = tmp_path / "analysis"
+    argv = _analyze(config, calls / "snps.vcf.gz", analysis)
+    code, _, stderr = run_cli(argv)
+    assert code == 0, stderr
+    earlier = _manifest(analysis / "analyze.manifest.json")["run"]
+    earlier_runs = {earlier["id"]} | {c["run"] for c in earlier["children"]}
+    # A journal written before run lineage: no step names who wrote its files.
+    for journal in analysis.glob("*.steps.json"):
+        document = json.loads(journal.read_text())
+        for step in document["steps"].values():
+            for output in step.get("outputs") or []:
+                output.pop("result_artifact", None)
+                output.pop("result_producer", None)
+        journal.write_text(json.dumps(document))
+
+    code, _, stderr = run_cli(argv)
+    assert code == 0, stderr
+    resumed = _manifest(analysis / "analyze.manifest.json")
+    assert {c["status"] for c in resumed["run"]["children"]} == {"reused"}
+    written = [r["artifact"] for r in resumed["outputs"] if r.get("artifact")]
+    assert written
+    # Recovered from the earlier runs' manifests beside them, not this run.
+    assert all(a["origin"] == "recorded" for a in written)
+    assert {a["producer"]["run"] for a in written} <= earlier_runs
+
+
+@needs_htslib
 def test_1182_failed_child_run_is_attributed_in_both_manifests(
     tmp_path: Path,
 ) -> None:

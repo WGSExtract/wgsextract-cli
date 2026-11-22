@@ -21,6 +21,7 @@ from wgsextract_cli.core.artifacts import (
     artifact_from_dict,
     lineage_args,
     producer_from_dict,
+    unrecorded_output,
 )
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
@@ -152,13 +153,18 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
     result = current_result()
     for item in decision.outputs:
         if item.get("role"):
+            path = journal.resolve(item["path"])
+            artifact = artifact_from_dict(item.get("result_artifact"))
+            producer = producer_from_dict(item.get("result_producer"))
+            if artifact is None and producer is None:
+                artifact = unrecorded_output(path, item["role"])
             result.add_output(
-                journal.resolve(item["path"]),
+                path,
                 item["role"],
                 kind=item.get("result_kind"),
                 metrics=_scalars(item.get("result_metrics")),
-                artifact=artifact_from_dict(item.get("result_artifact")),
-                producer=producer_from_dict(item.get("result_producer")),
+                artifact=artifact,
+                producer=producer,
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
     confidence = decision.metrics.get("result_confidence")

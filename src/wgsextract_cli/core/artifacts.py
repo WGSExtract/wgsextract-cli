@@ -323,6 +323,19 @@ def input_artifact(record: FileRecord) -> ArtifactRecord:
     )
 
 
+def unrecorded_output(path: str | os.PathLike[str], role: str) -> ArtifactRecord | None:
+    """A reused output whose step journal doesn't name the run that wrote it
+    (a journal from before run lineage): described as an input is, from a
+    manifest beside it naming this exact file, else with its history unknown;
+    never credited to the run reusing it. None for a non-genomic file."""
+    from wgsextract_cli.core.results import FileRecord, file_kind
+
+    if file_kind(str(path)) not in GENOMIC_KINDS:
+        return None
+    record = FileRecord.describe(path, role)
+    return input_artifact(record) if _annotatable(record) else None
+
+
 def edge(record: FileRecord, *, retained: bool = True) -> SourceEdge:
     artifact = record.artifact
     return SourceEdge(
