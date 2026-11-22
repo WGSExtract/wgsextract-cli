@@ -6,7 +6,6 @@ import subprocess
 import sys
 import threading
 import time
-from argparse import Namespace
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -55,16 +54,6 @@ def test_parse_thread_count_auto(value):
 def test_parse_thread_count_rejects_invalid(value):
     with pytest.raises(ValueError):
         resource_policy.parse_thread_count(value)
-
-
-@pytest.mark.parametrize(("total_gib", "expected"), [(16, "682M"), (32, "1G")])
-def test_resource_defaults_accept_auto(ram, total_gib, expected):
-    ram(total_gib * 1024**3)
-    threads, memory = resource_policy.get_resource_defaults(
-        "auto", "auto", lambda: Namespace(threads=6)
-    )
-    assert threads == "6"
-    assert memory == expected
 
 
 def test_config_threads_auto_becomes_none_default(temp_config):

@@ -16,11 +16,22 @@ from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core import results
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.resource_policy import get_resource_defaults
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 GIB = 1024**3
 MIB = 1024**2
 ULTIMA_READS = 313_736_048
+
+
+@pytest.mark.parametrize(("total_gib", "expected"), [(16, "682M"), (32, "1G")])
+def test_1232_resource_defaults_accept_auto(ram, total_gib, expected):
+    ram(total_gib * GIB)
+    threads, memory = get_resource_defaults(
+        "auto", "auto", lambda: SimpleNamespace(threads=6)
+    )
+    assert threads == "6"
+    assert memory == expected
 
 
 def test_stream_collation_can_make_an_otherwise_fitting_mem2_pipeline_unsafe(
