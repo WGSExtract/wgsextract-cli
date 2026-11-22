@@ -5,26 +5,26 @@ import { asError, errorMessage } from "./errors.js";
 export type EmitEvent = (event: LooseRecord) => Promise<void>;
 
 /**
- * Streams events as NDJSON. The run is aborted when the client disconnects or a write fails, and a
- * failure is reported as a final `failureEvent` while the response is still writable.
+ * Streams events as NDJSON. The run never starts for a client that has already gone, is aborted when the
+ * client disconnects or a write fails, and a failure is reported as a final `failureEvent` while the
+ * response is still writable.
  */
 export async function streamNDJSON(
     response: ServerResponse,
     run: (emit: EmitEvent, signal: AbortSignal) => Promise<unknown>,
     failureEvent: (message: string, error: unknown) => LooseRecord,
 ) {
+    // The client may have gone while the route was still reading the request.
+    if (response.destroyed) {
+        return;
+    }
     const abortController = new AbortController();
     const { signal } = abortController;
-    const abortIfOpen = () => {
+    response.once("close", () => {
         if (!response.writableEnded) {
             abortController.abort();
         }
-    };
-    response.once("close", abortIfOpen);
-    // The client may have gone while the route was still reading the request.
-    if (response.destroyed) {
-        abortIfOpen();
-    }
+    });
     response.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" });
     let writeQueue = Promise.resolve();
     let writeError: unknown;

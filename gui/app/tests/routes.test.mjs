@@ -146,6 +146,14 @@ function rawRequest(port, route, { method = "POST", headers = {}, body = "" } = 
   });
 }
 
+function within(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not settle within ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function readNDJSON(response) {
   const text = await response.text();
   return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
@@ -629,10 +637,14 @@ test("#1234: a client that stops reading and disconnects mid-move releases the w
     client.pause();
   });
   client.on("error", () => {});
-  await moveBlocked;
-  client.destroy();
+  try {
+    await within(moveBlocked, 5000, "backpressure");
+  }
+  finally {
+    client.destroy();
+  }
 
-  await Promise.race([moveSettled, new Promise((_resolve, reject) => setTimeout(reject, 5000, new Error("the move never settled")).unref())]);
+  await within(moveSettled, 5000, "the move");
   const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
   assert.equal(after.status, 200);
   assert.equal((await readNDJSON(after)).at(-1).type, "complete");

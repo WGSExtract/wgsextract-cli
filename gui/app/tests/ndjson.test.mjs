@@ -59,6 +59,7 @@ test("#1234: a backpressured write settles when the client disconnects, leaving 
   });
 
   const client = stalledClient(port);
+  t.after(() => client.destroy());
   await within(blocked, 5000, "backpressure");
   client.destroy();
 
@@ -67,27 +68,30 @@ test("#1234: a backpressured write settles when the client disconnects, leaving 
   assert.equal(serverResponse.listenerCount("error"), 0);
 });
 
-test("#1234: a client that left before the stream started cancels the run instead of leaving it running", async (t) => {
-  let runSawAbort;
+test("#1234: a client that left before the stream started never starts the run", async (t) => {
+  let received;
+  const requestReceived = new Promise((resolve) => {
+    received = resolve;
+  });
   let streamed;
+  const streamSettled = new Promise((resolve) => {
+    streamed = resolve;
+  });
+  let runStarted = false;
   const port = await listen(t, async (_request, response) => {
+    received();
     // The route is still reading the request when the client goes away.
     await once(response, "close");
-    streamed = streamNDJSON(response, async (_emit, signal) => {
-      if (!signal.aborted) {
-        await within(once(signal, "abort"), 2000, "cancelling the run");
-      }
-      runSawAbort = signal.aborted;
-    }, (error) => ({ type: "error", error }));
+    streamed(streamNDJSON(response, async () => {
+      runStarted = true;
+    }, (error) => ({ type: "error", error })));
   });
 
   const client = stalledClient(port);
-  await once(client, "connect");
+  t.after(() => client.destroy());
+  await within(requestReceived, 5000, "receiving the request");
   client.destroy();
-  while (streamed === undefined) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
 
-  await within(streamed, 5000, "the stream");
-  assert.equal(runSawAbort, true);
+  await within(streamSettled, 5000, "the stream");
+  assert.equal(runStarted, false);
 });
