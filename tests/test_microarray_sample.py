@@ -19,6 +19,7 @@ pytestmark = needs_htslib
         "plain",
         "bgzf",
         "indexed-bgzf",
+        "indexed-alias-bgzf",
         "gzip",
         "unsorted",
         "unsorted-bgzf",
@@ -54,8 +55,10 @@ def test_issue_1341_selects_sample_with_undeclared_contigs(tmp_path, caplog, lay
     kits = []
     for kind, declared in [
         ("complete", ("1", "X")),
-        ("incomplete", ("X",) if layout == "partial" else ()),
+        ("incomplete", ("X", "chr1") if layout == "partial" else ()),
     ]:
+        if layout == "indexed-alias-bgzf":
+            declared += ("chr1", "chrX")
         vcf = tmp_path / f"{kind}.vcf"
         vcf.write_text(
             "##fileformat=VCFv4.2\n"
@@ -72,7 +75,7 @@ def test_issue_1341_selects_sample_with_undeclared_contigs(tmp_path, caplog, lay
             with compressed.open("wb") as stream:
                 run_command(["bgzip", "-c", vcf], stdout=stream)
             vcf = compressed
-            if layout == "indexed-bgzf":
+            if layout.startswith("indexed"):
                 run_command(["tabix", "-p", "vcf", vcf])
         elif layout == "gzip":
             compressed = vcf.with_suffix(".vcf.gz")
@@ -85,7 +88,7 @@ def test_issue_1341_selects_sample_with_undeclared_contigs(tmp_path, caplog, lay
             _microarray(str(vcf), fasta, outdir, "--sample", "PICK", *region)
         # Sorted BGZF can get the contig names from its index instead of scanning.
         assert ("missing VCF contig declarations" in caplog.text) == (
-            kind == "incomplete" and layout != "indexed-bgzf"
+            kind == "incomplete" and not layout.startswith("indexed")
         )
         kits.append(_rows(outdir / f"{kind}_PICK_CombinedKit.txt"))
     assert kits[0] == kits[1]

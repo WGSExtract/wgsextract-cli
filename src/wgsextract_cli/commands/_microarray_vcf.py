@@ -35,7 +35,7 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
     match_chromosome_name,
-    vcf_chromosomes,
+    vcf_header_chromosomes,
     vcf_index_chromosomes,
 )
 from wgsextract_cli.core.variant_sample import (
@@ -573,7 +573,9 @@ def _prepare_microarray_vcf(
         if input_chroms is None:
             if is_vcf and sample:
                 # Target-only selection can stream a VCF without building an index.
-                input_chroms = vcf_chromosomes(str(params.input))
+                input_chroms = vcf_index_chromosomes(
+                    params.input
+                ) or vcf_header_chromosomes(get_bam_header(params.input))
             elif is_vcf:
                 ensure_vcf_indexed(str(params.input))
                 input_chroms = vcf_index_chromosomes(str(params.input))

@@ -128,11 +128,10 @@ def subset_vcf_sample(
     if "-r" not in selection_args and re.search(
         r"Contig .+ is not defined in the header", stderr
     ):
-        header = _header_with_record_contigs(vcf)
-        if header is not None:
-            selection_args = (
-                list(selection(vcf_header_chromosomes(header))) if selection else []
-            )
+        repaired = _header_with_record_contigs(vcf)
+        if repaired is not None:
+            header, used = repaired
+            selection_args = list(selection(used)) if selection else []
             _stream_repaired_subset(
                 vcf, header, [*view, *selection_args, *output, "-"], out
             )
@@ -167,23 +166,25 @@ def _stream_repaired_subset(
         )
 
 
-def _header_with_record_contigs(vcf: PathInput) -> str | None:
-    """The replacement header, or None if all record contigs are declared."""
+def _header_with_record_contigs(vcf: PathInput) -> tuple[str, list[str]] | None:
+    """The replacement header and contigs with records, if repair is needed."""
     header = run_command(
         ["bcftools", "view", "--no-version", "-h", vcf], capture_output=True
     ).stdout
     declared = set(vcf_header_chromosomes(header))
-    missing: dict[str, None] = {}
+    used: dict[str, None] = {}
     command = ["bcftools", "query", "-f", "%CHROM\\n", fspath(vcf)]
     with popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as query:
         assert query.stdout is not None
         for line in query.stdout:
-            contig = line.rstrip(b"\r\n").decode()
-            if contig not in declared:
-                missing.setdefault(contig, None)
+            used.setdefault(line.rstrip(b"\r\n").decode(), None)
         if query.wait():
             raise subprocess.CalledProcessError(query.returncode, command)
+    missing = [contig for contig in used if contig not in declared]
     if not missing:
         return None
     meta, columns = header.rstrip("\n").rsplit("\n", 1)
-    return "\n".join([meta, *(f"##contig=<ID={c}>" for c in missing), columns, ""])
+    return (
+        "\n".join([meta, *(f"##contig=<ID={c}>" for c in missing), columns, ""]),
+        list(used),
+    )
