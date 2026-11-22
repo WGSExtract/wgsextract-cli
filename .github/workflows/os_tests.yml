@@ -54,8 +54,6 @@ on:
 
 permissions:
   contents: read
-  # Main pushes read the merge group's run, jobs and artifact (#1373).
-  actions: read
 
 jobs:
   workflow-smoke:
@@ -81,6 +79,10 @@ jobs:
         include: ${{ fromJSON(inputs.matrix) }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
+    permissions:
+      contents: read
+      # Main pushes read the merge group's run, jobs and artifact (#1373).
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Verify native runner architecture

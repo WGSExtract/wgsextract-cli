@@ -112,6 +112,13 @@ def fetch(
     """Write a usable manifest to ``output`` and return its run, or write nothing."""
     try:
         found = queue_manifest(repository, sha, artifact, api=api)
+        if found is not None:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(found[0])
+            if not Manifest.load(output).passed:
+                output.unlink()
+                print(f"Merge group {found[1]} left no readable manifest; running all.")
+                return None
     except (
         OSError,
         ValueError,
@@ -121,18 +128,13 @@ def fetch(
         zipfile.BadZipFile,
         subprocess.SubprocessError,
     ) as error:
+        output.unlink(missing_ok=True)
         print(f"Merge-group lookup failed ({error!r}); running the full suite.")
         return None
     if found is None:
         print("No passing merge group recorded tests at this SHA; running all.")
         return None
-    data, run = found
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(data)
-    if not Manifest.load(output).passed:
-        output.unlink()
-        print(f"Merge group {run} left no readable manifest; running all.")
-        return None
+    run = found[1]
     print(f"Merge group {run} already ran tests at this SHA; main runs the rest.")
     return run
 
