@@ -22,6 +22,15 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- An interrupted reference download no longer resumes onto a different
+  version of the file. Resumes were tied to the URL alone, so a file replaced
+  at the same URL by one of the same size was installed as the old file's start
+  and the new file's end. Both one-connection and segmented downloads now
+  record the server's ETag or Last-Modified date, resume only that version and
+  otherwise start over. A partial left by an earlier release, or from a server
+  that names no version and without a pinned checksum, downloads again from
+  the start
+  ([#1225, resumed downloads mixing file versions](https://github.com/WGSExtract/wgsextract-cli/issues/1225)).
 - `ref cadd` keeps a complete CADD score table whose index download failed or
   was cancelled: the next run checks the table against its published MD5 and
   fetches only the missing index, instead of downloading the ~85 GB SNV table
@@ -43,6 +52,11 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
+- `report-issue` now reads sample names from a BAM/CRAM or VCF header when
+  samtools or bcftools is installed only in the WGS Extract Pixi environment
+  rather than on `PATH`, so it redacts them from the report. It previously
+  could not start the tools and left those names in
+  ([#1314, report sample redaction](https://github.com/WGSExtract/wgsextract-cli/issues/1314)).
 - `score pgs` now finds bcftools the same way its dependency check does, so
   it scores when bcftools is installed only in the WGS Extract Pixi
   environment rather than on `PATH`. It previously failed with "No such file
