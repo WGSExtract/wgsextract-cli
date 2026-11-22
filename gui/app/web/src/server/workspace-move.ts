@@ -7,7 +7,7 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
-import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
+import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
 import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
@@ -107,7 +107,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         await copyFolder(move, links, onProgress, signal);
     }
     const rewritten: RewrittenFile[] = [];
-    const relinked: PlannedLink[] = [];
+    const relinked: RelinkedLink[] = [];
     try {
         // A copy made its links point at the new place already; a renamed folder's still hold what they did.
         if (renamed) {

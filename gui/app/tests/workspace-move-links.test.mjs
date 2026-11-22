@@ -266,7 +266,10 @@ for (const volume of ["the same volume", "another volume"]) {
     await symlink(path.join(root, "a", "b", "c"), path.join(root, "via"));
     await mkdir(path.join(root, "a", "b", "c"));
     await symlink(path.join(await realpath(real), "genomes", "hg38.fa"), path.join(real, "current.fa"));
-    // Read by the OS, via/.. is a/b; read by name, it is the root, where there is no library.
+    // Read by the OS, via/.. is a/b; read by name, it is the root, whose own reference folder a link leads out to.
+    await mkdir(path.join(root, "reference"));
+    await writeFile(path.join(root, "reference", "hg38.fa"), ">elsewhere\nTTTT\n");
+    await symlink(path.join(root, "reference", "hg38.fa"), path.join(real, "elsewhere.fa"));
     const reference = `${path.join(root, "via")}${path.sep}..${path.sep}reference`;
     await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
     if (volume === "another volume") {
@@ -278,8 +281,63 @@ for (const volume of ["the same volume", "another volume"]) {
 
     assert.equal(await readFile(path.join(fast, "current.fa"), "utf8"), ">chr1\nACGT\n");
     assert.ok((await realpath(path.join(fast, "current.fa"))).startsWith(await realpath(fast)));
+    assert.equal(await readFile(path.join(fast, "elsewhere.fa"), "utf8"), ">elsewhere\nTTTT\n");
+  });
+
+  test(`1239 moving a library to ${volume} keeps links that reach a file through a .. and a version link following that link`, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const reference = path.join(users, "reference");
+    for (const version of ["v2", "v3"]) {
+      await mkdir(path.join(reference, version), { recursive: true });
+      await writeFile(path.join(reference, version, "hg38.fa"), `>${version}\n`);
+    }
+    await mkdir(path.join(reference, "sub"));
+    await mkdir(path.join(reference, "genomes"));
+    await symlink("v2", path.join(reference, "current"), "junction");
+    const links = { "sub/x.fa": "../current/hg38.fa", "absolute.fa": `${reference}${path.sep}genomes${path.sep}..${path.sep}current${path.sep}hg38.fa` };
+    for (const [name, target] of Object.entries(links)) {
+      if (!await trySymlink(t, target, path.join(reference, name))) {
+        return;
+      }
+    }
+    await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
+    if (volume === "another volume") {
+      failRenames(t, { folder: reference });
+    }
+
+    const fast = path.join(root, "fast", "reference");
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
+    await unlink(path.join(fast, "current"));
+    await symlink(path.join(fast, "v3"), path.join(fast, "current"), "junction");
+
+    for (const name of Object.keys(links)) {
+      assert.equal(await readFile(path.join(fast, name), "utf8"), ">v3\n", `${name} still follows current`);
+    }
   });
 }
+
+test("1239 files beside a link, named like a move's temporary entries, survive relinking it", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const reference = path.join(users, "reference");
+  const expected = await referenceWithLinks(t, root, reference);
+  if (!expected) {
+    return;
+  }
+  const bystanders = [`current.fa.relinked-${process.pid}`, `current.fa.relinking-${process.pid}`];
+  for (const name of bystanders) {
+    await writeFile(path.join(reference, name), `${name}\n`);
+  }
+
+  const chosen = path.join(root, "big drive", "wgs");
+  await move({ sourceRoot: source, bundleRoot: bundle, folder: chosen });
+
+  for (const name of bystanders) {
+    assert.equal(await readFile(path.join(chosen, "reference", name), "utf8"), `${name}\n`);
+  }
+  await assertLinksFollowed(path.join(chosen, "reference"), expected);
+});
 
 test("1239 a path on a Windows share spelled in other letter case is inside the folder moving from it", () => {
   const share = "\\\\NAS\\share\\workspace";
@@ -395,4 +453,18 @@ test("1239 on Windows, a renamed folder holding a deduplicated file, listed as a
   await move(request);
 
   assert.equal(await readFile(path.join(request.folder, "dedup.fa"), "utf8"), ">chr1\nACGT\n");
+});
+
+test("1239 on Windows without link rights, a failed move puts back folder links it remade as junctions", async (t) => {
+  const { reference, request } = await referenceMovingTo(t, ["moved", "reference"]);
+  await mkdir(path.join(reference, "sub"));
+  // Climbs out of the folder and back in by its name, so the move rewrites it; Windows can only make it a junction.
+  await symlink(["..", "..", "reference", "genomes", "v2"].join(path.sep), path.join(reference, "sub", "latest"), "junction");
+  failRenames(t, { failing: "config.toml" });
+  asWindowsWithoutLinkRights(t);
+
+  await assert.rejects(move(request), /EIO/);
+
+  await assert.rejects(stat(request.folder), { code: "ENOENT" });
+  assert.equal(await realpath(path.join(reference, "sub", "latest")), await realpath(path.join(reference, "genomes", "v2")));
 });

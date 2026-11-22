@@ -1,4 +1,4 @@
-import { lstat, readdir, readlink, realpath, rename, stat, symlink, unlink } from "node:fs/promises";
+import { lstat, mkdtemp, readdir, readlink, realpath, rename, rmdir, stat, symlink, unlink } from "node:fs/promises";
 import path from "node:path";
 import { errnoCode, HttpError } from "./errors.js";
 
@@ -18,6 +18,11 @@ export interface PlannedLink {
     moved: string;
     /** Whether it leads to a folder, which Windows needs to know to make it. */
     directory: boolean;
+}
+
+/** A link this move replaced, with what the new one holds: Windows may have made a junction holding an absolute path. */
+export interface RelinkedLink extends PlannedLink {
+    installed: string;
 }
 
 /**
@@ -66,36 +71,47 @@ function inMovedFolder(move: FolderMove, relative: string) {
 }
 
 /**
+ * Whether each `..` in `target`, held by the link at `link`, climbs where its spelling says: from the folder named
+ * before it, not from where a link it follows leads. Taken as so where the OS can't follow it, as for a dangling link.
+ */
+async function climbsByName(link: string, target: string) {
+    const parts = target.split(separators());
+    const prefix = parts.slice(0, parts.lastIndexOf("..") + 1).join(path.sep);
+    const real = (folder: string) => realpath(folder).catch(() => null);
+    // Unnormalized, so the OS decides what each `..` climbs from; normalized, as the spelling reads.
+    const followed = await real(path.isAbsolute(prefix) ? prefix : `${path.dirname(link)}${path.sep}${prefix}`);
+    return followed == null || followed === await real(path.resolve(path.dirname(link), prefix));
+}
+
+/**
  * What the symlink at `relative` in the moving folder, holding `target`, should hold at its new place. A target
- * spelled within the folder keeps its spelling, relocated if absolute, so links it passes through still decide where
- * it leads. Any other leads where it did as the OS followed it before the move: to the same file at the new place if
- * that is in the folder, else where it did, an absolute target keeping its spelling unless a `..` makes the OS walk
- * through folders that may be gone.
+ * spelled within the folder, whose every `..` climbs where its spelling says, keeps its spelling, relocated if
+ * absolute, so links it passes through, such as `current -> v2`, still decide where it leads. Any other leads where it
+ * did as the OS followed it before the move: to the same file at the new place if that is in the folder, else where it
+ * did, an absolute target keeping its spelling unless a `..` makes the OS walk through folders that may be gone.
  */
 export async function movedLinkTarget(move: FolderMove, relative: string, target: string): Promise<string> {
     const absolute = path.isAbsolute(target);
     const climbs = target.split(separators()).includes("..");
-    if (absolute && !climbs) {
-        const spelled = within(move.from, target) ?? within(move.fromReal, target);
+    const link = path.join(move.fromReal, relative);
+    // A folder spelled with a `..` after a link is named only by its real path.
+    const roots = move.from.split(separators()).includes("..") ? [move.fromReal] : [move.from, move.fromReal];
+    const inside = (candidate: string) => roots.map((root) => within(root, candidate)).find((found) => found != null) ?? null;
+    if (!climbs || await climbsByName(link, target)) {
+        const spelled = absolute ? inside(target) : null;
         if (spelled != null) {
             return inMovedFolder(move, spelled);
         }
+        if (!absolute && staysInFolder(path.dirname(relative), target)) {
+            return target;
+        }
     }
-    const inFolder = !absolute && staysInFolder(path.dirname(relative), target);
-    if (inFolder && !climbs) {
-        return target;
-    }
-    const link = path.join(move.fromReal, relative);
     const leadsTo = await currentTarget(link, target);
-    // A `..` climbs from where a link leads, not from where it is spelled; the spelling is kept only where both agree.
-    if (inFolder && leadsTo === path.resolve(path.dirname(link), target)) {
-        return target;
-    }
-    const inside = within(move.fromReal, leadsTo) ?? within(move.from, leadsTo);
-    if (inside == null) {
+    const leadsInside = inside(leadsTo);
+    if (leadsInside == null) {
         return absolute && !climbs ? target : leadsTo;
     }
-    const movedTarget = inMovedFolder(move, inside);
+    const movedTarget = inMovedFolder(move, leadsInside);
     return absolute ? movedTarget : path.relative(path.dirname(inMovedFolder(move, relative)), movedTarget) || ".";
 }
 
@@ -161,16 +177,19 @@ export async function createLink(target: string, link: string, directory: boolea
 }
 
 /**
- * Points the link at `target` if it still holds `expected`, making the new link before setting the old one aside, so a
- * link that can't be made loses nothing. An entry changed since the plan, by the CLI say, is put back untouched and
- * fails the move; one already gone, as after an earlier attempt that couldn't finish, is simply replaced.
+ * Points the link at `target` if it still holds `expected`, returning what the new link holds. The new link is made,
+ * and the old set aside, in a folder of this move's own, so nothing else is overwritten, and a link that can't be made
+ * loses nothing. An entry changed since the plan, by the CLI say, is put back untouched and fails the move; one
+ * already gone is simply replaced.
  */
-async function replaceLink(link: string, expected: string, target: string, directory: boolean, finalLink = link) {
-    const replacement = `${link}.relinking-${process.pid}`;
-    const aside = `${link}.relinked-${process.pid}`;
-    await createLink(target, replacement, directory, finalLink);
+async function replaceLink(link: string, expected: string, target: string, directory: boolean, finalLink = link): Promise<string> {
+    const scratch = await mkdtemp(path.join(path.dirname(link), ".relinking-"));
+    const replacement = path.join(scratch, "new");
+    const aside = path.join(scratch, "old");
     let setAside = false;
     try {
+        await createLink(target, replacement, directory, finalLink);
+        const installed = await readlink(replacement);
         setAside = await rename(link, aside).then(() => true, (error: unknown) => {
             if (errnoCode(error) !== "ENOENT") {
                 throw error;
@@ -181,40 +200,46 @@ async function replaceLink(link: string, expected: string, target: string, direc
             throw new HttpError(409, `${finalLink} changed during the move. Close anything using the folder and try again.`);
         }
         await rename(replacement, link);
+        if (setAside) {
+            await unlink(aside);
+        }
+        return installed;
     }
     catch (error) {
         if (setAside) {
             await rename(aside, link);
         }
-        await unlink(replacement).catch(() => undefined);
         throw error;
     }
-    if (setAside) {
-        await unlink(aside);
+    finally {
+        await unlink(replacement).catch(() => undefined);
+        // Left, holding the old entry, only if that could not be put back.
+        await rmdir(scratch).catch((error: unknown) => {
+            console.warn(`Could not remove ${scratch}: ${String(error)}`);
+        });
     }
 }
 
-/** After the folder was renamed to `move.to`, points each planned link that changes at its new target, recording it in `relinked`. */
-export async function relinkMovedFolder(move: FolderMove, planned: Iterable<PlannedLink>, relinked: PlannedLink[], signal: AbortSignal) {
+/**
+ * After the folder was renamed to `move.to`, points each planned link that changes at its new target, recording in
+ * `relinked` each one replaced, and only those, with what it now holds.
+ */
+export async function relinkMovedFolder(move: FolderMove, planned: Iterable<PlannedLink>, relinked: RelinkedLink[], signal: AbortSignal) {
     for (const link of planned) {
         signal.throwIfAborted();
         if (link.moved === link.target) {
             continue;
         }
-        relinked.push(link);
-        await replaceLink(path.join(move.to, link.relative), link.target, link.moved, link.directory);
+        const installed = await replaceLink(path.join(move.to, link.relative), link.target, link.moved, link.directory);
+        relinked.push({ ...link, installed });
     }
 }
 
 /** Puts back what {@link relinkMovedFolder} changed, as many as it can, before the folder is renamed back. */
-export async function restoreLinks(move: FolderMove, relinked: PlannedLink[]) {
-    for (const { relative, target, moved, directory } of [...relinked].reverse()) {
-        const link = path.join(move.to, relative);
-        if (await readlink(link).then((current) => current === target, () => false)) {
-            continue;
-        }
+export async function restoreLinks(move: FolderMove, relinked: RelinkedLink[]) {
+    for (const { relative, target, installed, directory } of [...relinked].reverse()) {
         const original = path.join(move.from, relative);
-        await replaceLink(link, moved, target, directory, original).catch((error: unknown) => {
+        await replaceLink(path.join(move.to, relative), installed, target, directory, original).catch((error: unknown) => {
             console.warn(`Could not put back the link ${original}: ${String(error)}`);
         });
     }
