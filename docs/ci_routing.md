@@ -742,6 +742,13 @@ checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
 test coverage even for docs-only groups.
+When a queued PR is pushed to, dequeued or fails, GitHub deletes its
+`gh-readonly-queue` ref and those of later groups, then rebuilds them. Each
+queue run's `cancel-stale-queue` job (outside `required`, `actions: write` only
+there) cancels this workflow's still-active queue runs whose ref is gone,
+never its own run and nothing when its own ref is missing; API errors are
+warnings. The lost-runner observer likewise never retries a cancelled queue run
+whose ref is gone.
 
 Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
 every check, advisory ones included, is green, and don't update branches that

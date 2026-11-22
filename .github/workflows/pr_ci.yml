@@ -105,6 +105,35 @@ jobs:
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
+  # Frees runners held by merge groups GitHub already invalidated (#1373). Not in
+  # `required`'s needs, and the script only warns on API errors, so it never
+  # fails or blocks a group.
+  cancel-stale-queue:
+    name: Cancel invalidated merge groups
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Cancel runs whose queue ref was deleted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.merge_group.base_ref }}
+        run: >-
+          python3 -m scripts.ci_cancel_stale_queue
+          --repository "$GITHUB_REPOSITORY"
+          --workflow pr_ci.yml
+          --base "$BASE_REF"
+          --run-id "$GITHUB_RUN_ID"
+          --ref "$GITHUB_REF"
+
   draft-fast:
     name: Draft lint and fast tests
     needs: changes

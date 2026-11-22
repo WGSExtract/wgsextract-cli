@@ -254,7 +254,7 @@ Only land the PR when all conditions are true:
 
 Use the repository's normal merge method. If uncertain, inspect allowed merge methods or existing project convention. Prefer `gh pr merge --auto` when branch protection requires queued/auto merge, otherwise use the repo's standard method. Do not use admin override.
 
-In WGS Extract, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` once every check (advisory ones included) is green. Never merge directly. The queue retests only the `required` set against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again.
+In WGS Extract, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` once every check (advisory ones included) is green. Never merge directly. The queue retests only the `required` set against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again. Never push to an enqueued PR: dequeue it first with `gh pr merge PR --disable-auto`, so later queue groups are not invalidated.
 
 After merging:
 
