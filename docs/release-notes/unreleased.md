@@ -48,12 +48,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
-- Output folders on drives without hard links (exFAT, FAT32 and some SMB
-  shares) now work: `qc multiqc` no longer fails with "Operation not
-  supported", nor do whole-genome GATK, Clair3 and DeepVariant calls that
-  split the genome by ploidy. An existing report is still never replaced
-  without `--force`
-  ([#1241, drives without hard links](https://github.com/WGSExtract/wgsextract-cli/issues/1241)).
 - `report-issue` now reads sample names from a BAM/CRAM or VCF header when
   samtools or bcftools is installed only in the WGS Extract Pixi environment
   rather than on `PATH`, so it redacts them from the report. It previously
