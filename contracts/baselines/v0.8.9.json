@@ -1,6 +1,6 @@
 {
  "commit": "140b9dae92498305b3288947e025b9ae0d3fdfb7",
- "digest": "sha256:c66073bde831994f6ed6d0944ba70d7da190ba7af69fe75e4c1ead492ac401ea",
+ "digest": "sha256:fb41c67749190b29f85c04f16aff1d21a61a1c1b726f01ae849ade231575a121",
  "documents": {
   "wgsextract.report/1": {
    "paths": {
@@ -47,7 +47,7 @@
     "sections.acmg_research.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.acmg_research.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.acmg_research.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.acmg_research.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.acmg_research.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.acmg_research.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.acmg_research.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.acmg_research.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -139,7 +139,7 @@
     "sections.ancestry.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.ancestry.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.ancestry.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.ancestry.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.ancestry.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.ancestry.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.ancestry.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.ancestry.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -216,7 +216,7 @@
     "sections.carrier_screening.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.carrier_screening.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.carrier_screening.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.carrier_screening.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.carrier_screening.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.carrier_screening.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.carrier_screening.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.carrier_screening.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -303,7 +303,7 @@
     "sections.clinvar.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.clinvar.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.clinvar.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.clinvar.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.clinvar.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.clinvar.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.clinvar.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.clinvar.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -396,7 +396,7 @@
     "sections.lineage.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.lineage.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.lineage.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.lineage.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.lineage.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.lineage.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.lineage.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.lineage.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -479,7 +479,7 @@
     "sections.microarray.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.microarray.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.microarray.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.microarray.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.microarray.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.microarray.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.microarray.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.microarray.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -566,7 +566,7 @@
     "sections.overview.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.overview.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.overview.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.overview.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.overview.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.overview.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.overview.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.overview.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -646,7 +646,7 @@
     "sections.pharmacogenomics.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.pharmacogenomics.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.pharmacogenomics.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.pharmacogenomics.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.pharmacogenomics.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.pharmacogenomics.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.pharmacogenomics.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.pharmacogenomics.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -723,7 +723,7 @@
     "sections.structural_variants.findings[].evidence.manifest": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.structural_variants.findings[].evidence.region": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
     "sections.structural_variants.findings[].gene": {"required":true,"scientific":true,"tier":"experimental","types":["null","string"]},
-    "sections.structural_variants.findings[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
+    "sections.structural_variants.findings[].label": {"minLength":1,"required":true,"scientific":true,"tier":"experimental","types":["string"]},
     "sections.structural_variants.findings[].links": {"required":true,"scientific":true,"tier":"experimental","types":["array"]},
     "sections.structural_variants.findings[].links[]": {"required":true,"scientific":true,"tier":"experimental","types":["object"]},
     "sections.structural_variants.findings[].links[].label": {"required":true,"scientific":true,"tier":"experimental","types":["string"]},
@@ -791,7 +791,7 @@
   },
   "wgsextract.result/1": {
    "paths": {
-    "command": {"meaning":"The subcommand path that ran, e.g. 'vcf snp'.","required":true,"tier":"stable","types":["string"]},
+    "command": {"meaning":"The subcommand path that ran, e.g. 'vcf snp'.","minLength":1,"required":true,"tier":"stable","types":["string"]},
     "details": {"required":true,"scientific":true,"tier":"experimental","types":["null","object"]},
     "details.*": {"required":false,"scientific":true,"tier":"experimental","types":["array","boolean","integer","null","number","object","string"]},
     "error": {"required":true,"tier":"stable","types":["null","object"]},
@@ -1251,29 +1251,51 @@
     "tier": "experimental"
    },
    "input": {
-    "commands": [
-     "extract mt-bam"
-    ],
     "meaning": "The sample file the command read (BAM, CRAM, FASTQ, VCF or a microarray file).",
+    "producers": [
+     {
+      "command": "extract mt-bam"
+     }
+    ],
     "tier": "stable"
    },
    "mt_bam": {
-    "commands": [
-     "extract mt-bam"
-    ],
     "meaning": "A BAM holding only the sample's mitochondrial reads.",
+    "producers": [
+     {
+      "command": "extract mt-bam"
+     }
+    ],
     "tier": "stable"
    },
    "proband": {
     "meaning": "The proband VCF of a trio analysis.",
+    "producers": [
+     {
+      "command": "vcf trio",
+      "when": "proband"
+     }
+    ],
     "tier": "stable"
    },
    "result_card": {
     "meaning": "The shareable HTML card written beside the manifest with --card.",
+    "producers": [
+     {
+      "command": "extract mt-bam",
+      "when": "card"
+     }
+    ],
     "tier": "stable"
    },
    "vcf_input": {
     "meaning": "The sample VCF the command read when it was named with --vcf-input.",
+    "producers": [
+     {
+      "command": "vcf filter",
+      "when": "vcf_input"
+     }
+    ],
     "tier": "stable"
    },
    "vendor_kit": {
@@ -1293,29 +1315,51 @@
    "tier": "experimental"
   },
   "input": {
-   "commands": [
-    "extract mt-bam"
-   ],
    "meaning": "The sample file the command read (BAM, CRAM, FASTQ, VCF or a microarray file).",
+   "producers": [
+    {
+     "command": "extract mt-bam"
+    }
+   ],
    "tier": "stable"
   },
   "mt_bam": {
-   "commands": [
-    "extract mt-bam"
-   ],
    "meaning": "A BAM holding only the sample's mitochondrial reads.",
+   "producers": [
+    {
+     "command": "extract mt-bam"
+    }
+   ],
    "tier": "stable"
   },
   "proband": {
    "meaning": "The proband VCF of a trio analysis.",
+   "producers": [
+    {
+     "command": "vcf trio",
+     "when": "proband"
+    }
+   ],
    "tier": "stable"
   },
   "result_card": {
    "meaning": "The shareable HTML card written beside the manifest with --card.",
+   "producers": [
+    {
+     "command": "extract mt-bam",
+     "when": "card"
+    }
+   ],
    "tier": "stable"
   },
   "vcf_input": {
    "meaning": "The sample VCF the command read when it was named with --vcf-input.",
+   "producers": [
+    {
+     "command": "vcf filter",
+     "when": "vcf_input"
+    }
+   ],
    "tier": "stable"
   },
   "vendor_kit": {

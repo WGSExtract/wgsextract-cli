@@ -17,6 +17,7 @@ from scripts import output_contracts as contracts
 from scripts.output_contract_surface import Finding
 from tests.htslib_helpers import needs_htslib, sam_to_bam
 from tests.smoke_utils import run_cli
+from tests.test_trio_vcfs import _trio
 from wgsextract_cli import api
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,6 +229,12 @@ def test_1180_experimental_changes_need_a_release_note_notice(repo: Path) -> Non
     unannounced = found["experimental_field_removed wgsextract.report/1:guide"]
     assert "docs/release-notes/unreleased.md" in unannounced.message
 
+    # A mention in the baseline release's own notes is history, not a notice.
+    with (repo / "docs/release-notes/v0.8.9.md").open("a", encoding="utf-8") as old:
+        old.write("\n- `wgsextract.report/1:guide` changed.\n")
+    assert "experimental_field_removed wgsextract.report/1:guide" in errors(
+        contracts.check(repo)
+    )
     with (repo / "docs/release-notes/unreleased.md").open(
         "a", encoding="utf-8"
     ) as notes:
@@ -281,7 +288,7 @@ def test_1180_an_unvalidated_scientific_result_cannot_be_stable(repo: Path) -> N
     )
 
 
-def test_1180_stable_output_roles_are_kept_and_produced(repo: Path) -> None:
+def test_1180_stable_output_roles_are_kept_and_name_their_producers(repo: Path) -> None:
     def change(registry: dict[str, Any]) -> None:
         del registry["roles"]["mt_bam"]
         registry["roles"]["phantom_report"] = {"tier": "stable", "meaning": "x"}
@@ -289,7 +296,58 @@ def test_1180_stable_output_roles_are_kept_and_produced(repo: Path) -> None:
     edit(repo, baselines.REGISTRY, change)
     found = errors(contracts.check(repo))
     assert "stable_role_removed roles:mt_bam" in found
-    assert "stable_role_unproduced roles:phantom_report" in found
+    assert "stable_role_without_producer roles:phantom_report" in found
+
+
+def test_1180_dropping_a_stable_string_length_bound_is_a_widening(repo: Path) -> None:
+    """Review of #1365: minLength was dropped, so an empty `command` passed."""
+    edit(repo, RESULT, lambda schema: schema["properties"]["command"].pop("minLength"))
+    found = errors(contracts.check(repo))
+    assert (
+        "minLength" in found["stable_type_changed wgsextract.result/1:command"].message
+    )
+
+
+def test_1180_an_unrestricted_object_alternative_widens_its_children(
+    repo: Path,
+) -> None:
+    """Review of #1365: `error: {}` became valid while `error.kind` stayed
+    required in the surface, so the widening passed."""
+    edit(
+        repo,
+        RESULT,
+        lambda schema: schema["properties"]["error"]["anyOf"].append(
+            {"type": "object"}
+        ),
+    )
+    found = errors(contracts.check(repo))
+    assert {
+        "stable_requiredness_changed wgsextract.result/1:error.kind",
+        "stable_type_changed wgsextract.result/1:error.kind",
+    } <= set(found)
+
+
+def test_1180_removing_a_document_with_stable_fields_is_a_stable_break(
+    repo: Path,
+) -> None:
+    """Review of #1365: an experimental document's stable `schema` and
+    `generated` fields vanished behind a mere release-note notice."""
+    edit(repo, baselines.REGISTRY, lambda r: r["documents"].pop("wgsextract.report/1"))
+    with (repo / "docs/release-notes/unreleased.md").open("a", encoding="utf-8") as f:
+        f.write("\n- `wgsextract.report/1:` is gone.\n")
+    assert "stable_document_removed wgsextract.report/1:" in errors(
+        contracts.check(repo)
+    )
+
+
+def test_1180_sample_folder_overrides_are_not_checked_as_file_overrides() -> None:
+    """Review of #1365: `override.sex` was also read as an `override.*` entry."""
+    folder_wide = {"schema": "wgsextract.sample/1", "override": {"sex": "Female"}}
+    assert contracts.check_output(ROOT, folder_wide) == []
+    unknown = {"schema": "wgsextract.sample/1", "override": {"sex": "Unknown"}}
+    assert set(errors(contracts.check_output(ROOT, unknown))) == {
+        "stable_type_mismatch_in_output wgsextract.sample/1:override.sex"
+    }
 
 
 def test_1180_editing_the_baseline_in_the_same_change_cannot_erase_the_comparison(
@@ -366,8 +424,27 @@ def test_1180_baselines_are_pinned_from_a_release_tag_and_stay_immutable(
     )
 
 
+def test_1180_a_later_release_cannot_bootstrap_its_own_tiers(repo: Path) -> None:
+    """Review of #1365: a `bootstrap` baseline of a tag that has a registry
+    skipped the tag's tiers, so an empty one could become the newest."""
+    git(repo, "init", "-q")
+    commit = commit_all(repo, "release")
+    git(repo, "tag", "v0.9.0")
+    forged = json.loads(
+        (repo / "contracts/baselines/v0.8.9.json").read_text(encoding="utf-8")
+    )
+    forged.update(release="v0.9.0", commit=commit, documents={}, roles={})
+    forged["digest"] = baselines.digest(forged)
+    (repo / "contracts/baselines/v0.9.0.json").write_text(
+        json.dumps(forged), encoding="utf-8"
+    )
+    found = errors(contracts.check(repo, commit))
+    assert "baseline_unverified baselines:v0.9.0.json" in found
+    assert "bootstrap" in found["baseline_unverified baselines:v0.9.0.json"].message
+
+
 @needs_htslib
-def test_1180_real_mt_bam_manifest_cli_and_api_results_meet_the_baseline(
+def test_1180_real_outputs_of_every_stable_role_producer_meet_the_baseline(
     tmp_path: Path,
 ) -> None:
     sam = [
@@ -383,21 +460,62 @@ def test_1180_real_mt_bam_manifest_cli_and_api_results_meet_the_baseline(
     ).to_dict()
     rc, stdout, stderr = run_cli(
         ["extract", "mt-bam", "--input", str(bam), "--outdir", str(tmp_path / "cli")]
-        + ["--threads", "1", "--json"]
+        + ["--threads", "1", "--card", "--json"]
     )
     assert rc == 0, stderr
     from_cli = json.loads(stdout)
     manifest = json.loads(Path(from_cli["manifest"]).read_text(encoding="utf-8"))
+    child, mother, father = _trio(
+        tmp_path,
+        child=["100 denovo A G 0/1:99"],
+        mother=["100 . A . 0/0:99"],
+        father=["100 . A . 0/0:99"],
+    )
+    trio = api.vcf.trio(
+        api.VcfTrioParams(
+            proband=Path(child),
+            mother=Path(mother),
+            father=Path(father),
+            outdir=tmp_path / "trio",
+        )
+    ).to_dict()
+    rc, stdout, stderr = run_cli(
+        ["vcf", "filter", "--vcf-input", child, "--expr", "QUAL>30"]
+        + ["--outdir", str(tmp_path / "filter"), "--json"]
+    )
+    assert rc == 0, stderr
+    filtered = json.loads(stdout)
 
-    for document in (from_api, from_cli, manifest):
+    documents: tuple[dict[str, Any], ...] = (
+        from_api,
+        from_cli,
+        manifest,
+        trio,
+        filtered,
+    )
+    for document in documents:
         assert contracts.check_output(ROOT, document) == []
+    recorded = {
+        record["role"]
+        for document in documents
+        for key in ("inputs", "outputs")
+        for record in document[key]
+    }
+    registry = json.loads((ROOT / baselines.REGISTRY).read_text(encoding="utf-8"))
+    stable = {r for r, e in registry["roles"].items() if e["tier"] == "stable"}
+    assert stable <= recorded, "each stable role needs a representative real run here"
 
     regressed = json.loads(json.dumps(manifest))
     del regressed["outputs"][0]["fingerprint"]
-    regressed["outputs"][0]["role"] = "mitochondrial_bam"
+    regressed["outputs"] = [
+        o for o in regressed["outputs"] if o["role"] != "result_card"
+    ]
+    regressed["exit_code"] = 256
+    regressed["provenance"]["started"] = "yesterday"
     found = errors(contracts.check_output(ROOT, regressed))
-    assert (
-        "stable_field_missing_in_output wgsextract.result/1:outputs[].fingerprint"
-        in found
-    )
-    assert "stable_role_missing_in_output wgsextract.result/1:mt_bam" in found
+    assert {
+        "stable_field_missing_in_output wgsextract.result/1:outputs[].fingerprint",
+        "stable_role_missing_in_output wgsextract.result/1:result_card",
+        "stable_type_mismatch_in_output wgsextract.result/1:exit_code",
+        "stable_type_mismatch_in_output wgsextract.result/1:provenance.started",
+    } <= set(found)

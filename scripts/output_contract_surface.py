@@ -112,30 +112,43 @@ class _Flattener:
     ) -> None:
         options = self.alternatives(node, stack)
         self.paths[path] = describe([option for option, _ in options], required)
-        objects = [
-            (option, where)
-            for option, where in options
-            if "properties" in option or "additionalProperties" in option
-        ]
-        names: dict[str, list[tuple[Mapping[str, Any], tuple[str, ...]]]] = {}
-        for option, where in objects:
-            for name, child in option.get("properties", {}).items():
-                names.setdefault(name, []).append(({**child}, where))
-        for name, children in names.items():
+        # Every alternative that admits an object or array shapes the children,
+        # so an unrestricted alternative widens them rather than being ignored.
+        objects = [pair for pair in options if "object" in option_types(pair[0])]
+        names = sorted(
+            {name for option, _ in objects for name in option.get("properties", {})}
+        )
+        for name in names:
             always = all(name in option.get("required", ()) for option, _ in objects)
-            self.visit_many(join(path, name), children, required=always)
-        maps = [
-            (option["additionalProperties"], where)
-            for option, where in objects
-            if isinstance(option.get("additionalProperties"), dict)
-        ]
-        if maps:
-            self.visit_many(join(path, "*"), maps, required=False)
-        items = [
-            (option["items"], where) for option, where in options if "items" in option
-        ]
-        if items:
-            self.visit_many(f"{path}[]", items, required=True)
+            self.visit_many(
+                join(path, name),
+                [
+                    (child, where)
+                    for option, where in objects
+                    if (child := member(option, name)) is not None
+                ],
+                required=always,
+            )
+        if any(
+            isinstance(option.get("additionalProperties"), dict)
+            for option, _ in objects
+        ):
+            self.visit_many(
+                join(path, "*"),
+                [
+                    (child, where)
+                    for option, where in objects
+                    if (child := member(option, None)) is not None
+                ],
+                required=False,
+            )
+        arrays = [pair for pair in options if "array" in option_types(pair[0])]
+        if any("items" in option for option, _ in arrays):
+            self.visit_many(
+                f"{path}[]",
+                [(option.get("items", {}), where) for option, where in arrays],
+                required=True,
+            )
 
     def visit_many(
         self,
@@ -152,6 +165,38 @@ class _Flattener:
         self.visit(path, merged, nodes[0][1], required=required)
 
 
+def option_types(option: Mapping[str, Any]) -> list[str]:
+    """The JSON types one resolved alternative admits."""
+    if "const" in option or "enum" in option:
+        choices = [option["const"]] if "const" in option else option["enum"]
+        declared = option.get("type")
+        return (
+            [declared]
+            if isinstance(declared, str)
+            else sorted({_value_type(c) for c in choices})
+        )
+    declared = option.get("type")
+    if isinstance(declared, str):
+        return [declared]
+    if isinstance(declared, list):
+        return list(declared)
+    if "properties" in option or "additionalProperties" in option:
+        return ["object"]
+    return ["array"] if "items" in option else list(JSON_TYPES)
+
+
+def member(option: Mapping[str, Any], name: str | None) -> Mapping[str, Any] | None:
+    """What an object alternative allows under a property name (None: the map
+    of undeclared keys); None when the alternative forbids it."""
+    declared: Mapping[str, Mapping[str, Any]] = option.get("properties", {})
+    if name is not None and name in declared:
+        return declared[name]
+    extra = option.get("additionalProperties", True)
+    if extra is False:
+        return None
+    return extra if isinstance(extra, dict) else {}
+
+
 def join(parent: str, name: str) -> str:
     return f"{parent}.{name}" if parent else name
 
@@ -164,35 +209,22 @@ def describe(options: list[Mapping[str, Any]], required: bool) -> dict[str, Any]
     patterns: set[str | None] = set()
     minimums: list[float | None] = []
     maximums: list[float | None] = []
+    lengths: list[int | None] = []
     for option in options:
+        option_kinds = option_types(option)
+        types.update(option_kinds)
         if "const" in option or "enum" in option:
             choices = [option["const"]] if "const" in option else option["enum"]
-            declared = option.get("type")
-            types.update(
-                [declared] if isinstance(declared, str) else map(_value_type, choices)
-            )
             if values is not None:
                 values.extend(choice for choice in choices if choice is not None)
             continue
-        declared = option.get("type")
-        option_types = (
-            [declared]
-            if isinstance(declared, str)
-            else list(declared)
-            if isinstance(declared, list)
-            else ["object"]
-            if "properties" in option or "additionalProperties" in option
-            else ["array"]
-            if "items" in option
-            else list(JSON_TYPES)
-        )
-        types.update(option_types)
-        if option_types != ["null"]:
+        if option_kinds != ["null"]:
             values = None
-        if "string" in option_types:
+        if "string" in option_kinds:
             formats.add(option.get("format"))
             patterns.add(option.get("pattern"))
-        if {"integer", "number"} & set(option_types):
+            lengths.append(option.get("minLength"))
+        if {"integer", "number"} & set(option_kinds):
             minimums.append(option.get("minimum"))
             maximums.append(option.get("maximum"))
     record: dict[str, Any] = {"types": sorted(types), "required": required}
@@ -205,6 +237,8 @@ def describe(options: list[Mapping[str, Any]], required: bool) -> dict[str, Any]
         record["minimum"] = min(m for m in minimums if m is not None)
     if maximums and None not in maximums:
         record["maximum"] = max(m for m in maximums if m is not None)
+    if lengths and None not in lengths:
+        record["minLength"] = min(n for n in lengths if n is not None)
     return record
 
 
@@ -287,6 +321,10 @@ def _narrower(current: Mapping[str, Any], baseline: Mapping[str, Any]) -> list[s
         and current.get("maximum", float("inf")) > baseline["maximum"]
     ):
         problems.append(f"maximum {current.get('maximum')} (was {baseline['maximum']})")
+    if "minLength" in baseline and current.get("minLength", 0) < baseline["minLength"]:
+        problems.append(
+            f"minLength {current.get('minLength', 0)} (was {baseline['minLength']})"
+        )
     return problems
 
 
@@ -358,7 +396,16 @@ def compare(
             )
 
 
-def _values_at(instance: object, parts: list[str]) -> Iterator[object]:
+DATE_TIME = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$"
+)
+
+
+def _values_at(
+    instance: object, parts: list[str], declared: frozenset[str], prefix: str = ""
+) -> Iterator[object]:
+    """Values at a path; a map wildcard skips the object's declared properties,
+    as additionalProperties does."""
     if not parts:
         yield instance
         return
@@ -366,13 +413,41 @@ def _values_at(instance: object, parts: list[str]) -> Iterator[object]:
     if head == "[]":
         if isinstance(instance, list):
             for item in instance:
-                yield from _values_at(item, rest)
+                yield from _values_at(item, rest, declared, f"{prefix}[]")
     elif head == "*":
         if isinstance(instance, dict):
-            for value in instance.values():
-                yield from _values_at(value, rest)
+            for key, value in instance.items():
+                if join(prefix, key) not in declared:
+                    yield from _values_at(value, rest, declared, join(prefix, "*"))
     elif isinstance(instance, dict) and head in instance:
-        yield from _values_at(instance[head], rest)
+        yield from _values_at(instance[head], rest, declared, join(prefix, head))
+
+
+def outside(node: Mapping[str, Any], value: object) -> bool:
+    """Whether a real value falls outside a recorded value domain."""
+    kind = _value_type(value)
+    allowed = set(node["types"]) | ({"integer"} if "number" in node["types"] else set())
+    if kind not in allowed:
+        return True
+    if (
+        "values" in node
+        and value is not None
+        and json.dumps(value) not in node["values"]
+    ):
+        return True
+    if isinstance(value, str):
+        if "pattern" in node and not re.search(node["pattern"], value):
+            return True
+        if len(value) < node.get("minLength", 0):
+            return True
+        if node.get("format") == "date-time" and not DATE_TIME.match(value):
+            return True
+    if kind in {"integer", "number"} and isinstance(value, (int, float)):
+        if "minimum" in node and value < node["minimum"]:
+            return True
+        if "maximum" in node and value > node["maximum"]:
+            return True
+    return False
 
 
 def check_instance(
@@ -384,16 +459,17 @@ def check_instance(
     """Check a real output document against a baseline's stable surface."""
     findings: list[Finding] = []
     paths: Mapping[str, Mapping[str, Any]] = baseline["documents"][document]["paths"]
+    declared = frozenset(paths)
     for path, node in paths.items():
         if node["tier"] != "stable":
             continue
         parts = segments(path)
         name = parts[-1]
         if name in {"[]", "*"}:
-            values = list(_values_at(instance, parts))
+            values = list(_values_at(instance, parts, declared))
         else:
             values = []
-            for parent in _values_at(instance, parts[:-1]):
+            for parent in _values_at(instance, parts[:-1], declared):
                 if not isinstance(parent, dict):
                     continue
                 if name in parent:
@@ -409,34 +485,17 @@ def check_instance(
                             f"Output lacks stable `{document}:{path}` (required since {release}).",
                         )
                     )
-        for value in values:
-            allowed = set(node["types"]) | (
-                {"integer"} if "number" in node["types"] else set()
+        findings.extend(
+            Finding(
+                "error",
+                "stable_type_mismatch_in_output",
+                document,
+                path,
+                release,
+                f"Output `{document}:{path}` is {json.dumps(value)[:60]}, outside its "
+                f"{release} contract.",
             )
-            seen = _value_type(value)
-            wrong = (
-                seen not in allowed
-                or (
-                    "values" in node
-                    and value is not None
-                    and json.dumps(value) not in node["values"]
-                )
-                or (
-                    "pattern" in node
-                    and isinstance(value, str)
-                    and not re.search(node["pattern"], value)
-                )
-            )
-            if wrong:
-                findings.append(
-                    Finding(
-                        "error",
-                        "stable_type_mismatch_in_output",
-                        document,
-                        path,
-                        release,
-                        f"Output `{document}:{path}` is {json.dumps(value)[:60]}, outside "
-                        f"its {release} contract {node['types']}.",
-                    )
-                )
+            for value in values
+            if outside(node, value)
+        )
     return findings

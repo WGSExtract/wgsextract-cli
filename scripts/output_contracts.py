@@ -25,10 +25,12 @@ if __package__ in {None, ""}:
 from scripts.output_contract_baselines import (  # noqa: E402
     BASELINES,
     REGISTRY,
+    RELEASE,
     effective_baselines,
     newest,
     pin,
     surfaces,
+    version,
     worktree,
 )
 from scripts.output_contract_surface import (  # noqa: E402
@@ -147,6 +149,18 @@ def validate_registry(
                 role,
                 f"Stable role {role!r} needs a 'meaning'.",
             )
+        elif entry["tier"] == "stable" and not all(
+            isinstance(p, dict) and p.get("command")
+            for p in entry.get("producers") or [None]
+        ):
+            error(
+                "stable_role_without_producer",
+                "roles",
+                role,
+                f"Stable role {role!r} needs 'producers': the commands (and the option, "
+                "'when', that makes them) recording it, so representative real outputs "
+                "can prove it is still written.",
+            )
     for entry in registry.get("approved_breaks", []):
         if (
             not {"document", "path", "code", "approval", "reason"} <= set(entry)
@@ -164,15 +178,8 @@ def validate_registry(
     return found
 
 
-def produced_roles(root: Path) -> str:
-    return "\n".join(
-        file.read_text(encoding="utf-8", errors="replace")
-        for file in sorted((root / "src/wgsextract_cli").rglob("*.py"))
-    )
-
-
 def compare_roles(
-    current: Mapping[str, Mapping[str, Any]], baseline: Mapping[str, Any], sources: str
+    current: Mapping[str, Mapping[str, Any]], baseline: Mapping[str, Any]
 ) -> Iterable[Finding]:
     release = baseline["release"]
     for role, before in baseline["roles"].items():
@@ -216,25 +223,19 @@ def compare_roles(
                 release,
                 f"Stable output role `{key}` changed meaning since {release}. {action}",
             )
-    for role, entry in current.items():
-        if entry.get("tier") == "stable" and not re.search(
-            rf"[\"']{re.escape(role)}[\"']", sources
-        ):
-            yield Finding(
-                "error",
-                "stable_role_unproduced",
-                "roles",
-                role,
-                release,
-                f"No source under src/wgsextract_cli writes stable output role `role:{role}`.",
-            )
 
 
-def release_notes(root: Path) -> str:
-    return "\n".join(
-        file.read_text(encoding="utf-8")
-        for file in sorted((root / "docs/release-notes").rglob("*.md"))
-    )
+def release_notes(root: Path, since: str) -> str:
+    """Notes that can announce a change since the baseline release: the
+    unreleased notes (file or fragments) and notes of later releases."""
+    folder = root / "docs/release-notes"
+    files = [
+        file
+        for file in sorted(folder.rglob("*.md"))
+        if file.relative_to(folder).parts[0] in {"unreleased.md", "unreleased"}
+        or (RELEASE.match(file.stem) and version(file.stem) > version(since))
+    ]
+    return "\n".join(file.read_text(encoding="utf-8") for file in files)
 
 
 def check(root: Path = ROOT, base: str | None = None) -> list[Finding]:
@@ -275,7 +276,9 @@ def check(root: Path = ROOT, base: str | None = None) -> list[Finding]:
         elif name in current:
             found += compare(name, current[name]["paths"], before["paths"], release)
         elif before["tier"] != "internal":
-            tier = before["tier"]
+            # Removing a document removes its stable fields too.
+            stable = any(node["tier"] == "stable" for node in before["paths"].values())
+            tier = "stable" if stable else before["tier"]
             found.append(
                 Finding(
                     "error" if tier == "stable" else "notice",
@@ -287,8 +290,10 @@ def check(root: Path = ROOT, base: str | None = None) -> list[Finding]:
                     + ACTIONS[tier].format(key=f"{name}:"),
                 )
             )
-    found += compare_roles(registry.get("roles", {}), latest, produced_roles(root))
-    return settle(found, registry.get("approved_breaks", []), release_notes(root))
+    found += compare_roles(registry.get("roles", {}), latest)
+    return settle(
+        found, registry.get("approved_breaks", []), release_notes(root, release)
+    )
 
 
 def approvable(code: str) -> bool:
@@ -382,8 +387,17 @@ def check_output(root: Path, document: Mapping[str, Any]) -> list[Finding]:
         for role, entry in baseline["roles"].items():
             if (
                 entry["tier"] == "stable"
-                and document.get("command") in entry.get("commands", [])
                 and role not in seen
+                and any(
+                    producer["command"] == document.get("command")
+                    and (
+                        "when" not in producer
+                        or document.get("provenance", {})
+                        .get("params", {})
+                        .get(producer["when"])
+                    )
+                    for producer in entry.get("producers", [])
+                )
             ):
                 found.append(
                     Finding(

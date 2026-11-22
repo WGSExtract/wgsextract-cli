@@ -69,11 +69,11 @@
     }
   },
   "roles": {
-    "input": {"tier": "stable", "meaning": "The sample file the command read (BAM, CRAM, FASTQ, VCF or a microarray file).", "commands": ["extract mt-bam"]},
-    "vcf_input": {"tier": "stable", "meaning": "The sample VCF the command read when it was named with --vcf-input."},
-    "proband": {"tier": "stable", "meaning": "The proband VCF of a trio analysis."},
-    "mt_bam": {"tier": "stable", "meaning": "A BAM holding only the sample's mitochondrial reads.", "commands": ["extract mt-bam"]},
-    "result_card": {"tier": "stable", "meaning": "The shareable HTML card written beside the manifest with --card."},
+    "input": {"tier": "stable", "meaning": "The sample file the command read (BAM, CRAM, FASTQ, VCF or a microarray file).", "producers": [{"command": "extract mt-bam"}]},
+    "vcf_input": {"tier": "stable", "meaning": "The sample VCF the command read when it was named with --vcf-input.", "producers": [{"command": "vcf filter", "when": "vcf_input"}]},
+    "proband": {"tier": "stable", "meaning": "The proband VCF of a trio analysis.", "producers": [{"command": "vcf trio", "when": "proband"}]},
+    "mt_bam": {"tier": "stable", "meaning": "A BAM holding only the sample's mitochondrial reads.", "producers": [{"command": "extract mt-bam"}]},
+    "result_card": {"tier": "stable", "meaning": "The shareable HTML card written beside the manifest with --card.", "producers": [{"command": "extract mt-bam", "when": "card"}]},
     "combined_kit": {"tier": "experimental", "meaning": "A combined consumer microarray kit file."},
     "vendor_kit": {"tier": "experimental", "meaning": "A vendor-format consumer microarray kit file."},
     "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}

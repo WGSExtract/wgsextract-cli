@@ -150,13 +150,15 @@ def _regenerates(root: Path, baseline: Mapping[str, Any], tagged: bytes) -> str 
     if tagged.decode().strip() != commit:
         return f"tag {release} is {tagged.decode().strip()[:12]}, not the recorded {commit[:12]}"
     read = at_revision(root, commit)
-    if baseline["tiers_source"] == "release":
-        tagged_registry = read(REGISTRY)
-        if (
-            tagged_registry is None
-            or json.loads(tagged_registry) != baseline["registry"]
-        ):
-            return f"its registry is not {release}'s {REGISTRY}"
+    tagged_registry = read(REGISTRY)
+    if baseline["tiers_source"] == "bootstrap":
+        # Only a release from before the registry existed may bring its tiers.
+        if tagged_registry is not None:
+            return f"{release} has {REGISTRY}, so its tiers must come from it, not bootstrap"
+    elif baseline["tiers_source"] != "release":
+        return f"tiers_source {baseline['tiers_source']!r} is neither release nor bootstrap"
+    elif tagged_registry is None or json.loads(tagged_registry) != baseline["registry"]:
+        return f"its registry is not {release}'s {REGISTRY}"
     regenerated = build_baseline(
         release, commit, baseline["registry"], read, baseline["tiers_source"]
     )
@@ -252,7 +254,25 @@ def effective_baselines(
                     ),
                 )
             )
-    return {name: b for name, b in baselines.items() if RELEASE.match(name)}, found
+    valid = {name: b for name, b in baselines.items() if RELEASE.match(name)}
+    bootstraps = sorted(
+        n for n, b in valid.items() if b.get("tiers_source") == "bootstrap"
+    )
+    oldest = min(valid, key=version, default=None)
+    for name in bootstraps:
+        if name != oldest or len(bootstraps) > 1:
+            found.append(
+                Finding(
+                    "error",
+                    "baseline_invalid",
+                    "baselines",
+                    f"{name}.json",
+                    name,
+                    f"{BASELINES}/{name}.json bootstraps its tiers, which only the "
+                    "first (oldest) baseline may do.",
+                )
+            )
+    return valid, found
 
 
 def newest(baselines: Mapping[str, Mapping[str, Any]]) -> Mapping[str, Any] | None:

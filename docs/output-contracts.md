@@ -20,8 +20,10 @@ experimental object is not reachable stably. Paths name what a reader sees:
 `inputs[].role` is the role of every input record, and `metrics.*` is any
 value of the `metrics` map. Output roles, the `role` strings in manifests'
 `inputs` and `outputs`, are classified under `roles`; a role that is not listed
-is experimental. Adding a role, metric, warning code or `details` key is
-always compatible.
+is experimental. A stable role names its `producers`: a command that records
+it and, with `when`, the option that makes it do so (`vcf trio` records
+`proband` when given `--proband`). Adding a role, metric, warning code or
+`details` key is always compatible.
 
 ### Scientific meaning
 
@@ -40,12 +42,15 @@ unchanged.
 `python scripts/output_contracts.py check` flattens each registered JSON Schema
 (the generated files in `src/wgsextract_cli/assets/schemas/`) into paths and
 the values a reader can see at each: JSON types, allowed values, format,
-pattern, numeric bounds and whether the field is always present. It then
+pattern, numeric bounds, minimum string length and whether the field is always
+present. Every alternative of an `anyOf` counts, so adding a looser one (an
+unrestricted object, say) widens the fields under it. It then
 compares them with the newest pinned baseline, from the reader's side:
 
 | Finding | Stable | Experimental |
 | --- | --- | --- |
 | Field, document or role removed | error | notice |
+| Document holding any stable field removed | error | — |
 | Type, values, format, pattern or bounds widened | error | notice |
 | Always-present field made optional | error | notice |
 | Recorded meaning changed | error | notice |
@@ -53,18 +58,22 @@ compares them with the newest pinned baseline, from the reader's side:
 | Field added, or a value narrowed | compatible | compatible |
 
 Internal documents are not compared. An experimental notice passes only when
-the release notes name it (`` `wgsextract.report/1:guide` ``, or
-`` `role:aadr` `` for a role), so users of experimental outputs hear about the
-change. The check also rejects registry entries for paths that no longer
-exist, a stable role that no source under `src/wgsextract_cli` writes, an
+the unreleased release notes (or those of a release after the baseline) name
+it (`` `wgsextract.report/1:guide` ``, or `` `role:aadr` `` for a role), so
+users of experimental outputs hear about each change; an older release's
+mention does not announce a new change. The check also rejects registry
+entries for paths that no longer exist, a stable role without producers, an
 internal document without declared consumers, and an unvalidated scientific
 field marked stable.
 
 `python scripts/output_contracts.py instance FILE...` checks real output
 documents (a manifest, `--json` output or an API `Result.to_dict()`) against
-the baseline: every stable field must be present with an allowed value, and a
-command must still record its stable roles. The test suite runs it on a real
-`extract mt-bam` run through the CLI, its manifest and the Python API.
+the baseline: every stable field must be present with an allowed value (type,
+values, pattern, bounds, length and `date-time` format), and each stable role's
+producers must still record it. The test suite runs it on real outputs of
+every stable role's producers: `extract mt-bam` (with `--card`) through the
+CLI, its manifest and the Python API, `vcf trio --proband` and
+`vcf filter --vcf-input`.
 
 Every check runs offline. Ordinary checks read only files in the checkout and,
 when present, local git objects.
@@ -105,7 +114,8 @@ and a SHA-256 digest of the whole. Baselines are immutable:
   overwrite an existing baseline and does not use the network: fetch the tag
   first if it is missing (`git fetch origin tag vX.Y.Z`). The first baseline,
   v0.8.9, predates the registry, so it recorded the registry introduced with
-  it (`tiers_source: bootstrap`).
+  it (`tiers_source: bootstrap`). Only the oldest baseline, of a tag without
+  a registry, may do that; every later one takes its tiers from its tag.
 - `check` verifies each baseline's digest and, when the tag is in the local
   repository, that it regenerates exactly from the tag's files. A shallow
   checkout without the tag reports that it skipped this.
