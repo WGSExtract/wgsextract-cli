@@ -53,14 +53,14 @@ for index in range(count):
 class SettingsLockInteropTests(unittest.TestCase):
     def test_1230_app_and_cli_saves_at_once_keep_every_change(self) -> None:
         python = find_cli_python()
-        if python is None or not CONFIG_STORE.is_file():
-            message = (
-                f"needs a Python that imports the CLI from {CLI_ROOT / 'src'} and "
-                f"the built app ({CONFIG_STORE}; run `npm test` first)"
-            )
+        if python is None:
+            message = f"no Python can import the CLI from {CLI_ROOT / 'src'}"
             if os.environ.get("CI"):
                 self.fail(message)
             self.skipTest(message)
+        # GUI CI builds the app first; the CLI's own CI runs these tests unbuilt.
+        if not CONFIG_STORE.is_file():
+            self.skipTest(f"the app is not built ({CONFIG_STORE}; run `npm test`)")
         with tempfile.TemporaryDirectory(prefix="wgsextract-1230-") as folder:
             file = Path(folder) / "config.toml"
             savers = [

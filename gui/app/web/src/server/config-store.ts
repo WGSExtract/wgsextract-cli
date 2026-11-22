@@ -293,8 +293,17 @@ async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) 
         if (!existsSync(previous)) {
             continue;
         }
-        await mkdir(path.dirname(target), { recursive: true });
-        await moveFile(previous, target);
+        // The CLI may save the settings file meanwhile: never move the old one over it.
+        const moved = await withSettingsFileLock(target, async (file) => {
+            if (existsSync(file)) {
+                return false;
+            }
+            await moveFile(previous, file);
+            return true;
+        });
+        if (!moved) {
+            return;
+        }
         const folder = path.dirname(previous);
         const relative = path.relative(bundleRoot, folder);
         if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {

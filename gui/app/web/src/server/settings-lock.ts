@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, readlink, realpath, stat, unlink } from "node:fs/promises";
+import { mkdir, open, readFile, readlink, realpath, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 import { errnoCode } from "./errors.js";
 
 // The CLI saves the same settings files. Node has no flock, so both take an O_EXCL lock file beside the
 // real file; src/wgsextract_cli/core/file_lock.py (shared_file_lock) mirrors this protocol.
-const staleAfterMs = 30_000;
 const pollMs = 20;
 
 /**
@@ -14,13 +13,27 @@ const pollMs = 20;
  * passes that real path to `action`. Every alias of the file takes the same lock, as do the CLI's saves.
  */
 export async function withSettingsFileLock<T>(filePath: string, action: (target: string) => Promise<T>, timeoutMs = 60_000): Promise<T> {
-    const target = await realPathAllowingMissing(path.resolve(filePath));
+    const target = await realPathAllowingMissing(filePath);
     await mkdir(path.dirname(target), { recursive: true });
     const lock = path.join(path.dirname(target), `.${path.basename(target)}.lock`);
-    const record = JSON.stringify({ pid: process.pid, host: hostname(), token: randomUUID() });
+    const record = lockRecord();
     const deadline = Date.now() + timeoutMs;
-    const busy = { since: undefined as number | undefined };
-    while (!await tryCreate(lock, record, busy)) {
+    let busySince: number | undefined;
+    for (;;) {
+        try {
+            if (await create(lock, record)) {
+                break;
+            }
+            busySince = undefined;
+            await reclaimIfAbandoned(lock);
+        }
+        catch (error) {
+            // A lock being deleted is busy for moments; a denial that lasts is the folder refusing writes.
+            busySince ??= Date.now();
+            if (!windowsBusy(error) || Date.now() - busySince > 2_000) {
+                throw error;
+            }
+        }
         if (Date.now() >= deadline) {
             throw new Error(`Timed out waiting for ${lock}: another WGS Extract window or command is saving this file. If none is, delete the lock and try again.`);
         }
@@ -56,25 +69,23 @@ async function realPathAllowingMissing(filePath: string, links = 0): Promise<str
     }
 }
 
+function lockRecord() {
+    return JSON.stringify({ pid: process.pid, host: hostname(), token: randomUUID() });
+}
+
 /** Windows refuses to create or delete a file another process is deleting or reading. */
 function windowsBusy(error: unknown) {
     return process.platform === "win32" && ["EPERM", "EACCES", "EBUSY"].includes(errnoCode(error) ?? "");
 }
 
-async function tryCreate(lock: string, record: string, busy: { since: number | undefined }): Promise<boolean> {
+/** Creates `lock` holding `record`; false if it already exists. */
+async function create(lock: string, record: string): Promise<boolean> {
     let handle;
     try {
         handle = await open(lock, "wx");
     }
     catch (error) {
         if (errnoCode(error) === "EEXIST") {
-            busy.since = undefined;
-            await reclaimIfAbandoned(lock);
-            return false;
-        }
-        // A lock being deleted is busy for moments; a denial that lasts is the folder refusing writes.
-        busy.since ??= Date.now();
-        if (windowsBusy(error) && Date.now() - busy.since <= 2_000) {
             return false;
         }
         throw error;
@@ -92,11 +103,34 @@ async function tryCreate(lock: string, record: string, busy: { since: number | u
 }
 
 async function reclaimIfAbandoned(lock: string) {
+    // One reclaimer at a time, so none deletes the lock a saver has just made in place of the abandoned one
+    // another reclaimer removed.
+    const guard = `${lock}.reclaim`;
+    const record = lockRecord();
+    try {
+        if (!await create(guard, record)) {
+            await removeIfOwnerExited(guard);
+            return;
+        }
+    }
+    catch (error) {
+        if (windowsBusy(error)) {
+            return;
+        }
+        throw error;
+    }
+    try {
+        await removeIfOwnerExited(lock);
+    }
+    finally {
+        await release(guard, record);
+    }
+}
+
+async function removeIfOwnerExited(lock: string) {
     let record: string;
-    let ageMs: number;
     try {
         record = await readFile(lock, "utf8");
-        ageMs = Date.now() - (await stat(lock)).mtimeMs;
     }
     catch (error) {
         if (errnoCode(error) === "ENOENT" || windowsBusy(error)) {
@@ -104,31 +138,32 @@ async function reclaimIfAbandoned(lock: string) {
         }
         throw error;
     }
-    if (!held(record, ageMs) && await remove(lock, record)) {
+    if (ownerExited(record) && await remove(lock, record)) {
         console.warn(`Removed abandoned lock ${lock}`);
     }
 }
 
-function held(record: string, ageMs: number) {
-    if (ageMs > staleAfterMs) {
-        return false;
-    }
+/**
+ * Whether the process that wrote `record` has provably exited. An owner on another computer, or a record still
+ * being written, keeps its lock until it is released, so a slow save is never overtaken.
+ */
+function ownerExited(record: string) {
     let owner: { pid?: unknown; host?: unknown };
     try {
         owner = JSON.parse(record) as { pid?: unknown; host?: unknown };
     }
     catch {
-        return true; // its holder is still writing it
+        return false;
     }
     if (typeof owner.pid !== "number" || typeof owner.host !== "string" || owner.host.toLowerCase() !== hostname().toLowerCase()) {
-        return true;
+        return false;
     }
     try {
         process.kill(owner.pid, 0);
-        return true;
+        return false;
     }
     catch (error) {
-        return errnoCode(error) === "EPERM";
+        return errnoCode(error) === "ESRCH";
     }
 }
 

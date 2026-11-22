@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import { parseFlatToml } from "../dist/shared/rendering.js";
 
 const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, saveConfig, takeBundleStateWarning, writeFileAtomically } = await import("../dist/web/src/server/config-store.js");
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
+const { withSettingsFileLock } = await import("../dist/web/src/server/settings-lock.js");
 
 async function tempDirectory(t) {
   const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-store-"));
@@ -217,6 +218,31 @@ test("#1230 a settings file symlinked to a file not yet created is saved where t
 
   assert.ok((await lstat(link)).isSymbolicLink());
   assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "config.toml"), "utf8")) }, { first: "1" });
+});
+
+test("#1230 a path through a symlinked folder and .. is saved where the filesystem resolves it, as the CLI does", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  await mkdir(path.join(bundleRoot, "real", "sub"), { recursive: true });
+  await symlink(path.join(bundleRoot, "real", "sub"), path.join(bundleRoot, "link"), "junction");
+  const control = textSettingsControl(["first"]);
+
+  await saveConfig(control, path.join(bundleRoot, "link") + `${path.sep}..${path.sep}config.toml`, { first: "1" }, bundleRoot);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "config.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(path.join(bundleRoot, "config.toml")), { code: "ENOENT" });
+});
+
+test("#1230 a slow save keeps its lock however long it takes", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(file, 'first = "1"\n');
+  const lock = path.join(bundleRoot, ".config.toml.lock");
+  await writeFile(lock, JSON.stringify({ pid: process.pid, host: hostname(), token: "slow" }));
+  const hourAgo = new Date(Date.now() - 3_600_000);
+  await utimes(lock, hourAgo, hourAgo);
+
+  await assert.rejects(withSettingsFileLock(file, () => writeFile(file, "overtaken\n"), 200), /Timed out waiting/);
+  assert.equal(await readFile(file, "utf8"), 'first = "1"\n');
 });
 
 test("#1230 saves from separate app processes keep every change", async (t) => {

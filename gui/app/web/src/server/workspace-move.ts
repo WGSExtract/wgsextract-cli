@@ -117,7 +117,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     }
     catch (error) {
         for (const file of rewritten) {
-            await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
+            await restoreRewrittenFile(file, from, to).catch(() => undefined);
         }
         if (renamed) {
             await rename(to, from);
@@ -301,6 +301,25 @@ async function copyEntry(fromRoot: string, toRoot: string, { relative, directory
 interface RewrittenFile {
     filePath: string;
     text: string;
+    /** For a settings file the CLI also saves: the text written, to tell whether a save followed. */
+    written?: string;
+}
+
+async function restoreRewrittenFile(file: RewrittenFile, from: string, to: string) {
+    const { written } = file;
+    if (written == null) {
+        await writeFileAtomically(file.filePath, file.text);
+        return;
+    }
+    await withSettingsFileLock(file.filePath, async (target) => {
+        const current = await readFile(target, "utf8").catch((error: unknown) => {
+            ignoreMissing(error);
+            return null;
+        });
+        // Keep a save made since the rewrite: undo only the paths this move changed.
+        const restored = current == null || current === written ? file.text : serializeToml(relocateStrings(parseToml(current), to, from));
+        await writeFileAtomically(target, restored);
+    });
 }
 
 async function readSettings(filePath: string): Promise<Record<string, unknown>> {
@@ -321,8 +340,9 @@ async function relocateSettingsFile(filePath: string, from: string, to: string, 
             return null;
         });
         if (text != null) {
-            rewritten.push({ filePath: target, text });
-            await writeFileAtomically(target, serializeToml(relocateStrings(parseToml(text), from, to)));
+            const written = serializeToml(relocateStrings(parseToml(text), from, to));
+            rewritten.push({ filePath: target, text, written });
+            await writeFileAtomically(target, written);
         }
     });
 }

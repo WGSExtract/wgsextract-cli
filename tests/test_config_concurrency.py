@@ -1,9 +1,11 @@
 """Issue #1230: concurrent saves of config.toml keep every change."""
 
 import json
+import os
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -90,6 +92,9 @@ def test_1230_a_save_that_cannot_get_the_lock_fails_loudly(temp_config):
     # Issue #1230: a save must fail rather than overwrite a concurrent one.
     temp_config.write_text('output_directory = "/out"\n')
     child = _start_app_save(temp_config, 30)
+    # However long the save has taken, its owner is alive: never overtake it.
+    hour_ago = time.time() - 3600
+    os.utime(temp_config.with_name(".config.toml.lock"), (hour_ago, hour_ago))
     try:
         with pytest.raises(WGSExtractError, match="Timed out waiting"):
             with shared_file_lock(temp_config, timeout=0.2):
