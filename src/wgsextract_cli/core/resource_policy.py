@@ -65,7 +65,7 @@ def get_resource_defaults(
 ) -> tuple[str, str]:
     """
     Calculate default CPU threads and memory if not provided.
-    Memory defaults to 25% of RAM (at least 2 GB) split across threads.
+    Memory defaults to at most 25% of effective RAM split across threads.
     """
     if threads_arg is not None and str(threads_arg).strip().lower() != "auto":
         threads_arg = max(1, int(threads_arg))
@@ -77,11 +77,19 @@ def get_resource_defaults(
     if memory_arg is not None and str(memory_arg).strip().lower() != "auto":
         memory = str(memory_arg)
     else:
-        import psutil
+        from wgsextract_cli.core.alignment.memory import total_memory
+        from wgsextract_cli.core.utils import WGSExtractError
 
-        total_mem_gb = psutil.virtual_memory().total / (1024**3)
-        safe_mem = max(2, int(total_mem_gb * 0.25))
-        mem_per_thread = max(1, safe_mem // threads_count)
-        memory = f"{mem_per_thread}G"
+        per_thread_mib = total_memory() // 4 // threads_count // (1024**2)
+        if per_thread_mib < 1:
+            raise WGSExtractError(
+                "Not enough RAM for 1 MiB per thread in the automatic memory budget; "
+                "lower --threads."
+            )
+        memory = (
+            f"{per_thread_mib // 1024}G"
+            if per_thread_mib >= 1024
+            else f"{per_thread_mib}M"
+        )
 
     return threads, memory

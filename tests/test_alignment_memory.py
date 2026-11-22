@@ -412,7 +412,7 @@ def _align_logged(
     samtools sort command it ran, the output's primary records and the log."""
     from wgsextract_cli.main import main
 
-    genome = "".join(random.Random(781).choice("ACGT") for _ in range(50_000))
+    genome = "".join(random.Random(781).choices("ACGT", k=50_000))
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
     r1, r2 = tmp_path / "reads_R1.fastq", tmp_path / "reads_R2.fastq"
     write_read_pairs(genome, r1, r2, [i * 7 % 49_000 for i in range(pairs)])
@@ -438,7 +438,7 @@ def _align_logged(
 @needs_tools("bwa", "samtools")
 @pytest.mark.parametrize(
     ("pairs", "total", "reason"),
-    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 8, "half of this computer's")],
+    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 8, "half of the effective")],
 )
 def test_many_sort_threads_get_buffers_samtools_can_reserve(
     tmp_path, ram, pairs, total, reason
@@ -455,6 +455,53 @@ def test_many_sort_threads_get_buffers_samtools_can_reserve(
     threads, memory = int(sort[sort.index("-@") + 1]), sort[sort.index("-m") + 1]
     assert memory.endswith("M") and threads * int(memory[:-1]) * MIB <= total // 2
     assert "Lowering samtools sort memory from 2G" in log and reason in log
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("pairs", "memory", "max_mib", "reason"),
+    [
+        (30_000, "auto", 64, None),
+        (30_000, "2G", 128, "half of the effective"),
+        (300, "auto", 16, "MB of reads fill"),
+    ],
+    ids=["large-auto", "large-explicit", "small-auto"],
+)
+def test_1232_sort_fits_process_memory_limit(
+    tmp_path, monkeypatch, pairs, memory, max_mib, reason
+):
+    """A 128 GiB host must not drive sort allocations in a 2 GiB cgroup."""
+    fake_files = {
+        Path("/proc/self/cgroup"): "0::/\n",
+        Path("/proc/self/mountinfo"): "",
+        Path("/sys/fs/cgroup/memory.max"): str(2 * GIB),
+        Path("/sys/fs/cgroup/memory.current"): str(32 * MIB),
+        Path("/sys/fs/cgroup/memory.stat"): "inactive_file 0\n",
+    }
+    read_text = Path.read_text
+
+    def read_os_file(path, *args, **kwargs):
+        if path in fake_files:
+            return fake_files[path]
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_os_file)
+    monkeypatch.setattr(
+        alignment_memory.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(total=128 * GIB, available=120 * GIB),
+    )
+    sort, primary, log = _align_logged(
+        tmp_path, pairs, "--threads", "8", "--memory", memory
+    )
+    assert primary == 2 * pairs
+    # contract: explicit worker count is preserved; aggregate sort buffers leave
+    # room for the rest of the pipeline inside the cgroup, even on a large host.
+    assert sort[sort.index("-@") + 1] == "8"
+    per_thread = sort[sort.index("-m") + 1]
+    assert per_thread.endswith("M") and 0 < int(per_thread[:-1]) <= max_mib
+    if reason:
+        assert reason in log
 
 
 @needs_tools("bwa", "samtools")
