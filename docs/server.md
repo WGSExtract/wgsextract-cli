@@ -331,11 +331,17 @@ Clients send a bearer token in a header, not a URL or cookie. You allow file
 paths through `server.guard.roots`: the same canonical roots established by
 `--allow`, `server_allowed_paths` and existing configured libraries.
 The endpoint rejects `..`, network/device paths, symlink escapes, directories
-and other non-regular files. It provides no directory listing. It pins each
-canonical path component with directory-relative, no-follow opens before reading.
-On platforms without these safe primitives, including Windows, file serving
-fails closed with 503 `viewer_unavailable`; the job API remains available.
-Windows desktop clients can view files served by a supported Unix host.
+and other non-regular files. It provides no directory listing.
+
+On Windows, use an absolute path under a canonical allowed root on a local
+drive. UNC paths and mapped network drives are not supported. The server opens
+each component relative to a pinned directory handle and refuses symlinks,
+junctions and other reparse points along the path, even if they point inside
+an allowed root. Use the file's direct local path instead.
+
+On Unix, the server pins the canonical path with directory-relative, no-follow
+opens. On platforms without a safe open method, file serving fails closed with
+503 `viewer_unavailable`; the job API remains available.
 The path guard is not a sandbox against other programs running as you.
 
 Send `Range: bytes=START-END` for a closed byte range. The endpoint supports

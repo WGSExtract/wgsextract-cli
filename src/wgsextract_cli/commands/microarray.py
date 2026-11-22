@@ -9,6 +9,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
+from pyliftover import LiftOver
+
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli.registration.microarray import register as register
@@ -33,7 +35,6 @@ from wgsextract_cli.core.genotype_qc import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.microarray.aadr import (
     aadr_chain,
-    aadr_lifter,
     aadr_panel,
     aadr_vcf_nocalls,
     build_aadr_target,
@@ -55,6 +56,7 @@ from wgsextract_cli.core.microarray.quirks import (
 )
 from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
+    chain_to_grch37,
     fetch_requested_chains,
     is_genome_wide_target,
     lifted_chain,
@@ -143,7 +145,7 @@ def _target_root(lib: ReferenceLibrary) -> str | None:
     return lib.root
 
 
-def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
+def _liftover_chain_for(lib: ReferenceLibrary, *, download: bool = False) -> str | None:
     """Return the hg38->hg19 chain when liftover is needed (vendor templates use hg19)."""
     if lib.build and is_t2t_build(lib.build):
         raise WGSExtractError(
@@ -151,15 +153,17 @@ def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
         )
     if not (lib.build and is_hg38_build(lib.build)):
         return None
-    if not lib.liftover_chain:
-        raise WGSExtractError(
-            "hg38 input needs the hg38ToHg19 liftover chain "
-            "(hg38ToHg19.over.chain.gz) for microarray formats, "
-            f"but it isn't in {lib.searched_description()} (or their ref/ and "
-            "microarray/ subdirectories). Set reference_library in config.toml "
-            "to a library that has it."
-        )
-    return lib.liftover_chain
+    if lib.liftover_chain:
+        return lib.liftover_chain
+    if download and lib.root:
+        return chain_to_grch37(lib.root, "GRCh38", lib.resource_roots)
+    raise WGSExtractError(
+        "hg38 input needs the hg38ToHg19 liftover chain "
+        "(hg38ToHg19.over.chain.gz) for microarray formats, "
+        f"but it isn't in {lib.searched_description()} (or their downloads/, ref/ and "
+        "microarray/ subdirectories). Rerun with --download to fetch it, "
+        "or set reference_library in config.toml to a library that has it."
+    )
 
 
 def _convert_microarray_outputs(
@@ -173,6 +177,7 @@ def _convert_microarray_outputs(
     start_total: float,
     aadr_vcf: str | None = None,
     aadr_workdir: str | None = None,
+    aadr_liftover: LiftOver | None = None,
     indel_calls: IndelCalls | None = None,
     legacy_combined_kit_txt: str | None = None,
     formats: list[str] | None = None,
@@ -233,7 +238,6 @@ def _convert_microarray_outputs(
     # 4. Convert to vendor formats
     start_fmt = time.time()
     tallies: dict[str, GenotypeTally] = {}
-    aadr_liftover = None
     vcf_nocalls = None
     written_panels: set[str] = set()
     for fmt_key in requested_formats:
@@ -243,22 +247,8 @@ def _convert_microarray_outputs(
                 continue
             output_prefix = str(Path(outdir, f"{base_name}_AADR_{panel}"))
             try:
-                if not written_panels:
-                    if any(aadr_panel(key) == "2m" for key in requested_formats):
-                        aadr_liftover = aadr_lifter(
-                            lib.build,
-                            aadr_workdir or outdir,
-                            getattr(lib, "root", None),
-                            allow_download=False,
-                        )
-                    else:
-                        aadr_liftover = aadr_lifter(
-                            lib.build,
-                            aadr_workdir or outdir,
-                            getattr(lib, "root", None),
-                        )
-                    if aadr_vcf:
-                        vcf_nocalls = aadr_vcf_nocalls(aadr_vcf, aadr_workdir or outdir)
+                if not written_panels and aadr_vcf:
+                    vcf_nocalls = aadr_vcf_nocalls(aadr_vcf, aadr_workdir or outdir)
                 write_aadr_outputs(
                     panel,
                     (
@@ -387,18 +377,14 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     "projection is not supported."
                 )
             require_aadr_2m(lib.resource_root("aadr/" + AADR_2M_FILENAME))
+        # AADR targets, reuse inputs, exports and manifest probes share this chain.
         aadr_chain_file = aadr_chain(
             lib.build,
             outdir,
             lib.resource_root(_HG19_TO_HG38),
             allow_download="2m" not in aadr_panels,
         )
-        lifter = aadr_lifter(
-            lib.build,
-            outdir,
-            lib.resource_root(_HG19_TO_HG38),
-            allow_download="2m" not in aadr_panels,
-        )
+        lifter = LiftOver(aadr_chain_file) if aadr_chain_file else None
 
     logging.debug(f"Resolved Reference FASTA: {ref_fasta}")
     logging.debug(f"Resolved Target SNP Tab: {ref_vcf_tab}")
@@ -477,6 +463,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             )
         return
 
+    if legacy_requested:
+        lib.liftover_chain = _liftover_chain_for(lib, download=params.download is True)
+
     if (
         not params.ref_vcf_tab
         and (not aadr_panels or legacy_requested)
@@ -496,10 +485,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         # version of the CLI built. A requested GRCh38 template (FTDNA's Y
         # files) needs its chain installed first for its markers to join it.
         keys = [k for k in params.formats.split(",") if aadr_panel(k) is None]
-        fetched = fetch_requested_chains(lib.root, keys, lib.resource_roots)
-        if lib.build and is_hg38_build(lib.build) and not lib.liftover_chain:
-            # hg38 input's own liftover uses the chain just installed.
-            lib.liftover_chain = fetched.get("GRCh38")
+        fetch_requested_chains(lib.root, keys, lib.resource_roots)
         ref_vcf_tab = build_genome_wide_target(
             target_root,
             lib.build,
@@ -559,6 +545,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     )
     if vcf_sample:
         inputs["vcf_sample_preparation_policy"] = "contig-aware-v1"
+    if is_vcf:
+        inputs["vcf_snp_evidence_policy"] = "original-record-alleles-v1"
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
@@ -659,8 +647,6 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         message = f"--ref-vcf-tab not found: {ref_vcf_tab}"
         raise WGSExtractError(message)
 
-    if not aadr_panels or legacy_requested:
-        _liftover_chain_for(lib)  # fail before variant calling, not after
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
     start_total = time.time()
@@ -678,7 +664,11 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     ):
         calling_params = replace(
             params,
-            input=Path(indexed_sample_vcf(input_path, vcf_sample, outdir, cleanup)),
+            input=Path(
+                indexed_sample_vcf(
+                    input_path, vcf_sample, outdir, cleanup, trim_alt_alleles=False
+                )
+            ),
         )
     elif indel_bindings and is_vcf:
         calling_params = replace(
@@ -717,6 +707,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             outdir=outdir,
             ploidy_args=ploidy_args + sex_args,
             threads=threads,
+            lifter=lifter,
         )
     combined_kit_txt = _write_microarray_combined_kit(
         params=params,
@@ -726,6 +717,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         out_vcf=out_vcf,
         ref_fasta=ref_fasta,
         ref_vcf_tab=ref_vcf_tab,
+        trim_identity_alts=gvcf or vcf_sample is not None,
     )
     legacy_combined_kit_txt = None
     if legacy_target and legacy_workdir:
@@ -741,6 +733,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             ref_fasta=ref_fasta,
             ref_vcf_tab=legacy_target,
             restrict_reference_fill=True,
+            trim_identity_alts=gvcf or vcf_sample is not None,
         )
     tallies = _convert_microarray_outputs(
         params=params,
@@ -752,6 +745,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         start_total=start_total,
         aadr_vcf=out_vcf if is_vcf and aadr_panels else None,
         aadr_workdir=calling_outdir if aadr_panels else None,
+        aadr_liftover=lifter,
         indel_calls=indel_calls,
         legacy_combined_kit_txt=legacy_combined_kit_txt,
         # The combined kit was just written; skip the up-to-date kits.
