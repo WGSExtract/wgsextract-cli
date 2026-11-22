@@ -48,11 +48,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
-- `wgsextract serve`: a job whose worker started but could not be given its
-  request or have its record saved (for example on a full disk) now fails
-  with the reason, stops its worker and frees its slot. Before, it stayed
-  `running` with an orphaned worker and later jobs waited forever
-  ([#1226, server job startup failures](https://github.com/WGSExtract/wgsextract-cli/issues/1226)).
 - `report-issue` now reads sample names from a BAM/CRAM or VCF header when
   samtools or bcftools is installed only in the WGS Extract Pixi environment
   rather than on `PATH`, so it redacts them from the report. It previously
