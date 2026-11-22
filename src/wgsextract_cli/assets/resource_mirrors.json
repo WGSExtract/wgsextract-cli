@@ -53,7 +53,7 @@
     },
     {
       "id": "revel-hg38",
-      "upstream_url": "http://www.openbioinformatics.org/annovar/download/hg38_revel.txt.gz",
+      "upstream_url": "https://www.openbioinformatics.org/annovar/download/hg38_revel.txt.gz",
       "version": "ANNOVAR hg19/hg38 REVEL",
       "redistributable": false,
       "licence": "non-commercial / ANNOVAR third-party terms",
@@ -68,7 +68,7 @@
     },
     {
       "id": "revel-hg19",
-      "upstream_url": "http://www.openbioinformatics.org/annovar/download/hg19_revel.txt.gz",
+      "upstream_url": "https://www.openbioinformatics.org/annovar/download/hg19_revel.txt.gz",
       "version": "ANNOVAR hg19/hg38 REVEL",
       "redistributable": false,
       "licence": "non-commercial / ANNOVAR third-party terms",
