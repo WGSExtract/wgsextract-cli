@@ -80,7 +80,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Releasing](releasing.md) | Release the CLI and desktop app together |
 | [Bootstrap compression results](bootstrap_compression_results.md) | Read historical compression measurements |
 
-Release notes: [unreleased](release-notes/unreleased.md),
+Release notes: [unreleased](release-notes/unreleased/README.md),
 [v0.8.9](release-notes/v0.8.9.md), [v0.8.8](release-notes/v0.8.8.md), [v0.8.7](release-notes/v0.8.7.md),
 [v0.8.6](release-notes/v0.8.6.md), [v0.8.5](release-notes/v0.8.5.md).
 Documentation inputs under `data/` include the
