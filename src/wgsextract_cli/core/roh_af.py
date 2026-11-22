@@ -339,5 +339,7 @@ def prepared(
             "rows": rows,
             "table": file_identity(table),
         }
-        (folder / "source.json").write_text(json.dumps(record, indent=1), "utf-8")
+        (folder / "source.json").write_text(
+            json.dumps(record, indent=1), "utf-8", newline="\n"
+        )
         yield PreparedTable(table, rows, "built", reason, current)
