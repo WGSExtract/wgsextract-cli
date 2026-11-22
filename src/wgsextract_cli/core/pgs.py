@@ -46,10 +46,12 @@ DISCLAIMER = (
 )
 # The PGS Catalog's licence for a score whose authors set no terms of their own.
 CATALOG_DEFAULT_LICENSE = "PGS obtained from the Catalog should be cited appropriately"
-# Authors' licences that only ask for attribution (the citation `score pgs`
-# reports), so they restrict no use.
-ATTRIBUTION_LICENSES = frozenset(
-    {"Creative Commons Attribution 4.0 International (CC BY 4.0)"}
+# An authors' licence that is CC BY 4.0 alone, however it is spelled, only
+# asks for attribution (the citation `score pgs` reports), so it restricts no
+# use. Licences with NC, ND or SA terms, or any further text, don't match.
+ATTRIBUTION_LICENSE = re.compile(
+    r"(creative commons attribution 4\.0( international)?( license)?"
+    r"( \(cc[ -]by[ -]4\.0\))?|cc[ -]by[ -]4\.0( international)?)"
 )
 # IDs and trait labels only: scoring files are never redistributed. `bmi` is
 # PGS005198 (Smit et al. 2025, CC BY 4.0), not PGS000027, which only academic
@@ -72,11 +74,11 @@ CURATED = {
 def author_license(license: str | None) -> bool:
     """Whether a Catalog score's licence is its authors' own terms, other than
     attribution, rather than the Catalog's default."""
-    text = str(license or "").strip().rstrip(".")
+    text = " ".join(str(license or "").split())
     return (
         bool(text)
         and not text.startswith(CATALOG_DEFAULT_LICENSE)
-        and text not in ATTRIBUTION_LICENSES
+        and not ATTRIBUTION_LICENSE.fullmatch(text.casefold().rstrip("."))
     )
 
 

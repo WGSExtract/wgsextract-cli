@@ -531,6 +531,8 @@ def main() -> None:
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--memory", type=int, default=8000, help="plink2 MiB")
     args = parser.parse_args()
+    if args.step == "training" and args.base is None:
+        parser.error("training needs --base, the published reference to match")
     global _threads, _memory
     _threads, _memory = args.threads, args.memory
     if args.step == "subset":
