@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.step_documents import Digest, DirectoryIdentity, FileIdentity
 
 DIRECTORY_FINGERPRINT_PREFIX = "wgse-dir1:"
@@ -27,10 +28,37 @@ DIRECTORY_FINGERPRINT_PREFIX = "wgse-dir1:"
 FULL_DIGEST_LIMIT = 64 << 20
 
 
-def _fingerprint(path: Path) -> str | None:
-    from wgsextract_cli.core.sample_workspace import file_fingerprint
+def file_fingerprint(path: PathInput) -> str | None:
+    """Sampled content identity, memoized only with reliable change metadata."""
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    resolved = str(absolute_path(path))
+    if os.name == "nt":
+        # Windows ctime is creation time; a rewrite can preserve every stat key.
+        return _read_fingerprint(resolved)
+    return _cached_fingerprint(
+        resolved,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+        info.st_dev,
+        info.st_ino,
+    )
 
-    return file_fingerprint(path)
+
+def _read_fingerprint(path: str) -> str | None:
+    from wgsextract_cli.core.results import fingerprint
+
+    return fingerprint(path)
+
+
+@functools.lru_cache(maxsize=256)
+def _cached_fingerprint(
+    path: str, size: int, mtime_ns: int, ctime_ns: int, device: int, inode: int
+) -> str | None:
+    return _read_fingerprint(path)
 
 
 def _read_sha256(path: str) -> str:
@@ -79,7 +107,7 @@ def file_identity(path: Path) -> FileIdentity:
         fingerprint: str | None = _sha256(path, info)
         digest = {"algorithm": "sha256", "strength": "full"}
     else:
-        fingerprint = _fingerprint(path)
+        fingerprint = file_fingerprint(path)
         digest = {"algorithm": "wgse-fp1", "strength": "sampled"}
     return {
         "size": info.st_size,
