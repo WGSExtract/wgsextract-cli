@@ -105,14 +105,15 @@ def proc_text(fd: int, name: str) -> TextIO:
     return os.fdopen(os.open(name, REG, dir_fd=fd), "r", errors="surrogateescape")
 
 
-def process_state(fd: int) -> tuple[str, tuple[int, ...]]:
+def process_state(fd: int) -> tuple[str, tuple[int, ...], bool]:
     with proc_text(fd, "status") as data:
         fields = dict(line.split(":", 1) for line in data if ":" in line)
     uids = tuple(map(int, fields["Uid"].split()))
     state = fields["State"].split()[0]
-    if len(uids) != 4 or len(state) != 1:
+    kernel = fields.get("Kthread", "").strip()
+    if len(uids) != 4 or len(state) != 1 or kernel not in {"", "0", "1"}:
         raise Unverifiable
-    return state, uids
+    return state, uids, kernel == "1"
 
 
 def start_time(fd: int) -> str:
@@ -329,9 +330,25 @@ def process_ids(fd: int) -> Iterator[str]:
     return (name for name in os.listdir(fd) if name.isascii() and name.isdecimal())
 
 
+def require_complete_proc() -> None:
+    with (PROC / "self/mountinfo").open(errors="surrogateescape") as table:
+        for line in table:
+            before, after = line.split(" - ", 1)
+            mount, filesystem = before.split(), after.split()
+            if mount[4] == str(PROC) and filesystem[0] == "proc":
+                options = (mount[5] + "," + filesystem[2]).split(",")
+                if any(
+                    option.startswith(("hidepid=", "subset="))
+                    and option not in {"hidepid=0", "hidepid=off"}
+                    for option in options
+                ):
+                    raise Unverifiable
+
+
 def inspect(
     root: Path, uid: int, repo_id: tuple[int, int], wanted: dict[str, tuple[int, int]]
 ) -> dict[str, list[int]]:
+    require_complete_proc()
     names = list(wanted)
     result: dict[str, list[int]] = {name: [] for name in names}
     candidates = {root / "scratch" / name: wanted[name] for name in names}
@@ -343,8 +360,8 @@ def inspect(
         for name in process_ids(proc):
             try:
                 with directory(proc, name) as fd:
-                    state, uids = process_state(fd)
-                    if uid not in uids:
+                    state, uids, kernel = process_state(fd)
+                    if kernel:
                         continue
                     if state in TERMINAL:
                         require_group_exited(fd, name)
@@ -360,7 +377,7 @@ def inspect(
                             seen.update(
                                 p.name for p in candidates if path.is_relative_to(p)
                             )
-                        state, live_uids = process_state(fd)
+                        state, live_uids, live_kernel = process_state(fd)
                         if state in TERMINAL:
                             require_group_exited(fd, name)
                             continue
@@ -370,6 +387,7 @@ def inspect(
                         if (
                             start_time(fd) != start
                             or live_uids != uids
+                            or live_kernel
                             or os.readlink("ns/mnt", dir_fd=fd) != namespace
                             or mounts(fd) != records
                         ):

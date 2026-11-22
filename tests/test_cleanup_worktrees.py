@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import cast
+from typing import TextIO, cast
 
 import pytest
 
@@ -367,6 +367,97 @@ def wait_for_zombie(pid: int) -> None:
             return
         time.sleep(0.01)
     pytest.fail(f"PID {pid} did not become a zombie")
+
+
+@pytest.mark.parametrize("holder_uid", [0, 1001])
+@pytest.mark.parametrize("use_inspector", [True, False], ids=["inspector", "local"])
+def test_1393_activity_is_not_limited_to_the_socket_owner_uid(
+    repo: Path,
+    proc: Path,
+    inspector: socket.socket,
+    monkeypatch: pytest.MonkeyPatch,
+    holder_uid: int,
+    use_inspector: bool,
+) -> None:
+    path = topic(repo)
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print('ready', flush=True); sys.stdin.read()",
+        ],
+        cwd=path,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout is not None
+            assert process.stdout.readline() == "ready\n"
+            # Keep the OS process, cwd and descriptors real, and change only the
+            # observed UID to avoid requiring elevated CI permissions.
+            observed_uid = holder_uid if holder_uid != os.geteuid() else 1002
+            live_proc = Path("/proc") / str(process.pid)
+            if use_inspector:
+                real_proc_text = worktree_activity_inspector.proc_text
+
+                def credential_status(fd: int, name: str) -> TextIO:
+                    stream = real_proc_text(fd, name)
+                    if (
+                        name != "status"
+                        or Path(os.readlink(f"/proc/self/fd/{fd}")) != live_proc
+                    ):
+                        return stream
+                    with stream:
+                        return StringIO(
+                            "".join(
+                                f"Uid:\t{observed_uid}\t{observed_uid}\t{observed_uid}\t{observed_uid}\n"
+                                if line.startswith("Uid:")
+                                else line
+                                for line in stream
+                            )
+                        )
+
+                monkeypatch.setattr(
+                    worktree_activity_inspector, "proc_text", credential_status
+                )
+                monkeypatch.setattr(
+                    worktree_activity_inspector,
+                    "process_ids",
+                    lambda fd: iter([str(process.pid)]),
+                )
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    handled = pool.submit(
+                        handle_requests,
+                        inspector,
+                        repo,
+                        1,
+                        cleanup_worktrees.INSPECTOR_SHA256,
+                    )
+                    run = cleanup(repo, "--inspector")
+                    handled.result()
+            else:
+                process_link = proc / str(process.pid)
+                process_link.symlink_to(live_proc)
+                real_stat = Path.stat
+
+                def credential_stat(
+                    self: Path, *, follow_symlinks: bool = True
+                ) -> os.stat_result:
+                    info = real_stat(self, follow_symlinks=follow_symlinks)
+                    if self == process_link:
+                        fields = list(info)
+                        fields[4] = observed_uid
+                        return os.stat_result(fields)
+                    return info
+
+                monkeypatch.setattr(Path, "stat", credential_stat)
+                run = cleanup(repo)
+            assert run.returncode == 0, run.stderr
+            assert result(repo, path)["reason"] == "active-process"
+            assert path.is_dir()
+        finally:
+            process.terminate()
 
 
 @pytest.mark.parametrize(

@@ -457,10 +457,11 @@ run. The private JSON report in `out/worktree-cleanup/` records skips, removals
 and errors.
 
 Dirty, locked, detached, active or linked worktrees are left alone. Activity is
-checked through Linux `/proc` for the cleanup user's processes; on shared hosts
-use `git worktree lock` before starting work that the cleanup user cannot see.
-If Linux denies inspection of one of the cleanup user's processes, the run
-reports the error and does not remove unverified worktrees.
+checked through Linux `/proc` across process UIDs. If Linux hides or denies
+inspection of a process, the run reports the error and does not remove
+unverified worktrees. Use the optional inspector below when unprivileged
+process visibility is insufficient. Use `git worktree lock` before starting
+work in a checkout that might be eligible for cleanup.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees; lock a worktree if other
 projects depend on its files. Nothing manages your reference library. Samples
@@ -474,7 +475,7 @@ are not executed. Do not put secrets in run logs or scratch sources.
 
 Linux can hide the cwd, mappings and file descriptors of services and login
 processes even from other processes of the same UID. The optional inspector
-reads this state without granting the cleanup command or Sheprd any elevated
+reads this state across process UIDs without granting the cleanup command or Sheprd any elevated
 permissions. It accepts only inode-verified registered worktree names in one
 repository, checks the local Unix peer UID, and returns matching numeric PIDs
 or an unverifiable result, never process paths or arguments. The service
