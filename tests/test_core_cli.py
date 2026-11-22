@@ -359,6 +359,41 @@ def test_startup_selects_alternate_config_before_validating_default(
     assert len(rejected.stderr.splitlines()) == 1
 
 
+@pytest.mark.parametrize("explicit", [False, True], ids=["default", "explicit"])
+@pytest.mark.parametrize(
+    ("content", "location"),
+    [
+        (b"keep_awake = false\natomic_outputs = @\n", "line 2, column 18"),
+        ("keep_awake = false\n".encode("utf-16"), "byte 1"),
+    ],
+    ids=["invalid-toml", "invalid-utf8"],
+)
+def test_1214_cli_rejects_malformed_toml(
+    tmp_path, monkeypatch, explicit, content, location
+):
+    from tests.smoke_utils import isolate_home
+
+    home = tmp_path / "home"
+    isolate_home(monkeypatch, home)
+    path = tmp_path / "alternate.toml" if explicit else config.default_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    options = ["--config", str(path)] if explicit else []
+
+    result = subprocess.run(
+        [sys.executable, "-m", "wgsextract_cli.main", *options, "help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "Configuration error:" in result.stderr
+    assert str(path) in result.stderr
+    assert location in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_save_config_clears_aliases_of_cleared_key(temp_config):
     temp_config.write_text('reflib = "/old/reference"\nthreads = 4\n')
     config.reload_settings()
@@ -371,11 +406,23 @@ def test_save_config_clears_aliases_of_cleared_key(temp_config):
     assert config.settings["cpu_threads"] == 4
 
 
-def test_save_config_refuses_to_overwrite_invalid_toml(temp_config):
-    temp_config.write_text("this is = = not toml\n")
-    with pytest.raises(WGSExtractError):
+@pytest.mark.parametrize(
+    ("content", "diagnostic"),
+    [
+        (b"this is = = not toml\n", "TOML"),
+        ("keep_awake = false\n".encode("utf-16"), "UTF-8"),
+    ],
+    ids=["invalid-syntax", "invalid-utf8"],
+)
+def test_1214_saving_config_refuses_to_overwrite_invalid_toml(
+    temp_config, content, diagnostic
+):
+    temp_config.write_bytes(content)
+    with pytest.raises(WGSExtractError) as error:
         config.save_config({"reference_library": "/x"})
-    assert temp_config.read_text() == "this is = = not toml\n"
+    assert str(temp_config) in str(error.value)
+    assert diagnostic in str(error.value)
+    assert temp_config.read_bytes() == content
 
 
 def test_config_with_utf8_bom_is_read_and_updated(temp_config):

@@ -22,7 +22,7 @@ _DATA_EXTENSIONS = tuple(
             for base in (
                 ".bam .cram .sam .ubam .bai .crai .csi .vcf .gvcf .g.vcf .bcf .fastq "
                 ".fq .fa .fasta .fna .bed .txt .csv .tsv .json .zip .log .tbi .bw "
-                ".bigwig .html .pdf .md"
+                ".bigwig .html .pdf .md .parquet .sqlite"
             ).split()
             for gz in ("", ".gz", ".bgz", ".zst", ".bz2", ".xz")
         },
@@ -69,7 +69,17 @@ _QUOTED_PATH = re.compile(r"""(['"])((?:[A-Za-z]:[\\/]|\\\\|~[\\/]|/)[^'"\r\n]*)
 _BARE_FILE = re.compile(
     r"(?<![\w<>/\\.~-])(?:\w|<sample>)[\w.-]*?(?:"
     + "|".join(re.escape(e) for e in _DATA_EXTENSIONS)
-    + r")(?![\w.-])",
+    + r")(?![\w-]|\.+[\w-])",
+    re.IGNORECASE,
+)
+# An unquoted table filename with spaces has no unambiguous left boundary.
+# Redact nearby words rather than leaving the first part of the name in logs.
+_SPACED_BARE_TABLE = re.compile(
+    r"(?<![\w<>/\\.~-])(?:[\w.-]+ ){1,4}[\w.-]+?(?:"
+    + "|".join(
+        re.escape(e) for e in _DATA_EXTENSIONS if e.startswith((".parquet", ".sqlite"))
+    )
+    + r")(?![\w-]|\.+[\w-])",
     re.IGNORECASE,
 )
 # Relative paths: reduced when they have 2+ separators or end in a data file.
@@ -291,6 +301,7 @@ class Redactor:
         text = _QUOTED_PATH.sub(lambda m: m[1] + self.path(m[2]) + m[1], text)
         text = self._unquoted_paths(text)
         text = _RELATIVE_PATH.sub(self._relative, text)
+        text = _SPACED_BARE_TABLE.sub(lambda m: self._file_name(m[0]), text)
         return _BARE_FILE.sub(lambda m: self._file_name(m[0]), text)
 
     def _unquoted_paths(self, text: str) -> str:

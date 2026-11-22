@@ -159,7 +159,8 @@ A submission can include `X-WGSE-Job-ID` with a client-generated lowercase
 UUIDv4. The HTTP server advertises this as `"client_job_ids": true` in its
 discovery file and `--ready-json` output. If the reply is lost, look up the
 original job with `GET /v1/jobs/{id}`.
-The server returns `409` if that ID already exists and does not start a second job.
+After reading the request body, the server returns `409` if that ID already
+exists, without decoding the JSON or starting a second job.
 A lookup that does not find the job is not proof that a submission still in
 flight was rejected.
 
@@ -171,7 +172,8 @@ The manifest's `provenance` (tool versions and the full parameters) appears
 only with `full=1`, to keep responses short.
 
 Operation submissions require `Content-Length` (use `0` for an empty body).
-Requests using `Transfer-Encoding` are rejected with 400.
+Requests using `Transfer-Encoding` are rejected with 400. The server closes
+the connection if it cannot read the complete request body within 10 seconds.
 
 The event stream keeps the latest 1,024 events per job for active jobs and
 the 128 most recently finished jobs. Reconnecting with an older event ID
