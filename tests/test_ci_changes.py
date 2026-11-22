@@ -367,7 +367,12 @@ def test_1326_drive_like_literals_never_stat_outside_the_repository(
     (tmp_path / "gui").mkdir()
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests/test_reader.py").write_text(
-        "ERROR = 'E: Failed to fetch http://mirror/pool'\nDATA = 'gui/future.json'\n"
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ERROR = 'E: Failed to fetch http://mirror/pool'\n"
+        "LOG = Path(ERROR)\n"
+        "DRIVE = ROOT / 'E:' / 'pool'\n"
+        "DATA = 'gui/future.json'\n"
     )
     root = tmp_path.resolve()
     stat = os.stat
