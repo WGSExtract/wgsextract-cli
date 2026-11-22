@@ -62,9 +62,11 @@ table keeps hg19 REF bases, about 1% of which differ on GRCh38) is excluded,
 so it can never annotate a call, with a counted
 `annotation_ref_mismatch_excluded` warning; `vcf chain-annotate` repeats its
 steps' `annotation_*` warnings. A resource where more than half of at least 20
-checked records differ is refused as built for another genome build. A
-**sample** REF that differs from the FASTA, and other build mismatches, remain
-errors.
+checked records differ is refused as built for another genome build. Allele
+tables (REVEL, CADD, AlphaMissense, PharmGKB) are checked this way on up to
+1,000 SNV rows read from 64 compressed blocks spread through the file, so a
+small query can't hide a table's build. A **sample** REF that differs from the
+FASTA, and other build mismatches, remain errors.
 
 Single-sample phased SNVs can recover a ClinVar MNV only when every base differs
 between REF and ALT and all component

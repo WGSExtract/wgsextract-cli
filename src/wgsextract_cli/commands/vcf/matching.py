@@ -24,8 +24,7 @@ from wgsextract_cli.core.variant_files import (
 )
 from wgsextract_cli.core.variant_table import parse_header
 
-# Fewer checked resource records can't tell a stale row or two from a wrong build.
-_WRONG_BUILD_MIN_RECORDS = 20
+from .resource_ref_check import check_table_build, record_count, report_ref_mismatches
 
 
 def table_as_vcf(
@@ -39,6 +38,12 @@ def table_as_vcf(
     fields = columns.split(",")
     if "REF" not in fields or "ALT" not in fields:
         return source, columns
+    lengths = {
+        name: int(length)
+        for line in Path(reference + ".fai").read_text().splitlines()
+        for name, length, *_ in [line.split("\t")]
+    }
+    check_table_build(source, fields, lengths, reference, work)
     info_fields = [
         (i, c.removeprefix("INFO/"))
         for i, c in enumerate(fields)
@@ -238,40 +243,6 @@ def _text_copy(
         )
 
 
-def _report_ref_mismatches(stderr: str, resource: str) -> None:
-    """Warn about the resource records ``bcftools norm -c x`` dropped for a REF
-    that differs from the FASTA; refuse a resource that mostly differs, as it
-    is for another build and its chance matches would annotate wrong variants."""
-    stats: dict[str, str] = {}
-    for line in stderr.splitlines():
-        # "Lines   total/split/.../mismatch_removed/...:\t12/0/.../1/..."
-        fields = line.split()
-        if len(fields) == 3 and fields[0] == "Lines":
-            names, values = fields[1].rstrip(":").split("/"), fields[2].split("/")
-            stats = dict(zip(names, values, strict=False))
-    if "mismatch_removed" not in stats or "total" not in stats:
-        raise WGSExtractError(
-            f"bcftools norm did not report its REF check of {resource}: {stderr.strip()}"
-        )
-    removed, total = int(stats["mismatch_removed"]), int(stats["total"])
-    if total >= _WRONG_BUILD_MIN_RECORDS and removed * 2 > total:
-        raise WGSExtractError(
-            f"Reference/build mismatch: {removed} of {total} records in {resource} "
-            "have a REF base that differs from the reference FASTA; the resource "
-            "is likely for another genome build."
-        )
-    if removed:
-        warn(
-            "annotation_ref_mismatch_excluded",
-            f"Excluded {removed} of {total} records in {resource} whose REF base "
-            "differs from the reference FASTA (e.g. hg19 bases left in a GRCh38 "
-            "table); they annotate no variant. No sample records were excluded.",
-            count=removed,
-            total=total,
-            resource=resource,
-        )
-
-
 def _normalize(
     source: str,
     reference: str,
@@ -335,14 +306,18 @@ def _normalize(
     norm = output + ".norm.gz"
     # A query REF that differs from the FASTA means the wrong build: fail. A
     # resource can carry a few stale REF bases (REVEL keeps hg19's), which are
-    # dropped so they can't stop the run or annotate a variant.
-    checked = run_command(
+    # dropped so they can't stop the run or annotate a variant. Dropped records
+    # are counted, as bcftools' summary of them varies between versions.
+    run_command(
         ["bcftools", "norm", "-f", reference, "-c", "x" if is_resource else "e",
          "-Oz", "-o", norm, split],
         capture_output=True,
     )  # fmt: skip
     if is_resource:
-        _report_ref_mismatches(checked.stderr, Path(origin or source).name)
+        total = record_count(split)
+        report_ref_mismatches(
+            total - record_count(norm), total, Path(origin or source).name
+        )
     run_command(
         ["bcftools", "sort", "-T", str(Path(work, "sort")), "-Oz", "-o", output, norm],
         capture_output=True,
