@@ -60,15 +60,19 @@ if sys.platform == "win32":
         path = Path(expanded)
         if not path.is_absolute():
             raise RequestError(400, "usage", "Viewer paths must be absolute.")
-        root = next(
-            (
-                r
-                for r in guard.roots
-                if not is_network_path(str(r)) and path.is_relative_to(r)
-            ),
-            None,
-        )
-        if root is None:
+        matches = [
+            r
+            for r in guard.roots
+            if not is_network_path(str(r)) and path.is_relative_to(r)
+        ]
+        # Case-sensitive NTFS folders can hold roots that differ only by case.
+        exact = [r for r in matches if path.parts[: len(r.parts)] == r.parts]
+        folded = {str(r).casefold() for r in matches}
+        if exact:
+            root = exact[0]
+        elif matches and len(folded) == len(matches):
+            root = matches[0]
+        else:
             raise RequestError(
                 403, "path_not_allowed", "Viewer path is outside allowed roots."
             )

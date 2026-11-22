@@ -40,6 +40,7 @@ def remote_server(
     tmp_path: Path,
     *,
     enabled: bool = True,
+    roots: list[Path] | None = None,
     listen: str = "0.0.0.0",
     max_connections: int = 32,
     header_timeout_seconds: float = 10,
@@ -49,7 +50,7 @@ def remote_server(
         0,
         secrets.token_urlsafe(32),
         manager,
-        PathGuard([tmp_path]),
+        PathGuard(roots or [tmp_path]),
         listen=listen,
         allowed_hosts=frozenset({HOST}),
         allowed_origins=frozenset({ORIGIN}),
@@ -254,6 +255,29 @@ def test_issue_1318_windows_viewer_reads_nested_files_but_not_junctions(
                 403,
                 "path_not_allowed",
             )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows folders")
+def test_issue_1318_windows_viewer_reads_the_root_named_in_case_sensitive_folders(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "case"
+    parent.mkdir()
+    enabled = subprocess.run(
+        ["fsutil", "file", "setCaseSensitiveInfo", str(parent), "enable"],
+        capture_output=True,
+    )
+    if enabled.returncode:
+        pytest.skip("case-sensitive folders are unavailable")
+    upper, lower = parent / "Data", parent / "data"
+    for root, content in ((upper, b"upper"), (lower, b"lower")):
+        root.mkdir()
+        (root / "sample.bam").write_bytes(content)
+
+    with remote_server(tmp_path, roots=[upper, lower]) as server:
+        for root, content in ((upper, b"upper"), (lower, b"lower")):
+            target = "/v1/viewer-file?" + urlencode({"path": str(root / "sample.bam")})
+            assert request(server, target)[::2] == (200, content)
 
 
 @requires_safe_reads
