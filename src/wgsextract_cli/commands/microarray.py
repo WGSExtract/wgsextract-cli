@@ -77,7 +77,6 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
-from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -87,6 +86,10 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     verify_paths_exist,
+)
+from wgsextract_cli.core.variant_sample import (
+    has_sample_input_index,
+    indexed_sample_vcf,
 )
 from wgsextract_cli.core.warnings import print_warning
 
@@ -444,7 +447,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             if vcf_sample:
                 chm13_params = replace(
                     params,
-                    input=Path(_sample_vcf(input_path, vcf_sample, outdir, cleanup)),
+                    input=Path(
+                        indexed_sample_vcf(input_path, vcf_sample, outdir, cleanup)
+                    ),
                 )
             combined = run_chm13(
                 chm13_params,
@@ -552,6 +557,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         aadr_panels=aadr_panels,
         aadr_chain=aadr_chain_file,
     )
+    if vcf_sample:
+        inputs["vcf_sample_preparation_policy"] = "contig-aware-v1"
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
@@ -666,17 +673,16 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     if not is_vcf:
         warn_about_alignment(input_path, ref_fasta)
     calling_params = params
-    if indel_bindings and is_vcf:
+    if vcf_sample and (
+        indel_bindings or (region_args and not has_sample_input_index(input_path))
+    ):
         calling_params = replace(
             params,
-            input=Path(
-                prepare_indel_vcf(
-                    _sample_vcf(input_path, vcf_sample, outdir, cleanup)
-                    if vcf_sample
-                    else input_path,
-                    outdir,
-                )
-            ),
+            input=Path(indexed_sample_vcf(input_path, vcf_sample, outdir, cleanup)),
+        )
+    elif indel_bindings and is_vcf:
+        calling_params = replace(
+            params, input=Path(prepare_indel_vcf(input_path, outdir))
         )
 
     start_vcf = time.time()
@@ -695,7 +701,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         start_vcf=start_vcf,
         out_vcf=out_vcf,
         input_chroms=input_chroms,
-        # An indel run's calling input is already the selected sample.
+        # A working copy already contains only the selected sample.
         sample=None if calling_params is not params else vcf_sample,
         gvcf=gvcf,
     )
@@ -948,25 +954,6 @@ def _vcf_input_layout(
         )
         params = replace(params, assume_hom_ref=False)
     return (requested if len(samples) > 1 else None), gvcf, params
-
-
-def _sample_vcf(
-    vcf: str, sample: str, outdir: str, cleanup: contextlib.ExitStack
-) -> str:
-    """One sample of a multi-sample VCF, as an indexed VCF in a scratch
-    directory under ``outdir`` that ``cleanup`` removes."""
-    Path(outdir).mkdir(parents=True, exist_ok=True)
-    workdir = cleanup.enter_context(scratch_directory(outdir, "Sample_"))
-    subset = str(Path(workdir, "sample.vcf.gz"))
-    try:
-        run_command(
-            ["bcftools", "view", "--samples", sample, "--trim-alt-alleles"]
-            + ["-Oz", "-o", subset, vcf]
-        )
-        run_command(["bcftools", "index", "-t", subset])
-    except (OSError, subprocess.SubprocessError) as e:
-        raise WGSExtractError(f"Could not select sample '{sample}': {e}") from e
-    return subset
 
 
 run = cli_handler(MicroarrayParams, run_microarray)
