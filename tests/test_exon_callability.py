@@ -2,9 +2,11 @@
 not-readable / not-run results, on real samtools and bcftools output."""
 
 import csv
+import gzip
 import io
 import json
 import random
+import shutil
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -351,6 +353,69 @@ def test_1177_report_separates_not_reported_not_readable_and_not_run(
     html = (tmp_path / "S_personal_report.html").read_text()
     for text in ("not reported", "not readable", "not run"):
         assert f"**{text}**" in markdown and f"<b>{text}</b>" in html
+
+
+def _copy_with_callability(sample: Path, tmp_path: Path) -> Path:
+    _callability(sample)
+    folder = tmp_path / "S"
+    shutil.copytree(sample, folder)
+    return folder
+
+
+def _results(folder: Path, tmp_path: Path) -> tuple[dict[str, str], set[str]]:
+    _, _, report = _report(folder, tmp_path / "report")
+    section = report["sections"]["exon_callability"]
+    return (
+        {g["gene"]: g["result"] for g in section["genes"]},
+        {w["code"] for w in section["warnings"]},
+    )
+
+
+@needs_htslib
+def test_1177_unplaced_clinvar_calls_leave_no_gene_not_reported(
+    sample: Path, tmp_path: Path
+) -> None:
+    """A P/LP call ClinVar names no gene for can't be placed: no gene may
+    then read as not reported, although every exon of GENEE was read."""
+    folder = _copy_with_callability(sample, tmp_path)
+    clinvar = folder / "clinvar.vcf"
+    text = gzip.decompress((folder / "clinvar.vcf.gz").read_bytes()).decode()
+    clinvar.write_text(text.replace(";GENEINFO=GENEA:1", ""))
+    api.vcf.clinvar(
+        api.VcfClinvarParams(
+            vcf_input=folder / "snps.vcf.gz", ref=folder / "ref.fa", threads=1,
+            clinvar_file=Path(bgzip_index(clinvar, folder / "unnamed.vcf.gz")),
+            outdir=folder,
+        )
+    )  # fmt: skip
+    results, warnings = _results(folder, tmp_path)
+    assert results["GENEE"] == "not_run"
+    assert "not_reported" not in results.values()
+    assert "clinvar_not_combined" in warnings
+
+
+@needs_htslib
+def test_1177_clinvar_on_another_call_set_is_not_combined(
+    sample: Path, tmp_path: Path
+) -> None:
+    """ClinVar annotated bcftools' indel calls, which have no gVCF: the
+    SNP gVCF's callable exons say nothing about them."""
+    folder = _copy_with_callability(sample, tmp_path)
+    api.vcf.indel(
+        api.VcfIndelParams(
+            input=folder / "S.bam", ref=folder / "ref.fa", outdir=folder,
+            threads=1, region="chr7:1-5500", ploidy="GRCh38",
+        )
+    )  # fmt: skip
+    api.vcf.clinvar(
+        api.VcfClinvarParams(
+            vcf_input=folder / "indels.vcf.gz", ref=folder / "ref.fa", threads=1,
+            clinvar_file=folder / "clinvar.vcf.gz", outdir=folder,
+        )
+    )  # fmt: skip
+    results, warnings = _results(folder, tmp_path)
+    assert results["GENEE"] == "not_run"
+    assert "clinvar_not_combined" in warnings
 
 
 @needs_htslib

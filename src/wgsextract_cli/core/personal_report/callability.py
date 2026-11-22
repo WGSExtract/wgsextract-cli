@@ -28,6 +28,7 @@ from wgsextract_cli.core.report_documents import (
 from .context import (
     CONFIDENCE,
     SECTIONS,
+    Source,
     _command_or_role,
     _Context,
     _missing,
@@ -37,6 +38,8 @@ from .context import (
 COMMAND = "vcf callability"
 ROLE = "exon_callability"
 RESULTS = ("reported", "not_readable", "not_run", "not_reported")
+# ClinVar section warnings that leave its findings incomplete.
+_INCOMPLETE = frozenset({"gene_list_unavailable", "calls_truncated"})
 
 
 def _symbols(spec: str | Path | None) -> set[str] | None:
@@ -78,19 +81,16 @@ def _result(
     clinvar: ReportClinvarDocument,
     reported: Mapping[str, str],
     listed: set[str] | None,
-    build_mismatch: bool,
+    blocked: str | None,
 ) -> tuple[str, str]:
     symbol = str(gene["gene"]).upper()
-    if build_mismatch:
-        return (
-            "not_run",
-            "the ClinVar run and the exon assessment are on different builds",
-        )
     if symbol in reported:
         label = reported[symbol].replace("_", " ")
         return "reported", f"ClinVar P/LP call ({label} confidence; see ClinVar)"
     if clinvar["status"] != "ok":
         return "not_run", "ClinVar annotation (vcf clinvar) has not run"
+    if blocked:
+        return "not_run", blocked
     if listed is not None and symbol not in listed:
         return "not_run", "not in the ClinVar section's gene list"
     if gene["state"] == ec.NOT_RUN:
@@ -103,6 +103,46 @@ def _result(
     if gene["state"] == ec.CALLABLE:
         return "not_reported", "no P/LP call where every coding exon was read"
     return "not_readable", "no P/LP call, but not every coding exon was read"
+
+
+def _same_calls(ctx: _Context, source: Source, gvcf: str) -> bool:
+    """Whether the ClinVar run read the calls this gVCF belongs to: its VCF
+    is the callability run's input, or that VCF's gVCF is this one."""
+    clinvar = ctx.latest(_command_or_role("vcf clinvar", "clinvar_pathogenic"))
+    if clinvar is None or clinvar.status != "ok":
+        return True
+    ours = {p.resolve() for p in source.sample_files()} | {
+        source.locate(gvcf).resolve()
+    }
+    theirs: set[Path] = set()
+    for vcf in clinvar.sample_files():
+        theirs.add(vcf.resolve())
+        if companion := evidence.companion(vcf):
+            theirs.add(Path(companion).resolve())
+    return not theirs or bool(ours & theirs)
+
+
+def _blocked(
+    ctx: _Context,
+    source: Source,
+    document: Mapping[str, Any],
+    clinvar: ReportClinvarDocument,
+) -> str | None:
+    """Why the ClinVar section's silence can't be read gene by gene, if it
+    can't; each reason is also a section warning."""
+    build, theirs = document.get("build"), clinvar.get("build")
+    if build and theirs and build != theirs:
+        return f"the exon assessment is on {build} but the ClinVar run on {theirs}"
+    if clinvar["status"] != "ok":
+        return None
+    if not _same_calls(ctx, source, str(document["evidence"]["file"])):
+        return "the ClinVar run annotated other variant calls than the assessed gVCF's"
+    codes = {w["code"] for w in clinvar["warnings"]}
+    if clinvar.get("counts", {}).get("unplaced") or codes & _INCOMPLETE:
+        return (
+            "some ClinVar calls could not be placed in genes (see the ClinVar section)"
+        )
+    return None
 
 
 def _exon_callability(
@@ -149,13 +189,12 @@ def _exon_callability(
     described = ReportGeneListDocument(**document["gene_list"])  # type: ignore[typeddict-item]
     section["title"] = SECTIONS["exon_callability"].format(gene_list=described["name"])
     build = document.get("build")
-    mismatch = bool(build and clinvar.get("build") and build != clinvar.get("build"))
-    if mismatch:
+    blocked = _blocked(ctx, source, document, clinvar)
+    if blocked:
         section["warnings"].append(
             ReportWarningDocument(
-                code="build_mismatch",
-                message=f"The exon assessment is on {build} but the ClinVar run on "
-                f"{clinvar.get('build')}: their results are not combined.",
+                code="clinvar_not_combined",
+                message=f"Unreported genes are not run: {blocked}.",
             )
         )
     reported = _reported(clinvar)
@@ -166,7 +205,7 @@ def _exon_callability(
     )
     genes: list[ReportCallabilityGeneDocument] = []
     for gene in document["genes"]:
-        result, text = _result(gene, clinvar, reported, listed, mismatch)
+        result, text = _result(gene, clinvar, reported, listed, blocked)
         genes.append(
             ReportCallabilityGeneDocument(
                 gene=gene["gene"],

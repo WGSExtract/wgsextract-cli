@@ -107,7 +107,7 @@ section:
 | `reported` | the ClinVar section lists a consensus P/LP call in the gene (with its confidence) |
 | `not_reported` | no call, and every coding exon was read |
 | `not_readable` | no call, but not every coding exon was read |
-| `not_run` | `vcf clinvar` has not run, the gene is not in its gene list, the runs are on different builds, or the gene was not assessed |
+| `not_run` | `vcf clinvar` has not run, the gene is not in its gene list, or the gene was not assessed; also every gene without a call when the two runs can't be combined (warning `clinvar_not_combined`): they are on different builds, ClinVar annotated other calls than the gVCF's, or it left calls it could not place in a gene |
 
 ## What a callable exon does not cover
 
