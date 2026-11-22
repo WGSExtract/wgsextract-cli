@@ -41,7 +41,9 @@ from .clair3_models import ModelMissing, choose_model, model_evidence
 from .clair3_runtime import CLAIR3, MPS_CLAIR3, MpsSetup
 
 
-def clair3_items(params: VcfClair3Params) -> list[Item]:
+def clair3_items(params: VcfClair3Params, reads: str | None) -> list[Item]:
+    """Clair3's items; ``reads`` is the local BAM/CRAM input whose header
+    chooses the model (None for a remote or missing one, never probed)."""
     try:
         require_supported_platform()
     except WGSExtractError as error:
@@ -56,7 +58,7 @@ def clair3_items(params: VcfClair3Params) -> list[Item]:
         tool = tool_item(CLAIR3)
         tool.evidence["backend"] = "cpu"
         items.append(tool)
-    header = get_bam_header(str(params.input)) if params.input else ""
+    header = get_bam_header(reads) if reads else ""
     if header:
         try:
             require_ont_read_groups(header)

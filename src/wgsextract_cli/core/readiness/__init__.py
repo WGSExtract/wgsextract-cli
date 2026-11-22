@@ -19,7 +19,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.utils import UsageError
 
-from .model import UNSUPPORTED, UNVERIFIED, Item, Report
+from .model import RUNNABLE, UNSUPPORTED, UNVERIFIED, Item, Report
 
 # Commands whose run-time data deps ready checks in full: the input, its
 # reference genome and, for annotation, the annotation file. Others also look
@@ -142,7 +142,15 @@ def _family_items(command: str, args: object, data: list[Item]) -> list[Item]:
         from wgsextract_cli.api.vcf import VcfClair3Params
         from wgsextract_cli.commands.vcf.clair3_readiness import clair3_items
 
-        return clair3_items(from_namespace(VcfClair3Params, args))
+        reads = next(
+            (
+                item.path
+                for item in data
+                if item.kind == "input" and item.status == RUNNABLE and item.path
+            ),
+            None,
+        )
+        return clair3_items(from_namespace(VcfClair3Params, args), reads)
     from wgsextract_cli.api.vcf import VcfDeepvariantParams
     from wgsextract_cli.commands.vcf.deepvariant_readiness import deepvariant_items
 

@@ -49,6 +49,9 @@ from .model import (
 SUBSET_REFERENCE_COMMANDS = frozenset({"vcf cnv", "vcf sv"})
 # Fields naming files the command writes, not reads.
 OUTPUT_FIELDS = frozenset({"out", "output"})
+# Fields a caller family checks itself: a DeepVariant checkpoint is a prefix
+# of its .index and .data-* files, not a file.
+FAMILY_FIELDS = {"vcf deepvariant": frozenset({"checkpoint"})}
 
 
 def data_items(command: str, args: argparse.Namespace) -> list[Item]:
@@ -112,6 +115,7 @@ def given_file_items(
             field.spec.path not in ("file", "file_or_directory")
             or field.name in OUTPUT_FIELDS
             or field.name in ("ref", "input_ref", *chosen)
+            or field.name in FAMILY_FIELDS.get(command, ())
         ):
             continue
         value = getattr(args, field.dest, None)

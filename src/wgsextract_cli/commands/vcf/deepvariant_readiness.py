@@ -8,6 +8,7 @@ Images are inspected in the local engine, never pulled."""
 
 from __future__ import annotations
 
+import glob
 from dataclasses import replace
 from pathlib import Path
 
@@ -266,7 +267,7 @@ def _model_files(model: str, checkpoint: str | None, where: str) -> Item:
     """The model the image or release calls with, or the user's checkpoint."""
     if not checkpoint:
         return _bundled_model(model, where)
-    found = any(Path(checkpoint).parent.glob(Path(checkpoint).name + "*"))
+    found = any(Path(checkpoint).parent.glob(glob.escape(Path(checkpoint).name) + "*"))
     return Item(
         "model",
         checkpoint,

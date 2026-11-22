@@ -38,6 +38,7 @@ from tests.test_deps_ready import item, ready
 from tests.test_deps_ready import offline as offline
 from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core.dependencies import clear_tool_caches
+from wgsextract_cli.main import main
 
 PINNED_MODEL = "r1041_e82_400bps_sup_v500"
 
@@ -265,3 +266,55 @@ def test_1183_deepvariant_gpu_is_unsupported_on_a_mac(offline, apple, capsys):
     backend = item(details, "backend")
     assert (code, backend["status"]) == (3, "unsupported")
     assert "--gpu is not supported on this platform" in backend["detail"]
+
+
+# Copilot review round 2 on PR #1371 ------------------------------------------
+
+
+def test_1183_a_remote_clair3_input_is_not_probed_and_leaks_no_credentials(
+    offline, linux_x86, fake_clair3, capsys
+):
+    """Typed as a Path, the URL lost a slash of its scheme (https:/...),
+    which the URL redactor didn't recognise in samtools' failure log."""
+    url = "https://reader:hunter2@example.org/ont.bam?X-Amz-Signature=abc123"
+    capsys.readouterr()
+
+    with pytest.raises(SystemExit) as exit_:
+        main(
+            [
+                "--json",
+                "--debug",
+                "deps",
+                "ready",
+                "--",
+                "vcf",
+                "clair3",
+                "--input",
+                url,
+            ]
+        )
+
+    out, err = capsys.readouterr()
+    assert exit_.value.code == 3
+    assert item(json.loads(out)["details"], "input")["status"] == "unsupported"
+    assert "hunter2" not in out + err and "abc123" not in out + err
+
+
+@needs_tools("samtools", "bcftools", "tabix")
+def test_1183_a_deepvariant_checkpoint_prefix_is_a_model_not_a_missing_file(
+    offline, dv, capsys
+):
+    """model.ckpt names model.ckpt.index and model.ckpt.data-*, not a file."""
+    checkpoint = dv.tmp / "custom" / "model.ckpt"
+    checkpoint.parent.mkdir()
+    for suffix in (".index", ".data-00000-of-00001"):
+        Path(f"{checkpoint}{suffix}").write_bytes(b"weights")
+
+    code, details = ready(
+        capsys, "vcf", "deepvariant", "--input", dv.sample.bam,
+        "--ref", dv.sample.ref, "--checkpoint", str(checkpoint),
+    )  # fmt: skip
+
+    assert (code, details["status"]) == (0, "ready_unverified")
+    assert item(details, "model")["status"] == "unverified"
+    assert str(checkpoint) not in details["blocking"]
