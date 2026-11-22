@@ -9,6 +9,7 @@ command end to end.
 
 import gzip
 import hashlib
+import json
 import random
 import subprocess
 import sys
@@ -292,16 +293,18 @@ def test_a_missing_liftover_chain_names_the_directories_searched(
     result = subprocess.run(
         [sys.executable, "-m", "wgsextract_cli.main", "--config", str(config)]
         + ["microarray", "--formats", "23andme_v3", "--input", bam]
-        + ["--ref", str(fasta), "--outdir", str(tmp_path / "out")],
+        + ["--ref", str(fasta), "--outdir", str(tmp_path / "out"), "--json"],
         capture_output=True,
         text=True,
     )
 
-    assert result.returncode != 0
-    error = " ".join((result.stdout + result.stderr).split())
-    assert "hg38ToHg19.over.chain.gz" in error
-    assert str(tmp_path / "elsewhere") in error
-    assert str(library) in error
+    assert result.returncode == 1, result.stderr
+    error = json.loads(result.stdout)["error"]
+    assert error["kind"] == "failure"
+    message = error["message"].replace("\\", "/")
+    assert "hg38ToHg19.over.chain.gz" in message
+    assert (tmp_path / "elsewhere").as_posix() in message
+    assert library.as_posix() in message
 
 
 def test_files_beside_an_outside_fasta_come_before_the_library(
