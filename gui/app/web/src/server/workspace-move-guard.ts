@@ -9,10 +9,10 @@ export class LinkedMoveFolderError extends HttpError {
 }
 
 export async function refuseLinkedMoveFolders(...folders: string[]) {
+    // A trailing slash or "/." can make lstat follow the last symlink. Don't
+    // resolve ".." lexically, which changes its meaning after a link.
+    const trailingSeparators = process.platform === "win32" ? /(?:[\\/]\.?)+$/ : /(?:\/\.?)+$/;
     for (const folder of folders) {
-        // A trailing slash or "/." can make lstat follow the last symlink. Don't
-        // resolve ".." lexically, which changes its meaning after a link.
-        const trailingSeparators = process.platform === "win32" ? /(?:[\\/]\.?)+$/ : /(?:\/\.?)+$/;
         const root = path.parse(folder).root;
         const trimmed = folder.replace(trailingSeparators, "");
         const link = trimmed.length < root.length ? root : trimmed;
@@ -27,7 +27,7 @@ export async function refuseLinkedMoveFolders(...folders: string[]) {
                 throw error;
             });
             const target = rawTarget && (path.isAbsolute(rawTarget) ? rawTarget
-                : await realpath(link).catch(() => `${path.dirname(link)}${path.sep}${rawTarget}`));
+                : await realpath(link).catch(() => rawTarget));
             throw new LinkedMoveFolderError(link, target);
         }
     }

@@ -206,6 +206,21 @@ test("#1340 moves files written into an empty library while running actions stop
   await assert.rejects(lstat(current), { code: "ENOENT" });
 });
 
+test("#1340 names the recorded target when a library link is dangling", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const link = path.join(users, "reference-data");
+  const target = path.join("..", "missing-library");
+  if (!await trySymlink(t, target, link, "dir")) return;
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(link)}\n`);
+  const before = await snapshotTree(root);
+  await assert.rejects(move({
+    sourceRoot: source, bundleRoot: bundle, folder: path.join(root, "moved"),
+    setting: { controlID: "paths", key: "reference_library" },
+  }), { link, target });
+  assert.deepEqual(await snapshotTree(root), before);
+});
+
 /** A reference library with links into it (absolute, by its real path, relative, a folder) and out of it. */
 async function referenceWithLinks(t, root, reference) {
   const shared = path.join(root, "shared");
