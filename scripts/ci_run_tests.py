@@ -157,7 +157,10 @@ def main() -> None:
     if (
         args.cache_read or args.cache_record or args.record_executed or args.scope
     ) and not args.cache_job:
-        parser.error("cache reads, records and --scope need --cache-job")
+        parser.error(
+            "--cache-read, --cache-record, --record-executed and --scope "
+            "need --cache-job"
+        )
     targets = test_targets(args.selection)
     if args.generic_only:
         targets = test_targets(

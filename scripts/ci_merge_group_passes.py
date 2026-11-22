@@ -98,7 +98,7 @@ def queue_manifest(
             and (item.get("workflow_run") or {}).get("head_sha") == sha
         ]
         if not matches:
-            return None
+            continue
         newest = max(matches, key=lambda item: int(item["id"]))
         archive = api(f"repos/{repository}/actions/artifacts/{int(newest['id'])}/zip")
         with zipfile.ZipFile(io.BytesIO(archive)) as files:

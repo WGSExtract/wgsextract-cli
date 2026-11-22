@@ -348,6 +348,26 @@ def test_1373_passing_merge_group_at_the_exact_sha_shares_its_manifest(
     assert Manifest.load(output).passed_with("a" * 32, frozenset({"pixi.lock"}))
 
 
+def test_1373_older_passing_group_at_the_sha_still_shares_its_manifest(
+    tmp_path: Path,
+) -> None:
+    responses = queue_api()
+    newer = responses["run"] | {"id": 8, "html_url": "https://github.com/x/runs/8"}
+    api = fake_github(responses)
+
+    def two_runs(path: str) -> bytes:
+        if "/workflows/pr_ci.yml/runs?" in path:
+            return json.dumps({"workflow_runs": [responses["run"], newer]}).encode()
+        if "/runs/8/artifacts?" in path:
+            return json.dumps({"artifacts": []}).encode()
+        return bytes(api(path))
+
+    output = tmp_path / "passed.json"
+    run = fetch(REPO, SHA, "test-pass-queue-ubuntu-all", output, api=two_runs)
+    assert run == "https://github.com/x/runs/7"
+    assert output.exists()
+
+
 @pytest.mark.parametrize(
     "changes",
     [
