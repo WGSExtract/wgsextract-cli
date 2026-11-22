@@ -26,6 +26,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 NOTES = Path(__file__).resolve().parents[1] / "docs" / "release-notes"
 SECTIONS = ("Changed", "New", "Fixes", "Deprecated", "Removed", "Desktop app")
 NAME = re.compile(r"(?P<number>[1-9]\d*)-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
@@ -89,8 +94,10 @@ def collect(notes: Path) -> tuple[list[Fragment], list[str]]:
             "unreleased.md: move its entries into unreleased/NUMBER-slug.md fragments"
         )
     unreleased = notes / "unreleased"
-    paths = sorted(unreleased.iterdir()) if unreleased.is_dir() else []
-    for path in paths:
+    if not (unreleased / README).is_file():
+        # Without it a deleted or misplaced folder would pass as "no fragments".
+        return [], [*errors, f"unreleased/{README} is missing"]
+    for path in sorted(unreleased.iterdir()):
         # Finder and editors leave dotfiles beside the fragments.
         if path.name == README or path.name.startswith("."):
             continue
@@ -117,11 +124,9 @@ def git(notes: Path, *args: str) -> list[str] | None:
 
 
 def project_version(notes: Path, revision: str) -> str | None:
-    text = git(notes, "show", f"{revision}:pyproject.toml") or []
-    return next(
-        (m[1] for line in text if (m := re.fullmatch(r'version = "([^"]+)"', line))),
-        None,
-    )
+    text = "\n".join(git(notes, "show", f"{revision}:pyproject.toml") or [])
+    version = tomllib.loads(text).get("project", {}).get("version")
+    return version if isinstance(version, str) else None
 
 
 def released(notes: Path, base: str) -> list[str]:

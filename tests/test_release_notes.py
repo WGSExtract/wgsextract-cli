@@ -115,6 +115,17 @@ def test_1281_assemble_refuses_existing_or_invalid_versions(
     assert (notes / "unreleased" / "7-fix.md").exists()
 
 
+def test_1281_check_fails_without_the_unreleased_folder(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = notes_dir(tmp_path, {})
+    (notes / "unreleased" / "README.md").unlink()
+    (notes / "unreleased").rmdir()
+
+    assert run(notes, "check") == 1
+    assert "unreleased/README.md is missing" in capsys.readouterr().err
+
+
 def test_1281_assemble_without_fragments_writes_nothing(tmp_path: Path) -> None:
     notes = notes_dir(tmp_path, {})
 
@@ -195,6 +206,21 @@ def test_1281_version_bump_without_assembled_notes_fails_the_check(
     notes = repository / "docs" / "release-notes"
     git(repository, "checkout", "-qb", "release-0.9.0")
     (repository / "pyproject.toml").write_text('[project]\nversion = "0.9.0"\n')
+    git(repository, "commit", "-qam", "bump")
+
+    assert run(notes, "check", "--base", "main") == 1
+    assert "version becomes 0.9.0" in capsys.readouterr().err
+
+
+def test_1281_version_bump_is_read_from_toml_not_one_line_layout(
+    repository: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = repository / "docs" / "release-notes"
+    layout = '[tool.other]\nversion = "1.0"\n\n[project]\nversion = "{}"  # bump\n'
+    (repository / "pyproject.toml").write_text(layout.format("0.8.9"))
+    git(repository, "commit", "-qam", "reformat")
+    git(repository, "checkout", "-qb", "release-0.9.0")
+    (repository / "pyproject.toml").write_text(layout.format("0.9.0"))
     git(repository, "commit", "-qam", "bump")
 
     assert run(notes, "check", "--base", "main") == 1
