@@ -523,14 +523,26 @@ def test_1356_deps_check_and_launch_explain_smart_app_control(host, monkeypatch)
         assert executable.lower() in str(failure.value).lower()
 
 
-def test_1356_bwa_mem2_version_probe_names_the_blocked_child(host):
-    child = r"C:\Tools with Spaces\bwa-mem2.avx512bw.exe"
-    diagnostic = f"bwa-mem2: can't start {child} (error 4551)"
-    _tool(host, "bwa-mem2", f"err({diagnostic!r}); sys.exit(1)")
+@pytest.mark.parametrize(
+    ("tool", "child_name", "diagnostic"),
+    [
+        ("bwa-mem2", "bwa-mem2.avx512bw.exe", "bwa-mem2: can't start {} (error 4551)"),
+        (
+            "vep-rs",
+            "vep-rs.exe",
+            "Error launching '{}': application blocked (os error 4551)",
+        ),
+    ],
+)
+def test_1356_version_probe_names_blocked_children_with_apostrophes(
+    host, tool, child_name, diagnostic
+):
+    child = rf"C:\O'Brien Tools\{child_name}"
+    _tool(host, tool, f"err({diagnostic.format(child)!r}); sys.exit(1)")
 
-    version = get_tool_version("bwa-mem2")
+    version = get_tool_version(tool)
     assert version is not None and version.startswith("Error:")
-    assert child in version
+    assert f"blocked {child} (" in version
     assert "WDAC" in version
 
 

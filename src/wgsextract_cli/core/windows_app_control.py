@@ -7,7 +7,7 @@ from pathlib import Path
 _POLICY_PREFIX = "Windows Application Control blocked "
 _CHILD_BLOCK = re.compile(
     r"""^(?:bwa-mem2: can't start (.+) \(error 4551\)|"""
-    r"""Error launching '([^'\r\n]+)': .+ \(os error 4551\))$""",
+    r"""Error launching '([^\r\n]+?)': .+ \(os error 4551\))$""",
     re.MULTILINE,
 )
 
