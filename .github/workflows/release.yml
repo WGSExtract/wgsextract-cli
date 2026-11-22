@@ -208,6 +208,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.resolve.outputs.sha }}
+      # A retry may publish an older tag that predates the release helper, so
+      # take it from this run's commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: run-helpers
+          persist-credentials: false
+          sparse-checkout: scripts/ci_release_latest.py
+          sparse-checkout-cone-mode: false
       - name: Create the release
         id: create
         env:
@@ -226,10 +234,9 @@ jobs:
             echo "created=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Don't move "latest" back to an older version.
-          latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
-          newest=$(printf '%s\n%s\n' "$TAG" "$latest" | sed '/^$/d' | sort -V | tail -1)
-          make_latest=$([ "$newest" = "$TAG" ] && echo true || echo false)
+          # Don't move "latest" back to an older version. A failed lookup
+          # stops here rather than promoting the tag (#1229).
+          make_latest=$(python3 run-helpers/scripts/ci_release_latest.py --repo "$GITHUB_REPOSITORY" "$TAG")
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "WGS Extract $TAG" --notes-file "$notes" --latest="$make_latest"
           echo "created=true" >> "$GITHUB_OUTPUT"

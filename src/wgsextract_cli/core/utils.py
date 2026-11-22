@@ -51,6 +51,9 @@ from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
+from wgsextract_cli.core.resource_policy import (
+    get_resource_threads as get_resource_threads,
+)
 from wgsextract_cli.core.run_log import active_run_log, record_command
 from wgsextract_cli.core.runtime import (
     default_thread_tuning_profile as default_thread_tuning_profile,

@@ -146,7 +146,8 @@ FACTS: dict[str, FactSpec] = {
             PLATFORMS,
             4,
         ),
-        FactSpec("build", "Reference build the file is aligned to."),
+        # 2: a VCF's ##reference path counts only by its file name.
+        FactSpec("build", "Reference build the file is aligned to.", version=2),
         FactSpec(
             "somalier_sex",
             "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",
