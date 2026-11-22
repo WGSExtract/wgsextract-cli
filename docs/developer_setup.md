@@ -436,6 +436,55 @@ The project is developed with AI coding agents. [AGENTS.md](../AGENTS.md) holds 
 
 Keep each change small and state how you'll verify it. Most problems show up when the result is checked against real data, not in review.
 
+## Retire stale agent worktrees
+
+The post-work cleanup checklist does not schedule itself. On a Linux host, run
+these commands from the primary checkout on `main`:
+
+```sh
+python3 scripts/cleanup_worktrees.py                   # offline audit, no removals
+python3 scripts/cleanup_worktrees.py --github          # verify eligibility only
+python3 scripts/cleanup_worktrees.py --github --apply  # retire eligible worktrees
+```
+
+`--github` uses an existing authenticated `gh` session to request PR metadata
+from github.com. Branch names and worktree contents are matched locally, never
+uploaded. A candidate must live directly under `scratch/`, and exactly match
+the head of its latest PR from this repository, merged into `main` at least a
+day ago and authored by the authenticated account. Git removes the worktree
+without `--force`; the branch stays. An authentication or state error stops the
+run. The private JSON report in `out/worktree-cleanup/` records skips, removals
+and errors.
+
+Dirty, locked, detached, active or linked worktrees are left alone. Activity is
+checked through Linux `/proc` for the cleanup user's processes; on shared hosts
+use `git worktree lock` before starting work that the cleanup user cannot see.
+If Linux denies inspection of one of the cleanup user's processes, the run
+reports the error and does not remove unverified worktrees.
+Do not start work in an eligible checkout during cleanup. Symlinks are checked
+in this repository and its registered worktrees; lock a worktree if other
+projects depend on its files. Nothing manages your reference library. Ignored
+scratch scripts, samples and other unknown files block removal. Known Pixi and
+Python caches may be regenerated. Small UTF-8 logs and evidence under `out/`
+(1 MiB per file, 32 MiB total) are copied to a private, local directory in
+`out/archive/` without following links. Do not put secrets in run logs.
+
+For daily cleanup, start the Sheprd automation service on the host, register
+the primary checkout, and inspect the plan. The scheduled command also
+requires `agent-coord` for its worktree-cleanup lock and resource limits:
+
+```sh
+/usr/bin/sheprd-automate repo add "$PWD"
+/usr/bin/sheprd-automate check .herdr/automations/stale-worktrees.luau
+/usr/bin/sheprd automation approve .herdr/automations/stale-worktrees.luau
+```
+
+The owner must approve the plan; agents must not approve it. The scheduled run
+uses GitHub explicitly, runs no agents, and reports success or failure in
+Sheprd. It runs the checked-out script without pulling `main` or installing
+anything. When changing the helper, update its SHA-256 in the automation and
+have the owner approve the new plan before resuming scheduled cleanup.
+
 ## Release a change
 
 Merged changes ship in the next release; see [releasing.md](releasing.md).
