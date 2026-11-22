@@ -245,10 +245,15 @@ def test_841_review_stars_and_conflicts_survive_table_and_report(tmp_path):
 @pytest.mark.parametrize("bad", ["ref", "build"])
 def test_836_incompatible_reference_fails_without_a_partial_annotation(tmp_path, bad):
     ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
-    sample = vcf(tmp_path / "sample.vcf", ["11 . C A 99 PASS . GT 0/1"])
+    # The FASTA has C at 11: a sample REF of G means the sample's build differs.
+    # (A resource's stale REF row is dropped instead; see issue #1325.)
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [f"11 . {'G' if bad == 'ref' else 'C'} A 99 PASS . GT 0/1"],
+    )
     resource = vcf(
         tmp_path / "clinvar.vcf",
-        ["11 . G A . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1"],
+        ["11 . C A . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1"],
         resource=True,
     )
     if bad == "build":

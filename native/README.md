@@ -18,6 +18,11 @@ run them in place of their upstream aligners when they're on `PATH`, and
 Silicon build of DeepVariant 1.10.0, published separately as
 `macos-deepvariant-*` prereleases.
 
+[`pairhmm/`](pairhmm/README.md) is the experimental Linux CUDA PairHMM
+sidecar for GATK 4.6.2.0, explicitly selected with
+`vcf gatk --pair-hmm-cuda JAR`. It is separate from these aligner builds
+and does not change `vcf gatk --gpu` (Parabricks).
+
 [The ARM64 GKL recipe](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117)
 also builds an experimental Apple Silicon PairHMM sidecar for
 `vcf gatk --pair-hmm-neon JAR`. It reuses GKL's native interface, selects

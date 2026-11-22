@@ -8,6 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.htslib_helpers import needs_tools
+from tests.test_alignment_commands import _programs, _samtools, _short_reads
+from wgsextract_cli import api
+
 if sys.version_info >= (3, 11):
     import tomllib
 else:
@@ -32,6 +36,39 @@ def test_pixi_declares_native_windows_optional_tools() -> None:
     assert "gatk4" in _pixi_feature_deps("gatk", "win-64")
     bio_tools = _pixi_feature_deps("bio-tools", "win-64")
     assert {"fastqc", "haplogrep3", "haplocheck"} <= set(bio_tools)
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows App Control fallback")
+def test_1356_blocked_samblaster_uses_samtools_markdup(tmp_path, monkeypatch):
+    reads = _short_reads(tmp_path)
+    real_popen = subprocess.Popen
+
+    def launch(argv, *args, **kwargs):
+        if Path(argv[0]).stem.lower() == "samblaster":
+            raise OSError(
+                0, "An Application Control policy has blocked this file", None, 4551
+            )
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    out = tmp_path / "aligned"
+    api.align.align(
+        api.AlignParams(
+            r1=reads.r1,
+            r2=reads.r2,
+            ref=reads.ref,
+            outdir=out,
+            threads=2,
+            memory="64M",
+            aligner="bwa",
+        )
+    )
+    (bam,) = out.glob("*_aligned.bam")
+    assert Path(f"{bam}.bai").is_file()
+    assert any("CL:samtools markdup" in line for line in _programs(str(bam)))
+    assert _samtools("view", "-c", str(bam)).strip() == "280"
+    assert _samtools("view", "-c", "-f", "1024", str(bam)).strip() == "40"
 
 
 LEGACY_INSTALLER_FLAGS = (

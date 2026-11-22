@@ -216,12 +216,15 @@ def collect_template_markers(
     roots = _resolve_templates_roots(list(template_roots))
     markers: dict[tuple[str, int], str] = {}
     lifters: dict[str, LiftOver] = {}
+    canonical_chrom = lru_cache(maxsize=64)(_chrom_for_liftover)
     for name, build, paths in _template_paths(roots, formats):
         lifter = None
         if build:
             if not chains or build not in chains:
                 continue
-            lifter = lifters.setdefault(build, LiftOver(chains[build]))
+            if build not in lifters:
+                lifters[build] = LiftOver(chains[build])
+            lifter = lifters[build]
         for path in paths:
             for rsid, chrom, pos in template_rows(name, path):
                 if lifter:
@@ -231,15 +234,15 @@ def collect_template_markers(
                     chrom, pos, _inverted = lifted
                 if pos.isdigit() and chrom:
                     position = int(pos)
-                    site = (_chrom_for_liftover(chrom), position)
+                    site = (canonical_chrom(chrom), position)
                     if position > 0 and markers.get(site, ".") == ".":
                         markers[site] = rsid
     # A site only tellmeGen's "." names gets an ID of its own, so the sites
     # aren't one marker to readers matching by ID.
-    return {
-        site: f"{site[0]}_{site[1]}" if rsid == "." else rsid
-        for site, rsid in markers.items()
-    }
+    for site, rsid in markers.items():
+        if rsid == ".":
+            markers[site] = f"{site[0]}_{site[1]}"
+    return markers
 
 
 def lifted_builds(template_roots: Sequence[str | None]) -> set[str]:

@@ -75,14 +75,13 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     clinvar_vcf = ensure_vcf_prepared(clinvar_source)
     input_vcf = ensure_vcf_prepared(input_file)
     header = _vcf_header(clinvar_vcf)
-    input_header = _vcf_header(input_vcf)
     columns = [
         c
         for c in CLINVAR_COLUMNS
         if f"##INFO=<ID={c}," in header or c in (ce.IDENTITY, ce.STARS, ce.TIER)
     ]
     ann_out = str(Path(outdir, CLINVAR_ANNOTATED))
-    annotate_vcf(
+    normalized_clinvar = annotate_vcf(
         input_vcf,
         clinvar_vcf,
         ",".join(columns),
@@ -94,9 +93,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         annotation_source=clinvar_source,
         compose_mnvs=True,
         compose_thresholds=variant_confidence.thresholds_from(params),
-        remove=tuple(
-            f"INFO/{c}" for c in CLINVAR_COLUMNS if f"##INFO=<ID={c}," in input_header
-        ),
+        remove=tuple(f"INFO/{c}" for c in CLINVAR_COLUMNS),
     )
 
     path_out = str(Path(outdir, CLINVAR_PATHOGENIC))
@@ -119,7 +116,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
                 summary,
                 input_file,
                 work,
-                clinvar_sites=pathogenic_sites(clinvar_vcf, include, lib.fasta, work),
+                clinvar_sites=_read_pathogenic_sites(normalized_clinvar, include),
                 reference=lib.fasta,
             )
     except (OSError, subprocess.SubprocessError) as e:
@@ -193,7 +190,14 @@ def pathogenic_sites(
     """The ClinVar records ``include`` selects, as (contig, start, end)."""
     from .matching import normalized_clinvar_resource
 
-    clinvar_vcf = normalized_clinvar_resource(clinvar_vcf, reference, work)
+    yield from _read_pathogenic_sites(
+        normalized_clinvar_resource(clinvar_vcf, reference, work), include
+    )
+
+
+def _read_pathogenic_sites(
+    clinvar_vcf: str, include: str
+) -> Iterator[tuple[str, int, int]]:
     query = ["bcftools", "query", "--allow-undef-tags", "-i", include,
              "-f", "%CHROM\t%POS\t%REF\t%INFO/END\n", clinvar_vcf]  # fmt: skip
     for line in run_command(query, capture_output=True).stdout.splitlines():
