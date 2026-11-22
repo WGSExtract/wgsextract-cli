@@ -30,6 +30,17 @@ def test_1247_batch_recovers_when_dialect_sniffing_fails(tmp_path, contents):
     assert "Batch analysis failed" in stderr
 
 
+@pytest.mark.parametrize("contents", ["", "name,input,vcf\n"])
+def test_1247_batch_does_not_report_success_without_any_samples(tmp_path, contents):
+    batch = tmp_path / "empty.csv"
+    batch.write_text(contents, encoding="utf-8")
+    rc, _, stderr = run_cli(
+        ["analyze", "comprehensive", "--batch", str(batch), "--outdir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert "--batch" in stderr and "sample row" in stderr
+
+
 class TestAnalyzeBatch(unittest.TestCase):
     def setUp(self):
         self.outdir = str(REPO_ROOT / "out" / "tests" / "analyze_batch")

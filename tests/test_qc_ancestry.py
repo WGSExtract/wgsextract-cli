@@ -122,8 +122,9 @@ def test_bam_reads_give_the_proportions_and_record_a_fact(tmp_path, sample):
 
 
 @needs_htslib
-def test_1247_ancestry_finishes_when_mpileup_fills_stderr(
-    tmp_path, sample, monkeypatch
+@pytest.mark.parametrize("query_fails", [False, True])
+def test_1247_ancestry_finishes_when_tools_fill_stderr(
+    tmp_path, sample, monkeypatch, query_fails
 ):
     require_bare_name_fakes()
     bcftools = shutil.which("bcftools")
@@ -139,14 +140,22 @@ def test_1247_ancestry_finishes_when_mpileup_fills_stderr(
         "    sys.stderr.write('mpileup warning\\n' * 32768)\n"
         "    sys.stderr.flush()\n"
         "    signal.alarm(0)\n"
+        f"if {query_fails!r} and sys.argv[1:2] == ['query']:\n"
+        "    signal.alarm(15)\n"
+        "    sys.stderr.write('query warning\\n' * 32768 + 'query diagnostic\\n')\n"
+        "    sys.exit(1)\n"
         f"os.execv({bcftools!r}, [{bcftools!r}, *sys.argv[1:]])\n",
     )
     monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
 
     result = _run(sample, bam, bootstrap=0)
 
-    assert result.exit_code == 0, result.error
-    assert result.metrics["ancestry_sites"] == 3000
+    if query_fails:
+        assert result.exit_code == 1
+        assert "query diagnostic" in str(result.error)
+    else:
+        assert result.exit_code == 0, result.error
+        assert result.metrics["ancestry_sites"] == 3000
 
 
 @needs_htslib

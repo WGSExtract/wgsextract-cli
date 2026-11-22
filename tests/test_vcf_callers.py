@@ -122,6 +122,16 @@ def test_1247_freebayes_region_bed_keeps_grouped_coordinates_and_colons(
     assert _call(
         "freebayes", genome, genome.cram, tmp_path, "-r", "chr1:1,000-1,050"
     ) == [genome.call]
+    callers.write_region_bed(
+        "chr1:1,000,chr2:2,000-,chr3:-3,000",
+        {"chr1": 5000, "chr2": 5000, "chr3": 5000},
+        str(bed),
+    )
+    assert bed.read_text(encoding="utf-8").splitlines() == [
+        "chr1\t999\t5000",
+        "chr2\t1999\t5000",
+        "chr3\t0\t3000",
+    ]
     with pytest.raises(UsageError, match="Ambiguous --region"):
         callers.write_region_bed(
             "chr1:100-200", {"chr1": 5000, "chr1:100-200": 101}, str(bed)

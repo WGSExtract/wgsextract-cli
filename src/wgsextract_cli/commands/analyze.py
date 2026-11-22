@@ -341,6 +341,8 @@ def run_batch_comprehensive(job: AnalyzeJob, batch_file: str) -> None:
         current_result().add_metrics(
             samples=samples, failed_samples=len(failed_samples)
         )
+        if not samples:
+            raise UsageError("--batch must contain at least one sample row.")
         if failed_samples:
             raise WGSExtractError(
                 "Batch analysis failed for sample(s): " + ", ".join(failed_samples)

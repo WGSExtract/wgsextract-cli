@@ -30,7 +30,7 @@ from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import IO, TYPE_CHECKING, Any, Final
 
 import numpy as np
 
@@ -139,6 +139,12 @@ def _contig(chrom: int, chr_prefix: bool) -> str:
 # --- BAM / CRAM ---------------------------------------------------------------
 
 
+def _diagnostic_tail(stderr: IO[bytes]) -> str:
+    size = stderr.seek(0, io.SEEK_END)
+    stderr.seek(max(0, size - 3200))
+    return stderr.read().decode(errors="replace")[-800:]
+
+
 def _pileup(
     path: str, reference: str, regions: Path, contig: str
 ) -> Iterator[tuple[int, str, str, list[int]]]:
@@ -148,10 +154,17 @@ def _pileup(
                "-d", "500", "-Ou", path]  # fmt: skip
     query = ["bcftools", "query", "-f", "%POS\t%REF\t%ALT\t[%AD]\n"]
     with (
-        tempfile.TemporaryFile(dir=regions.parent) as stderr,
-        popen(mpileup, stdout=subprocess.PIPE, stderr=stderr) as pile,
+        tempfile.TemporaryFile(dir=regions.parent) as pile_stderr,
+        tempfile.TemporaryFile(dir=regions.parent) as query_stderr,
+        popen(mpileup, stdout=subprocess.PIPE, stderr=pile_stderr) as pile,
     ):
-        with popen(query, stdin=pile.stdout, stdout=subprocess.PIPE, text=True) as q:
+        with popen(
+            query,
+            stdin=pile.stdout,
+            stdout=subprocess.PIPE,
+            stderr=query_stderr,
+            text=True,
+        ) as q:
             assert pile.stdout is not None and q.stdout is not None
             pile.stdout.close()
             for line in q.stdout:
@@ -162,13 +175,17 @@ def _pileup(
                     alts,
                     [int(x) if x != "." else 0 for x in ad.split(",")],
                 )
-        if pile.wait():
-            size = stderr.seek(0, io.SEEK_END)
-            stderr.seek(max(0, size - 3200))
-            error = stderr.read().decode(errors="replace")[-800:]
-            raise WGSExtractError(f"bcftools mpileup failed on {contig}: {error}")
-        if q.returncode:
-            raise WGSExtractError(f"bcftools query failed on {contig}.")
+        errors = []
+        for tool, status, stderr in (
+            ("mpileup", pile.wait(), pile_stderr),
+            ("query", q.returncode, query_stderr),
+        ):
+            if status:
+                errors.append(
+                    f"bcftools {tool} failed on {contig}: {_diagnostic_tail(stderr)}"
+                )
+        if errors:
+            raise WGSExtractError("\n".join(errors))
 
 
 def _alignment_genotypes(

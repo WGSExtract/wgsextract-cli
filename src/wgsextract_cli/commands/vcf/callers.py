@@ -136,9 +136,9 @@ def _cleanup_gatk_temp_input(temp_input: str | None) -> None:
             logging.warning(f"Failed to remove temporary GATK artifact {path}: {e}")
 
 
-_REGION_FIELD = re.compile(
-    r"\s*[^,\s]+:[0-9]+(?:,[0-9]{3})*-[0-9]+(?:,[0-9]{3})*(?=\s*(?:,|$))|[^,]+"
-)
+_REGION_NUMBER = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)"
+_REGION_SPAN = rf"(?:{_REGION_NUMBER}(?:-{_REGION_NUMBER}?)?|-{_REGION_NUMBER})"
+_REGION_FIELD = re.compile(rf"\s*[^,\s]+:{_REGION_SPAN}(?=\s*(?:,|$))|[^,]+")
 
 
 def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
