@@ -173,16 +173,23 @@ identical to running them one at a time. (GLIMPSE2 2.0.1's own threads, used
 before, sometimes changed a chunk's genotypes from run to run.) A failed chunk
 stops the others, and the error names it and quotes GLIMPSE2's message.
 
-On an M1 Pro (10 cores, 32 GB; a shared host, so absolute times are
-pessimistic), phasing all 26 chr20 chunks of HG002 1x took:
+On an M1 Pro (10 cores, 32 GB, a shared host, so absolute times are
+pessimistic), `vcf impute` of HG002 1x chr20 (26 chunks, 1,430,673 sites) with
+Bioconda's x86-64 GLIMPSE2 2.0.1 under Rosetta took:
 
-| GLIMPSE2 2.0.1 build | One chunk at a time, 4 threads | 8 chunks at once, 1 thread each | Largest process |
-|---|---:|---:|---:|
-| native arm64 (research build; [#1398, native arm64 GLIMPSE2](https://github.com/WGSExtract/wgsextract-cli/issues/1398) will package it) | 479 s | 100 s (4.8x) | 2.9 GB |
-| Bioconda x86-64 under Rosetta | — | 175 s | 2.7 GB |
+| Run | Wall time | GLIMPSE2 memory, all running / largest |
+|---|---:|---:|
+| Before: one chunk at a time, `--threads 4` | 978 s | 3.8 / 3.8 GB |
+| `--threads 1` | 958 s | 2.6 / 2.6 GB |
+| `--threads 4` | 277 s (3.5x) | 5.8 / 2.5 GB |
+| `--threads 8` | 208 s (4.7x) | 7.8 / 2.6 GB |
 
-The genotypes, dosages and probabilities of all 26 chunks were identical
-whichever way they ran.
+The three new runs wrote identical genotypes, dosages and probabilities. The
+old `--threads 4` run differed from them at 798 genotypes. A native arm64
+build, which
+[#1398 (native arm64 GLIMPSE2)](https://github.com/WGSExtract/wgsextract-cli/issues/1398)
+will package, phased the same chunks about twice as fast: 479 s one at a time
+and 100 s eight at once. Preparing the chr20 panel took 577 s.
 
 Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.6 hours
 for whole-autosome GLIMPSE2 one chunk at a time, and about 1 hour with eight
