@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
@@ -7,6 +7,7 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
+import { createLink, type FolderMove, movedLinkTarget, relinkMovedFolder, type RelinkedLink, restoreLinks } from "./workspace-links.js";
 import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
@@ -98,12 +99,18 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
     await mkdir(path.dirname(to), { recursive: true });
     await rmdir(to).catch(ignoreMissing);
+    const move: FolderMove = { from, fromReal: await existingRealPath(from), to };
     const renamed = await renameIfSameVolume(from, to);
     if (!renamed) {
-        await copyFolder(from, to, onProgress, signal);
+        await copyFolder(move, onProgress, signal);
     }
     const rewritten: RewrittenFile[] = [];
+    const relinked: RelinkedLink[] = [];
     try {
+        // A copy made its links point at the new place already; a renamed folder's absolute ones still point at the old.
+        if (renamed && (await lstat(to)).isDirectory()) {
+            await relinkMovedFolder(move, relinked);
+        }
         for (const settingsFile of settingsFiles) {
             // A settings file in the moved folder moved with it.
             await relocateSettingsFile(relocatePath(settingsFile, from, to), from, to, rewritten);
@@ -116,6 +123,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
             await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
         }
         if (renamed) {
+            await restoreLinks(relinked);
             await rename(to, from);
         }
         else {
@@ -219,7 +227,8 @@ async function renameIfSameVolume(from: string, to: string) {
 }
 
 /** Copies through a staging folder renamed into place at the end, so the target is never partly there. */
-async function copyFolder(from: string, to: string, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
+async function copyFolder(move: FolderMove, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
+    const { from, to } = move;
     // Unique, so no folder already there is ever taken over or deleted.
     const staging = await mkdtemp(path.join(path.dirname(to), `.${path.basename(to)}.moving-`));
     try {
@@ -234,7 +243,7 @@ async function copyFolder(from: string, to: string, onProgress: WorkspaceMoveReq
         let reportedPercent = 0;
         for (const file of files) {
             signal.throwIfAborted();
-            await copyEntry(from, staging, file);
+            await copyEntry(move, staging, file);
             copiedBytes += file.size;
             const percent = totalBytes ? Math.floor(copiedBytes / totalBytes * 99) : 99;
             if (percent > reportedPercent) {
@@ -276,8 +285,8 @@ async function listEntries(root: string, relative = ""): Promise<CarriedEntry[]>
     return files;
 }
 
-async function copyEntry(fromRoot: string, toRoot: string, { relative, directory }: CarriedEntry) {
-    const from = path.join(fromRoot, relative);
+async function copyEntry(move: FolderMove, toRoot: string, { relative, directory }: CarriedEntry) {
+    const from = path.join(move.from, relative);
     const to = path.join(toRoot, relative);
     if (directory) {
         await mkdir(to, { recursive: true });
@@ -286,7 +295,8 @@ async function copyEntry(fromRoot: string, toRoot: string, { relative, directory
     await mkdir(path.dirname(to), { recursive: true });
     const info = await lstat(from);
     if (info.isSymbolicLink()) {
-        await symlink(await readlink(from), to);
+        // Links are recreated, never followed, so nothing outside the folder is pulled into the move.
+        await createLink(movedLinkTarget(from, await readlink(from), move), to, from, path.join(move.to, relative));
         return;
     }
     await copyFile(from, to);
