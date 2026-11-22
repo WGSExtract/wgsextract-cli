@@ -70,6 +70,12 @@ BAM/CRAM reference calls only, bcftools' reference-call QUAL substitutes when
 it omits GQ. Supplied VCFs never use that fallback. Multi-sample VCFs require
 `--sample`.
 
+VCF input may be bgzipped (`.vcf.gz`, indexed beside itself when it has no
+index), an indexed or unindexed `.bcf`, or a plain `.vcf`. A plain VCF or an
+unindexed BCF is sorted, compressed and indexed in the run's temporary work,
+never beside the input, so its chromosome naming (`1` or `chr1`, `MT` or
+`chrM`) is matched to the targets' and `--region` works as for bgzipped input.
+
 Absent VCF markers are **no-calls**, not reference genotypes: variant-only
 VCFs do not establish coverage. Explicit `0/0` records and gVCF reference-block
 interiors need the same gates as alternate calls. Block `MIN_DP`, when present,

@@ -102,6 +102,7 @@ from ._microarray_combined import (
 )
 from ._microarray_vcf import (
     _alignment_chromosomes,
+    _indexed_vcf_input,
     _normalize_region_args_for_input,
     _prepare_microarray_vcf,
     _prepare_vcf_target_tab_for_input,
@@ -665,19 +666,18 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     combined_vcf = out_vcf
     if not is_vcf:
         warn_about_alignment(input_path, ref_fasta)
-    calling_params = params
+    calling_input, sample = input_path, vcf_sample
+    if is_vcf:
+        calling_input = _indexed_vcf_input(input_path, outdir, cleanup)
     if indel_bindings and is_vcf:
-        calling_params = replace(
-            params,
-            input=Path(
-                prepare_indel_vcf(
-                    _sample_vcf(input_path, vcf_sample, outdir, cleanup)
-                    if vcf_sample
-                    else input_path,
-                    outdir,
-                )
-            ),
+        calling_input = prepare_indel_vcf(
+            _sample_vcf(calling_input, vcf_sample, outdir, cleanup)
+            if vcf_sample
+            else calling_input,
+            outdir,
         )
+        sample = None  # the calling input is already the selected sample
+    calling_params = replace(params, input=Path(calling_input))
 
     start_vcf = time.time()
     indel_calls = None
@@ -695,8 +695,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         start_vcf=start_vcf,
         out_vcf=out_vcf,
         input_chroms=input_chroms,
-        # An indel run's calling input is already the selected sample.
-        sample=None if calling_params is not params else vcf_sample,
+        sample=sample,
         gvcf=gvcf,
     )
     record_kept(combined_vcf, outdir, "combined_vcf")

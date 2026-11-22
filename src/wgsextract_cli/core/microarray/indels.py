@@ -34,6 +34,7 @@ from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import (
     match_chromosome_name,
+    sorted_indexed_copy,
     vcf_index_chromosomes,
 )
 
@@ -47,24 +48,9 @@ def prepare_indel_vcf(source: str, outdir: str) -> str:
     """Keep preparation local, including when a source is on read-only storage."""
     if vcf_index_chromosomes(source):
         return source
-    workdir = tempfile.mkdtemp(prefix="IndelInput_", dir=outdir)
-    prepared = str(Path(workdir, "input.vcf.gz"))
-    run_command(
-        [
-            "bcftools",
-            "sort",
-            "-m",
-            "128M",
-            "-T",
-            str(Path(workdir, "sort")),
-            "-Oz",
-            "-o",
-            prepared,
-            source,
-        ]
+    return sorted_indexed_copy(
+        source, tempfile.mkdtemp(prefix="IndelInput_", dir=outdir)
     )
-    run_command(["bcftools", "index", "-t", prepared])
-    return prepared
 
 
 def indel_manifest_bindings(params: MicroarrayParams) -> dict[str, str]:

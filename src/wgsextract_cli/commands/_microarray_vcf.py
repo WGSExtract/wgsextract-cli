@@ -26,7 +26,11 @@ from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.samtools_commands import alignment_index
-from wgsextract_cli.core.temp_directory import move_file, scratch_parent
+from wgsextract_cli.core.temp_directory import (
+    move_file,
+    scratch_directory,
+    scratch_parent,
+)
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     run_command,
@@ -34,7 +38,9 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
+    has_vcf_index,
     match_chromosome_name,
+    sorted_indexed_copy,
     vcf_index_chromosomes,
 )
 
@@ -500,6 +506,24 @@ def _no_call_low_confidence_imputed(vcf: str, outdir: str, base_name: str) -> st
     )  # fmt: skip
     ensure_vcf_indexed(out)
     return out
+
+
+def _indexed_vcf_input(vcf: str, outdir: str, cleanup: contextlib.ExitStack) -> str:
+    """The input VCF in a form bcftools can read by region and list the
+    contigs of, so its naming (1 or chr1, MT or chrM) is matched to the
+    targets'. A bgzipped VCF is indexed beside itself when called; a plain
+    VCF or an unindexed BCF is sorted, compressed and indexed in a scratch
+    directory under ``outdir`` that ``cleanup`` removes, never beside the
+    input (issue #1242)."""
+    if vcf.endswith((".gz", ".bgz")) or has_vcf_index(vcf):
+        return vcf
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+    workdir = cleanup.enter_context(scratch_directory(outdir, "VcfInput_"))
+    logging.info(f"Compressing and indexing a working copy of {vcf}...")
+    try:
+        return sorted_indexed_copy(vcf, workdir)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise WGSExtractError(f"Could not prepare {vcf} for reading: {e}") from e
 
 
 def _prepare_microarray_vcf(

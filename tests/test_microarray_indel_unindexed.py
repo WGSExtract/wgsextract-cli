@@ -64,4 +64,5 @@ def test_cli_prepares_unindexed_sources_without_changing_originals(
     assert source.read_bytes() == original
     assert not source.with_name(source.name + ".gz").exists()
     assert not source.with_name(source.name + ".csi").exists()
-    assert list(out.glob("IndelInput_*/input.vcf.gz.tbi"))
+    # The sorted, indexed working copy goes with the run (issue #1242).
+    assert not list(out.rglob("input.vcf.gz"))

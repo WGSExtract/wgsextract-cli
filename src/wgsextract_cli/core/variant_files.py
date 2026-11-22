@@ -255,6 +255,33 @@ def ensure_vcf_prepared(
     return str(gz_path)
 
 
+def has_vcf_index(vcf_path: PathInput) -> bool:
+    """Whether bcftools finds an index for a VCF or BCF, so it can be read by
+    region and its contigs listed."""
+    try:
+        res = run_command(
+            ["bcftools", "index", "--nrecords", vcf_path],
+            capture_output=True,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return res.returncode == 0
+
+
+def sorted_indexed_copy(vcf_path: PathInput, workdir: PathInput) -> str:
+    """A sorted, bgzipped and indexed copy, in ``workdir``, of a VCF or BCF
+    that can't be indexed where it is: a plain VCF, or a BCF whose folder
+    mustn't gain files."""
+    prepared = Path(workdir, "input.vcf.gz")
+    run_command(
+        ["bcftools", "sort", "-m", "128M", "-T", Path(workdir, "sort")]
+        + ["-Oz", "-o", prepared, vcf_path]
+    )
+    ensure_vcf_indexed(prepared)
+    return str(prepared)
+
+
 def get_vcf_samples(vcf_path: PathInput) -> list[str]:
     """Retrieve sample names from VCF header."""
     try:

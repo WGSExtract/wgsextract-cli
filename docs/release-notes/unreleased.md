@@ -19,3 +19,9 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
+- `microarray` gives the same kit from a plain `.vcf` or an unindexed `.bcf`
+  as from the same calls bgzipped and indexed. Such input skipped matching
+  its chromosome names to the targets' (`1` or `chr1`, `MT` or `chrM`), so
+  every marker became a no-call, and `--region` failed. It is now sorted,
+  compressed and indexed in the run's temporary work, never beside the
+  input ([#1242, unindexed VCF no-calls](https://github.com/WGSExtract/wgsextract-cli/issues/1242)).
