@@ -1,3 +1,42 @@
+WGS Extract lineage
+===================
+
+wgsextract-cli and its desktop app continue WGS Extract, the desktop program by
+City Farmer (2018-2020) and Randy Harr (2020-2022), whose microarray generator
+grew out of Thomas Krahn's Extract23 (https://github.com/tkrahn/extract23),
+which turned a 30x whole genome into a 23andMe v3 file. Its program source
+headers read "Copyright (C) 2018-2020 City Farmer / Copyright (C) 2020-2022
+Randy Harr / License: GNU General Public License v3 or later" (release v44.2,
+https://get.wgse.io/WGSExtract-v44.2_28Feb2023_program.zip, SHA-256
+ee7b57e042fb05626a6f3c6dc791bb86857a9802d48ecdbc8d1a1c4604b52a23; development
+repository https://github.com/WGSExtract/WGSExtract-Dev).
+
+This is a rewrite, not a clean-room reimplementation. The microarray
+CombinedKit-to-template design and these modules are modified ports of WGS
+Extract v4 code, conveyed under GPL-3.0-or-later with the original copyright
+notices above:
+
+  src/wgsextract_cli/core/microarray/templates.py  from program/aconv.py and
+                                                    program/hg38tohg19.py
+  src/wgsextract_cli/core/microarray/formats.py    from program/aconv.py
+
+WGS Extract CLI contributors modified them from 2026-03-02; each module's
+docstring lists the changes and the git history holds the details. The
+corresponding source is this repository. docs/migrating-from-v4.md maps v4's
+actions to current commands and records the differences.
+
+The desktop app's renderer under gui/ is separately licensed MIT (gui/LICENSE).
+That grant covers the renderer's own code; it does not relicense GPL code from
+WGS Extract or this CLI, which stays GPL-3.0-or-later wherever it is used.
+
+WGS Extract's reference-library data (chip templates, liftover chains, BED
+files, Y trees, manuals and translations) are separate works under their own
+terms, not the program GPL. This repository does not redistribute the v4
+reference library; its differential corpus pins that archive by URL and
+SHA-256 and fetches it only on request. Source rights for the data this
+project ships are tracked in issue #864.
+
+
 Yleaf-derived Y-DNA analysis
 ==========================
 

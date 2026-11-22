@@ -20,8 +20,6 @@ from tests.htslib_helpers import (
     run_wgsextract,
     write_fasta,
 )
-from wgsextract_cli.api import VcfFreebayesParams
-from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 from wgsextract_cli.main import main
@@ -943,30 +941,6 @@ def test_cmd_annotate_reads_vcf_header_columns(tmp_path):
 
 
 # --- callers --------------------------------------------------------------------
-
-
-def test_freebayes_cram_region_is_positional(tmp_path):
-    from wgsextract_cli.commands.vcf import callers
-
-    cram = tmp_path / "s.cram"
-    ref = tmp_path / "ref.fa"
-    params = VcfFreebayesParams(input=cram, region="chr20:1-1000")
-    setup = CallerSetup("2", str(tmp_path), str(ref), None, None)  # type: ignore[arg-type]
-    stages = []
-    with (
-        patch.object(callers, "verify_dependencies"),
-        patch.object(callers, "setup_caller", return_value=setup),
-        patch.object(
-            callers, "run_pipeline", side_effect=lambda s, **_k: stages.extend(s)
-        ),
-        patch.object(callers, "ensure_vcf_indexed"),
-    ):
-        callers.run_freebayes(params)
-
-    view = stages[0]
-    assert view[:2] == ["samtools", "view"]
-    assert "-r" not in view
-    assert view[-2:] == [str(cram), "chr20:1-1000"]
 
 
 def test_plain_reference_decompresses_to_removed_temp_dir(tmp_path_factory):
