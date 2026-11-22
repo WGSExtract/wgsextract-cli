@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
 import hashlib
 import json
@@ -30,7 +31,7 @@ else:
     source = Path(__file__).with_name("cleanup_worktree_inventory.py")
     code = source.read_bytes()
     if hashlib.sha256(code).hexdigest() != (
-        "382a6623cb14f5a2d299ff1e58927a8e78403f5610f323468e7200334ed6cddd"
+        "7bf9bcc8230502eec7e81d796f1b9769553121dfcc904a0bfeeb5cf35b35151d"
     ):
         raise SystemExit("Worktree inventory helper version mismatch")
     inventory_files = ModuleType("wgse_worktree_inventory")
@@ -235,6 +236,18 @@ def mounted(path: Path) -> bool:
 
 
 def process_paths(process: Path) -> Iterator[Path]:
+    def verify_view() -> None:
+        root = process / "root"
+        if (
+            os.readlink(process / "ns/mnt") != os.readlink("/proc/self/ns/mnt")
+            or os.readlink(root) != "/"
+            or not root.samefile("/")
+        ):
+            raise OSError(
+                "Activity unverifiable: different filesystem view; use --inspector"
+            )
+
+    verify_view()
     cwd = None
     for name in ("cwd", "root", "exe"):
         try:
@@ -263,10 +276,25 @@ def process_paths(process: Path) -> Iterator[Path]:
             continue
         path = Path(os.fsdecode(arg))
         if not path.is_absolute():
-            if cwd is None:
-                continue
+            if (
+                cwd is None
+                or not cwd.is_absolute()
+                or not (process / "cwd").samefile(cwd)
+            ):
+                raise OSError(
+                    "Activity unverifiable: cannot verify relative argument base"
+                )
             path = cwd / path
         yield Path(os.path.normpath(path))
+        try:
+            yield path.resolve(strict=True)
+        except (FileNotFoundError, NotADirectoryError):
+            # A dangling symlink can still name a candidate.
+            yield path.resolve()
+        except OSError as error:
+            if error.errno != errno.ENAMETOOLONG:
+                raise
+    verify_view()
 
 
 def inactive_group(process: Path, pid: str) -> bool:

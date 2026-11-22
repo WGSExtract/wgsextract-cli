@@ -13,6 +13,10 @@ from tests.test_cleanup_worktrees import proc as proc
 from tests.test_cleanup_worktrees import repo as repo
 from tests.test_cleanup_worktrees import topic
 
+pytestmark = pytest.mark.skipif(
+    sys.platform != "linux", reason="Linux mount namespaces"
+)
+
 HOLDER = """
 import ctypes, json, mmap, os, subprocess, sys
 from pathlib import Path
@@ -107,11 +111,7 @@ with subprocess.Popen(
 def test_1393_mount_namespaces_do_not_hide_surviving_references(
     repo: Path, mode: str
 ) -> None:
-    if (
-        sys.platform != "linux"
-        or not shutil.which("unshare")
-        or not shutil.which("mount")
-    ):
+    if not shutil.which("unshare") or not shutil.which("mount"):
         pytest.skip("requires Linux mount namespaces")
     outer = [
         "unshare",

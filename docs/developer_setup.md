@@ -474,6 +474,7 @@ files must match local installed Conda or wheel checksums; missing or
 mismatched checksums retain the environment without fetching metadata.
 Only the named cache directories are deleted; the checkout, branch and other
 files stay.
+Orphaned or unrecognized Python bytecode also blocks worktree retirement.
 The report distinguishes cache trimming from worktree retirement.
 Small UTF-8 logs under `out/` and recognised Python, shell, Lua
 and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied

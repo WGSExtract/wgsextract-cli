@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import py_compile
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -28,6 +29,35 @@ from tests.test_cleanup_worktrees import (
 )
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
+
+
+@pytest.mark.parametrize("source_kind", ["orphan", "archived", "unrecognized"])
+def test_1393_preserves_bytecode_unless_its_source_is_recoverable(
+    repo: Path, github: Callable[..., None], source_kind: str
+) -> None:
+    path = topic(repo)
+    source = path / "scratch" / "experiment.py"
+    write(source, "result = 'unique local calculation'\n")
+    cached = py_compile.compile(str(source), doraise=True)
+    assert cached is not None
+    compiled = Path(cached)
+    if source_kind == "orphan":
+        source.unlink()
+    elif source_kind == "unrecognized":
+        compiled.write_bytes(b"unique data stored under a cache-like name")
+    original = compiled.read_bytes()
+    github([pull(path)])
+
+    run = cleanup(repo, "--github", "--apply")
+    assert run.returncode == 0, run.stderr
+    record = result(repo, path)
+    if source_kind == "archived":
+        assert record["reason"] == "removed"
+        archived = repo / str(record["archive"]) / "scratch" / "experiment.py"
+        assert archived.read_text() == "result = 'unique local calculation'\n"
+    else:
+        assert str(record["reason"]).startswith("unknown-data:")
+        assert compiled.read_bytes() == original
 
 
 @pytest.mark.parametrize(

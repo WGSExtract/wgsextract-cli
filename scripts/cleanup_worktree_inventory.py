@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import csv
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import shutil
 import stat
+import sys
 from collections.abc import Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -379,8 +381,42 @@ class Inventory:
     caches: dict[str, Stamp] = field(default_factory=dict)
 
 
+def bytecode_source(relative: Path) -> Path | None:
+    if relative.parent.name != "__pycache__":
+        return None
+    tag = re.escape(sys.implementation.cache_tag or "")
+    match = re.fullmatch(
+        rf"(.+)\.{tag}(?:\.opt-[12]|-pytest-\d+\.\d+\.\d+)?\.pyc", relative.name
+    )
+    return relative.parent.parent / (match[1] + ".py") if match else None
+
+
+def matches_bytecode(path: Path, source: Path) -> bool:
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            return False
+        header = handle.read(16)
+    info = source.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or len(header) != 16
+        or header[:4] != importlib.util.MAGIC_NUMBER
+    ):
+        return False
+    flags = int.from_bytes(header[4:8], "little")
+    if flags in {1, 3}:
+        return header[8:] == importlib.util.source_hash(cache_metadata(source))
+    return (
+        flags == 0
+        and int.from_bytes(header[8:12], "little") == int(info.st_mtime) & 0xFFFFFFFF
+        and int.from_bytes(header[12:16], "little") == info.st_size & 0xFFFFFFFF
+    )
+
+
 def inventory(path: Path, tracked: set[Path]) -> Inventory:
     inventory = Inventory()
+    bytecode: dict[Path, Path] = {}
     size = 0
     excluded = set()
     for name in sorted(CACHE_DIRS):
@@ -398,11 +434,10 @@ def inventory(path: Path, tracked: set[Path]) -> Inventory:
         relative = Path(entry.path).relative_to(path)
         if relative in tracked:
             continue
-        if (
-            relative.parent.name == "__pycache__"
-            and relative.suffix == ".pyc"
-            and entry.is_file(follow_symlinks=False)
+        if entry.is_file(follow_symlinks=False) and (
+            source := bytecode_source(relative)
         ):
+            bytecode[relative] = source
             continue
         if not entry.is_file(follow_symlinks=False):
             inventory.retained = inventory.retained or f"unknown-data: {relative}"
@@ -447,6 +482,15 @@ def inventory(path: Path, tracked: set[Path]) -> Inventory:
             continue
         size += info.st_size
         inventory.evidence[relative] = expected
+    for relative, source in bytecode.items():
+        try:
+            if (source in tracked or source in inventory.evidence) and matches_bytecode(
+                path / relative, path / source
+            ):
+                continue
+        except (FileNotFoundError, ValueError):
+            pass
+        inventory.retained = inventory.retained or f"unknown-data: {relative}"
     return inventory
 
 
