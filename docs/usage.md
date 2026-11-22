@@ -110,10 +110,9 @@ only allowed folders.
 `--key` signs it with `ssh-keygen -Y sign`; `sign verify` checks the signature
 against a trusted key, then re-hashes every file.
 On Windows, some builds of the inbox OpenSSH hang while verifying signatures.
-`sign verify` checks for a working verifier and can use the OpenSSH bundled
-with Git for Windows in Program Files. For a custom location, add the directory
-containing a working `ssh-keygen.exe` (Git for Windows' `usr\bin`, for example)
-to `PATH`.
+`sign verify` first checks Git for Windows in Program Files and the Windows
+inbox OpenSSH. If neither works, it looks for `ssh-keygen.exe` on `PATH`.
+For a custom install, add its directory to `PATH`.
 Signing and unsigned checksum verification do not use this check.
 
 ## Progress and logging

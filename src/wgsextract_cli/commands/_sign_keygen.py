@@ -19,32 +19,33 @@ WINDOWS_VERIFIER_HINT = (
 _PROBE_TIMEOUT = 2
 _PROBE_CACHE_SECONDS = 60
 _PROBE_NAMESPACE = "wgsextract-probe"
-_PROBE_MESSAGE = b"wgsextract signature verification probe\n"
+_PROBE_MESSAGE = b"wgsextract-probe" * 4096
 # A one-off Ed25519 signature of _PROBE_MESSAGE in _PROBE_NAMESPACE, not
-# trusted for any user manifest. Nonempty stdin is essential to reproduce #1358.
+# trusted for any user manifest. Use 64 KiB: affected builds can read up to
+# 8 KiB from stdin and then hang on larger inputs (#1358).
 _PROBE_SIGNATURE = """-----BEGIN SSH SIGNATURE-----
-U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgvQIyq/zlhJ9zj2TUV8W2D9I21z
-YqT6m3GfFbhlSalwUAAAAQd2dzZXh0cmFjdC1wcm9iZQAAAAAAAAAGc2hhNTEyAAAAUwAA
-AAtzc2gtZWQyNTUxOQAAAEDEfz4lOqlpMyVWpZFr8Qaq4JB6+jxZMtc5KlzcRNYKSxzlVs
-Ue2H8Qs3Doh1bY6fSzfHQ23cgWegV/tsYYUfIE
+U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgQAdyaMBcJtTrVremmmKdKEaIUx
+Yx0h+tSUJz7VOCyXYAAAAQd2dzZXh0cmFjdC1wcm9iZQAAAAAAAAAGc2hhNTEyAAAAUwAA
+AAtzc2gtZWQyNTUxOQAAAED/x0pLYCAIgmp5ItOaYcCStLGOm5ujHapNV073UYq8I0fRFx
+epBo/zDzHT2hI18YA/JowNfCo5loW0tgP6/zEI
 -----END SSH SIGNATURE-----
 """
 
 
 def _windows_candidates() -> Iterator[Path]:
-    inbox = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "OpenSSH"
     keygen = "ssh-keygen.exe"
-    # Try the inbox tool last; otherwise it can cost a probe timeout on every CLI run.
-    for entry in os.get_exec_path():
-        folder = Path(entry.strip('"'))
-        if folder.is_absolute() and folder != inbox:
-            yield folder / keygen
-    # A git.exe on PATH is not evidence that its sibling directories are trusted.
+    # Prefer system installs over potentially user-writable PATH directories.
     for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
         root = Path(os.environ.get(variable, ""))
         if root.is_absolute():
             yield root / "Git" / "usr" / "bin" / keygen
-    yield inbox / keygen
+    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+    if system_root.is_absolute():
+        yield system_root / "System32" / "OpenSSH" / keygen
+    for entry in os.get_exec_path():
+        folder = Path(entry.strip('"'))
+        if folder.is_absolute():
+            yield folder / keygen
 
 
 @lru_cache(maxsize=32)
