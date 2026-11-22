@@ -93,9 +93,15 @@ redistribution mirror is introduced.
 ## Download safety
 
 Reference HTTP downloads resume only explicit `.partial` files bound to
-their source URL by a `.partial.source` hash sidecar. Segmented downloads
-record the URL hash and per-segment progress in `.partial.segments`.
-Legacy or invalid state and changed URLs cause the download to restart.
+their source URL and to the version of the file the server named (a strong
+ETag, else Last-Modified) by a `.partial.source` sidecar. Segmented downloads
+record the URL hash, that version and per-segment progress in
+`.partial.segments`. A resume asks for the rest of that version only
+(`If-Range`): a file replaced at the same URL, even by one of the same size,
+downloads again from the start instead of mixing old and new bytes. Without a
+version from the server, a partial restarts unless a pinned SHA-256 will check
+the result, and a large file is fetched over one connection. Legacy or invalid
+state and changed URLs cause the download to restart.
 Refreshing a complete file starts from zero and preserves it until replacement
 finishes and passes available checksums, then publishes atomically.
 Diagnostic URLs omit userinfo and queries, while requests keep the original

@@ -4,8 +4,9 @@ Some servers cap each connection: Ensembl serves its 27.6 GB VEP cache at about
 0.4 MB/s per connection, 19 hours over one. A file of at least
 SEGMENTED_MIN_SIZE whose server takes byte ranges is fetched in SEGMENT_SIZE
 pieces, CONNECTIONS at a time, straight into dest.partial. dest.partial.segments
-records the source URL's digest and how much of each piece has arrived, so an
-interrupted download resumes every piece where it stopped.
+records the source URL's digest, the file's Revision and how much of each piece
+has arrived, so an interrupted download resumes every piece where it stopped,
+but only from the same version of the file (#1225).
 """
 
 from __future__ import annotations
@@ -13,11 +14,15 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import sys
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_EXCEPTION, Future, wait
+from dataclasses import dataclass
+from email.message import Message
+from email.utils import parsedate_to_datetime
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -85,8 +90,99 @@ class RangesUnsupported(Exception):
     """The server answered a byte-range request with the whole file."""
 
 
-def ranged_size(url: str) -> int | None:
-    """The file's size, if its server says it takes byte ranges."""
+class RemoteChanged(Exception):
+    """The file changed on the server while its pieces were being fetched."""
+
+
+_CONTENT_RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
+
+
+def range_start(content_range: str | None) -> int | None:
+    """The first byte a 206's ``Content-Range`` says it carries."""
+    match = _CONTENT_RANGE.fullmatch((content_range or "").strip())
+    return int(match.group(1)) if match else None
+
+
+@dataclass(frozen=True)
+class Revision:
+    """One version of a remote file, as its response headers name it.
+
+    Bytes appended to a partial download must come from the version that wrote
+    it (#1225): ``validator`` (a strong ETag, else Last-Modified) goes in
+    If-Range, so a server whose file changed sends the whole new file, and a
+    reply naming another version is refused. Without a validator a partial
+    can't be tied to a version, and resuming it is not safe.
+    """
+
+    size: int | None = None
+    etag: str = ""
+    last_modified: str = ""
+
+    @classmethod
+    def from_headers(cls, headers: Message) -> Revision:
+        etag = (headers.get("ETag") or "").strip()
+        if len(etag) < 2 or not (etag.startswith('"') and etag.endswith('"')):
+            etag = ""  # weak (W/"...") or malformed: no byte-for-byte promise
+        last_modified = (headers.get("Last-Modified") or "").strip()
+        try:
+            parsedate_to_datetime(last_modified)
+        except (TypeError, ValueError, OverflowError, IndexError):
+            last_modified = ""
+        match = _CONTENT_RANGE.fullmatch((headers.get("Content-Range") or "").strip())
+        length = (headers.get("Content-Length") or "").strip()
+        if match:
+            size = int(match.group(3)) if match.group(3) != "*" else None
+        else:
+            size = int(length) if length.isdigit() else None
+        return cls(size, etag, last_modified)
+
+    @classmethod
+    def from_json(cls, record: object) -> Revision | None:
+        if not isinstance(record, dict):
+            return None
+        size, etag = record.get("size"), record.get("etag", "")
+        last_modified = record.get("last_modified", "")
+        if not (size is None or (type(size) is int and size >= 0)):
+            return None
+        if not isinstance(etag, str) or not isinstance(last_modified, str):
+            return None
+        if not (etag + last_modified).isprintable():
+            return None  # never a header value
+        return cls(size, etag, last_modified)
+
+    def to_json(self) -> dict[str, int | str | None]:
+        return {
+            "size": self.size,
+            "etag": self.etag,
+            "last_modified": self.last_modified,
+        }
+
+    @property
+    def validator(self) -> str:
+        return self.etag or self.last_modified
+
+    def same_as(self, other: Revision) -> bool:
+        """``other`` names this version by the same validator and size."""
+        return bool(self.validator) and (self.validator, self.size) == (
+            other.validator,
+            other.size,
+        )
+
+    def conflicts(self, other: Revision) -> bool:
+        """A reply's headers name another version than this one.
+
+        A 206 that leaves a validator out was matched by If-Range."""
+        if None not in (self.size, other.size) and self.size != other.size:
+            return True
+        if self.etag and other.etag:
+            return self.etag != other.etag
+        if self.last_modified and other.last_modified:
+            return self.last_modified != other.last_modified
+        return False
+
+
+def ranged_revision(url: str) -> Revision | None:
+    """The file's size and version, if its server says it takes byte ranges."""
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
         with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
@@ -96,12 +192,12 @@ def ranged_size(url: str) -> int | None:
     length = headers.get("Content-Length") or ""
     if headers.get("Accept-Ranges", "").lower() != "bytes" or not length.isdigit():
         return None
-    return int(length)
+    return Revision.from_headers(headers)
 
 
 def _load_state(
-    path: str, url_digest: str, expected_size: int | None = None
-) -> tuple[int, dict[str, int]] | None:
+    path: str, url_digest: str, expected: Revision | None = None
+) -> tuple[Revision, dict[str, int]] | None:
     try:
         with open(path, encoding="utf-8") as f:
             state = json.load(f)
@@ -109,8 +205,14 @@ def _load_state(
         return None
     if not isinstance(state, dict) or state.get("url_sha256") != url_digest:
         return None
-    size = state.get("size")
-    if type(size) is not int or size <= 0 or expected_size not in (None, size):
+    revision = Revision.from_json(state)
+    # State from another version, or from none that can be told apart.
+    if revision is None or not revision.validator:
+        return None
+    if expected is not None and not revision.same_as(expected):
+        return None
+    size = revision.size
+    if size is None or size <= 0:
         return None
     received = state.get("received")
     if (
@@ -125,11 +227,11 @@ def _load_state(
         if type(count) is not int or not 0 <= count <= min(SEGMENT_SIZE, size - start):
             return None
         counts[key] = count
-    return size, counts
+    return revision, counts
 
 
-def saved_size(state_path: str, url: str) -> int | None:
-    """The size an unfinished segmented download of url recorded, if any."""
+def saved_revision(state_path: str, url: str) -> Revision | None:
+    """The version an unfinished segmented download of url recorded, if any."""
     state = _load_state(state_path, hashlib.sha256(url.encode()).hexdigest())
     return state[0] if state is not None else None
 
@@ -137,17 +239,22 @@ def saved_size(state_path: str, url: str) -> int | None:
 def download_segmented(
     url: str,
     dest: str,
-    size: int,
+    remote: Revision,
     progress_callback: ProgressCallback | None = None,
     cancel_event: CancelEvent | None = None,
     *,
     verify: Callable[[str], bool] | None = None,
 ) -> bool:
-    """Fetch into dest.partial, then verify and atomically replace dest.
+    """Fetch remote (a version with a size and validator) into dest.partial,
+    then verify and atomically replace dest.
 
     Interruptions retain partial/state; failed verification discards them.
-    Raises RangesUnsupported if the server ignores byte ranges after all.
+    Raises RangesUnsupported if the server ignores byte ranges after all, and
+    RemoteChanged if a piece comes from another version of the file.
     """
+    if remote.size is None or not remote.validator:
+        raise ValueError("a segmented download needs the file's size and validator")
+    size = remote.size
     partial = dest + ".partial"
     state_path = partial + ".segments"
     url_digest = hashlib.sha256(url.encode()).hexdigest()
@@ -157,7 +264,9 @@ def download_segmented(
         partial_size = Path(partial).stat().st_size
     except FileNotFoundError:
         partial_size = None
-    state = _load_state(state_path, url_digest, size) if partial_size == size else None
+    state = (
+        _load_state(state_path, url_digest, remote) if partial_size == size else None
+    )
     if state is None:
         # A sparse segmented partial must never look like a single download.
         Path(partial + ".source").unlink(missing_ok=True)
@@ -175,7 +284,10 @@ def download_segmented(
             snapshot = dict(received)
         tmp = state_path + ".tmp"
         with open(tmp, "w", newline="\n") as f:
-            json.dump({"url_sha256": url_digest, "size": size, "received": snapshot}, f)
+            json.dump(
+                {"url_sha256": url_digest, **remote.to_json(), "received": snapshot},
+                f,
+            )
         Path(tmp).replace(state_path)
 
     def fetch(start: int) -> None:
@@ -190,11 +302,17 @@ def download_segmented(
                     headers={
                         "User-Agent": user_agent(url),
                         "Range": f"bytes={pos}-{end - 1}",
+                        # A server whose file changed sends all of it (200).
+                        "If-Range": remote.validator,
                     },
                 )
                 with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                    if remote.conflicts(Revision.from_headers(response.headers)):
+                        raise RemoteChanged(location)
                     if response.getcode() != 206:
                         raise RangesUnsupported(location)
+                    if range_start(response.headers.get("Content-Range")) != pos:
+                        raise RemoteChanged(location)
                     with open(partial, "r+b") as f:
                         f.seek(pos)
                         while pos < end:

@@ -769,10 +769,9 @@ def menu_library(tmp_path, server, catalog):
     genomes.mkdir()
     (genomes / "tiny.fa.gz").write_bytes(b"stale")
     (genomes / "tiny.fa.gz.fai").write_text("chrOld\t5\n")
-    partial = genomes / "part.fa.gz.partial"
-    partial.write_bytes(TINY_FA_GZ[: len(TINY_FA_GZ) // 3])
-    Path(f"{partial}.source").write_text(
-        hashlib.sha256(catalog[1]["url"].encode()).hexdigest()
+    server.etags = True
+    server.leave_partial(
+        catalog[1]["url"], genomes / "part.fa.gz", TINY_FA_GZ[: len(TINY_FA_GZ) // 3]
     )
     return genomes
 
