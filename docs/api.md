@@ -255,10 +255,8 @@ CLI: `wgsextract extract ydna-bam`.
 
 Extract the chrY reads (output role `y_bam`).
 
-`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`,
-`<input>_Y_associated.bam` with `y_scope="associated"`, which also reads
-the reference's Y-associated contigs). Warns when the sample appears female,
-whose chrY reads are mismapped.
+`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`).
+Warns when the sample appears female, whose chrY reads are mismapped.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -267,8 +265,7 @@ whose chrY reads are mismapped.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
-| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
+| `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
 
 ### `api.extract.ydna_vcf(YdnaVcfParams)`
 
@@ -295,9 +292,7 @@ CLI: `wgsextract extract y-mt-extract`.
 
 Extract the chrY and chrM reads together (output role `y_mt_bam`).
 
-`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`, or with
-`y_scope="associated"` those and the reference's Y-associated contigs'
-in `<input>_Y_MT_associated.bam`.
+`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -306,7 +301,6 @@ in `<input>_Y_MT_associated.bam`.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 
 ### `api.extract.unmapped(UnmappedParams)`
 
@@ -365,9 +359,6 @@ Extract one region in each chosen format (output roles `<t>_bam`,
 The BAM is `<input>_mtDNA.bam`, `<input>_Y.bam` (`<input>_Y_poz.bam`
 with `poz`), `<input>_Y_MT.bam` or `<input>_autosomes_X.bam`; the VCF
 and FASTA are `<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz` and `.fasta`.
-With `y_scope="associated"` the y and ymt targets also cover the
-reference's Y-associated contigs, named `<input>_Y_associated.*` and
-`<input>_Y_MT_associated.*`.
 chrM and chrY are called haploid with bcftools, indels included; autosomes
 and X are SNPs called contig by contig with the sex-aware ploidy of
 `vcf snp`. The FASTA is the region's reference with those calls applied,
@@ -384,8 +375,7 @@ are mismapped.
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
-| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
-| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
+| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
 | `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
@@ -1521,6 +1511,7 @@ Call with GATK; output role `variants`.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
 | `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks). |
+| `pair_hmm_cuda` | `Path \| None` | `None` | `--pair-hmm-cuda` | Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md. Not with --gpu or --scatter. |
 | `pair_hmm_neon` | `Path \| None` | `None` | `--pair-hmm-neon` | Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See packaging/arm64/gkl/README.md. Not with --gpu or --scatter. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |

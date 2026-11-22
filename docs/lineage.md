@@ -82,10 +82,11 @@ with 8% no-calls. See [sources, licences and conventions](../src/wgsextract_cli/
 
 `extract ydna-bam --poz` writes indexed `_Y_poz.bam` from the original
 WGS Extract CombBED/McDonald/Poznik union (~12 Mb), **not** all stable SNPs
-or a BigY/exome capture. Exact GRCh37/hg19 or GRCh38 Y lengths are required,
-with `chrY` or `Y`, including Y-only inputs. Original BED mitochondrial
-regions are excluded; boundary-overlapping reads remain whole.
-T2T, unknown and inconsistent assemblies are rejected, not lifted.
+or a BigY/exome capture. Exact GRCh37/hg19, GRCh38 or T2T-CHM13v2.0 Y lengths
+are required, with `chrY` or `Y`, including Y-only inputs. The T2T regions are
+the GRCh38 BED lifted with the UCSC `hg38ToHs1` chain (~11.6 Mb). Original BED
+mitochondrial regions are excluded; boundary-overlapping reads remain whole.
+Unknown and inconsistent assemblies are rejected.
 Bundled BED [provenance and licence](../src/wgsextract_cli/assets/reference/poz/NOTICE.txt) require
 no download. Without `--poz`, whole-Y extraction is unchanged.
 

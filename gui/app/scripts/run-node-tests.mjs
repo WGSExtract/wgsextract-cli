@@ -25,6 +25,7 @@ const defaultTests = [
   "tests/workspace.test.mjs",
   "tests/workspace-location.test.mjs",
   "tests/workspace-move-focus.test.mjs",
+  "tests/workspace-move-links.test.mjs",
   "tests/platform.test.mjs",
   "tests/platform-command.test.mjs",
   "tests/process-runner.test.mjs",
