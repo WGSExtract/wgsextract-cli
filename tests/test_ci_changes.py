@@ -361,6 +361,32 @@ def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
         assert routes([path], repository=tmp_path)["cli"], path
 
 
+def test_1326_drive_like_literals_never_stat_outside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "gui").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_reader.py").write_text(
+        "ERROR = 'E: Failed to fetch http://mirror/pool'\nDATA = 'gui/future.json'\n"
+    )
+    root = tmp_path.resolve()
+    stat = os.stat
+
+    def repository_stat(
+        path: str | os.PathLike[str], *args: Any, **kwargs: Any
+    ) -> os.stat_result:
+        # An unready Windows drive raises WinError 1005 instead of "missing".
+        if not Path(path).is_relative_to(root):
+            raise OSError(1005, "unrecognized volume", path)
+        return stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "stat", repository_stat)
+        inputs = referenced_inputs(tmp_path)
+    assert "gui/future.json" in inputs
+    assert not any(path.startswith("E:") for path in inputs)
+
+
 def test_757_deleted_directory_inputs_still_run_their_readers(tmp_path: Path) -> None:
     (tmp_path / "tests").mkdir()
     (tmp_path / "gui").mkdir()

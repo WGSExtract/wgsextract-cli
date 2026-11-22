@@ -294,6 +294,13 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
         if directory and (path.is_dir() or not path.suffix):
             references[f"{relative}/**"].add(reader)
 
+    # Match literal prefixes by name: statting root / literal would follow
+    # drive-like text such as "E: failed" off the repository on Windows.
+    top_directories = {
+        child.name
+        for child in root.iterdir()
+        if child.name not in IGNORED and child.is_dir()
+    }
     for test in sorted((root / "tests").rglob("*.py")):
         tree = ast.parse(test.read_text(encoding="utf-8"), filename=str(test))
         reader = test.relative_to(root).as_posix()
@@ -316,7 +323,7 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
                 )
             if literal and "/" in literal and "\n" not in literal:
                 first = literal.removeprefix("./").split("/")[0]
-                if first not in IGNORED | {"", ".", ".."} and (root / first).is_dir():
+                if first in top_directories:
                     record(root / literal.removeprefix("./"), reader)
 
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
