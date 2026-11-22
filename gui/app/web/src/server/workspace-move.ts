@@ -231,11 +231,12 @@ async function renameIfSameVolume(from: string, to: string) {
 
 /** Copies through a staging folder renamed into place at the end, so the target is never partly there. */
 async function copyFolder(move: FolderMove, links: Map<string, PlannedLink>, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
-    const { from, to } = move;
+    const { fromReal, to } = move;
     // Unique, so no folder already there is ever taken over or deleted.
     const staging = await mkdtemp(path.join(path.dirname(to), `.${path.basename(to)}.moving-`));
     try {
-        const files = await listEntries(from);
+        // Read at its real path, as the OS finds it, even where its spelling has a `..` after a link.
+        const files = await listEntries(fromReal);
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
         const volume = await statfs(staging);
         const availableBytes = Number(volume.bavail) * Number(volume.bsize);
@@ -289,7 +290,7 @@ async function listEntries(root: string, relative = ""): Promise<CarriedEntry[]>
 }
 
 async function copyEntry(move: FolderMove, links: Map<string, PlannedLink>, toRoot: string, { relative, directory }: CarriedEntry) {
-    const from = path.join(move.from, relative);
+    const from = path.join(move.fromReal, relative);
     const to = path.join(toRoot, relative);
     if (directory) {
         await mkdir(to, { recursive: true });

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, readFile, readlink, realpath, stat, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, realpath, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import test from "node:test";
@@ -27,7 +27,7 @@ function failRenames(t, { folder, failing, then }) {
       throw Object.assign(new Error(`EIO: i/o error, rename '${from}'`), { code: "EIO" });
     }
     await originalRename(from, to);
-    then?.(from, to);
+    await then?.(from, to);
   };
   syncBuiltinESMExports();
   t.after(() => {
@@ -197,6 +197,87 @@ for (const volume of ["the same volume", "another volume"]) {
     await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
 
     assert.equal(await readFile(path.join(fast, "up.fa"), "utf8"), ">chr1\nACGT\n");
+  });
+}
+
+test("1239 a link the CLI replaced with a file while the folder moved is kept, and the move rolled back", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const reference = path.join(users, "reference");
+  const expected = await referenceWithLinks(t, root, reference);
+  if (!expected) {
+    return;
+  }
+  const chosen = path.join(root, "big drive", "wgs");
+  // Another writer, such as the CLI sharing the workspace, swaps a link for a file once the folder is at its new place.
+  failRenames(t, {
+    then: async (_from, to) => {
+      if (path.resolve(String(to)) === chosen) {
+        await unlink(path.join(chosen, "reference", "current.fa"));
+        await writeFile(path.join(chosen, "reference", "current.fa"), ">new\nGGGG\n");
+      }
+    },
+  });
+
+  await assert.rejects(move({ sourceRoot: source, bundleRoot: bundle, folder: chosen }), /changed during the move/);
+
+  await assert.rejects(stat(chosen), { code: "ENOENT" });
+  assert.equal(await readFile(path.join(reference, "current.fa"), "utf8"), ">new\nGGGG\n");
+  assert.equal(await readlink(path.join(reference, "current-real.fa")), expected.links["current-real.fa"]);
+});
+
+const posixOnly = { skip: process.platform === "win32" && "Windows reads .. in a path by name and takes no backslash in a file name" };
+
+for (const volume of ["the same volume", "another volume"]) {
+  test(`1239 moving a library to ${volume} keeps links whose meaning depends on how POSIX reads their spelling on the same file`, posixOnly, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const reference = path.join(users, "reference");
+    await mkdir(path.join(reference, "genomes"), { recursive: true });
+    await writeFile(path.join(reference, "genomes", "back\\slash.fa"), ">bs\nAAAA\n");
+    await writeFile(path.join(users, "outside.fa"), ">out\nCCCC\n");
+    const fast = path.join(root, "fast", "reference");
+    await mkdir(path.dirname(fast), { recursive: true });
+    await writeFile(path.join(path.dirname(fast), "outside.fa"), ">decoy\nNNNN\n");
+    // A backslash is part of a POSIX file name; `alias/..` climbs from where alias leads; an absolute `..` walks through the folder.
+    await symlink(path.join(reference, "genomes", "back\\slash.fa"), path.join(reference, "backslash.fa"));
+    await symlink(".", path.join(reference, "alias"));
+    await symlink("alias/../outside.fa", path.join(reference, "climb.fa"));
+    assert.equal(await readFile(path.join(reference, "climb.fa"), "utf8"), ">out\nCCCC\n");
+    await symlink(`${reference}${path.sep}..${path.sep}outside.fa`, path.join(reference, "absolute-climb.fa"));
+    await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
+    if (volume === "another volume") {
+      failRenames(t, { folder: reference });
+    }
+
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
+
+    assert.equal(await readFile(path.join(fast, "backslash.fa"), "utf8"), ">bs\nAAAA\n");
+    assert.equal(await readFile(path.join(fast, "climb.fa"), "utf8"), ">out\nCCCC\n");
+    assert.equal(await readFile(path.join(fast, "absolute-climb.fa"), "utf8"), ">out\nCCCC\n");
+  });
+
+  test(`1239 moving a library set with a .. after a folder link to ${volume} moves the folder the OS finds there`, posixOnly, async (t) => {
+    const { root, source, bundle } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const real = path.join(root, "a", "b", "reference");
+    await mkdir(path.join(real, "genomes"), { recursive: true });
+    await writeFile(path.join(real, "genomes", "hg38.fa"), ">chr1\nACGT\n");
+    await symlink(path.join(root, "a", "b", "c"), path.join(root, "via"));
+    await mkdir(path.join(root, "a", "b", "c"));
+    await symlink(path.join(await realpath(real), "genomes", "hg38.fa"), path.join(real, "current.fa"));
+    // Read by the OS, via/.. is a/b; read by name, it is the root, where there is no library.
+    const reference = `${path.join(root, "via")}${path.sep}..${path.sep}reference`;
+    await saveConfig(settingsControl, undefined, { reference_library: reference }, bundle);
+    if (volume === "another volume") {
+      failRenames(t, { folder: path.resolve(reference) });
+    }
+
+    const fast = path.join(root, "fast", "reference");
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: fast, setting: { controlID: "paths", key: "reference_library" } });
+
+    assert.equal(await readFile(path.join(fast, "current.fa"), "utf8"), ">chr1\nACGT\n");
+    assert.ok((await realpath(path.join(fast, "current.fa"))).startsWith(await realpath(fast)));
   });
 }
 
