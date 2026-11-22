@@ -5,8 +5,11 @@ without VCF knowledge: one row per ALT allele, fixed typed columns, no nested
 values. The annotations come from the INFO fields our own commands write:
 
 - VEP's ``CSQ`` (`vep run`) or SnpEff's ``ANN``: gene, consequence, impact
-  and HGVS of one transcript per allele (see ``pick_csq``), and rsIDs,
-  ClinVar and gnomAD values when the VCF lacks the dedicated fields below.
+  and HGVS of one transcript per allele (see ``pick_csq``), rsIDs, ClinVar
+  and gnomAD values when the VCF lacks the dedicated fields below, and VEP's
+  1000 Genomes ``AF`` and ``MAX_AF``. Each frequency column names its source:
+  a vep-rs cache built by `vep download` has 1000 Genomes frequencies but no
+  gnomAD ones, and 1000 Genomes values never fill ``gnomad_af``.
 - ``CLNSIG``/``CLNDN`` (`vcf clinvar`), ``GNOMAD_AF`` (`vcf gnomad`),
   ``PHARMGKB`` (`vcf pharmgkb`) and ``WGSE_CONF``/``WGSE_CONF_REASONS`` (depth-aware
   confidence labels, `vcf clinvar`/`vcf gnomad`/`vcf pharmcat`).
@@ -63,7 +66,12 @@ COLUMNS: tuple[Column, ...] = (
         "Likely_pathogenic, Benign).",
     ),
     Column("clinvar_condition", TEXT, "ClinVar condition name(s) (CLNDN)."),
-    Column("gnomad_af", REAL, "gnomAD allele frequency of this ALT (0-1)."),
+    Column(
+        "gnomad_af",
+        REAL,
+        "gnomAD allele frequency of this ALT (0-1). Empty when gnomAD lacks the "
+        "ALT or when the VCF has no gnomAD annotation (`vcf gnomad`).",
+    ),
     Column("genotype", TEXT, "The sample's GT, as in the VCF (e.g. 0/1, 1|1)."),
     Column(
         "zygosity",
@@ -168,6 +176,19 @@ COLUMNS: tuple[Column, ...] = (
         TEXT,
         "The transcript fastVEP classified the allele on (INFO/ACMG_TRANSCRIPT).",
     ),
+    Column(
+        "kg_af",
+        REAL,
+        "1000 Genomes phase 3 allele frequency of this ALT, all populations "
+        "(VEP's AF); not gnomAD.",
+    ),
+    Column(
+        "max_af",
+        REAL,
+        "VEP's MAX_AF: this ALT's highest frequency in any population VEP's cache "
+        "has (gnomAD and 1000 Genomes in Ensembl VEP's cache; 1000 Genomes only "
+        "in a vep-rs cache from `vep download`).",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -205,7 +226,7 @@ _UNRANKED = len(_SEVERITY)
 
 # VEP gnomAD frequency fields, preferred first: genomes (whole-genome
 # sequencing, like ours), then exomes, then the pre-v4 combined field.
-_VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
+VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
 _PHARMGKB_LEVELS = ("1A", "1B", "2A", "2B", "3", "4")
 
 _INFO_LINE = re.compile(
@@ -297,6 +318,22 @@ def _to_float(raw: str | None) -> float | None:
         return float(raw)
     except ValueError:
         return None
+
+
+def _csq_frequency(csq: Mapping[str, str] | None, *keys: str) -> float | None:
+    """The first of ``keys`` with a value in a CSQ entry, as a frequency. VEP
+    joins the values of co-located known variants with '&'; the highest is
+    taken, so an allele common under any of them never reads as rare."""
+    if not csq:
+        return None
+    for key in keys:
+        raw = csq.get(key)
+        if not raw:
+            continue
+        values = [f for v in raw.split("&") if (f := _to_float(v)) is not None]
+        if values:
+            return max(values)
+    return None
 
 
 def _per_allele(raw: str | None, number: str | None, alt_index: int) -> str | None:
@@ -583,13 +620,11 @@ def variant_rows(
                 or _value((ann or {}).get("Gene_Name"))
                 or pgx_gene
             )
-            gnomad = _per_allele(
-                info.get("GNOMAD_AF"), numbers.get("GNOMAD_AF"), alt_index
+            gnomad = _to_float(
+                _per_allele(info.get("GNOMAD_AF"), numbers.get("GNOMAD_AF"), alt_index)
             )
-            if gnomad is None and csq:
-                gnomad = next(
-                    (v for k in _VEP_GNOMAD_AF if (v := _value(csq.get(k)))), None
-                )
+            if gnomad is None:
+                gnomad = _csq_frequency(csq, *VEP_GNOMAD_AF)
             clnsig = _per_allele(info.get("CLNSIG"), numbers.get("CLNSIG"), alt_index)
             if clnsig is None and csq:
                 clnsig = _value(csq.get("CLIN_SIG"))
@@ -618,7 +653,7 @@ def variant_rows(
                 unquote(hgvs_p) if hgvs_p else None,  # VEP writes '=' as %3D
                 clnsig,
                 _per_allele(info.get("CLNDN"), numbers.get("CLNDN"), alt_index),
-                _to_float(gnomad),
+                gnomad,
                 gt,
                 zyg,
                 depth,
@@ -650,4 +685,6 @@ def variant_rows(
                     _per_allele(info.get(tag), numbers.get(tag), alt_index)
                     for tag in acmg.TAGS
                 ),
+                _csq_frequency(csq, "AF"),
+                _csq_frequency(csq, "MAX_AF"),
             )

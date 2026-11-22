@@ -3000,7 +3000,7 @@ unpacked; an unpacked cache replaces the same release's old one.
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
 | `mirror` | `str` | `'uk'` | `--mirror` | Ensembl FTP mirror to use (default: uk) One of: `ebi`, `uk` |
-| `variations` | `bool` | `True` | `--variations` | vep-rs: include Ensembl's known variants (Existing_variation, 1000 Genomes frequencies; ~15 GB). |
+| `variations` | `bool` | `True` | `--variations` | vep-rs: include Ensembl's known variants (Existing_variation, 1000 Genomes frequencies; ~15 GB). Ensembl publishes no gnomAD frequencies to build from: use `vcf gnomad` for those. |
 
 ### `api.vep.verify(VepVerifyParams)`
 
