@@ -39,6 +39,7 @@ import hashlib
 import json
 import logging
 import os
+import sys
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -315,7 +316,7 @@ class StepJournal:
             try:
                 self._refuse_orphans()
             except BaseException:
-                self._lock.close()
+                self._lock.__exit__(*sys.exc_info())
                 raise
         return self
 
@@ -361,7 +362,7 @@ class StepJournal:
             self._tag_processes(None)
             self._summarise()
         finally:
-            self._lock.close()
+            self._lock.__exit__(kind, error, traceback)
 
     def _load(self) -> dict[str, dict[str, Any]]:
         try:

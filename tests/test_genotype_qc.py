@@ -199,12 +199,14 @@ def test_thresholds_come_from_config(tmp_path, caplog):
     assert not _warnings(caplog)
 
 
-def test_chrY_only_cram_keeps_the_assembly_n_adjustment(tmp_path):
-    # A chrY extract keeps the full GRCh38 header; chrY is 57.2 Mb with
-    # 33.6 Mb of N, so 10x over its non-N bases is 4.1x over its length.
+def test_chrY_only_cram_keeps_the_references_n_adjustment(tmp_path):
+    # A chrY extract made against hs38 keeps its chrY; hs38's chrY has
+    # 33,591,060 N bases, so depth is over its 23,636,355 bases of sequence.
     header = "@SQ\tSN:chr1\tLN:248956422\n@SQ\tSN:chrY\tLN:57227415\n"
     cram = tmp_path / "y.cram"
     cram.touch()
+    ref = tmp_path / "hs38.fa.gz"
+    ref.touch()
     with (
         patch.object(
             genotype_qc,
@@ -216,9 +218,9 @@ def test_chrY_only_cram_keeps_the_assembly_n_adjustment(tmp_path):
             return_value=header,
         ),
     ):
-        depths = warn_low_depth(str(cram), {CHR_Y})
+        depths = warn_low_depth(str(cram), {CHR_Y}, ref=str(ref))
     assert depths == pytest.approx(
-        {AUTOSOMES: 0.0, CHR_X: 0.0, CHR_Y: 10.0, MTDNA: 0.0}
+        {AUTOSOMES: 0.0, CHR_X: 0.0, CHR_Y: 10.0, MTDNA: 0.0}, rel=1e-4
     )
 
 
@@ -307,3 +309,26 @@ def test_issue_430_region_without_chrY_reads_keeps_a_man_haploid(tmp_path, caplo
     assert [w.split(" depth")[0] for w in _warnings(caplog)] == [
         "Low coverage: male.bam has a mean chrY"
     ]
+
+
+@needs_htslib
+def test_depths_detected_with_other_n_counts_are_measured_again(tmp_path):
+    """Review of #1271: stored depths outlived a change in the N counts their
+    denominators left out, so low-depth warnings kept the old depth."""
+    from wgsextract_cli.core import sample_workspace
+
+    header = ["@SQ\tSN:chr1\tLN:1000", "@SQ\tSN:chrX\tLN:1000"]
+    header += ["@SQ\tSN:chrY\tLN:1000", "@SQ\tSN:chrM\tLN:1000"]
+    reads = [f"r{i}\t0\tchr1\t{i}\t60\t10M\t*\t0\t0\tAAAAAAAAAA\tIIIIIIIIII"
+             for i in range(1, 101)]  # fmt: skip
+    bam = sam_to_bam(header + reads, tmp_path / "s.bam")
+    run_command(["samtools", "index", bam])
+    stale = dict.fromkeys(genotype_qc.TARGETS, 99.0)
+    sample_workspace.record(
+        "target_depths", bam, stale, method="BAM index", confidence="high"
+    )
+    depths, source = genotype_qc.target_depths(bam)
+    assert depths[genotype_qc.AUTOSOMES] == pytest.approx(1.0)  # 1,000 bases / 1 kb
+    assert not source.startswith(sample_workspace.WORKSPACE_FILE)
+    # Review of #1271: an unmeasured reference's depth says it keeps its Ns.
+    assert "N gaps included" in source

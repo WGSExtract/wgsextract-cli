@@ -16,7 +16,7 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.commands.genotyping import common, hla, repeats
-from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
+from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, input_signature
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.personal_report import build_report
 from wgsextract_cli.core.pixi_tools import _join_command, pixi_env_prefix
@@ -1280,13 +1280,12 @@ def test_issue_856_str_refuses_unknown_sex_from_sparse_capture(tmp_path, eh, x, 
 
 def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
     path = bam(tmp_path / "s.bam", _sex_reads(10, 0))
-    st = Path(path).stat()  # the cache must be from this very file
     (tmp_path / "s.bam.wgse_info.json").write_text(
         json.dumps({
             "md5_signature": calculate_bam_md5(path, None), "gender": "Male",
             "sex_call": ["Male", "non-PAR screening", "medium"],
             "sex_inference_version": SEX_INFERENCE_VERSION,
-            "input_signature": {"size": st.st_size, "mtime_ns": st.st_mtime_ns},
+            "input_signature": input_signature(path),
         })
     )  # fmt: skip
     args = ["typing", "str", "-i", path, "--ref", str(eh.ref), "--catalog",
