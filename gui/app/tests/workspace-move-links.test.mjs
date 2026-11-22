@@ -165,6 +165,47 @@ test("#1340 refuses a source replaced with a link while running actions stop", a
   assert.deepEqual(await snapshotTree(root), before);
 });
 
+test("#1340 refuses a linked destination written with .. after another link",
+  { skip: process.platform === "win32" && "POSIX resolves .. after following the link", timeout: 15000 }, async (t) => {
+    const { root, source, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const parent = path.join(root, "elsewhere");
+    const target = path.join(root, "target");
+    const link = path.join(parent, "moved");
+    await mkdir(path.join(parent, "sub"), { recursive: true });
+    await mkdir(target);
+    await symlink(path.join(parent, "sub"), path.join(root, "via"), "dir");
+    await symlink(target, link, "dir");
+    const library = path.join(users, "reference-data");
+    await mkdir(library);
+    await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library)}\n`);
+    const requestMove = await startMoveServer(t, source);
+    const folder = `${root}/via/../moved`;
+    const before = await snapshotTree(root);
+    for (const setting of [{}, { controlID: "paths", key: "reference_library" }]) {
+      const [failure] = await requestMove({ folder, ...setting });
+      assert.equal(failure.type, "error");
+      assert.deepEqual(failure.linkedFolder, { link: folder, target });
+      assert.deepEqual(await snapshotTree(root), before);
+    }
+  });
+
+test("#1340 moves files written into an empty library while running actions stop", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const current = path.join(users, "reference-data");
+  const folder = path.join(root, "moved");
+  await mkdir(current);
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(current)}\n`);
+  await move({
+    sourceRoot: source, bundleRoot: bundle, folder,
+    setting: { controlID: "paths", key: "reference_library" },
+    beforeMove: () => writeFile(path.join(current, "created-on-shutdown.txt"), "Keep me", { flag: "wx" }),
+  });
+  assert.equal(await readFile(path.join(folder, "created-on-shutdown.txt"), "utf8"), "Keep me");
+  await assert.rejects(lstat(current), { code: "ENOENT" });
+});
+
 /** A reference library with links into it (absolute, by its real path, relative, a folder) and out of it. */
 async function referenceWithLinks(t, root, reference) {
   const shared = path.join(root, "shared");

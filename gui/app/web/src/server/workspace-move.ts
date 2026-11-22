@@ -45,10 +45,9 @@ export async function moveWorkspace(request: WorkspaceMoveRequest): Promise<void
     if (!target || path.relative(from, bundleRoot) === "") {
         throw new HttpError(400, "This bundle has no users workspace to move.");
     }
-    await refuseLinkedMoveFolders(from, target);
+    await prepareMove(request, [from, folder ?? target, target]);
     const save = () => saveUsersWorkspace(manifest, folder == null ? null : target);
     if (path.relative(from, target) === "") {
-        await prepareMove(request, from, target);
         await save();
         return;
     }
@@ -74,8 +73,7 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     const values = await readSettings(settingsFile);
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
     const target = path.resolve(expandedFolder);
-    const folders = path.isAbsolute(current) ? [current, target] : [target];
-    await refuseLinkedMoveFolders(...folders);
+    await prepareMove(request, [...(path.isAbsolute(current) ? [current] : []), expandedFolder, target]);
     const save = async () => {
         const latestFile = (await configFiles(manifest, bundleRoot)).get(control.id);
         if (!latestFile) {
@@ -89,7 +87,6 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
         await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
-        await prepareMove(request, ...folders);
         await save();
         return;
     }
@@ -104,7 +101,6 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         await assertMovableSettingFolder(from, [usersWorkspaceFor(bundleRoot), sourceRoot, bundleRoot, ...settingsFiles]);
     }
     await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
-    await prepareMove(request, from, to);
     await mkdir(path.dirname(to), { recursive: true });
     await rmdir(to).catch(ignoreMissing);
     const move: FolderMove = { from, fromReal: await existingRealPath(from), to };
@@ -150,11 +146,13 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     await onProgress(100);
 }
 
-async function prepareMove(request: WorkspaceMoveRequest, ...folders: string[]) {
+async function prepareMove(request: WorkspaceMoveRequest, folders: string[]) {
+    const paths = [...new Set(folders)];
+    await refuseLinkedMoveFolders(...paths);
     if (request.beforeMove) {
         await request.beforeMove();
         // An action being stopped may have changed a folder after the first check.
-        await refuseLinkedMoveFolders(...folders);
+        await refuseLinkedMoveFolders(...paths);
     }
 }
 
