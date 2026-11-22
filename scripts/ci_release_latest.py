@@ -29,6 +29,27 @@ def version(tag: str) -> tuple[int, ...] | None:
     return tuple(map(int, match.groups())) if match else None
 
 
+def stable_tags(pages: object) -> list[str]:
+    """Published, non-prerelease tags; any unexpected shape is a failed lookup."""
+    if not isinstance(pages, list) or not pages:
+        raise ValueError("expected a list of release pages")
+    tags = []
+    for page in pages:
+        if not isinstance(page, list):
+            raise ValueError(f"expected a page of releases, got {page!r:.200}")
+        for release in page:
+            if not (
+                isinstance(release, dict)
+                and isinstance(release.get("tag_name"), str)
+                and isinstance(release.get("draft"), bool)
+                and isinstance(release.get("prerelease"), bool)
+            ):
+                raise ValueError(f"unexpected release {release!r:.200}")
+            if not release["draft"] and not release["prerelease"]:
+                tags.append(release["tag_name"])
+    return tags
+
+
 def published_tags(repository: str) -> list[str]:
     """Tags of every published, non-prerelease release, from all pages."""
     command = [
@@ -45,16 +66,11 @@ def published_tags(repository: str) -> list[str]:
                 command, capture_output=True, text=True, timeout=TIMEOUT_SECONDS
             )
             if result.returncode == 0:
-                return [
-                    release["tag_name"]
-                    for page in json.loads(result.stdout)
-                    for release in page
-                    if not release["draft"] and not release["prerelease"]
-                ]
+                return stable_tags(json.loads(result.stdout))
             error = result.stderr.strip() or f"gh exited {result.returncode}"
         except subprocess.TimeoutExpired:
             error = f"timed out after {TIMEOUT_SECONDS}s"
-        except (ValueError, KeyError, TypeError) as exc:
+        except ValueError as exc:
             error = f"unexpected response: {exc!r}"
         if attempt < ATTEMPTS:
             delay = 5 * 2**attempt

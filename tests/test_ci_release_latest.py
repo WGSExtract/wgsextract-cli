@@ -60,11 +60,21 @@ def test_1229_transient_api_failure_does_not_promote_an_older_tag(
     assert decide(capsys, "v0.8.10")[:2] == (0, "false")
 
 
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "<html>bad gateway",
+        "[]",
+        "[{}]",
+        '[[{"tag_name": "v0.9.0", "draft": "false", "prerelease": false}]]',
+        '[[{"tag_name": "v0.9.0", "prerelease": false}]]',
+    ],
+)
 def test_1229_lookup_that_keeps_failing_stops_without_a_decision(
-    github: list[object], capsys: pytest.CaptureFixture[str]
+    github: list[object], capsys: pytest.CaptureFixture[str], malformed: str
 ) -> None:
     github += [api_error("gh: Server Error (HTTP 503)")] * 3
-    github.append(subprocess.CompletedProcess([], 0, "<html>bad gateway", ""))
+    github.append(subprocess.CompletedProcess([], 0, malformed, ""))
     code, out, err = decide(capsys, "v0.8.10")
     assert (code, out) == (1, "")
     assert "::error::" in err
